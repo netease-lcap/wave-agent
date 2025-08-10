@@ -7,8 +7,8 @@ import { ChatCompletionMessageToolCall } from 'openai/resources';
 
 // Initialize OpenAI client with environment variables
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL,
+  apiKey: process.env.AIGW_TOKEN,
+  baseURL: process.env.AIGW_URL,
 });
 
 // 验证模型ID是否有效
