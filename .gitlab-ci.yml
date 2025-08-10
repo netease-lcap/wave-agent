@@ -1,0 +1,31 @@
+default:
+  image: node:20-alpine
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+stages:
+  - check
+
+check:
+  stage: check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+  cache:
+    key:
+      files:
+        - pnpm-lock.yaml
+        - .gitlab-ci.yml
+    paths:
+      - node_modules/
+  script:
+    - npm config set registry https://registry.npmmirror.com
+    - npm install -g pnpm@9
+    - pnpm install
+    - pnpm build
+    - pnpm lint
+    - pnpm test
+  tags:
+    - ide-runner
