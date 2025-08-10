@@ -117,7 +117,7 @@ export const useAI = (): UseAIReturn => {
         // 处理返回的工具调用
         if (result.tool_calls) {
           for (const toolCall of result.tool_calls) {
-            if (!toolCall.function) continue; // 跳过没有 function 的工具调用
+            if (toolCall.type !== 'function') continue; // 跳过没有 function 的工具调用
 
             hasToolOperations = true;
 

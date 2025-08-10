@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { listDirTool } from '../../src/plugins/tools/listDirTool';
 import type { ToolResult, ToolContext } from '../../src/plugins/tools/types';
-import type { Stats, Dirent } from 'fs';
+import type { Stats } from 'fs';
 
 // Mock fs/promises module
 vi.mock('fs', async (importOriginal) => {
@@ -58,12 +58,13 @@ describe('listDirTool with real fs', () => {
     });
 
     // Mock fs.promises.readdir to return mixed file types
-    mockReaddir.mockResolvedValue([
+    const mockReaddirFn = mockReaddir as unknown as ReturnType<typeof vi.fn>;
+    mockReaddirFn.mockResolvedValue([
       { name: 'src', isDirectory: () => true, isFile: () => false },
       { name: 'package.json', isDirectory: () => false, isFile: () => true },
       { name: 'image.png', isDirectory: () => false, isFile: () => true },
       { name: 'document.pdf', isDirectory: () => false, isFile: () => true },
-    ] as Dirent[]);
+    ]);
 
     const result: ToolResult = await listDirTool.execute(
       {

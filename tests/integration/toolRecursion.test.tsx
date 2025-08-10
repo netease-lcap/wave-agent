@@ -121,7 +121,11 @@ describe('Tool Recursion Integration Tests', () => {
     const assistantMessage = secondCallMessages.find((msg) => msg.role === 'assistant');
     expect(assistantMessage).toBeDefined();
     expect(assistantMessage?.tool_calls).toBeDefined();
-    expect(assistantMessage?.tool_calls?.[0].function.name).toBe('run_terminal_cmd');
+    const toolCall = assistantMessage?.tool_calls?.[0];
+    expect(toolCall?.type).toBe('function');
+    if (toolCall?.type === 'function') {
+      expect(toolCall.function?.name).toBe('run_terminal_cmd');
+    }
 
     // 应该包含工具执行结果消息
     const toolMessage = secondCallMessages.find((msg) => msg.role === 'tool');
