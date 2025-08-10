@@ -1,0 +1,72 @@
+{
+  "name": "lcap-code",
+  "version": "0.1.0",
+  "description": "CLI-based code assistant powered by AI, built with React and Ink",
+  "keywords": [
+    "ai",
+    "cli",
+    "code-assistant",
+    "react",
+    "ink",
+    "typescript"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "bin": {
+    "lcap-code": "./bin/lcap-code-cli.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "compile": "tsc --noEmit --incremental",
+    "dev": "vite build --watch --mode development",
+    "test": "vitest run",
+    "test:code": "vitest run",
+    "lint": "eslint --cache",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "chokidar": "^4.0.3",
+    "diff": "^8.0.2",
+    "ignore": "^5.3.0",
+    "ink": "^6.0.1",
+    "multimatch": "^7.0.0",
+    "openai": "^5.8.2",
+    "react": "^19.1.0",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@types/multimatch": "^4.0.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.1.8",
+    "@types/yargs": "^17.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "ink-testing-library": "^4.0.0",
+    "typescript": "^5.9.2",
+    "vite": "^6.2.0"
+  },
+  "lint-staged": {
+    "**/*.{js,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "**/*.json": [
+      "prettier --write"
+    ]
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "license": "MIT"
+}
