@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { filterByPreset, isBinary } from '../types/common';
+import { isBinary } from '../types/common';
 import type { FileTreeNode } from '../types/common';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -50,8 +50,7 @@ export const FileProvider: React.FC<FileProviderProps> = ({ workdir, children, i
   const syncFilesFromDisk = useCallback(async () => {
     try {
       const fileTree = await scanDirectory(workdir, fileFilterRef.current);
-      const filteredFiles = filterByPreset(fileTree);
-      const flatFilesResult = flattenFiles(filteredFiles);
+      const flatFilesResult = flattenFiles(fileTree);
       setFlatFiles(flatFilesResult);
     } catch (error) {
       logger.error('Error syncing files from disk:', error);

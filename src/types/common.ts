@@ -212,42 +212,6 @@ export const stripAnsiColors = (text: string): string => {
 };
 
 /**
- * 根据预设过滤文件树
- */
-const LOCK_FILES = [
-  'package-lock.json', // npm
-  'pnpm-lock.yaml', // pnpm
-  'yarn.lock', // yarn
-];
-
-/**
- * 根据预设过滤文件树
- * @param files 文件树节点数组
- * @param presetId 预设ID
- * @returns 过滤后的文件树节点数组
- */
-export const filterByPreset = (files: FileTreeNode[]): FileTreeNode[] => {
-  const filterNodes = (nodes: FileTreeNode[]): FileTreeNode[] => {
-    return nodes.filter((node) => {
-      if (node.children && node.children.length > 0) {
-        node.children = filterNodes(node.children);
-        return node.children.length > 0;
-      }
-
-      if (isBinary(node.label)) {
-        delete node.binaryData;
-        node.isBinary = true;
-        node.code = '';
-      }
-
-      return !LOCK_FILES.includes(node.label);
-    });
-  };
-
-  return filterNodes(files);
-};
-
-/**
  * 自定义 fetch，不需要特殊处理，直接使用原生 fetch
  */
 export const customFetch = globalThis.fetch;
