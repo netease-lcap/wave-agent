@@ -43,16 +43,12 @@ export const ChatInterface: React.FC = () => {
     <Box flexDirection="column" height="100%">
       <Box flexGrow={1} flexDirection="column" paddingX={1}>
         {/* 只在 raw mode 下显示 MessageList */}
-        {shouldUseRawMode && <MessageList messages={messages} />}
-        {isLoading && (
-          <Box marginTop={1}>
-            <Text color="yellow">🤔 AI is thinking...</Text>
-          </Box>
-        )}
-        {isCommandRunning && (
-          <Box marginTop={1}>
-            <Text color="cyan">⚡ Command is running...</Text>
-          </Box>
+        {shouldUseRawMode && (
+          <MessageList 
+            messages={messages} 
+            isLoading={isLoading}
+            isCommandRunning={isCommandRunning}
+          />
         )}
       </Box>
 

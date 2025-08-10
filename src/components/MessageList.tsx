@@ -8,9 +8,11 @@ import { usePagination } from '../hooks/usePagination';
 
 export interface MessageListProps {
   messages: Message[];
+  isLoading?: boolean;
+  isCommandRunning?: boolean;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
+export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, isCommandRunning }) => {
   const { displayInfo } = usePagination(messages);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -86,9 +88,21 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         })}
       </Box>
 
+      {/* 加载状态显示 */}
+      {isLoading && (
+        <Box marginTop={1}>
+          <Text color="yellow">🤔 AI is thinking...</Text>
+        </Box>
+      )}
+      {isCommandRunning && (
+        <Box marginTop={1}>
+          <Text color="cyan">⚡ Command is running...</Text>
+        </Box>
+      )}
+
       {/* 底部信息和快捷键提示 */}
       {messages.length > 0 && (
-        <Box marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
+        <Box marginTop={1} paddingX={1}>
           <Box justifyContent="space-between" width="100%">
             <Box>
               <Text color="gray">
