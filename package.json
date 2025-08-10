@@ -25,7 +25,7 @@
     "build": "tsc --noEmit && vite build",
     "compile": "tsc --noEmit --incremental",
     "dev": "vite build --watch --mode development",
-    "lcap-code": "lcap-code",
+    "ai-code": "lcap-code",
     "test": "vitest run",
     "test:code": "vitest run",
     "lint": "eslint --cache",

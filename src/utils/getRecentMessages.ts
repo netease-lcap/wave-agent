@@ -66,7 +66,7 @@ export function getRecentMessages(messages: Message[], userMsgCount: number = 3)
 
       // 构建助手消息的内容
       let content = '';
-      let tool_calls: ChatCompletionMessageToolCall[] = [];
+      let tool_calls: ChatCompletionMessageToolCall[] | undefined = undefined;
 
       // 从文本块中构建内容
       const textBlocks = message.blocks.filter((block) => block.type === 'text');
@@ -86,10 +86,15 @@ export function getRecentMessages(messages: Message[], userMsgCount: number = 3)
               arguments: safeToolArguments(String(toolBlock.parameters || '{}')),
             },
           }));
+
+        if(tool_calls.length===0){
+          tool_calls = undefined
+        }
       }
+      
 
       // 构建助手消息 - 只有在有内容或工具调用时才添加
-      if (content || tool_calls.length > 0) {
+      if (content || tool_calls) {
         const assistantMessage: ChatMessage = {
           role: 'assistant',
           content,
