@@ -3,6 +3,7 @@ import type { Message } from '../types';
 import { convertImageToBase64 } from './messageOperations';
 import { logger } from './logger';
 import { ChatCompletionMessageToolCall } from 'openai/resources';
+import { stripAnsiColors } from '../types/common';
 
 /**
  * 安全处理工具调用参数，确保返回合法的 JSON 字符串
@@ -58,7 +59,7 @@ export function getRecentMessages(messages: Message[], userMsgCount: number = 3)
             recentMessages.unshift({
               tool_call_id: toolBlock.attributes.id,
               role: 'tool',
-              content: toolBlock.result || '',
+              content: stripAnsiColors(toolBlock.result || ''),
             });
           }
         });
