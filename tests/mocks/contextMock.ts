@@ -71,6 +71,7 @@ export const createMockChatContext = (mockFunctions: ReturnType<typeof createMoc
   abortAIMessage: mockFunctions.abortAIMessage,
   abortMessage: mockFunctions.abortMessage,
   resetSession: mockFunctions.resetSession,
+  totalTokens: 0,
 });
 
 // 创建默认的 Files Context Mock

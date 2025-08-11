@@ -31,6 +31,7 @@ export interface ChatContextType {
   abortAIMessage: () => void;
   abortMessage: () => void;
   resetSession: () => void;
+  totalTokens: number;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -54,7 +55,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [showLoginForm, setShowLoginForm] = useState(false);
 
   // Use the AI hook
-  const { sessionId, isLoading, setIsLoading, messages, setMessages, sendAIMessage, abortAIMessage, resetSession } =
+  const { sessionId, isLoading, setIsLoading, messages, setMessages, sendAIMessage, abortAIMessage, resetSession, totalTokens } =
     useAI();
 
   // Use the Command hook
@@ -131,6 +132,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         abortAIMessage,
         abortMessage,
         resetSession,
+        totalTokens,
       }}
     >
       {children}

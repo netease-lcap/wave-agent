@@ -25,6 +25,11 @@ export interface CallAgentOptions {
 export interface CallAgentResult {
   content?: string;
   tool_calls?: ChatCompletionMessageToolCall[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 export interface GenerateCommitMessageOptions {
@@ -191,6 +196,15 @@ Remember: Always plan your approach first, explain it clearly, then execute syst
     // 返回工具调用
     if (choice.message.tool_calls) {
       result.tool_calls = choice.message.tool_calls;
+    }
+
+    // 返回 token 使用信息
+    if (response.usage) {
+      result.usage = {
+        prompt_tokens: response.usage.prompt_tokens,
+        completion_tokens: response.usage.completion_tokens,
+        total_tokens: response.usage.total_tokens,
+      };
     }
 
     return result;

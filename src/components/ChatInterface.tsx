@@ -8,7 +8,7 @@ import { useChat } from '../contexts/useChat';
 import { logger } from '../utils/logger';
 
 export const ChatInterface: React.FC = () => {
-  const { messages, isCommandRunning, isLoading, sessionId, showLoginForm, setShowLoginForm, insertToInput } =
+  const { messages, isCommandRunning, isLoading, sessionId, showLoginForm, setShowLoginForm, insertToInput, totalTokens } =
     useChat();
   const { isRawModeSupported } = useStdin();
 
@@ -54,10 +54,12 @@ export const ChatInterface: React.FC = () => {
 
       {shouldUseRawMode ? <InputBox /> : <NonRawInput />}
 
-      {/* Session ID 显示 */}
+      {/* Session ID 和 Token 统计显示 */}
       <Box paddingX={1} marginTop={1}>
         <Text color="gray" dimColor>
           Session ID: <Text color="blue">{sessionId}</Text>
+          {' | '}
+          Total Tokens: <Text color="green">{totalTokens.toLocaleString()}</Text>
         </Text>
       </Box>
     </Box>

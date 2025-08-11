@@ -27,6 +27,7 @@ export interface UseAIReturn {
   sendAIMessage: (recursionDepth?: number) => Promise<void>;
   abortAIMessage: () => void;
   resetSession: () => void;
+  totalTokens: number;
 }
 
 export const useAI = (): UseAIReturn => {
@@ -35,6 +36,7 @@ export const useAI = (): UseAIReturn => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionId, setSessionId] = useState<string>(() => randomUUID());
   const [isLoading, setIsLoading] = useState(false);
+  const [totalTokens, setTotalTokens] = useState(0);
   const fileChanges = useRef<Array<{ type: string; path: string; success: boolean }>>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const toolAbortControllerRef = useRef<AbortController | null>(null);
@@ -63,6 +65,7 @@ export const useAI = (): UseAIReturn => {
 
   const resetSession = useCallback(() => {
     setSessionId(randomUUID());
+    setTotalTokens(0);
     fileChanges.current = [];
   }, []);
 
@@ -107,6 +110,11 @@ export const useAI = (): UseAIReturn => {
           sessionId,
           abortSignal: abortController.signal,
         });
+
+        // 更新 token 统计
+        if (result.usage) {
+          setTotalTokens((prev) => prev + result.usage!.total_tokens);
+        }
 
         // 处理返回的内容
         if (result.content) {
@@ -284,5 +292,6 @@ export const useAI = (): UseAIReturn => {
     sendAIMessage,
     abortAIMessage,
     resetSession,
+    totalTokens,
   };
 };
