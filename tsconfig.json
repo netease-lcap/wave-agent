@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "outDir": "./dist",
+    "tsBuildInfoFile": "./tsconfig.tsbuildinfo",
     "declaration": true,
     "declarationMap": true,
     "jsx": "react-jsx",
