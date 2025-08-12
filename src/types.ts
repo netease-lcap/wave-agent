@@ -6,7 +6,7 @@ export interface Message {
   originalDeltas?: Delta[]; // 添加原始 delta 数组
 }
 
-export type MessageBlock = TextBlock | FileBlock | ErrorBlock | ToolBlock | ImageBlock | DiffBlock | CommandOutputBlock;
+export type MessageBlock = TextBlock | FileBlock | ErrorBlock | ToolBlock | ImageBlock | DiffBlock | CommandOutputBlock | CompressBlock;
 
 export interface TextBlock {
   type: 'text';
@@ -68,6 +68,12 @@ export interface CommandOutputBlock {
   output: string;
   isRunning: boolean;
   exitCode: number | null;
+}
+
+export interface CompressBlock {
+  type: 'compress';
+  content: string;
+  compressedMessageCount: number; // 记录压缩了多少条消息
 }
 
 export interface AIRequest {

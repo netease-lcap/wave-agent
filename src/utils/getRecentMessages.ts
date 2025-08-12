@@ -29,16 +29,37 @@ function safeToolArguments(args: string): string {
 /**
  * 获取最近的消息历史，用于发送给AI
  * @param messages 消息列表
- * @param userMsgCount 用户消息数量限制，默认为3
+ * @param userMsgCount 用户消息数量限制，默认为3（当遇到压缩块时会忽略此参数）
  * @returns 格式化后的消息列表
  */
 export function getRecentMessages(messages: Message[], userMsgCount: number = 3): ChatMessage[] {
   const recentMessages: ChatMessage[] = [];
   let userMessageCount = 0;
+  let foundCompressBlock = false;
 
   const startIndex = messages.length - 1;
-  for (let i = startIndex; i >= 0 && userMessageCount < userMsgCount; i--) {
+  for (let i = startIndex; i >= 0; i--) {
     const message = messages[i];
+
+    // 检查是否遇到压缩块，如果遇到则停止遍历
+    if (message.role === 'assistant' && message.blocks.some(block => block.type === 'compress')) {
+      foundCompressBlock = true;
+      
+      // 将压缩块的内容作为助手消息添加到历史中
+      const compressBlock = message.blocks.find(block => block.type === 'compress');
+      if (compressBlock && compressBlock.type === 'compress') {
+        recentMessages.unshift({
+          role: 'assistant',
+          content: `[压缩消息摘要] ${compressBlock.content}`,
+        });
+      }
+      break;
+    }
+
+    // 如果没有遇到压缩块，继续按原逻辑处理，但检查用户消息数量
+    if (!foundCompressBlock && userMessageCount >= userMsgCount) {
+      break;
+    }
 
     // 跳过空的助手消息
     if (message.role === 'assistant' && message.blocks.length === 0) {

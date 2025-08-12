@@ -216,3 +216,76 @@ Remember: Always plan your approach first, explain it clearly, then execute syst
     throw error;
   }
 }
+
+export interface CompressMessagesOptions {
+  messages: ChatMessage[];
+  abortSignal?: AbortSignal;
+}
+
+export async function compressMessages(options: CompressMessagesOptions): Promise<string> {
+  const { messages, abortSignal } = options;
+
+  try {
+    // 将消息转换为可读文本格式
+    const messageText = messages.map(msg => {
+      if (msg.role === 'user') {
+        if (Array.isArray(msg.content)) {
+          return `用户: ${msg.content.map(part => part.type === 'text' ? part.text : '[图片]').join(' ')}`;
+        } else {
+          return `用户: ${msg.content}`;
+        }
+      } else if (msg.role === 'assistant') {
+        let content = msg.content || '';
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          const toolCalls = msg.tool_calls.map(tc => {
+            if ('function' in tc && tc.function) {
+              return `${tc.function.name}(${tc.function.arguments})`;
+            }
+            return '[工具调用]';
+          }).join(', ');
+          content += ` [工具调用: ${toolCalls}]`;
+        }
+        return `助手: ${content}`;
+      } else if (msg.role === 'tool') {
+        return `工具结果: ${msg.content}`;
+      }
+      return '';
+    }).filter(Boolean).join('\n');
+
+    const response = await openai.chat.completions.create(
+      {
+        model: 'gemini-2.5-flash',
+        messages: [
+          {
+            role: 'system',
+            content: `你是一个对话历史压缩专家。请将以下对话历史压缩为简洁但包含关键信息的摘要。
+要求：
+1. 保留重要的技术讨论要点
+2. 保留关键的文件操作和代码修改信息
+3. 保留用户的主要需求和助手的主要解决方案
+4. 使用第三人称总结格式
+5. 控制在300字以内
+6. 用中文回复`,
+          },
+          {
+            role: 'user',
+            content: `请压缩以下对话历史：\n\n${messageText}`,
+          },
+        ],
+        temperature: 0.1,
+        max_tokens: 500,
+      },
+      {
+        signal: abortSignal,
+      },
+    );
+
+    return response.choices[0]?.message?.content?.trim() || '对话历史压缩失败';
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') {
+      throw new Error('压缩请求已被中断');
+    }
+    logger.error('Failed to compress messages:', error);
+    return '对话历史压缩失败';
+  }
+}

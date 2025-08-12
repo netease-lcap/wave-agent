@@ -338,3 +338,27 @@ export const addErrorBlockToMessage = (messages: Message[], error: string): Mess
   }
   return newMessages;
 };
+
+// 添加压缩块到指定位置的消息
+export const addCompressBlockToMessage = (
+  messages: Message[], 
+  insertIndex: number, 
+  compressContent: string, 
+  compressedMessageCount: number
+): Message[] => {
+  const newMessages = [...messages];
+  
+  // 创建一个新的助手消息来包含压缩块
+  const compressMessage: Message = {
+    role: 'assistant',
+    blocks: [{
+      type: 'compress',
+      content: compressContent,
+      compressedMessageCount: compressedMessageCount,
+    }],
+  };
+  
+  // 在指定位置插入压缩消息
+  newMessages.splice(insertIndex, 0, compressMessage);
+  return newMessages;
+};

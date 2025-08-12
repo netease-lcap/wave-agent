@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { randomUUID } from 'crypto';
-import { callAgent } from '../../services/aiService';
+import { callAgent, compressMessages } from '../../services/aiService';
 import { FileTreeNode } from '../../types/common';
 import {
   addAssistantMessageToMessages,
@@ -9,12 +9,13 @@ import {
   addToolBlockToMessage,
   updateToolBlockInMessage,
   addErrorBlockToMessage,
+  addCompressBlockToMessage,
 } from '../../utils/messageOperations';
 import { toolRegistry } from '../../plugins/tools';
 import type { ToolContext } from '../../plugins/tools/types';
 import { getRecentMessages } from '../../utils/getRecentMessages';
 import { saveErrorLog } from '../../utils/errorLogger';
-import type { Message } from '../../types';
+import type { Message, MessageBlock } from '../../types';
 import { useFiles } from '../useFiles';
 import { logger } from '../../utils/logger';
 
@@ -114,6 +115,48 @@ export const useAI = (): UseAIReturn => {
         // 更新 token 统计
         if (result.usage) {
           setTotalTokens((prev) => prev + result.usage!.total_tokens);
+          
+          // 检查是否超过64k token限制
+          if (result.usage.total_tokens > 64000) {
+            logger.info('Token usage exceeded 64k, compressing messages...');
+            
+            // 获取当前最新的 messages 状态
+            const latestMessages = await new Promise<Message[]>((resolve) => {
+              setMessages((messages) => {
+                resolve([...messages]);
+                return messages;
+              });
+            });
+            
+            // 移除后六条消息进行压缩
+            if (latestMessages.length > 6) {
+              const messagesToCompress = latestMessages.slice(-7, -1); // 移除后六条（不包含当前正在处理的消息）
+              const recentChatMessages = getRecentMessages(messagesToCompress);
+              
+              try {
+                const compressedContent = await compressMessages({
+                  messages: recentChatMessages,
+                  abortSignal: abortController.signal,
+                });
+                
+                // 计算插入位置（后六条之前）
+                const insertIndex = latestMessages.length - 7;
+                
+                // 删除后六条消息并在该位置插入压缩块
+                setMessages((prev) => {
+                  const newMessages = [...prev];
+                  // 移除后六条消息
+                  newMessages.splice(-7, 6);
+                  // 在指定位置插入压缩块
+                  return addCompressBlockToMessage(newMessages, insertIndex, compressedContent, 6);
+                });
+                
+                logger.info('Successfully compressed 6 messages');
+              } catch (compressError) {
+                logger.error('Failed to compress messages:', compressError);
+              }
+            }
+          }
         }
 
         // 处理返回的内容
