@@ -14,6 +14,10 @@ check:
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
     - if: $CI_PIPELINE_SOURCE == 'web'
+  variables:
+    NODE_ENV: test
+    AIGW_TOKEN: test-token-for-ci
+    AIGW_URL: https://mock-api.test.com
   cache:
     key:
       files:
