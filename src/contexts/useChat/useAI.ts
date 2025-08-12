@@ -112,9 +112,9 @@ export const useAI = (): UseAIReturn => {
           abortSignal: abortController.signal,
         });
 
-        // 更新 token 统计
+        // 更新 token 统计 - 显示最新一次的token使用量
         if (result.usage) {
-          setTotalTokens((prev) => prev + result.usage!.total_tokens);
+          setTotalTokens(result.usage.total_tokens);
           
           // 检查是否超过64k token限制
           if (result.usage.total_tokens > 64000) {
