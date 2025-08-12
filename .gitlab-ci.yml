@@ -13,6 +13,7 @@ check:
   stage: check
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_PIPELINE_SOURCE == 'web'
   cache:
     key:
       files:
