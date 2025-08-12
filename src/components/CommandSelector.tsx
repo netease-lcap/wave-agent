@@ -48,18 +48,6 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       command.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  // 处理登录（现在使用 OpenAI，不需要登录）
-  const handleLogin = () => {
-    logger.info("Login not required when using OpenAI");
-    onCancel(); // 关闭命令选择器
-  };
-
-  // 处理登出（现在使用 OpenAI，不需要登出）
-  const handleLogout = async () => {
-    logger.info("Logout not required when using OpenAI");
-    onCancel(); // 关闭命令选择器
-  };
-
   // 获取 git diff (包括未跟踪的文件)
   const getGitDiff = (): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -166,10 +154,6 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
         const selectedCommand = filteredCommands[selectedIndex].name;
         if (selectedCommand === "git-commit") {
           handleGitCommit();
-        } else if (selectedCommand === "login") {
-          handleLogin();
-        } else if (selectedCommand === "logout") {
-          handleLogout();
         } else {
           onSelect(selectedCommand);
         }

@@ -1,11 +1,11 @@
-import React, { createContext, useContext, useCallback, useState } from 'react';
-import { useFiles } from '../useFiles';
-import type { Message } from '../../types';
-import { addUserMessageToMessages } from '../../utils/messageOperations';
-import { useAI } from './useAI';
-import { useCommand } from './useCommand';
-import { useInputHistory } from './useInputHistory';
-import { useInputInsert } from './useInputInsert';
+import React, { createContext, useContext, useCallback } from "react";
+import { useFiles } from "../useFiles";
+import type { Message } from "../../types";
+import { addUserMessageToMessages } from "../../utils/messageOperations";
+import { useAI } from "./useAI";
+import { useCommand } from "./useCommand";
+import { useInputHistory } from "./useInputHistory";
+import { useInputInsert } from "./useInputInsert";
 
 export interface ChatContextType {
   messages: Message[];
@@ -21,12 +21,12 @@ export interface ChatContextType {
   insertToInput: (text: string) => void;
   inputInsertHandler: ((text: string) => void) | null;
   setInputInsertHandler: (handler: (text: string) => void) => void;
-  // Login form state
-  showLoginForm: boolean;
-  setShowLoginForm: (show: boolean) => void;
   // AI functionality
   sessionId: string;
-  sendMessage: (content: string, images?: Array<{ path: string; mimeType: string }>) => Promise<void>;
+  sendMessage: (
+    content: string,
+    images?: Array<{ path: string; mimeType: string }>,
+  ) => Promise<void>;
   sendAIMessage: (recursionDepth?: number) => Promise<void>;
   abortAIMessage: () => void;
   abortMessage: () => void;
@@ -39,7 +39,7 @@ const ChatContext = createContext<ChatContextType | null>(null);
 export const useChat = () => {
   const context = useContext(ChatContext);
   if (!context) {
-    throw new Error('useChat must be used within ChatProvider');
+    throw new Error("useChat must be used within ChatProvider");
   }
   return context;
 };
@@ -51,21 +51,33 @@ export interface ChatProviderProps {
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const { workdir } = useFiles();
 
-  // Login form state
-  const [showLoginForm, setShowLoginForm] = useState(false);
-
   // Use the AI hook
-  const { sessionId, isLoading, setIsLoading, messages, setMessages, sendAIMessage, abortAIMessage, resetSession, totalTokens } =
-    useAI();
+  const {
+    sessionId,
+    isLoading,
+    setIsLoading,
+    messages,
+    setMessages,
+    sendAIMessage,
+    abortAIMessage,
+    resetSession,
+    totalTokens,
+  } = useAI();
 
   // Use the Command hook
-  const { executeCommand, abortCommand, isCommandRunning } = useCommand(workdir, messages, setMessages);
+  const { executeCommand, abortCommand, isCommandRunning } = useCommand(
+    workdir,
+    messages,
+    setMessages,
+  );
 
   // Use the Input History hook
-  const { userInputHistory, addToInputHistory, clearInputHistory } = useInputHistory();
+  const { userInputHistory, addToInputHistory, clearInputHistory } =
+    useInputHistory();
 
   // Use the Input Insert hook
-  const { insertToInput, inputInsertHandler, setInputInsertHandler } = useInputInsert();
+  const { insertToInput, inputInsertHandler, setInputInsertHandler } =
+    useInputInsert();
 
   const clearMessages = useCallback(() => {
     setMessages([]);
@@ -80,7 +92,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   }, [abortAIMessage, abortCommand]);
 
   const sendMessage = useCallback(
-    async (content: string, images?: Array<{ path: string; mimeType: string }>) => {
+    async (
+      content: string,
+      images?: Array<{ path: string; mimeType: string }>,
+    ) => {
       if (isLoading) {
         return;
       }
@@ -89,7 +104,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       addToInputHistory(content);
 
       // Check if this is a command (starts with ! as the first character)
-      if (content.startsWith('!')) {
+      if (content.startsWith("!")) {
         const command = content.substring(1).trim();
         if (command) {
           await executeCommand(command);
@@ -122,9 +137,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         insertToInput,
         inputInsertHandler,
         setInputInsertHandler,
-        // Login form state
-        showLoginForm,
-        setShowLoginForm,
         // AI functionality
         sessionId,
         sendMessage,

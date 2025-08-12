@@ -374,14 +374,13 @@ describe("Compression Integration Tests", () => {
         },
         {
           role: "tool",
-          content:
-            "Created authentication service with login and logout functionality",
+          content: "Created authentication service with main functionality",
           tool_call_id: "call_1",
         },
       ];
 
       const expectedCompressed =
-        "用户需要在React应用中实现JWT认证，助手创建了包含登录和登出功能的认证服务（auth.ts）。";
+        "用户需要在React应用中实现JWT认证，助手创建了包含认证功能的服务（auth.ts）。";
 
       mockCompressMessages.mockResolvedValue(expectedCompressed);
 
@@ -408,12 +407,12 @@ describe("Compression Integration Tests", () => {
         },
         {
           role: "assistant",
-          content: "I can see the login form in the image.",
+          content: "I can see the form in the image.",
         },
       ];
 
       mockCompressMessages.mockResolvedValue(
-        "用户分享了登录表单截图，助手进行了分析。",
+        "用户分享了表单截图，助手进行了分析。",
       );
 
       const result = await compressMessages({

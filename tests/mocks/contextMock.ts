@@ -1,27 +1,34 @@
-import { vi } from 'vitest';
-import type { ChatContextType } from '../../src/contexts/useChat';
-import type { FileContextType } from '../../src/contexts/useFiles';
-import type { AppConfig } from '../../src/contexts/useAppConfig';
-import type { FileTreeNode } from '../../src/types/common';
-import { flattenFiles } from '../../src/utils/flattenFiles';
+import { vi } from "vitest";
+import type { ChatContextType } from "../../src/contexts/useChat";
+import type { FileContextType } from "../../src/contexts/useFiles";
+import type { AppConfig } from "../../src/contexts/useAppConfig";
+import type { FileTreeNode } from "../../src/types/common";
+import { flattenFiles } from "../../src/utils/flattenFiles";
 
 // 默认的 mock 文件数据
 export const defaultMockFiles: FileTreeNode[] = [
   {
-    path: 'src',
-    label: 'src',
-    code: '',
+    path: "src",
+    label: "src",
+    code: "",
     children: [
-      { path: 'src/index.ts', label: 'index.ts', code: '', children: [] },
+      { path: "src/index.ts", label: "index.ts", code: "", children: [] },
       {
-        path: 'src/components',
-        label: 'components',
-        code: '',
-        children: [{ path: 'src/components/App.tsx', label: 'App.tsx', code: '', children: [] }],
+        path: "src/components",
+        label: "components",
+        code: "",
+        children: [
+          {
+            path: "src/components/App.tsx",
+            label: "App.tsx",
+            code: "",
+            children: [],
+          },
+        ],
       },
     ],
   },
-  { path: 'package.json', label: 'package.json', code: '', children: [] },
+  { path: "package.json", label: "package.json", code: "", children: [] },
 ];
 
 // 创建 mock 函数
@@ -48,7 +55,9 @@ export const createMockFunctions = () => ({
 });
 
 // 创建默认的 Chat Context Mock
-export const createMockChatContext = (mockFunctions: ReturnType<typeof createMockFunctions>): ChatContextType => ({
+export const createMockChatContext = (
+  mockFunctions: ReturnType<typeof createMockFunctions>,
+): ChatContextType => ({
   messages: [],
   setMessages: mockFunctions.setMessages,
   isLoading: false,
@@ -62,10 +71,7 @@ export const createMockChatContext = (mockFunctions: ReturnType<typeof createMoc
   insertToInput: mockFunctions.insertToInput,
   inputInsertHandler: null,
   setInputInsertHandler: mockFunctions.setInputInsertHandler,
-  // Login form state
-  showLoginForm: false,
-  setShowLoginForm: vi.fn(),
-  sessionId: 'test-session',
+  sessionId: "test-session",
   sendMessage: mockFunctions.sendMessage,
   sendAIMessage: mockFunctions.sendAIMessage,
   abortAIMessage: mockFunctions.abortAIMessage,
@@ -80,7 +86,7 @@ export const createMockFilesContext = (
   files = defaultMockFiles,
 ): FileContextType => ({
   flatFiles: flattenFiles(files),
-  workdir: '/mock/workdir',
+  workdir: "/mock/workdir",
   syncFilesFromDisk: mockFunctions.syncFilesFromDisk,
   readFileFromMemory: mockFunctions.readFileFromMemory,
   writeFileToMemory: mockFunctions.writeFileToMemory,
@@ -91,7 +97,7 @@ export const createMockFilesContext = (
 
 // 创建默认的 App Config Mock
 export const createMockAppConfig = (): AppConfig => ({
-  workdir: '/mock/workdir',
+  workdir: "/mock/workdir",
   ignore: [],
 });
 
@@ -109,25 +115,25 @@ export const setupMocks = (customFiles?: FileTreeNode[]) => {
   mockAppConfig = createMockAppConfig();
 
   // Mock chat context
-  vi.doMock('../../src/contexts/useChat', () => ({
+  vi.doMock("../../src/contexts/useChat", () => ({
     ChatProvider: ({ children }: { children: React.ReactNode }) => children,
     useChat: () => mockChatContext,
   }));
 
   // Mock files context
-  vi.doMock('../../src/contexts/useFiles', () => ({
+  vi.doMock("../../src/contexts/useFiles", () => ({
     FileProvider: ({ children }: { children: React.ReactNode }) => children,
     useFiles: () => mockFilesContext,
   }));
 
   // Mock app config
-  vi.doMock('../../src/contexts/useAppConfig', () => ({
+  vi.doMock("../../src/contexts/useAppConfig", () => ({
     AppProvider: ({ children }: { children: React.ReactNode }) => children,
     useAppConfig: () => mockAppConfig,
   }));
 
   // Mock logger
-  vi.doMock('../../src/utils/logger', () => ({
+  vi.doMock("../../src/utils/logger", () => ({
     logger: {
       error: vi.fn(),
       info: vi.fn(),
