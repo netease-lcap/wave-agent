@@ -13,7 +13,7 @@
                 <mxCell id="send-ai-message" value="sendAIMessage()&lt;br&gt;(useAI.ts)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
                     <mxGeometry x="220" y="80" width="120" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="get-recent-messages" value="getRecentMessages()&lt;br&gt;获取最近消息历史" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+                <mxCell id="get-recent-messages" value="convertMessagesForAPI()&lt;br&gt;转换消息格式为API调用格式" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
                     <mxGeometry x="390" y="80" width="140" height="60" as="geometry"/>
                 </mxCell>
                 <mxCell id="call-agent" value="callAgent()&lt;br&gt;调用AI服务" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
@@ -31,7 +31,7 @@
                 <mxCell id="get-compress-messages" value="获取最新messages状态&lt;br&gt;移除后6条消息" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f3ff;strokeColor=#0066cc;" parent="1" vertex="1">
                     <mxGeometry x="230" y="200" width="140" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="get-recent-for-compress" value="getRecentMessages()&lt;br&gt;获取上次压缩到倒数6条之间的待压缩消息" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+                <mxCell id="get-recent-for-compress" value="convertMessagesForAPI()&lt;br&gt;转换待压缩消息格式" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
                     <mxGeometry x="50" y="200" width="140" height="60" as="geometry"/>
                 </mxCell>
                 <mxCell id="compress-messages" value="compressMessages()&lt;br&gt;(aiService.ts)&lt;br&gt;调用AI进行压缩" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffcc;strokeColor=#cccc00;" parent="1" vertex="1">
@@ -49,7 +49,7 @@
                 <mxCell id="update-messages" value="setMessages()&lt;br&gt;更新消息状态&lt;br&gt;显示压缩块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6ccff;strokeColor=#9933ff;" parent="1" vertex="1">
                     <mxGeometry x="640" y="300" width="120" height="80" as="geometry"/>
                 </mxCell>
-                <mxCell id="compress-block-handling" value="getRecentMessages&lt;br&gt;从后往前遍历时:&lt;br&gt;- 遇到压缩块就停止&lt;br&gt;- 将压缩摘要作为助手消息&lt;br&gt;- 实现真正的&quot;替换&quot;逻辑" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffeecc;strokeColor=#ff9900;" parent="1" vertex="1">
+                <mxCell id="compress-block-handling" value="convertMessagesForAPI&lt;br&gt;从后往前遍历时:&lt;br&gt;- 遇到压缩块就停止&lt;br&gt;- 将压缩摘要作为助手消息&lt;br&gt;- 实现真正的&quot;替换&quot;逻辑" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffeecc;strokeColor=#ff9900;" parent="1" vertex="1">
                     <mxGeometry x="600" y="470" width="200" height="100" as="geometry"/>
                 </mxCell>
                 <mxCell id="future-messages" value="后续消息处理&lt;br&gt;基于压缩摘要&lt;br&gt;继续对话" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce6ff;strokeColor=#0066cc;" parent="1" vertex="1">
@@ -124,7 +124,7 @@
                 <mxCell id="components-box" value="关键组件说明" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontStyle=1;" parent="2" vertex="1">
                     <mxGeometry width="300" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="components-list" value="• useAI.ts - 管理AI对话状态和流程控制&lt;br&gt;• aiService.ts - 提供AI服务调用和消息压缩&lt;br&gt;• getRecentMessages.ts - 智能获取历史消息&lt;br&gt;• messageOperations.ts - 消息操作工具函数&lt;br&gt;• 压缩块 - 存储压缩后的对话摘要&lt;br&gt;• Token监控 - 超过64k时触发压缩机制" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f9f9f9;strokeColor=#cccccc;fontSize=11;align=left;verticalAlign=top;" parent="2" vertex="1">
+                <mxCell id="components-list" value="• useAI.ts - 管理AI对话状态和流程控制&lt;br&gt;• aiService.ts - 提供AI服务调用和消息压缩&lt;br&gt;• convertMessagesForAPI.ts - 转换消息格式为API调用格式&lt;br&gt;• messageOperations.ts - 消息操作工具函数&lt;br&gt;• 压缩块 - 存储压缩后的对话摘要&lt;br&gt;• Token监控 - 超过64k时触发压缩机制" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f9f9f9;strokeColor=#cccccc;fontSize=11;align=left;verticalAlign=top;" parent="2" vertex="1">
                     <mxGeometry y="20" width="300" height="100" as="geometry"/>
                 </mxCell>
             </root>

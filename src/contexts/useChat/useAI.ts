@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
-import { randomUUID } from 'crypto';
-import { callAgent, compressMessages } from '../../services/aiService';
-import { FileTreeNode } from '../../types/common';
+import { useState, useRef, useCallback } from "react";
+import { randomUUID } from "crypto";
+import { callAgent, compressMessages } from "../../services/aiService";
+import { FileTreeNode } from "../../types/common";
 import {
   addAssistantMessageToMessages,
   addAnswerBlockToMessage,
@@ -11,14 +11,14 @@ import {
   addErrorBlockToMessage,
   addCompressBlockToMessage,
   updateFileOperationBlockInMessage,
-} from '../../utils/messageOperations';
-import { toolRegistry } from '../../plugins/tools';
-import type { ToolContext } from '../../plugins/tools/types';
-import { getRecentMessages } from '../../utils/getRecentMessages';
-import { saveErrorLog } from '../../utils/errorLogger';
-import type { Message } from '../../types';
-import { useFiles } from '../useFiles';
-import { logger } from '../../utils/logger';
+} from "../../utils/messageOperations";
+import { toolRegistry } from "../../plugins/tools";
+import type { ToolContext } from "../../plugins/tools/types";
+import { convertMessagesForAPI } from "../../utils/convertMessagesForAPI";
+import { saveErrorLog } from "../../utils/errorLogger";
+import type { Message } from "../../types";
+import { useFiles } from "../useFiles";
+import { logger } from "../../utils/logger";
 
 export interface UseAIReturn {
   sessionId: string;
@@ -39,7 +39,9 @@ export const useAI = (): UseAIReturn => {
   const [sessionId, setSessionId] = useState<string>(() => randomUUID());
   const [isLoading, setIsLoading] = useState(false);
   const [totalTokens, setTotalTokens] = useState(0);
-  const fileChanges = useRef<Array<{ type: string; path: string; success: boolean }>>([]);
+  const fileChanges = useRef<
+    Array<{ type: string; path: string; success: boolean }>
+  >([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const toolAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -49,7 +51,7 @@ export const useAI = (): UseAIReturn => {
       try {
         abortControllerRef.current.abort();
       } catch (error) {
-        logger.error('Failed to abort AI service:', error);
+        logger.error("Failed to abort AI service:", error);
       }
     }
 
@@ -58,7 +60,7 @@ export const useAI = (): UseAIReturn => {
       try {
         toolAbortControllerRef.current.abort();
       } catch (error) {
-        logger.error('Failed to abort tool execution:', error);
+        logger.error("Failed to abort tool execution:", error);
       }
     }
 
@@ -101,7 +103,7 @@ export const useAI = (): UseAIReturn => {
       });
 
       // 获取近期消息历史
-      const recentMessages = getRecentMessages(currentMessages);
+      const recentMessages = convertMessagesForAPI(currentMessages);
 
       try {
         // 添加答案块
@@ -116,11 +118,11 @@ export const useAI = (): UseAIReturn => {
         // 更新 token 统计 - 显示最新一次的token使用量
         if (result.usage) {
           setTotalTokens(result.usage.total_tokens);
-          
+
           // 检查是否超过64k token限制
           if (result.usage.total_tokens > 64000) {
-            logger.info('Token usage exceeded 64k, compressing messages...');
-            
+            logger.info("Token usage exceeded 64k, compressing messages...");
+
             // 获取当前最新的 messages 状态
             const latestMessages = await new Promise<Message[]>((resolve) => {
               setMessages((messages) => {
@@ -128,33 +130,39 @@ export const useAI = (): UseAIReturn => {
                 return messages;
               });
             });
-            
+
             // 移除后六条消息进行压缩
             if (latestMessages.length > 6) {
               const messagesToCompress = latestMessages.slice(-7, -1); // 移除后六条（不包含当前正在处理的消息）
-              const recentChatMessages = getRecentMessages(messagesToCompress);
-              
+              const recentChatMessages =
+                convertMessagesForAPI(messagesToCompress);
+
               try {
                 const compressedContent = await compressMessages({
                   messages: recentChatMessages,
                   abortSignal: abortController.signal,
                 });
-                
+
                 // 计算插入位置（后六条之前）
                 const insertIndex = latestMessages.length - 7;
-                
+
                 // 删除后六条消息并在该位置插入压缩块
                 setMessages((prev) => {
                   const newMessages = [...prev];
                   // 移除后六条消息
                   newMessages.splice(-7, 6);
                   // 在指定位置插入压缩块
-                  return addCompressBlockToMessage(newMessages, insertIndex, compressedContent, 6);
+                  return addCompressBlockToMessage(
+                    newMessages,
+                    insertIndex,
+                    compressedContent,
+                    6,
+                  );
                 });
-                
-                logger.info('Successfully compressed 6 messages');
+
+                logger.info("Successfully compressed 6 messages");
               } catch (compressError) {
-                logger.error('Failed to compress messages:', compressError);
+                logger.error("Failed to compress messages:", compressError);
               }
             }
           }
@@ -163,49 +171,56 @@ export const useAI = (): UseAIReturn => {
         // 处理返回的内容
         if (result.content) {
           // 直接更新答案内容（非流式，一次性接收完整内容）
-          setMessages((prev) => updateAnswerBlockInMessage(prev, result.content || ''));
+          setMessages((prev) =>
+            updateAnswerBlockInMessage(prev, result.content || ""),
+          );
         }
 
         // 处理返回的工具调用
         if (result.tool_calls) {
           for (const toolCall of result.tool_calls) {
-            if (toolCall.type !== 'function') continue; // 跳过没有 function 的工具调用
+            if (toolCall.type !== "function") continue; // 跳过没有 function 的工具调用
 
             hasToolOperations = true;
 
             // 添加工具块
             setMessages((prev) =>
-              addToolBlockToMessage(prev, { id: toolCall.id || '', name: toolCall.function?.name || '' }),
+              addToolBlockToMessage(prev, {
+                id: toolCall.id || "",
+                name: toolCall.function?.name || "",
+              }),
             );
 
             // 执行工具
             try {
-              const toolArgs = JSON.parse(toolCall.function?.arguments || '{}');
+              const toolArgs = JSON.parse(toolCall.function?.arguments || "{}");
 
               // 设置工具开始执行状态
               setMessages((prev) =>
                 updateToolBlockInMessage(
                   prev,
-                  toolCall.id || '',
+                  toolCall.id || "",
                   JSON.stringify(toolArgs, null, 2),
                   undefined,
                   undefined,
                   undefined,
                   false, // isStreaming: false
                   true, // isRunning: true
-                  toolCall.function?.name || '',
+                  toolCall.function?.name || "",
                   undefined,
                 ),
               );
 
               try {
                 // 获取最新的 flatFiles 状态
-                const currentFlatFiles = await new Promise<FileTreeNode[]>((resolve) => {
-                  setFlatFiles((flatFiles) => {
-                    resolve([...flatFiles]);
-                    return flatFiles;
-                  });
-                });
+                const currentFlatFiles = await new Promise<FileTreeNode[]>(
+                  (resolve) => {
+                    setFlatFiles((flatFiles) => {
+                      resolve([...flatFiles]);
+                      return flatFiles;
+                    });
+                  },
+                );
 
                 // 创建工具执行上下文
                 const context: ToolContext = {
@@ -215,54 +230,73 @@ export const useAI = (): UseAIReturn => {
                 };
 
                 // 执行工具
-                const toolResult = await toolRegistry.execute(toolCall.function?.name || '', toolArgs, context);
+                const toolResult = await toolRegistry.execute(
+                  toolCall.function?.name || "",
+                  toolArgs,
+                  context,
+                );
 
                 // 更新消息状态 - 工具执行完成
                 setMessages((prev) =>
                   updateToolBlockInMessage(
                     prev,
-                    toolCall.id || '',
+                    toolCall.id || "",
                     JSON.stringify(toolArgs, null, 2),
-                    toolResult.content || (toolResult.error ? `Error: ${toolResult.error}` : ''),
+                    toolResult.content ||
+                      (toolResult.error ? `Error: ${toolResult.error}` : ""),
                     toolResult.success,
                     toolResult.error,
                     false, // isStreaming: false
                     false, // isRunning: false
-                    toolCall.function?.name || '',
+                    toolCall.function?.name || "",
                     toolResult.shortResult,
                   ),
                 );
 
                 // 如果工具返回了diff信息，添加diff块
-                if (toolResult.success && toolResult.diffResult && toolResult.filePath && toolResult.originalContent !== undefined && toolResult.newContent !== undefined) {
-                  setMessages((prev) => updateFileOperationBlockInMessage(
-                    prev,
-                    toolResult.filePath!,
-                    toolResult.diffResult!,
-                    toolResult.originalContent!,
-                    toolResult.newContent!,
-                  ));
+                if (
+                  toolResult.success &&
+                  toolResult.diffResult &&
+                  toolResult.filePath &&
+                  toolResult.originalContent !== undefined &&
+                  toolResult.newContent !== undefined
+                ) {
+                  setMessages((prev) =>
+                    updateFileOperationBlockInMessage(
+                      prev,
+                      toolResult.filePath!,
+                      toolResult.diffResult!,
+                      toolResult.originalContent!,
+                      toolResult.newContent!,
+                    ),
+                  );
                 }
               } catch (toolError) {
-                const errorMessage = toolError instanceof Error ? toolError.message : String(toolError);
+                const errorMessage =
+                  toolError instanceof Error
+                    ? toolError.message
+                    : String(toolError);
 
                 setMessages((prev) =>
                   updateToolBlockInMessage(
                     prev,
-                    toolCall.id || '',
+                    toolCall.id || "",
                     JSON.stringify(toolArgs, null, 2),
                     `Tool execution failed: ${errorMessage}`,
                     false,
                     errorMessage,
                     false,
                     false,
-                    toolCall.function?.name || '',
+                    toolCall.function?.name || "",
                     undefined,
                   ),
                 );
               }
             } catch (parseError) {
-              const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+              const errorMessage =
+                parseError instanceof Error
+                  ? parseError.message
+                  : String(parseError);
               setMessages((prev) =>
                 addErrorBlockToMessage(
                   prev,
@@ -284,7 +318,9 @@ export const useAI = (): UseAIReturn => {
         // 检查是否有工具操作，如果有则自动发起下一次 AI 服务调用
         if (hasToolOperations) {
           // 检查全局中断标志和AbortController状态
-          const isCurrentlyAborted = abortController.signal.aborted || toolAbortController.signal.aborted;
+          const isCurrentlyAborted =
+            abortController.signal.aborted ||
+            toolAbortController.signal.aborted;
 
           if (isCurrentlyAborted) {
             return;
@@ -294,7 +330,9 @@ export const useAI = (): UseAIReturn => {
           await new Promise((resolve) => setTimeout(resolve, 1000));
 
           // 再次检查是否已被中断
-          const isStillAborted = abortController.signal.aborted || toolAbortController.signal.aborted;
+          const isStillAborted =
+            abortController.signal.aborted ||
+            toolAbortController.signal.aborted;
 
           if (isStillAborted) {
             return;
@@ -308,18 +346,28 @@ export const useAI = (): UseAIReturn => {
         const isAborted =
           abortController.signal.aborted ||
           toolAbortController.signal.aborted ||
-          (error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted')));
+          (error instanceof Error &&
+            (error.name === "AbortError" || error.message.includes("aborted")));
 
         if (!isAborted) {
           setMessages((prev) =>
-            addErrorBlockToMessage(prev, error instanceof Error ? error.message : 'Unknown error occurred'),
+            addErrorBlockToMessage(
+              prev,
+              error instanceof Error ? error.message : "Unknown error occurred",
+            ),
           );
 
           // 保存错误时发送给AI的参数到文件
           try {
-            await saveErrorLog(error, sessionId, workdir, recentMessages, recursionDepth);
+            await saveErrorLog(
+              error,
+              sessionId,
+              workdir,
+              recentMessages,
+              recursionDepth,
+            );
           } catch (saveError) {
-            logger.error('Failed to save error log:', saveError);
+            logger.error("Failed to save error log:", saveError);
           }
         }
 

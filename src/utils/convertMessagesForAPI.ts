@@ -30,12 +30,12 @@ function safeToolArguments(args: string): string {
 }
 
 /**
- * 获取最近的消息历史，用于发送给AI
+ * 转换消息格式为API调用格式，遇到压缩消息时停止
  * @param messages 消息列表
  * @param userMsgCount 用户消息数量限制，默认为3（当遇到压缩块时会忽略此参数）
- * @returns 格式化后的消息列表
+ * @returns 转换后的API消息格式列表
  */
-export function getRecentMessages(
+export function convertMessagesForAPI(
   messages: Message[],
   userMsgCount: number = 3,
 ): ChatCompletionMessageParam[] {

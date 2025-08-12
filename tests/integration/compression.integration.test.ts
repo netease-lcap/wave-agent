@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { addCompressBlockToMessage } from "../../src/utils/messageOperations";
-import { getRecentMessages } from "../../src/utils/getRecentMessages";
+import { convertMessagesForAPI } from "../../src/utils/convertMessagesForAPI";
 import type { Message, CompressBlock } from "../../src/types";
 import type { ChatCompletionMessageParam } from "../../src/types/common";
 
@@ -19,14 +19,14 @@ vi.mock("../../src/utils/logger", () => ({
   },
 }));
 
-// Mock getRecentMessages
-vi.mock("../../src/utils/getRecentMessages");
+// Mock convertMessagesForAPI
+vi.mock("../../src/utils/convertMessagesForAPI");
 
 // Import after mocking
 import { compressMessages } from "../../src/services/aiService";
 
 const mockCompressMessages = vi.mocked(compressMessages);
-const mockGetRecentMessages = vi.mocked(getRecentMessages);
+const mockConvertMessagesForAPI = vi.mocked(convertMessagesForAPI);
 
 describe("Compression Integration Tests", () => {
   beforeEach(() => {
@@ -190,7 +190,7 @@ describe("Compression Integration Tests", () => {
       expect(compressBlock.compressedMessageCount).toBe(6);
     });
 
-    it("should handle compression block in getRecentMessages", () => {
+    it("should handle compression block in convertMessagesForAPI", () => {
       const messagesWithCompress: Message[] = [
         { role: "user", blocks: [{ type: "text", content: "Early message" }] },
         {
@@ -214,8 +214,8 @@ describe("Compression Integration Tests", () => {
         },
       ];
 
-      // Mock the actual getRecentMessages function behavior
-      mockGetRecentMessages.mockReturnValue([
+      // Mock the actual convertMessagesForAPI function behavior
+      mockConvertMessagesForAPI.mockReturnValue([
         { role: "user", content: [{ type: "text", text: "Early message" }] },
         {
           role: "assistant",
@@ -226,7 +226,7 @@ describe("Compression Integration Tests", () => {
         { role: "assistant", content: "Current answer" },
       ]);
 
-      const result = getRecentMessages(messagesWithCompress);
+      const result = convertMessagesForAPI(messagesWithCompress);
 
       expect(result).toHaveLength(4);
       expect(result[0].role).toBe("user");

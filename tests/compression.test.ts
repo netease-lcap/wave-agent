@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { compressMessages } from "../src/services/aiService";
 import { addCompressBlockToMessage } from "../src/utils/messageOperations";
-import { getRecentMessages } from "../src/utils/getRecentMessages";
+import { convertMessagesForAPI } from "../src/utils/convertMessagesForAPI";
 import type { Message } from "../src/types";
 import type { ChatCompletionMessageParam } from "../src/types/common";
 
 // Mock dependencies
 vi.mock("../src/services/aiService");
-vi.mock("../src/utils/getRecentMessages");
+vi.mock("../src/utils/convertMessagesForAPI");
 vi.mock("../src/utils/logger");
 vi.mock("../src/contexts/useFiles", () => ({
   useFiles: () => ({
@@ -18,7 +18,7 @@ vi.mock("../src/contexts/useFiles", () => ({
 }));
 
 const mockCompressMessages = vi.mocked(compressMessages);
-const mockGetRecentMessages = vi.mocked(getRecentMessages);
+const mockConvertMessagesForAPI = vi.mocked(convertMessagesForAPI);
 
 describe("Message Compression Tests", () => {
   beforeEach(() => {
@@ -407,7 +407,7 @@ describe("Message Compression Tests", () => {
     });
   });
 
-  describe("getRecentMessages with compression", () => {
+  describe("convertMessagesForAPI with compression", () => {
     it("should handle messages with compression blocks", () => {
       const messages: Message[] = [
         { role: "user", blocks: [{ type: "text", content: "Old message" }] },
@@ -428,8 +428,8 @@ describe("Message Compression Tests", () => {
         },
       ];
 
-      // Mock the behavior of getRecentMessages when it encounters a compress block
-      mockGetRecentMessages.mockReturnValue([
+      // Mock the behavior of convertMessagesForAPI when it encounters a compress block
+      mockConvertMessagesForAPI.mockReturnValue([
         { role: "user", content: [{ type: "text", text: "Old message" }] },
         {
           role: "assistant",
@@ -440,7 +440,7 @@ describe("Message Compression Tests", () => {
         { role: "assistant", content: "New response" },
       ]);
 
-      const result = getRecentMessages(messages);
+      const result = convertMessagesForAPI(messages);
 
       expect(result).toEqual([
         { role: "user", content: [{ type: "text", text: "Old message" }] },
