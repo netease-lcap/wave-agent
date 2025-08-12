@@ -1,9 +1,9 @@
-import type { ChatMessage, ModelId } from '../types/common';
-import { VALID_MODEL_IDS, DEFAULT_MODEL_ID } from '../types/common';
-import { toolRegistry } from '../plugins/tools';
-import { logger } from '@/utils/logger';
-import OpenAI from 'openai';
-import { ChatCompletionMessageToolCall } from 'openai/resources';
+import type { ChatCompletionMessageParam, ModelId } from "../types/common";
+import { VALID_MODEL_IDS, DEFAULT_MODEL_ID } from "../types/common";
+import { toolRegistry } from "../plugins/tools";
+import { logger } from "@/utils/logger";
+import OpenAI from "openai";
+import { ChatCompletionMessageToolCall } from "openai/resources";
 
 // Initialize OpenAI client with environment variables
 const openai = new OpenAI({
@@ -17,7 +17,7 @@ function isValidModelId(modelId: string): modelId is ModelId {
 }
 
 export interface CallAgentOptions {
-  messages: ChatMessage[];
+  messages: ChatCompletionMessageParam[];
   sessionId?: string;
   abortSignal?: AbortSignal;
 }
@@ -48,7 +48,7 @@ export async function applyEdit(options: ApplyEditOptions): Promise<string> {
   const { targetFile, instructions, codeEdit, abortSignal } = options;
 
   // 如果 targetFile 为空字符串，说明是新建文件，直接返回 codeEdit
-  if (!targetFile || targetFile.trim() === '') {
+  if (!targetFile || targetFile.trim() === "") {
     return codeEdit;
   }
 
@@ -56,14 +56,14 @@ export async function applyEdit(options: ApplyEditOptions): Promise<string> {
   try {
     const response = await openai.chat.completions.create(
       {
-        model: 'gemini-2.5-flash',
+        model: "gemini-2.5-flash",
         messages: [
           {
-            role: 'system',
+            role: "system",
             content: `You are a code editor. Apply the given instructions to edit the code. Return only the edited content without any explanations.`,
           },
           {
-            role: 'user',
+            role: "user",
             content: `File: ${targetFile}\n\nInstructions: ${instructions}\n\nCode to edit:\n${codeEdit}`,
           },
         ],
@@ -76,28 +76,30 @@ export async function applyEdit(options: ApplyEditOptions): Promise<string> {
 
     return response.choices[0]?.message?.content || codeEdit;
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      throw new Error('请求已被中断');
+    if ((error as Error).name === "AbortError") {
+      throw new Error("请求已被中断");
     }
-    logger.error('Failed to apply edit:', error);
+    logger.error("Failed to apply edit:", error);
     return codeEdit; // 返回原始内容作为后备
   }
 }
 
-export async function generateCommitMessage(options: GenerateCommitMessageOptions): Promise<string> {
+export async function generateCommitMessage(
+  options: GenerateCommitMessageOptions,
+): Promise<string> {
   const { diff, abortSignal } = options;
 
   try {
     const response = await openai.chat.completions.create(
       {
-        model: 'gemini-2.5-flash',
+        model: "gemini-2.5-flash",
         messages: [
           {
-            role: 'system',
+            role: "system",
             content: `Generate a concise commit message for the following git diff. The commit message should be in conventional commit format and under 72 characters.`,
           },
           {
-            role: 'user',
+            role: "user",
             content: diff,
           },
         ],
@@ -109,27 +111,32 @@ export async function generateCommitMessage(options: GenerateCommitMessageOption
       },
     );
 
-    return response.choices[0]?.message?.content?.trim() || 'Update files';
+    return response.choices[0]?.message?.content?.trim() || "Update files";
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      throw new Error('请求已被中断');
+    if ((error as Error).name === "AbortError") {
+      throw new Error("请求已被中断");
     }
-    logger.error('Failed to generate commit message:', error);
-    return 'Update files';
+    logger.error("Failed to generate commit message:", error);
+    return "Update files";
   }
 }
 
-export async function callAgent(options: CallAgentOptions): Promise<CallAgentResult> {
+export async function callAgent(
+  options: CallAgentOptions,
+): Promise<CallAgentResult> {
   const { messages, abortSignal } = options;
 
   // 获取模型配置
   const envModel = process.env.AIGW_MODEL;
-  const modelId: ModelId = envModel && isValidModelId(envModel) ? (envModel as ModelId) : DEFAULT_MODEL_ID;
+  const modelId: ModelId =
+    envModel && isValidModelId(envModel)
+      ? (envModel as ModelId)
+      : DEFAULT_MODEL_ID;
 
   try {
     // 添加系统提示词
     const systemMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
-      role: 'system',
+      role: "system",
       content: `You are a professional web development expert.
 
 ## Current Project TODOs
@@ -161,8 +168,9 @@ export async function callAgent(options: CallAgentOptions): Promise<CallAgentRes
 Remember: Always plan your approach first, explain it clearly, then execute systematically while maintaining TODO awareness.`,
     };
 
-    // ChatMessage[] 已经是 OpenAI 格式的兼容子集，添加系统提示词到开头
-    const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [systemMessage, ...messages];
+    // ChatCompletionMessageParam[] 已经是 OpenAI 格式，添加系统提示词到开头
+    const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
+      [systemMessage, ...messages];
 
     // 获取工具配置
     const tools = toolRegistry.getToolsConfig();
@@ -183,7 +191,7 @@ Remember: Always plan your approach first, explain it clearly, then execute syst
 
     const choice = response.choices[0];
     if (!choice) {
-      throw new Error('No response from OpenAI');
+      throw new Error("No response from OpenAI");
     }
 
     const result: CallAgentResult = {};
@@ -209,55 +217,31 @@ Remember: Always plan your approach first, explain it clearly, then execute syst
 
     return result;
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      throw new Error('请求已被中断');
+    if ((error as Error).name === "AbortError") {
+      throw new Error("请求已被中断");
     }
-    logger.error('Failed to call OpenAI:', error);
+    logger.error("Failed to call OpenAI:", error);
     throw error;
   }
 }
 
 export interface CompressMessagesOptions {
-  messages: ChatMessage[];
+  messages: ChatCompletionMessageParam[];
   abortSignal?: AbortSignal;
 }
 
-export async function compressMessages(options: CompressMessagesOptions): Promise<string> {
+export async function compressMessages(
+  options: CompressMessagesOptions,
+): Promise<string> {
   const { messages, abortSignal } = options;
 
   try {
-    // 将消息转换为可读文本格式
-    const messageText = messages.map(msg => {
-      if (msg.role === 'user') {
-        if (Array.isArray(msg.content)) {
-          return `用户: ${msg.content.map(part => part.type === 'text' ? part.text : '[图片]').join(' ')}`;
-        } else {
-          return `用户: ${msg.content}`;
-        }
-      } else if (msg.role === 'assistant') {
-        let content = msg.content || '';
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
-          const toolCalls = msg.tool_calls.map(tc => {
-            if ('function' in tc && tc.function) {
-              return `${tc.function.name}(${tc.function.arguments})`;
-            }
-            return '[工具调用]';
-          }).join(', ');
-          content += ` [工具调用: ${toolCalls}]`;
-        }
-        return `助手: ${content}`;
-      } else if (msg.role === 'tool') {
-        return `工具结果: ${msg.content}`;
-      }
-      return '';
-    }).filter(Boolean).join('\n');
-
     const response = await openai.chat.completions.create(
       {
-        model: 'gemini-2.5-flash',
+        model: "gemini-2.5-flash",
         messages: [
           {
-            role: 'system',
+            role: "system",
             content: `你是一个对话历史压缩专家。请将以下对话历史压缩为简洁但包含关键信息的摘要。
 要求：
 1. 保留重要的技术讨论要点
@@ -268,9 +252,10 @@ export async function compressMessages(options: CompressMessagesOptions): Promis
 6. 用中文回复`,
           },
           {
-            role: 'user',
-            content: `请压缩以下对话历史：\n\n${messageText}`,
+            role: "user",
+            content: `请压缩以下对话历史：`,
           },
+          ...messages,
         ],
         temperature: 0.1,
         max_tokens: 500,
@@ -280,12 +265,12 @@ export async function compressMessages(options: CompressMessagesOptions): Promis
       },
     );
 
-    return response.choices[0]?.message?.content?.trim() || '对话历史压缩失败';
+    return response.choices[0]?.message?.content?.trim() || "对话历史压缩失败";
   } catch (error) {
-    if ((error as Error).name === 'AbortError') {
-      throw new Error('压缩请求已被中断');
+    if ((error as Error).name === "AbortError") {
+      throw new Error("压缩请求已被中断");
     }
-    logger.error('Failed to compress messages:', error);
-    return '对话历史压缩失败';
+    logger.error("Failed to compress messages:", error);
+    return "对话历史压缩失败";
   }
 }

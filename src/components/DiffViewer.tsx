@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react';
-import { Text, Box } from 'ink';
-import { diffWords } from 'diff';
-import type { DiffBlock } from '../types';
+import React, { useMemo } from "react";
+import { Text, Box } from "ink";
+import { diffWords } from "diff";
+import type { DiffBlock } from "../types";
 
 interface DiffViewerProps {
   block: DiffBlock;
@@ -54,7 +54,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
 
     const lines: Array<{
       content: string;
-      type: 'added' | 'removed' | 'unchanged' | 'separator';
+      type: "added" | "removed" | "unchanged" | "separator";
       lineNumber?: number;
       rawContent?: string; // 存储原始内容用于单词级对比
       wordDiff?: {
@@ -70,7 +70,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
     // 用于存储上下文的缓冲区
     let contextBuffer: Array<{
       content: string;
-      type: 'unchanged';
+      type: "unchanged";
       lineNumber: number;
     }> = [];
 
@@ -88,7 +88,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
       pendingRemovedLines.forEach((line) => {
         lines.push({
           content: line.content,
-          type: 'removed',
+          type: "removed",
           lineNumber: line.lineNumber,
           rawContent: line.rawContent,
         });
@@ -96,141 +96,149 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
       pendingRemovedLines = [];
     };
 
-    diffResult.forEach((part: { value: string; added?: boolean; removed?: boolean }) => {
-      const partLines = part.value.split('\n');
-      // 移除最后一个空行（split产生的）
-      if (partLines[partLines.length - 1] === '') {
-        partLines.pop();
-      }
-
-      if (part.removed) {
-        // 如果这是第一次遇到变更，添加前面的上下文
-        if (!hasAnyChanges) {
-          // 取缓冲区中最后几行作为前置上下文
-          const preContext = contextBuffer.slice(-maxContext);
-          if (contextBuffer.length > maxContext) {
-            lines.push({
-              content: '...',
-              type: 'separator',
-            });
-          }
-          lines.push(...preContext);
-        } else if (afterChangeContext > maxContext) {
-          // 如果上一个变更后的上下文太多，添加分隔符
-          lines.push({
-            content: '...',
-            type: 'separator',
-          });
+    diffResult.forEach(
+      (part: { value: string; added?: boolean; removed?: boolean }) => {
+        const partLines = part.value.split("\n");
+        // 移除最后一个空行（split产生的）
+        if (partLines[partLines.length - 1] === "") {
+          partLines.pop();
         }
 
-        // 暂存删除行，等待可能的新增行来做单词级对比
-        partLines.forEach((line: string) => {
-          pendingRemovedLines.push({
-            content: `- ${line}`,
-            rawContent: line,
-            lineNumber: originalLineNum++,
-          });
-        });
-
-        hasAnyChanges = true;
-        afterChangeContext = 0;
-        contextBuffer = []; // 清空缓冲区
-      } else if (part.added) {
-        // 如果这是第一次遇到变更，添加前面的上下文
-        if (!hasAnyChanges) {
-          const preContext = contextBuffer.slice(-maxContext);
-          if (contextBuffer.length > maxContext) {
+        if (part.removed) {
+          // 如果这是第一次遇到变更，添加前面的上下文
+          if (!hasAnyChanges) {
+            // 取缓冲区中最后几行作为前置上下文
+            const preContext = contextBuffer.slice(-maxContext);
+            if (contextBuffer.length > maxContext) {
+              lines.push({
+                content: "...",
+                type: "separator",
+              });
+            }
+            lines.push(...preContext);
+          } else if (afterChangeContext > maxContext) {
+            // 如果上一个变更后的上下文太多，添加分隔符
             lines.push({
-              content: '...',
-              type: 'separator',
+              content: "...",
+              type: "separator",
             });
           }
-          lines.push(...preContext);
-        } else if (afterChangeContext > maxContext) {
-          lines.push({
-            content: '...',
-            type: 'separator',
+
+          // 暂存删除行，等待可能的新增行来做单词级对比
+          partLines.forEach((line: string) => {
+            pendingRemovedLines.push({
+              content: `- ${line}`,
+              rawContent: line,
+              lineNumber: originalLineNum++,
+            });
           });
-        }
 
-        // 处理新增行，尝试与待处理的删除行做单词级对比
-        partLines.forEach((line: string, index: number) => {
-          if (index < pendingRemovedLines.length) {
-            // 有对应的删除行，进行单词级对比
-            const removedLine = pendingRemovedLines[index];
-            const wordDiff = renderWordLevelDiff(removedLine.rawContent, line);
-
-            // 添加删除行（带单词级高亮）
+          hasAnyChanges = true;
+          afterChangeContext = 0;
+          contextBuffer = []; // 清空缓冲区
+        } else if (part.added) {
+          // 如果这是第一次遇到变更，添加前面的上下文
+          if (!hasAnyChanges) {
+            const preContext = contextBuffer.slice(-maxContext);
+            if (contextBuffer.length > maxContext) {
+              lines.push({
+                content: "...",
+                type: "separator",
+              });
+            }
+            lines.push(...preContext);
+          } else if (afterChangeContext > maxContext) {
             lines.push({
-              content: `- ${removedLine.rawContent}`,
-              type: 'removed',
+              content: "...",
+              type: "separator",
+            });
+          }
+
+          // 处理新增行，尝试与待处理的删除行做单词级对比
+          partLines.forEach((line: string, index: number) => {
+            if (index < pendingRemovedLines.length) {
+              // 有对应的删除行，进行单词级对比
+              const removedLine = pendingRemovedLines[index];
+              const wordDiff = renderWordLevelDiff(
+                removedLine.rawContent,
+                line,
+              );
+
+              // 添加删除行（带单词级高亮）
+              lines.push({
+                content: `- ${removedLine.rawContent}`,
+                type: "removed",
+                lineNumber: removedLine.lineNumber,
+                rawContent: removedLine.rawContent,
+                wordDiff: {
+                  removedParts: wordDiff.removedParts,
+                  addedParts: [],
+                },
+              });
+
+              // 添加新增行（带单词级高亮）
+              lines.push({
+                content: `+ ${line}`,
+                type: "added",
+                lineNumber: modifiedLineNum++,
+                rawContent: line,
+                wordDiff: { removedParts: [], addedParts: wordDiff.addedParts },
+              });
+            } else {
+              // 没有对应的删除行，直接添加新增行
+              lines.push({
+                content: `+ ${line}`,
+                type: "added",
+                lineNumber: modifiedLineNum++,
+                rawContent: line,
+              });
+            }
+          });
+
+          // 如果删除行比新增行多，添加剩余的删除行
+          for (let i = partLines.length; i < pendingRemovedLines.length; i++) {
+            const removedLine = pendingRemovedLines[i];
+            lines.push({
+              content: removedLine.content,
+              type: "removed",
               lineNumber: removedLine.lineNumber,
               rawContent: removedLine.rawContent,
-              wordDiff: { removedParts: wordDiff.removedParts, addedParts: [] },
-            });
-
-            // 添加新增行（带单词级高亮）
-            lines.push({
-              content: `+ ${line}`,
-              type: 'added',
-              lineNumber: modifiedLineNum++,
-              rawContent: line,
-              wordDiff: { removedParts: [], addedParts: wordDiff.addedParts },
-            });
-          } else {
-            // 没有对应的删除行，直接添加新增行
-            lines.push({
-              content: `+ ${line}`,
-              type: 'added',
-              lineNumber: modifiedLineNum++,
-              rawContent: line,
             });
           }
-        });
 
-        // 如果删除行比新增行多，添加剩余的删除行
-        for (let i = partLines.length; i < pendingRemovedLines.length; i++) {
-          const removedLine = pendingRemovedLines[i];
-          lines.push({
-            content: removedLine.content,
-            type: 'removed',
-            lineNumber: removedLine.lineNumber,
-            rawContent: removedLine.rawContent,
+          pendingRemovedLines = []; // 清空待处理的删除行
+          hasAnyChanges = true;
+          afterChangeContext = 0;
+          contextBuffer = [];
+        } else {
+          // 处理未变更的行前，先清空待处理的删除行
+          flushPendingLines();
+
+          // 处理未变更的行
+          partLines.forEach((line: string) => {
+            const contextLine = {
+              content: `  ${line}`,
+              type: "unchanged" as const,
+              lineNumber: originalLineNum,
+            };
+
+            if (hasAnyChanges) {
+              // 如果已经有变更，这些是后置上下文
+              if (afterChangeContext < maxContext) {
+                lines.push(contextLine);
+                afterChangeContext++;
+              }
+            } else {
+              // 如果还没有变更，加入缓冲区
+              contextBuffer.push(contextLine);
+            }
+
+            originalLineNum++;
+            modifiedLineNum++;
           });
         }
-
-        pendingRemovedLines = []; // 清空待处理的删除行
-        hasAnyChanges = true;
-        afterChangeContext = 0;
-        contextBuffer = [];
-      } else {
-        // 处理未变更的行前，先清空待处理的删除行
-        flushPendingLines();
-
-        // 处理未变更的行
-        partLines.forEach((line: string) => {
-          const contextLine = {
-            content: `  ${line}`,
-            type: 'unchanged' as const,
-            lineNumber: originalLineNum,
-          };
-
-          if (hasAnyChanges) {
-            // 如果已经有变更，这些是后置上下文
-            if (afterChangeContext < maxContext) {
-              lines.push(contextLine);
-              afterChangeContext++;
-            }
-          } else {
-            // 如果还没有变更，加入缓冲区
-            contextBuffer.push(contextLine);
-          }
-
-          originalLineNum++;
-          modifiedLineNum++;
-        });
-      }
-    });
+      },
+    );
 
     // 处理结尾可能剩余的删除行
     flushPendingLines();
@@ -241,7 +249,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
       const truncatedLines = lines.slice(0, MAX_DISPLAY_LINES);
       truncatedLines.push({
         content: `... (${lines.length - MAX_DISPLAY_LINES} more lines truncated)`,
-        type: 'separator',
+        type: "separator",
       });
       return truncatedLines;
     }
@@ -258,7 +266,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginTop={1}>
       {/* 显示文件路径 */}
       <Box marginBottom={1}>
         <Text color="cyan" bold>
@@ -279,12 +287,17 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
           {diffLines.map((line, index) => {
             // 如果有单词级 diff，渲染特殊效果
             if (line.wordDiff) {
-              const prefix = line.type === 'removed' ? '- ' : '+ ';
-              const parts = line.type === 'removed' ? line.wordDiff.removedParts : line.wordDiff.addedParts;
+              const prefix = line.type === "removed" ? "- " : "+ ";
+              const parts =
+                line.type === "removed"
+                  ? line.wordDiff.removedParts
+                  : line.wordDiff.addedParts;
 
               return (
                 <Box key={index} flexDirection="row">
-                  <Text color={line.type === 'removed' ? 'red' : 'green'}>{prefix}</Text>
+                  <Text color={line.type === "removed" ? "red" : "green"}>
+                    {prefix}
+                  </Text>
                   <Box flexDirection="row" flexWrap="wrap">
                     {parts}
                   </Box>
@@ -297,15 +310,15 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
               <Text
                 key={index}
                 color={
-                  line.type === 'added'
-                    ? 'green'
-                    : line.type === 'removed'
-                      ? 'red'
-                      : line.type === 'separator'
-                        ? 'gray'
-                        : 'white'
+                  line.type === "added"
+                    ? "green"
+                    : line.type === "removed"
+                      ? "red"
+                      : line.type === "separator"
+                        ? "gray"
+                        : "white"
                 }
-                dimColor={line.type === 'separator'}
+                dimColor={line.type === "separator"}
               >
                 {line.content}
               </Text>

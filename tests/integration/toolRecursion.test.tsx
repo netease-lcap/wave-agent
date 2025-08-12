@@ -1,31 +1,36 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render } from 'ink-testing-library';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import React from 'react';
-import { App } from '../../src/components/App';
-import * as aiService from '../../src/services/aiService';
-import type { ChatMessage } from '../../src/types/common';
-import { waitForAIThinkingStart, waitForAIThinkingEnd } from '../utils/aiWaitHelpers';
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { render } from "ink-testing-library";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import React from "react";
+import { App } from "../../src/components/App";
+import * as aiService from "../../src/services/aiService";
+import type { ChatCompletionMessageParam } from "../../src/types/common";
+import {
+  waitForAIThinkingStart,
+  waitForAIThinkingEnd,
+} from "../utils/aiWaitHelpers";
 
 // Mock AI Service
-vi.mock('../../src/services/aiService');
+vi.mock("../../src/services/aiService");
 
 // Use real terminal tool execution for more realistic testing
 
-describe('Tool Recursion Integration Tests', () => {
+describe("Tool Recursion Integration Tests", () => {
   let testDir: string;
   let aiServiceCallCount = 0;
-  let capturedMessages: ChatMessage[][] = [];
+  let capturedMessages: ChatCompletionMessageParam[][] = [];
 
   beforeEach(async () => {
     // 创建临时测试目录
-    testDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'tool-recursion-test-'));
+    testDir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "tool-recursion-test-"),
+    );
 
     // 创建一个简单的测试文件
-    const testFilePath = path.join(testDir, 'test.txt');
-    await fs.promises.writeFile(testFilePath, 'Hello World!', 'utf-8');
+    const testFilePath = path.join(testDir, "test.txt");
+    await fs.promises.writeFile(testFilePath, "Hello World!", "utf-8");
 
     // 重置所有 mocks
     vi.clearAllMocks();
@@ -38,7 +43,7 @@ describe('Tool Recursion Integration Tests', () => {
     await fs.promises.rm(testDir, { recursive: true, force: true });
   });
 
-  it('should trigger recursive AI call after tool execution and verify message structure', async () => {
+  it("should trigger recursive AI call after tool execution and verify message structure", async () => {
     // Mock AI service 返回工具调用，然后在第二次调用时返回简单响应
     const mockCallAgent = vi.mocked(aiService.callAgent);
 
@@ -52,12 +57,12 @@ describe('Tool Recursion Integration Tests', () => {
         return {
           tool_calls: [
             {
-              id: 'call_123',
-              type: 'function' as const,
+              id: "call_123",
+              type: "function" as const,
               index: 0,
               function: {
-                name: 'run_terminal_cmd',
-                arguments: JSON.stringify({ command: 'ls -la .' }),
+                name: "run_terminal_cmd",
+                arguments: JSON.stringify({ command: "ls -la ." }),
               },
             },
           ],
@@ -65,7 +70,8 @@ describe('Tool Recursion Integration Tests', () => {
       } else if (aiServiceCallCount === 2) {
         // 第二次 AI 调用：返回基于工具结果的响应
         return {
-          content: '好的，我已经成功执行了 `ls -la` 命令。从输出结果可以看到当前目录包含了 test.txt 文件以及其他内容。',
+          content:
+            "好的，我已经成功执行了 `ls -la` 命令。从输出结果可以看到当前目录包含了 test.txt 文件以及其他内容。",
         };
       }
 
@@ -80,11 +86,11 @@ describe('Tool Recursion Integration Tests', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // 模拟用户输入消息来触发 AI 服务
-    stdin.write('请查看当前目录的内容');
+    stdin.write("请查看当前目录的内容");
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     // 模拟按下回车键发送消息
-    stdin.write('\r');
+    stdin.write("\r");
 
     // 等待 AI is thinking 文案出现
     await waitForAIThinkingStart(renderResult);
@@ -99,12 +105,12 @@ describe('Tool Recursion Integration Tests', () => {
     // 验证第一次调用的消息结构
     const firstCallMessages = capturedMessages[0];
     expect(firstCallMessages).toHaveLength(1);
-    expect(firstCallMessages[0].role).toBe('user');
+    expect(firstCallMessages[0].role).toBe("user");
     expect(firstCallMessages[0].content).toBeDefined();
     if (Array.isArray(firstCallMessages[0].content)) {
       expect(firstCallMessages[0].content[0]).toEqual({
-        type: 'text',
-        text: '请查看当前目录的内容',
+        type: "text",
+        text: "请查看当前目录的内容",
       });
     }
 
@@ -113,28 +119,30 @@ describe('Tool Recursion Integration Tests', () => {
     expect(secondCallMessages.length).toBeGreaterThan(1);
 
     // 应该包含原始用户消息
-    const userMessage = secondCallMessages.find((msg) => msg.role === 'user');
+    const userMessage = secondCallMessages.find((msg) => msg.role === "user");
     expect(userMessage).toBeDefined();
     expect(userMessage?.content).toBeDefined();
 
     // 应该包含助手的工具调用消息
-    const assistantMessage = secondCallMessages.find((msg) => msg.role === 'assistant');
+    const assistantMessage = secondCallMessages.find(
+      (msg) => msg.role === "assistant",
+    );
     expect(assistantMessage).toBeDefined();
     expect(assistantMessage?.tool_calls).toBeDefined();
     const toolCall = assistantMessage?.tool_calls?.[0];
-    expect(toolCall?.type).toBe('function');
-    if (toolCall?.type === 'function') {
-      expect(toolCall.function?.name).toBe('run_terminal_cmd');
+    expect(toolCall?.type).toBe("function");
+    if (toolCall?.type === "function") {
+      expect(toolCall.function?.name).toBe("run_terminal_cmd");
     }
 
     // 应该包含工具执行结果消息
-    const toolMessage = secondCallMessages.find((msg) => msg.role === 'tool');
+    const toolMessage = secondCallMessages.find((msg) => msg.role === "tool");
     expect(toolMessage).toBeDefined();
-    expect(toolMessage?.tool_call_id).toBe('call_123');
+    expect(toolMessage?.tool_call_id).toBe("call_123");
     expect(toolMessage?.content).toBeDefined(); // 验证工具执行有输出
   });
 
-  it('should handle multiple tool calls in sequence', async () => {
+  it("should handle multiple tool calls in sequence", async () => {
     // 重新初始化计数器和消息数组，确保测试间隔离
     aiServiceCallCount = 0;
     capturedMessages = [];
@@ -150,12 +158,12 @@ describe('Tool Recursion Integration Tests', () => {
         return {
           tool_calls: [
             {
-              id: 'call_001',
-              type: 'function' as const,
+              id: "call_001",
+              type: "function" as const,
               index: 0,
               function: {
-                name: 'run_terminal_cmd',
-                arguments: JSON.stringify({ command: 'pwd' }),
+                name: "run_terminal_cmd",
+                arguments: JSON.stringify({ command: "pwd" }),
               },
             },
           ],
@@ -165,12 +173,12 @@ describe('Tool Recursion Integration Tests', () => {
         return {
           tool_calls: [
             {
-              id: 'call_002',
-              type: 'function' as const,
+              id: "call_002",
+              type: "function" as const,
               index: 0,
               function: {
-                name: 'run_terminal_cmd',
-                arguments: JSON.stringify({ command: 'date' }),
+                name: "run_terminal_cmd",
+                arguments: JSON.stringify({ command: "date" }),
               },
             },
           ],
@@ -178,7 +186,7 @@ describe('Tool Recursion Integration Tests', () => {
       } else if (aiServiceCallCount === 3) {
         // 第三次：返回最终回答
         return {
-          content: '我已经执行了所有必要的命令，获得了当前路径和时间信息。',
+          content: "我已经执行了所有必要的命令，获得了当前路径和时间信息。",
         };
       }
 
@@ -192,11 +200,11 @@ describe('Tool Recursion Integration Tests', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // 模拟用户输入消息来触发 AI 服务
-    stdin.write('请执行多个命令');
+    stdin.write("请执行多个命令");
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     // 模拟按下回车键发送消息
-    stdin.write('\r');
+    stdin.write("\r");
 
     // 等待 AI is thinking 文案出现
     await waitForAIThinkingStart(renderResult);
@@ -210,16 +218,16 @@ describe('Tool Recursion Integration Tests', () => {
 
     // 验证第三次调用包含了之前所有的工具调用和结果
     const thirdCallMessages = capturedMessages[2];
-    const toolMessages = thirdCallMessages.filter((msg) => msg.role === 'tool');
+    const toolMessages = thirdCallMessages.filter((msg) => msg.role === "tool");
     expect(toolMessages).toHaveLength(2);
 
     // 验证工具调用 ID 的正确性
     const toolCallIds = toolMessages.map((msg) => msg.tool_call_id);
-    expect(toolCallIds).toContain('call_001');
-    expect(toolCallIds).toContain('call_002');
+    expect(toolCallIds).toContain("call_001");
+    expect(toolCallIds).toContain("call_002");
   });
 
-  it('should create new directory and file via terminal command and include them in second AI call', async () => {
+  it("should create new directory and file via terminal command and include them in second AI call", async () => {
     // 重新初始化计数器和消息数组，确保测试间隔离
     aiServiceCallCount = 0;
     capturedMessages = [];
@@ -235,11 +243,11 @@ describe('Tool Recursion Integration Tests', () => {
         return {
           tool_calls: [
             {
-              id: 'call_create_file',
-              type: 'function' as const,
+              id: "call_create_file",
+              type: "function" as const,
               index: 0,
               function: {
-                name: 'run_terminal_cmd',
+                name: "run_terminal_cmd",
                 arguments: JSON.stringify({
                   command: `cd "${testDir}" && mkdir -p newdir && echo "logger.info(\\"Hello from new file\\");" > newdir/newfile.js`,
                 }),
@@ -250,7 +258,8 @@ describe('Tool Recursion Integration Tests', () => {
       } else if (aiServiceCallCount === 2) {
         // 第二次：返回基于新文件的响应
         return {
-          content: '好的，我已经成功创建了新目录和新文件。现在可以看到新文件已经包含在项目中了。',
+          content:
+            "好的，我已经成功创建了新目录和新文件。现在可以看到新文件已经包含在项目中了。",
         };
       }
 
@@ -264,11 +273,11 @@ describe('Tool Recursion Integration Tests', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // 模拟用户输入消息来触发 AI 服务
-    stdin.write('请创建一个新目录和新文件');
+    stdin.write("请创建一个新目录和新文件");
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     // 模拟按下回车键发送消息
-    stdin.write('\r');
+    stdin.write("\r");
 
     // 等待 AI is thinking 文案出现
     await waitForAIThinkingStart(renderResult);
@@ -281,10 +290,10 @@ describe('Tool Recursion Integration Tests', () => {
     expect(aiServiceCallCount).toBe(2);
 
     // 验证新文件确实存在于磁盘上
-    const newFilePath = path.join(testDir, 'newdir', 'newfile.js');
+    const newFilePath = path.join(testDir, "newdir", "newfile.js");
     expect(fs.existsSync(newFilePath)).toBe(true);
-    const fileContent = await fs.promises.readFile(newFilePath, 'utf-8');
-    expect(fileContent).toContain('Hello from new file');
+    const fileContent = await fs.promises.readFile(newFilePath, "utf-8");
+    expect(fileContent).toContain("Hello from new file");
 
     // 验证第一次调用时没有新文件
     const firstCallArgs = mockCallAgent.mock.calls[0][0];

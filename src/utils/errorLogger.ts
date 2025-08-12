@@ -1,8 +1,8 @@
-import * as fs from 'fs';
-import path from 'path';
-import { logger } from './logger';
-import { ERROR_LOG_DIRECTORY } from './constants';
-import { ChatMessage } from '../types/common';
+import * as fs from "fs";
+import path from "path";
+import { logger } from "./logger";
+import { ERROR_LOG_DIRECTORY } from "./constants";
+import { ChatCompletionMessageParam } from "../types/common";
 
 /**
  * 错误日志数据结构
@@ -17,7 +17,7 @@ interface ErrorLogData {
   };
   recursionDepth: number;
   context: {
-    sentMessages: ChatMessage[]; // 发送给AI的ChatMessage[]
+    sentMessages: ChatCompletionMessageParam[]; // 发送给AI的ChatCompletionMessageParam[]
   };
   environment: {
     nodeVersion: string;
@@ -38,12 +38,13 @@ export async function saveErrorLog(
   error: Error | unknown,
   sessionId: string,
   workdir: string,
-  sentMessages: ChatMessage[], // 发送给AI的ChatMessage[]
+  sentMessages: ChatCompletionMessageParam[], // 发送给AI的ChatCompletionMessageParam[]
   recursionDepth: number = 0,
 ): Promise<void> {
   try {
     const timestamp = new Date().toISOString();
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
 
     // 构建错误日志数据 - 保存发送给AI的原始参数
     const errorLogData: ErrorLogData = {
@@ -69,11 +70,18 @@ export async function saveErrorLog(
     const errorLogDir = ERROR_LOG_DIRECTORY;
     await fs.promises.mkdir(errorLogDir, { recursive: true });
 
-    const errorLogPath = path.join(errorLogDir, `error-${timestamp.replace(/[:.]/g, '-')}.json`);
-    await fs.promises.writeFile(errorLogPath, JSON.stringify(errorLogData, null, 2), 'utf-8');
+    const errorLogPath = path.join(
+      errorLogDir,
+      `error-${timestamp.replace(/[:.]/g, "-")}.json`,
+    );
+    await fs.promises.writeFile(
+      errorLogPath,
+      JSON.stringify(errorLogData, null, 2),
+      "utf-8",
+    );
 
     logger.info(`Error log saved to: ${errorLogPath}`);
   } catch (saveError) {
-    logger.error('Failed to save error log:', saveError);
+    logger.error("Failed to save error log:", saveError);
   }
 }
