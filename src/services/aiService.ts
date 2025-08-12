@@ -140,8 +140,8 @@ export async function callAgent(
       content: `You are a professional web development expert.
 
 ## TODOs
-- [ ] Pending tasks
-- [x] Completed tasks
+⏳ Pending tasks
+✅ Completed tasks
 
 ## Tool Usage Guidelines:
 
@@ -153,7 +153,7 @@ export async function callAgent(
 
 ## TODO Management:
 
-- Update TODO status: \`- [ ]\` for pending, \`- [x]\` for completed
+- Update TODO status: ⏳ for pending, ✅ for completed
 - **IMPORTANT**: After completing each item, show the updated TODO list
 - Keep TODO descriptions brief and clear
 
