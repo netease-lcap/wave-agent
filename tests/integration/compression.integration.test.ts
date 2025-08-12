@@ -94,11 +94,11 @@ describe("Compression Integration Tests", () => {
 
       mockCompressMessages.mockImplementation(async ({ abortSignal }) => {
         if (abortSignal?.aborted) {
-          throw new Error("压缩请求已被中断");
+          throw new Error("Compression request was aborted");
         }
         return new Promise((resolve, reject) => {
           abortSignal?.addEventListener("abort", () => {
-            reject(new Error("压缩请求已被中断"));
+            reject(new Error("Compression request was aborted"));
           });
           setTimeout(() => resolve("压缩结果"), 100);
         });
@@ -111,7 +111,7 @@ describe("Compression Integration Tests", () => {
           messages: mockChatMessages,
           abortSignal: abortController.signal,
         }),
-      ).rejects.toThrow("压缩请求已被中断");
+      ).rejects.toThrow("Compression request was aborted");
     });
 
     it("should return fallback message on compression failure", async () => {
@@ -125,7 +125,7 @@ describe("Compression Integration Tests", () => {
         const result = await compressMessages({
           messages: mockChatMessages,
         });
-        expect(result).toBe("对话历史压缩失败");
+        expect(result).toBe("Failed to compress conversation history");
       } catch (error) {
         // If the mock throws, verify it's the expected error
         expect(error).toBeInstanceOf(Error);
@@ -308,7 +308,7 @@ describe("Compression Integration Tests", () => {
         const result = await compressMessages({
           messages: mockChatMessages,
         });
-        expect(result).toBe("对话历史压缩失败");
+        expect(result).toBe("Failed to compress conversation history");
       } catch (error) {
         // If the mock throws, verify it's the expected error
         expect(error).toBeInstanceOf(Error);
@@ -324,11 +324,11 @@ describe("Compression Integration Tests", () => {
       mockCompressMessages.mockImplementation(async ({ abortSignal }) => {
         return new Promise((resolve, reject) => {
           if (abortSignal?.aborted) {
-            reject(new Error("压缩请求已被中断"));
+            reject(new Error("Compression request was aborted"));
             return;
           }
           abortSignal?.addEventListener("abort", () => {
-            reject(new Error("压缩请求已被中断"));
+            reject(new Error("Compression request was aborted"));
           });
           setTimeout(() => resolve("压缩结果"), 100);
         });
@@ -341,7 +341,7 @@ describe("Compression Integration Tests", () => {
           messages: mockChatMessages,
           abortSignal: abortController.signal,
         }),
-      ).rejects.toThrow("压缩请求已被中断");
+      ).rejects.toThrow("Compression request was aborted");
     });
   });
 

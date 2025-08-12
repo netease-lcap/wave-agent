@@ -77,7 +77,7 @@ export async function applyEdit(options: ApplyEditOptions): Promise<string> {
     return response.choices[0]?.message?.content || codeEdit;
   } catch (error) {
     if ((error as Error).name === "AbortError") {
-      throw new Error("请求已被中断");
+      throw new Error("Request was aborted");
     }
     logger.error("Failed to apply edit:", error);
     return codeEdit; // 返回原始内容作为后备
@@ -114,7 +114,7 @@ export async function generateCommitMessage(
     return response.choices[0]?.message?.content?.trim() || "Update files";
   } catch (error) {
     if ((error as Error).name === "AbortError") {
-      throw new Error("请求已被中断");
+      throw new Error("Request was aborted");
     }
     logger.error("Failed to generate commit message:", error);
     return "Update files";
@@ -139,15 +139,9 @@ export async function callAgent(
       role: "system",
       content: `You are a professional web development expert.
 
-## Current Project TODOs
-
-*TODOs will be generated based on user instructions and project requirements. Use markdown checkboxes to track completion status.*
-
-### 🔄 In Progress
-*Tasks currently being worked on*
-
-### ✅ Completed
-*Completed tasks will be listed here*
+## TODOs
+- [ ] Pending tasks
+- [x] Completed tasks
 
 ## Tool Usage Guidelines:
 
@@ -159,13 +153,11 @@ export async function callAgent(
 
 ## TODO Management:
 
-- Always reference the current TODOs when starting new tasks
-- Update TODO status using markdown checkboxes: \`- [ ]\` for pending, \`- [x]\` for completed
-- Add new TODOs as they arise during development
-- Use emojis and clear categorization (🔄 In Progress, 📋 Pending, ✅ Completed)
-- Provide context in TODO descriptions to help future development
+- Update TODO status: \`- [ ]\` for pending, \`- [x]\` for completed
+- **IMPORTANT**: After completing each item, show the updated TODO list
+- Keep TODO descriptions brief and clear
 
-Remember: Always plan your approach first, explain it clearly, then execute systematically while maintaining TODO awareness.`,
+Remember: Execute tasks systematically and show updated TODOs after each completion.`,
     };
 
     // ChatCompletionMessageParam[] 已经是 OpenAI 格式，添加系统提示词到开头
@@ -218,7 +210,7 @@ Remember: Always plan your approach first, explain it clearly, then execute syst
     return result;
   } catch (error) {
     if ((error as Error).name === "AbortError") {
-      throw new Error("请求已被中断");
+      throw new Error("Request was aborted");
     }
     logger.error("Failed to call OpenAI:", error);
     throw error;
@@ -242,35 +234,41 @@ export async function compressMessages(
         messages: [
           {
             role: "system",
-            content: `你是一个对话历史压缩专家。请将以下对话历史压缩为简洁但包含关键信息的摘要。
-要求：
-1. 保留重要的技术讨论要点
-2. 保留关键的文件操作和代码修改信息
-3. 保留用户的主要需求和助手的主要解决方案
-4. 使用第三人称总结格式
-5. 控制在300字以内
-6. 用中文回复`,
+            content: `You are a conversation history compression expert. Please compress the following conversation history into a concise summary that retains key information.
+
+Requirements:
+1. Preserve important technical discussion points and code examples
+2. Preserve key file operations, modifications, and their locations
+3. Preserve main user requirements and assistant solutions with outcomes
+4. Preserve error messages and debugging steps if any
+5. Use third-person summary format
+6. Target 300-500 words (adjust based on content complexity)
+7. Respond in the same language as the original conversation
+8. If the conversation involves multiple topics, organize by sections`,
           },
           {
             role: "user",
-            content: `请压缩以下对话历史：`,
+            content: `Please compress the following conversation history:`,
           },
           ...messages,
         ],
         temperature: 0.1,
-        max_tokens: 500,
+        max_tokens: 800,
       },
       {
         signal: abortSignal,
       },
     );
 
-    return response.choices[0]?.message?.content?.trim() || "对话历史压缩失败";
+    return (
+      response.choices[0]?.message?.content?.trim() ||
+      "Failed to compress conversation history"
+    );
   } catch (error) {
     if ((error as Error).name === "AbortError") {
-      throw new Error("压缩请求已被中断");
+      throw new Error("Compression request was aborted");
     }
     logger.error("Failed to compress messages:", error);
-    return "对话历史压缩失败";
+    return "Failed to compress conversation history";
   }
 }

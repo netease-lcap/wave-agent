@@ -92,7 +92,7 @@ describe("Message Compression Tests", () => {
         const result = await compressMessages({
           messages: testMessages,
         });
-        expect(result).toBe("对话历史压缩失败");
+        expect(result).toBe("Failed to compress conversation history");
       } catch (error) {
         // If the mock throws, that's expected - the real function should catch it
         expect(error).toBeInstanceOf(Error);
@@ -278,7 +278,7 @@ describe("Message Compression Tests", () => {
             { role: "user", content: [{ type: "text", text: "Test message" }] },
           ],
         });
-        expect(result).toBe("对话历史压缩失败");
+        expect(result).toBe("Failed to compress conversation history");
       } catch (error) {
         // If the mock throws, that's expected - the real function should catch it
         expect(error).toBeInstanceOf(Error);
@@ -291,11 +291,11 @@ describe("Message Compression Tests", () => {
       mockCompressMessages.mockImplementation(async ({ abortSignal }) => {
         return new Promise((resolve, reject) => {
           if (abortSignal?.aborted) {
-            reject(new Error("压缩请求已被中断"));
+            reject(new Error("Compression request was aborted"));
             return;
           }
           abortSignal?.addEventListener("abort", () => {
-            reject(new Error("压缩请求已被中断"));
+            reject(new Error("Compression request was aborted"));
           });
           setTimeout(() => resolve("压缩结果"), 100);
         });
@@ -310,7 +310,7 @@ describe("Message Compression Tests", () => {
           ],
           abortSignal: abortController.signal,
         }),
-      ).rejects.toThrow("压缩请求已被中断");
+      ).rejects.toThrow("Compression request was aborted");
     });
   });
 
