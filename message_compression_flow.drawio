@@ -1,0 +1,133 @@
+<mxfile host="65bd71144e">
+    <diagram name="消息压缩流程图" id="message-compression-flow">
+        <mxGraphModel dx="1371" dy="849" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="消息压缩系统流程图" style="text;strokeColor=none;fillColor=none;html=1;fontSize=20;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="20" width="227" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="user-send" value="用户发送消息" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="80" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="send-ai-message" value="sendAIMessage()&lt;br&gt;(useAI.ts)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="80" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="get-recent-messages" value="getRecentMessages()&lt;br&gt;获取最近消息历史" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+                    <mxGeometry x="390" y="80" width="140" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="call-agent" value="callAgent()&lt;br&gt;调用AI服务" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+                    <mxGeometry x="580" y="80" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="token-check" value="Token数量&lt;br&gt;&amp;gt; 64k?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1">
+                    <mxGeometry x="590" y="180" width="100" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="normal-process" value="正常处理响应&lt;br&gt;更新UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+                    <mxGeometry x="750" y="190" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="compression-start" value="开始压缩流程&lt;br&gt;日志记录" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcccc;strokeColor=#ff6666;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="200" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="get-compress-messages" value="获取最新messages状态&lt;br&gt;移除后6条消息" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f3ff;strokeColor=#0066cc;" parent="1" vertex="1">
+                    <mxGeometry x="230" y="200" width="140" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="get-recent-for-compress" value="getRecentMessages()&lt;br&gt;获取上次压缩到倒数6条之间的待压缩消息" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="200" width="140" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="compress-messages" value="compressMessages()&lt;br&gt;(aiService.ts)&lt;br&gt;调用AI进行压缩" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffcc;strokeColor=#cccc00;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="300" width="140" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="compress-result" value="压缩成功?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1">
+                    <mxGeometry x="230" y="310" width="100" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="compress-success" value="addCompressBlockToMessage()&lt;br&gt;插入包含摘要的压缩块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ccffcc;strokeColor=#009900;" parent="1" vertex="1">
+                    <mxGeometry x="400" y="300" width="190" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="compress-error" value="记录错误日志&lt;br&gt;继续正常流程" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffcccc;strokeColor=#ff3333;" parent="1" vertex="1">
+                    <mxGeometry x="354" y="410" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="update-messages" value="setMessages()&lt;br&gt;更新消息状态&lt;br&gt;显示压缩块" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6ccff;strokeColor=#9933ff;" parent="1" vertex="1">
+                    <mxGeometry x="640" y="300" width="120" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="compress-block-handling" value="getRecentMessages&lt;br&gt;从后往前遍历时:&lt;br&gt;- 遇到压缩块就停止&lt;br&gt;- 将压缩摘要作为助手消息&lt;br&gt;- 实现真正的&quot;替换&quot;逻辑" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffeecc;strokeColor=#ff9900;" parent="1" vertex="1">
+                    <mxGeometry x="600" y="470" width="200" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="future-messages" value="后续消息处理&lt;br&gt;基于压缩摘要&lt;br&gt;继续对话" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce6ff;strokeColor=#0066cc;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="490" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge1" parent="1" source="user-send" target="send-ai-message" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge2" parent="1" source="send-ai-message" target="get-recent-messages" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge3" parent="1" source="get-recent-messages" target="call-agent" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge4" parent="1" source="call-agent" target="token-check" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge5" parent="1" source="token-check" target="normal-process" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="720" y="220" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="edge6" parent="1" source="token-check" target="compression-start" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge7" parent="1" source="compression-start" target="get-compress-messages" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge8" parent="1" source="get-compress-messages" target="get-recent-for-compress" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge9" parent="1" source="get-recent-for-compress" target="compress-messages" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge10" parent="1" source="compress-messages" target="compress-result" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge11" parent="1" source="compress-result" target="compress-success" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge12" style="exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="compress-result" target="compress-error" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge13" parent="1" source="compress-success" target="update-messages" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="edge14" style="exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="update-messages" target="compress-block-handling" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="710" y="520" as="sourcePoint"/>
+                        <mxPoint x="150" y="650" as="targetPoint"/>
+                        <Array as="points"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="edge15" parent="1" source="compress-block-handling" target="future-messages" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="label-yes" value="是" style="text;strokeColor=none;fillColor=none;html=1;fontSize=12;fontStyle=0;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="540" y="200" width="30" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="label-no" value="否" style="text;strokeColor=none;fillColor=none;html=1;fontSize=12;fontStyle=0;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="700" y="200" width="30" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="label-success" value="成功" style="text;strokeColor=none;fillColor=none;html=1;fontSize=12;fontStyle=0;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="350" y="330" width="30" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="label-fail" value="失败" style="text;strokeColor=none;fillColor=none;html=1;fontSize=12;fontStyle=0;verticalAlign=middle;align=center;" parent="1" vertex="1">
+                    <mxGeometry x="280" y="380" width="30" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="2" value="" style="group" vertex="1" connectable="0" parent="1">
+                    <mxGeometry x="30" y="465" width="300" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="components-box" value="关键组件说明" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=14;fontStyle=1;" parent="2" vertex="1">
+                    <mxGeometry width="300" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="components-list" value="• useAI.ts - 管理AI对话状态和流程控制&lt;br&gt;• aiService.ts - 提供AI服务调用和消息压缩&lt;br&gt;• getRecentMessages.ts - 智能获取历史消息&lt;br&gt;• messageOperations.ts - 消息操作工具函数&lt;br&gt;• 压缩块 - 存储压缩后的对话摘要&lt;br&gt;• Token监控 - 超过64k时触发压缩机制" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f9f9f9;strokeColor=#cccccc;fontSize=11;align=left;verticalAlign=top;" parent="2" vertex="1">
+                    <mxGeometry y="20" width="300" height="100" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
