@@ -10,12 +10,13 @@ import {
   updateToolBlockInMessage,
   addErrorBlockToMessage,
   addCompressBlockToMessage,
+  updateFileOperationBlockInMessage,
 } from '../../utils/messageOperations';
 import { toolRegistry } from '../../plugins/tools';
 import type { ToolContext } from '../../plugins/tools/types';
 import { getRecentMessages } from '../../utils/getRecentMessages';
 import { saveErrorLog } from '../../utils/errorLogger';
-import type { Message, MessageBlock } from '../../types';
+import type { Message } from '../../types';
 import { useFiles } from '../useFiles';
 import { logger } from '../../utils/logger';
 
@@ -231,6 +232,17 @@ export const useAI = (): UseAIReturn => {
                     toolResult.shortResult,
                   ),
                 );
+
+                // 如果工具返回了diff信息，添加diff块
+                if (toolResult.success && toolResult.diffResult && toolResult.filePath && toolResult.originalContent !== undefined && toolResult.newContent !== undefined) {
+                  setMessages((prev) => updateFileOperationBlockInMessage(
+                    prev,
+                    toolResult.filePath!,
+                    toolResult.diffResult!,
+                    toolResult.originalContent!,
+                    toolResult.newContent!,
+                  ));
+                }
               } catch (toolError) {
                 const errorMessage = toolError instanceof Error ? toolError.message : String(toolError);
 
