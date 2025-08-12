@@ -38,6 +38,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const { workdir } = useFiles();
 
   // 过滤命令列表
@@ -102,6 +103,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
 
     setIsGenerating(true);
     setError(null); // 清除之前的错误
+    setWarning(null); // 清除之前的警告
     try {
       logger.debug("Starting git commit message generation");
 
@@ -109,7 +111,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       const diff = await getGitDiff();
       if (!diff.trim()) {
         logger.debug("No changes detected in git diff");
-        onCancel();
+        setWarning("No changes detected. Please make some changes first.");
         return;
       }
 
@@ -225,6 +227,13 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       {error && (
         <Box marginTop={1} marginBottom={1}>
           <Text color="red">❌ Error: {error}</Text>
+        </Box>
+      )}
+
+      {/* 警告显示 */}
+      {warning && (
+        <Box marginTop={1} marginBottom={1}>
+          <Text color="yellow">⚠️ {warning}</Text>
         </Box>
       )}
 
