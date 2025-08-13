@@ -25,6 +25,14 @@ export const useAI = (): UseAIReturn => {
 
   const aiManagerRef = useRef<AIManager | null>(null);
 
+  // Create a stable reference to the getFlatFiles function
+  const getFlatFilesRef = useRef(() => filesContext.flatFiles);
+
+  // Update the ref whenever flatFiles changes, but don't recreate AIManager
+  useEffect(() => {
+    getFlatFilesRef.current = () => filesContext.flatFiles;
+  }, [filesContext.flatFiles]);
+
   // Initialize AI manager
   useEffect(() => {
     const callbacks: AIManagerCallbacks = {
@@ -40,7 +48,7 @@ export const useAI = (): UseAIReturn => {
     };
 
     const getFlatFiles = () => {
-      return filesContext.flatFiles;
+      return getFlatFilesRef.current();
     };
 
     aiManagerRef.current = new AIManager(workdir, callbacks, getFlatFiles);
@@ -51,7 +59,7 @@ export const useAI = (): UseAIReturn => {
     setMessages(state.messages);
     setIsLoading(state.isLoading);
     setTotalTokens(state.totalTokens);
-  }, [workdir, setFlatFiles, filesContext.flatFiles]);
+  }, [workdir, setFlatFiles]); // Only depend on workdir and setFlatFiles
 
   // Update totalTokens when AI manager state changes
   useEffect(() => {
