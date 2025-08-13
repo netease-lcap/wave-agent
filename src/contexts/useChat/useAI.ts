@@ -17,7 +17,7 @@ export interface UseAIReturn {
 
 export const useAI = (): UseAIReturn => {
   const filesContext = useFiles();
-  const { workdir, setFlatFiles } = filesContext;
+  const { workdir, setFlatFiles, fileManager } = filesContext;
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalTokens, setTotalTokens] = useState(0);
@@ -25,16 +25,11 @@ export const useAI = (): UseAIReturn => {
 
   const aiManagerRef = useRef<AIManager | null>(null);
 
-  // Create a stable reference to the getFlatFiles function
-  const getFlatFilesRef = useRef(() => filesContext.flatFiles);
-
-  // Update the ref whenever flatFiles changes, but don't recreate AIManager
-  useEffect(() => {
-    getFlatFilesRef.current = () => filesContext.flatFiles;
-  }, [filesContext.flatFiles]);
-
   // Initialize AI manager
   useEffect(() => {
+    // Only initialize if fileManager is available
+    if (!fileManager) return;
+
     const callbacks: AIManagerCallbacks = {
       onMessagesChange: (newMessages) => {
         setMessages([...newMessages]);
@@ -47,11 +42,7 @@ export const useAI = (): UseAIReturn => {
       },
     };
 
-    const getFlatFiles = () => {
-      return getFlatFilesRef.current();
-    };
-
-    aiManagerRef.current = new AIManager(workdir, callbacks, getFlatFiles);
+    aiManagerRef.current = new AIManager(workdir, callbacks, fileManager);
 
     // Initialize state from manager
     const state = aiManagerRef.current.getState();
@@ -59,7 +50,7 @@ export const useAI = (): UseAIReturn => {
     setMessages(state.messages);
     setIsLoading(state.isLoading);
     setTotalTokens(state.totalTokens);
-  }, [workdir, setFlatFiles]); // Only depend on workdir and setFlatFiles
+  }, [workdir, setFlatFiles, fileManager]);
 
   // Update totalTokens when AI manager state changes
   useEffect(() => {

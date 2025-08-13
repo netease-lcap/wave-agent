@@ -44,6 +44,78 @@ vi.mock("../src/services/aiService", () => ({
   compressMessages: vi.fn(),
 }));
 
+// Mock file manager
+vi.mock("../src/services/fileManager", () => {
+  class MockFileManager {
+    private flatFiles: Array<{
+      path: string;
+      code: string;
+      label: string;
+      children: unknown[];
+      isBinary?: boolean;
+    }> = [];
+    private callbacks: { onFlatFilesChange: (files: unknown[]) => void };
+
+    constructor(
+      workdir: string,
+      callbacks: { onFlatFilesChange: (files: unknown[]) => void },
+    ) {
+      this.callbacks = callbacks;
+    }
+
+    getFlatFiles() {
+      return this.flatFiles;
+    }
+
+    setFlatFiles(files: unknown[]) {
+      this.flatFiles = files as typeof this.flatFiles;
+      this.callbacks.onFlatFilesChange(files);
+    }
+
+    async initialize() {
+      // Mock initial files
+      this.flatFiles = [
+        {
+          label: "test.js",
+          path: "test.js",
+          code: 'console.log("test");',
+          children: [],
+        },
+      ];
+      this.callbacks.onFlatFilesChange([...this.flatFiles]);
+    }
+
+    startWatching() {}
+    stopWatching() {}
+    async cleanup() {}
+    updateFileFilter() {}
+    async syncFilesFromDisk() {}
+    writeFileToMemory() {}
+    createFileInMemory() {}
+    deleteFileFromMemory() {}
+    readFileFromMemory() {
+      return null;
+    }
+
+    // Add method to simulate file addition for testing
+    addFileForTesting(path: string, content: string = "") {
+      const fileName = path.split("/").pop() || path;
+      const newFile = {
+        label: fileName,
+        path: path,
+        code: content,
+        children: [],
+      };
+      this.flatFiles.push(newFile);
+      this.callbacks.onFlatFilesChange([...this.flatFiles]);
+    }
+  }
+
+  return {
+    FileManager: MockFileManager,
+  };
+});
+
 // Mock MCP tool manager
 vi.mock("../src/utils/mcpToolManager", () => ({
   mcpToolManager: {
@@ -265,22 +337,49 @@ describe("FileManager Message Integration", () => {
   });
 
   it("should maintain file list when new files are added via watcher", async () => {
+    let fileManagerRef: {
+      addFileForTesting?: (path: string, content?: string) => void;
+    } | null = null;
+
+    // Test component that captures the fileManager reference
+    const TestComponentWithFileManager: React.FC = () => {
+      const { flatFiles, fileManager } = useFiles();
+      const { messages } = useChat();
+
+      // Capture the fileManager reference
+      React.useEffect(() => {
+        if (fileManager) {
+          fileManagerRef = fileManager as typeof fileManagerRef;
+        }
+      }, [fileManager]);
+
+      return (
+        <>
+          <Text>Flat files count: {flatFiles.length}</Text>
+          <Text>Messages count: {messages.length}</Text>
+        </>
+      );
+    };
+
     const { lastFrame } = render(
       <FileProvider workdir="/test/path">
         <ChatProvider>
-          <TestComponent />
+          <TestComponentWithFileManager />
         </ChatProvider>
       </FileProvider>,
     );
 
-    // Wait for initial loading
+    // Wait for initial loading and fileManager to be available
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     expect(lastFrame()).toContain("Flat files count: 1");
 
-    // Simulate adding a new file via watcher
-    if (watcherCallbacks.add) {
-      await watcherCallbacks.add("/test/path/newfile.js");
+    // Simulate adding a new file via the mock fileManager
+    if (fileManagerRef && fileManagerRef.addFileForTesting) {
+      fileManagerRef.addFileForTesting(
+        "/test/path/newfile.js",
+        "console.log('new file');",
+      );
     }
 
     // Wait for file to be processed

@@ -12,6 +12,7 @@ import type { FileTreeNode } from "../types/common";
 export interface FileContextType {
   flatFiles: FileTreeNode[];
   workdir: string;
+  fileManager: FileManager | null;
   syncFilesFromDisk: () => Promise<void>;
   readFileFromMemory: (path: string) => string | null;
   writeFileToMemory: (path: string, content: string) => void;
@@ -145,6 +146,7 @@ export const FileProvider: React.FC<FileProviderProps> = ({
       value={{
         flatFiles,
         workdir,
+        fileManager: fileManagerRef.current,
         syncFilesFromDisk,
         readFileFromMemory,
         writeFileToMemory,

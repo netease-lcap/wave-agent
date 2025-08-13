@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { callAgent, compressMessages } from "./aiService";
 import { FileTreeNode } from "../types/common";
+import { FileManager } from "./fileManager";
 import {
   addAssistantMessageToMessages,
   addAnswerBlockToMessage,
@@ -41,16 +42,16 @@ export class AIManager {
   private abortController: AbortController | null = null;
   private toolAbortController: AbortController | null = null;
   private workdir: string;
-  private getFlatFiles: () => FileTreeNode[];
+  private fileManager: FileManager;
 
   constructor(
     workdir: string,
     callbacks: AIManagerCallbacks,
-    getFlatFiles: () => FileTreeNode[],
+    fileManager: FileManager,
   ) {
     this.workdir = workdir;
     this.callbacks = callbacks;
-    this.getFlatFiles = getFlatFiles;
+    this.fileManager = fileManager;
     this.state = {
       sessionId: randomUUID(),
       isLoading: false,
@@ -229,7 +230,7 @@ export class AIManager {
 
             try {
               // 获取最新的 flatFiles 状态
-              const currentFlatFiles = this.getFlatFiles();
+              const currentFlatFiles = this.fileManager.getFlatFiles();
 
               // 创建工具执行上下文
               const context: ToolContext = {
