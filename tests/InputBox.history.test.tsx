@@ -23,11 +23,12 @@ describe("InputBox History Navigation", () => {
   });
 
   it("should not navigate when no history exists", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const renderResult = render(<InputBox />);
+    const { stdin, lastFrame } = renderResult;
 
     // 输入一些文本
     stdin.write("current input");
-    await waitForText({ lastFrame }, "current input");
+    await waitForText(renderResult, "current input");
 
     // 按上键，因为没有历史记录，应该没有变化
     stdin.write("\u001B[A"); // Up arrow
@@ -47,25 +48,26 @@ describe("InputBox History Navigation", () => {
     const mockHistoryData = ["hello world", "how are you", "test message"];
     mockChatContext.userInputHistory = mockHistoryData;
 
-    const { stdin, lastFrame, unmount } = render(<InputBox />);
+    const renderResult = render(<InputBox />);
+    const { stdin, lastFrame, unmount } = renderResult;
 
     // 输入当前文本
     stdin.write("current draft");
-    await waitForText({ lastFrame }, "current draft");
+    await waitForText(renderResult, "current draft");
 
     // 按上键，应该显示最新的历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText({ lastFrame }, "test message");
+    await waitForText(renderResult, "test message");
     expect(lastFrame()).not.toContain("current draft");
 
     // 再按上键，应该显示更早的历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText({ lastFrame }, "how are you");
+    await waitForText(renderResult, "how are you");
     expect(lastFrame()).not.toContain("test message");
 
     // 再按上键，应该显示最早的历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText({ lastFrame }, "hello world");
+    await waitForText(renderResult, "hello world");
     expect(lastFrame()).not.toContain("how are you");
 
     // 再按上键，应该停留在最早的记录（不应该再变化）
@@ -87,30 +89,31 @@ describe("InputBox History Navigation", () => {
     ];
     mockChatContext.userInputHistory = mockHistoryData;
 
-    const { stdin, lastFrame, unmount } = render(<InputBox />);
+    const renderResult = render(<InputBox />);
+    const { stdin, lastFrame, unmount } = renderResult;
 
     // 输入草稿文本
     stdin.write("my draft");
-    await waitForText({ lastFrame }, "my draft");
+    await waitForText(renderResult, "my draft");
 
     // 向上导航到历史记录
     stdin.write("\u001B[A"); // Up arrow - 到最新历史
-    await waitForText({ lastFrame }, "third message");
+    await waitForText(renderResult, "third message");
 
     stdin.write("\u001B[A"); // Up arrow - 到中间历史
-    await waitForText({ lastFrame }, "second message");
+    await waitForText(renderResult, "second message");
 
     // 现在向下导航
     stdin.write("\u001B[B"); // Down arrow
-    await waitForText({ lastFrame }, "third message");
+    await waitForText(renderResult, "third message");
 
     // 继续向下，应该回到草稿
     stdin.write("\u001B[B"); // Down arrow
-    await waitForText({ lastFrame }, "my draft");
+    await waitForText(renderResult, "my draft");
 
     // 再向下，应该清空输入
     stdin.write("\u001B[B"); // Down arrow
-    await waitForText({ lastFrame }, INPUT_PLACEHOLDER_TEXT_PREFIX);
+    await waitForText(renderResult, INPUT_PLACEHOLDER_TEXT_PREFIX);
     expect(lastFrame()).not.toContain("my draft");
 
     unmount();
@@ -122,27 +125,28 @@ describe("InputBox History Navigation", () => {
     const mockHistoryData = ["previous command", "another command"];
     mockChatContext.userInputHistory = mockHistoryData;
 
-    const { stdin, lastFrame, unmount } = render(<InputBox />);
+    const renderResult = render(<InputBox />);
+    const { stdin, unmount } = renderResult;
 
     // 输入一些文本作为草稿
     stdin.write("work in progress");
-    await waitForText({ lastFrame }, "work in progress");
+    await waitForText(renderResult, "work in progress");
 
     // 导航到历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText({ lastFrame }, "another command");
+    await waitForText(renderResult, "another command");
 
     // 导航到更早的历史
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText({ lastFrame }, "previous command");
+    await waitForText(renderResult, "previous command");
 
     // 向下导航回到较新的历史
     stdin.write("\u001B[B"); // Down arrow
-    await waitForText({ lastFrame }, "another command");
+    await waitForText(renderResult, "another command");
 
     // 继续向下，应该恢复到原来的草稿
     stdin.write("\u001B[B"); // Down arrow
-    await waitForText({ lastFrame }, "work in progress");
+    await waitForText(renderResult, "work in progress");
 
     unmount();
   });
