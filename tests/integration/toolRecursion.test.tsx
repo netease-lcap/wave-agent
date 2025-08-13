@@ -10,6 +10,7 @@ import type { ChatCompletionMessageParam } from "../../src/types/common";
 import {
   waitForAIThinkingStart,
   waitForAIThinkingEnd,
+  waitForText,
 } from "../utils/aiWaitHelpers";
 
 // Mock AI Service
@@ -82,8 +83,8 @@ describe("Tool Recursion Integration Tests", () => {
     const renderResult = render(<App workdir={testDir} />);
     const { stdin } = renderResult;
 
-    // 等待组件渲染
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // 等待组件完全渲染，确保初始状态显示
+    await waitForText(renderResult, "Type your message", { timeout: 3000 });
 
     // 模拟用户输入消息来触发 AI 服务
     stdin.write("请查看当前目录的内容");
@@ -196,8 +197,8 @@ describe("Tool Recursion Integration Tests", () => {
     const renderResult = render(<App workdir={testDir} />);
     const { stdin } = renderResult;
 
-    // 等待组件渲染
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // 等待组件完全渲染，确保初始状态显示
+    await waitForText(renderResult, "Type your message", { timeout: 3000 });
 
     // 模拟用户输入消息来触发 AI 服务
     stdin.write("请执行多个命令");

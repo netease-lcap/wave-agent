@@ -6,6 +6,7 @@ import { ChatProvider } from "../src/contexts/useChat";
 import { FileProvider } from "../src/contexts/useFiles";
 import * as clipboardModule from "../src/utils/clipboard";
 import * as messageOperationsModule from "../src/utils/messageOperations";
+import { waitForTextToDisappear } from "./utils/aiWaitHelpers";
 
 // Mock the clipboard module
 vi.mock("../src/utils/clipboard", () => ({
@@ -177,11 +178,12 @@ describe("InputBox Image Paste", () => {
       mimeType: "image/png",
     });
 
-    const { lastFrame, stdin } = render(
+    const renderResult = render(
       <TestWrapper>
         <InputBox />
       </TestWrapper>,
     );
+    const { stdin } = renderResult;
 
     // Paste image
     stdin.write("\u0016"); // Ctrl+V
@@ -193,10 +195,8 @@ describe("InputBox Image Paste", () => {
 
     // Send message
     stdin.write("\r"); // Enter key
-    await new Promise((resolve) => setTimeout(resolve, 50)); // Longer wait for cleanup
 
-    const output = lastFrame();
-    // After sending, images should be cleared and input should be empty
-    expect(output).not.toContain("[Image #1]");
+    // Wait for images to be cleared using waitForTextToDisappear
+    await waitForTextToDisappear(renderResult, "[Image #1]", { timeout: 2000 });
   });
 });
