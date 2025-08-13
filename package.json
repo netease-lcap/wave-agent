@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "build": "tsc --noEmit && vite build",
-    "compile": "tsc --noEmit --incremental",
+    "type-check": "tsc --noEmit --incremental",
     "dev": "vite build --watch --mode development",
     "ai-code": "lcap-code",
     "test": "vitest run",
