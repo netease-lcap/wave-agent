@@ -19,6 +19,7 @@
   "files": [
     "dist",
     "bin",
+    "docs",
     "README.md"
   ],
   "scripts": {
@@ -29,7 +30,11 @@
     "test": "vitest run",
     "lint": "eslint --cache",
     "format": "prettier --write .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "release:patch": "pnpm version patch && npm publish",
+    "release:minor": "pnpm version minor && npm publish",
+    "release:major": "pnpm version major && npm publish",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
