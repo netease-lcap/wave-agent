@@ -1,22 +1,31 @@
-import { useState, useCallback } from 'react';
-import { useFiles } from '../contexts/useFiles';
+import { useState, useCallback, useMemo } from "react";
+import { useFiles } from "../contexts/useFiles";
+import { scoreAndSortFiles } from "../utils/fileScoring";
 
 export const useFileSelector = () => {
   const [showFileSelector, setShowFileSelector] = useState(false);
   const [atPosition, setAtPosition] = useState(-1);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { flatFiles } = useFiles();
 
-  // 过滤文件列表
-  const filteredFiles = flatFiles.filter(
-    (file) => !searchQuery || file.path.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  // 使用智能评分算法过滤和排序文件列表
+  const filteredFiles = useMemo(() => {
+    if (!searchQuery) {
+      return flatFiles;
+    }
+
+    const scoredFiles = scoreAndSortFiles(searchQuery, flatFiles);
+    // 只返回有匹配分数的文件
+    return scoredFiles
+      .filter((item) => item.score > 0)
+      .map((item) => item.file);
+  }, [flatFiles, searchQuery]);
 
   const activateFileSelector = useCallback((position: number) => {
     setShowFileSelector(true);
     setAtPosition(position);
-    setSearchQuery('');
+    setSearchQuery("");
   }, []);
 
   const handleFileSelect = useCallback(
@@ -30,7 +39,7 @@ export const useFileSelector = () => {
 
         setShowFileSelector(false);
         setAtPosition(-1);
-        setSearchQuery('');
+        setSearchQuery("");
 
         return { newInput, newCursorPosition };
       }
@@ -42,7 +51,7 @@ export const useFileSelector = () => {
   const handleCancelFileSelect = useCallback(() => {
     setShowFileSelector(false);
     setAtPosition(-1);
-    setSearchQuery('');
+    setSearchQuery("");
   }, []);
 
   const updateSearchQuery = useCallback((query: string) => {
