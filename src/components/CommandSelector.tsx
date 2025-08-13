@@ -4,6 +4,7 @@ import { spawn } from "child_process";
 import { generateCommitMessage } from "../services/aiService";
 import { useFiles } from "../contexts/useFiles";
 import { logger } from "../utils/logger";
+import { limitGitDiff } from "../utils/diffUtils";
 
 export interface Command {
   name: string;
@@ -70,9 +71,8 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
 
       child.on("exit", (code) => {
         if (code === 0) {
-          // 限制输出到前1000行
-          const lines = output.split("\n");
-          const limitedOutput = lines.slice(0, 1000).join("\n");
+          // 使用新的 utils 函数限制 diff 内容
+          const limitedOutput = limitGitDiff(output, 1000);
           resolve(limitedOutput);
         } else {
           reject(new Error(error || "Git diff failed"));

@@ -96,7 +96,7 @@ export async function generateCommitMessage(
         messages: [
           {
             role: "system",
-            content: `Generate a concise commit message for the following git diff. The commit message should be in conventional commit format and under 72 characters.`,
+            content: `Generate a single, concise commit message for the following git diff. Return only the commit message without any explanations. Keep it under 50 characters and use conventional commit format.`,
           },
           {
             role: "user",
