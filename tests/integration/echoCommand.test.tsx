@@ -5,6 +5,7 @@ import * as path from "path";
 import * as os from "os";
 import React from "react";
 import { App } from "../../src/components/App";
+import { waitForText } from "../utils/aiWaitHelpers";
 
 // 不使用完整的context mock，让真实的命令执行逻辑运行
 
@@ -38,8 +39,8 @@ describe("Echo Command Integration Test", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
 
-    // 等待输入处理完成
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // 等待完整输入显示
+    await waitForText(renderResult, "!echo 'hi'");
 
     // 验证用户输入显示在界面上，并且显示了bash历史选择器
     const currentOutput = lastFrame();
@@ -54,8 +55,8 @@ describe("Echo Command Integration Test", () => {
     stdin.write("\r");
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // 等待命令执行完成
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // 等待命令执行成功
+    await waitForText(renderResult, "echo 'hi' ✅ Success", { timeout: 2000 });
 
     // 验证最终输出
     const finalOutput = lastFrame();
