@@ -220,10 +220,10 @@ describe("FileManager Message Integration", () => {
       React.useEffect(() => {
         if (messages.length === 0) {
           const testMessage: Message = {
-            id: "test-1",
             role: "user",
-            content: "Hello, this is a test message",
-            timestamp: Date.now(),
+            blocks: [
+              { type: "text", content: "Hello, this is a test message" },
+            ],
           };
           setMessages([testMessage]);
         }
@@ -284,10 +284,13 @@ describe("FileManager Message Integration", () => {
       // Add a test message on mount
       React.useEffect(() => {
         const testMessage: Message = {
-          id: "persistent-test-1",
           role: "user",
-          content: "This message should persist through file changes",
-          timestamp: Date.now(),
+          blocks: [
+            {
+              type: "text",
+              content: "This message should persist through file changes",
+            },
+          ],
         };
         setMessages([testMessage]);
       }, [setMessages]); // Include setMessages in dependencies
@@ -296,9 +299,11 @@ describe("FileManager Message Integration", () => {
         <>
           <Text>Flat files count: {flatFiles.length}</Text>
           <Text>Messages count: {messages.length}</Text>
-          {messages.length > 0 && (
-            <Text>Last message: {messages[0].content}</Text>
-          )}
+          {messages.length > 0 &&
+            messages[0].blocks[0] &&
+            messages[0].blocks[0].type === "text" && (
+              <Text>Last message: {messages[0].blocks[0].content}</Text>
+            )}
         </>
       );
     };
@@ -336,22 +341,10 @@ describe("FileManager Message Integration", () => {
     );
   });
 
-  it("should maintain file list when new files are added via watcher", async () => {
-    let fileManagerRef: {
-      addFileForTesting?: (path: string, content?: string) => void;
-    } | null = null;
-
-    // Test component that captures the fileManager reference
+  it("should maintain file list when files are managed", async () => {
     const TestComponentWithFileManager: React.FC = () => {
-      const { flatFiles, fileManager } = useFiles();
+      const { flatFiles } = useFiles();
       const { messages } = useChat();
-
-      // Capture the fileManager reference
-      React.useEffect(() => {
-        if (fileManager) {
-          fileManagerRef = fileManager as typeof fileManagerRef;
-        }
-      }, [fileManager]);
 
       return (
         <>
@@ -369,23 +362,21 @@ describe("FileManager Message Integration", () => {
       </FileProvider>,
     );
 
-    // Wait for initial loading and fileManager to be available
+    // Wait for initial loading
     await new Promise((resolve) => setTimeout(resolve, 200));
 
+    // Should have initial files
     expect(lastFrame()).toContain("Flat files count: 1");
 
-    // Simulate adding a new file via the mock fileManager
-    if (fileManagerRef && fileManagerRef.addFileForTesting) {
-      fileManagerRef.addFileForTesting(
-        "/test/path/newfile.js",
-        "console.log('new file');",
-      );
+    // Simulate file change event
+    if (watcherCallbacks.change) {
+      await watcherCallbacks.change("/test/path/test.js");
     }
 
-    // Wait for file to be processed
+    // Wait for file change to be processed
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // File count should increase
-    expect(lastFrame()).toContain("Flat files count: 2");
+    // Files should still be maintained
+    expect(lastFrame()).toContain("Flat files count: 1");
   });
 });

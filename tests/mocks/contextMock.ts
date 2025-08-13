@@ -87,6 +87,7 @@ export const createMockFilesContext = (
 ): FileContextType => ({
   flatFiles: flattenFiles(files),
   workdir: "/mock/workdir",
+  fileManager: null, // Add the missing fileManager property
   syncFilesFromDisk: mockFunctions.syncFilesFromDisk,
   readFileFromMemory: mockFunctions.readFileFromMemory,
   writeFileToMemory: mockFunctions.writeFileToMemory,
