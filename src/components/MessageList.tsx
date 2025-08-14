@@ -60,70 +60,75 @@ export const MessageList: React.FC<MessageListProps> = ({
                 </Text>
               </Box>
 
-              {message.blocks.map((block, blockIndex) => (
-                <Box key={blockIndex} marginLeft={2} flexDirection="column">
-                  {block.type === "text" && (
-                    <Box marginTop={1}>
-                      <Text>{block.content}</Text>
-                    </Box>
-                  )}
+              <Box marginLeft={2} flexDirection="column" gap={1} marginTop={1}>
+                {message.blocks.map((block, blockIndex) => (
+                  <Box key={blockIndex}>
+                    {block.type === "text" && (
+                      <Box>
+                        <Text>{block.content}</Text>
+                      </Box>
+                    )}
 
-                  {block.type === "file" && (
-                    <Box
-                      flexDirection="column"
-                      borderStyle="single"
-                      borderColor="blue"
-                      padding={1}
-                    >
-                      <Text color="blue" bold>
-                        📄{" "}
-                        {block.action === "create"
-                          ? "Create"
-                          : block.action === "update"
-                            ? "Update"
-                            : "Delete"}
-                        : {block.path}
-                      </Text>
-                    </Box>
-                  )}
+                    {block.type === "file" && (
+                      <Box
+                        flexDirection="column"
+                        borderStyle="single"
+                        borderColor="blue"
+                        padding={1}
+                      >
+                        <Text color="blue" bold>
+                          📄{" "}
+                          {block.action === "create"
+                            ? "Create"
+                            : block.action === "update"
+                              ? "Update"
+                              : "Delete"}
+                          : {block.path}
+                        </Text>
+                      </Box>
+                    )}
 
-                  {block.type === "error" && (
-                    <Box marginTop={1}>
-                      <Text color="red">❌ Error: {block.content}</Text>
-                    </Box>
-                  )}
+                    {block.type === "error" && (
+                      <Box>
+                        <Text color="red">❌ Error: {block.content}</Text>
+                      </Box>
+                    )}
 
-                  {block.type === "diff" && (
-                    <DiffViewer block={block} isExpanded={isExpanded} />
-                  )}
+                    {block.type === "diff" && (
+                      <DiffViewer block={block} isExpanded={isExpanded} />
+                    )}
 
-                  {block.type === "command_output" && (
-                    <CommandOutputDisplay
-                      block={block}
-                      isExpanded={isExpanded}
-                    />
-                  )}
+                    {block.type === "command_output" && (
+                      <CommandOutputDisplay
+                        block={block}
+                        isExpanded={isExpanded}
+                      />
+                    )}
 
-                  {block.type === "tool" && (
-                    <ToolResultDisplay block={block} isExpanded={isExpanded} />
-                  )}
+                    {block.type === "tool" && (
+                      <ToolResultDisplay
+                        block={block}
+                        isExpanded={isExpanded}
+                      />
+                    )}
 
-                  {block.type === "image" && (
-                    <Box marginTop={1}>
-                      <Text color="magenta" bold>
-                        📷 Image
-                      </Text>
-                      {block.attributes?.imageUrls &&
-                        block.attributes.imageUrls.length > 0 && (
-                          <Text color="gray" dimColor>
-                            {" "}
-                            ({block.attributes.imageUrls.length})
-                          </Text>
-                        )}
-                    </Box>
-                  )}
-                </Box>
-              ))}
+                    {block.type === "image" && (
+                      <Box>
+                        <Text color="magenta" bold>
+                          📷 Image
+                        </Text>
+                        {block.attributes?.imageUrls &&
+                          block.attributes.imageUrls.length > 0 && (
+                            <Text color="gray" dimColor>
+                              {" "}
+                              ({block.attributes.imageUrls.length})
+                            </Text>
+                          )}
+                      </Box>
+                    )}
+                  </Box>
+                ))}
+              </Box>
             </Box>
           );
         })}
@@ -131,12 +136,12 @@ export const MessageList: React.FC<MessageListProps> = ({
 
       {/* 加载状态显示 */}
       {isLoading && (
-        <Box marginTop={1}>
+        <Box>
           <Text color="yellow">🤔 AI is thinking...</Text>
         </Box>
       )}
       {isCommandRunning && (
-        <Box marginTop={1}>
+        <Box>
           <Text color="cyan">⚡ Command is running...</Text>
         </Box>
       )}

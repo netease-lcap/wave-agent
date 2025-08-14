@@ -266,7 +266,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
   }
 
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column">
       {/* 显示文件路径 */}
       <Box marginBottom={1}>
         <Text color="cyan" bold>

@@ -1,30 +1,33 @@
-import React from 'react';
-import { Box, Text } from 'ink';
-import type { ToolBlock } from '../types';
+import React from "react";
+import { Box, Text } from "ink";
+import type { ToolBlock } from "../types";
 
 interface ToolResultDisplayProps {
   block: ToolBlock;
   isExpanded?: boolean;
 }
 
-export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({ block, isExpanded = false }) => {
+export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
+  block,
+  isExpanded = false,
+}) => {
   const { parameters, result, attributes } = block;
 
   const getStatusColor = () => {
-    if (attributes?.isStreaming) return 'blue';
-    if (attributes?.isRunning) return 'yellow';
-    if (attributes?.success) return 'green';
-    return 'red';
+    if (attributes?.isStreaming) return "blue";
+    if (attributes?.isRunning) return "yellow";
+    if (attributes?.success) return "green";
+    return "red";
   };
 
   const getStatusText = () => {
-    if (attributes?.isStreaming) return '📡 Streaming parameters...';
-    if (attributes?.isRunning) return '🔄 Running...';
-    if (attributes?.success) return '✅ Success';
-    return '❌ Failed';
+    if (attributes?.isStreaming) return "📡 Streaming parameters...";
+    if (attributes?.isRunning) return "🔄 Running...";
+    if (attributes?.success) return "✅ Success";
+    return "❌ Failed";
   };
 
-  const toolName = attributes?.name ? String(attributes.name) : 'Tool';
+  const toolName = attributes?.name ? String(attributes.name) : "Tool";
 
   // 获取shortResult，如果没有则显示result的后5行
   const getShortResult = () => {
@@ -34,9 +37,9 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({ block, isE
 
     // 如果没有shortResult，且有result，返回后5行
     if (block.result) {
-      const lines = block.result.split('\n');
+      const lines = block.result.split("\n");
       if (lines.length > 5) {
-        return lines.slice(-5).join('\n');
+        return lines.slice(-5).join("\n");
       }
       return block.result;
     }
@@ -47,7 +50,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({ block, isE
   const shortResult = getShortResult();
 
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column">
       <Box>
         <Text color="magenta">🔧 </Text>
         <Text color="white">{toolName}</Text>
@@ -56,12 +59,22 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({ block, isE
 
       {/* 折叠状态下显示参数预览和shortResult */}
       {!isExpanded && (
-        <Box marginTop={1} paddingLeft={2} borderLeft borderColor="gray" flexDirection="column">
+        <Box
+          marginTop={1}
+          paddingLeft={2}
+          borderLeft
+          borderColor="gray"
+          flexDirection="column"
+        >
           {parameters && (
             <Box flexDirection="column">
               <Text color="cyan">Parameters:</Text>
               <Box marginTop={0}>
-                <Text color="gray">{parameters.length > 200 ? parameters.substring(0, 200) + '...' : parameters}</Text>
+                <Text color="gray">
+                  {parameters.length > 200
+                    ? parameters.substring(0, 200) + "..."
+                    : parameters}
+                </Text>
               </Box>
             </Box>
           )}
@@ -69,7 +82,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({ block, isE
             <Box marginTop={parameters ? 1 : 0} flexDirection="column">
               <Text color="cyan">Result:</Text>
               <Box flexDirection="column">
-                {shortResult.split('\n').map((line, index) => (
+                {shortResult.split("\n").map((line, index) => (
                   <Text key={index} color="white">
                     {line}
                   </Text>
@@ -82,7 +95,13 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({ block, isE
 
       {/* 展开状态下显示完整参数 */}
       {isExpanded && parameters && (
-        <Box marginTop={1} paddingLeft={2} borderLeft borderColor="gray" flexDirection="column">
+        <Box
+          marginTop={1}
+          paddingLeft={2}
+          borderLeft
+          borderColor="gray"
+          flexDirection="column"
+        >
           <Text color="cyan" bold>
             Parameters:
           </Text>
@@ -93,7 +112,12 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({ block, isE
       {/* 展开状态下显示完整结果 */}
       {isExpanded && result && (
         <Box marginTop={1} flexDirection="column">
-          <Box paddingLeft={2} borderLeft borderColor="green" flexDirection="column">
+          <Box
+            paddingLeft={2}
+            borderLeft
+            borderColor="green"
+            flexDirection="column"
+          >
             <Text color="cyan" bold>
               Result:
             </Text>
@@ -106,7 +130,10 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({ block, isE
       {attributes?.error && (
         <Box marginTop={1}>
           <Text color="red">
-            Error: {typeof attributes.error === 'string' ? attributes.error : String(attributes.error)}
+            Error:{" "}
+            {typeof attributes.error === "string"
+              ? attributes.error
+              : String(attributes.error)}
           </Text>
         </Box>
       )}
