@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
-import { useInput } from 'ink';
-import type { Message } from '../types';
+import { useState, useEffect, useMemo } from "react";
+import { useInput } from "ink";
+import type { Message } from "../types";
 
 interface PaginationInfo {
   currentPage: number;
@@ -16,20 +16,55 @@ export const usePagination = (messages: Message[]) => {
   // 固定每页显示5条消息
   const messagesPerPage = MESSAGES_PER_PAGE;
 
-  // 计算分页信息，自动定位到最后一页
+  // 计算分页信息，确保第一页可以不完整，之后的页面都完整
   const paginationInfo = useMemo((): PaginationInfo => {
-    const totalPages = Math.max(1, Math.ceil(messages.length / messagesPerPage));
-    const currentPage = totalPages; // 始终显示最后一页
-    const startIndex = (currentPage - 1) * messagesPerPage;
-    const endIndex = Math.min(startIndex + messagesPerPage, messages.length);
+    if (messages.length <= messagesPerPage) {
+      // 如果消息总数不超过一页，直接显示所有消息
+      return {
+        currentPage: 1,
+        totalPages: 1,
+        startIndex: 0,
+        endIndex: messages.length,
+        messagesPerPage,
+      };
+    }
 
-    return {
-      currentPage,
-      totalPages,
-      startIndex,
-      endIndex,
-      messagesPerPage,
-    };
+    // 计算剩余消息数量（除了第一页之外的消息）
+    const remainingMessages = messages.length % messagesPerPage;
+
+    if (remainingMessages === 0) {
+      // 消息数量刚好可以完整分页，使用标准分页
+      const totalPages = Math.ceil(messages.length / messagesPerPage);
+      const currentPage = totalPages;
+      const startIndex = (currentPage - 1) * messagesPerPage;
+      const endIndex = messages.length;
+
+      return {
+        currentPage,
+        totalPages,
+        startIndex,
+        endIndex,
+        messagesPerPage,
+      };
+    } else {
+      // 有剩余消息，让第一页显示剩余的消息，后面的页面都完整
+      const firstPageMessageCount = remainingMessages;
+      const totalPages = Math.floor(messages.length / messagesPerPage) + 1;
+
+      // 默认显示最后一页（完整页面）
+      const currentPage = totalPages;
+      const startIndex =
+        firstPageMessageCount + (currentPage - 2) * messagesPerPage;
+      const endIndex = messages.length;
+
+      return {
+        currentPage,
+        totalPages,
+        startIndex,
+        endIndex,
+        messagesPerPage,
+      };
+    }
   }, [messages.length, messagesPerPage]);
 
   // 手动控制的当前页（用于键盘导航）
@@ -42,18 +77,64 @@ export const usePagination = (messages: Message[]) => {
     }
 
     // 手动模式：显示用户选择的页面
-    const totalPages = Math.max(1, Math.ceil(messages.length / messagesPerPage));
+    const totalPages = paginationInfo.totalPages;
     const currentPage = Math.min(Math.max(1, manualPage), totalPages);
-    const startIndex = (currentPage - 1) * messagesPerPage;
-    const endIndex = Math.min(startIndex + messagesPerPage, messages.length);
 
-    return {
-      currentPage,
-      totalPages,
-      startIndex,
-      endIndex,
-      messagesPerPage,
-    };
+    if (messages.length <= messagesPerPage) {
+      // 只有一页的情况
+      return {
+        currentPage,
+        totalPages,
+        startIndex: 0,
+        endIndex: messages.length,
+        messagesPerPage,
+      };
+    }
+
+    const remainingMessages = messages.length % messagesPerPage;
+
+    if (remainingMessages === 0) {
+      // 消息数量刚好可以完整分页
+      const startIndex = (currentPage - 1) * messagesPerPage;
+      const endIndex = Math.min(startIndex + messagesPerPage, messages.length);
+
+      return {
+        currentPage,
+        totalPages,
+        startIndex,
+        endIndex,
+        messagesPerPage,
+      };
+    } else {
+      // 第一页不完整，后面的页面完整
+      if (currentPage === 1) {
+        // 第一页：显示剩余的消息数量
+        return {
+          currentPage,
+          totalPages,
+          startIndex: 0,
+          endIndex: remainingMessages,
+          messagesPerPage,
+        };
+      } else {
+        // 其他页面：每页显示完整的消息数量
+        const firstPageMessageCount = remainingMessages;
+        const startIndex =
+          firstPageMessageCount + (currentPage - 2) * messagesPerPage;
+        const endIndex = Math.min(
+          startIndex + messagesPerPage,
+          messages.length,
+        );
+
+        return {
+          currentPage,
+          totalPages,
+          startIndex,
+          endIndex,
+          messagesPerPage,
+        };
+      }
+    }
   }, [messages.length, messagesPerPage, manualPage, paginationInfo]);
 
   // 当消息数量变化时，如果用户没有手动导航，则重置为自动模式
@@ -94,9 +175,9 @@ export const usePagination = (messages: Message[]) => {
   useInput((input, key) => {
     // Ctrl+U/D 快捷键
     if (key.ctrl) {
-      if (input === 'u') {
+      if (input === "u") {
         goToPrevPage();
-      } else if (input === 'd') {
+      } else if (input === "d") {
         goToNextPage();
       }
     }
