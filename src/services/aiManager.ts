@@ -437,7 +437,7 @@ export class AIManager {
 
         // 等一秒后再发起下一次 AI 服务调用，因为要等文件同步
         // 在测试环境中减少延迟
-        const delay = process.env.NODE_ENV === "test" ? 100 : 1000;
+        const delay = process.env.NODE_ENV === "test" ? 100 : 500;
         await new Promise((resolve) => setTimeout(resolve, delay));
 
         // 再次检查是否已被中断
