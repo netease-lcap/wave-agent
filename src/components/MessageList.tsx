@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { Box, Text, useInput } from 'ink';
-import type { Message } from '../types';
-import { DiffViewer } from './DiffViewer';
-import { CommandOutputDisplay } from './CommandOutputDisplay';
-import { ToolResultDisplay } from './ToolResultDisplay';
-import { usePagination } from '../hooks/usePagination';
+import React, { useState } from "react";
+import { Box, Text, useInput } from "ink";
+import type { Message } from "../types";
+import { DiffViewer } from "./DiffViewer";
+import { CommandOutputDisplay } from "./CommandOutputDisplay";
+import { ToolResultDisplay } from "./ToolResultDisplay";
+import { usePagination } from "../hooks/usePagination";
 
 export interface MessageListProps {
   messages: Message[];
@@ -12,13 +12,17 @@ export interface MessageListProps {
   isCommandRunning?: boolean;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, isCommandRunning }) => {
+export const MessageList: React.FC<MessageListProps> = ({
+  messages,
+  isLoading,
+  isCommandRunning,
+}) => {
   const { displayInfo } = usePagination(messages);
   const [isExpanded, setIsExpanded] = useState(false);
 
   // 监听 Ctrl+R 快捷键切换折叠/展开状态
   useInput((input, key) => {
-    if (key.ctrl && input === 'r') {
+    if (key.ctrl && input === "r") {
       setIsExpanded((prev) => !prev);
     }
   });
@@ -33,7 +37,10 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, i
   }
 
   // 获取当前页的消息
-  const currentMessages = messages.slice(displayInfo.startIndex, displayInfo.endIndex);
+  const currentMessages = messages.slice(
+    displayInfo.startIndex,
+    displayInfo.endIndex,
+  );
 
   return (
     <Box flexDirection="column">
@@ -44,10 +51,10 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, i
           return (
             <Box key={messageIndex} flexDirection="column" marginTop={1}>
               <Box>
-                <Text color={message.role === 'user' ? 'cyan' : 'green'} bold>
-                  {message.role === 'user' ? '👤 You' : '🤖 Assistant'}
+                <Text color={message.role === "user" ? "cyan" : "green"} bold>
+                  {message.role === "user" ? "👤 You" : "🤖 Assistant"}
                   <Text color="gray" dimColor>
-                    {' '}
+                    {" "}
                     #{messageIndex + 1}
                   </Text>
                 </Text>
@@ -55,32 +62,66 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, i
 
               {message.blocks.map((block, blockIndex) => (
                 <Box key={blockIndex} marginLeft={2} flexDirection="column">
-                  {block.type === 'text' && (
+                  {block.type === "text" && (
                     <Box marginTop={1}>
                       <Text>{block.content}</Text>
                     </Box>
                   )}
 
-                  {block.type === 'file' && (
-                    <Box flexDirection="column" borderStyle="single" borderColor="blue" padding={1}>
+                  {block.type === "file" && (
+                    <Box
+                      flexDirection="column"
+                      borderStyle="single"
+                      borderColor="blue"
+                      padding={1}
+                    >
                       <Text color="blue" bold>
-                        📄 {block.action === 'create' ? 'Create' : block.action === 'update' ? 'Update' : 'Delete'}:{' '}
-                        {block.path}
+                        📄{" "}
+                        {block.action === "create"
+                          ? "Create"
+                          : block.action === "update"
+                            ? "Update"
+                            : "Delete"}
+                        : {block.path}
                       </Text>
                     </Box>
                   )}
 
-                  {block.type === 'error' && (
+                  {block.type === "error" && (
                     <Box marginTop={1}>
                       <Text color="red">❌ Error: {block.content}</Text>
                     </Box>
                   )}
 
-                  {block.type === 'diff' && <DiffViewer block={block} isExpanded={isExpanded} />}
+                  {block.type === "diff" && (
+                    <DiffViewer block={block} isExpanded={isExpanded} />
+                  )}
 
-                  {block.type === 'command_output' && <CommandOutputDisplay block={block} isExpanded={isExpanded} />}
+                  {block.type === "command_output" && (
+                    <CommandOutputDisplay
+                      block={block}
+                      isExpanded={isExpanded}
+                    />
+                  )}
 
-                  {block.type === 'tool' && <ToolResultDisplay block={block} isExpanded={isExpanded} />}
+                  {block.type === "tool" && (
+                    <ToolResultDisplay block={block} isExpanded={isExpanded} />
+                  )}
+
+                  {block.type === "image" && (
+                    <Box marginTop={1}>
+                      <Text color="magenta" bold>
+                        📷 Image
+                      </Text>
+                      {block.attributes?.imageUrls &&
+                        block.attributes.imageUrls.length > 0 && (
+                          <Text color="gray" dimColor>
+                            {" "}
+                            ({block.attributes.imageUrls.length})
+                          </Text>
+                        )}
+                    </Box>
+                  )}
                 </Box>
               ))}
             </Box>
@@ -106,15 +147,17 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, i
           <Box justifyContent="space-between" width="100%">
             <Box>
               <Text color="gray">
-                Messages {messages.length} Page {displayInfo.currentPage}/{displayInfo.totalPages}
+                Messages {messages.length} Page {displayInfo.currentPage}/
+                {displayInfo.totalPages}
               </Text>
               <Text color="gray" dimColor>
-                {' '}
+                {" "}
                 ← <Text color="cyan">Ctrl+U/D</Text> Navigate
               </Text>
             </Box>
             <Text color="gray" dimColor>
-              <Text color="cyan">Ctrl+R</Text> Toggle {isExpanded ? 'Collapse' : 'Expand'}
+              <Text color="cyan">Ctrl+R</Text> Toggle{" "}
+              {isExpanded ? "Collapse" : "Expand"}
             </Text>
           </Box>
         </Box>
