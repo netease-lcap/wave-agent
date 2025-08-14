@@ -53,9 +53,8 @@ export class SessionManager {
    * 生成会话文件路径
    */
   private static getSessionFilePath(sessionId: string): string {
-    const timestamp = sessionId.split("_")[1] || Date.now().toString();
     const shortId = sessionId.split("_")[2] || sessionId.slice(-8);
-    return join(this.SESSION_DIR, `session_${timestamp}_${shortId}.json`);
+    return join(this.SESSION_DIR, `session_${shortId}.json`);
   }
 
   /**
