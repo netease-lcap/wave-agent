@@ -203,8 +203,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       marginBottom={1}
     >
       <Text color="magenta" bold>
-        ⚡ Command Selector {searchQuery && `(filtering: "${searchQuery}")`}{" "}
-        {isGenerating && "(Generating...)"}
+        ⚡ Command Selector {searchQuery && `(filtering: "${searchQuery}")`}
       </Text>
 
       {/* 错误显示 */}
