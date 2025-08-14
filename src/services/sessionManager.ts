@@ -129,8 +129,8 @@ export class SessionManager {
   /**
    * 获取最近的会话
    */
-  static async getLatestSession(): Promise<SessionData | null> {
-    const sessions = await this.listSessions();
+  static async getLatestSession(workdir?: string): Promise<SessionData | null> {
+    const sessions = await this.listSessions(workdir);
     if (sessions.length === 0) {
       return null;
     }
@@ -147,7 +147,7 @@ export class SessionManager {
   /**
    * 列出所有会话
    */
-  static async listSessions(): Promise<SessionMetadata[]> {
+  static async listSessions(workdir?: string): Promise<SessionMetadata[]> {
     try {
       await this.ensureSessionDir();
       const files = await fs.readdir(this.SESSION_DIR);
@@ -163,6 +163,11 @@ export class SessionManager {
           const filePath = join(this.SESSION_DIR, file);
           const content = await fs.readFile(filePath, "utf-8");
           const sessionData = JSON.parse(content) as SessionData;
+
+          // 如果指定了workdir，只返回该目录的会话
+          if (workdir && sessionData.metadata.workdir !== workdir) {
+            continue;
+          }
 
           sessions.push({
             id: sessionData.id,
@@ -208,8 +213,8 @@ export class SessionManager {
   /**
    * 清理过期会话
    */
-  static async cleanupExpiredSessions(): Promise<number> {
-    const sessions = await this.listSessions();
+  static async cleanupExpiredSessions(workdir?: string): Promise<number> {
+    const sessions = await this.listSessions(workdir);
     const now = new Date();
     const maxAge = this.MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // 转换为毫秒
 
@@ -227,6 +232,29 @@ export class SessionManager {
           console.warn(
             `Failed to delete expired session ${session.id}: ${error}`,
           );
+        }
+      }
+    }
+
+    return deletedCount;
+  }
+
+  /**
+   * 清理指定workdir的会话文件
+   */
+  static async cleanupSessionsByWorkdir(workdir: string): Promise<number> {
+    const sessions = await this.listSessions(); // 获取所有session
+    let deletedCount = 0;
+
+    for (const session of sessions) {
+      // 只删除指定workdir的session
+      if (session.workdir === workdir) {
+        try {
+          await this.deleteSession(session.id);
+          deletedCount++;
+          console.log(`Deleted session: ${session.id} (${session.workdir})`);
+        } catch (error) {
+          console.warn(`Failed to delete session ${session.id}: ${error}`);
         }
       }
     }

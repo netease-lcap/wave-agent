@@ -47,15 +47,15 @@ export async function main() {
   // Handle list sessions command
   if (argv.listSessions) {
     try {
-      const sessions = await SessionManager.listSessions();
+      const sessions = await SessionManager.listSessions(argv.workdir);
 
       if (sessions.length === 0) {
-        console.log("No sessions found.");
+        console.log(`No sessions found for workdir: ${argv.workdir}`);
         return;
       }
 
-      console.log("Available sessions:");
-      console.log("==================");
+      console.log(`Available sessions for: ${argv.workdir}`);
+      console.log("==========================================");
 
       for (const session of sessions) {
         const startedAt = new Date(session.startedAt).toLocaleString();
@@ -86,6 +86,7 @@ export async function main() {
 
 // Export other functions that might be needed
 export { startCli } from "./cli.js";
+export { SessionManager } from "./services/sessionManager.js";
 
 // Execute main function if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {

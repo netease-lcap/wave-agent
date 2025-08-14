@@ -6,6 +6,7 @@ import * as os from "os";
 import React from "react";
 import { App } from "../../src/components/App";
 import { waitForText } from "../utils/aiWaitHelpers";
+import { cleanupSessionsByWorkdir } from "../utils/sessionCleanup";
 
 // 不使用完整的context mock，让真实的命令执行逻辑运行
 
@@ -20,6 +21,9 @@ describe("Echo Command Integration Test", () => {
   });
 
   afterEach(async () => {
+    // 清理该测试目录的session文件
+    await cleanupSessionsByWorkdir(testDir);
+
     // 清理测试目录
     await fs.promises.rm(testDir, { recursive: true, force: true });
   });
