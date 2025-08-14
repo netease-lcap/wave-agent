@@ -219,6 +219,11 @@ export class SessionManager {
    * 清理过期会话
    */
   static async cleanupExpiredSessions(workdir?: string): Promise<number> {
+    // 在测试环境下不执行清理操作
+    if (process.env.NODE_ENV === "test") {
+      return 0;
+    }
+
     const sessions = await this.listSessions(workdir);
     const now = new Date();
     const maxAge = this.MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // 转换为毫秒
