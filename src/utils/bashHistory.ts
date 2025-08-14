@@ -3,9 +3,9 @@
  * 用于持久化存储和搜索用户执行过的 bash 命令
  */
 
-import fs from 'fs';
-import { BASH_HISTORY_FILE, DATA_DIRECTORY } from './constants';
-import { logger } from './logger';
+import fs from "fs";
+import { BASH_HISTORY_FILE, DATA_DIRECTORY } from "./constants";
+import { logger } from "./logger";
 
 export interface BashHistoryEntry {
   command: string;
@@ -31,7 +31,7 @@ const ensureDataDirectory = (): void => {
       fs.mkdirSync(DATA_DIRECTORY, { recursive: true });
     }
   } catch (error) {
-    logger.debug('Failed to create data directory:', error);
+    logger.debug("Failed to create data directory:", error);
   }
 };
 
@@ -49,12 +49,12 @@ export const loadBashHistory = (): BashHistory => {
       };
     }
 
-    const data = fs.readFileSync(BASH_HISTORY_FILE, 'utf-8');
+    const data = fs.readFileSync(BASH_HISTORY_FILE, "utf-8");
     const history: BashHistory = JSON.parse(data);
 
     // 版本兼容性检查
     if (history.version !== HISTORY_VERSION) {
-      logger.debug('Bash history version mismatch, resetting history');
+      logger.debug("Bash history version mismatch, resetting history");
       return {
         commands: [],
         version: HISTORY_VERSION,
@@ -63,7 +63,7 @@ export const loadBashHistory = (): BashHistory => {
 
     return history;
   } catch (error) {
-    logger.debug('Failed to load bash history:', error);
+    logger.debug("Failed to load bash history:", error);
     return {
       commands: [],
       version: HISTORY_VERSION,
@@ -76,6 +76,12 @@ export const loadBashHistory = (): BashHistory => {
  */
 export const saveBashHistory = (history: BashHistory): void => {
   try {
+    // Skip saving to file when in test environment
+    if (process.env.NODE_ENV === "test") {
+      logger.debug("Skipping bash history save in test environment");
+      return;
+    }
+
     ensureDataDirectory();
 
     // 限制历史记录大小
@@ -84,20 +90,24 @@ export const saveBashHistory = (history: BashHistory): void => {
     }
 
     const data = JSON.stringify(history, null, 2);
-    fs.writeFileSync(BASH_HISTORY_FILE, data, 'utf-8');
+    fs.writeFileSync(BASH_HISTORY_FILE, data, "utf-8");
   } catch (error) {
-    logger.debug('Failed to save bash history:', error);
+    logger.debug("Failed to save bash history:", error);
   }
 };
 
 /**
  * 添加命令到bash历史记录
  */
-export const addBashCommandToHistory = (command: string, workdir: string, exitCode?: number): void => {
+export const addBashCommandToHistory = (
+  command: string,
+  workdir: string,
+  exitCode?: number,
+): void => {
   try {
     // 过滤系统生成的命令，不添加到历史记录中
-    if (command.startsWith('git add . && git commit -m')) {
-      logger.debug('Skipping system-generated command:', { command, workdir });
+    if (command.startsWith("git add . && git commit -m")) {
+      logger.debug("Skipping system-generated command:", { command, workdir });
       return;
     }
 
@@ -106,7 +116,11 @@ export const addBashCommandToHistory = (command: string, workdir: string, exitCo
 
     // 检查是否是重复的连续命令，避免重复记录
     const lastCommand = history.commands[history.commands.length - 1];
-    if (lastCommand && lastCommand.command === command && lastCommand.workdir === workdir) {
+    if (
+      lastCommand &&
+      lastCommand.command === command &&
+      lastCommand.workdir === workdir
+    ) {
       // 更新最后一条记录的时间戳和退出码
       lastCommand.timestamp = timestamp;
       if (exitCode !== undefined) {
@@ -123,16 +137,24 @@ export const addBashCommandToHistory = (command: string, workdir: string, exitCo
     }
 
     saveBashHistory(history);
-    logger.debug('Added bash command to history:', { command, workdir, exitCode });
+    logger.debug("Added bash command to history:", {
+      command,
+      workdir,
+      exitCode,
+    });
   } catch (error) {
-    logger.debug('Failed to add bash command to history:', error);
+    logger.debug("Failed to add bash command to history:", error);
   }
 };
 
 /**
  * 根据关键字搜索bash历史
  */
-export const searchBashHistory = (query: string, workdir?: string, limit: number = 10): BashHistoryEntry[] => {
+export const searchBashHistory = (
+  query: string,
+  workdir?: string,
+  limit: number = 10,
+): BashHistoryEntry[] => {
   try {
     const history = loadBashHistory();
     const normalizedQuery = query.toLowerCase().trim();
@@ -141,7 +163,9 @@ export const searchBashHistory = (query: string, workdir?: string, limit: number
 
     // 工作目录过滤
     if (workdir) {
-      filteredCommands = filteredCommands.filter((entry) => entry.workdir === workdir);
+      filteredCommands = filteredCommands.filter(
+        (entry) => entry.workdir === workdir,
+      );
     }
 
     if (!normalizedQuery) {
@@ -190,7 +214,7 @@ export const searchBashHistory = (query: string, workdir?: string, limit: number
     const dedupedMatches = deduplicateCommands(matches);
     const result = dedupedMatches.slice(0, limit);
 
-    logger.debug('Bash history search results:', {
+    logger.debug("Bash history search results:", {
       query,
       workdir,
       originalCount: matches.length,
@@ -199,7 +223,7 @@ export const searchBashHistory = (query: string, workdir?: string, limit: number
 
     return result;
   } catch (error) {
-    logger.debug('Failed to search bash history:', error);
+    logger.debug("Failed to search bash history:", error);
     return [];
   }
 };
@@ -207,7 +231,9 @@ export const searchBashHistory = (query: string, workdir?: string, limit: number
 /**
  * 去重命令列表，保留每个命令的最新记录
  */
-const deduplicateCommands = (commands: BashHistoryEntry[]): BashHistoryEntry[] => {
+const deduplicateCommands = (
+  commands: BashHistoryEntry[],
+): BashHistoryEntry[] => {
   const commandMap = new Map<string, BashHistoryEntry>();
 
   // 遍历所有命令，保留每个命令的最新记录
@@ -219,22 +245,29 @@ const deduplicateCommands = (commands: BashHistoryEntry[]): BashHistoryEntry[] =
   }
 
   // 按时间戳排序返回
-  return Array.from(commandMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+  return Array.from(commandMap.values()).sort(
+    (a, b) => a.timestamp - b.timestamp,
+  );
 };
 
 /**
  * 获取最近使用的bash命令
  */
-export const getRecentBashCommands = (workdir?: string, limit: number = 10): BashHistoryEntry[] => {
+export const getRecentBashCommands = (
+  workdir?: string,
+  limit: number = 10,
+): BashHistoryEntry[] => {
   try {
     const history = loadBashHistory();
-    const filtered = workdir ? history.commands.filter((entry) => entry.workdir === workdir) : history.commands;
+    const filtered = workdir
+      ? history.commands.filter((entry) => entry.workdir === workdir)
+      : history.commands;
 
     // 去重后返回最近的命令
     const deduped = deduplicateCommands(filtered);
     return deduped.slice(-limit).reverse(); // 最新的在前面
   } catch (error) {
-    logger.debug('Failed to get recent bash commands:', error);
+    logger.debug("Failed to get recent bash commands:", error);
     return [];
   }
 };
@@ -249,9 +282,9 @@ export const clearBashHistory = (): void => {
       version: HISTORY_VERSION,
     };
     saveBashHistory(history);
-    logger.debug('Bash history cleared');
+    logger.debug("Bash history cleared");
   } catch (error) {
-    logger.debug('Failed to clear bash history:', error);
+    logger.debug("Failed to clear bash history:", error);
   }
 };
 
@@ -265,8 +298,12 @@ export const getBashCommandStats = (): {
 } => {
   try {
     const history = loadBashHistory();
-    const uniqueCommands = new Set(history.commands.map((entry) => entry.command));
-    const workdirs = Array.from(new Set(history.commands.map((entry) => entry.workdir)));
+    const uniqueCommands = new Set(
+      history.commands.map((entry) => entry.command),
+    );
+    const workdirs = Array.from(
+      new Set(history.commands.map((entry) => entry.workdir)),
+    );
 
     return {
       totalCommands: history.commands.length,
@@ -274,7 +311,7 @@ export const getBashCommandStats = (): {
       workdirs,
     };
   } catch (error) {
-    logger.debug('Failed to get bash command stats:', error);
+    logger.debug("Failed to get bash command stats:", error);
     return {
       totalCommands: 0,
       uniqueCommands: 0,

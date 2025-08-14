@@ -3,6 +3,7 @@ import { render } from "ink";
 import { App } from "./components/App.js";
 import { SessionManager, type SessionData } from "./services/sessionManager.js";
 import { PathValidator } from "./utils/pathValidator.js";
+import { cleanupLogs } from "./utils/logger.js";
 
 export interface CliOptions {
   workdir: string;
@@ -65,6 +66,11 @@ export async function startCli(options: CliOptions): Promise<void> {
   // Clean up expired sessions in background
   SessionManager.cleanupExpiredSessions().catch((error) => {
     console.warn("Failed to cleanup expired sessions:", error);
+  });
+
+  // Clean up old log files in background
+  cleanupLogs().catch((error) => {
+    console.warn("Failed to cleanup old logs:", error);
   });
 
   // Render the application
