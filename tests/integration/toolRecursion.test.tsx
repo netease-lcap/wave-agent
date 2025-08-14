@@ -134,6 +134,12 @@ describe("Tool Recursion Integration Tests", () => {
     expect(toolCall?.type).toBe("function");
     if (toolCall?.type === "function") {
       expect(toolCall.function?.name).toBe("run_terminal_cmd");
+      // 验证 arguments 参数的详细结构
+      expect(toolCall.function?.arguments).toBeDefined();
+      const parsedArgs = JSON.parse(toolCall.function?.arguments || "{}");
+      expect(parsedArgs).toHaveProperty("command");
+      expect(parsedArgs.command).toBe("ls -la .");
+      expect(typeof parsedArgs.command).toBe("string");
     }
 
     // 应该包含工具执行结果消息
