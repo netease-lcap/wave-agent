@@ -70,6 +70,11 @@ export class SessionManager {
     totalTokens: number = 0,
     startedAt?: string,
   ): Promise<void> {
+    // 在测试环境下不保存session文件
+    if (process.env.NODE_ENV === "test") {
+      return;
+    }
+
     await this.ensureSessionDir();
 
     const now = new Date().toISOString();
@@ -232,28 +237,6 @@ export class SessionManager {
           console.warn(
             `Failed to delete expired session ${session.id}: ${error}`,
           );
-        }
-      }
-    }
-
-    return deletedCount;
-  }
-
-  /**
-   * 清理指定workdir的会话文件
-   */
-  static async cleanupSessionsByWorkdir(workdir: string): Promise<number> {
-    const sessions = await this.listSessions(); // 获取所有session
-    let deletedCount = 0;
-
-    for (const session of sessions) {
-      // 只删除指定workdir的session
-      if (session.workdir === workdir) {
-        try {
-          await this.deleteSession(session.id);
-          deletedCount++;
-        } catch (error) {
-          console.warn(`Failed to delete session ${session.id}: ${error}`);
         }
       }
     }

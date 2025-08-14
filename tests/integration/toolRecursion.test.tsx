@@ -12,7 +12,6 @@ import {
   waitForAIThinkingEnd,
   waitForText,
 } from "../utils/aiWaitHelpers";
-import { cleanupSessionsByWorkdir } from "../utils/sessionCleanup";
 
 // Mock AI Service
 vi.mock("../../src/services/aiService");
@@ -41,9 +40,6 @@ describe("Tool Recursion Integration Tests", () => {
   });
 
   afterEach(async () => {
-    // 清理该测试目录的session文件
-    await cleanupSessionsByWorkdir(testDir);
-
     // 清理测试目录
     await fs.promises.rm(testDir, { recursive: true, force: true });
   });
