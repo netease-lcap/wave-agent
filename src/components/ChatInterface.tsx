@@ -6,8 +6,7 @@ import { NonRawInput } from "./NonRawInput";
 import { useChat } from "../contexts/useChat";
 
 export const ChatInterface: React.FC = () => {
-  const { messages, isCommandRunning, isLoading, sessionId, totalTokens } =
-    useChat();
+  const { messages, isLoading, sessionId, totalTokens } = useChat();
   const { isRawModeSupported } = useStdin();
 
   // 检查环境变量是否禁用了 raw mode
@@ -19,11 +18,7 @@ export const ChatInterface: React.FC = () => {
       <Box flexGrow={1} flexDirection="column" paddingX={1}>
         {/* 只在 raw mode 下显示 MessageList */}
         {shouldUseRawMode && (
-          <MessageList
-            messages={messages}
-            isLoading={isLoading}
-            isCommandRunning={isCommandRunning}
-          />
+          <MessageList messages={messages} isLoading={isLoading} />
         )}
       </Box>
 

@@ -9,13 +9,11 @@ import { usePagination } from "../hooks/usePagination";
 export interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
-  isCommandRunning?: boolean;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
   isLoading,
-  isCommandRunning,
 }) => {
   const { displayInfo } = usePagination(messages);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -138,11 +136,6 @@ export const MessageList: React.FC<MessageListProps> = ({
       {isLoading && (
         <Box>
           <Text color="yellow">🤔 AI is thinking...</Text>
-        </Box>
-      )}
-      {isCommandRunning && (
-        <Box>
-          <Text color="cyan">⚡ Command is running...</Text>
         </Box>
       )}
 
