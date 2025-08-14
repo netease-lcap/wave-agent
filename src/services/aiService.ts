@@ -60,11 +60,33 @@ export async function applyEdit(options: ApplyEditOptions): Promise<string> {
         messages: [
           {
             role: "system",
-            content: `You are a code editor. Apply the given instructions to edit the code. Return only the edited content without any explanations.`,
+            content: `You are an expert code editor that applies precise edits to existing files.
+
+CRITICAL INSTRUCTIONS:
+1. You will receive the ORIGINAL file content and a CODE EDIT that uses "// ... existing code ..." markers
+2. Apply the edit by replacing the markers with the actual existing code from the original file
+3. The "// ... existing code ..." markers indicate where unchanged code should be preserved
+4. Return ONLY the final edited file content - no explanations, no markdown blocks
+5. Maintain exact indentation, spacing, and formatting from the original file
+6. Ensure the output is valid, complete code that can be written directly to the file
+
+PROCESS:
+- Parse the code edit structure with "// ... existing code ..." markers
+- Replace each marker with the corresponding original code sections
+- Apply the actual edits (new/modified lines) between the markers
+- Output the complete, final file content`,
           },
           {
             role: "user",
-            content: `File: ${targetFile}\n\nInstructions: ${instructions}\n\nCode to edit:\n${codeEdit}`,
+            content: `ORIGINAL FILE CONTENT:
+${targetFile}
+
+INSTRUCTIONS: ${instructions}
+
+CODE EDIT TO APPLY:
+${codeEdit}
+
+Apply the edit and return the complete final file content:`,
           },
         ],
         temperature: 0.1,
