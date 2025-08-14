@@ -25,8 +25,8 @@
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "type-check": "tsc --noEmit --incremental",
-    "dev": "vite build --watch --mode development",
-    "debug": "tsx src/index.ts",
+    "build:watch": "vite build --watch --mode development",
+    "dev": "tsx src/index.ts",
     "ai-code": "lcap-code",
     "test": "vitest run",
     "lint": "eslint --cache",
