@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 
 export interface InputHistoryContextType {
   userInputHistory: string[];
@@ -6,8 +6,12 @@ export interface InputHistoryContextType {
   clearInputHistory: () => void;
 }
 
-export const useInputHistory = (): InputHistoryContextType => {
-  const [userInputHistory, setUserInputHistory] = useState<string[]>([]);
+export const useInputHistory = (
+  initialHistory?: string[],
+): InputHistoryContextType => {
+  const [userInputHistory, setUserInputHistory] = useState<string[]>(
+    initialHistory || [],
+  );
 
   const addToInputHistory = useCallback((input: string) => {
     setUserInputHistory((prev) => {

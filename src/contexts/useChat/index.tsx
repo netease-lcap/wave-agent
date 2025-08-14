@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useCallback } from "react";
 import { useFiles } from "../useFiles";
 import type { Message } from "../../types";
+import type { SessionData } from "../../services/sessionManager";
 import { addUserMessageToMessages } from "../../utils/messageOperations";
 import { useAI } from "./useAI";
 import { useCommand } from "./useCommand";
@@ -46,10 +47,24 @@ export const useChat = () => {
 
 export interface ChatProviderProps {
   children: React.ReactNode;
+  sessionToRestore?: SessionData | null;
 }
 
-export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
+export const ChatProvider: React.FC<ChatProviderProps> = ({
+  children,
+  sessionToRestore,
+}) => {
   const { workdir } = useFiles();
+
+  // Use the Input History hook
+  const { userInputHistory, addToInputHistory, clearInputHistory } =
+    useInputHistory(sessionToRestore?.state.inputHistory);
+
+  // Create callback to get current input history
+  const getCurrentInputHistory = useCallback(
+    () => userInputHistory,
+    [userInputHistory],
+  );
 
   // Use the AI hook
   const {
@@ -62,7 +77,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     abortAIMessage,
     resetSession,
     totalTokens,
-  } = useAI();
+  } = useAI(sessionToRestore, getCurrentInputHistory);
 
   // Use the Command hook
   const { executeCommand, abortCommand, isCommandRunning } = useCommand(
@@ -70,10 +85,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     messages,
     setMessages,
   );
-
-  // Use the Input History hook
-  const { userInputHistory, addToInputHistory, clearInputHistory } =
-    useInputHistory();
 
   // Use the Input Insert hook
   const { insertToInput, inputInsertHandler, setInputInsertHandler } =

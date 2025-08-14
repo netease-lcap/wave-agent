@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { AIManager, AIManagerCallbacks } from "../../services/aiManager";
 import { useFiles } from "../useFiles";
 import type { Message } from "../../types";
+import type { SessionData } from "../../services/sessionManager";
 
 export interface UseAIReturn {
   sessionId: string;
@@ -15,7 +16,10 @@ export interface UseAIReturn {
   totalTokens: number;
 }
 
-export const useAI = (): UseAIReturn => {
+export const useAI = (
+  sessionToRestore?: SessionData | null,
+  getCurrentInputHistory?: () => string[],
+): UseAIReturn => {
   const filesContext = useFiles();
   const { workdir, setFlatFiles, fileManager } = filesContext;
   const [messages, setMessages] = useState<Message[]>([]);
@@ -40,17 +44,39 @@ export const useAI = (): UseAIReturn => {
       onFlatFilesChange: (updater) => {
         setFlatFiles(updater);
       },
+      getCurrentInputHistory,
     };
 
     aiManagerRef.current = new AIManager(workdir, callbacks, fileManager);
 
-    // Initialize state from manager
-    const state = aiManagerRef.current.getState();
-    setSessionId(state.sessionId);
-    setMessages(state.messages);
-    setIsLoading(state.isLoading);
-    setTotalTokens(state.totalTokens);
-  }, [workdir, setFlatFiles, fileManager]);
+    // Initialize from session or default state
+    if (sessionToRestore) {
+      // Restore from session data
+      aiManagerRef.current.initializeFromSession(
+        sessionToRestore.id,
+        sessionToRestore.state.messages,
+        sessionToRestore.metadata.totalTokens,
+      );
+
+      setSessionId(sessionToRestore.id);
+      setMessages(sessionToRestore.state.messages);
+      setTotalTokens(sessionToRestore.metadata.totalTokens);
+      setIsLoading(false);
+    } else {
+      // Initialize with default state
+      const state = aiManagerRef.current.getState();
+      setSessionId(state.sessionId);
+      setMessages(state.messages);
+      setIsLoading(state.isLoading);
+      setTotalTokens(state.totalTokens);
+    }
+  }, [
+    workdir,
+    setFlatFiles,
+    fileManager,
+    sessionToRestore,
+    getCurrentInputHistory,
+  ]);
 
   // Update totalTokens when AI manager state changes
   useEffect(() => {

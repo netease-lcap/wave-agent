@@ -1,6 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
+import { SessionManager } from "./services/sessionManager.js";
 
 // Export main function for external use
 export async function main() {
@@ -17,18 +18,69 @@ export async function main() {
       type: "array",
       string: true,
     })
+    .option("restore", {
+      alias: "r",
+      description: "Restore session by ID",
+      type: "string",
+    })
+    .option("continue", {
+      alias: "c",
+      description: "Continue from last session",
+      type: "boolean",
+    })
+    .option("list-sessions", {
+      description: "List all available sessions",
+      type: "boolean",
+    })
     .example("$0", "Start CLI with default settings")
     .example("$0 --workdir /path/to/project", "Use custom working directory")
     .example(
       '$0 --ignore "*.log" --ignore "temp/*"',
       "Add custom ignore patterns",
     )
+    .example("$0 --restore session_123", "Restore specific session")
+    .example("$0 --continue", "Continue from last session")
+    .example("$0 --list-sessions", "List all available sessions")
     .help()
     .parseAsync();
+
+  // Handle list sessions command
+  if (argv.listSessions) {
+    try {
+      const sessions = await SessionManager.listSessions();
+
+      if (sessions.length === 0) {
+        console.log("No sessions found.");
+        return;
+      }
+
+      console.log("Available sessions:");
+      console.log("==================");
+
+      for (const session of sessions) {
+        const startedAt = new Date(session.startedAt).toLocaleString();
+        const lastActiveAt = new Date(session.lastActiveAt).toLocaleString();
+
+        console.log(`ID: ${session.id}`);
+        console.log(`  Workdir: ${session.workdir}`);
+        console.log(`  Started: ${startedAt}`);
+        console.log(`  Last Active: ${lastActiveAt}`);
+        console.log(`  Total Tokens: ${session.totalTokens}`);
+        console.log("");
+      }
+
+      return;
+    } catch (error) {
+      console.error("Failed to list sessions:", error);
+      process.exit(1);
+    }
+  }
 
   await startCli({
     workdir: argv.workdir,
     ignore: argv.ignore as string[],
+    restoreSessionId: argv.restore,
+    continueLastSession: argv.continue,
   });
 }
 

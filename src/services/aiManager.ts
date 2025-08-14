@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { callAgent, compressMessages } from "./aiService";
 import { FileTreeNode } from "../types/common";
 import { FileManager } from "./fileManager";
+import { SessionManager } from "./sessionManager";
 import {
   addAssistantMessageToMessages,
   addAnswerBlockToMessage,
@@ -25,6 +26,7 @@ export interface AIManagerCallbacks {
   onFlatFilesChange: (
     updater: (files: FileTreeNode[]) => FileTreeNode[],
   ) => void;
+  getCurrentInputHistory?: () => string[];
 }
 
 export interface AIManagerState {
@@ -37,12 +39,13 @@ export interface AIManagerState {
 export class AIManager {
   private state: AIManagerState;
   private callbacks: AIManagerCallbacks;
-  private fileChanges: Array<{ type: string; path: string; success: boolean }> =
-    [];
   private abortController: AbortController | null = null;
   private toolAbortController: AbortController | null = null;
   private workdir: string;
   private fileManager: FileManager;
+  private sessionStartTime: string;
+  private autoSaveTimer: NodeJS.Timeout | null = null;
+  private lastSaveTime: number = 0;
 
   constructor(
     workdir: string,
@@ -52,12 +55,20 @@ export class AIManager {
     this.workdir = workdir;
     this.callbacks = callbacks;
     this.fileManager = fileManager;
+    this.sessionStartTime = new Date().toISOString();
     this.state = {
       sessionId: randomUUID(),
       isLoading: false,
       messages: [],
       totalTokens: 0,
     };
+
+    // Set up auto-save
+    this.startAutoSave();
+
+    // Handle process termination to save session
+    process.on("SIGINT", this.handleProcessExit.bind(this));
+    process.on("SIGTERM", this.handleProcessExit.bind(this));
   }
 
   public getState(): AIManagerState {
@@ -67,6 +78,16 @@ export class AIManager {
   public setMessages(messages: Message[]): void {
     this.state.messages = [...messages];
     this.callbacks.onMessagesChange([...messages]);
+
+    // 节流保存：只有距离上次保存超过30秒才保存
+    const now = Date.now();
+    if (now - this.lastSaveTime > 30000) {
+      this.lastSaveTime = now;
+      // 异步保存会话（不阻塞UI）
+      this.saveSession().catch((error) => {
+        logger.error("Failed to save session after message update:", error);
+      });
+    }
   }
 
   public setIsLoading(isLoading: boolean): void {
@@ -99,7 +120,90 @@ export class AIManager {
   public resetSession(): void {
     this.state.sessionId = randomUUID();
     this.state.totalTokens = 0;
-    this.fileChanges = [];
+    this.sessionStartTime = new Date().toISOString();
+  }
+
+  /**
+   * 从会话数据初始化管理器状态
+   */
+  public initializeFromSession(
+    sessionId: string,
+    messages: Message[],
+    totalTokens: number,
+  ): void {
+    this.state.sessionId = sessionId;
+    this.state.messages = [...messages];
+    this.state.totalTokens = totalTokens;
+    this.state.isLoading = false;
+  }
+
+  /**
+   * 获取当前输入历史（从ChatProvider获取）
+   */
+  private getCurrentInputHistory(): string[] {
+    return this.callbacks.getCurrentInputHistory?.() || [];
+  }
+
+  /**
+   * 保存当前会话
+   */
+  public async saveSession(inputHistory?: string[]): Promise<void> {
+    try {
+      const historyToSave = inputHistory || this.getCurrentInputHistory();
+      await SessionManager.saveSession(
+        this.state.sessionId,
+        this.state.messages,
+        historyToSave,
+        this.workdir,
+        undefined, // ignore patterns - 需要从外部获取
+        this.state.totalTokens,
+        this.sessionStartTime,
+      );
+    } catch (error) {
+      logger.error("Failed to save session:", error);
+    }
+  }
+
+  /**
+   * 启动自动保存
+   */
+  private startAutoSave(): void {
+    // 每5分钟自动保存一次
+    this.autoSaveTimer = setInterval(
+      () => {
+        this.saveSession().catch((error) => {
+          logger.error("Auto-save failed:", error);
+        });
+      },
+      5 * 60 * 1000,
+    );
+  }
+
+  /**
+   * 停止自动保存
+   */
+  private stopAutoSave(): void {
+    if (this.autoSaveTimer) {
+      clearInterval(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
+  }
+
+  /**
+   * 处理进程退出，保存会话
+   */
+  private async handleProcessExit(): Promise<void> {
+    this.stopAutoSave();
+    await this.saveSession();
+    process.exit(0);
+  }
+
+  /**
+   * 销毁管理器，清理资源
+   */
+  public destroy(): void {
+    this.stopAutoSave();
+    this.abortAIMessage();
   }
 
   public async sendAIMessage(recursionDepth: number = 0): Promise<void> {
