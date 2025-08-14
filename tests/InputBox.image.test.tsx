@@ -6,7 +6,7 @@ import { ChatProvider } from "../src/contexts/useChat";
 import { FileProvider } from "../src/contexts/useFiles";
 import * as clipboardModule from "../src/utils/clipboard";
 import * as messageOperationsModule from "../src/utils/messageOperations";
-import { waitForTextToDisappear } from "./utils/aiWaitHelpers";
+import { waitForTextToDisappear } from "./utils/waitHelpers";
 
 // Mock the clipboard module
 vi.mock("../src/utils/clipboard", () => ({

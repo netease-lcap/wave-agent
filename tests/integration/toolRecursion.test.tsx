@@ -11,7 +11,7 @@ import {
   waitForAIThinkingStart,
   waitForAIThinkingEnd,
   waitForText,
-} from "../utils/aiWaitHelpers";
+} from "../utils/waitHelpers";
 
 // Mock AI Service
 vi.mock("../../src/services/aiService");
