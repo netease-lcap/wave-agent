@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useCallback } from "react";
+import React, {
+  createContext,
+  useContext,
+  useCallback,
+  useRef,
+  useEffect,
+} from "react";
 import { useFiles } from "../useFiles";
 import type { Message } from "../../types";
 import type { SessionData } from "../../services/sessionManager";
@@ -60,11 +66,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const { userInputHistory, addToInputHistory, clearInputHistory } =
     useInputHistory(sessionToRestore?.state.inputHistory);
 
-  // Create callback to get current input history
-  const getCurrentInputHistory = useCallback(
-    () => userInputHistory,
-    [userInputHistory],
-  );
+  // Create stable callback to get current input history
+  const getCurrentInputHistoryRef = useRef<() => string[]>(() => []);
+
+  useEffect(() => {
+    getCurrentInputHistoryRef.current = () => userInputHistory;
+  }, [userInputHistory]);
+
+  const getCurrentInputHistory = useCallback(() => {
+    return getCurrentInputHistoryRef.current?.() || [];
+  }, []);
 
   // Use the AI hook
   const {

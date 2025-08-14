@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
-import type { Message } from '../../types';
-import { spawn, type ChildProcess } from 'child_process';
-import { addBashCommandToHistory } from '../../utils/bashHistory';
+import { useState, useRef, useCallback } from "react";
+import type { Message } from "../../types";
+import { spawn, type ChildProcess } from "child_process";
+import { addBashCommandToHistory } from "../../utils/bashHistory";
 
 export interface CommandContextType {
   executeCommand: (command: string) => Promise<number>;
@@ -20,24 +20,31 @@ export const useCommand = (
   const executeCommand = useCallback(
     async (command: string): Promise<number> => {
       if (isCommandRunning) {
-        throw new Error('Command already running');
+        throw new Error("Command already running");
       }
 
       setIsCommandRunning(true);
 
       // Add command output placeholder
       const outputMessage: Message = {
-        role: 'assistant',
-        blocks: [{ type: 'command_output', command, output: '', isRunning: true, exitCode: null }],
+        role: "assistant",
+        blocks: [
+          {
+            type: "command_output",
+            command,
+            output: "",
+            isRunning: true,
+            exitCode: null,
+          },
+        ],
       };
 
       setMessages((prev: Message[]) => [...prev, outputMessage]);
-      const outputMessageIndex = messages.length;
 
       return new Promise<number>((resolve) => {
         const child = spawn(command, {
           shell: true,
-          stdio: 'pipe',
+          stdio: "pipe",
           cwd: workdir,
           env: {
             ...process.env,
@@ -45,32 +52,41 @@ export const useCommand = (
         });
 
         currentProcessRef.current = child;
-        let outputBuffer = '';
+        let outputBuffer = "";
 
         const updateOutput = (newData: string) => {
           outputBuffer += newData;
           setMessages((prev) => {
             const newMessages = [...prev];
-            const outputMsg = newMessages[outputMessageIndex];
-            if (outputMsg && outputMsg.role === 'assistant') {
-              const commandBlock = outputMsg.blocks.find((block) => block.type === 'command_output');
-              if (commandBlock && commandBlock.type === 'command_output') {
-                commandBlock.output = outputBuffer.trim();
+            // Find the last assistant message with a command_output block for this command
+            for (let i = newMessages.length - 1; i >= 0; i--) {
+              const msg = newMessages[i];
+              if (msg.role === "assistant") {
+                const commandBlock = msg.blocks.find(
+                  (block) =>
+                    block.type === "command_output" &&
+                    block.command === command &&
+                    block.isRunning,
+                );
+                if (commandBlock && commandBlock.type === "command_output") {
+                  commandBlock.output = outputBuffer.trim();
+                  break;
+                }
               }
             }
             return newMessages;
           });
         };
 
-        child.stdout?.on('data', (data) => {
+        child.stdout?.on("data", (data) => {
           updateOutput(data.toString());
         });
 
-        child.stderr?.on('data', (data) => {
+        child.stderr?.on("data", (data) => {
           updateOutput(data.toString());
         });
 
-        child.on('exit', (code, signal) => {
+        child.on("exit", (code, signal) => {
           const exitCode = code === null && signal ? 130 : (code ?? 0);
 
           // 添加命令到bash历史记录
@@ -78,12 +94,21 @@ export const useCommand = (
 
           setMessages((prev) => {
             const newMessages = [...prev];
-            const outputMsg = newMessages[outputMessageIndex];
-            if (outputMsg && outputMsg.role === 'assistant') {
-              const commandBlock = outputMsg.blocks.find((block) => block.type === 'command_output');
-              if (commandBlock && commandBlock.type === 'command_output') {
-                commandBlock.isRunning = false;
-                commandBlock.exitCode = exitCode;
+            // Find the last assistant message with a command_output block for this command
+            for (let i = newMessages.length - 1; i >= 0; i--) {
+              const msg = newMessages[i];
+              if (msg.role === "assistant") {
+                const commandBlock = msg.blocks.find(
+                  (block) =>
+                    block.type === "command_output" &&
+                    block.command === command &&
+                    block.isRunning,
+                );
+                if (commandBlock && commandBlock.type === "command_output") {
+                  commandBlock.isRunning = false;
+                  commandBlock.exitCode = exitCode;
+                  break;
+                }
               }
             }
             return newMessages;
@@ -94,16 +119,25 @@ export const useCommand = (
           resolve(exitCode);
         });
 
-        child.on('error', (error) => {
+        child.on("error", (error) => {
           updateOutput(`\nError: ${error.message}\n`);
           setMessages((prev: Message[]) => {
             const newMessages = [...prev];
-            const outputMsg = newMessages[outputMessageIndex];
-            if (outputMsg && outputMsg.role === 'assistant') {
-              const commandBlock = outputMsg.blocks.find((block) => block.type === 'command_output');
-              if (commandBlock && commandBlock.type === 'command_output') {
-                commandBlock.isRunning = false;
-                commandBlock.exitCode = 1;
+            // Find the last assistant message with a command_output block for this command
+            for (let i = newMessages.length - 1; i >= 0; i--) {
+              const msg = newMessages[i];
+              if (msg.role === "assistant") {
+                const commandBlock = msg.blocks.find(
+                  (block) =>
+                    block.type === "command_output" &&
+                    block.command === command &&
+                    block.isRunning,
+                );
+                if (commandBlock && commandBlock.type === "command_output") {
+                  commandBlock.isRunning = false;
+                  commandBlock.exitCode = 1;
+                  break;
+                }
               }
             }
             return newMessages;
@@ -115,12 +149,12 @@ export const useCommand = (
         });
       });
     },
-    [isCommandRunning, workdir, messages.length, setMessages],
+    [isCommandRunning, workdir, setMessages],
   );
 
   const abortCommand = useCallback(() => {
     if (currentProcessRef.current && isCommandRunning) {
-      currentProcessRef.current.kill('SIGKILL');
+      currentProcessRef.current.kill("SIGKILL");
       currentProcessRef.current = null;
       setIsCommandRunning(false);
     }
