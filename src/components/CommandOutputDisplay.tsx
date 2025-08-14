@@ -95,7 +95,7 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
           {isOverflowing && (
             <Box paddingLeft={2} marginTop={1}>
               <Text color="yellow" dimColor>
-                ⚠️ Content truncated ({output.split("\n").length} lines total,
+                Content truncated ({output.split("\n").length} lines total,
                 showing last {MAX_LINES} lines)
               </Text>
             </Box>
