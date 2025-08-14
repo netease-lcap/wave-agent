@@ -9,11 +9,6 @@ export async function cleanupSessionsByWorkdir(
 ): Promise<number> {
   try {
     const deletedCount = await SessionManager.cleanupSessionsByWorkdir(workdir);
-    if (deletedCount > 0) {
-      console.log(
-        `Cleaned up ${deletedCount} sessions for workdir: ${workdir}`,
-      );
-    }
     return deletedCount;
   } catch (error) {
     console.warn(`Failed to cleanup sessions for workdir ${workdir}:`, error);

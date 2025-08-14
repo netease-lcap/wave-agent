@@ -252,7 +252,6 @@ export class SessionManager {
         try {
           await this.deleteSession(session.id);
           deletedCount++;
-          console.log(`Deleted session: ${session.id} (${session.workdir})`);
         } catch (error) {
           console.warn(`Failed to delete session ${session.id}: ${error}`);
         }
