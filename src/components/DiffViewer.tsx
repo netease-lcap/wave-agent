@@ -46,7 +46,10 @@ const renderWordLevelDiff = (removedLine: string, addedLine: string) => {
   return { removedParts, addedParts };
 };
 
-export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
+export const DiffViewer: React.FC<DiffViewerProps> = ({
+  block,
+  isExpanded = false,
+}) => {
   const { diffResult } = block;
 
   const diffLines = useMemo(() => {
@@ -243,19 +246,21 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
     // 处理结尾可能剩余的删除行
     flushPendingLines();
 
-    // 限制最多显示100行
-    const MAX_DISPLAY_LINES = 100;
-    if (lines.length > MAX_DISPLAY_LINES) {
-      const truncatedLines = lines.slice(0, MAX_DISPLAY_LINES);
-      truncatedLines.push({
-        content: `... (${lines.length - MAX_DISPLAY_LINES} more lines truncated)`,
-        type: "separator",
-      });
-      return truncatedLines;
+    // 只在折叠状态下限制显示行数
+    if (!isExpanded) {
+      const MAX_DISPLAY_LINES = 100;
+      if (lines.length > MAX_DISPLAY_LINES) {
+        const truncatedLines = lines.slice(0, MAX_DISPLAY_LINES);
+        truncatedLines.push({
+          content: `... (${lines.length - MAX_DISPLAY_LINES} more lines truncated, press Ctrl+R to expand)`,
+          type: "separator",
+        });
+        return truncatedLines;
+      }
     }
 
     return lines;
-  }, [diffResult]);
+  }, [diffResult, isExpanded]);
 
   if (!diffResult || diffResult.length === 0) {
     return (
