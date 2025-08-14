@@ -35,6 +35,8 @@ describe("DiffViewer", () => {
     return {
       type: "diff",
       path: "large.txt",
+      original: "original content with many lines",
+      modified: "modified content with many changes",
       diffResult,
     };
   };
@@ -66,6 +68,8 @@ describe("DiffViewer", () => {
       const smallBlock: DiffBlock = {
         type: "diff",
         path: "small.txt",
+        original: "line 1\nold\n",
+        modified: "line 1\nnew\n",
         diffResult: [
           { value: "line 1\n", added: false, removed: false },
           { value: "old\n", added: false, removed: true },
@@ -91,6 +95,8 @@ describe("DiffViewer", () => {
       const block: DiffBlock = {
         type: "diff",
         path: "src/example.ts",
+        original: "test",
+        modified: "test",
         diffResult: [{ value: "test\n", added: false, removed: false }],
       };
 
@@ -102,6 +108,8 @@ describe("DiffViewer", () => {
       const block: DiffBlock = {
         type: "diff",
         path: "test.txt",
+        original: "test",
+        modified: "test modified",
         warning: "File was modified externally",
         diffResult: [{ value: "test\n", added: false, removed: false }],
       };
@@ -114,6 +122,8 @@ describe("DiffViewer", () => {
       const block: DiffBlock = {
         type: "diff",
         path: "empty.txt",
+        original: "",
+        modified: "",
         diffResult: [],
       };
 
@@ -127,6 +137,8 @@ describe("DiffViewer", () => {
       const block: DiffBlock = {
         type: "diff",
         path: "test.txt",
+        original: "",
+        modified: "added line",
         diffResult: [{ value: "added line\n", added: true, removed: false }],
       };
 
@@ -138,6 +150,8 @@ describe("DiffViewer", () => {
       const block: DiffBlock = {
         type: "diff",
         path: "test.txt",
+        original: "removed line",
+        modified: "",
         diffResult: [{ value: "removed line\n", added: false, removed: true }],
       };
 
@@ -149,6 +163,8 @@ describe("DiffViewer", () => {
       const block: DiffBlock = {
         type: "diff",
         path: "test.txt",
+        original: "unchanged line",
+        modified: "unchanged line\nanother line",
         diffResult: [
           { value: "unchanged line\n", added: false, removed: false },
           { value: "another line\n", added: true, removed: false }, // Add a change to show context
