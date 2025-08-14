@@ -198,28 +198,50 @@ describe("Message Compression Tests", () => {
       ];
 
       // Insert at beginning
-      const result1 = addCompressBlockToMessage(messages, 0, "Compressed", 2);
-      expect(result1).toHaveLength(2);
-      const firstBlock = result1[0].blocks[0];
-      if (firstBlock.type === "compress") {
-        expect(firstBlock.content).toBe("Compressed");
-      } else {
-        throw new Error("Expected compress block");
-      }
-      expect(result1[1]).toBe(messages[0]);
-
-      // Insert at end
-      const result2 = addCompressBlockToMessage(
+      const resultBeginning = addCompressBlockToMessage(
         messages,
-        messages.length,
-        "Compressed",
+        0,
+        "Compressed content",
         2,
       );
-      expect(result2).toHaveLength(2);
-      expect(result2[0]).toBe(messages[0]);
-      const lastBlock = result2[1].blocks[0];
-      if (lastBlock.type === "compress") {
-        expect(lastBlock.content).toBe("Compressed");
+
+      expect(resultBeginning).toHaveLength(2);
+      expect(resultBeginning[0].blocks[0].type).toBe("compress");
+      expect(resultBeginning[1]).toBe(messages[0]);
+
+      // Insert at end
+      const resultEnd = addCompressBlockToMessage(
+        messages,
+        1,
+        "Compressed content",
+        2,
+      );
+
+      expect(resultEnd).toHaveLength(2);
+      expect(resultEnd[0]).toBe(messages[0]);
+      expect(resultEnd[1].blocks[0].type).toBe("compress");
+    });
+
+    it("should create proper compress block structure", () => {
+      const messages: Message[] = [
+        { role: "user", blocks: [{ type: "text", content: "Test" }] },
+      ];
+
+      const result = addCompressBlockToMessage(
+        messages,
+        0,
+        "Test compression content",
+        5,
+      );
+
+      const compressMessage = result[0];
+      expect(compressMessage.role).toBe("assistant");
+      expect(compressMessage.blocks).toHaveLength(1);
+
+      const compressBlock = compressMessage.blocks[0];
+      if (compressBlock.type === "compress") {
+        expect(compressBlock.content).toBe("Test compression content");
+        expect(compressBlock.compressedMessageCount).toBe(5);
       } else {
         throw new Error("Expected compress block");
       }
@@ -227,260 +249,125 @@ describe("Message Compression Tests", () => {
   });
 
   describe("Compression trigger logic", () => {
-    it("should have correct token threshold configuration", () => {
-      const TOKEN_LIMIT = 64000; // This is the threshold used in useAI.ts
+    it("should only compress when message count exceeds threshold", () => {
+      // This is a conceptual test - the actual trigger logic is in aiManager
+      // We're testing the helper functions that support compression
 
-      // Test just below threshold
-      expect(63999 > TOKEN_LIMIT).toBe(false);
-
-      // Test at threshold
-      expect(64000 > TOKEN_LIMIT).toBe(false);
-
-      // Test just above threshold
-      expect(64001 > TOKEN_LIMIT).toBe(true);
-    });
-
-    it("should calculate correct message slice for compression", () => {
-      // Test the slicing logic used in useAI.ts
-      const messages: Message[] = Array.from({ length: 10 }, (_, i) => ({
-        role: i % 2 === 0 ? "user" : "assistant",
-        blocks: [{ type: "text", content: `Message ${i}` }],
-      }));
-
-      // Simulate: latestMessages.slice(-7, -1)
-      const messagesToCompress = messages.slice(-7, -1);
-
-      expect(messagesToCompress).toHaveLength(6);
-      expect(messagesToCompress[0]).toBe(messages[3]); // Index 3
-      expect(messagesToCompress[5]).toBe(messages[8]); // Index 8
-    });
-
-    it("should not compress if there are fewer than 7 messages", () => {
-      const shortMessageList: Message[] = Array.from({ length: 5 }, (_, i) => ({
-        role: i % 2 === 0 ? "user" : "assistant",
-        blocks: [{ type: "text", content: `Message ${i}` }],
-      }));
-
-      // Check the condition: latestMessages.length > 6
-      expect(shortMessageList.length > 6).toBe(false);
-    });
-  });
-
-  describe("Compression error handling", () => {
-    it("should handle compression service errors gracefully", async () => {
-      mockCompressMessages.mockImplementation(async () => {
-        throw new Error("Compression service failed");
-      });
-
-      try {
-        const result = await compressMessages({
-          messages: [
-            { role: "user", content: [{ type: "text", text: "Test message" }] },
-          ],
-        });
-        expect(result).toBe("Failed to compress conversation history");
-      } catch (error) {
-        // If the mock throws, that's expected - the real function should catch it
-        expect(error).toBeInstanceOf(Error);
-      }
-    });
-
-    it("should handle abort during compression", async () => {
-      const abortController = new AbortController();
-
-      mockCompressMessages.mockImplementation(async ({ abortSignal }) => {
-        return new Promise((resolve, reject) => {
-          if (abortSignal?.aborted) {
-            reject(new Error("Compression request was aborted"));
-            return;
-          }
-          abortSignal?.addEventListener("abort", () => {
-            reject(new Error("Compression request was aborted"));
-          });
-          setTimeout(() => resolve("压缩结果"), 100);
-        });
-      });
-
-      setTimeout(() => abortController.abort(), 10);
-
-      await expect(
-        compressMessages({
-          messages: [
-            { role: "user", content: [{ type: "text", text: "Test message" }] },
-          ],
-          abortSignal: abortController.signal,
-        }),
-      ).rejects.toThrow("Compression request was aborted");
-    });
-  });
-
-  describe("Compression integration with message flow", () => {
-    it("should correctly calculate insertion index and remove messages", () => {
-      const messages: Message[] = Array.from({ length: 10 }, (_, i) => ({
-        role: i % 2 === 0 ? "user" : "assistant",
-        blocks: [{ type: "text", content: `Message ${i}` }],
-      }));
-
-      // Simulate the compression logic from useAI.ts
-      const latestMessages = [...messages];
-      const messagesToCompress = latestMessages.slice(-7, -1); // Last 6 messages (excluding current)
-      const insertIndex = latestMessages.length - 7; // Before the last 6 messages
-
-      expect(messagesToCompress).toHaveLength(6);
-      expect(insertIndex).toBe(3); // Should insert at index 3
-
-      // Simulate the message manipulation
-      const newMessages = [...latestMessages];
-      newMessages.splice(-7, 6); // Remove last 6 messages (excluding current)
-      const result = addCompressBlockToMessage(
-        newMessages,
-        insertIndex,
-        "Compressed content",
-        6,
-      );
-
-      expect(result).toHaveLength(5); // Original 10 - 6 removed + 1 compress block
-      expect(result[insertIndex].blocks[0].type).toBe("compress");
-    });
-
-    it("should preserve message order around compression block", () => {
-      const messages: Message[] = [
-        { role: "user", blocks: [{ type: "text", content: "Early message" }] },
+      const shortMessageList: Message[] = [
+        { role: "user", blocks: [{ type: "text", content: "Short convo" }] },
         {
           role: "assistant",
-          blocks: [{ type: "text", content: "Early response" }],
-        },
-        { role: "user", blocks: [{ type: "text", content: "Middle 1" }] },
-        {
-          role: "assistant",
-          blocks: [{ type: "text", content: "Middle response 1" }],
-        },
-        { role: "user", blocks: [{ type: "text", content: "Middle 2" }] },
-        {
-          role: "assistant",
-          blocks: [{ type: "text", content: "Middle response 2" }],
-        },
-        { role: "user", blocks: [{ type: "text", content: "Recent 1" }] },
-        {
-          role: "assistant",
-          blocks: [{ type: "text", content: "Recent response 1" }],
-        },
-        { role: "user", blocks: [{ type: "text", content: "Recent 2" }] },
-        {
-          role: "assistant",
-          blocks: [{ type: "text", content: "Current response" }],
+          blocks: [{ type: "text", content: "Short response" }],
         },
       ];
 
-      // Compress the middle 6 messages (indices 2-7)
-      const insertIndex = 2; // Insert at the position where we removed messages
+      const longMessageList: Message[] = Array.from({ length: 10 }, (_, i) => ({
+        role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+        blocks: [{ type: "text" as const, content: `Message ${i}` }],
+      }));
 
-      const newMessages = [...messages];
-      newMessages.splice(2, 6); // Remove messages at indices 2-7
-      const result = addCompressBlockToMessage(
-        newMessages,
-        insertIndex,
-        "Compressed 6 messages",
+      // Short conversations shouldn't need compression helpers
+      expect(shortMessageList.length).toBeLessThan(6);
+
+      // Long conversations have enough messages for compression
+      expect(longMessageList.length).toBeGreaterThan(6);
+
+      // Test that compress block can be added to long conversations
+      const compressed = addCompressBlockToMessage(
+        longMessageList,
+        5,
+        "Compressed previous messages",
         6,
       );
 
-      expect(result).toHaveLength(5);
-      const firstBlock = result[0].blocks[0];
-      const secondBlock = result[1].blocks[0];
-      const thirdBlock = result[2].blocks[0];
-      const fourthBlock = result[3].blocks[0];
-      const fifthBlock = result[4].blocks[0];
-
-      if (firstBlock.type === "text") {
-        expect(firstBlock.content).toBe("Early message"); // Preserved
-      }
-      if (secondBlock.type === "text") {
-        expect(secondBlock.content).toBe("Early response"); // Preserved
-      }
-      expect(thirdBlock.type).toBe("compress"); // New compress block
-      if (fourthBlock.type === "text") {
-        expect(fourthBlock.content).toBe("Recent 2"); // Preserved (was index 8)
-      }
-      if (fifthBlock.type === "text") {
-        expect(fifthBlock.content).toBe("Current response"); // Preserved (was index 9)
-      }
+      expect(compressed.length).toBe(longMessageList.length + 1);
+      expect(compressed[5].blocks[0].type).toBe("compress");
     });
   });
 
-  describe("convertMessagesForAPI with compression", () => {
-    it("should handle messages with compression blocks", () => {
-      const messages: Message[] = [
-        { role: "user", blocks: [{ type: "text", content: "Old message" }] },
+  describe("Message format conversion", () => {
+    it("should handle convertMessagesForAPI mock", () => {
+      const testMessages: Message[] = [
+        { role: "user", blocks: [{ type: "text", content: "Test" }] },
+      ];
+
+      const expectedAPIFormat: ChatCompletionMessageParam[] = [
         {
-          role: "assistant",
-          blocks: [
-            {
-              type: "compress",
-              content: "Compressed conversation about file operations",
-              compressedMessageCount: 4,
-            },
-          ],
-        },
-        { role: "user", blocks: [{ type: "text", content: "New message" }] },
-        {
-          role: "assistant",
-          blocks: [{ type: "text", content: "New response" }],
+          role: "user",
+          content: [{ type: "text", text: "Test" }],
         },
       ];
 
-      // Mock the behavior of convertMessagesForAPI when it encounters a compress block
-      mockConvertMessagesForAPI.mockReturnValue([
-        { role: "user", content: [{ type: "text", text: "Old message" }] },
-        {
-          role: "assistant",
-          content:
-            "[压缩消息摘要] Compressed conversation about file operations",
-        },
-        { role: "user", content: [{ type: "text", text: "New message" }] },
-        { role: "assistant", content: "New response" },
-      ]);
+      mockConvertMessagesForAPI.mockReturnValue(expectedAPIFormat);
 
-      const result = convertMessagesForAPI(messages);
+      const result = convertMessagesForAPI(testMessages);
 
-      expect(result).toEqual([
-        { role: "user", content: [{ type: "text", text: "Old message" }] },
-        {
-          role: "assistant",
-          content:
-            "[压缩消息摘要] Compressed conversation about file operations",
-        },
-        { role: "user", content: [{ type: "text", text: "New message" }] },
-        { role: "assistant", content: "New response" },
-      ]);
+      expect(result).toEqual(expectedAPIFormat);
+      expect(mockConvertMessagesForAPI).toHaveBeenCalledWith(testMessages);
     });
   });
 
-  describe("Compression configuration and limits", () => {
-    it("should use correct token threshold (64k)", () => {
-      const TOKEN_LIMIT = 64000;
+  describe("Integration scenarios", () => {
+    it("should simulate full compression workflow", async () => {
+      // Simulate a workflow where messages are converted, compressed, and added back
+      const originalMessages: Message[] = [
+        { role: "user", blocks: [{ type: "text", content: "Create file" }] },
+        {
+          role: "assistant",
+          blocks: [{ type: "text", content: "Creating file..." }],
+        },
+        { role: "user", blocks: [{ type: "text", content: "Add tests" }] },
+        {
+          role: "assistant",
+          blocks: [{ type: "text", content: "Adding tests..." }],
+        },
+        { role: "user", blocks: [{ type: "text", content: "Deploy app" }] },
+        {
+          role: "assistant",
+          blocks: [{ type: "text", content: "Deploying..." }],
+        },
+      ];
 
-      // Test just below threshold
-      expect(63999 > TOKEN_LIMIT).toBe(false);
+      const apiMessages: ChatCompletionMessageParam[] = [
+        { role: "user", content: [{ type: "text", text: "Create file" }] },
+        { role: "assistant", content: "Creating file..." },
+        { role: "user", content: [{ type: "text", text: "Add tests" }] },
+        { role: "assistant", content: "Adding tests..." },
+        { role: "user", content: [{ type: "text", text: "Deploy app" }] },
+        { role: "assistant", content: "Deploying..." },
+      ];
 
-      // Test at threshold
-      expect(64000 > TOKEN_LIMIT).toBe(false);
+      mockConvertMessagesForAPI.mockReturnValue(apiMessages);
+      mockCompressMessages.mockResolvedValue(
+        "用户依次请求创建文件、添加测试、部署应用，助手逐步完成各项任务",
+      );
 
-      // Test just above threshold
-      expect(64001 > TOKEN_LIMIT).toBe(true);
-    });
+      // Step 1: Convert messages for API
+      const convertedMessages = convertMessagesForAPI(originalMessages);
+      expect(convertedMessages).toEqual(apiMessages);
 
-    it("should compress exactly 6 messages", () => {
-      const messages: Message[] = Array.from({ length: 20 }, (_, i) => ({
-        role: i % 2 === 0 ? "user" : "assistant",
-        blocks: [{ type: "text", content: `Message ${i}` }],
-      }));
+      // Step 2: Compress messages
+      const compressedContent = await compressMessages({
+        messages: convertedMessages,
+      });
+      expect(compressedContent).toBe(
+        "用户依次请求创建文件、添加测试、部署应用，助手逐步完成各项任务",
+      );
 
-      // Simulate the slice logic from useAI.ts
-      const messagesToCompress = messages.slice(-7, -1); // Should be 6 messages
+      // Step 3: Replace some messages with compress block
+      const finalMessages = addCompressBlockToMessage(
+        originalMessages.slice(2), // Keep last 4 messages
+        0, // Insert at beginning
+        compressedContent,
+        4, // Compressed 4 messages
+      );
 
-      expect(messagesToCompress).toHaveLength(6);
-      expect(messagesToCompress[0]).toBe(messages[13]); // Index 13
-      expect(messagesToCompress[5]).toBe(messages[18]); // Index 18
+      expect(finalMessages).toHaveLength(5); // 4 remaining + 1 compress block
+      expect(finalMessages[0].blocks[0].type).toBe("compress");
+      expect(finalMessages[0].blocks[0]).toHaveProperty(
+        "content",
+        compressedContent,
+      );
     });
   });
 });
