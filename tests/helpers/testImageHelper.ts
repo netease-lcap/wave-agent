@@ -1,6 +1,6 @@
-import { writeFileSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 
 /**
  * 创建临时测试图片

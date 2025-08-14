@@ -5,7 +5,7 @@ import {
   INPUT_PLACEHOLDER_TEXT_PREFIX,
 } from "../src/components/InputBox";
 import { resetMocks, getMocks } from "./mocks/contextMock";
-import { waitForText } from "./utils/waitHelpers";
+import { waitForText } from "./helpers/waitHelpers";
 
 // 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
 await vi.hoisted(async () => {

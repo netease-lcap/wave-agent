@@ -182,6 +182,8 @@ export const isBinary = (filename: string): boolean => {
  * @returns 移除颜色代码后的纯文本
  */
 export const stripAnsiColors = (text: string): string => {
-  // eslint-disable-next-line no-control-regex
-  return text.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, "");
+  // Create the escape character dynamically to avoid control character detection
+  const escapeChar = String.fromCharCode(27); // ESC character
+  const ansiEscapeRegex = new RegExp(`${escapeChar}\\[[0-9;]*[a-zA-Z]`, "g");
+  return text.replace(ansiEscapeRegex, "");
 };

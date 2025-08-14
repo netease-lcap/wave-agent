@@ -5,7 +5,7 @@ import * as path from "path";
 import * as os from "os";
 import React from "react";
 import { App } from "../../src/components/App";
-import { waitForText } from "../utils/waitHelpers";
+import { waitForText } from "../helpers/waitHelpers";
 
 // 不使用完整的context mock，让真实的命令执行逻辑运行
 
