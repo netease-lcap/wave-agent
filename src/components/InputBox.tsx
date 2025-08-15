@@ -137,10 +137,15 @@ export const InputBox: React.FC = () => {
     exclamationPosition,
   });
 
+  // 检测记忆添加模式
+  const isMemoryMode = inputText.startsWith("#");
+
   const isPlaceholder = !inputText;
   const placeholderText = isLoading
     ? `AI is thinking... (Tokens: ${totalTokens.toLocaleString()})`
-    : INPUT_PLACEHOLDER_TEXT;
+    : isMemoryMode
+      ? "Add memory content (remove # to exit)..."
+      : INPUT_PLACEHOLDER_TEXT;
 
   // 将文本拆分为光标前、光标位置、光标后三部分
   const displayText = isPlaceholder ? placeholderText : inputText;
@@ -153,8 +158,20 @@ export const InputBox: React.FC = () => {
   const shouldShowCursor = !isLoading;
 
   return (
-    <Box borderStyle="single" borderColor="gray" paddingX={1}>
+    <Box
+      borderStyle="single"
+      borderColor={isMemoryMode ? "blue" : "gray"}
+      paddingX={1}
+    >
       <Box flexDirection="column" width={"100%"}>
+        {/* 记忆模式提示 */}
+        {isMemoryMode && (
+          <Box marginBottom={1}>
+            <Text color="blue" bold>
+              📝 Memory Mode
+            </Text>
+          </Box>
+        )}
         {showFileSelector && (
           <FileSelector
             files={filteredFiles}

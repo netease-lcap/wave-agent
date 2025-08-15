@@ -4,3 +4,4 @@
 
 - 使用 pnpm
 - 使用 ink-testing-library 来编写测试
+- 测试框架是 vitest
