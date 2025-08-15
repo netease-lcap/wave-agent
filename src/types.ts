@@ -1,9 +1,16 @@
 import { Delta } from "./types/common";
 
+export interface MessageGroupInfo {
+  isGroupStart: boolean; // 是否是连续组的开始
+  isGroupMember: boolean; // 是否是连续组的成员
+  groupRange?: string; // 组的编号范围（如 "2-4"）
+}
+
 export interface Message {
   role: "user" | "assistant";
   blocks: MessageBlock[];
   originalDeltas?: Delta[]; // 添加原始 delta 数组
+  groupInfo?: MessageGroupInfo; // 添加分组信息
 }
 
 export type MessageBlock =

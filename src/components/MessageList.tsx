@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import type { Message } from "../types";
 import { DiffViewer } from "./DiffViewer";
 import { CommandOutputDisplay } from "./CommandOutputDisplay";
 import { ToolResultDisplay } from "./ToolResultDisplay";
 import { usePagination } from "../hooks/usePagination";
+import { processMessageGroups } from "../utils/messageGrouping";
 
 export interface MessageListProps {
   messages: Message[];
@@ -15,6 +16,13 @@ export const MessageList: React.FC<MessageListProps> = ({
   messages,
   isLoading,
 }) => {
+  // 预处理消息，添加分组信息（仅用于显示）
+  const processedMessages = useMemo(
+    () => processMessageGroups(messages),
+    [messages],
+  );
+
+  // 使用原始消息进行分页计算
   const { displayInfo } = usePagination(messages);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -26,7 +34,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   });
 
   // 空消息状态
-  if (messages.length === 0) {
+  if (processedMessages.length === 0) {
     return (
       <Box flexDirection="column" paddingY={1}>
         <Text color="gray">Welcome to LCAP Code Assistant!</Text>
@@ -35,7 +43,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   }
 
   // 获取当前页的消息
-  const currentMessages = messages.slice(
+  const currentMessages = processedMessages.slice(
     displayInfo.startIndex,
     displayInfo.endIndex,
   );
@@ -46,22 +54,36 @@ export const MessageList: React.FC<MessageListProps> = ({
       <Box flexDirection="column">
         {currentMessages.map((message, index) => {
           const messageIndex = displayInfo.startIndex + index;
+          const isPageStart = index === 0;
+          const shouldShowHeader =
+            message.role === "user" ||
+            !message.groupInfo ||
+            message.groupInfo.isGroupStart ||
+            isPageStart;
+
           return (
             <Box key={messageIndex} flexDirection="column" marginTop={1}>
-              <Box>
-                <Text color={message.role === "user" ? "cyan" : "green"} bold>
-                  {message.role === "user" ? "👤 You" : "🤖 Assistant"}
-                  <Text color="gray" dimColor>
-                    {" "}
-                    #{messageIndex + 1}
+              {shouldShowHeader && (
+                <Box>
+                  <Text color={message.role === "user" ? "cyan" : "green"} bold>
+                    {message.role === "user" ? "👤 You" : "🤖 Assistant"}
+                    <Text color="gray" dimColor>
+                      {" "}
+                      #{message.groupInfo?.groupRange || messageIndex + 1}
+                    </Text>
                   </Text>
-                </Text>
-              </Box>
+                </Box>
+              )}
 
-              <Box marginLeft={2} flexDirection="column" gap={1} marginTop={1}>
+              <Box
+                marginLeft={shouldShowHeader ? 2 : 4}
+                flexDirection="column"
+                gap={1}
+                marginTop={shouldShowHeader ? 1 : 0}
+              >
                 {message.blocks.map((block, blockIndex) => (
                   <Box key={blockIndex}>
-                    {block.type === "text" && block.content && (
+                    {block.type === "text" && block.content.trim() && (
                       <Box>
                         <Text>{block.content}</Text>
                       </Box>
