@@ -23,7 +23,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   const getStatusText = () => {
     if (attributes?.isStreaming) return "📡 Streaming parameters...";
     if (attributes?.isRunning) return "🔄 Running...";
-    if (attributes?.success) return "✅ Success";
+    if (attributes?.success) return "✅";
     return "❌ Failed";
   };
 

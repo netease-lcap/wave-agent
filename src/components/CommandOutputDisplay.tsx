@@ -35,7 +35,7 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
 
   const getStatusText = () => {
     if (isRunning) return "🔄 Running...";
-    if (exitCode === 0) return "✅ Success";
+    if (exitCode === 0) return "✅";
     if (exitCode === 130) return "⚠️ Interrupted";
     return `❌ Failed (exit code: ${exitCode})`;
   };

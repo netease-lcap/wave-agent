@@ -38,7 +38,7 @@ describe("ToolResultDisplay Component", () => {
 
       // Should show tool name and status
       expect(output).toContain("🔧 read_file");
-      expect(output).toContain("✅ Success");
+      expect(output).toContain("✅");
 
       // Should show shortResult (without "Result:" label)
       expect(output).toContain("Read 50 lines from src/test.ts");
@@ -122,9 +122,7 @@ describe("ToolResultDisplay Component", () => {
       const output = lastFrame();
 
       // Should show compactParams in the tool name line
-      expect(output).toContain(
-        "🔧 some_tool (file.txt, Edit content) ✅ Success",
-      );
+      expect(output).toContain("🔧 some_tool (file.txt, Edit content) ✅");
 
       // Should NOT show full parameters in collapsed view
       expect(output).not.toContain("Parameters:");
@@ -169,7 +167,7 @@ describe("ToolResultDisplay Component", () => {
 
       const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
       const output = lastFrame();
-      expect(output).toContain("✅ Success");
+      expect(output).toContain("✅");
     });
 
     it("should show error status with message", () => {

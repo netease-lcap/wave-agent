@@ -58,13 +58,13 @@ describe("Echo Command Integration Test", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     // 等待命令执行成功，增加更长的超时时间
-    await waitForText(renderResult, "echo 'hi' ✅ Success", { timeout: 5000 });
+    await waitForText(renderResult, "echo 'hi' ✅", { timeout: 5000 });
 
     // 验证最终输出
     const finalOutput = lastFrame();
 
     // 验证命令执行成功
-    expect(finalOutput).toContain("echo 'hi' ✅ Success");
+    expect(finalOutput).toContain("echo 'hi' ✅");
 
     // 验证命令输出显示
     expect(finalOutput).toContain("hi");
