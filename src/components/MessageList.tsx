@@ -4,6 +4,7 @@ import type { Message } from "../types";
 import { DiffViewer } from "./DiffViewer";
 import { CommandOutputDisplay } from "./CommandOutputDisplay";
 import { ToolResultDisplay } from "./ToolResultDisplay";
+import { MemoryDisplay } from "./MemoryDisplay";
 import { usePagination } from "../hooks/usePagination";
 import { processMessageGroups } from "../utils/messageGrouping";
 
@@ -143,6 +144,8 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
                           )}
                       </Box>
                     )}
+
+                    {block.type === "memory" && <MemoryDisplay block={block} />}
                   </Box>
                 ))}
               </Box>

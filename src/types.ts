@@ -21,7 +21,8 @@ export type MessageBlock =
   | ImageBlock
   | DiffBlock
   | CommandOutputBlock
-  | CompressBlock;
+  | CompressBlock
+  | MemoryBlock;
 
 export interface TextBlock {
   type: "text";
@@ -88,6 +89,12 @@ export interface CommandOutputBlock {
 export interface CompressBlock {
   type: "compress";
   content: string;
+}
+
+export interface MemoryBlock {
+  type: "memory";
+  content: string;
+  isSuccess: boolean;
 }
 
 export interface AIRequest {

@@ -17,6 +17,7 @@ import { toolRegistry } from "../plugins/tools";
 import type { ToolContext } from "../plugins/tools/types";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI";
 import { saveErrorLog } from "../utils/errorLogger";
+import { readMemoryFile } from "../utils/memoryUtils";
 import type { Message } from "../types";
 import { logger } from "../utils/logger";
 
@@ -239,10 +240,19 @@ export class AIManager {
       currentMessages = addAnswerBlockToMessage(currentMessages);
       this.setMessages(currentMessages);
 
+      // 读取记忆文件内容
+      let memoryContent = "";
+      try {
+        memoryContent = await readMemoryFile(this.workdir);
+      } catch (error) {
+        logger.warn("Failed to read memory file:", error);
+      }
+
       const result = await callAgent({
         messages: recentMessages,
         sessionId: this.state.sessionId,
         abortSignal: abortController.signal,
+        memory: memoryContent, // 传递记忆内容
       });
 
       // 更新 token 统计 - 显示最新一次的token使用量

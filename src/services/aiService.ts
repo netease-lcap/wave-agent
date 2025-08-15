@@ -20,6 +20,7 @@ export interface CallAgentOptions {
   messages: ChatCompletionMessageParam[];
   sessionId?: string;
   abortSignal?: AbortSignal;
+  memory?: string; // 记忆内容参数，从 LCAP.md 读取的内容
 }
 
 export interface CallAgentResult {
@@ -146,7 +147,7 @@ export async function generateCommitMessage(
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
-  const { messages, abortSignal } = options;
+  const { messages, abortSignal, memory } = options;
 
   // 获取模型配置
   const envModel = process.env.AIGW_MODEL;
@@ -156,10 +157,8 @@ export async function callAgent(
       : DEFAULT_MODEL_ID;
 
   try {
-    // 添加系统提示词
-    const systemMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
-      role: "system",
-      content: `You are a professional web development expert.
+    // 构建系统提示词内容
+    let systemContent = `You are a professional web development expert.
 
 ## TODOs
 ⏳ Pending tasks
@@ -179,7 +178,17 @@ export async function callAgent(
 - **IMPORTANT**: After completing each item, show the updated TODO list
 - Keep TODO descriptions brief and clear
 
-Remember: Execute tasks systematically and show updated TODOs after each completion.`,
+Remember: Execute tasks systematically and show updated TODOs after each completion.`;
+
+    // 如果有记忆内容，添加到系统提示词中
+    if (memory && memory.trim()) {
+      systemContent += `\n\n## Memory Context (LCAP.md)\n\nThe following is important context and memory from previous interactions:\n\n${memory}`;
+    }
+
+    // 添加系统提示词
+    const systemMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
+      role: "system",
+      content: systemContent,
     };
 
     // ChatCompletionMessageParam[] 已经是 OpenAI 格式，添加系统提示词到开头

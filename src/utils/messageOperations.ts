@@ -249,6 +249,7 @@ export const addErrorBlockToMessage = (
   for (let i = newMessages.length - 1; i >= 0; i--) {
     if (newMessages[i].role === "assistant") {
       newMessages[i].blocks = [
+        ...newMessages[i].blocks,
         {
           type: "error",
           content: error,
@@ -281,5 +282,30 @@ export const addCompressBlockToMessage = (
 
   // 在指定位置插入压缩消息
   newMessages.splice(insertIndex, 0, compressMessage);
+  return newMessages;
+};
+
+// 添加 Memory Block 作为新的助手消息
+export const addMemoryBlockToMessage = (
+  messages: Message[],
+  content: string,
+  isSuccess: boolean,
+): Message[] => {
+  const newMessages = [...messages];
+
+  // 创建新的助手消息包含 MemoryBlock
+  const memoryMessage: Message = {
+    role: "assistant",
+    blocks: [
+      {
+        type: "memory",
+        content,
+        isSuccess,
+      },
+    ],
+  };
+
+  // 添加到消息列表末尾
+  newMessages.push(memoryMessage);
   return newMessages;
 };

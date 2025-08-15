@@ -4,15 +4,20 @@ import React, {
   useCallback,
   useRef,
   useEffect,
+  useMemo,
 } from "react";
 import { useFiles } from "../useFiles";
 import type { Message } from "../../types";
 import type { SessionData } from "../../services/sessionManager";
-import { addUserMessageToMessages } from "../../utils/messageOperations";
+import {
+  addUserMessageToMessages,
+  addMemoryBlockToMessage,
+} from "../../utils/messageOperations";
 import { useAI } from "./useAI";
 import { useCommand } from "./useCommand";
 import { useInputHistory } from "./useInputHistory";
 import { useInputInsert } from "./useInputInsert";
+import { createMemoryManager } from "../../utils/memoryManager";
 
 export interface ChatContextType {
   messages: Message[];
@@ -97,6 +102,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     setMessages,
   );
 
+  // Use the Memory hook
+  const memoryManager = useMemo(() => createMemoryManager(workdir), [workdir]);
+
   // Use the Input Insert hook
   const { insertToInput, inputInsertHandler, setInputInsertHandler } =
     useInputInsert();
@@ -125,6 +133,27 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       // 添加到输入历史记录
       addToInputHistory(content);
 
+      // Check if this is a memory message (starts with #)
+      if (memoryManager.isMemoryMessage(content)) {
+        try {
+          await memoryManager.addMemory(content);
+          // 添加 MemoryBlock 到最后一个助手消息
+          setMessages((prev) =>
+            addMemoryBlockToMessage(prev, content.substring(1).trim(), true),
+          );
+        } catch (error) {
+          // 添加失败的 MemoryBlock 到最后一个助手消息
+          setMessages((prev) =>
+            addMemoryBlockToMessage(
+              prev,
+              `添加记忆失败: ${error instanceof Error ? error.message : String(error)}`,
+              false,
+            ),
+          );
+        }
+        return;
+      }
+
       // Check if this is a command (starts with ! as the first character)
       if (content.startsWith("!")) {
         const command = content.substring(1).trim();
@@ -140,7 +169,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       // 触发AI服务调用
       await sendAIMessage();
     },
-    [isLoading, executeCommand, addToInputHistory, setMessages, sendAIMessage],
+    [
+      isLoading,
+      executeCommand,
+      addToInputHistory,
+      setMessages,
+      sendAIMessage,
+      memoryManager,
+    ],
   );
 
   return (
