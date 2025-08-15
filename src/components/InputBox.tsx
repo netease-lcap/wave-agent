@@ -23,7 +23,7 @@ export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
 );
 
 export const InputBox: React.FC = () => {
-  const { isCommandRunning, isLoading } = useChat();
+  const { isLoading } = useChat();
 
   // 基础输入状态
   const {
@@ -154,7 +154,7 @@ export const InputBox: React.FC = () => {
 
   return (
     <Box borderStyle="single" borderColor="gray" paddingX={1} paddingY={1}>
-      <Box flexDirection="column">
+      <Box flexDirection="column" width={"100%"}>
         {showFileSelector && (
           <FileSelector
             files={filteredFiles}
@@ -181,7 +181,7 @@ export const InputBox: React.FC = () => {
           />
         )}
 
-        <Box justifyContent="space-between">
+        <Box width="100%" flexDirection="row" justifyContent="space-between">
           <Text color={isPlaceholder ? "gray" : "white"}>
             {shouldShowCursor ? (
               <>
@@ -197,9 +197,7 @@ export const InputBox: React.FC = () => {
           </Text>
           {isLoading && (
             <Text color="red" bold>
-              {isCommandRunning
-                ? "[Tool execution in progress...]"
-                : "[Press Esc to abort]"}
+              {"[Press Esc to abort]"}
             </Text>
           )}
         </Box>

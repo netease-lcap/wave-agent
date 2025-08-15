@@ -188,7 +188,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
         padding={1}
         marginBottom={1}
       >
-        <Text color="yellow">⚡ No commands found for "{searchQuery}"</Text>
+        <Text color="yellow">No commands found for "{searchQuery}"</Text>
         <Text dimColor>Press Escape to cancel</Text>
       </Box>
     );
@@ -200,22 +200,25 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       borderStyle="single"
       borderColor="magenta"
       padding={1}
+      gap={1}
       marginBottom={1}
     >
-      <Text color="magenta" bold>
-        ⚡ Command Selector {searchQuery && `(filtering: "${searchQuery}")`}
-      </Text>
+      <Box>
+        <Text color="magenta" bold>
+          Command Selector {searchQuery && `(filtering: "${searchQuery}")`}
+        </Text>
+      </Box>
 
       {/* 错误显示 */}
       {error && (
-        <Box marginTop={1} marginBottom={1}>
+        <Box>
           <Text color="red">❌ Error: {error}</Text>
         </Box>
       )}
 
       {/* 警告显示 */}
       {warning && (
-        <Box marginTop={1} marginBottom={1}>
+        <Box>
           <Text color="yellow">⚠️ {warning}</Text>
         </Box>
       )}
@@ -241,7 +244,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
         </Box>
       ))}
 
-      <Box marginTop={1}>
+      <Box>
         <Text dimColor>
           Use ↑↓ to navigate, Enter to select, Escape to cancel
         </Text>
