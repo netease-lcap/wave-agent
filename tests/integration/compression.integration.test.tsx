@@ -279,6 +279,8 @@ describe("Message Compression Integration Tests", () => {
   }, 10000); // 增加超时时间
 
   it("should compress messages from 7th last to previous compressed message when session already contains compression", async () => {
+    // 测试场景：当会话中已经包含压缩消息时，新的压缩操作应该只压缩从上一个压缩点到倒数第8条消息之间的内容
+    // 这确保了：1) 避免重复压缩 2) 保留最近7条消息作为上下文 3) 渐进式压缩提高效率
     // 创建一个包含已压缩消息的 session
     const now = new Date().toISOString();
 
@@ -368,9 +370,10 @@ describe("Message Compression Integration Tests", () => {
     expect(compressCall[0].messages.length).toBeGreaterThan(0);
 
     // 验证 compressCall 里的 messages 应该是从倒数第7条到上一个压缩消息之间的消息
+    // 根据aiManager.ts中的逻辑：currentMessages.slice(0, -7) 保留最近7条消息不被压缩
     const messages = compressCall[0].messages;
 
-    // 检查压缩的消息范围：应该从压缩消息之后到倒数第7条消息
+    // 检查压缩的消息范围：应该从压缩消息之后到倒数第8条消息（因为保留最近7条）
     const userMessages = messages.filter((msg) => msg.role === "user");
 
     // 验证包含的消息内容（应该包含压缩消息之后的一些用户消息）
@@ -389,6 +392,10 @@ describe("Message Compression Integration Tests", () => {
     expect(hasUser5).toBe(true);
 
     // 验证包含到倒数第7条的消息（应该包含 User message 13，因为最后一条是我们新发送的消息）
+    // 解释：系统保留最近7条消息不被压缩，User message 13是倒数第8条，正好是压缩范围的结束点
+    // 消息布局：[...历史消息, User13, Asst13, User14, Asst14, User15, Asst15, 新用户消息, 正在生成的AI回复]
+    // 保留的7条：正在生成的AI回复(-1), 新用户消息(-2), Asst15(-3), User15(-4), Asst14(-5), User14(-6), Asst13(-7)
+    // 所以User13是倒数第8条，应该被包含在压缩范围内
     const hasUser13 = userMessages.some((msg) => {
       const content = Array.isArray(msg.content)
         ? msg.content
