@@ -15,7 +15,6 @@ export interface Message {
 
 export type MessageBlock =
   | TextBlock
-  | FileBlock
   | ErrorBlock
   | ToolBlock
   | ImageBlock
@@ -27,13 +26,6 @@ export type MessageBlock =
 export interface TextBlock {
   type: "text";
   content: string;
-}
-
-export interface FileBlock {
-  type: "file";
-  path: string;
-  content: string;
-  action: "create" | "update" | "delete";
 }
 
 export interface ErrorBlock {

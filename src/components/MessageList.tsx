@@ -87,25 +87,6 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
                       </Box>
                     )}
 
-                    {block.type === "file" && (
-                      <Box
-                        flexDirection="column"
-                        borderStyle="single"
-                        borderColor="blue"
-                        padding={1}
-                      >
-                        <Text color="blue" bold>
-                          📄{" "}
-                          {block.action === "create"
-                            ? "Create"
-                            : block.action === "update"
-                              ? "Update"
-                              : "Delete"}
-                          : {block.path}
-                        </Text>
-                      </Box>
-                    )}
-
                     {block.type === "error" && (
                       <Box>
                         <Text color="red">❌ Error: {block.content}</Text>

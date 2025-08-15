@@ -26,32 +26,10 @@ describe("MessageList Component", () => {
     ],
   });
 
-  const createFileMessage = (
-    path: string,
-    action: "create" | "update" | "delete",
-    content: string = "",
-  ): Message => ({
-    role: "assistant",
-    blocks: [
-      {
-        type: "file",
-        path,
-        action,
-        content,
-      },
-    ],
-  });
-
   const createLargeMessage = (id: number): Message => ({
     role: "assistant",
     blocks: [
       { type: "text", content: `Large message ${id}` },
-      {
-        type: "file",
-        path: `src/file${id}.ts`,
-        action: "create",
-        content: 'logger.info("large content");'.repeat(100),
-      },
       { type: "text", content: "More content here" },
       { type: "error", content: "Some error occurred" },
     ],
@@ -141,23 +119,16 @@ describe("MessageList Component", () => {
       expect(lastFrame()).toContain("Hi there - Message 2");
     });
 
-    it("should render file operations", () => {
-      const messages = [
-        createFileMessage("src/test.ts", "create", 'logger.info("test");'),
+    it("should render error blocks", () => {
+      const messages: Message[] = [
+        {
+          role: "assistant",
+          blocks: [{ type: "error", content: "Something went wrong" }],
+        },
       ];
       const { lastFrame } = render(<MessageList messages={messages} />);
 
-      expect(lastFrame()).toContain("📄 Create: src/test.ts");
-      // File content is no longer displayed
-      expect(lastFrame()).not.toContain('logger.info("test");');
-    });
-
-    it("should render delete operations without content", () => {
-      const messages = [createFileMessage("src/test.ts", "delete")];
-      const { lastFrame } = render(<MessageList messages={messages} />);
-
-      expect(lastFrame()).toContain("📄 Delete: src/test.ts");
-      expect(lastFrame()).not.toContain("```");
+      expect(lastFrame()).toContain("❌ Error: Something went wrong");
     });
 
     it("should render message numbers correctly", () => {
@@ -374,12 +345,6 @@ describe("MessageList Component", () => {
         role: "assistant",
         blocks: [
           { type: "text", content: "Here is the solution:" },
-          {
-            type: "file",
-            path: "src/test.ts",
-            action: "create",
-            content: "const test = 1;",
-          },
           { type: "text", content: "And here is an error:" },
           { type: "error", content: "Something went wrong" },
         ],
@@ -388,9 +353,6 @@ describe("MessageList Component", () => {
       const { lastFrame } = render(<MessageList messages={[complexMessage]} />);
 
       expect(lastFrame()).toContain("Here is the solution:");
-      expect(lastFrame()).toContain("📄 Create: src/test.ts");
-      // File content is no longer displayed
-      expect(lastFrame()).not.toContain("const test = 1;");
       expect(lastFrame()).toContain("And here is an error:");
       expect(lastFrame()).toContain("❌ Error: Something went wrong");
     });
