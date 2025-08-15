@@ -12,10 +12,7 @@ export interface MessageListProps {
   isLoading?: boolean;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({
-  messages,
-  isLoading,
-}) => {
+export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   // 预处理消息，添加分组信息（仅用于显示）
   const processedMessages = useMemo(
     () => processMessageGroups(messages),
@@ -153,13 +150,6 @@ export const MessageList: React.FC<MessageListProps> = ({
           );
         })}
       </Box>
-
-      {/* 加载状态显示 */}
-      {isLoading && (
-        <Box>
-          <Text color="yellow">🤔 AI is thinking...</Text>
-        </Box>
-      )}
 
       {/* 底部信息和快捷键提示 */}
       {messages.length > 0 && (

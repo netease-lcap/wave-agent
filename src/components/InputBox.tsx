@@ -1,23 +1,26 @@
-import React from 'react';
-import { Box, Text } from 'ink';
-import { FileSelector } from './FileSelector';
-import { CommandSelector } from './CommandSelector';
-import { BashHistorySelector } from './BashHistorySelector';
-import { useChat } from '../contexts/useChat';
-import { useInputState } from '../hooks/useInputState';
-import { useFileSelector } from '../hooks/useFileSelector';
-import { useCommandSelector } from '../hooks/useCommandSelector';
-import { useBashHistorySelector } from '../hooks/useBashHistorySelector';
-import { useInputHistory } from '../hooks/useInputHistory';
-import { useTextInsertion } from '../hooks/useTextInsertion';
-import { useInputKeyboardHandler } from '../hooks/useInputKeyboardHandler';
-import { useImageManager } from '../hooks/useImageManager';
-import { useClipboardPaste } from '../hooks/useClipboardPaste';
+import React from "react";
+import { Box, Text } from "ink";
+import { FileSelector } from "./FileSelector";
+import { CommandSelector } from "./CommandSelector";
+import { BashHistorySelector } from "./BashHistorySelector";
+import { useChat } from "../contexts/useChat";
+import { useInputState } from "../hooks/useInputState";
+import { useFileSelector } from "../hooks/useFileSelector";
+import { useCommandSelector } from "../hooks/useCommandSelector";
+import { useBashHistorySelector } from "../hooks/useBashHistorySelector";
+import { useInputHistory } from "../hooks/useInputHistory";
+import { useTextInsertion } from "../hooks/useTextInsertion";
+import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler";
+import { useImageManager } from "../hooks/useImageManager";
+import { useClipboardPaste } from "../hooks/useClipboardPaste";
 
 export const INPUT_PLACEHOLDER_TEXT =
-  'Type your message (use @ to reference files, / for commands, ! for bash history, Shift+Enter for new line)...';
+  "Type your message (use @ to reference files, / for commands, ! for bash history, Shift+Enter for new line)...";
 
-export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(0, 10);
+export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
+  0,
+  10,
+);
 
 export const InputBox: React.FC = () => {
   const { isCommandRunning, isLoading } = useChat();
@@ -88,55 +91,62 @@ export const InputBox: React.FC = () => {
   const { handlePasteImage } = useClipboardPaste(addImage, insertTextAtCursor);
 
   // 键盘处理
-  const { handleFileSelect, handleCommandSelect, handleCommandGenerated, handleBashHistorySelect } =
-    useInputKeyboardHandler({
-      inputText,
-      setInputText,
-      cursorPosition,
-      setCursorPosition,
-      moveCursorLeft,
-      moveCursorRight,
-      moveCursorToStart,
-      moveCursorToEnd,
-      deleteCharAtCursor,
-      insertTextAtCursor,
-      clearInput,
-      resetHistoryNavigation,
-      navigateHistory,
-      handlePasteImage,
-      attachedImages,
-      clearImages,
-      showFileSelector,
-      activateFileSelector,
-      handleFileSelect: handleFileSelectorSelect,
-      handleCancelFileSelect,
-      updateSearchQuery,
-      checkForAtDeletion,
-      atPosition,
-      showCommandSelector,
-      activateCommandSelector,
-      handleCommandSelect: handleCommandSelectorSelect,
-      handleCommandGenerated: handleCommandSelectorGenerated,
-      handleCancelCommandSelect,
-      updateCommandSearchQuery,
-      checkForSlashDeletion,
-      slashPosition,
-      showBashHistorySelector,
-      activateBashHistorySelector,
-      handleBashHistorySelect: handleBashHistorySelectorSelect,
-      handleCancelBashHistorySelect,
-      updateBashHistorySearchQuery,
-      checkForExclamationDeletion,
-      exclamationPosition,
-    });
+  const {
+    handleFileSelect,
+    handleCommandSelect,
+    handleCommandGenerated,
+    handleBashHistorySelect,
+  } = useInputKeyboardHandler({
+    inputText,
+    setInputText,
+    cursorPosition,
+    setCursorPosition,
+    moveCursorLeft,
+    moveCursorRight,
+    moveCursorToStart,
+    moveCursorToEnd,
+    deleteCharAtCursor,
+    insertTextAtCursor,
+    clearInput,
+    resetHistoryNavigation,
+    navigateHistory,
+    handlePasteImage,
+    attachedImages,
+    clearImages,
+    showFileSelector,
+    activateFileSelector,
+    handleFileSelect: handleFileSelectorSelect,
+    handleCancelFileSelect,
+    updateSearchQuery,
+    checkForAtDeletion,
+    atPosition,
+    showCommandSelector,
+    activateCommandSelector,
+    handleCommandSelect: handleCommandSelectorSelect,
+    handleCommandGenerated: handleCommandSelectorGenerated,
+    handleCancelCommandSelect,
+    updateCommandSearchQuery,
+    checkForSlashDeletion,
+    slashPosition,
+    showBashHistorySelector,
+    activateBashHistorySelector,
+    handleBashHistorySelect: handleBashHistorySelectorSelect,
+    handleCancelBashHistorySelect,
+    updateBashHistorySearchQuery,
+    checkForExclamationDeletion,
+    exclamationPosition,
+  });
 
   const isPlaceholder = !inputText;
-  const placeholderText = INPUT_PLACEHOLDER_TEXT;
+  const placeholderText = isLoading
+    ? "🤔 AI is thinking..."
+    : INPUT_PLACEHOLDER_TEXT;
 
   // 将文本拆分为光标前、光标位置、光标后三部分
   const displayText = isPlaceholder ? placeholderText : inputText;
   const beforeCursor = displayText.substring(0, cursorPosition);
-  const atCursor = cursorPosition < displayText.length ? displayText[cursorPosition] : ' ';
+  const atCursor =
+    cursorPosition < displayText.length ? displayText[cursorPosition] : " ";
   const afterCursor = displayText.substring(cursorPosition + 1);
 
   return (
@@ -169,7 +179,7 @@ export const InputBox: React.FC = () => {
         )}
 
         <Box>
-          <Text color={isPlaceholder ? 'gray' : 'white'}>
+          <Text color={isPlaceholder ? "gray" : "white"}>
             {beforeCursor}
             <Text backgroundColor="white" color="black">
               {atCursor}
@@ -179,7 +189,9 @@ export const InputBox: React.FC = () => {
           {isLoading && (
             <Box marginLeft={2}>
               <Text color="red" bold>
-                {isCommandRunning ? '[Tool execution in progress...]' : '[Press Esc to abort]'}
+                {isCommandRunning
+                  ? "[Tool execution in progress...]"
+                  : "[Press Esc to abort]"}
               </Text>
             </Box>
           )}
