@@ -75,15 +75,29 @@ export const scanDirectory = async (
           const stats = await fs.promises.stat(fullPath);
           const fileSize = stats.size;
 
-          // 文件大小限制检查
+          // 文件大小限制检查 - 改为警告而非错误
           if (context && fileSize > context.maxFileSize) {
             const fileSizeMB = (fileSize / (1024 * 1024)).toFixed(2);
             const limitSizeMB = (context.maxFileSize / (1024 * 1024)).toFixed(
               2,
             );
-            throw new Error(
-              `FILE_SIZE_LIMIT: File "${entryRelativePath}" (${fileSizeMB}MB) exceeds size limit of ${limitSizeMB}MB. Please exclude large files.`,
+
+            // 记录警告日志
+            logger.warn(
+              `FILE_SIZE_LIMIT: File "${entryRelativePath}" (${fileSizeMB}MB) exceeds size limit of ${limitSizeMB}MB. Content will be empty.`,
             );
+
+            // 添加文件节点但不读取内容
+            items.push({
+              label: entry.name,
+              path: entryRelativePath,
+              code: "", // 大文件的code字段设置为空
+              children: [],
+              isBinary: isBinary(entry.name),
+              fileSize: fileSize,
+              oversized: true, // 标记为超大文件
+            });
+            continue; // 跳过后续处理
           }
 
           if (isBinary(entry.name)) {
@@ -108,28 +122,28 @@ export const scanDirectory = async (
             });
           }
         } catch (error) {
-          // 如果是我们的安全限制错误，重新抛出
+          // FILE_COUNT_LIMIT错误需要重新抛出
           if (
             error instanceof Error &&
-            (error.message.startsWith("FILE_COUNT_LIMIT:") ||
-              error.message.startsWith("FILE_SIZE_LIMIT:"))
+            error.message.startsWith("FILE_COUNT_LIMIT:")
           ) {
             throw error;
           }
+          // FILE_SIZE_LIMIT错误已经在上面处理，不再重新抛出
           // Skip files that can't be read
           continue;
         }
       }
     }
   } catch (error) {
-    // 如果是我们的安全限制错误，重新抛出
+    // FILE_COUNT_LIMIT错误需要重新抛出
     if (
       error instanceof Error &&
-      (error.message.startsWith("FILE_COUNT_LIMIT:") ||
-        error.message.startsWith("FILE_SIZE_LIMIT:"))
+      error.message.startsWith("FILE_COUNT_LIMIT:")
     ) {
       throw error;
     }
+    // FILE_SIZE_LIMIT错误已经在上面处理，不再重新抛出
     logger.error(`Error scanning directory ${dirPath}:`, error);
   }
 

@@ -184,14 +184,15 @@ export class FileManager {
     } catch (error) {
       logger.error("Error syncing files from disk:", error);
       this.setFlatFiles([]);
-      // 重新抛出安全限制错误，让调用者处理
+      // FILE_SIZE_LIMIT错误不再重新抛出，只记录日志
+      // FILE_COUNT_LIMIT错误仍然需要重新抛出，因为这是严重的限制
       if (
         error instanceof Error &&
-        (error.message.startsWith("FILE_COUNT_LIMIT:") ||
-          error.message.startsWith("FILE_SIZE_LIMIT:"))
+        error.message.startsWith("FILE_COUNT_LIMIT:")
       ) {
         throw error;
       }
+      // FILE_SIZE_LIMIT错误已经在scanDirectory中处理，不再需要重新抛出
     }
   }
 
@@ -227,19 +228,27 @@ export class FileManager {
         }
 
         // 对于二进制文件，不设置内容，只添加文件节点
-        const fileContent = isBinary(targetPath) ? "" : content || "";
+        let fileContent = isBinary(targetPath) ? "" : content || "";
+        let oversized = false;
 
         // 检查文件大小限制（基于内容长度估算）
-        const estimatedSize = Buffer.byteLength(fileContent, "utf8");
+        let estimatedSize = Buffer.byteLength(fileContent, "utf8");
         if (estimatedSize > this.safetyConfig.maxFileSize) {
           const fileSizeMB = (estimatedSize / (1024 * 1024)).toFixed(2);
           const limitSizeMB = (
             this.safetyConfig.maxFileSize /
             (1024 * 1024)
           ).toFixed(2);
-          throw new Error(
-            `FILE_SIZE_LIMIT: File "${targetPath}" (${fileSizeMB}MB) exceeds size limit of ${limitSizeMB}MB.`,
+
+          // 记录警告而非抛出错误
+          logger.warn(
+            `FILE_SIZE_LIMIT: File "${targetPath}" (${fileSizeMB}MB) exceeds size limit of ${limitSizeMB}MB. Content will be empty.`,
           );
+
+          // 将大文件的内容设置为空
+          fileContent = "";
+          oversized = true;
+          estimatedSize = 0; // 重新计算大小
         }
 
         // 直接添加到flatFiles中
@@ -255,6 +264,7 @@ export class FileManager {
               code: fileContent,
               isBinary: isBinary(targetPath),
               fileSize: estimatedSize,
+              oversized,
             };
             return newFlatFiles;
           } else {
@@ -267,6 +277,7 @@ export class FileManager {
                 children: [],
                 isBinary: isBinary(targetPath),
                 fileSize: estimatedSize,
+                oversized,
               },
             ];
           }
@@ -275,14 +286,14 @@ export class FileManager {
       // 目录不需要添加到flatFiles中
     } catch (error) {
       logger.error("Error adding file to tree:", error);
-      // 重新抛出安全限制错误
+      // FILE_COUNT_LIMIT错误仍然需要重新抛出
       if (
         error instanceof Error &&
-        (error.message.startsWith("FILE_COUNT_LIMIT:") ||
-          error.message.startsWith("FILE_SIZE_LIMIT:"))
+        error.message.startsWith("FILE_COUNT_LIMIT:")
       ) {
         throw error;
       }
+      // FILE_SIZE_LIMIT错误不再重新抛出，已经在上面处理
     }
   }
 
