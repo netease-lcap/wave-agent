@@ -248,7 +248,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
 
     // 只在折叠状态下限制显示行数
     if (!isExpanded) {
-      const MAX_DISPLAY_LINES = 100;
+      const MAX_DISPLAY_LINES = 50;
       if (lines.length > MAX_DISPLAY_LINES) {
         const truncatedLines = lines.slice(0, MAX_DISPLAY_LINES);
         truncatedLines.push({
