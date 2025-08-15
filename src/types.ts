@@ -88,7 +88,6 @@ export interface CommandOutputBlock {
 export interface CompressBlock {
   type: "compress";
   content: string;
-  compressedMessageCount: number; // 记录压缩了多少条消息
 }
 
 export interface AIRequest {

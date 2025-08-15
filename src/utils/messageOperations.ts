@@ -265,7 +265,6 @@ export const addCompressBlockToMessage = (
   messages: Message[],
   insertIndex: number,
   compressContent: string,
-  compressedMessageCount: number,
 ): Message[] => {
   const newMessages = [...messages];
 
@@ -276,7 +275,6 @@ export const addCompressBlockToMessage = (
       {
         type: "compress",
         content: compressContent,
-        compressedMessageCount: compressedMessageCount,
       },
     ],
   };

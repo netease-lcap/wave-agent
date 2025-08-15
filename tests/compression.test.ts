@@ -45,14 +45,12 @@ describe("Message Compression Tests", () => {
       ];
 
       const compressContent = "压缩内容：之前的对话涉及创建组件和文件操作";
-      const compressedMessageCount = 6;
       const insertIndex = 2;
 
       const result = addCompressBlockToMessage(
         messages,
         insertIndex,
         compressContent,
-        compressedMessageCount,
       );
 
       expect(result).toHaveLength(5); // 原来4条 + 新增1条
@@ -62,9 +60,6 @@ describe("Message Compression Tests", () => {
       const compressBlock = result[insertIndex].blocks[0];
       if (compressBlock.type === "compress") {
         expect(compressBlock.content).toBe(compressContent);
-        expect(compressBlock.compressedMessageCount).toBe(
-          compressedMessageCount,
-        );
       } else {
         throw new Error("Expected compress block");
       }
@@ -86,7 +81,6 @@ describe("Message Compression Tests", () => {
         messages,
         0,
         "Compressed content",
-        2,
       );
 
       expect(resultBeginning).toHaveLength(2);
@@ -98,7 +92,6 @@ describe("Message Compression Tests", () => {
         messages,
         1,
         "Compressed content",
-        2,
       );
 
       expect(resultEnd).toHaveLength(2);
@@ -115,7 +108,6 @@ describe("Message Compression Tests", () => {
         messages,
         0,
         "Test compression content",
-        5,
       );
 
       const compressMessage = result[0];
@@ -125,7 +117,6 @@ describe("Message Compression Tests", () => {
       const compressBlock = compressMessage.blocks[0];
       if (compressBlock.type === "compress") {
         expect(compressBlock.content).toBe("Test compression content");
-        expect(compressBlock.compressedMessageCount).toBe(5);
       } else {
         throw new Error("Expected compress block");
       }
@@ -161,7 +152,6 @@ describe("Message Compression Tests", () => {
         longMessageList,
         5,
         "Compressed previous messages",
-        6,
       );
 
       expect(compressed.length).toBe(longMessageList.length + 1);
@@ -243,7 +233,6 @@ describe("Message Compression Tests", () => {
         originalMessages.slice(2), // Keep last 4 messages
         0, // Insert at beginning
         compressedContent,
-        4, // Compressed 4 messages
       );
 
       expect(finalMessages).toHaveLength(5); // 4 remaining + 1 compress block

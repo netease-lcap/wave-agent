@@ -275,7 +275,6 @@ export class AIManager {
                 currentMessages,
                 insertIndex,
                 compressedContent,
-                6,
               );
               this.setMessages(currentMessages);
 

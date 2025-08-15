@@ -305,7 +305,6 @@ describe("Message Compression Integration Tests", () => {
               {
                 type: "compress" as const,
                 content: "压缩内容：包含了前面6条消息的总结",
-                compressedMessageCount: 6,
               },
             ],
           },
