@@ -61,7 +61,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               <Box marginLeft={2} flexDirection="column" gap={1} marginTop={1}>
                 {message.blocks.map((block, blockIndex) => (
                   <Box key={blockIndex}>
-                    {block.type === "text" && (
+                    {block.type === "text" && block.content && (
                       <Box>
                         <Text>{block.content}</Text>
                       </Box>
