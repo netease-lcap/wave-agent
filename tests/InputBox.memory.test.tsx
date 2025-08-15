@@ -27,6 +27,7 @@ describe("InputBox Memory Mode", () => {
 
     const output = lastFrame();
     expect(output).toContain("📝 Memory Mode");
+    expect(output).toContain("Add memory content (remove # to exit)");
     // 当有输入时，不会显示 placeholder，所以只检查模式提示
     expect(output).toContain("#");
   });
@@ -48,6 +49,7 @@ describe("InputBox Memory Mode", () => {
 
     const output = lastFrame();
     expect(output).toContain("📝 Memory Mode");
+    expect(output).toContain("Add memory content (remove # to exit)");
   });
 
   it("should not show memory mode for normal input", async () => {
@@ -59,7 +61,7 @@ describe("InputBox Memory Mode", () => {
 
     const output = lastFrame();
     expect(output).not.toContain("📝 Memory Mode");
-    expect(output).not.toContain("Add memory content (remove # to exit)...");
+    expect(output).not.toContain("Add memory content (remove # to exit)");
   });
 
   it("should exit memory mode when # is removed", async () => {
@@ -117,6 +119,7 @@ describe("InputBox Memory Mode", () => {
 
     const output = lastFrame();
     expect(output).toContain("📝 Memory Mode");
+    expect(output).toContain("Add memory content (remove # to exit)");
     expect(output).toContain("# remember this");
   });
 
@@ -133,5 +136,6 @@ describe("InputBox Memory Mode", () => {
 
     output = lastFrame();
     expect(output).toContain("📝 Memory Mode");
+    expect(output).toContain("Add memory content (remove # to exit)");
   });
 });

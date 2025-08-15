@@ -145,9 +145,7 @@ export const InputBox: React.FC = () => {
   const isPlaceholder = !inputText;
   const placeholderText = isLoading
     ? `AI is thinking... (Tokens: ${totalTokens.toLocaleString()})`
-    : isMemoryMode
-      ? "Add memory content (remove # to exit)..."
-      : INPUT_PLACEHOLDER_TEXT;
+    : INPUT_PLACEHOLDER_TEXT;
 
   // 将文本拆分为光标前、光标位置、光标后三部分
   const displayText = isPlaceholder ? placeholderText : inputText;
@@ -168,9 +166,12 @@ export const InputBox: React.FC = () => {
       <Box flexDirection="column" width={"100%"}>
         {/* 记忆模式提示 */}
         {isMemoryMode && (
-          <Box marginBottom={1}>
+          <Box marginBottom={1} flexDirection="column">
             <Text color="blue" bold>
               📝 Memory Mode
+            </Text>
+            <Text color="gray" dimColor>
+              Add memory content (remove # to exit)
             </Text>
           </Box>
         )}
