@@ -147,6 +147,23 @@ describe("Message Compression Integration Tests", () => {
     expect(compressCall[0]).toHaveProperty("messages");
     expect(Array.isArray(compressCall[0].messages)).toBe(true);
     expect(compressCall[0].messages.length).toBeGreaterThan(0);
+
+    // 验证 compressCall 里的 messages 应该包括 user1 到 user6
+    const messages = compressCall[0].messages;
+    const userMessages = messages.filter((msg) => msg.role === "user");
+
+    // 验证包含user1到user6的消息内容
+    for (let i = 1; i <= 6; i++) {
+      const expectedUserContent = `User message ${i}: Please help me with task ${i}`;
+      const hasUserMessage = userMessages.some((msg) => {
+        if (typeof msg.content === "string")
+          return msg.content === expectedUserContent;
+        if (msg.content[0].type === "text") {
+          return msg.content[0].text === expectedUserContent;
+        }
+      });
+      expect(hasUserMessage).toBe(true);
+    }
   }, 15000); // 增加超时时间到 15 秒
 
   it("should not trigger compression when token usage is below threshold", async () => {
@@ -259,62 +276,5 @@ describe("Message Compression Integration Tests", () => {
 
     // 验证应用仍然正常运行（没有崩溃）
     expect(renderResult.lastFrame()).toContain("Type your message");
-  }, 10000); // 增加超时时间
-
-  it("should compress exactly 6 messages when triggered", async () => {
-    // 创建包含足够多消息的 session（生成12对消息，共24条，确保超过7条以便压缩6条）
-    const mockSession = createMockSession("test-session-compress-count", 12);
-
-    // 写入 session 文件
-    await fs.promises.writeFile(
-      sessionFile,
-      JSON.stringify(mockSession),
-      "utf-8",
-    );
-
-    let compressedMessages: unknown[] = [];
-
-    // Mock AI 服务
-    const mockCallAgent = vi.mocked(aiService.callAgent);
-    const mockCompressMessages = vi.mocked(aiService.compressMessages);
-
-    mockCallAgent.mockImplementation(async () => {
-      return {
-        content: "Response",
-        usage: {
-          prompt_tokens: 50000,
-          completion_tokens: 20000,
-          total_tokens: 70000, // 触发压缩
-        },
-      };
-    });
-
-    mockCompressMessages.mockImplementation(async ({ messages }) => {
-      compressedMessages = messages;
-      return "压缩内容：6条消息的总结";
-    });
-
-    // 渲染 App 组件
-    const renderResult = render(
-      <App workdir={testDir} sessionToRestore={mockSession} />,
-    );
-    const { stdin } = renderResult;
-
-    // 等待渲染完成
-    await waitForText(renderResult, "Type your message", { timeout: 10000 });
-
-    // 发送消息触发压缩
-    stdin.write("Trigger compression");
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    stdin.write("\r");
-
-    // 等待处理完成
-    await waitForAIThinkingStart(renderResult);
-    await waitForAIThinkingEnd(renderResult);
-
-    // 验证压缩了正确数量的消息
-    expect(mockCompressMessages).toHaveBeenCalledTimes(1);
-    // 根据 aiManager.ts 的逻辑，应该压缩倒数第7到第2条消息（6条）
-    expect(compressedMessages.length).toBeGreaterThan(0);
   }, 10000); // 增加超时时间
 });

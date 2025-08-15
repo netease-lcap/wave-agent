@@ -255,7 +255,7 @@ export class AIManager {
 
           // 移除后六条消息进行压缩
           if (currentMessages.length > 6) {
-            const messagesToCompress = currentMessages.slice(-7, -1); // 移除后六条（不包含当前正在处理的消息）
+            const messagesToCompress = currentMessages.slice(0, -7); // 移除后六条（不包含当前正在处理的消息）
             const recentChatMessages =
               convertMessagesForAPI(messagesToCompress);
 
@@ -267,14 +267,9 @@ export class AIManager {
 
               // 计算插入位置（后六条之前）
               const insertIndex = currentMessages.length - 7;
-
-              // 删除后六条消息并在该位置插入压缩块
-              const newMessages = [...currentMessages];
-              // 移除后六条消息
-              newMessages.splice(-7, 6);
               // 在指定位置插入压缩块
               currentMessages = addCompressBlockToMessage(
-                newMessages,
+                currentMessages,
                 insertIndex,
                 compressedContent,
                 6,

@@ -32,16 +32,12 @@ function safeToolArguments(args: string): string {
 /**
  * 转换消息格式为API调用格式，遇到压缩消息时停止
  * @param messages 消息列表
- * @param userMsgCount 用户消息数量限制，默认为3（当遇到压缩块时会忽略此参数）
  * @returns 转换后的API消息格式列表
  */
 export function convertMessagesForAPI(
   messages: Message[],
-  userMsgCount: number = 3,
 ): ChatCompletionMessageParam[] {
   const recentMessages: ChatCompletionMessageParam[] = [];
-  let userMessageCount = 0;
-  let foundCompressBlock = false;
 
   const startIndex = messages.length - 1;
   for (let i = startIndex; i >= 0; i--) {
@@ -52,8 +48,6 @@ export function convertMessagesForAPI(
       message.role === "assistant" &&
       message.blocks.some((block) => block.type === "compress")
     ) {
-      foundCompressBlock = true;
-
       // 将压缩块的内容作为助手消息添加到历史中
       const compressBlock = message.blocks.find(
         (block) => block.type === "compress",
@@ -64,11 +58,6 @@ export function convertMessagesForAPI(
           content: `[压缩消息摘要] ${compressBlock.content}`,
         });
       }
-      break;
-    }
-
-    // 如果没有遇到压缩块，继续按原逻辑处理，但检查用户消息数量
-    if (!foundCompressBlock && userMessageCount >= userMsgCount) {
       break;
     }
 
@@ -198,7 +187,6 @@ export function convertMessagesForAPI(
           role: "user",
           content: contentParts,
         });
-        userMessageCount++;
       }
     }
   }
