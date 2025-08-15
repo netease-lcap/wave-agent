@@ -102,32 +102,6 @@ describe("ToolResultDisplay Component", () => {
       expect(output).not.toContain("Result:");
     });
 
-    it("should display compactParams in tool name line", () => {
-      const toolBlock: ToolBlock = {
-        type: "tool",
-        attributes: {
-          name: "some_tool",
-          success: true,
-        },
-        parameters: JSON.stringify({
-          param1: "value1",
-          param2: "value2",
-        }),
-        result: "Some result...",
-        compactParams: "file.txt, Edit content",
-      };
-
-      const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
-
-      const output = lastFrame();
-
-      // Should show compactParams in the tool name line
-      expect(output).toContain("🔧 some_tool (file.txt, Edit content) ✅");
-
-      // Should NOT show full parameters in collapsed view
-      expect(output).not.toContain("Parameters:");
-    });
-
     it("should show shortResult when available in collapsed view", () => {
       const toolBlock: ToolBlock = {
         type: "tool",

@@ -45,7 +45,6 @@ export interface ToolBlock {
   parameters?: string;
   result?: string;
   shortResult?: string; // 添加 shortResult 字段
-  compactParams?: string; // 添加紧凑参数显示字段
   attributes?: {
     id?: string;
     name?: string;

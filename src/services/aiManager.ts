@@ -318,12 +318,6 @@ export class AIManager {
             const toolArgs = JSON.parse(toolCall.function?.arguments || "{}");
 
             // 设置工具开始执行状态
-            // 获取工具插件以生成 compactParams
-            const toolPlugin = toolRegistry
-              .list()
-              .find((plugin) => plugin.name === toolCall.function?.name);
-            const compactParams = toolPlugin?.formatCompactParams?.(toolArgs);
-
             currentMessages = updateToolBlockInMessage(
               currentMessages,
               toolCall.id || "",
@@ -335,7 +329,6 @@ export class AIManager {
               true, // isRunning: true
               toolCall.function?.name || "",
               undefined,
-              compactParams,
             );
             this.setMessages(currentMessages);
 
@@ -370,7 +363,6 @@ export class AIManager {
                 false, // isRunning: false
                 toolCall.function?.name || "",
                 toolResult.shortResult,
-                compactParams,
               );
               this.setMessages(currentMessages);
 
@@ -408,7 +400,6 @@ export class AIManager {
                 false,
                 toolCall.function?.name || "",
                 undefined,
-                compactParams,
               );
               this.setMessages(currentMessages);
             }

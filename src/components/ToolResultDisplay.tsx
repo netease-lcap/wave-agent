@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Box, Text } from "ink";
 import type { ToolBlock } from "../types";
+import { toolRegistry } from "../plugins/tools";
 
 interface ToolResultDisplayProps {
   block: ToolBlock;
@@ -12,6 +13,31 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   isExpanded = false,
 }) => {
   const { parameters, result, attributes } = block;
+
+  // 动态计算 compactParams
+  const compactParams = useMemo(() => {
+    // 如果有工具名称和参数，尝试动态生成
+    if (attributes?.name && parameters) {
+      try {
+        const toolName = String(attributes.name);
+        const toolArgs = JSON.parse(parameters);
+
+        // 查找对应的工具插件
+        const toolPlugin = toolRegistry
+          .list()
+          .find((plugin) => plugin.name === toolName);
+
+        // 如果找到了工具插件且有 formatCompactParams 方法，使用它
+        if (toolPlugin?.formatCompactParams) {
+          return toolPlugin.formatCompactParams(toolArgs);
+        }
+      } catch {
+        // 解析参数失败，忽略错误
+      }
+    }
+
+    return undefined;
+  }, [attributes?.name, parameters]);
 
   const getStatusColor = () => {
     if (attributes?.isStreaming) return "blue";
@@ -55,8 +81,8 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
         <Text color="magenta">🔧 </Text>
         <Text color="white">{toolName}</Text>
         {/* 折叠状态下显示 compactParams */}
-        {!isExpanded && block.compactParams && (
-          <Text color="gray"> ({block.compactParams})</Text>
+        {!isExpanded && compactParams && (
+          <Text color="gray"> ({compactParams})</Text>
         )}
         <Text color={getStatusColor()}> {getStatusText()}</Text>
       </Box>
