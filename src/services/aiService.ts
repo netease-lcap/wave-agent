@@ -182,7 +182,7 @@ Remember: Execute tasks systematically and show updated TODOs after each complet
 
     // 如果有记忆内容，添加到系统提示词中
     if (memory && memory.trim()) {
-      systemContent += `\n\n## Memory Context (LCAP.md)\n\nThe following is important context and memory from previous interactions:\n\n${memory}`;
+      systemContent += `\n\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${memory}`;
     }
 
     // 添加系统提示词
