@@ -76,7 +76,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               )}
 
               <Box
-                marginLeft={shouldShowHeader ? 2 : 4}
+                marginLeft={2} // 统一使用2个字符的缩进，确保组内消息对齐
                 flexDirection="column"
                 gap={1}
                 marginTop={shouldShowHeader ? 1 : 0}
