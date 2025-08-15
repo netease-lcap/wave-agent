@@ -25,7 +25,7 @@ export const ChatInterface: React.FC = () => {
       {shouldUseRawMode ? <InputBox /> : <NonRawInput />}
 
       {/* Session ID 和 Token 统计显示 */}
-      <Box paddingX={1} marginTop={1}>
+      <Box paddingX={1}>
         <Text color="gray" dimColor>
           Session ID: <Text color="blue">{sessionId}</Text>
           {" | "}
