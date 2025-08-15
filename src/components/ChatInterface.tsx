@@ -33,7 +33,7 @@ export const ChatInterface: React.FC = () => {
           {" | "}
           Files: <Text color="yellow">{flatFiles.length}</Text>
           {" | "}
-          Total Tokens:{" "}
+          Last Message Tokens:{" "}
           <Text color="green">{totalTokens.toLocaleString()}</Text>
         </Text>
       </Box>
