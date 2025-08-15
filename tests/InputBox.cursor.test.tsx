@@ -143,7 +143,7 @@ describe("InputBox Cursor Display", () => {
 
     expect(lastFrame()).toContain("h");
     expect(lastFrame()).not.toContain(
-      "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory, Shift+Enter for new line)...",
+      "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory)...",
     );
 
     // 删除字符应该回到占位符模式

@@ -16,7 +16,7 @@ import { useClipboardPaste } from "../hooks/useClipboardPaste";
 import { useMemoryMode } from "../hooks/useMemoryMode";
 
 export const INPUT_PLACEHOLDER_TEXT =
-  "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory, Shift+Enter for new line)...";
+  "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory)...";
 
 export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
   0,

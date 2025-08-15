@@ -467,10 +467,10 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
             });
 
             // 处理缓冲区中的所有粘贴内容
-            let processedInput = pasteDebounceRef.current.buffer
-              // 在 mac 上按下 shift enter 会输入 \\\r，作为换行处理
-              .replace(/\\\r/g, "\n")
-              .replace(/\r/g, "\n");
+            let processedInput = pasteDebounceRef.current.buffer.replace(
+              /\r/g,
+              "\n",
+            );
 
             // 检查是否需要长文本压缩（超过200字符）
             if (processedInput.length > 200) {
