@@ -151,6 +151,23 @@ describe("SessionManager", () => {
       expect(mockFs.writeFile).not.toHaveBeenCalled();
     });
 
+    it("should not save when inputHistory is empty", async () => {
+      // Temporarily remove test environment
+      delete process.env.NODE_ENV;
+      mockFs.writeFile.mockResolvedValue(undefined);
+      mockFs.mkdir.mockResolvedValue(undefined);
+
+      await SessionManager.saveSession(
+        mockSessionId,
+        mockMessages,
+        [], // empty inputHistory
+        mockWorkdir,
+      );
+
+      expect(mockFs.writeFile).not.toHaveBeenCalled();
+      expect(mockFs.mkdir).not.toHaveBeenCalled();
+    });
+
     it("should use current time for startedAt if not provided", async () => {
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.writeFile.mockResolvedValue(undefined);
@@ -674,7 +691,7 @@ describe("SessionManager", () => {
       await SessionManager.saveSession(
         "prefix_middle_12345678",
         [],
-        [],
+        ["test input"],
         "/test",
       );
 
@@ -689,7 +706,7 @@ describe("SessionManager", () => {
       mockFs.writeFile.mockResolvedValue(undefined);
       mockFs.mkdir.mockResolvedValue(undefined);
 
-      await SessionManager.saveSession("short", [], [], "/test");
+      await SessionManager.saveSession("short", [], ["test input"], "/test");
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         `${mockSessionDir}/session_short.json`,
@@ -710,7 +727,12 @@ describe("SessionManager", () => {
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.writeFile.mockResolvedValue(undefined);
 
-      await SessionManager.saveSession(mockSessionId, [], [], "/test");
+      await SessionManager.saveSession(
+        mockSessionId,
+        [],
+        ["test input"],
+        "/test",
+      );
 
       expect(mockFs.mkdir).toHaveBeenCalledWith("/.lcap-code/sessions", {
         recursive: true,

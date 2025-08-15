@@ -74,6 +74,11 @@ export class SessionManager {
       return;
     }
 
+    // 如果 inputHistory 长度为0，不保存 session
+    if (inputHistory.length === 0) {
+      return;
+    }
+
     await this.ensureSessionDir();
 
     const now = new Date().toISOString();
