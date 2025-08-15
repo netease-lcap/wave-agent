@@ -4,9 +4,11 @@ import { MessageList } from "./MessageList";
 import { InputBox } from "./InputBox";
 import { NonRawInput } from "./NonRawInput";
 import { useChat } from "../contexts/useChat";
+import { useFiles } from "../contexts/useFiles";
 
 export const ChatInterface: React.FC = () => {
   const { messages, isLoading, sessionId, totalTokens } = useChat();
+  const { flatFiles } = useFiles();
   const { isRawModeSupported } = useStdin();
 
   // 检查环境变量是否禁用了 raw mode
@@ -24,10 +26,12 @@ export const ChatInterface: React.FC = () => {
 
       {shouldUseRawMode ? <InputBox /> : <NonRawInput />}
 
-      {/* Session ID 和 Token 统计显示 */}
+      {/* Session ID、文件数量和 Token 统计显示 */}
       <Box paddingX={1}>
         <Text color="gray" dimColor>
           Session ID: <Text color="blue">{sessionId}</Text>
+          {" | "}
+          Files: <Text color="yellow">{flatFiles.length}</Text>
           {" | "}
           Total Tokens:{" "}
           <Text color="green">{totalTokens.toLocaleString()}</Text>
