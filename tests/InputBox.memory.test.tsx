@@ -81,8 +81,38 @@ describe("InputBox Memory Mode", () => {
   it("should show memory mode with additional text after #", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // Type # followed by text
-    stdin.write("# remember this");
+    // Type # to enter memory mode first
+    stdin.write("#");
+    await delay(50);
+
+    // Then type additional text character by character
+    stdin.write(" ");
+    await delay(10);
+    stdin.write("r");
+    await delay(10);
+    stdin.write("e");
+    await delay(10);
+    stdin.write("m");
+    await delay(10);
+    stdin.write("e");
+    await delay(10);
+    stdin.write("m");
+    await delay(10);
+    stdin.write("b");
+    await delay(10);
+    stdin.write("e");
+    await delay(10);
+    stdin.write("r");
+    await delay(10);
+    stdin.write(" ");
+    await delay(10);
+    stdin.write("t");
+    await delay(10);
+    stdin.write("h");
+    await delay(10);
+    stdin.write("i");
+    await delay(10);
+    stdin.write("s");
     await delay(50);
 
     const output = lastFrame();

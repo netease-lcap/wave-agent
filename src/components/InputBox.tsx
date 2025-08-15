@@ -13,6 +13,7 @@ import { useTextInsertion } from "../hooks/useTextInsertion";
 import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler";
 import { useImageManager } from "../hooks/useImageManager";
 import { useClipboardPaste } from "../hooks/useClipboardPaste";
+import { useMemoryMode } from "../hooks/useMemoryMode";
 
 export const INPUT_PLACEHOLDER_TEXT =
   "Type your message (use @ to reference files, / for commands, ! for bash history, Shift+Enter for new line)...";
@@ -90,6 +91,9 @@ export const InputBox: React.FC = () => {
   // 剪贴板粘贴功能
   const { handlePasteImage } = useClipboardPaste(addImage, insertTextAtCursor);
 
+  // 记忆模式功能
+  const { isMemoryMode, checkMemoryMode } = useMemoryMode();
+
   // 键盘处理
   const {
     handleFileSelect,
@@ -135,10 +139,8 @@ export const InputBox: React.FC = () => {
     updateBashHistorySearchQuery,
     checkForExclamationDeletion,
     exclamationPosition,
+    checkMemoryMode,
   });
-
-  // 检测记忆添加模式
-  const isMemoryMode = inputText.startsWith("#");
 
   const isPlaceholder = !inputText;
   const placeholderText = isLoading

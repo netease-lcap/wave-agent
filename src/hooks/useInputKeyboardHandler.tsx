@@ -1,7 +1,7 @@
-import { useCallback, useRef, useEffect } from 'react';
-import { useInput, Key } from 'ink';
-import { useChat } from '../contexts/useChat';
-import { logger } from '@/utils/logger';
+import { useCallback, useRef, useEffect } from "react";
+import { useInput, Key } from "ink";
+import { useChat } from "../contexts/useChat";
+import { logger } from "@/utils/logger";
 
 interface KeyboardHandlerProps {
   inputText: string;
@@ -16,7 +16,10 @@ interface KeyboardHandlerProps {
   insertTextAtCursor: (text: string) => void;
   clearInput: () => void;
   resetHistoryNavigation: () => void;
-  navigateHistory: (direction: 'up' | 'down', inputText: string) => { newInput: string; newCursorPosition: number };
+  navigateHistory: (
+    direction: "up" | "down",
+    inputText: string,
+  ) => { newInput: string; newCursorPosition: number };
   handlePasteImage: () => Promise<boolean>;
   attachedImages: Array<{ id: number; path: string; mimeType: string }>;
   clearImages: () => void;
@@ -42,7 +45,10 @@ interface KeyboardHandlerProps {
     inputText: string,
     cursorPosition: number,
   ) => { newInput: string; newCursorPosition: number };
-  handleCommandGenerated: (generatedCommand: string) => { newInput: string; newCursorPosition: number };
+  handleCommandGenerated: (generatedCommand: string) => {
+    newInput: string;
+    newCursorPosition: number;
+  };
   handleCancelCommandSelect: () => void;
   updateCommandSearchQuery: (query: string) => void;
   checkForSlashDeletion: (cursorPosition: number) => boolean;
@@ -60,6 +66,9 @@ interface KeyboardHandlerProps {
   updateBashHistorySearchQuery: (query: string) => void;
   checkForExclamationDeletion: (cursorPosition: number) => boolean;
   exclamationPosition: number;
+
+  // Memory mode
+  checkMemoryMode: (inputText: string) => boolean;
 }
 
 export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
@@ -102,6 +111,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     updateBashHistorySearchQuery,
     checkForExclamationDeletion,
     exclamationPosition,
+    checkMemoryMode,
   } = props;
 
   const { isCommandRunning, isLoading, sendMessage, abortMessage } = useChat();
@@ -114,7 +124,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     isPasting: boolean;
   }>({
     timer: null,
-    buffer: '',
+    buffer: "",
     initialCursorPosition: 0,
     isPasting: false,
   });
@@ -160,7 +170,9 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     (input: string, key: Key) => {
       if (key.backspace || key.delete) {
         if (cursorPosition > 0) {
-          const newInput = inputText.substring(0, cursorPosition - 1) + inputText.substring(cursorPosition);
+          const newInput =
+            inputText.substring(0, cursorPosition - 1) +
+            inputText.substring(cursorPosition);
           setInputText(newInput);
           setCursorPosition(cursorPosition - 1);
 
@@ -203,20 +215,23 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       if (
         input &&
         !key.ctrl &&
-        !('alt' in key && key.alt) &&
+        !("alt" in key && key.alt) &&
         !key.meta &&
         !key.return &&
         !key.escape &&
         !key.leftArrow &&
         !key.rightArrow &&
-        !('home' in key && key.home) &&
-        !('end' in key && key.end) &&
+        !("home" in key && key.home) &&
+        !("end" in key && key.end) &&
         !key.upArrow &&
         !key.downArrow
       ) {
         // 处理字符输入用于搜索
         const char = input;
-        const newInput = inputText.substring(0, cursorPosition) + char + inputText.substring(cursorPosition);
+        const newInput =
+          inputText.substring(0, cursorPosition) +
+          char +
+          inputText.substring(cursorPosition);
         setInputText(newInput);
         setCursorPosition(cursorPosition + input.length);
 
@@ -268,13 +283,19 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
               const imageId = parseInt(match[1], 10);
               return attachedImages.find((img) => img.id === imageId);
             })
-            .filter((img): img is { id: number; path: string; mimeType: string } => img !== undefined)
+            .filter(
+              (img): img is { id: number; path: string; mimeType: string } =>
+                img !== undefined,
+            )
             .map((img) => ({ path: img.path, mimeType: img.mimeType }));
 
           // 移除图片占位符，展开长文本占位符，发送消息
-          let cleanContent = inputText.replace(imageRegex, '').trim();
+          let cleanContent = inputText.replace(imageRegex, "").trim();
           cleanContent = expandLongTextPlaceholders(cleanContent);
-          sendMessage(cleanContent, referencedImages.length > 0 ? referencedImages : undefined);
+          sendMessage(
+            cleanContent,
+            referencedImages.length > 0 ? referencedImages : undefined,
+          );
           clearInput();
           clearImages();
           resetHistoryNavigation();
@@ -301,6 +322,12 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           deleteCharAtCursor();
           resetHistoryNavigation();
 
+          // 检查记忆模式状态（删除字符后）
+          const newText =
+            inputText.substring(0, cursorPosition - 1) +
+            inputText.substring(cursorPosition);
+          checkMemoryMode(newText);
+
           // Check if we deleted any special characters
           const newCursorPosition = cursorPosition - 1;
           checkForAtDeletion(newCursorPosition);
@@ -320,34 +347,50 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         return;
       }
 
-      if (('home' in key && key.home) || (key.ctrl && input === 'a')) {
+      if (("home" in key && key.home) || (key.ctrl && input === "a")) {
         moveCursorToStart();
         return;
       }
 
-      if (('end' in key && key.end) || (key.ctrl && input === 'e')) {
+      if (("end" in key && key.end) || (key.ctrl && input === "e")) {
         moveCursorToEnd();
         return;
       }
 
       // 处理 Ctrl+V 粘贴图片
-      if (key.ctrl && input === 'v') {
+      if (key.ctrl && input === "v") {
         handlePasteImage().catch((error) => {
-          console.warn('Failed to handle paste image:', error);
+          console.warn("Failed to handle paste image:", error);
         });
         return;
       }
 
       // 处理上下键进行历史导航（仅在没有选择器激活时）
-      if (key.upArrow && !showFileSelector && !showCommandSelector && !showBashHistorySelector) {
-        const { newInput, newCursorPosition } = navigateHistory('up', inputText);
+      if (
+        key.upArrow &&
+        !showFileSelector &&
+        !showCommandSelector &&
+        !showBashHistorySelector
+      ) {
+        const { newInput, newCursorPosition } = navigateHistory(
+          "up",
+          inputText,
+        );
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
         return;
       }
 
-      if (key.downArrow && !showFileSelector && !showCommandSelector && !showBashHistorySelector) {
-        const { newInput, newCursorPosition } = navigateHistory('down', inputText);
+      if (
+        key.downArrow &&
+        !showFileSelector &&
+        !showCommandSelector &&
+        !showBashHistorySelector
+      ) {
+        const { newInput, newCursorPosition } = navigateHistory(
+          "down",
+          inputText,
+        );
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
         return;
@@ -357,7 +400,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       if (
         input &&
         !key.ctrl &&
-        !('alt' in key && key.alt) &&
+        !("alt" in key && key.alt) &&
         !key.meta &&
         !key.return &&
         !key.escape &&
@@ -365,70 +408,81 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         !key.delete &&
         !key.leftArrow &&
         !key.rightArrow &&
-        !('home' in key && key.home) &&
-        !('end' in key && key.end)
+        !("home" in key && key.home) &&
+        !("end" in key && key.end)
       ) {
         const inputString = input;
 
         // 检测是否为粘贴操作（输入包含多个字符或换行符）
-        const isPasteOperation = inputString.length > 1 || inputString.includes('\n') || inputString.includes('\r');
+        const isPasteOperation =
+          inputString.length > 1 ||
+          inputString.includes("\n") ||
+          inputString.includes("\r");
 
         if (isPasteOperation) {
-          logger.debug('[InputBox] 🔍 检测到粘贴操作:', {
+          logger.debug("[InputBox] 🔍 检测到粘贴操作:", {
             inputLength: inputString.length,
-            input: inputString.substring(0, 50) + (inputString.length > 50 ? '...' : ''),
-            hasNewlines: inputString.includes('\n') || inputString.includes('\r'),
+            input:
+              inputString.substring(0, 50) +
+              (inputString.length > 50 ? "..." : ""),
+            hasNewlines:
+              inputString.includes("\n") || inputString.includes("\r"),
           });
 
           // 开始或继续粘贴操作的debounce处理
           if (!pasteDebounceRef.current.isPasting) {
             // 开始新的粘贴操作
-            logger.debug('[InputBox] 🚀 开始新的粘贴操作 - 初始化debounce缓冲区');
+            logger.debug(
+              "[InputBox] 🚀 开始新的粘贴操作 - 初始化debounce缓冲区",
+            );
             pasteDebounceRef.current.isPasting = true;
             pasteDebounceRef.current.buffer = inputString;
             pasteDebounceRef.current.initialCursorPosition = cursorPosition;
           } else {
             // 继续粘贴操作，将新输入添加到缓冲区
-            logger.debug('[InputBox] 📝 合并粘贴内容到缓冲区:', {
+            logger.debug("[InputBox] 📝 合并粘贴内容到缓冲区:", {
               previousBufferLength: pasteDebounceRef.current.buffer.length,
               newInputLength: inputString.length,
-              newTotalLength: pasteDebounceRef.current.buffer.length + inputString.length,
+              newTotalLength:
+                pasteDebounceRef.current.buffer.length + inputString.length,
             });
             pasteDebounceRef.current.buffer += inputString;
           }
 
           // 清除之前的定时器
           if (pasteDebounceRef.current.timer) {
-            logger.debug('[InputBox] ⏰ 清除之前的debounce定时器，重新设置30毫秒延迟');
+            logger.debug(
+              "[InputBox] ⏰ 清除之前的debounce定时器，重新设置30毫秒延迟",
+            );
             clearTimeout(pasteDebounceRef.current.timer);
           }
 
           // 设置新的30毫秒定时器
           pasteDebounceRef.current.timer = setTimeout(() => {
-            logger.debug('[InputBox] ✅ Debounce完成 - 处理合并后的粘贴内容:', {
+            logger.debug("[InputBox] ✅ Debounce完成 - 处理合并后的粘贴内容:", {
               finalBufferLength: pasteDebounceRef.current.buffer.length,
               content:
                 pasteDebounceRef.current.buffer.substring(0, 100) +
-                (pasteDebounceRef.current.buffer.length > 100 ? '...' : ''),
+                (pasteDebounceRef.current.buffer.length > 100 ? "..." : ""),
             });
 
             // 处理缓冲区中的所有粘贴内容
             let processedInput = pasteDebounceRef.current.buffer
               // 在 mac 上按下 shift enter 会输入 \\\r，作为换行处理
-              .replace(/\\\r/g, '\n')
-              .replace(/\r/g, '\n');
+              .replace(/\\\r/g, "\n")
+              .replace(/\r/g, "\n");
 
             // 检查是否需要长文本压缩（超过200字符）
             if (processedInput.length > 200) {
               const originalText = processedInput;
               const compressedLabel = generateCompressedText(originalText);
               logger.info(
-                '[InputBox] 📦 长文本压缩: originalLength:',
+                "[InputBox] 📦 长文本压缩: originalLength:",
                 originalText.length,
-                'compressedLabel:',
+                "compressedLabel:",
                 compressedLabel,
-                'preview:',
-                originalText.substring(0, 50) + '...',
+                "preview:",
+                originalText.substring(0, 50) + "...",
               );
               processedInput = compressedLabel;
             }
@@ -438,31 +492,41 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
 
             // 重置粘贴状态
             pasteDebounceRef.current.isPasting = false;
-            pasteDebounceRef.current.buffer = '';
+            pasteDebounceRef.current.buffer = "";
             pasteDebounceRef.current.timer = null;
 
-            logger.debug('[InputBox] 🎯 粘贴debounce处理完成，状态已重置');
+            logger.debug("[InputBox] 🎯 粘贴debounce处理完成，状态已重置");
           }, 30);
         } else {
           // 处理单字符输入
           let char = inputString;
 
           // 检查是否为中文叹号，如果是且在开头位置，则转换为英文叹号
-          if (char === '！' && cursorPosition === 0) {
-            char = '!';
+          if (char === "！" && cursorPosition === 0) {
+            char = "!";
           }
 
           insertTextAtCursor(char);
           resetHistoryNavigation();
 
+          // 检查记忆模式状态
+          checkMemoryMode(
+            inputText.substring(0, cursorPosition) +
+              char +
+              inputText.substring(cursorPosition),
+          );
+
           // 检查特殊字符并设置相应的选择器
-          if (char === '@') {
+          if (char === "@") {
             activateFileSelector(cursorPosition);
-          } else if (char === '/') {
+          } else if (char === "/") {
             activateCommandSelector(cursorPosition);
-          } else if (char === '!' && cursorPosition === 0) {
+          } else if (char === "!" && cursorPosition === 0) {
             // ! 必须在第一个字符才能唤起 bash selector
             activateBashHistorySelector(cursorPosition);
+          } else if (char === "#" && cursorPosition === 0) {
+            // # 在开头位置启用记忆模式
+            logger.debug("[InputBox] 📝 记忆模式已激活，输入以 # 开头");
           } else if (showFileSelector && atPosition >= 0) {
             // 更新搜索查询
             const queryStart = atPosition + 1;
@@ -521,6 +585,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       attachedImages,
       clearImages,
       handlePasteImage,
+      checkMemoryMode,
     ],
   );
 
@@ -528,7 +593,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     // 处理中断请求 - 使用 Esc 键中断AI请求或命令
     if (key.escape && (isLoading || isCommandRunning)) {
       // 统一中断AI消息生成和命令执行
-      if (typeof abortMessage === 'function') {
+      if (typeof abortMessage === "function") {
         abortMessage();
       }
       return;
@@ -546,25 +611,46 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
   return {
     handleFileSelect: useCallback(
       (filePath: string) => {
-        const { newInput, newCursorPosition } = handleFileSelect(filePath, inputText, cursorPosition);
+        const { newInput, newCursorPosition } = handleFileSelect(
+          filePath,
+          inputText,
+          cursorPosition,
+        );
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
       },
-      [handleFileSelect, inputText, cursorPosition, setInputText, setCursorPosition],
+      [
+        handleFileSelect,
+        inputText,
+        cursorPosition,
+        setInputText,
+        setCursorPosition,
+      ],
     ),
 
     handleCommandSelect: useCallback(
       (command: string) => {
-        const { newInput, newCursorPosition } = handleCommandSelect(command, inputText, cursorPosition);
+        const { newInput, newCursorPosition } = handleCommandSelect(
+          command,
+          inputText,
+          cursorPosition,
+        );
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
       },
-      [handleCommandSelect, inputText, cursorPosition, setInputText, setCursorPosition],
+      [
+        handleCommandSelect,
+        inputText,
+        cursorPosition,
+        setInputText,
+        setCursorPosition,
+      ],
     ),
 
     handleCommandGenerated: useCallback(
       (generatedCommand: string) => {
-        const { newInput, newCursorPosition } = handleCommandGenerated(generatedCommand);
+        const { newInput, newCursorPosition } =
+          handleCommandGenerated(generatedCommand);
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
       },
@@ -573,11 +659,21 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
 
     handleBashHistorySelect: useCallback(
       (command: string) => {
-        const { newInput, newCursorPosition } = handleBashHistorySelect(command, inputText, cursorPosition);
+        const { newInput, newCursorPosition } = handleBashHistorySelect(
+          command,
+          inputText,
+          cursorPosition,
+        );
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
       },
-      [handleBashHistorySelect, inputText, cursorPosition, setInputText, setCursorPosition],
+      [
+        handleBashHistorySelect,
+        inputText,
+        cursorPosition,
+        setInputText,
+        setCursorPosition,
+      ],
     ),
   };
 };
