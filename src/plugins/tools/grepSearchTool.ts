@@ -1,6 +1,6 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "./types";
 import type { FileTreeNode } from "../../types/common";
-import multimatch from "multimatch";
+import micromatch from "micromatch";
 
 /**
  * Grep搜索工具插件 - 从内存中搜索文件内容
@@ -167,7 +167,8 @@ function shouldIncludeFile(
 
 /**
  * 检查文件路径是否匹配 glob 模式
- * 使用 multimatch 库，支持逗号分隔的多模式匹配
+ * 使用 micromatch 库，支持花括号语法如 *.{ts,tsx}
+ * 如果模式包含逗号但没有花括号，则按逗号分割处理
  */
 function matchesGlobPattern(filePath: string, pattern: string): boolean {
   if (!pattern || pattern.trim() === "") {
@@ -177,13 +178,24 @@ function matchesGlobPattern(filePath: string, pattern: string): boolean {
   // 标准化路径，确保使用正斜杠
   const normalizedPath = filePath.replace(/\\/g, "/");
 
-  // 处理逗号分隔的模式
-  const patterns = pattern.includes(",")
-    ? pattern
-        .split(",")
-        .map((p) => p.trim())
-        .filter((p) => p.length > 0)
-    : [pattern.trim()];
+  // 处理模式
+  let patterns: string[];
+
+  // 如果模式包含花括号，直接使用 micromatch 处理（支持 *.{ts,tsx} 语法）
+  if (pattern.includes("{") && pattern.includes("}")) {
+    patterns = [pattern.trim()];
+  }
+  // 如果模式包含逗号但没有花括号，按逗号分割
+  else if (pattern.includes(",")) {
+    patterns = pattern
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+  }
+  // 否则作为单个模式处理
+  else {
+    patterns = [pattern.trim()];
+  }
 
   // 自动为简单模式添加 **/ 前缀以匹配任意路径深度
   const normalizedPatterns = patterns.map((p) => {
@@ -194,10 +206,8 @@ function matchesGlobPattern(filePath: string, pattern: string): boolean {
     return p;
   });
 
-  // 使用 multimatch 进行匹配，返回匹配的文件数组
-  const matches = multimatch([normalizedPath], normalizedPatterns, {
+  // 使用 micromatch 进行匹配
+  return micromatch.isMatch(normalizedPath, normalizedPatterns, {
     dot: true, // 匹配以点开头的文件
   });
-
-  return matches.length > 0;
 }
