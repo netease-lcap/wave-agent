@@ -249,9 +249,12 @@ export class AIManager {
       if (result.usage) {
         this.state.totalTokens = result.usage.total_tokens;
 
-        // 检查是否超过64k token限制
-        if (result.usage.total_tokens > 64000) {
-          logger.info("Token usage exceeded 64k, compressing messages...");
+        // 检查是否超过token限制
+        const tokenLimit = parseInt(process.env.TOKEN_LIMIT || "64000", 10);
+        if (result.usage.total_tokens > tokenLimit) {
+          logger.info(
+            `Token usage exceeded ${tokenLimit}, compressing messages...`,
+          );
 
           // 移除后六条消息进行压缩
           if (currentMessages.length > 6) {
