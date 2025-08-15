@@ -159,7 +159,41 @@ describe("InputBox Loading State", () => {
     const { lastFrame } = render(<InputBox />);
     const output = lastFrame();
 
-    expect(output).toContain("🤔 AI is thinking...");
+    expect(output).toContain("AI is thinking...");
     expect(output).not.toContain("Type your message");
+    // Should not contain the emoji icon
+    expect(output).not.toContain("🤔");
+  });
+
+  it("should show escape key hint when loading", async () => {
+    // Mock useChat to return isLoading: true
+    const { useChat } = await import("../src/contexts/useChat");
+    vi.mocked(useChat).mockReturnValue({
+      isCommandRunning: false,
+      isLoading: true,
+      insertToInput: vi.fn(),
+      sendMessage: vi.fn(),
+      abortMessage: vi.fn(),
+      clearMessages: vi.fn(),
+      messages: [],
+      setMessages: vi.fn(),
+      setIsLoading: vi.fn(),
+      executeCommand: vi.fn(),
+      abortCommand: vi.fn(),
+      userInputHistory: [],
+      addToInputHistory: vi.fn(),
+      inputInsertHandler: null,
+      setInputInsertHandler: vi.fn(),
+      sessionId: "test-session",
+      sendAIMessage: vi.fn(),
+      abortAIMessage: vi.fn(),
+      resetSession: vi.fn(),
+      totalTokens: 0,
+    });
+
+    const { lastFrame } = render(<InputBox />);
+    const output = lastFrame();
+
+    expect(output).toContain("[Press Esc to abort]");
   });
 });

@@ -139,7 +139,7 @@ export const InputBox: React.FC = () => {
 
   const isPlaceholder = !inputText;
   const placeholderText = isLoading
-    ? "🤔 AI is thinking..."
+    ? "AI is thinking..."
     : INPUT_PLACEHOLDER_TEXT;
 
   // 将文本拆分为光标前、光标位置、光标后三部分
@@ -148,6 +148,9 @@ export const InputBox: React.FC = () => {
   const atCursor =
     cursorPosition < displayText.length ? displayText[cursorPosition] : " ";
   const afterCursor = displayText.substring(cursorPosition + 1);
+
+  // Loading 期间不显示光标
+  const shouldShowCursor = !isLoading;
 
   return (
     <Box borderStyle="single" borderColor="gray" paddingX={1} paddingY={1}>
@@ -178,22 +181,26 @@ export const InputBox: React.FC = () => {
           />
         )}
 
-        <Box>
+        <Box justifyContent="space-between">
           <Text color={isPlaceholder ? "gray" : "white"}>
-            {beforeCursor}
-            <Text backgroundColor="white" color="black">
-              {atCursor}
-            </Text>
-            {afterCursor}
+            {shouldShowCursor ? (
+              <>
+                {beforeCursor}
+                <Text backgroundColor="white" color="black">
+                  {atCursor}
+                </Text>
+                {afterCursor}
+              </>
+            ) : (
+              displayText
+            )}
           </Text>
           {isLoading && (
-            <Box marginLeft={2}>
-              <Text color="red" bold>
-                {isCommandRunning
-                  ? "[Tool execution in progress...]"
-                  : "[Press Esc to abort]"}
-              </Text>
-            </Box>
+            <Text color="red" bold>
+              {isCommandRunning
+                ? "[Tool execution in progress...]"
+                : "[Press Esc to abort]"}
+            </Text>
           )}
         </Box>
       </Box>
