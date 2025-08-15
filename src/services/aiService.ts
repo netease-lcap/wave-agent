@@ -268,11 +268,11 @@ Requirements:
 7. Respond in the same language as the original conversation
 8. If the conversation involves multiple topics, organize by sections`,
           },
+          ...messages,
           {
             role: "user",
-            content: `Please compress the following conversation history:`,
+            content: `Please summary the conversation`,
           },
-          ...messages,
         ],
         temperature: 0.1,
         max_tokens: 800,

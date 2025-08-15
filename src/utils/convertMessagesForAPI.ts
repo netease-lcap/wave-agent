@@ -54,8 +54,8 @@ export function convertMessagesForAPI(
       );
       if (compressBlock && compressBlock.type === "compress") {
         recentMessages.unshift({
-          role: "assistant",
-          content: `[压缩消息摘要] ${compressBlock.content}`,
+          role: "system",
+          content: `[Compressed Message Summary] ${compressBlock.content}`,
         });
       }
       break;

@@ -407,7 +407,7 @@ describe("Message Compression Integration Tests", () => {
     const hasCompressedMessage = messages.some(
       (msg) =>
         typeof msg.content === "string" &&
-        msg.content.includes("[压缩消息摘要]"),
+        msg.content.includes("[Compressed Message Summary]"),
     );
     expect(hasCompressedMessage).toBe(true);
 
