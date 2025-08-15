@@ -23,7 +23,7 @@ export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
 );
 
 export const InputBox: React.FC = () => {
-  const { isLoading } = useChat();
+  const { isLoading, totalTokens } = useChat();
 
   // 基础输入状态
   const {
@@ -139,7 +139,7 @@ export const InputBox: React.FC = () => {
 
   const isPlaceholder = !inputText;
   const placeholderText = isLoading
-    ? "AI is thinking..."
+    ? `AI is thinking... (Tokens: ${totalTokens.toLocaleString()})`
     : INPUT_PLACEHOLDER_TEXT;
 
   // 将文本拆分为光标前、光标位置、光标后三部分
@@ -153,7 +153,7 @@ export const InputBox: React.FC = () => {
   const shouldShowCursor = !isLoading;
 
   return (
-    <Box borderStyle="single" borderColor="gray" paddingX={1} paddingY={1}>
+    <Box borderStyle="single" borderColor="gray" paddingX={1}>
       <Box flexDirection="column" width={"100%"}>
         {showFileSelector && (
           <FileSelector
