@@ -34,10 +34,10 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
   };
 
   const getStatusText = () => {
-    if (isRunning) return "🔄 Running...";
+    if (isRunning) return "🔄";
     if (exitCode === 0) return "✅";
-    if (exitCode === 130) return "⚠️ Interrupted";
-    return `❌ Failed (exit code: ${exitCode})`;
+    if (exitCode === 130) return "⚠️";
+    return `❌`;
   };
 
   useInput((input, key) => {
@@ -107,12 +107,6 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
               </Text>
             </Box>
           )}
-        </Box>
-      )}
-
-      {!isRunning && exitCode !== null && exitCode !== 0 && (
-        <Box marginTop={1}>
-          <Text color="red">Process exited with code {exitCode}</Text>
         </Box>
       )}
 

@@ -153,7 +153,7 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
 
       {/* 底部信息和快捷键提示 */}
       {messages.length > 0 && (
-        <Box marginTop={1} paddingX={1}>
+        <Box marginTop={1}>
           <Box justifyContent="space-between" width="100%">
             <Box>
               <Text color="gray">
