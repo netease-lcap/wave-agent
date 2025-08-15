@@ -37,14 +37,9 @@
 
 这是AI助手的记忆文件，记录重要信息和上下文。
 
-## 2024-08-15 19:35:00
-这个项目使用 React + TypeScript，主要是一个CLI工具
-
-## 2024-08-15 19:36:00
-代码风格: 使用 ESLint + Prettier，组件采用函数式写法
-
-## 2024-08-15 19:37:00
-重要: 所有文件操作都需要错误处理，用户输入需要验证
+- 这个项目使用 React + TypeScript，主要是一个CLI工具
+- 代码风格: 使用 ESLint + Prettier，组件采用函数式写法
+- 重要: 所有文件操作都需要错误处理，用户输入需要验证
 ```
 
 ## AI 系统提示词集成
@@ -61,7 +56,7 @@ You are a professional web development expert.
 ## Tool Usage Guidelines:
 ...
 
-## Memory Context (LCAP.md)
+## Memory Context
 
 The following is important context and memory from previous interactions:
 
@@ -69,20 +64,15 @@ The following is important context and memory from previous interactions:
 
 这是AI助手的记忆文件，记录重要信息和上下文。
 
-## 2024-08-15 19:35:00
-这个项目使用 React + TypeScript，主要是一个CLI工具
-
-## 2024-08-15 19:36:00
-代码风格: 使用 ESLint + Prettier，组件采用函数式写法
-
-## 2024-08-15 19:37:00
-重要: 所有文件操作都需要错误处理，用户输入需要验证
+- 这个项目使用 React + TypeScript，主要是一个CLI工具
+- 代码风格: 使用 ESLint + Prettier，组件采用函数式写法
+- 重要: 所有文件操作都需要错误处理，用户输入需要验证
 ```
 
 ## 注意事项
 
 1. **# 开头**: 只有以 `#` 开头的消息才会被识别为记忆
-2. **自动时间戳**: 系统会自动添加时间戳到每个记忆条目
+2. **列表格式**: 系统会将记忆内容以 `-` 开头的列表项格式保存
 3. **文件位置**: 记忆文件固定保存为工作目录下的 `LCAP.md`
 4. **错误处理**: 如果文件操作失败，会显示错误消息但不影响正常聊天
 5. **追加模式**: 新记忆会追加到文件末尾，不会覆盖已有内容
@@ -94,3 +84,11 @@ The following is important context and memory from previous interactions:
 3. **业务规则**: 保存重要的业务逻辑和约束条件
 4. **常见问题**: 记录经常遇到的问题和解决方案
 5. **重要决策**: 保存技术选型和架构决策的理由
+
+## 格式说明
+
+记忆内容采用简洁的列表格式：
+- 每条记忆以 `-` 开头作为列表项
+- 保持内容简洁明了，便于AI理解和使用
+- 新记忆会自动追加到文件末尾
+- 支持中英文混合内容
