@@ -277,4 +277,150 @@ describe("Message Compression Integration Tests", () => {
     // 验证应用仍然正常运行（没有崩溃）
     expect(renderResult.lastFrame()).toContain("Type your message");
   }, 10000); // 增加超时时间
+
+  it("should compress messages from 7th last to previous compressed message when session already contains compression", async () => {
+    // 创建一个包含已压缩消息的 session
+    const now = new Date().toISOString();
+
+    // 创建初始的15对消息（30条消息）
+    const initialMessages = generateMessages(15);
+
+    // 在第5个位置插入一个压缩消息（代表之前的压缩）
+    const sessionWithCompression: SessionData = {
+      id: "test-session-with-compression",
+      timestamp: now,
+      version: "1.0.0",
+      metadata: {
+        workdir: testDir,
+        startedAt: now,
+        lastActiveAt: now,
+        totalTokens: 0,
+      },
+      state: {
+        messages: [
+          ...initialMessages.slice(0, 8), // 前8条消息
+          {
+            role: "assistant" as const,
+            blocks: [
+              {
+                type: "compress" as const,
+                content: "压缩内容：包含了前面6条消息的总结",
+                compressedMessageCount: 6,
+              },
+            ],
+          },
+          ...initialMessages.slice(8), // 后面的消息
+        ],
+        inputHistory: [],
+      },
+    };
+
+    // 写入 session 文件
+    await fs.promises.writeFile(
+      sessionFile,
+      JSON.stringify(sessionWithCompression),
+      "utf-8",
+    );
+
+    // Mock AI 服务
+    const mockCallAgent = vi.mocked(aiService.callAgent);
+    const mockCompressMessages = vi.mocked(aiService.compressMessages);
+
+    mockCallAgent.mockImplementation(async () => {
+      return {
+        content: "I understand your request.",
+        usage: {
+          prompt_tokens: 50000,
+          completion_tokens: 20000,
+          total_tokens: 70000, // 超过 64000 触发压缩
+        },
+      };
+    });
+
+    mockCompressMessages.mockImplementation(async () => {
+      return "新的压缩内容：包含了更多消息的总结";
+    });
+
+    // 渲染 App 组件
+    const renderResult = render(
+      <App workdir={testDir} sessionToRestore={sessionWithCompression} />,
+    );
+    const { stdin } = renderResult;
+
+    // 等待渲染完成
+    await waitForText(renderResult, "Type your message", { timeout: 10000 });
+
+    // 发送消息触发压缩
+    stdin.write("Trigger compression again");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    stdin.write("\r");
+
+    // 等待处理完成
+    await waitForAIThinkingStart(renderResult);
+    await waitForAIThinkingEnd(renderResult);
+
+    // 验证压缩函数被调用
+    expect(mockCompressMessages).toHaveBeenCalledTimes(1);
+
+    // 验证压缩函数被调用时的参数
+    const compressCall = mockCompressMessages.mock.calls[0];
+    expect(compressCall[0]).toHaveProperty("messages");
+    expect(Array.isArray(compressCall[0].messages)).toBe(true);
+    expect(compressCall[0].messages.length).toBeGreaterThan(0);
+
+    // 验证 compressCall 里的 messages 应该是从倒数第7条到上一个压缩消息之间的消息
+    const messages = compressCall[0].messages;
+
+    // 检查压缩的消息范围：应该从压缩消息之后到倒数第7条消息
+    const userMessages = messages.filter((msg) => msg.role === "user");
+
+    // 验证包含的消息内容（应该包含压缩消息之后的一些用户消息）
+    // 根据我们的设置，压缩消息包含了前6条消息，所以之后应该从 "User message 5" 开始
+    const hasUser5 = userMessages.some((msg) => {
+      const content = Array.isArray(msg.content)
+        ? msg.content
+            .map((part) => (part.type === "text" ? part.text : ""))
+            .join(" ")
+        : msg.content;
+      return (
+        content &&
+        content.includes("User message 5: Please help me with task 5")
+      );
+    });
+    expect(hasUser5).toBe(true);
+
+    // 验证包含到倒数第7条的消息（应该包含 User message 13，因为最后一条是我们新发送的消息）
+    const hasUser13 = userMessages.some((msg) => {
+      const content = Array.isArray(msg.content)
+        ? msg.content
+            .map((part) => (part.type === "text" ? part.text : ""))
+            .join(" ")
+        : msg.content;
+      return (
+        content &&
+        content.includes("User message 13: Please help me with task 13")
+      );
+    });
+    expect(hasUser13).toBe(true);
+
+    // 验证应该包含前一个压缩消息作为上下文（这是期望的行为）
+    const hasCompressedMessage = messages.some(
+      (msg) =>
+        typeof msg.content === "string" &&
+        msg.content.includes("[压缩消息摘要]"),
+    );
+    expect(hasCompressedMessage).toBe(true);
+
+    // 验证不应该包含最新的几条消息（应该保留最新的几条不被压缩）
+    // 最新的用户消息应该是 User message 15，它不应该在压缩的消息中
+    const hasLatestUser = userMessages.some((msg) => {
+      const content = Array.isArray(msg.content)
+        ? msg.content
+            .map((part) => (part.type === "text" ? part.text : ""))
+            .join(" ")
+        : msg.content;
+      return content && content.includes("User message 15");
+    });
+    expect(hasLatestUser).toBe(false);
+  }, 15000); // 增加超时时间
 });
