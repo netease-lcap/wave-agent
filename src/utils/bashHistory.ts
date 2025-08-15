@@ -11,7 +11,6 @@ export interface BashHistoryEntry {
   command: string;
   timestamp: number;
   workdir: string;
-  exitCode?: number;
 }
 
 export interface BashHistory {
@@ -102,7 +101,6 @@ export const saveBashHistory = (history: BashHistory): void => {
 export const addBashCommandToHistory = (
   command: string,
   workdir: string,
-  exitCode?: number,
 ): void => {
   try {
     // 过滤系统生成的命令，不添加到历史记录中
@@ -121,18 +119,14 @@ export const addBashCommandToHistory = (
       lastCommand.command === command &&
       lastCommand.workdir === workdir
     ) {
-      // 更新最后一条记录的时间戳和退出码
+      // 更新最后一条记录的时间戳
       lastCommand.timestamp = timestamp;
-      if (exitCode !== undefined) {
-        lastCommand.exitCode = exitCode;
-      }
     } else {
       // 添加新的命令记录
       history.commands.push({
         command,
         timestamp,
         workdir,
-        exitCode,
       });
     }
 
@@ -140,7 +134,6 @@ export const addBashCommandToHistory = (
     logger.debug("Added bash command to history:", {
       command,
       workdir,
-      exitCode,
     });
   } catch (error) {
     logger.debug("Failed to add bash command to history:", error);

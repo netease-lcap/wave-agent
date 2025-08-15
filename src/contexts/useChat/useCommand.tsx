@@ -90,7 +90,7 @@ export const useCommand = (
           const exitCode = code === null && signal ? 130 : (code ?? 0);
 
           // 添加命令到bash历史记录
-          addBashCommandToHistory(command, workdir, exitCode);
+          addBashCommandToHistory(command, workdir);
 
           setMessages((prev) => {
             const newMessages = [...prev];
