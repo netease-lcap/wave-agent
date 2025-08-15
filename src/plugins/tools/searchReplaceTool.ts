@@ -157,4 +157,8 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
       };
     }
   },
+  formatCompactParams: (params: Record<string, unknown>) => {
+    const filePath = params.file_path as string;
+    return filePath || "";
+  },
 };

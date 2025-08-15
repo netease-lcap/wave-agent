@@ -96,4 +96,8 @@ export const fileSearchTool: ToolPlugin = {
       };
     }
   },
+  formatCompactParams: (params: Record<string, unknown>) => {
+    const query = params.query as string;
+    return query || "";
+  },
 };

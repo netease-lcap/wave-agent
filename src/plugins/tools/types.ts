@@ -2,13 +2,17 @@
  * 工具插件接口定义
  */
 
-import type { ChatCompletionTool, FileTreeNode } from '../../types/common';
+import type { ChatCompletionTool, FileTreeNode } from "../../types/common";
 
 export interface ToolPlugin {
   name: string;
   description: string;
   config: ChatCompletionTool;
-  execute: (args: Record<string, unknown>, context?: ToolContext) => Promise<ToolResult>;
+  execute: (
+    args: Record<string, unknown>,
+    context?: ToolContext,
+  ) => Promise<ToolResult>;
+  formatCompactParams?: (params: Record<string, unknown>) => string;
 }
 
 export interface ToolResult {
@@ -31,7 +35,11 @@ export interface ToolResult {
 
 export interface ToolRegistry {
   register: (plugin: ToolPlugin) => void;
-  execute: (name: string, args: Record<string, unknown>, context?: ToolContext) => Promise<ToolResult>;
+  execute: (
+    name: string,
+    args: Record<string, unknown>,
+    context?: ToolContext,
+  ) => Promise<ToolResult>;
   list: () => ToolPlugin[];
   getToolsConfig: () => ChatCompletionTool[];
 }

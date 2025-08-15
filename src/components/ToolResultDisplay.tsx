@@ -50,53 +50,36 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   const shortResult = getShortResult();
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" gap={1}>
       <Box>
         <Text color="magenta">🔧 </Text>
         <Text color="white">{toolName}</Text>
+        {/* 折叠状态下显示 compactParams */}
+        {!isExpanded && block.compactParams && (
+          <Text color="gray"> ({block.compactParams})</Text>
+        )}
         <Text color={getStatusColor()}> {getStatusText()}</Text>
       </Box>
 
-      {/* 折叠状态下显示参数预览和shortResult */}
-      {!isExpanded && (
+      {/* 折叠状态下显示shortResult */}
+      {!isExpanded && shortResult && (
         <Box
-          marginTop={1}
           paddingLeft={2}
           borderLeft
           borderColor="gray"
           flexDirection="column"
         >
-          {parameters && (
-            <Box flexDirection="column">
-              <Text color="cyan">Parameters:</Text>
-              <Box marginTop={0}>
-                <Text color="gray">
-                  {parameters.length > 200
-                    ? parameters.substring(0, 200) + "..."
-                    : parameters}
-                </Text>
-              </Box>
-            </Box>
-          )}
-          {shortResult && (
-            <Box marginTop={parameters ? 1 : 0} flexDirection="column">
-              <Text color="cyan">Result:</Text>
-              <Box flexDirection="column">
-                {shortResult.split("\n").map((line, index) => (
-                  <Text key={index} color="white">
-                    {line}
-                  </Text>
-                ))}
-              </Box>
-            </Box>
-          )}
+          {shortResult.split("\n").map((line, index) => (
+            <Text key={index} color="white">
+              {line}
+            </Text>
+          ))}
         </Box>
       )}
 
       {/* 展开状态下显示完整参数 */}
       {isExpanded && parameters && (
         <Box
-          marginTop={1}
           paddingLeft={2}
           borderLeft
           borderColor="gray"
@@ -111,7 +94,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
 
       {/* 展开状态下显示完整结果 */}
       {isExpanded && result && (
-        <Box marginTop={1} flexDirection="column">
+        <Box flexDirection="column">
           <Box
             paddingLeft={2}
             borderLeft
@@ -128,7 +111,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
 
       {/* 错误信息始终显示 */}
       {attributes?.error && (
-        <Box marginTop={1}>
+        <Box>
           <Text color="red">
             Error:{" "}
             {typeof attributes.error === "string"

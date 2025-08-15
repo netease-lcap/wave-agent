@@ -1,35 +1,44 @@
-import { Delta } from './types/common';
+import { Delta } from "./types/common";
 
 export interface Message {
-  role: 'user' | 'assistant';
+  role: "user" | "assistant";
   blocks: MessageBlock[];
   originalDeltas?: Delta[]; // 添加原始 delta 数组
 }
 
-export type MessageBlock = TextBlock | FileBlock | ErrorBlock | ToolBlock | ImageBlock | DiffBlock | CommandOutputBlock | CompressBlock;
+export type MessageBlock =
+  | TextBlock
+  | FileBlock
+  | ErrorBlock
+  | ToolBlock
+  | ImageBlock
+  | DiffBlock
+  | CommandOutputBlock
+  | CompressBlock;
 
 export interface TextBlock {
-  type: 'text';
+  type: "text";
   content: string;
 }
 
 export interface FileBlock {
-  type: 'file';
+  type: "file";
   path: string;
   content: string;
-  action: 'create' | 'update' | 'delete';
+  action: "create" | "update" | "delete";
 }
 
 export interface ErrorBlock {
-  type: 'error';
+  type: "error";
   content: string;
 }
 
 export interface ToolBlock {
-  type: 'tool';
+  type: "tool";
   parameters?: string;
   result?: string;
   shortResult?: string; // 添加 shortResult 字段
+  compactParams?: string; // 添加紧凑参数显示字段
   attributes?: {
     id?: string;
     name?: string;
@@ -41,7 +50,7 @@ export interface ToolBlock {
 }
 
 export interface ImageBlock {
-  type: 'image';
+  type: "image";
   content?: string;
   attributes?: {
     imageUrls?: string[];
@@ -50,7 +59,7 @@ export interface ImageBlock {
 }
 
 export interface DiffBlock {
-  type: 'diff';
+  type: "diff";
   path: string;
   original: string;
   modified: string;
@@ -63,7 +72,7 @@ export interface DiffBlock {
 }
 
 export interface CommandOutputBlock {
-  type: 'command_output';
+  type: "command_output";
   command: string;
   output: string;
   isRunning: boolean;
@@ -71,7 +80,7 @@ export interface CommandOutputBlock {
 }
 
 export interface CompressBlock {
-  type: 'compress';
+  type: "compress";
   content: string;
   compressedMessageCount: number; // 记录压缩了多少条消息
 }
@@ -83,6 +92,6 @@ export interface AIRequest {
 
 export interface AIResponse {
   content: string;
-  status: 'success' | 'error';
+  status: "success" | "error";
   error?: string;
 }

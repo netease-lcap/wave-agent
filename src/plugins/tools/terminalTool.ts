@@ -1,57 +1,60 @@
-import { spawn, ChildProcess } from 'child_process';
-import type { ToolPlugin, ToolResult, ToolContext } from './types';
-import { logger } from '../../utils/logger';
+import { spawn, ChildProcess } from "child_process";
+import type { ToolPlugin, ToolResult, ToolContext } from "./types";
+import { logger } from "../../utils/logger";
 
 /**
  * Terminal command execution tool plugin
  */
 export const terminalTool: ToolPlugin = {
-  name: 'run_terminal_cmd',
-  description: 'Execute terminal commands',
+  name: "run_terminal_cmd",
+  description: "Execute terminal commands",
   config: {
-    type: 'function',
+    type: "function",
     function: {
-      name: 'run_terminal_cmd',
-      description: 'Execute terminal commands',
+      name: "run_terminal_cmd",
+      description: "Execute terminal commands",
       parameters: {
-        type: 'object',
+        type: "object",
         properties: {
           command: {
-            type: 'string',
-            description: 'The terminal command to execute',
+            type: "string",
+            description: "The terminal command to execute",
           },
           explanation: {
-            type: 'string',
+            type: "string",
             description:
-              'One sentence explanation as to why this tool is being used, and how it contributes to the goal.',
+              "One sentence explanation as to why this tool is being used, and how it contributes to the goal.",
           },
         },
-        required: ['command'],
+        required: ["command"],
       },
     },
   },
-  execute: async (args: Record<string, unknown>, context?: ToolContext): Promise<ToolResult> => {
+  execute: async (
+    args: Record<string, unknown>,
+    context?: ToolContext,
+  ): Promise<ToolResult> => {
     const command = args.command as string;
 
-    if (!command || typeof command !== 'string') {
+    if (!command || typeof command !== "string") {
       return {
         success: false,
-        content: '',
-        error: 'Command parameter is required and must be a string',
+        content: "",
+        error: "Command parameter is required and must be a string",
       };
     }
 
     return new Promise((resolve) => {
       const child: ChildProcess = spawn(command, {
         shell: true,
-        stdio: 'pipe',
+        stdio: "pipe",
         env: {
           ...process.env,
         },
       });
 
-      let outputBuffer = '';
-      let errorBuffer = '';
+      let outputBuffer = "";
+      let errorBuffer = "";
       let isAborted = false;
 
       // 处理中断信号
@@ -63,37 +66,37 @@ export const terminalTool: ToolPlugin = {
           if (child.pid) {
             try {
               // 尝试优雅终止进程组
-              process.kill(-child.pid, 'SIGTERM');
+              process.kill(-child.pid, "SIGTERM");
 
               // 设置超时后强制杀死
               setTimeout(() => {
                 if (child.pid && !child.killed) {
                   try {
-                    process.kill(-child.pid, 'SIGKILL');
+                    process.kill(-child.pid, "SIGKILL");
                   } catch (killError) {
-                    logger.error('Failed to force kill process:', killError);
+                    logger.error("Failed to force kill process:", killError);
                   }
                 }
               }, 1000);
             } catch {
               // 如果进程组终止失败，尝试直接终止子进程
               try {
-                child.kill('SIGTERM');
+                child.kill("SIGTERM");
                 setTimeout(() => {
                   if (!child.killed) {
-                    child.kill('SIGKILL');
+                    child.kill("SIGKILL");
                   }
                 }, 1000);
               } catch (directKillError) {
-                logger.error('Failed to kill child process:', directKillError);
+                logger.error("Failed to kill child process:", directKillError);
               }
             }
           }
 
           resolve({
             success: false,
-            content: outputBuffer + (errorBuffer ? '\n' + errorBuffer : ''),
-            error: 'Command execution was aborted',
+            content: outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
+            error: "Command execution was aborted",
           });
         }
       };
@@ -105,43 +108,52 @@ export const terminalTool: ToolPlugin = {
           handleAbort();
           return;
         }
-        context.abortSignal.addEventListener('abort', handleAbort);
+        context.abortSignal.addEventListener("abort", handleAbort);
       }
 
-      child.stdout?.on('data', (data) => {
+      child.stdout?.on("data", (data) => {
         if (!isAborted) {
           outputBuffer += data.toString();
         }
       });
 
-      child.stderr?.on('data', (data) => {
+      child.stderr?.on("data", (data) => {
         if (!isAborted) {
           errorBuffer += data.toString();
         }
       });
 
-      child.on('exit', (code) => {
+      child.on("exit", (code) => {
         if (!isAborted) {
           const exitCode = code ?? 0;
-          const combinedOutput = outputBuffer + (errorBuffer ? '\n' + errorBuffer : '');
+          const combinedOutput =
+            outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
 
           resolve({
             success: exitCode === 0,
-            content: combinedOutput || `Command executed with exit code: ${exitCode}`,
-            error: exitCode !== 0 ? `Command failed with exit code: ${exitCode}` : undefined,
+            content:
+              combinedOutput || `Command executed with exit code: ${exitCode}`,
+            error:
+              exitCode !== 0
+                ? `Command failed with exit code: ${exitCode}`
+                : undefined,
           });
         }
       });
 
-      child.on('error', (error) => {
+      child.on("error", (error) => {
         if (!isAborted) {
           resolve({
             success: false,
-            content: '',
+            content: "",
             error: `Failed to execute command: ${error.message}`,
           });
         }
       });
     });
+  },
+  formatCompactParams: (params: Record<string, unknown>) => {
+    const command = params.command as string;
+    return command || "";
   },
 };

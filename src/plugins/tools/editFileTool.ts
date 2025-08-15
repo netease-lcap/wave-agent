@@ -144,4 +144,20 @@ export const editFileTool: ToolPlugin = {
       };
     }
   },
+  formatCompactParams: (params: Record<string, unknown>) => {
+    const targetFile = params.target_file as string;
+    const instructions = params.instructions as string;
+
+    if (!targetFile) return "";
+
+    // 截断过长的说明
+    const shortInstructions =
+      instructions?.length > 50
+        ? instructions.substring(0, 50) + "..."
+        : instructions;
+
+    return shortInstructions
+      ? `${targetFile}, ${shortInstructions}`
+      : targetFile;
+  },
 };

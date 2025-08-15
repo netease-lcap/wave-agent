@@ -192,6 +192,7 @@ export const updateToolBlockInMessage = (
   isRunning?: boolean,
   name?: string,
   shortResult?: string, // 添加 shortResult 参数
+  compactParams?: string, // 添加 compactParams 参数
 ): Message[] => {
   const newMessages = [...messages];
   // 找到最后一个助手消息
@@ -207,6 +208,8 @@ export const updateToolBlockInMessage = (
           toolBlock.parameters = parameters;
           if (result !== undefined) toolBlock.result = result;
           if (shortResult !== undefined) toolBlock.shortResult = shortResult;
+          if (compactParams !== undefined)
+            toolBlock.compactParams = compactParams;
           if (toolBlock.attributes) {
             if (success !== undefined) toolBlock.attributes.success = success;
             if (error !== undefined) toolBlock.attributes.error = error;
@@ -223,6 +226,7 @@ export const updateToolBlockInMessage = (
           parameters: parameters,
           result: result,
           shortResult: shortResult,
+          compactParams: compactParams,
           attributes: {
             id: id,
             name: name || "unknown",

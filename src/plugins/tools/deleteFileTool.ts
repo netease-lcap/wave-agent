@@ -1,78 +1,90 @@
-import { unlink } from 'fs/promises';
-import { resolve } from 'path';
-import type { ToolPlugin, ToolResult, ToolContext } from './types';
-import { logger } from '../../utils/logger';
+import { unlink } from "fs/promises";
+import { resolve } from "path";
+import type { ToolPlugin, ToolResult, ToolContext } from "./types";
+import { logger } from "../../utils/logger";
 
 /**
  * 删除文件工具插件
  */
 export const deleteFileTool: ToolPlugin = {
-  name: 'delete_file',
-  description: 'Deletes a file at the specified path.',
+  name: "delete_file",
+  description: "Deletes a file at the specified path.",
   config: {
-    type: 'function',
+    type: "function",
     function: {
-      name: 'delete_file',
+      name: "delete_file",
       description: `Deletes a file at the specified path. The operation will fail gracefully if:
     - The file doesn't exist
     - The operation is rejected for security reasons
     - The file cannot be deleted`,
       parameters: {
-        type: 'object',
+        type: "object",
         properties: {
           target_file: {
-            type: 'string',
-            description: 'The path of the file to delete, relative to the workspace root.',
+            type: "string",
+            description:
+              "The path of the file to delete, relative to the workspace root.",
           },
           explanation: {
-            type: 'string',
+            type: "string",
             description:
-              'One sentence explanation as to why this tool is being used, and how it contributes to the goal.',
+              "One sentence explanation as to why this tool is being used, and how it contributes to the goal.",
           },
         },
-        required: ['target_file'],
+        required: ["target_file"],
       },
     },
   },
-  execute: async (args: Record<string, unknown>, context?: ToolContext): Promise<ToolResult> => {
+  execute: async (
+    args: Record<string, unknown>,
+    context?: ToolContext,
+  ): Promise<ToolResult> => {
     const targetFile = args.target_file as string;
     const explanation = args.explanation as string;
 
-    if (!targetFile || typeof targetFile !== 'string') {
+    if (!targetFile || typeof targetFile !== "string") {
       return {
         success: false,
-        content: '',
-        error: 'target_file parameter is required and must be a string',
+        content: "",
+        error: "target_file parameter is required and must be a string",
       };
     }
 
     try {
-      const filePath = context?.workdir ? resolve(context.workdir, targetFile) : resolve(targetFile);
+      const filePath = context?.workdir
+        ? resolve(context.workdir, targetFile)
+        : resolve(targetFile);
 
       // 删除文件
       await unlink(filePath);
 
-      logger.info(`Successfully deleted file: ${filePath}${explanation ? ` - ${explanation}` : ''}`);
+      logger.info(
+        `Successfully deleted file: ${filePath}${explanation ? ` - ${explanation}` : ""}`,
+      );
 
       return {
         success: true,
         content: `Successfully deleted file: ${targetFile}`,
-        shortResult: 'File deleted',
+        shortResult: "File deleted",
       };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return {
           success: false,
-          content: '',
+          content: "",
           error: `File does not exist: ${targetFile}`,
         };
       }
 
       return {
         success: false,
-        content: '',
+        content: "",
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  },
+  formatCompactParams: (params: Record<string, unknown>) => {
+    const targetFile = params.target_file as string;
+    return targetFile || "";
   },
 };
