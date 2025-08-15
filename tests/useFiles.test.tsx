@@ -141,6 +141,12 @@ describe("FileContext", () => {
     expect(scanDirectory).toHaveBeenCalledWith(
       expect.stringMatching(/^\/test\/path$/),
       expect.any(Object),
+      "",
+      expect.objectContaining({
+        fileCount: 0,
+        maxFileCount: 10000,
+        maxFileSize: 1048576,
+      }),
     );
   });
 

@@ -9,6 +9,89 @@ import { scanDirectory } from "../utils/scanDirectory";
 import { mcpToolManager } from "../utils/mcpToolManager";
 import { logger } from "../utils/logger";
 
+// ===== Safety Configuration =====
+
+/**
+ * 安全配置接口
+ */
+export interface SafetyConfig {
+  maxFileCount: number; // 最大文件数量，默认 10000
+  maxFileSize: number; // 单个文件最大大小（字节），默认 1MB
+}
+
+/**
+ * 默认安全配置
+ */
+export const DEFAULT_SAFETY_CONFIG: SafetyConfig = {
+  maxFileCount: 10000,
+  maxFileSize: 1024 * 1024, // 1MB
+};
+
+/**
+ * 危险目录列表
+ */
+export const DANGEROUS_PATHS = {
+  // Unix/Linux 系统目录
+  unix: [
+    "/", // 根目录
+    "/home", // 用户目录
+    "/Users", // macOS 用户目录
+    "/usr", // Unix 系统资源
+    "/var", // 变量数据
+    "/etc", // 系统配置
+    "/bin", // 系统二进制文件
+    "/sbin", // 系统管理二进制文件
+    "/lib", // 系统库
+    "/opt", // 可选软件包
+    "/boot", // 启动文件
+    "/dev", // 设备文件
+    "/proc", // 进程信息
+    "/sys", // 系统信息
+    "/tmp", // 临时文件
+    "/root", // root 用户目录
+  ],
+  // Windows 系统目录
+  windows: [
+    "C:\\", // C盘根目录
+    "D:\\", // D盘根目录
+    "E:\\", // E盘根目录
+    "F:\\", // F盘根目录
+    "C:\\Windows", // Windows 系统目录
+    "C:\\Program Files", // 程序文件目录
+    "C:\\Program Files (x86)", // 32位程序文件目录
+    "C:\\Users", // 用户目录
+    "C:\\ProgramData", // 程序数据目录
+    "C:\\System Volume Information", // 系统卷信息
+  ],
+};
+
+/**
+ * 检测是否为危险目录
+ * @param dirPath 目录路径
+ * @returns 如果是危险目录返回 true
+ */
+export function isDangerousDirectory(dirPath: string): boolean {
+  const normalizedPath = path.resolve(dirPath);
+  const isWindows = process.platform === "win32";
+
+  if (isWindows) {
+    // Windows 路径检查
+    const windowsPath = normalizedPath.replace(/\//g, "\\");
+    return DANGEROUS_PATHS.windows.some((dangerousPath) => {
+      return (
+        windowsPath === dangerousPath ||
+        windowsPath === dangerousPath.toLowerCase() ||
+        windowsPath === dangerousPath.toUpperCase()
+      );
+    });
+  } else {
+    // Unix/Linux/macOS 路径检查
+    return DANGEROUS_PATHS.unix.some((dangerousPath) => {
+      return normalizedPath === dangerousPath;
+    });
+  }
+}
+
 export interface FileManagerCallbacks {
   onFlatFilesChange: (files: FileTreeNode[]) => void;
 }
@@ -24,23 +107,37 @@ export class FileManager {
   private watcher: FSWatcher | null = null;
   private fileFilter: ReturnType<typeof createFileFilter>;
   private ignorePatterns?: string[];
+  private safetyConfig: SafetyConfig;
 
   constructor(
     workdir: string,
     callbacks: FileManagerCallbacks,
     ignorePatterns?: string[],
+    safetyConfig?: Partial<SafetyConfig>,
   ) {
+    // 危险目录检测 - 最高优先级
+    if (isDangerousDirectory(workdir)) {
+      throw new Error(
+        `DANGEROUS_DIRECTORY: Cannot open directory "${workdir}" for security reasons. Please select a project directory instead.`,
+      );
+    }
+
     this.state = {
       flatFiles: [],
       workdir,
     };
     this.callbacks = callbacks;
     this.ignorePatterns = ignorePatterns;
+    this.safetyConfig = { ...DEFAULT_SAFETY_CONFIG, ...safetyConfig };
     this.fileFilter = createFileFilter(workdir, ignorePatterns);
   }
 
   public getState(): FileManagerState {
     return { ...this.state };
+  }
+
+  public getSafetyConfig(): SafetyConfig {
+    return { ...this.safetyConfig };
   }
 
   public getFlatFiles(): FileTreeNode[] {
@@ -71,12 +168,30 @@ export class FileManager {
 
   public async syncFilesFromDisk(): Promise<void> {
     try {
-      const fileTree = await scanDirectory(this.state.workdir, this.fileFilter);
+      const context = {
+        fileCount: 0,
+        maxFileCount: this.safetyConfig.maxFileCount,
+        maxFileSize: this.safetyConfig.maxFileSize,
+      };
+      const fileTree = await scanDirectory(
+        this.state.workdir,
+        this.fileFilter,
+        "",
+        context,
+      );
       const flatFilesResult = flattenFiles(fileTree);
       this.setFlatFiles(flatFilesResult);
     } catch (error) {
       logger.error("Error syncing files from disk:", error);
       this.setFlatFiles([]);
+      // 重新抛出安全限制错误，让调用者处理
+      if (
+        error instanceof Error &&
+        (error.message.startsWith("FILE_COUNT_LIMIT:") ||
+          error.message.startsWith("FILE_SIZE_LIMIT:"))
+      ) {
+        throw error;
+      }
     }
   }
 
@@ -104,8 +219,28 @@ export class FileManager {
       }
 
       if (!isDirectory) {
+        // 检查文件数量限制
+        if (this.state.flatFiles.length >= this.safetyConfig.maxFileCount) {
+          throw new Error(
+            `FILE_COUNT_LIMIT: Cannot add file "${targetPath}". Maximum file count of ${this.safetyConfig.maxFileCount} reached.`,
+          );
+        }
+
         // 对于二进制文件，不设置内容，只添加文件节点
         const fileContent = isBinary(targetPath) ? "" : content || "";
+
+        // 检查文件大小限制（基于内容长度估算）
+        const estimatedSize = Buffer.byteLength(fileContent, "utf8");
+        if (estimatedSize > this.safetyConfig.maxFileSize) {
+          const fileSizeMB = (estimatedSize / (1024 * 1024)).toFixed(2);
+          const limitSizeMB = (
+            this.safetyConfig.maxFileSize /
+            (1024 * 1024)
+          ).toFixed(2);
+          throw new Error(
+            `FILE_SIZE_LIMIT: File "${targetPath}" (${fileSizeMB}MB) exceeds size limit of ${limitSizeMB}MB.`,
+          );
+        }
 
         // 直接添加到flatFiles中
         this.updateFlatFiles((prevFlatFiles) => {
@@ -119,6 +254,7 @@ export class FileManager {
               ...newFlatFiles[existingIndex],
               code: fileContent,
               isBinary: isBinary(targetPath),
+              fileSize: estimatedSize,
             };
             return newFlatFiles;
           } else {
@@ -130,6 +266,7 @@ export class FileManager {
                 code: fileContent,
                 children: [],
                 isBinary: isBinary(targetPath),
+                fileSize: estimatedSize,
               },
             ];
           }
@@ -138,6 +275,14 @@ export class FileManager {
       // 目录不需要添加到flatFiles中
     } catch (error) {
       logger.error("Error adding file to tree:", error);
+      // 重新抛出安全限制错误
+      if (
+        error instanceof Error &&
+        (error.message.startsWith("FILE_COUNT_LIMIT:") ||
+          error.message.startsWith("FILE_SIZE_LIMIT:"))
+      ) {
+        throw error;
+      }
     }
   }
 
@@ -154,7 +299,18 @@ export class FileManager {
   // 从内存中的文件树读取文件内容（不会访问磁盘）
   public readFileFromMemory(path: string): string | null {
     const file = this.state.flatFiles.find((f) => f.path === path);
-    return file ? file.code : null;
+    if (!file) {
+      return null;
+    }
+
+    // 检查文件是否被标记为超限
+    if (file.oversized) {
+      throw new Error(
+        `FILE_SIZE_LIMIT: File "${path}" is oversized and content cannot be read.`,
+      );
+    }
+
+    return file.code;
   }
 
   public async initialize(): Promise<void> {

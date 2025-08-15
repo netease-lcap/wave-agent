@@ -47,6 +47,8 @@ export interface FileTreeNode {
   code: string;
   binaryData?: Uint8Array;
   isBinary?: boolean;
+  fileSize?: number; // 文件大小（字节）
+  oversized?: boolean; // 标记文件是否超过大小限制
 }
 
 export type SSEData =

@@ -87,6 +87,7 @@ export async function main() {
 // Export other functions that might be needed
 export { startCli } from "./cli.js";
 export { SessionManager } from "./services/sessionManager.js";
+export { FileManager, isDangerousDirectory } from "./services/fileManager.js";
 
 // Execute main function if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
