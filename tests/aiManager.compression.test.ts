@@ -147,7 +147,7 @@ describe("AIManager Message Compression Tests", () => {
     );
 
     // 验证包含user1到user6的消息内容
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i < 7; i++) {
       const expectedUserContent = `User message ${i}: Please help me with task ${i}`;
       const hasUserMessage = userMessages.some((msg) => {
         if (typeof msg.content === "string") {
@@ -382,5 +382,135 @@ describe("AIManager Message Compression Tests", () => {
       return content && content.includes("User message 15");
     });
     expect(hasLatestUser).toBe(false);
+  });
+
+  it("should send compressed message plus all messages after compression point to callAgent", async () => {
+    // 创建10对消息（20条消息）来触发压缩
+    const messages = generateMessages(10);
+
+    // 添加第一个用户消息来触发压缩
+    const firstUserMessage: Message = {
+      role: "user",
+      blocks: [
+        {
+          type: "text",
+          content: "First trigger message for compression",
+        },
+      ],
+    };
+
+    // 设置初始消息历史
+    aiManager.setMessages([...messages, firstUserMessage]);
+
+    // Mock AI 服务
+    const mockCallAgent = vi.mocked(aiService.callAgent);
+    const mockCompressMessages = vi.mocked(aiService.compressMessages);
+
+    let callAgentCallCount = 0;
+    let messagesPassedToCallAgent: Array<{
+      role: string;
+      content: string | Array<{ type: string; text: string }>;
+    }> = [];
+
+    mockCallAgent.mockImplementation(async (params) => {
+      callAgentCallCount++;
+      messagesPassedToCallAgent = params.messages || [];
+
+      if (callAgentCallCount === 1) {
+        // 第一次调用返回高 token 使用量来触发压缩
+        return {
+          content: "I understand. Let me help you with that task.",
+          usage: {
+            prompt_tokens: 50000,
+            completion_tokens: 20000,
+            total_tokens: 70000, // 超过 64000 触发压缩
+          },
+        };
+      } else {
+        // 第二次调用返回正常响应
+        return {
+          content: "Here's my response to your second message.",
+          usage: {
+            prompt_tokens: 1000,
+            completion_tokens: 500,
+            total_tokens: 1500,
+          },
+        };
+      }
+    });
+
+    mockCompressMessages.mockImplementation(async () => {
+      return "压缩内容：这里包含了之前多轮对话的总结信息。";
+    });
+
+    // 第一次调用 sendAIMessage 触发压缩
+    await aiManager.sendAIMessage();
+
+    // 验证压缩被触发
+    expect(mockCompressMessages).toHaveBeenCalledTimes(1);
+    expect(callAgentCallCount).toBe(1);
+
+    // 获取压缩后的消息列表
+    const messagesAfterCompression = aiManager.getState().messages;
+
+    // 验证倒数第八个消息变成了压缩消息
+    const eighthLastMessage =
+      messagesAfterCompression[messagesAfterCompression.length - 8];
+    expect(eighthLastMessage.role).toBe("assistant");
+    expect(eighthLastMessage.blocks[0].type).toBe("compress");
+    expect(eighthLastMessage.blocks[0].content).toBe(
+      "压缩内容：这里包含了之前多轮对话的总结信息。",
+    );
+
+    // 添加第二个用户消息
+    const secondUserMessage: Message = {
+      role: "user",
+      blocks: [
+        {
+          type: "text",
+          content: "Second message after compression",
+        },
+      ],
+    };
+
+    // 添加第二个消息到历史中
+    aiManager.setMessages([...messagesAfterCompression, secondUserMessage]);
+
+    // 重置 messagesPassedToCallAgent 来捕获第二次调用的参数
+    messagesPassedToCallAgent = [];
+
+    // 第二次调用 sendAIMessage
+    await aiManager.sendAIMessage();
+
+    // 验证第二次调用的参数
+    expect(callAgentCallCount).toBe(2);
+
+    // 验证传递给 callAgent 的消息包含压缩消息加上从压缩点之后的所有消息
+    expect(messagesPassedToCallAgent.length).toBeGreaterThan(1); // 至少有压缩消息和一些最近消息
+
+    // 验证传递给 callAgent 的消息结构
+    // 第一条应该是压缩后的系统消息
+    expect(messagesPassedToCallAgent[0].role).toBe("system");
+    expect(messagesPassedToCallAgent[0].content).toContain(
+      "[Compressed Message Summary]",
+    );
+
+    // 验证第二条消息（压缩后的第一条助手回复）
+    const secondMessage = messagesPassedToCallAgent[1];
+    expect(secondMessage.role).toBe("assistant");
+    expect(secondMessage.content).toBe(
+      "Assistant response 8: I'll help you with task 8",
+    );
+
+    // 最后一条应该是我们添加的第二个用户消息
+    const lastMessage =
+      messagesPassedToCallAgent[messagesPassedToCallAgent.length - 1];
+    expect(lastMessage.role).toBe("user");
+    expect(lastMessage.content).toEqual([
+      {
+        type: "text",
+        text: "Second message after compression",
+      },
+    ]);
   });
 });
