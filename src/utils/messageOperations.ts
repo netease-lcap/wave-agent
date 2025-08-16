@@ -309,3 +309,64 @@ export const addMemoryBlockToMessage = (
   newMessages.push(memoryMessage);
   return newMessages;
 };
+
+/**
+ * 从后往前计算有效的 block 数量
+ * 只有 text、image、tool 类型的 block 才会被计入
+ * @param messages 消息数组
+ * @param targetCount 需要计算的有效 block 数量
+ * @returns { messageIndex: number, blockCount: number } 消息索引和实际计算到的 block 数量
+ */
+export const countValidBlocksFromEnd = (
+  messages: Message[],
+  targetCount: number,
+): { messageIndex: number; blockCount: number } => {
+  let validBlockCount = 0;
+
+  // 从后往前遍历消息
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+
+    // 遍历当前消息的所有 blocks
+    for (const block of message.blocks) {
+      // 只计算有效的 block 类型
+      if (
+        block.type === "text" ||
+        block.type === "image" ||
+        block.type === "tool"
+      ) {
+        validBlockCount++;
+
+        // 如果达到目标数量，返回当前消息的索引
+        if (validBlockCount >= targetCount) {
+          return { messageIndex: i, blockCount: validBlockCount };
+        }
+      }
+    }
+  }
+
+  // 如果没有达到目标数量，返回0索引
+  return { messageIndex: 0, blockCount: validBlockCount };
+};
+
+/**
+ * 获取需要压缩的消息和插入位置
+ * @param messages 消息数组
+ * @param keepLastCount 保留最后几个有效 block 不压缩
+ * @returns { messagesToCompress: Message[], insertIndex: number }
+ */
+export const getMessagesToCompress = (
+  messages: Message[],
+  keepLastCount: number = 7,
+): { messagesToCompress: Message[]; insertIndex: number } => {
+  // 从后往前计算需要保留的消息位置
+  const { messageIndex } = countValidBlocksFromEnd(messages, keepLastCount);
+
+  // 需要压缩的消息是从开始到计算出的位置之前的所有消息
+  const messagesToCompress = messages.slice(0, messageIndex);
+
+  // 插入位置就是计算出的消息索引位置
+  const insertIndex = messageIndex;
+
+  return { messagesToCompress, insertIndex };
+};

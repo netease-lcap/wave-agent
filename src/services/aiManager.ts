@@ -12,6 +12,7 @@ import {
   addErrorBlockToMessage,
   addCompressBlockToMessage,
   updateFileOperationBlockInMessage,
+  getMessagesToCompress,
 } from "../utils/messageOperations";
 import { toolRegistry } from "../plugins/tools";
 import type { ToolContext } from "../plugins/tools/types";
@@ -266,9 +267,14 @@ export class AIManager {
             `Token usage exceeded ${tokenLimit}, compressing messages...`,
           );
 
-          // 移除后六条消息进行压缩
-          if (currentMessages.length > 6) {
-            const messagesToCompress = currentMessages.slice(0, -7); // 移除后六条（不包含当前正在处理的消息）
+          // 检查是否需要压缩消息
+          const { messagesToCompress, insertIndex } = getMessagesToCompress(
+            currentMessages,
+            7,
+          );
+
+          // 如果有需要压缩的消息，则进行压缩
+          if (messagesToCompress.length > 0) {
             const recentChatMessages =
               convertMessagesForAPI(messagesToCompress);
 
@@ -278,8 +284,6 @@ export class AIManager {
                 abortSignal: abortController.signal,
               });
 
-              // 计算插入位置（后六条之前）
-              const insertIndex = currentMessages.length - 7;
               // 在指定位置插入压缩块
               currentMessages = addCompressBlockToMessage(
                 currentMessages,
@@ -288,7 +292,9 @@ export class AIManager {
               );
               this.setMessages(currentMessages);
 
-              logger.info("Successfully compressed 6 messages");
+              logger.info(
+                `Successfully compressed ${messagesToCompress.length} messages`,
+              );
             } catch (compressError) {
               logger.error("Failed to compress messages:", compressError);
             }
