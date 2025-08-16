@@ -4,6 +4,7 @@ import * as aiService from "../src/services/aiService";
 import { FileManager } from "../src/services/fileManager";
 import { SessionManager } from "../src/services/sessionManager";
 import { Message } from "@/types";
+import { ChatCompletionMessageParam } from "../src/types/common";
 
 // Mock AI Service
 vi.mock("../src/services/aiService");
@@ -407,10 +408,7 @@ describe("AIManager Message Compression Tests", () => {
     const mockCompressMessages = vi.mocked(aiService.compressMessages);
 
     let callAgentCallCount = 0;
-    let messagesPassedToCallAgent: Array<{
-      role: string;
-      content: string | Array<{ type: string; text: string }>;
-    }> = [];
+    let messagesPassedToCallAgent: ChatCompletionMessageParam[] = [];
 
     mockCallAgent.mockImplementation(async (params) => {
       callAgentCallCount++;
@@ -458,7 +456,12 @@ describe("AIManager Message Compression Tests", () => {
       messagesAfterCompression[messagesAfterCompression.length - 8];
     expect(eighthLastMessage.role).toBe("assistant");
     expect(eighthLastMessage.blocks[0].type).toBe("compress");
-    expect(eighthLastMessage.blocks[0].content).toBe(
+    // 类型断言来访问 CompressBlock 的 content 属性
+    const compressBlock = eighthLastMessage.blocks[0] as {
+      type: "compress";
+      content: string;
+    };
+    expect(compressBlock.content).toBe(
       "压缩内容：这里包含了之前多轮对话的总结信息。",
     );
 
