@@ -382,8 +382,8 @@ export const getMessagesToCompress = (
   // 需要压缩的消息是从起始位置到计算出的位置之前的所有消息
   const messagesToCompress = messages.slice(startIndex, messageIndex);
 
-  // 插入位置就是起始位置（会替换从起始位置开始的消息）
-  const insertIndex = startIndex;
+  // 插入位置就是保留消息前的位置
+  const insertIndex = messageIndex;
 
   return { messagesToCompress, insertIndex };
 };
