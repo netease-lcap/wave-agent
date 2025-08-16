@@ -25,7 +25,7 @@ describe("MessageList Loading State", () => {
     const output = lastFrame();
 
     // Should not show the loading message in MessageList
-    expect(output).not.toContain("🤔 AI is thinking...");
+    expect(output).not.toContain("AI is thinking...");
 
     // Should still show the actual messages
     expect(output).toContain("Hello");
@@ -44,7 +44,7 @@ describe("MessageList Loading State", () => {
     const output = lastFrame();
 
     // Should not show any loading message
-    expect(output).not.toContain("🤔 AI is thinking...");
+    expect(output).not.toContain("AI is thinking...");
 
     // Should show the actual messages
     expect(output).toContain("Hello");
@@ -58,7 +58,7 @@ describe("MessageList Loading State", () => {
     const output = lastFrame();
 
     expect(output).toContain("Welcome to LCAP Code Assistant!");
-    expect(output).not.toContain("🤔 AI is thinking...");
+    expect(output).not.toContain("AI is thinking...");
   });
 
   it("should display welcome message when no messages and loading", () => {
@@ -69,6 +69,6 @@ describe("MessageList Loading State", () => {
 
     // Should still show welcome message, not loading message
     expect(output).toContain("Welcome to LCAP Code Assistant!");
-    expect(output).not.toContain("🤔 AI is thinking...");
+    expect(output).not.toContain("AI is thinking...");
   });
 });

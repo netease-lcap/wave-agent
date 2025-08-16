@@ -18,7 +18,7 @@ export async function waitForAIThinkingStart(
     const checkForThinking = () => {
       attempts++;
       if (
-        renderResult.lastFrame?.()?.includes("🤔 AI is thinking...") ||
+        renderResult.lastFrame?.()?.includes("AI is thinking...") ||
         attempts >= maxAttempts
       ) {
         resolve(undefined);
@@ -48,7 +48,7 @@ export async function waitForAIThinkingEnd(
     const checkForThinkingEnd = () => {
       attempts++;
       const frame = renderResult.lastFrame?.();
-      if (!frame?.includes("🤔 AI is thinking...") || attempts >= maxAttempts) {
+      if (!frame?.includes("AI is thinking...") || attempts >= maxAttempts) {
         resolve(undefined);
       } else {
         setTimeout(checkForThinkingEnd, intervalMs);
