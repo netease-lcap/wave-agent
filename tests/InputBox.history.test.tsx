@@ -32,12 +32,12 @@ describe("InputBox History Navigation", () => {
 
     // 按上键，因为没有历史记录，应该没有变化
     stdin.write("\u001B[A"); // Up arrow
-    await delay(50); // 给一点时间让按键处理
+    await delay(10); // 给一点时间让按键处理
     expect(lastFrame()).toContain("current input");
 
     // 按下键，也应该没有变化
     stdin.write("\u001B[B"); // Down arrow
-    await delay(50); // 给一点时间让按键处理
+    await delay(10); // 给一点时间让按键处理
     expect(lastFrame()).toContain("current input");
   });
 
@@ -72,7 +72,7 @@ describe("InputBox History Navigation", () => {
 
     // 再按上键，应该停留在最早的记录（不应该再变化）
     stdin.write("\u001B[A"); // Up arrow
-    await delay(50); // 这里仍使用delay，因为期望没有变化
+    await delay(10); // 这里仍使用delay，因为期望没有变化
     expect(lastFrame()).toContain("hello world");
 
     unmount();
@@ -161,17 +161,17 @@ describe("InputBox History Navigation", () => {
 
     // 导航到历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("old message");
 
     // 输入新字符应该重置历史导航
     stdin.write("X");
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("old messageX");
 
     // 现在按上键应该再次显示历史记录（因为历史导航被重置了）
     stdin.write("\u001B[A"); // Up arrow
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("old message");
     expect(lastFrame()).not.toContain("old messageX");
 
@@ -188,17 +188,17 @@ describe("InputBox History Navigation", () => {
 
     // 导航到历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("test history");
 
     // 删除字符应该重置历史导航
     stdin.write("\u007F"); // Backspace
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("test histor");
 
     // 再次按上键应该重新开始历史导航
     stdin.write("\u001B[A"); // Up arrow
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("test history");
 
     unmount();
@@ -214,23 +214,23 @@ describe("InputBox History Navigation", () => {
 
     // 输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("Select File");
 
     // 按上键应该用于文件选择器导航，不是历史导航
     stdin.write("\u001B[A"); // Up arrow
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("Select File");
     expect(lastFrame()).toContain("@");
     expect(lastFrame()).not.toContain("some history");
 
     // 取消文件选择器
     stdin.write("\u001B"); // ESC
-    await delay(50);
+    await delay(10);
 
     // 现在按上键应该进行历史导航
     stdin.write("\u001B[A"); // Up arrow
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("some history");
 
     unmount();
@@ -246,43 +246,25 @@ describe("InputBox History Navigation", () => {
 
     // 输入 / 触发命令选择器
     stdin.write("/");
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("Command Selector");
 
     // 按上键应该用于命令选择器导航，不是历史导航
     stdin.write("\u001B[A"); // Up arrow
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("Command Selector");
     expect(lastFrame()).toContain("/");
     expect(lastFrame()).not.toContain("some command history");
 
     // 取消命令选择器
     stdin.write("\u001B"); // ESC
-    await delay(50);
+    await delay(10);
 
     // 现在按上键应该进行历史导航
     stdin.write("\u001B[A"); // Up arrow
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("some command history");
 
     unmount();
-  });
-
-  it("should handle empty history gracefully", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
-
-    // 输入一些文本
-    stdin.write("test input");
-    await delay(50);
-
-    // 按上键，应该没有变化（因为历史为空）
-    stdin.write("\u001B[A"); // Up arrow
-    await delay(50);
-    expect(lastFrame()).toContain("test input");
-
-    // 按下键，也应该没有变化
-    stdin.write("\u001B[B"); // Down arrow
-    await delay(50);
-    expect(lastFrame()).toContain("test input");
   });
 });
