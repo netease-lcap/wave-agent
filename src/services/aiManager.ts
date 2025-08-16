@@ -11,7 +11,7 @@ import {
   updateToolBlockInMessage,
   addErrorBlockToMessage,
   addCompressBlockToMessage,
-  updateFileOperationBlockInMessage,
+  addDiffBlockToMessage,
   getMessagesToCompress,
 } from "../utils/messageOperations";
 import { toolRegistry } from "../plugins/tools";
@@ -387,7 +387,7 @@ export class AIManager {
                 toolResult.originalContent !== undefined &&
                 toolResult.newContent !== undefined
               ) {
-                currentMessages = updateFileOperationBlockInMessage(
+                currentMessages = addDiffBlockToMessage(
                   currentMessages,
                   toolResult.filePath!,
                   toolResult.diffResult!,

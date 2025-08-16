@@ -127,7 +127,7 @@ export const updateAnswerBlockInMessage = (
 };
 
 // 更新最后一个助手消息的 File Operation Block
-export const updateFileOperationBlockInMessage = (
+export const addDiffBlockToMessage = (
   messages: Message[],
   path: string,
   diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
