@@ -3,7 +3,7 @@ import { AIManager } from "../src/services/aiManager";
 import * as aiService from "../src/services/aiService";
 import { FileManager } from "../src/services/fileManager";
 import { SessionManager } from "../src/services/sessionManager";
-import type { Message } from "../src/types/chat";
+import type { Message } from "../src/types";
 
 // Mock AI Service
 vi.mock("../src/services/aiService");
