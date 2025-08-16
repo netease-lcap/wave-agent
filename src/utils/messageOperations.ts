@@ -362,11 +362,28 @@ export const getMessagesToCompress = (
   // 从后往前计算需要保留的消息位置
   const { messageIndex } = countValidBlocksFromEnd(messages, keepLastCount);
 
-  // 需要压缩的消息是从开始到计算出的位置之前的所有消息
-  const messagesToCompress = messages.slice(0, messageIndex);
+  // 找到最后一个包含压缩块的消息索引
+  let lastCompressIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const hasCompressBlock = messages[i].blocks.some(
+      (block) => block.type === "compress",
+    );
+    if (hasCompressBlock) {
+      lastCompressIndex = i;
+      break;
+    }
+  }
 
-  // 插入位置就是计算出的消息索引位置
-  const insertIndex = messageIndex;
+  // 确定压缩的起始位置
+  // 如果存在压缩块，从压缩块位置开始（包含压缩块）
+  // 如果不存在压缩块，从开始位置开始
+  const startIndex = lastCompressIndex >= 0 ? lastCompressIndex : 0;
+
+  // 需要压缩的消息是从起始位置到计算出的位置之前的所有消息
+  const messagesToCompress = messages.slice(startIndex, messageIndex);
+
+  // 插入位置就是起始位置（会替换从起始位置开始的消息）
+  const insertIndex = startIndex;
 
   return { messagesToCompress, insertIndex };
 };
