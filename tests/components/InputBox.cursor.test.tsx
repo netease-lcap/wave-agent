@@ -40,9 +40,7 @@ describe("InputBox Cursor Display", () => {
 
     // 向左移动光标
     stdin.write("\u001B[D"); // Left arrow
-    await delay(50);
     stdin.write("\u001B[D"); // Left arrow
-    await delay(50);
 
     // 在当前位置插入文本
     stdin.write("X");
@@ -53,9 +51,7 @@ describe("InputBox Cursor Display", () => {
 
     // 向右移动光标
     stdin.write("\u001B[C"); // Right arrow
-    await delay(50);
     stdin.write("\u001B[C"); // Right arrow
-    await delay(50);
 
     // 在末尾插入文本
     stdin.write("Y");
