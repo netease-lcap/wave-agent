@@ -18,7 +18,6 @@ import { useCommand } from "./useCommand";
 import { useInputHistory } from "./useInputHistory";
 import { useInputInsert } from "./useInputInsert";
 import { createMemoryManager } from "../../utils/memoryManager";
-import { createUserMemoryManager } from "../../utils/userMemoryManager";
 
 export interface ChatContextType {
   messages: Message[];
@@ -107,7 +106,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Use the Memory hook
   const memoryManager = useMemo(() => createMemoryManager(workdir), [workdir]);
-  const userMemoryManager = useMemo(() => createUserMemoryManager(), []);
 
   // Use the Input Insert hook
   const { insertToInput, inputInsertHandler, setInputInsertHandler } =
@@ -132,7 +130,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         if (type === "project") {
           await memoryManager.addMemory(message);
         } else {
-          await userMemoryManager.addUserMemory(message);
+          await memoryManager.addUserMemory(message);
         }
 
         // 添加成功的 MemoryBlock 到最后一个助手消息
@@ -165,7 +163,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         );
       }
     },
-    [memoryManager, userMemoryManager, setMessages],
+    [memoryManager, setMessages],
   );
 
   const sendMessage = useCallback(

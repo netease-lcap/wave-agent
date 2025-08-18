@@ -19,7 +19,10 @@ import type { ToolContext } from "../plugins/tools/types";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI";
 import { saveErrorLog } from "../utils/errorLogger";
 import { readMemoryFile } from "../utils/memoryUtils";
-import { createUserMemoryManager } from "../utils/userMemoryManager";
+import {
+  createMemoryManager,
+  type MemoryManager,
+} from "../utils/memoryManager";
 import type { Message } from "../types";
 import { logger } from "../utils/logger";
 
@@ -49,7 +52,7 @@ export class AIManager {
   private sessionStartTime: string;
   private autoSaveTimer: NodeJS.Timeout | null = null;
   private lastSaveTime: number = 0;
-  private userMemoryManager = createUserMemoryManager();
+  private userMemoryManager: MemoryManager;
 
   constructor(
     workdir: string,
@@ -59,6 +62,7 @@ export class AIManager {
     this.workdir = workdir;
     this.callbacks = callbacks;
     this.fileManager = fileManager;
+    this.userMemoryManager = createMemoryManager(workdir);
     this.sessionStartTime = new Date().toISOString();
     this.state = {
       sessionId: randomUUID(),
