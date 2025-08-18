@@ -43,12 +43,11 @@ describe("InputBox File Selector", () => {
     expect(lastFrame()).toContain("Select File");
 
     // 然后输入过滤条件，一个字符一个字符输入
-    stdin.write("s");
-    await delay(10);
-    stdin.write("r");
-    await delay(10);
-    stdin.write("c");
-    await delay(10);
+    const searchTerm = "src";
+    for (const char of searchTerm) {
+      stdin.write(char);
+      await delay(10);
+    }
 
     // 验证文件选择器显示了过滤后的结果
     const output = lastFrame();
@@ -126,14 +125,11 @@ describe("InputBox File Selector", () => {
     expect(lastFrame()).toContain("Select File");
 
     // 删除字符（模拟退格键）
-    stdin.write("\u007F"); // Backspace
-    await delay(10);
-    stdin.write("\u007F"); // Backspace
-    await delay(10);
-    stdin.write("\u007F"); // Backspace
-    await delay(10);
-    stdin.write("\u007F"); // Backspace (删除 @ 符号)
-    await delay(10);
+    const backspaceCount = 4; // 删除 "src" + "@" 共4个字符
+    for (let i = 0; i < backspaceCount; i++) {
+      stdin.write("\u007F"); // Backspace
+      await delay(10);
+    }
 
     // 验证文件选择器消失
     expect(lastFrame()).not.toContain("Select File");

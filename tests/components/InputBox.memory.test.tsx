@@ -23,7 +23,7 @@ describe("InputBox Memory Mode", () => {
 
     // Type # to enter memory mode
     stdin.write("#");
-    await delay(50);
+    await delay(10);
 
     const output = lastFrame();
     expect(output).toContain("📝 Memory Mode");
@@ -37,15 +37,15 @@ describe("InputBox Memory Mode", () => {
 
     // 首先输入 # 然后删除，这样会触发记忆模式的 placeholder 检查
     stdin.write("#");
-    await delay(50);
+    await delay(10);
 
     // 删除 # 字符，但这时 inputText 会变为空，不再是记忆模式
     stdin.write("\u0008"); // backspace
-    await delay(50);
+    await delay(10);
 
     // 重新输入 # 进入记忆模式
     stdin.write("#");
-    await delay(50);
+    await delay(10);
 
     const output = lastFrame();
     expect(output).toContain("📝 Memory Mode");
@@ -57,7 +57,7 @@ describe("InputBox Memory Mode", () => {
 
     // Type normal text
     stdin.write("hello");
-    await delay(50);
+    await delay(10);
 
     const output = lastFrame();
     expect(output).not.toContain("📝 Memory Mode");
@@ -69,13 +69,13 @@ describe("InputBox Memory Mode", () => {
 
     // Type # to enter memory mode
     stdin.write("#");
-    await delay(50);
+    await delay(10);
     let output = lastFrame();
     expect(output).toContain("📝 Memory Mode");
 
     // Remove # to exit memory mode
     stdin.write("\u0008"); // backspace
-    await delay(50);
+    await delay(10);
     output = lastFrame();
     expect(output).not.toContain("📝 Memory Mode");
   });
@@ -85,37 +85,14 @@ describe("InputBox Memory Mode", () => {
 
     // Type # to enter memory mode first
     stdin.write("#");
-    await delay(50);
+    await delay(10);
 
     // Then type additional text character by character
-    stdin.write(" ");
+    const text = " remember this";
+    for (const char of text) {
+      stdin.write(char);
+    }
     await delay(10);
-    stdin.write("r");
-    await delay(10);
-    stdin.write("e");
-    await delay(10);
-    stdin.write("m");
-    await delay(10);
-    stdin.write("e");
-    await delay(10);
-    stdin.write("m");
-    await delay(10);
-    stdin.write("b");
-    await delay(10);
-    stdin.write("e");
-    await delay(10);
-    stdin.write("r");
-    await delay(10);
-    stdin.write(" ");
-    await delay(10);
-    stdin.write("t");
-    await delay(10);
-    stdin.write("h");
-    await delay(10);
-    stdin.write("i");
-    await delay(10);
-    stdin.write("s");
-    await delay(50);
 
     const output = lastFrame();
     expect(output).toContain("📝 Memory Mode");
@@ -132,7 +109,7 @@ describe("InputBox Memory Mode", () => {
 
     // Type # to enter memory mode
     stdin.write("#");
-    await delay(50);
+    await delay(10);
 
     output = lastFrame();
     expect(output).toContain("📝 Memory Mode");
