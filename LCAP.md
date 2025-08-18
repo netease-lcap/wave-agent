@@ -8,4 +8,4 @@
 - 除非用户明确提及，否则不要创建 Markdown 文档
 - 不要运行 pnpm dev 等守护进程
 - 不要写 any 类型
-- 不要单独测试 hooks，要使用 ink-testing-library 来渲染组件，进而测试 hooks
+- 使用 HookTester 测试 hooks
