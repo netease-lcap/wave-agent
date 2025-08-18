@@ -248,10 +248,6 @@ describe("InputBox Basic Functionality", () => {
     let output = lastFrame();
     expect(output).toContain("[长文本#1]");
 
-    // 清空输入（模拟用户清空后再次粘贴）
-    stdin.write("\u0015"); // Ctrl+U 清空行
-    await delay(50);
-
     // 第二次粘贴长文本
     const longText2 = "Second long text: " + "B".repeat(200);
     stdin.write(longText2);
