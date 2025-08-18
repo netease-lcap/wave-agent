@@ -3,7 +3,6 @@ import pluginJs from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import pluginReact from 'eslint-plugin-react';
 import pluginReactHooks from 'eslint-plugin-react-hooks';
-import pluginEslintComments from 'eslint-plugin-eslint-comments';
 
 export default [
   { ignores: ['dist/', 'node_modules/'] },
@@ -27,15 +26,17 @@ export default [
     plugins: {
       react: pluginReact,
       'react-hooks': pluginReactHooks,
-      'eslint-comments': pluginEslintComments,
     },
     rules: {
       ...pluginReact.configs.recommended.rules,
       ...pluginReactHooks.configs.recommended.rules,
       'react/no-unescaped-entities': 'off',
       'react/react-in-jsx-scope': 'off',
-      // Prohibit eslint-disable comments
-      'eslint-comments/no-use': 'error',
+      // Prohibit warning comments like TODO, FIXME, eslint-disable
+      'no-warning-comments': ['error', {
+        terms: ['todo', 'fixme', 'hack', 'bug', 'eslint-disable', 'eslint-disable-line', 'eslint-disable-next-line'],
+        location: 'anywhere',
+      }],
     },
     settings: {
       react: {
@@ -50,12 +51,12 @@ export default [
         ...globals.node,
       },
     },
-    plugins: {
-      'eslint-comments': pluginEslintComments,
-    },
     rules: {
-      // Also prohibit eslint-disable in test files
-      'eslint-comments/no-use': 'error',
+      // Also prohibit warning comments in test files
+      'no-warning-comments': ['error', {
+        terms: ['todo', 'fixme', 'hack', 'bug', 'eslint-disable', 'eslint-disable-line', 'eslint-disable-next-line'],
+        location: 'anywhere',
+      }],
     },
   },
 ];
