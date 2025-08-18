@@ -191,7 +191,7 @@ describe("MessageList Pagination", () => {
       const { lastFrame } = render(<MessageList messages={messages} />);
 
       // Should show navigation controls when there are multiple pages
-      expect(lastFrame()).toContain("Ctrl+U/D");
+      expect(lastFrame()).toContain("Ctrl+B/F");
       expect(lastFrame()).toContain("Navigate");
     });
 
@@ -204,7 +204,7 @@ describe("MessageList Pagination", () => {
 
       // Navigation hints are always shown when there are messages
       // This test documents the current behavior
-      expect(lastFrame()).toContain("Ctrl+U/D");
+      expect(lastFrame()).toContain("Ctrl+B/F");
       expect(lastFrame()).toContain("Navigate");
       expect(lastFrame()).toContain("Messages 3 Page 1/1");
     });

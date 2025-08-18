@@ -146,7 +146,7 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
               </Text>
               <Text color="gray" dimColor>
                 {" "}
-                ← <Text color="cyan">Ctrl+U/D</Text> Navigate
+                ← <Text color="cyan">Ctrl+B/F</Text> Navigate
               </Text>
             </Box>
             <Text color="gray" dimColor>

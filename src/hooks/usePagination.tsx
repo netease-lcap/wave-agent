@@ -171,11 +171,11 @@ export const usePagination = (messages: Message[]) => {
 
   // 集成快捷键处理
   useInput((input, key) => {
-    // Ctrl+U/D 快捷键
+    // Ctrl+B/F 快捷键 (Vim/Less 风格)
     if (key.ctrl) {
-      if (input === "u") {
+      if (input === "b") {
         goToPrevPage();
-      } else if (input === "d") {
+      } else if (input === "f") {
         goToNextPage();
       }
     }
