@@ -113,6 +113,12 @@ vi.mock("@/hooks/useClipboardPaste", () => ({
   }),
 }));
 
+vi.mock("@/hooks/useLoadingTimer", () => ({
+  useLoadingTimer: vi.fn(() => ({
+    elapsedTime: 0,
+    formattedTime: "5s",
+  })),
+}));
 vi.mock("@/hooks/useInputKeyboardHandler", () => ({
   useInputKeyboardHandler: () => ({
     handleFileSelect: vi.fn(),
@@ -180,6 +186,7 @@ describe("InputBox Loading State", () => {
     const output = lastFrame();
 
     expect(output).toContain("AI is thinking...");
+    expect(output).toContain("5s"); // Timer显示
     expect(output).not.toContain("Type your message");
     // Should not contain the emoji icon
     expect(output).not.toContain("🤔");
@@ -286,7 +293,171 @@ describe("InputBox Loading State", () => {
 
     // Should show AI thinking state, not command running state
     expect(output).toContain("AI is thinking...");
+    expect(output).toContain("5s"); // Timer显示
     expect(output).toContain("1,500");
     expect(output).not.toContain("Command is running");
+  });
+
+  describe("Loading Timer Display", () => {
+    it("should display timer in seconds format", async () => {
+      // Mock useLoadingTimer to return short time
+      const { useLoadingTimer } = await import("@/hooks/useLoadingTimer");
+      (useLoadingTimer as ReturnType<typeof vi.fn>).mockReturnValue({
+        elapsedTime: 30,
+        formattedTime: "30s",
+      });
+
+      // Mock useChat to return isLoading: true
+      const { useChat } = await import("@/contexts/useChat");
+      vi.mocked(useChat).mockReturnValue({
+        isCommandRunning: false,
+        isLoading: true,
+        insertToInput: vi.fn(),
+        sendMessage: vi.fn(),
+        abortMessage: vi.fn(),
+        clearMessages: vi.fn(),
+        messages: [],
+        setMessages: vi.fn(),
+        setIsLoading: vi.fn(),
+        executeCommand: vi.fn(),
+        abortCommand: vi.fn(),
+        userInputHistory: [],
+        addToInputHistory: vi.fn(),
+        inputInsertHandler: null,
+        setInputInsertHandler: vi.fn(),
+        sessionId: "test-session",
+        sendAIMessage: vi.fn(),
+        abortAIMessage: vi.fn(),
+        resetSession: vi.fn(),
+        saveMemory: vi.fn(),
+        totalTokens: 0,
+      });
+
+      const { lastFrame } = render(<InputBox />);
+      const output = lastFrame();
+
+      expect(output).toContain("30s");
+    });
+
+    it("should display timer in minutes and seconds format", async () => {
+      // Mock useLoadingTimer to return longer time
+      const { useLoadingTimer } = await import("@/hooks/useLoadingTimer");
+      (useLoadingTimer as ReturnType<typeof vi.fn>).mockReturnValue({
+        elapsedTime: 125,
+        formattedTime: "2m 5s",
+      });
+
+      // Mock useChat to return isLoading: true
+      const { useChat } = await import("@/contexts/useChat");
+      vi.mocked(useChat).mockReturnValue({
+        isCommandRunning: false,
+        isLoading: true,
+        insertToInput: vi.fn(),
+        sendMessage: vi.fn(),
+        abortMessage: vi.fn(),
+        clearMessages: vi.fn(),
+        messages: [],
+        setMessages: vi.fn(),
+        setIsLoading: vi.fn(),
+        executeCommand: vi.fn(),
+        abortCommand: vi.fn(),
+        userInputHistory: [],
+        addToInputHistory: vi.fn(),
+        inputInsertHandler: null,
+        setInputInsertHandler: vi.fn(),
+        sessionId: "test-session",
+        sendAIMessage: vi.fn(),
+        abortAIMessage: vi.fn(),
+        resetSession: vi.fn(),
+        saveMemory: vi.fn(),
+        totalTokens: 0,
+      });
+
+      const { lastFrame } = render(<InputBox />);
+      const output = lastFrame();
+
+      expect(output).toContain("2m 5s");
+    });
+
+    it("should display exact minute timing", async () => {
+      // Mock useLoadingTimer to return exact minute
+      const { useLoadingTimer } = await import("@/hooks/useLoadingTimer");
+      (useLoadingTimer as ReturnType<typeof vi.fn>).mockReturnValue({
+        elapsedTime: 60,
+        formattedTime: "1m 0s",
+      });
+
+      // Mock useChat to return isLoading: true
+      const { useChat } = await import("@/contexts/useChat");
+      vi.mocked(useChat).mockReturnValue({
+        isCommandRunning: false,
+        isLoading: true,
+        insertToInput: vi.fn(),
+        sendMessage: vi.fn(),
+        abortMessage: vi.fn(),
+        clearMessages: vi.fn(),
+        messages: [],
+        setMessages: vi.fn(),
+        setIsLoading: vi.fn(),
+        executeCommand: vi.fn(),
+        abortCommand: vi.fn(),
+        userInputHistory: [],
+        addToInputHistory: vi.fn(),
+        inputInsertHandler: null,
+        setInputInsertHandler: vi.fn(),
+        sessionId: "test-session",
+        sendAIMessage: vi.fn(),
+        abortAIMessage: vi.fn(),
+        resetSession: vi.fn(),
+        saveMemory: vi.fn(),
+        totalTokens: 0,
+      });
+
+      const { lastFrame } = render(<InputBox />);
+      const output = lastFrame();
+
+      expect(output).toContain("1m 0s");
+    });
+
+    it("should not display timer when not loading", async () => {
+      // Mock useLoadingTimer but not loading
+      const { useLoadingTimer } = await import("@/hooks/useLoadingTimer");
+      (useLoadingTimer as ReturnType<typeof vi.fn>).mockReturnValue({
+        elapsedTime: 0,
+        formattedTime: "0s",
+      });
+
+      // Mock useChat to return isLoading: false
+      const { useChat } = await import("@/contexts/useChat");
+      vi.mocked(useChat).mockReturnValue({
+        isCommandRunning: false,
+        isLoading: false,
+        insertToInput: vi.fn(),
+        sendMessage: vi.fn(),
+        abortMessage: vi.fn(),
+        clearMessages: vi.fn(),
+        messages: [],
+        setMessages: vi.fn(),
+        setIsLoading: vi.fn(),
+        executeCommand: vi.fn(),
+        abortCommand: vi.fn(),
+        userInputHistory: [],
+        addToInputHistory: vi.fn(),
+        inputInsertHandler: null,
+        setInputInsertHandler: vi.fn(),
+        sessionId: "test-session",
+        sendAIMessage: vi.fn(),
+        abortAIMessage: vi.fn(),
+        resetSession: vi.fn(),
+        saveMemory: vi.fn(),
+        totalTokens: 0,
+      });
+
+      const { lastFrame } = render(<InputBox />);
+      const output = lastFrame();
+
+      expect(output).not.toContain("0s");
+      expect(output).toContain("Type your message");
+    });
   });
 });
