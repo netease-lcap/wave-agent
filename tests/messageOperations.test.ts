@@ -6,6 +6,9 @@ import { tmpdir } from "os";
 import {
   convertImageToBase64,
   addMemoryBlockToMessage,
+  addCommandOutputMessage,
+  updateCommandOutputInMessage,
+  completeCommandInMessage,
 } from "../src/utils/messageOperations";
 import type { Message } from "../src/types";
 
@@ -188,5 +191,338 @@ describe("addMemoryBlockToMessage", () => {
     expect(initialMessages).toHaveLength(1);
     expect(result).toHaveLength(2);
     expect(result).not.toBe(initialMessages);
+  });
+});
+
+describe("Command Output Message Operations", () => {
+  describe("addCommandOutputMessage", () => {
+    it("should add a new command output message", () => {
+      const initialMessages: Message[] = [
+        {
+          role: "user",
+          blocks: [{ type: "text", content: "!echo hello" }],
+        },
+      ];
+
+      const result = addCommandOutputMessage(initialMessages, "echo hello");
+
+      expect(result).toHaveLength(2);
+      expect(result[1]).toEqual({
+        role: "assistant",
+        blocks: [
+          {
+            type: "command_output",
+            command: "echo hello",
+            output: "",
+            isRunning: true,
+            exitCode: null,
+          },
+        ],
+      });
+    });
+
+    it("should work with empty message list", () => {
+      const initialMessages: Message[] = [];
+
+      const result = addCommandOutputMessage(initialMessages, "ls -la");
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        role: "assistant",
+        blocks: [
+          {
+            type: "command_output",
+            command: "ls -la",
+            output: "",
+            isRunning: true,
+            exitCode: null,
+          },
+        ],
+      });
+    });
+
+    it("should not modify the original messages array", () => {
+      const initialMessages: Message[] = [
+        {
+          role: "user",
+          blocks: [{ type: "text", content: "test" }],
+        },
+      ];
+
+      const result = addCommandOutputMessage(initialMessages, "pwd");
+
+      expect(initialMessages).toHaveLength(1);
+      expect(result).toHaveLength(2);
+      expect(result).not.toBe(initialMessages);
+    });
+  });
+
+  describe("updateCommandOutputInMessage", () => {
+    it("should update output in the correct command block", () => {
+      const initialMessages: Message[] = [
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "command_output",
+              command: "echo hello",
+              output: "",
+              isRunning: true,
+              exitCode: null,
+            },
+          ],
+        },
+      ];
+
+      const result = updateCommandOutputInMessage(
+        initialMessages,
+        "echo hello",
+        "hello\n",
+      );
+
+      expect(result[0].blocks[0]).toMatchObject({
+        type: "command_output",
+        command: "echo hello",
+        output: "hello",
+        isRunning: true,
+        exitCode: null,
+      });
+    });
+
+    it("should update the correct command when multiple commands exist", () => {
+      const initialMessages: Message[] = [
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "command_output",
+              command: "echo first",
+              output: "first",
+              isRunning: false,
+              exitCode: 0,
+            },
+          ],
+        },
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "command_output",
+              command: "echo second",
+              output: "",
+              isRunning: true,
+              exitCode: null,
+            },
+          ],
+        },
+      ];
+
+      const result = updateCommandOutputInMessage(
+        initialMessages,
+        "echo second",
+        "second\n",
+      );
+
+      // First command should remain unchanged
+      expect(result[0].blocks[0]).toMatchObject({
+        command: "echo first",
+        output: "first",
+        isRunning: false,
+      });
+
+      // Second command should be updated
+      expect(result[1].blocks[0]).toMatchObject({
+        command: "echo second",
+        output: "second",
+        isRunning: true,
+      });
+    });
+
+    it("should trim the output", () => {
+      const initialMessages: Message[] = [
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "command_output",
+              command: "echo test",
+              output: "",
+              isRunning: true,
+              exitCode: null,
+            },
+          ],
+        },
+      ];
+
+      const result = updateCommandOutputInMessage(
+        initialMessages,
+        "echo test",
+        "  test output  \n",
+      );
+
+      expect(result[0].blocks[0]).toMatchObject({
+        output: "test output",
+      });
+    });
+
+    it("should not update if no matching running command is found", () => {
+      const initialMessages: Message[] = [
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "command_output",
+              command: "echo hello",
+              output: "hello",
+              isRunning: false,
+              exitCode: 0,
+            },
+          ],
+        },
+      ];
+
+      const result = updateCommandOutputInMessage(
+        initialMessages,
+        "echo hello",
+        "new output",
+      );
+
+      // Should not update because the command is not running
+      expect(result[0].blocks[0]).toMatchObject({
+        output: "hello",
+        isRunning: false,
+      });
+    });
+  });
+
+  describe("completeCommandInMessage", () => {
+    it("should mark command as completed with exit code", () => {
+      const initialMessages: Message[] = [
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "command_output",
+              command: "echo hello",
+              output: "hello",
+              isRunning: true,
+              exitCode: null,
+            },
+          ],
+        },
+      ];
+
+      const result = completeCommandInMessage(initialMessages, "echo hello", 0);
+
+      expect(result[0].blocks[0]).toMatchObject({
+        type: "command_output",
+        command: "echo hello",
+        output: "hello",
+        isRunning: false,
+        exitCode: 0,
+      });
+    });
+
+    it("should handle error exit codes", () => {
+      const initialMessages: Message[] = [
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "command_output",
+              command: "ls /nonexistent",
+              output: "ls: /nonexistent: No such file or directory",
+              isRunning: true,
+              exitCode: null,
+            },
+          ],
+        },
+      ];
+
+      const result = completeCommandInMessage(
+        initialMessages,
+        "ls /nonexistent",
+        1,
+      );
+
+      expect(result[0].blocks[0]).toMatchObject({
+        isRunning: false,
+        exitCode: 1,
+      });
+    });
+
+    it("should complete the correct command when multiple commands exist", () => {
+      const initialMessages: Message[] = [
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "command_output",
+              command: "echo first",
+              output: "first",
+              isRunning: false,
+              exitCode: 0,
+            },
+          ],
+        },
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "command_output",
+              command: "echo second",
+              output: "second",
+              isRunning: true,
+              exitCode: null,
+            },
+          ],
+        },
+      ];
+
+      const result = completeCommandInMessage(
+        initialMessages,
+        "echo second",
+        0,
+      );
+
+      // First command should remain unchanged
+      expect(result[0].blocks[0]).toMatchObject({
+        command: "echo first",
+        isRunning: false,
+        exitCode: 0,
+      });
+
+      // Second command should be completed
+      expect(result[1].blocks[0]).toMatchObject({
+        command: "echo second",
+        isRunning: false,
+        exitCode: 0,
+      });
+    });
+
+    it("should not modify if no matching running command is found", () => {
+      const initialMessages: Message[] = [
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "command_output",
+              command: "echo hello",
+              output: "hello",
+              isRunning: false,
+              exitCode: 0,
+            },
+          ],
+        },
+      ];
+
+      const result = completeCommandInMessage(initialMessages, "echo hello", 1);
+
+      // Should not modify because command is not running
+      expect(result[0].blocks[0]).toMatchObject({
+        isRunning: false,
+        exitCode: 0, // Original exit code should remain
+      });
+    });
   });
 });

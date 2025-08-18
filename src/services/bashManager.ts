@@ -1,6 +1,11 @@
 import { spawn, type ChildProcess } from "child_process";
 import type { Message } from "../types";
 import { addBashCommandToHistory } from "../utils/bashHistory";
+import {
+  addCommandOutputMessage,
+  updateCommandOutputInMessage,
+  completeCommandInMessage,
+} from "../utils/messageOperations";
 
 export interface BashManagerOptions {
   workdir: string;
@@ -34,21 +39,10 @@ export class BashManager {
 
     this.isCommandRunning = true;
 
-    // Add command output placeholder
-    const outputMessage: Message = {
-      role: "assistant",
-      blocks: [
-        {
-          type: "command_output",
-          command,
-          output: "",
-          isRunning: true,
-          exitCode: null,
-        },
-      ],
-    };
-
-    this.onMessagesUpdate((prev: Message[]) => [...prev, outputMessage]);
+    // Add command output placeholder using message operations utility
+    this.onMessagesUpdate((prev: Message[]) =>
+      addCommandOutputMessage(prev, command),
+    );
 
     return new Promise<number>((resolve) => {
       const child = spawn(command, {
@@ -65,26 +59,9 @@ export class BashManager {
 
       const updateOutput = (newData: string) => {
         outputBuffer += newData;
-        this.onMessagesUpdate((prev) => {
-          const newMessages = [...prev];
-          // Find the last assistant message with a command_output block for this command
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            const msg = newMessages[i];
-            if (msg.role === "assistant") {
-              const commandBlock = msg.blocks.find(
-                (block) =>
-                  block.type === "command_output" &&
-                  block.command === command &&
-                  block.isRunning,
-              );
-              if (commandBlock && commandBlock.type === "command_output") {
-                commandBlock.output = outputBuffer.trim();
-                break;
-              }
-            }
-          }
-          return newMessages;
-        });
+        this.onMessagesUpdate((prev) =>
+          updateCommandOutputInMessage(prev, command, outputBuffer),
+        );
       };
 
       child.stdout?.on("data", (data) => {
@@ -101,27 +78,9 @@ export class BashManager {
         // 添加命令到bash历史记录
         addBashCommandToHistory(command, this.workdir);
 
-        this.onMessagesUpdate((prev) => {
-          const newMessages = [...prev];
-          // Find the last assistant message with a command_output block for this command
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            const msg = newMessages[i];
-            if (msg.role === "assistant") {
-              const commandBlock = msg.blocks.find(
-                (block) =>
-                  block.type === "command_output" &&
-                  block.command === command &&
-                  block.isRunning,
-              );
-              if (commandBlock && commandBlock.type === "command_output") {
-                commandBlock.isRunning = false;
-                commandBlock.exitCode = exitCode;
-                break;
-              }
-            }
-          }
-          return newMessages;
-        });
+        this.onMessagesUpdate((prev) =>
+          completeCommandInMessage(prev, command, exitCode),
+        );
 
         this.isCommandRunning = false;
         this.currentProcess = null;
@@ -130,27 +89,9 @@ export class BashManager {
 
       child.on("error", (error) => {
         updateOutput(`\nError: ${error.message}\n`);
-        this.onMessagesUpdate((prev: Message[]) => {
-          const newMessages = [...prev];
-          // Find the last assistant message with a command_output block for this command
-          for (let i = newMessages.length - 1; i >= 0; i--) {
-            const msg = newMessages[i];
-            if (msg.role === "assistant") {
-              const commandBlock = msg.blocks.find(
-                (block) =>
-                  block.type === "command_output" &&
-                  block.command === command &&
-                  block.isRunning,
-              );
-              if (commandBlock && commandBlock.type === "command_output") {
-                commandBlock.isRunning = false;
-                commandBlock.exitCode = 1;
-                break;
-              }
-            }
-          }
-          return newMessages;
-        });
+        this.onMessagesUpdate((prev: Message[]) =>
+          completeCommandInMessage(prev, command, 1),
+        );
 
         this.isCommandRunning = false;
         this.currentProcess = null;

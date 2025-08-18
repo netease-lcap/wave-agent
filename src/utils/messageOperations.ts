@@ -391,3 +391,77 @@ export const getMessagesToCompress = (
 
   return { messagesToCompress, insertIndex };
 };
+
+// 添加命令输出块到消息列表
+export const addCommandOutputMessage = (
+  messages: Message[],
+  command: string,
+): Message[] => {
+  const outputMessage: Message = {
+    role: "assistant",
+    blocks: [
+      {
+        type: "command_output",
+        command,
+        output: "",
+        isRunning: true,
+        exitCode: null,
+      },
+    ],
+  };
+
+  return [...messages, outputMessage];
+};
+
+// 更新命令输出块的输出内容
+export const updateCommandOutputInMessage = (
+  messages: Message[],
+  command: string,
+  output: string,
+): Message[] => {
+  const newMessages = [...messages];
+  // Find the last assistant message with a command_output block for this command
+  for (let i = newMessages.length - 1; i >= 0; i--) {
+    const msg = newMessages[i];
+    if (msg.role === "assistant") {
+      const commandBlock = msg.blocks.find(
+        (block) =>
+          block.type === "command_output" &&
+          block.command === command &&
+          block.isRunning,
+      );
+      if (commandBlock && commandBlock.type === "command_output") {
+        commandBlock.output = output.trim();
+        break;
+      }
+    }
+  }
+  return newMessages;
+};
+
+// 完成命令执行，更新退出状态
+export const completeCommandInMessage = (
+  messages: Message[],
+  command: string,
+  exitCode: number,
+): Message[] => {
+  const newMessages = [...messages];
+  // Find the last assistant message with a command_output block for this command
+  for (let i = newMessages.length - 1; i >= 0; i--) {
+    const msg = newMessages[i];
+    if (msg.role === "assistant") {
+      const commandBlock = msg.blocks.find(
+        (block) =>
+          block.type === "command_output" &&
+          block.command === command &&
+          block.isRunning,
+      );
+      if (commandBlock && commandBlock.type === "command_output") {
+        commandBlock.isRunning = false;
+        commandBlock.exitCode = exitCode;
+        break;
+      }
+    }
+  }
+  return newMessages;
+};

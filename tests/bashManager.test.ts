@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { BashManager, createBashManager } from "../src/services/bashManager";
-import type { Message } from "../src/types";
 import { spawn, type ChildProcess } from "child_process";
 import { EventEmitter } from "events";
 
@@ -13,6 +11,9 @@ vi.mock("child_process", () => ({
 vi.mock("../src/utils/bashHistory", () => ({
   addBashCommandToHistory: vi.fn(),
 }));
+
+import { BashManager, createBashManager } from "../src/services/bashManager";
+import type { Message } from "../src/types";
 
 const mockSpawn = vi.mocked(spawn);
 
@@ -85,6 +86,13 @@ describe("BashManager", () => {
   describe("executeCommand", () => {
     it("should execute a simple command successfully", async () => {
       const command = "echo 'hello world'";
+      let capturedMessages: Message[] = [];
+
+      // Mock the messages updater to capture all calls
+      mockMessagesUpdater.mockImplementation((updater) => {
+        capturedMessages = updater(capturedMessages);
+        return capturedMessages;
+      });
 
       // Start command execution
       const executePromise = bashManager.executeCommand(command);
@@ -100,16 +108,9 @@ describe("BashManager", () => {
         env: expect.any(Object),
       });
 
-      // Verify initial message was added
-      expect(mockMessagesUpdater).toHaveBeenCalledWith(expect.any(Function));
-
-      // Get the updater function and simulate its call
-      const updaterFn = mockMessagesUpdater.mock.calls[0][0];
-      const initialMessages: Message[] = [];
-      const updatedMessages = updaterFn(initialMessages);
-
-      expect(updatedMessages).toHaveLength(1);
-      expect(updatedMessages[0]).toEqual({
+      // Initial message should be added
+      expect(capturedMessages).toHaveLength(1);
+      expect(capturedMessages[0]).toEqual({
         role: "assistant",
         blocks: [
           {
@@ -125,11 +126,29 @@ describe("BashManager", () => {
       // Simulate command output
       mockChildProcess.simulateStdout("hello world\n");
 
+      // Output should be updated
+      expect(capturedMessages[0].blocks[0]).toMatchObject({
+        type: "command_output",
+        command,
+        output: "hello world",
+        isRunning: true,
+        exitCode: null,
+      });
+
       // Simulate successful exit
       mockChildProcess.simulateExit(0);
 
       // Wait for command to complete
       const exitCode = await executePromise;
+
+      // Final state should show completion
+      expect(capturedMessages[0].blocks[0]).toMatchObject({
+        type: "command_output",
+        command,
+        output: "hello world",
+        isRunning: false,
+        exitCode: 0,
+      });
 
       expect(exitCode).toBe(0);
       expect(bashManager.getIsCommandRunning()).toBe(false);
@@ -137,6 +156,12 @@ describe("BashManager", () => {
 
     it("should handle command with stderr output", async () => {
       const command = "ls /nonexistent";
+      let capturedMessages: Message[] = [];
+
+      mockMessagesUpdater.mockImplementation((updater) => {
+        capturedMessages = updater(capturedMessages);
+        return capturedMessages;
+      });
 
       const executePromise = bashManager.executeCommand(command);
 
@@ -145,15 +170,34 @@ describe("BashManager", () => {
         "ls: /nonexistent: No such file or directory\n",
       );
 
+      // Output should be updated with stderr
+      expect(capturedMessages[0].blocks[0]).toMatchObject({
+        output: "ls: /nonexistent: No such file or directory",
+        isRunning: true,
+      });
+
       // Simulate exit with error code
       mockChildProcess.simulateExit(1);
 
       const exitCode = await executePromise;
+
+      // Final state should show error completion
+      expect(capturedMessages[0].blocks[0]).toMatchObject({
+        isRunning: false,
+        exitCode: 1,
+      });
+
       expect(exitCode).toBe(1);
     });
 
     it("should handle command execution error", async () => {
       const command = "invalid-command";
+      let capturedMessages: Message[] = [];
+
+      mockMessagesUpdater.mockImplementation((updater) => {
+        capturedMessages = updater(capturedMessages);
+        return capturedMessages;
+      });
 
       const executePromise = bashManager.executeCommand(command);
 
@@ -162,11 +206,25 @@ describe("BashManager", () => {
       mockChildProcess.simulateError(error);
 
       const exitCode = await executePromise;
+
+      // Should include error message in output
+      expect(capturedMessages[0].blocks[0]).toMatchObject({
+        output: expect.stringContaining("Error: Command not found"),
+        isRunning: false,
+        exitCode: 1,
+      });
+
       expect(exitCode).toBe(1);
     });
 
     it("should handle SIGKILL signal", async () => {
       const command = "sleep 10";
+      let capturedMessages: Message[] = [];
+
+      mockMessagesUpdater.mockImplementation((updater) => {
+        capturedMessages = updater(capturedMessages);
+        return capturedMessages;
+      });
 
       const executePromise = bashManager.executeCommand(command);
 
@@ -174,6 +232,13 @@ describe("BashManager", () => {
       mockChildProcess.simulateExit(null, "SIGKILL");
 
       const exitCode = await executePromise;
+
+      // Should show SIGKILL exit code (130)
+      expect(capturedMessages[0].blocks[0]).toMatchObject({
+        isRunning: false,
+        exitCode: 130,
+      });
+
       expect(exitCode).toBe(130);
     });
 
@@ -203,22 +268,46 @@ describe("BashManager", () => {
 
     it("should update output progressively", async () => {
       const command = "echo 'line1' && echo 'line2'";
+      let capturedMessages: Message[] = [];
+      let updateCount = 0;
+
+      mockMessagesUpdater.mockImplementation((updater) => {
+        capturedMessages = updater(capturedMessages);
+        updateCount++;
+        return capturedMessages;
+      });
 
       const executePromise = bashManager.executeCommand(command);
 
       // Simulate progressive output
       mockChildProcess.simulateStdout("line1\n");
 
-      // Check that messages are updated with partial output
-      expect(mockMessagesUpdater).toHaveBeenCalled();
+      // Should have partial output
+      expect(capturedMessages[0].blocks[0]).toMatchObject({
+        output: "line1",
+        isRunning: true,
+      });
 
       mockChildProcess.simulateStdout("line2\n");
+
+      // Should have combined output
+      expect(capturedMessages[0].blocks[0]).toMatchObject({
+        output: "line1\nline2",
+        isRunning: true,
+      });
+
       mockChildProcess.simulateExit(0);
 
       await executePromise;
 
       // Should have been called multiple times for progressive updates
-      expect(mockMessagesUpdater.mock.calls.length).toBeGreaterThan(1);
+      expect(updateCount).toBeGreaterThan(2);
+
+      // Final state should show completion
+      expect(capturedMessages[0].blocks[0]).toMatchObject({
+        isRunning: false,
+        exitCode: 0,
+      });
     });
   });
 
@@ -282,97 +371,6 @@ describe("BashManager", () => {
       await executePromise;
 
       expect(bashManager.getIsCommandRunning()).toBe(false);
-    });
-  });
-
-  describe("message updates", () => {
-    it("should update messages correctly throughout command lifecycle", async () => {
-      const command = "echo 'test output'";
-      let capturedMessages: Message[] = [];
-
-      // Mock the messages updater to capture all calls
-      mockMessagesUpdater.mockImplementation((updater) => {
-        capturedMessages = updater(capturedMessages);
-        return capturedMessages;
-      });
-
-      const executePromise = bashManager.executeCommand(command);
-
-      // Initial message should be added
-      expect(capturedMessages).toHaveLength(1);
-      expect(capturedMessages[0].blocks[0]).toMatchObject({
-        type: "command_output",
-        command,
-        output: "",
-        isRunning: true,
-        exitCode: null,
-      });
-
-      // Simulate output
-      mockChildProcess.simulateStdout("test output\n");
-
-      // Output should be updated
-      const commandBlock = capturedMessages[0].blocks[0];
-      if (commandBlock.type === "command_output") {
-        expect(commandBlock.output).toBe("test output");
-        expect(commandBlock.isRunning).toBe(true);
-      }
-
-      // Simulate exit
-      mockChildProcess.simulateExit(0);
-      await executePromise;
-
-      // Final state should show completion
-      const finalBlock = capturedMessages[0].blocks[0];
-      if (finalBlock.type === "command_output") {
-        expect(finalBlock.isRunning).toBe(false);
-        expect(finalBlock.exitCode).toBe(0);
-      }
-    });
-
-    it("should find and update the correct command block in messages", async () => {
-      const command1 = "echo 'first'";
-
-      // Setup initial messages with multiple command blocks
-      let messages: Message[] = [
-        {
-          role: "assistant",
-          blocks: [
-            {
-              type: "command_output",
-              command: "old command",
-              output: "old output",
-              isRunning: false,
-              exitCode: 0,
-            },
-          ],
-        },
-      ];
-
-      mockMessagesUpdater.mockImplementation((updater) => {
-        messages = updater(messages);
-        return messages;
-      });
-
-      // Execute new command
-      const executePromise = bashManager.executeCommand(command1);
-
-      // Should add new message, not modify existing one
-      expect(messages).toHaveLength(2);
-      expect(messages[1].blocks[0]).toMatchObject({
-        type: "command_output",
-        command: command1,
-        isRunning: true,
-      });
-
-      // Original message should be unchanged
-      expect(messages[0].blocks[0]).toMatchObject({
-        command: "old command",
-        isRunning: false,
-      });
-
-      mockChildProcess.simulateExit(0);
-      await executePromise;
     });
   });
 });
