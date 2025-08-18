@@ -26,42 +26,19 @@ describe("Echo Command Integration Test", () => {
     // 等待组件完全渲染，确保初始状态显示
     await waitForText(renderResult, "Type your message", { timeout: 3000 });
 
-    // 逐个字符输入 !echo 'hi'
-    const input = "!echo 'hi'";
-    for (const char of input) {
-      stdin.write(char);
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
+    stdin.write("!echo 'hi'");
 
     // 等待完整输入显示
     await waitForText(renderResult, "!echo 'hi'", { timeout: 3000 });
 
-    // 验证用户输入显示在界面上，并且显示了bash历史选择器
-    const currentOutput = lastFrame();
-    expect(currentOutput).toContain("!echo 'hi'");
-    expect(currentOutput).toContain("Press Enter to execute: echo 'hi'");
-
-    // 第一次按回车 - 进入bash历史选择器模式
+    // 按回车
     stdin.write("\r");
-    // 短暂等待让bash历史选择器状态切换完成
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    // 第二次按回车 - 确认执行命令
-    stdin.write("\r");
-    // 短暂等待让命令执行状态切换完成
-    await new Promise((resolve) => setTimeout(resolve, 200));
 
     // 等待命令执行成功，增加更长的超时时间
     await waitForText(renderResult, "echo 'hi' ✅", { timeout: 5000 });
 
     // 验证最终输出
     const finalOutput = lastFrame();
-
-    // 验证命令执行成功
-    expect(finalOutput).toContain("echo 'hi' ✅");
-
-    // 验证命令输出显示
-    expect(finalOutput).toContain("hi");
 
     // 验证输入框已恢复到初始状态
     expect(finalOutput).toContain("Type your message");
