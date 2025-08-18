@@ -1,6 +1,6 @@
 {
   "name": "lcap-code",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CLI-based code assistant powered by AI, built with React and Ink",
   "keywords": [
     "ai",
