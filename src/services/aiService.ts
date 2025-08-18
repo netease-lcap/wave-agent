@@ -1,5 +1,5 @@
 import type { ChatCompletionMessageParam, ModelId } from "../types/common";
-import { VALID_MODEL_IDS, DEFAULT_MODEL_ID } from "../types/common";
+import { DEFAULT_MODEL_ID } from "../types/common";
 import { toolRegistry } from "../plugins/tools";
 import { logger } from "@/utils/logger";
 import OpenAI from "openai";
@@ -10,11 +10,6 @@ const openai = new OpenAI({
   apiKey: process.env.AIGW_TOKEN,
   baseURL: process.env.AIGW_URL,
 });
-
-// 验证模型ID是否有效
-function isValidModelId(modelId: string): modelId is ModelId {
-  return VALID_MODEL_IDS.includes(modelId as ModelId);
-}
 
 export interface CallAgentOptions {
   messages: ChatCompletionMessageParam[];
@@ -151,10 +146,7 @@ export async function callAgent(
 
   // 获取模型配置
   const envModel = process.env.AIGW_MODEL;
-  const modelId: ModelId =
-    envModel && isValidModelId(envModel)
-      ? (envModel as ModelId)
-      : DEFAULT_MODEL_ID;
+  const modelId: ModelId = (envModel as ModelId) || DEFAULT_MODEL_ID;
 
   try {
     // 构建系统提示词内容

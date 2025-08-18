@@ -102,13 +102,6 @@ export const MODEL_OPTIONS: ModelOption[] = [
 ];
 
 /**
- * 支持的模型ID列表
- */
-export const VALID_MODEL_IDS: ModelId[] = MODEL_OPTIONS.map(
-  (option) => option.id,
-);
-
-/**
  * 默认模型ID
  */
 export const DEFAULT_MODEL_ID: ModelId = "claude-sonnet-4-20250514";
