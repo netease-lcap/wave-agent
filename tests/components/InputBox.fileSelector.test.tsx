@@ -37,18 +37,18 @@ describe("InputBox File Selector", () => {
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(100); // 增加延迟确保状态更新
+    await delay(10); // 增加延迟确保状态更新
 
     // 验证文件选择器已经显示
     expect(lastFrame()).toContain("Select File");
 
     // 然后输入过滤条件，一个字符一个字符输入
     stdin.write("s");
-    await delay(100);
+    await delay(10);
     stdin.write("r");
-    await delay(100);
+    await delay(10);
     stdin.write("c");
-    await delay(100);
+    await delay(10);
 
     // 验证文件选择器显示了过滤后的结果
     const output = lastFrame();
