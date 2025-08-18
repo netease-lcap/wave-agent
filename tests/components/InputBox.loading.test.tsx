@@ -249,7 +249,7 @@ describe("InputBox Loading State", () => {
     const output = lastFrame();
 
     expect(output).toContain("Command is running...");
-    expect(output).toContain("Press Esc to abort");
+    expect(output).not.toContain("Press Esc to abort");
     expect(output).not.toContain("Type your message");
     expect(output).not.toContain("AI is thinking");
   });

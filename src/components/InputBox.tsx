@@ -161,7 +161,7 @@ export const InputBox: React.FC = () => {
   const placeholderText = isLoading
     ? `AI is thinking... (Tokens: ${totalTokens.toLocaleString()})`
     : isCommandRunning
-      ? "Command is running... (Press Esc to abort)"
+      ? "Command is running..."
       : INPUT_PLACEHOLDER_TEXT;
 
   // 将文本拆分为光标前、光标位置、光标后三部分
