@@ -100,17 +100,12 @@ vi.mock("@/hooks/useImageManager", () => ({
     attachedImages: [],
     addImage: vi.fn(),
     clearImages: vi.fn(),
+    handlePasteImage: vi.fn(),
   }),
 }));
 
 vi.mock("@/hooks/useTextInsertion", () => ({
   useTextInsertion: vi.fn(),
-}));
-
-vi.mock("@/hooks/useClipboardPaste", () => ({
-  useClipboardPaste: () => ({
-    handlePasteImage: vi.fn(),
-  }),
 }));
 
 vi.mock("@/hooks/useLoadingTimer", () => ({

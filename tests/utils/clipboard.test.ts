@@ -1,241 +1,376 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   readClipboardImage,
-  cleanupTempImage,
   hasClipboardImage,
+  cleanupTempImage,
 } from "@/utils/clipboard";
-import { createTestImage } from "../helpers/testImageHelper";
-import { exec } from "child_process";
-import { promisify } from "util";
-import { existsSync, unlinkSync } from "fs";
-import { logger } from "@/utils/logger";
 
-const execAsync = promisify(exec);
-const platform = process.platform;
+// Mock all the dependencies - use vi.hoisted for proper hoisting
+const mockExec = vi.hoisted(() => vi.fn());
+const mockExistsSync = vi.hoisted(() => vi.fn());
+const mockUnlinkSync = vi.hoisted(() => vi.fn());
+const mockJoin = vi.hoisted(() => vi.fn());
+const mockTmpdir = vi.hoisted(() => vi.fn());
 
-// 检测 xclip 是否可用（仅在 Linux 平台）
-const checkXclipAvailable = async (): Promise<boolean> => {
-  if (platform !== "linux") {
-    return true; // 非 Linux 平台不需要 xclip
-  }
+vi.mock("child_process", () => ({
+  exec: mockExec,
+}));
 
-  try {
-    await execAsync("which xclip");
-    return true;
-  } catch {
-    return false;
-  }
-};
+vi.mock("util", () => ({
+  promisify: vi.fn((fn) => fn),
+}));
 
-describe("Clipboard Image Utils", () => {
-  let tempImagePath: string | undefined;
-  let testImagePath: string | undefined;
+vi.mock("fs", () => ({
+  existsSync: mockExistsSync,
+  unlinkSync: mockUnlinkSync,
+}));
+
+vi.mock("path", () => ({
+  join: mockJoin,
+}));
+
+vi.mock("os", () => ({
+  tmpdir: mockTmpdir,
+}));
+
+describe("Clipboard Utils", () => {
+  const originalPlatform = process.platform;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Setup default mock returns
+    mockTmpdir.mockReturnValue("/tmp");
+    mockJoin.mockImplementation((...paths) => paths.join("/"));
+    mockExistsSync.mockReturnValue(true);
+  });
 
   afterEach(() => {
-    // 清理测试中可能创建的临时文件
-    if (tempImagePath) {
-      cleanupTempImage(tempImagePath);
-      tempImagePath = undefined;
-    }
-    // 清理测试图片
-    if (testImagePath && existsSync(testImagePath)) {
-      try {
-        unlinkSync(testImagePath);
-      } catch (error) {
-        logger.warn("Failed to cleanup test image:", error);
-      }
-      testImagePath = undefined;
-    }
+    // Restore original platform
+    Object.defineProperty(process, "platform", {
+      value: originalPlatform,
+      writable: true,
+    });
   });
 
   describe("readClipboardImage", () => {
-    it("should return error for unsupported platforms", async () => {
-      if (["darwin", "win32", "linux"].includes(platform)) {
-        logger.info(`Skipping unsupported platform test on ${platform}`);
-        return;
-      }
+    it("should return error for unsupported platform", async () => {
+      Object.defineProperty(process, "platform", {
+        value: "unsupported",
+        writable: true,
+      });
 
       const result = await readClipboardImage();
+
       expect(result.success).toBe(false);
       expect(result.error).toContain("not supported on platform");
     });
 
-    it("should handle empty clipboard", async () => {
-      // 检查 xclip 是否可用
-      const isXclipAvailable = await checkXclipAvailable();
-      if (!isXclipAvailable) {
-        logger.info(
-          "Skipping empty clipboard test because xclip is not available",
-        );
-        return;
-      }
+    describe("macOS", () => {
+      beforeEach(() => {
+        Object.defineProperty(process, "platform", {
+          value: "darwin",
+          writable: true,
+        });
+      });
 
-      // 清空剪贴板
-      try {
-        if (platform === "darwin") {
-          await execAsync("osascript -e 'set the clipboard to \"\"'");
-        } else if (platform === "win32") {
-          await execAsync("powershell -Command \"Set-Clipboard -Value ''\"");
-        } else if (platform === "linux") {
-          await execAsync('echo "" | xclip -selection clipboard');
-        }
-      } catch {
-        logger.warn("Failed to clear clipboard, test may not be reliable");
-      }
-
-      const result = await readClipboardImage();
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("No image found");
-    });
-
-    it("should read image from clipboard when image is present", async () => {
-      // 动态创建测试图片
-      testImagePath = createTestImage();
-
-      try {
-        // 根据平台将测试图片复制到剪贴板
-        if (platform === "darwin") {
-          await execAsync(
-            `osascript -e 'set the clipboard to (read (POSIX file "${testImagePath}") as JPEG picture)'`,
-          );
-        } else if (platform === "win32") {
-          const script = `
-            Add-Type -AssemblyName System.Windows.Forms
-            Add-Type -AssemblyName System.Drawing
-            $image = [System.Drawing.Image]::FromFile("${testImagePath}")
-            [System.Windows.Forms.Clipboard]::SetImage($image)
-            $image.Dispose()
-          `;
-          await execAsync(`powershell -Command "${script}"`);
-        } else if (platform === "linux") {
-          await execAsync(
-            `xclip -selection clipboard -t image/png -i "${testImagePath}"`,
-          );
-        }
-
-        // 等待一小会儿确保剪贴板操作完成
-        await new Promise((resolve) => setTimeout(resolve, 100));
+      it("should return error when no image in clipboard", async () => {
+        mockExec.mockResolvedValueOnce({ stdout: "false" });
 
         const result = await readClipboardImage();
 
-        if (result.success) {
-          expect(result.success).toBe(true);
-          expect(result.imagePath).toBeDefined();
-          expect(result.mimeType).toBe("image/png");
-          expect(existsSync(result.imagePath!)).toBe(true);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("No image found in clipboard");
+      });
 
-          // 保存路径用于清理
-          tempImagePath = result.imagePath;
-        } else {
-          logger.warn("Failed to read clipboard image:", result.error);
-          // 这种情况下我们不让测试失败，因为可能是系统权限问题
-        }
-      } catch (error) {
-        logger.warn("Failed to set up test clipboard image:", error);
-        // 不让测试失败，因为这可能是环境问题
-      }
-    }, 10000); // 增加超时时间，因为涉及系统调用
+      it("should successfully read image from clipboard", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
+          .mockResolvedValueOnce({ stdout: "success" }); // saveScript
+        mockExistsSync.mockReturnValue(true);
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(true);
+        expect(result.imagePath).toContain("/tmp/clipboard-image-");
+        expect(result.mimeType).toBe("image/png");
+      });
+
+      it("should handle save script failure", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
+          .mockRejectedValueOnce(new Error("Save failed"));
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(
+          "Failed to read clipboard image on macOS",
+        );
+      });
+
+      it("should handle file not created", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
+          .mockResolvedValueOnce({ stdout: "success" }); // saveScript
+        mockExistsSync.mockReturnValue(false);
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(
+          "Failed to save clipboard image to temporary file",
+        );
+      });
+    });
+
+    describe("Windows", () => {
+      beforeEach(() => {
+        Object.defineProperty(process, "platform", {
+          value: "win32",
+          writable: true,
+        });
+      });
+
+      it("should return error when no image in clipboard", async () => {
+        mockExec.mockResolvedValueOnce({ stdout: "false" });
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("No image found in clipboard");
+      });
+
+      it("should successfully read image from clipboard", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
+          .mockResolvedValueOnce({ stdout: "true" }); // saveScript
+        mockExistsSync.mockReturnValue(true);
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(true);
+        expect(result.imagePath).toContain("/tmp/clipboard-image-");
+        expect(result.mimeType).toBe("image/png");
+      });
+
+      it("should handle PowerShell access failure", async () => {
+        mockExec.mockRejectedValueOnce(new Error("PowerShell failed"));
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("Failed to access clipboard on Windows");
+      });
+
+      it("should handle save failure", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
+          .mockResolvedValueOnce({ stdout: "false" }); // saveScript failed
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(
+          "Failed to save clipboard image to temporary file",
+        );
+      });
+    });
+
+    describe("Linux", () => {
+      beforeEach(() => {
+        Object.defineProperty(process, "platform", {
+          value: "linux",
+          writable: true,
+        });
+      });
+
+      it("should return error when xclip not available", async () => {
+        mockExec.mockRejectedValueOnce(new Error("xclip not found"));
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("xclip is required");
+      });
+
+      it("should return error when no image in clipboard", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
+          .mockRejectedValueOnce(new Error("No image")); // clipboard check
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("No image found in clipboard");
+      });
+
+      it("should successfully read image from clipboard", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
+          .mockResolvedValueOnce({ stdout: "has image" }) // clipboard check
+          .mockResolvedValueOnce({ stdout: "saved" }); // save image
+        mockExistsSync.mockReturnValue(true);
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(true);
+        expect(result.imagePath).toContain("/tmp/clipboard-image-");
+        expect(result.mimeType).toBe("image/png");
+      });
+
+      it("should handle save failure", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
+          .mockResolvedValueOnce({ stdout: "has image" }) // clipboard check
+          .mockRejectedValueOnce(new Error("Save failed")); // save image fails
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("Failed to save clipboard image");
+      });
+    });
   });
 
   describe("hasClipboardImage", () => {
-    it("should return false for unsupported platforms", async () => {
-      if (["darwin", "win32", "linux"].includes(platform)) {
-        logger.info(`Skipping unsupported platform test on ${platform}`);
-        return;
-      }
+    it("should return false for unsupported platform", async () => {
+      Object.defineProperty(process, "platform", {
+        value: "unsupported",
+        writable: true,
+      });
 
-      const hasImage = await hasClipboardImage();
-      expect(hasImage).toBe(false);
+      const result = await hasClipboardImage();
+      expect(result).toBe(false);
     });
 
-    it("should return false for empty clipboard", async () => {
-      // 检查 xclip 是否可用
-      const isXclipAvailable = await checkXclipAvailable();
-      if (!isXclipAvailable) {
-        logger.info(
-          "Skipping empty clipboard test because xclip is not available",
-        );
-        return;
-      }
+    describe("macOS", () => {
+      beforeEach(() => {
+        Object.defineProperty(process, "platform", {
+          value: "darwin",
+          writable: true,
+        });
+      });
 
-      // 清空剪贴板
-      try {
-        if (platform === "darwin") {
-          await execAsync("osascript -e 'set the clipboard to \"\"'");
-        } else if (platform === "win32") {
-          await execAsync("powershell -Command \"Set-Clipboard -Value ''\"");
-        } else if (platform === "linux") {
-          await execAsync('echo "" | xclip -selection clipboard');
-        }
-        await new Promise((resolve) => setTimeout(resolve, 100));
+      it("should return true when image is available", async () => {
+        mockExec.mockResolvedValueOnce({ stdout: "true" });
 
-        const hasImage = await hasClipboardImage();
-        expect(hasImage).toBe(false);
-      } catch {
-        logger.warn("Failed to clear clipboard for test");
-      }
+        const result = await hasClipboardImage();
+        expect(result).toBe(true);
+      });
+
+      it("should return false when no image available", async () => {
+        mockExec.mockResolvedValueOnce({ stdout: "false" });
+
+        const result = await hasClipboardImage();
+        expect(result).toBe(false);
+      });
+
+      it("should return false on error", async () => {
+        mockExec.mockRejectedValueOnce(new Error("Script failed"));
+
+        const result = await hasClipboardImage();
+        expect(result).toBe(false);
+      });
     });
 
-    it("should return true when image is in clipboard", async () => {
-      // 动态创建测试图片
-      testImagePath = createTestImage();
+    describe("Windows", () => {
+      beforeEach(() => {
+        Object.defineProperty(process, "platform", {
+          value: "win32",
+          writable: true,
+        });
+      });
 
-      try {
-        // 根据平台将测试图片复制到剪贴板
-        if (platform === "darwin") {
-          await execAsync(
-            `osascript -e 'set the clipboard to (read (POSIX file "${testImagePath}") as JPEG picture)'`,
-          );
-        } else if (platform === "win32") {
-          const script = `
-            Add-Type -AssemblyName System.Windows.Forms
-            Add-Type -AssemblyName System.Drawing
-            $image = [System.Drawing.Image]::FromFile("${testImagePath}")
-            [System.Windows.Forms.Clipboard]::SetImage($image)
-            $image.Dispose()
-          `;
-          await execAsync(`powershell -Command "${script}"`);
-        } else if (platform === "linux") {
-          await execAsync(
-            `xclip -selection clipboard -t image/png -i "${testImagePath}"`,
-          );
-        }
-        await new Promise((resolve) => setTimeout(resolve, 100));
+      it("should return true when image is available", async () => {
+        mockExec.mockResolvedValueOnce({ stdout: "true" });
 
-        const hasImage = await hasClipboardImage();
-        expect(hasImage).toBe(true);
-      } catch (error) {
-        logger.warn(
-          "Failed to set up test clipboard image for hasClipboardImage test:",
-          error,
-        );
-      }
+        const result = await hasClipboardImage();
+        expect(result).toBe(true);
+      });
+
+      it("should return false when no image available", async () => {
+        mockExec.mockResolvedValueOnce({ stdout: "false" });
+
+        const result = await hasClipboardImage();
+        expect(result).toBe(false);
+      });
+    });
+
+    describe("Linux", () => {
+      beforeEach(() => {
+        Object.defineProperty(process, "platform", {
+          value: "linux",
+          writable: true,
+        });
+      });
+
+      it("should return false when xclip not available", async () => {
+        mockExec.mockRejectedValueOnce(new Error("xclip not found"));
+
+        const result = await hasClipboardImage();
+        expect(result).toBe(false);
+      });
+
+      it("should return true when image is available", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
+          .mockResolvedValueOnce({ stdout: "has image" }); // clipboard check
+
+        const result = await hasClipboardImage();
+        expect(result).toBe(true);
+      });
+
+      it("should return false when no image available", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
+          .mockRejectedValueOnce(new Error("No image")); // clipboard check
+
+        const result = await hasClipboardImage();
+        expect(result).toBe(false);
+      });
     });
   });
 
   describe("cleanupTempImage", () => {
-    it("should not throw error for non-existent file", () => {
+    it("should do nothing for non-existent file", () => {
+      mockExistsSync.mockReturnValue(false);
+
       expect(() => {
         cleanupTempImage("/path/that/does/not/exist.png");
       }).not.toThrow();
+
+      expect(mockUnlinkSync).not.toHaveBeenCalled();
     });
 
-    it("should successfully clean up existing temporary file", async () => {
-      // 创建一个临时文件进行测试
-      const fs = await import("fs");
-      const path = await import("path");
-      const os = await import("os");
-      const tempPath = path.join(os.tmpdir(), `test-cleanup-${Date.now()}.png`);
+    it("should successfully delete existing file", () => {
+      mockExistsSync.mockReturnValue(true);
+      mockUnlinkSync.mockImplementation(() => {});
 
-      // 创建一个简单的测试文件
-      fs.writeFileSync(tempPath, "test content");
-      expect(fs.existsSync(tempPath)).toBe(true);
+      cleanupTempImage("/tmp/test-image.png");
 
-      // 清理文件
-      cleanupTempImage(tempPath);
+      expect(mockExistsSync).toHaveBeenCalledWith("/tmp/test-image.png");
+      expect(mockUnlinkSync).toHaveBeenCalledWith("/tmp/test-image.png");
+    });
 
-      // 验证文件已被删除
-      expect(fs.existsSync(tempPath)).toBe(false);
+    it("should handle deletion errors gracefully", () => {
+      mockExistsSync.mockReturnValue(true);
+      mockUnlinkSync.mockImplementation(() => {
+        throw new Error("Permission denied");
+      });
+
+      // Mock console.warn to prevent actual output
+      const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      expect(() => {
+        cleanupTempImage("/tmp/test-image.png");
+      }).not.toThrow();
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to cleanup temporary image file"),
+        expect.any(Error),
+      );
+
+      consoleSpy.mockRestore();
     });
   });
 });

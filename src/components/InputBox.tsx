@@ -14,7 +14,6 @@ import { useInputHistory } from "../hooks/useInputHistory";
 import { useTextInsertion } from "../hooks/useTextInsertion";
 import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler";
 import { useImageManager } from "../hooks/useImageManager";
-import { useClipboardPaste } from "../hooks/useClipboardPaste";
 import { useMemoryMode } from "../hooks/useMemoryMode";
 import { useLoadingTimer } from "../hooks/useLoadingTimer";
 
@@ -97,14 +96,12 @@ export const InputBox: React.FC = () => {
   // 输入历史功能
   const { resetHistoryNavigation, navigateHistory } = useInputHistory();
 
-  // 图片管理功能
-  const { attachedImages, addImage, clearImages } = useImageManager();
+  // 图片管理功能（包含剪贴板粘贴）
+  const { attachedImages, clearImages, handlePasteImage } =
+    useImageManager(insertTextAtCursor);
 
   // 文本插入功能
   useTextInsertion(setInputText, setCursorPosition, resetHistoryNavigation);
-
-  // 剪贴板粘贴功能
-  const { handlePasteImage } = useClipboardPaste(addImage, insertTextAtCursor);
 
   // 记忆模式功能
   const { isMemoryMode, checkMemoryMode } = useMemoryMode();
