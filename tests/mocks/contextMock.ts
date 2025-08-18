@@ -52,6 +52,7 @@ export const createMockFunctions = () => ({
   deleteFileFromMemory: vi.fn(),
   createFileInMemory: vi.fn(),
   setFlatFiles: vi.fn(),
+  saveMemory: vi.fn().mockResolvedValue(undefined),
 });
 
 // 创建默认的 Chat Context Mock
@@ -78,6 +79,7 @@ export const createMockChatContext = (
   abortMessage: mockFunctions.abortMessage,
   resetSession: mockFunctions.resetSession,
   totalTokens: 0,
+  saveMemory: mockFunctions.saveMemory,
 });
 
 // 创建默认的 Files Context Mock

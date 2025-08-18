@@ -290,6 +290,8 @@ export const addMemoryBlockToMessage = (
   messages: Message[],
   content: string,
   isSuccess: boolean,
+  memoryType?: "project" | "user",
+  storagePath?: string,
 ): Message[] => {
   const newMessages = [...messages];
 
@@ -301,6 +303,8 @@ export const addMemoryBlockToMessage = (
         type: "memory",
         content,
         isSuccess,
+        memoryType,
+        storagePath,
       },
     ],
   };

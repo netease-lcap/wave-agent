@@ -7,7 +7,7 @@ interface MemoryDisplayProps {
 }
 
 export const MemoryDisplay: React.FC<MemoryDisplayProps> = ({ block }) => {
-  const { content, isSuccess } = block;
+  const { content, isSuccess, memoryType, storagePath } = block;
 
   const getStatusIcon = () => {
     return isSuccess ? "💾" : "⚠️";
@@ -19,6 +19,16 @@ export const MemoryDisplay: React.FC<MemoryDisplayProps> = ({ block }) => {
 
   const getStatusText = () => {
     return isSuccess ? "已添加到记忆" : "记忆添加失败";
+  };
+
+  const getStorageText = () => {
+    if (!isSuccess) return null;
+
+    if (memoryType === "user") {
+      return `记忆已保存到 ${storagePath || "user-memory.md"}`;
+    } else {
+      return `记忆已保存到 ${storagePath || "LCAP.md"}`;
+    }
   };
 
   return (
@@ -43,7 +53,7 @@ export const MemoryDisplay: React.FC<MemoryDisplayProps> = ({ block }) => {
       {isSuccess && (
         <Box paddingLeft={2} marginTop={1}>
           <Text color="yellow" dimColor>
-            记忆已保存到 LCAP.md
+            {getStorageText()}
           </Text>
         </Box>
       )}

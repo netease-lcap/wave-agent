@@ -87,6 +87,8 @@ export interface MemoryBlock {
   type: "memory";
   content: string;
   isSuccess: boolean;
+  memoryType?: "project" | "user"; // 记忆类型
+  storagePath?: string; // 存储路径文案
 }
 
 export interface AIRequest {

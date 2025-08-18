@@ -339,6 +339,12 @@ export class FileManager {
   }
 
   public startWatching(): void {
+    // 在测试环境中跳过文件监听，避免 EventEmitter 内存泄漏警告
+    if (process.env.NODE_ENV === "test" || process.env.VITEST === "true") {
+      logger.debug("Skipping file watching in test environment");
+      return;
+    }
+
     if (this.watcher) {
       this.stopWatching();
     }

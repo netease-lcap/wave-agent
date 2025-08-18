@@ -3,11 +3,13 @@ import { Box, Text } from "ink";
 import { FileSelector } from "./FileSelector";
 import { CommandSelector } from "./CommandSelector";
 import { BashHistorySelector } from "./BashHistorySelector";
+import { MemoryTypeSelector } from "./MemoryTypeSelector";
 import { useChat } from "../contexts/useChat";
 import { useInputState } from "../hooks/useInputState";
 import { useFileSelector } from "../hooks/useFileSelector";
 import { useCommandSelector } from "../hooks/useCommandSelector";
 import { useBashHistorySelector } from "../hooks/useBashHistorySelector";
+import { useMemoryTypeSelector } from "../hooks/useMemoryTypeSelector";
 import { useInputHistory } from "../hooks/useInputHistory";
 import { useTextInsertion } from "../hooks/useTextInsertion";
 import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler";
@@ -79,6 +81,15 @@ export const InputBox: React.FC = () => {
     exclamationPosition,
   } = useBashHistorySelector();
 
+  // 记忆类型选择器功能
+  const {
+    showMemoryTypeSelector,
+    memoryMessage,
+    activateMemoryTypeSelector,
+    handleMemoryTypeSelect: handleMemoryTypeSelectorSelect,
+    handleCancelMemoryTypeSelect,
+  } = useMemoryTypeSelector();
+
   // 输入历史功能
   const { resetHistoryNavigation, navigateHistory } = useInputHistory();
 
@@ -100,6 +111,7 @@ export const InputBox: React.FC = () => {
     handleCommandSelect,
     handleCommandGenerated,
     handleBashHistorySelect,
+    handleMemoryTypeSelect,
   } = useInputKeyboardHandler({
     inputText,
     setInputText,
@@ -140,6 +152,9 @@ export const InputBox: React.FC = () => {
     checkForExclamationDeletion,
     exclamationPosition,
     checkMemoryMode,
+    showMemoryTypeSelector,
+    activateMemoryTypeSelector,
+    handleMemoryTypeSelect: handleMemoryTypeSelectorSelect,
   });
 
   const isPlaceholder = !inputText;
@@ -198,6 +213,14 @@ export const InputBox: React.FC = () => {
             searchQuery={bashHistorySearchQuery}
             onSelect={handleBashHistorySelect}
             onCancel={handleCancelBashHistorySelect}
+          />
+        )}
+
+        {showMemoryTypeSelector && (
+          <MemoryTypeSelector
+            message={memoryMessage}
+            onSelect={handleMemoryTypeSelect}
+            onCancel={handleCancelMemoryTypeSelect}
           />
         )}
 

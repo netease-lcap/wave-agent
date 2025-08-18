@@ -19,6 +19,7 @@ import type { ToolContext } from "../plugins/tools/types";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI";
 import { saveErrorLog } from "../utils/errorLogger";
 import { readMemoryFile } from "../utils/memoryUtils";
+import { createUserMemoryManager } from "../utils/userMemoryManager";
 import type { Message } from "../types";
 import { logger } from "../utils/logger";
 
@@ -48,6 +49,7 @@ export class AIManager {
   private sessionStartTime: string;
   private autoSaveTimer: NodeJS.Timeout | null = null;
   private lastSaveTime: number = 0;
+  private userMemoryManager = createUserMemoryManager();
 
   constructor(
     workdir: string,
@@ -68,9 +70,11 @@ export class AIManager {
     // Set up auto-save
     this.startAutoSave();
 
-    // Handle process termination to save session
-    process.on("SIGINT", this.handleProcessExit.bind(this));
-    process.on("SIGTERM", this.handleProcessExit.bind(this));
+    // Handle process termination to save session (skip in test environment)
+    if (process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
+      process.on("SIGINT", this.handleProcessExit.bind(this));
+      process.on("SIGTERM", this.handleProcessExit.bind(this));
+    }
   }
 
   public getState(): AIManagerState {
@@ -249,11 +253,31 @@ export class AIManager {
         logger.warn("Failed to read memory file:", error);
       }
 
+      // 读取用户级记忆内容
+      let userMemoryContent = "";
+      try {
+        userMemoryContent = await this.userMemoryManager.getUserMemoryContent();
+      } catch (error) {
+        logger.warn("Failed to read user memory file:", error);
+      }
+
+      // 合并项目记忆和用户记忆
+      let combinedMemory = "";
+      if (memoryContent.trim()) {
+        combinedMemory += memoryContent;
+      }
+      if (userMemoryContent.trim()) {
+        if (combinedMemory) {
+          combinedMemory += "\n\n";
+        }
+        combinedMemory += userMemoryContent;
+      }
+
       const result = await callAgent({
         messages: recentMessages,
         sessionId: this.state.sessionId,
         abortSignal: abortController.signal,
-        memory: memoryContent, // 传递记忆内容
+        memory: combinedMemory, // 传递合并后的记忆内容
       });
 
       // 更新 token 统计 - 显示最新一次的token使用量

@@ -69,6 +69,11 @@ interface KeyboardHandlerProps {
 
   // Memory mode
   checkMemoryMode: (inputText: string) => boolean;
+
+  // Memory type selector
+  showMemoryTypeSelector: boolean;
+  activateMemoryTypeSelector: (message: string) => void;
+  handleMemoryTypeSelect: (type: "project" | "user") => void;
 }
 
 export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
@@ -112,9 +117,13 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     checkForExclamationDeletion,
     exclamationPosition,
     checkMemoryMode,
+    showMemoryTypeSelector,
+    activateMemoryTypeSelector,
+    handleMemoryTypeSelect,
   } = props;
 
-  const { isCommandRunning, isLoading, sendMessage, abortMessage } = useChat();
+  const { isCommandRunning, isLoading, sendMessage, abortMessage, saveMemory } =
+    useChat();
 
   // Debounce for paste operations
   const pasteDebounceRef = useRef<{
@@ -275,6 +284,13 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     (input: string, key: Key) => {
       if (key.return) {
         if (inputText.trim()) {
+          // 检查是否是记忆消息（以#开头）
+          if (inputText.trim().startsWith("#")) {
+            // 激活记忆类型选择器
+            activateMemoryTypeSelector(inputText.trim());
+            return;
+          }
+
           // 提取图片信息
           const imageRegex = /\[Image #(\d+)\]/g;
           const matches = [...inputText.matchAll(imageRegex)];
@@ -586,6 +602,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       clearImages,
       handlePasteImage,
       checkMemoryMode,
+      activateMemoryTypeSelector,
     ],
   );
 
@@ -601,7 +618,16 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
 
     if (isLoading || isCommandRunning) return;
 
-    if (showFileSelector || showCommandSelector || showBashHistorySelector) {
+    if (
+      showFileSelector ||
+      showCommandSelector ||
+      showBashHistorySelector ||
+      showMemoryTypeSelector
+    ) {
+      if (showMemoryTypeSelector) {
+        // 记忆类型选择器不需要处理输入，由组件自己处理
+        return;
+      }
       handleSelectorInput(input, key);
     } else {
       handleNormalInput(input, key);
@@ -673,6 +699,28 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         cursorPosition,
         setInputText,
         setCursorPosition,
+      ],
+    ),
+
+    handleMemoryTypeSelect: useCallback(
+      async (type: "project" | "user") => {
+        const currentMessage = inputText.trim();
+        if (currentMessage.startsWith("#")) {
+          await saveMemory(currentMessage, type);
+        }
+        // 调用来自useMemoryTypeSelector的处理函数来关闭选择器
+        handleMemoryTypeSelect(type);
+        // 清空输入框
+        clearInput();
+        // 显式更新记忆模式状态，确保记忆模式被正确退出
+        checkMemoryMode("");
+      },
+      [
+        inputText,
+        saveMemory,
+        handleMemoryTypeSelect,
+        clearInput,
+        checkMemoryMode,
       ],
     ),
   };

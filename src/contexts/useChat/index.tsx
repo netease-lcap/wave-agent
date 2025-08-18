@@ -18,6 +18,7 @@ import { useCommand } from "./useCommand";
 import { useInputHistory } from "./useInputHistory";
 import { useInputInsert } from "./useInputInsert";
 import { createMemoryManager } from "../../utils/memoryManager";
+import { createUserMemoryManager } from "../../utils/userMemoryManager";
 
 export interface ChatContextType {
   messages: Message[];
@@ -44,6 +45,8 @@ export interface ChatContextType {
   abortMessage: () => void;
   resetSession: () => void;
   totalTokens: number;
+  // Memory functionality
+  saveMemory: (message: string, type: "project" | "user") => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -104,6 +107,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Use the Memory hook
   const memoryManager = useMemo(() => createMemoryManager(workdir), [workdir]);
+  const userMemoryManager = useMemo(() => createUserMemoryManager(), []);
 
   // Use the Input Insert hook
   const { insertToInput, inputInsertHandler, setInputInsertHandler } =
@@ -120,6 +124,49 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     abortAIMessage();
     abortCommand();
   }, [abortAIMessage, abortCommand]);
+
+  // 记忆保存函数
+  const saveMemory = useCallback(
+    async (message: string, type: "project" | "user") => {
+      try {
+        if (type === "project") {
+          await memoryManager.addMemory(message);
+        } else {
+          await userMemoryManager.addUserMemory(message);
+        }
+
+        // 添加成功的 MemoryBlock 到最后一个助手消息
+        const memoryText = message.substring(1).trim();
+        const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
+        const storagePath = type === "project" ? "LCAP.md" : "user-memory.md";
+
+        setMessages((prev) =>
+          addMemoryBlockToMessage(
+            prev,
+            `${typeLabel}: ${memoryText}`,
+            true,
+            type,
+            storagePath,
+          ),
+        );
+      } catch (error) {
+        // 添加失败的 MemoryBlock 到最后一个助手消息
+        const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
+        const storagePath = type === "project" ? "LCAP.md" : "user-memory.md";
+
+        setMessages((prev) =>
+          addMemoryBlockToMessage(
+            prev,
+            `${typeLabel}添加失败: ${error instanceof Error ? error.message : String(error)}`,
+            false,
+            type,
+            storagePath,
+          ),
+        );
+      }
+    },
+    [memoryManager, userMemoryManager, setMessages],
+  );
 
   const sendMessage = useCallback(
     async (
@@ -203,6 +250,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         abortMessage,
         resetSession,
         totalTokens,
+        // Memory functionality
+        saveMemory,
       }}
     >
       {children}

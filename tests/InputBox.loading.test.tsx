@@ -25,6 +25,7 @@ vi.mock("../src/contexts/useChat", () => ({
     sendAIMessage: vi.fn(),
     abortAIMessage: vi.fn(),
     resetSession: vi.fn(),
+    saveMemory: vi.fn(),
     totalTokens: 0,
   })),
 }));
@@ -153,6 +154,7 @@ describe("InputBox Loading State", () => {
       sendAIMessage: vi.fn(),
       abortAIMessage: vi.fn(),
       resetSession: vi.fn(),
+      saveMemory: vi.fn(),
       totalTokens: 0,
     });
 
@@ -188,6 +190,7 @@ describe("InputBox Loading State", () => {
       sendAIMessage: vi.fn(),
       abortAIMessage: vi.fn(),
       resetSession: vi.fn(),
+      saveMemory: vi.fn(),
       totalTokens: 0,
     });
 
