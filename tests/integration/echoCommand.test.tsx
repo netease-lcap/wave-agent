@@ -1,32 +1,122 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render } from "ink-testing-library";
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
 import React from "react";
 import { App } from "../../src/components/App";
 import { waitForText } from "../helpers/waitHelpers";
+import type { FileTreeNode } from "../../src/types/common";
+
+// Mock fileManager to avoid real file system operations and improve test performance
+// This prevents actual directory scanning, file reading, and file watching
+vi.mock("../../src/services/fileManager", () => {
+  interface FileManagerCallbacks {
+    onFlatFilesChange: (files: FileTreeNode[]) => void;
+  }
+
+  class MockFileManager {
+    private state = {
+      flatFiles: [] as FileTreeNode[],
+      workdir: "",
+    };
+    private callbacks: FileManagerCallbacks;
+
+    constructor(workdir: string, callbacks: FileManagerCallbacks) {
+      this.state.workdir = workdir;
+      this.callbacks = callbacks;
+    }
+
+    getState() {
+      return { ...this.state };
+    }
+
+    getSafetyConfig() {
+      return {
+        maxFileCount: 10000,
+        maxFileSize: 1024 * 1024,
+      };
+    }
+
+    getFlatFiles() {
+      return [...this.state.flatFiles];
+    }
+
+    setFlatFiles(files: FileTreeNode[]) {
+      this.state.flatFiles = files;
+      this.callbacks.onFlatFilesChange(files);
+    }
+
+    updateFlatFiles(updater: (files: FileTreeNode[]) => FileTreeNode[]) {
+      const newFiles = updater(this.state.flatFiles);
+      this.setFlatFiles(newFiles);
+    }
+
+    updateFileFilter() {
+      // Mock implementation - do nothing
+    }
+
+    async syncFilesFromDisk() {
+      // Mock implementation - don't actually read files
+      this.setFlatFiles([]);
+    }
+
+    writeFileToMemory() {
+      // Mock implementation
+    }
+
+    createFileInMemory() {
+      // Mock implementation
+    }
+
+    deleteFileFromMemory() {
+      // Mock implementation
+    }
+
+    readFileFromMemory() {
+      return null;
+    }
+
+    async initialize() {
+      // Mock implementation - don't actually initialize
+      await this.syncFilesFromDisk();
+    }
+
+    startWatching() {
+      // Mock implementation - don't actually watch files
+    }
+
+    stopWatching() {
+      // Mock implementation
+    }
+
+    async cleanup() {
+      // Mock implementation
+    }
+  }
+
+  return {
+    FileManager: MockFileManager,
+    isDangerousDirectory: vi.fn(() => false),
+    DEFAULT_SAFETY_CONFIG: {
+      maxFileCount: 10000,
+      maxFileSize: 1024 * 1024,
+    },
+    DANGEROUS_PATHS: {
+      unix: [],
+      windows: [],
+    },
+  };
+});
 
 // 不使用完整的context mock，让真实的命令执行逻辑运行
 
 describe("Echo Command Integration Test", () => {
-  let testDir: string;
-
-  beforeEach(async () => {
-    // 创建临时测试目录
-    testDir = await fs.promises.mkdtemp(
-      path.join(os.tmpdir(), "echo-command-test-"),
-    );
-  });
-
-  afterEach(async () => {
-    // 清理测试目录
-    await fs.promises.rm(testDir, { recursive: true, force: true });
-  });
-
   it("should handle user input '!echo 'hi'' through bash history selector and display command output", async () => {
+    // 使用当前项目目录作为 workdir，即使 fileManager 已被 mock
+    // 这确保其他依赖于真实目录路径的功能能正常工作
+    // 由于 fileManager 被 mock，不会产生实际的文件 I/O 开销
+    const mockWorkdir = process.cwd();
+
     // 渲染 App 组件
-    const renderResult = render(<App workdir={testDir} />);
+    const renderResult = render(<App workdir={mockWorkdir} />);
     const { stdin, lastFrame } = renderResult;
 
     // 等待组件完全渲染，确保初始状态显示
