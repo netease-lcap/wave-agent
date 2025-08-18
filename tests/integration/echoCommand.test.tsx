@@ -3,107 +3,11 @@ import { render } from "ink-testing-library";
 import React from "react";
 import { App } from "../../src/components/App";
 import { waitForText } from "../helpers/waitHelpers";
-import type { FileTreeNode } from "../../src/types/common";
 
-// Mock fileManager to avoid real file system operations and improve test performance
-// This prevents actual directory scanning, file reading, and file watching
-vi.mock("../../src/services/fileManager", () => {
-  interface FileManagerCallbacks {
-    onFlatFilesChange: (files: FileTreeNode[]) => void;
-  }
-
-  class MockFileManager {
-    private state = {
-      flatFiles: [] as FileTreeNode[],
-      workdir: "",
-    };
-    private callbacks: FileManagerCallbacks;
-
-    constructor(workdir: string, callbacks: FileManagerCallbacks) {
-      this.state.workdir = workdir;
-      this.callbacks = callbacks;
-    }
-
-    getState() {
-      return { ...this.state };
-    }
-
-    getSafetyConfig() {
-      return {
-        maxFileCount: 10000,
-        maxFileSize: 1024 * 1024,
-      };
-    }
-
-    getFlatFiles() {
-      return [...this.state.flatFiles];
-    }
-
-    setFlatFiles(files: FileTreeNode[]) {
-      this.state.flatFiles = files;
-      this.callbacks.onFlatFilesChange(files);
-    }
-
-    updateFlatFiles(updater: (files: FileTreeNode[]) => FileTreeNode[]) {
-      const newFiles = updater(this.state.flatFiles);
-      this.setFlatFiles(newFiles);
-    }
-
-    updateFileFilter() {
-      // Mock implementation - do nothing
-    }
-
-    async syncFilesFromDisk() {
-      // Mock implementation - don't actually read files
-      this.setFlatFiles([]);
-    }
-
-    writeFileToMemory() {
-      // Mock implementation
-    }
-
-    createFileInMemory() {
-      // Mock implementation
-    }
-
-    deleteFileFromMemory() {
-      // Mock implementation
-    }
-
-    readFileFromMemory() {
-      return null;
-    }
-
-    async initialize() {
-      // Mock implementation - don't actually initialize
-      await this.syncFilesFromDisk();
-    }
-
-    startWatching() {
-      // Mock implementation - don't actually watch files
-    }
-
-    stopWatching() {
-      // Mock implementation
-    }
-
-    async cleanup() {
-      // Mock implementation
-    }
-  }
-
-  return {
-    FileManager: MockFileManager,
-    isDangerousDirectory: vi.fn(() => false),
-    DEFAULT_SAFETY_CONFIG: {
-      maxFileCount: 10000,
-      maxFileSize: 1024 * 1024,
-    },
-    DANGEROUS_PATHS: {
-      unix: [],
-      windows: [],
-    },
-  };
+// 使用 vi.hoisted 确保 mock 在模块顶层被正确设置
+await vi.hoisted(async () => {
+  const { setupFileManagerMock } = await import("../mocks/fileManagerMock");
+  setupFileManagerMock();
 });
 
 // 不使用完整的context mock，让真实的命令执行逻辑运行
