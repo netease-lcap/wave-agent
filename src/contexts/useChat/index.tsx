@@ -14,8 +14,11 @@ import {
   addMemoryBlockToMessage,
 } from "../../utils/messageOperations";
 import { useAI } from "./useAI";
-import { useCommand } from "./useCommand";
 import { useInputHistory } from "./useInputHistory";
+import {
+  createBashManager,
+  type BashManager,
+} from "../../services/bashManager";
 import { useInputInsert } from "./useInputInsert";
 import { createMemoryManager } from "../../utils/memoryManager";
 
@@ -97,12 +100,41 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     totalTokens,
   } = useAI(sessionToRestore, getCurrentInputHistory);
 
-  // Use the Command hook
-  const { executeCommand, abortCommand, isCommandRunning } = useCommand(
-    workdir,
-    messages,
-    setMessages,
+  // Create bash manager
+  const bashManagerRef = useRef<BashManager | null>(null);
+
+  // Initialize bash manager
+  useEffect(() => {
+    if (!bashManagerRef.current) {
+      bashManagerRef.current = createBashManager({
+        workdir,
+        onMessagesUpdate: setMessages,
+      });
+    } else {
+      // Update workdir when it changes
+      bashManagerRef.current.updateWorkdir(workdir);
+    }
+  }, [workdir, setMessages]);
+
+  // Command execution functions
+  const executeCommand = useCallback(
+    async (command: string): Promise<number> => {
+      if (!bashManagerRef.current) {
+        throw new Error("Bash manager not initialized");
+      }
+      return bashManagerRef.current.executeCommand(command);
+    },
+    [],
   );
+
+  const abortCommand = useCallback(() => {
+    if (bashManagerRef.current) {
+      bashManagerRef.current.abortCommand();
+    }
+  }, []);
+
+  const isCommandRunning =
+    bashManagerRef.current?.getIsCommandRunning() ?? false;
 
   // Use the Memory hook
   const memoryManager = useMemo(() => createMemoryManager(workdir), [workdir]);
