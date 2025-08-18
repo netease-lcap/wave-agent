@@ -1,4 +1,4 @@
-# LCAP Memory
+# Memory
 
 这是AI助手的记忆文件，记录重要信息和上下文。
 

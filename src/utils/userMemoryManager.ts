@@ -24,7 +24,7 @@ export function createUserMemoryManager(): UserMemoryManager {
         // 文件不存在，创建新文件
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           const initialContent =
-            "# LCAP User Memory\n\n这是用户级记忆文件，记录跨项目的重要信息和上下文。\n\n";
+            "# User Memory\n\n这是用户级记忆文件，记录跨项目的重要信息和上下文。\n\n";
           await fs.writeFile(USER_MEMORY_FILE, initialContent, "utf-8");
           logger.info(`Created user memory file: ${USER_MEMORY_FILE}`);
         } else {
@@ -44,9 +44,8 @@ export function createUserMemoryManager(): UserMemoryManager {
       // 确保用户记忆文件存在
       await ensureUserMemoryFile();
 
-      // 格式化记忆条目，使用 - 开头，添加时间戳
-      const timestamp = new Date().toISOString().split("T")[0]; // YYYY-MM-DD格式
-      const memoryEntry = `- [${timestamp}] ${message.substring(1).trim()}\n`;
+      // 格式化记忆条目，使用 - 开头
+      const memoryEntry = `- ${message.substring(1).trim()}\n`;
 
       // 读取现有内容
       const existingContent = await fs.readFile(USER_MEMORY_FILE, "utf-8");

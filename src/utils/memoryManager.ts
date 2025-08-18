@@ -36,7 +36,7 @@ export function createMemoryManager(workdir: string): MemoryManager {
         // 文件不存在，创建新文件
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           existingContent =
-            "# LCAP Memory\n\n这是AI助手的记忆文件，记录重要信息和上下文。\n\n";
+            "# Memory\n\n这是AI助手的记忆文件，记录重要信息和上下文。\n\n";
         } else {
           throw error;
         }

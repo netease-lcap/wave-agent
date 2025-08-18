@@ -70,7 +70,7 @@ describe("createMemoryManager", () => {
       expect(mockFs.readFile).toHaveBeenCalledWith(memoryFilePath, "utf-8");
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         memoryFilePath,
-        expect.stringContaining("# LCAP Memory"),
+        expect.stringContaining("# Memory"),
         "utf-8",
       );
       expect(mockFs.writeFile).toHaveBeenCalledWith(
@@ -83,8 +83,7 @@ describe("createMemoryManager", () => {
     it("should append to existing memory file", async () => {
       const memoryManager = createMemoryManager(testWorkdir);
 
-      const existingContent =
-        "# LCAP Memory\n\n这是AI助手的记忆文件。\n- 旧记忆\n";
+      const existingContent = "# Memory\n\n这是AI助手的记忆文件。\n- 旧记忆\n";
       mockFs.readFile.mockResolvedValue(existingContent);
       mockFs.writeFile.mockResolvedValue(undefined);
 

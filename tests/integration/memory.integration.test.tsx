@@ -45,7 +45,7 @@ describe("Memory Integration", () => {
     // Verify file was written with correct content
     expect(mockFs.writeFile).toHaveBeenCalledWith(
       memoryFilePath,
-      expect.stringContaining("# LCAP Memory"),
+      expect.stringContaining("# Memory"),
       "utf-8",
     );
     expect(mockFs.writeFile).toHaveBeenCalledWith(
@@ -56,7 +56,7 @@ describe("Memory Integration", () => {
 
     // Simulate reading memory back
     const memoryContent =
-      "# LCAP Memory\n\n这是AI助手的记忆文件，记录重要信息和上下文。\n\n## 2024-01-01 10:00:00\n这是一个重要的项目设置\n";
+      "# Memory\n\n这是AI助手的记忆文件，记录重要信息和上下文。\n\n- 这是一个重要的项目设置\n";
     mockFs.readFile.mockResolvedValueOnce(memoryContent);
 
     // Read memory
@@ -71,15 +71,14 @@ describe("Memory Integration", () => {
 
     // First memory entry
     const firstContent =
-      "# LCAP Memory\n\n这是AI助手的记忆文件，记录重要信息和上下文。\n";
+      "# Memory\n\n这是AI助手的记忆文件，记录重要信息和上下文。\n";
     mockFs.readFile.mockResolvedValueOnce(firstContent);
     mockFs.writeFile.mockResolvedValueOnce(undefined);
 
     await memoryManager.addMemory("#第一个记忆");
 
     // Second memory entry
-    const secondContent =
-      firstContent + "\n## 2024-01-01 10:00:00\n第一个记忆\n";
+    const secondContent = firstContent + "\n- 第一个记忆\n";
     mockFs.readFile.mockResolvedValueOnce(secondContent);
     mockFs.writeFile.mockResolvedValueOnce(undefined);
 
