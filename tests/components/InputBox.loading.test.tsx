@@ -119,6 +119,24 @@ vi.mock("@/hooks/useInputKeyboardHandler", () => ({
     handleCommandSelect: vi.fn(),
     handleCommandGenerated: vi.fn(),
     handleBashHistorySelect: vi.fn(),
+    handleMemoryTypeSelect: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/useMemoryMode", () => ({
+  useMemoryMode: () => ({
+    isMemoryMode: false,
+    checkMemoryMode: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/useMemoryTypeSelector", () => ({
+  useMemoryTypeSelector: () => ({
+    showMemoryTypeSelector: false,
+    memoryMessage: "",
+    activateMemoryTypeSelector: vi.fn(),
+    handleMemoryTypeSelect: vi.fn(),
+    handleCancelMemoryTypeSelect: vi.fn(),
   }),
 }));
 
@@ -198,5 +216,77 @@ describe("InputBox Loading State", () => {
     const output = lastFrame();
 
     expect(output).toContain("[Press Esc to abort]");
+  });
+
+  it("should show command running placeholder when command is running", async () => {
+    // Mock useChat to return isCommandRunning: true
+    const { useChat } = await import("@/contexts/useChat");
+    vi.mocked(useChat).mockReturnValue({
+      isCommandRunning: true,
+      isLoading: false,
+      insertToInput: vi.fn(),
+      sendMessage: vi.fn(),
+      abortMessage: vi.fn(),
+      clearMessages: vi.fn(),
+      messages: [],
+      setMessages: vi.fn(),
+      setIsLoading: vi.fn(),
+      executeCommand: vi.fn(),
+      abortCommand: vi.fn(),
+      userInputHistory: [],
+      addToInputHistory: vi.fn(),
+      inputInsertHandler: null,
+      setInputInsertHandler: vi.fn(),
+      sessionId: "test-session",
+      sendAIMessage: vi.fn(),
+      abortAIMessage: vi.fn(),
+      resetSession: vi.fn(),
+      saveMemory: vi.fn(),
+      totalTokens: 0,
+    });
+
+    const { lastFrame } = render(<InputBox />);
+    const output = lastFrame();
+
+    expect(output).toContain("Command is running...");
+    expect(output).toContain("Press Esc to abort");
+    expect(output).not.toContain("Type your message");
+    expect(output).not.toContain("AI is thinking");
+  });
+
+  it("should prioritize AI loading state over command running state", async () => {
+    // Mock useChat to return both isLoading: true and isCommandRunning: true
+    const { useChat } = await import("@/contexts/useChat");
+    vi.mocked(useChat).mockReturnValue({
+      isCommandRunning: true,
+      isLoading: true,
+      insertToInput: vi.fn(),
+      sendMessage: vi.fn(),
+      abortMessage: vi.fn(),
+      clearMessages: vi.fn(),
+      messages: [],
+      setMessages: vi.fn(),
+      setIsLoading: vi.fn(),
+      executeCommand: vi.fn(),
+      abortCommand: vi.fn(),
+      userInputHistory: [],
+      addToInputHistory: vi.fn(),
+      inputInsertHandler: null,
+      setInputInsertHandler: vi.fn(),
+      sessionId: "test-session",
+      sendAIMessage: vi.fn(),
+      abortAIMessage: vi.fn(),
+      resetSession: vi.fn(),
+      saveMemory: vi.fn(),
+      totalTokens: 1500,
+    });
+
+    const { lastFrame } = render(<InputBox />);
+    const output = lastFrame();
+
+    // Should show AI thinking state, not command running state
+    expect(output).toContain("AI is thinking...");
+    expect(output).toContain("1,500");
+    expect(output).not.toContain("Command is running");
   });
 });

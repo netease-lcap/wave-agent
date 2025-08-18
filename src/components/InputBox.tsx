@@ -26,7 +26,7 @@ export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
 );
 
 export const InputBox: React.FC = () => {
-  const { isLoading, totalTokens } = useChat();
+  const { isLoading, isCommandRunning, totalTokens } = useChat();
 
   // 基础输入状态
   const {
@@ -160,7 +160,9 @@ export const InputBox: React.FC = () => {
   const isPlaceholder = !inputText;
   const placeholderText = isLoading
     ? `AI is thinking... (Tokens: ${totalTokens.toLocaleString()})`
-    : INPUT_PLACEHOLDER_TEXT;
+    : isCommandRunning
+      ? "Command is running... (Press Esc to abort)"
+      : INPUT_PLACEHOLDER_TEXT;
 
   // 将文本拆分为光标前、光标位置、光标后三部分
   const displayText = isPlaceholder ? placeholderText : inputText;
@@ -169,8 +171,8 @@ export const InputBox: React.FC = () => {
     cursorPosition < displayText.length ? displayText[cursorPosition] : " ";
   const afterCursor = displayText.substring(cursorPosition + 1);
 
-  // Loading 期间不显示光标
-  const shouldShowCursor = !isLoading;
+  // Loading 或命令运行期间不显示光标
+  const shouldShowCursor = !isLoading && !isCommandRunning;
 
   return (
     <Box
