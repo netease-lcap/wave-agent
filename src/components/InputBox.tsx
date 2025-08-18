@@ -16,6 +16,7 @@ import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler";
 import { useImageManager } from "../hooks/useImageManager";
 import { useClipboardPaste } from "../hooks/useClipboardPaste";
 import { useMemoryMode } from "../hooks/useMemoryMode";
+import { useLoadingTimer } from "../hooks/useLoadingTimer";
 
 export const INPUT_PLACEHOLDER_TEXT =
   "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory)...";
@@ -27,6 +28,9 @@ export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
 
 export const InputBox: React.FC = () => {
   const { isLoading, isCommandRunning, totalTokens } = useChat();
+
+  // 计时器 hook
+  const { formattedTime } = useLoadingTimer(isLoading);
 
   // 基础输入状态
   const {
@@ -159,7 +163,7 @@ export const InputBox: React.FC = () => {
 
   const isPlaceholder = !inputText;
   const placeholderText = isLoading
-    ? `AI is thinking... (Tokens: ${totalTokens.toLocaleString()})`
+    ? `AI is thinking... ${formattedTime} (Tokens: ${totalTokens.toLocaleString()})`
     : isCommandRunning
       ? "Command is running..."
       : INPUT_PLACEHOLDER_TEXT;
