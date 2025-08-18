@@ -5,7 +5,7 @@ import { App } from "@/components/App";
 
 // 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
 await vi.hoisted(async () => {
-  const { setupMocks } = await import("../mocks/contextMock");
+  const { setupMocks } = await import("../helpers/contextMock");
 
   // 为 App 测试设置自定义的文件 mock
   const customFiles = [

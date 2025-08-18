@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox, INPUT_PLACEHOLDER_TEXT_PREFIX } from "@/components/InputBox";
-import { resetMocks, getMocks } from "../mocks/contextMock";
+import { resetMocks, getMocks } from "../helpers/contextMock";
 import { waitForText } from "../helpers/waitHelpers";
 
 // 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
 await vi.hoisted(async () => {
-  const { setupMocks } = await import("../mocks/contextMock");
+  const { setupMocks } = await import("../helpers/contextMock");
   setupMocks();
 });
 
