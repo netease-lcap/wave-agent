@@ -5,6 +5,7 @@ import { FileManager } from "@/services/fileManager";
 import { SessionManager } from "@/services/sessionManager";
 import { Message } from "@/types";
 import { ChatCompletionMessageParam } from "@/types/common";
+import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -115,7 +116,7 @@ describe("AIManager Message Compression Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: 70000, // 超过 64000 触发压缩
+          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // 超过默认限制触发压缩
         },
       };
     });
@@ -193,7 +194,7 @@ describe("AIManager Message Compression Tests", () => {
         usage: {
           prompt_tokens: 100,
           completion_tokens: 50,
-          total_tokens: 150, // 远低于 64000
+          total_tokens: 150, // 远低于默认限制
         },
       };
     });
@@ -240,7 +241,7 @@ describe("AIManager Message Compression Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: 70000, // 触发压缩
+          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // 超过默认限制触发压缩
         },
       };
     });
@@ -304,7 +305,7 @@ describe("AIManager Message Compression Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: 70000, // 超过 64000 触发压缩
+          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // 超过默认限制触发压缩
         },
       };
     });

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useInput } from "ink";
 import type { Message } from "../types";
+import { MESSAGES_PER_PAGE } from "@/utils/constants";
 
 interface PaginationInfo {
   currentPage: number;
@@ -9,8 +10,6 @@ interface PaginationInfo {
   endIndex: number;
   messagesPerPage: number;
 }
-
-export const MESSAGES_PER_PAGE = 10; // 固定每页显示10条消息
 
 export const usePagination = (messages: Message[]) => {
   // 固定每页显示10条消息

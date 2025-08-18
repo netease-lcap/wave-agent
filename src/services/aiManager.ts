@@ -22,6 +22,7 @@ import { readMemoryFile } from "../utils/memoryUtils";
 import { createMemoryManager, type MemoryManager } from "./memoryManager";
 import type { Message } from "../types";
 import { logger } from "../utils/logger";
+import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
 
 export interface AIManagerCallbacks {
   onMessagesChange: (messages: Message[]) => void;
@@ -286,7 +287,10 @@ export class AIManager {
         this.state.totalTokens = result.usage.total_tokens;
 
         // 检查是否超过token限制
-        const tokenLimit = parseInt(process.env.TOKEN_LIMIT || "64000", 10);
+        const tokenLimit = parseInt(
+          process.env.TOKEN_LIMIT || `${DEFAULT_TOKEN_LIMIT}`,
+          10,
+        );
         if (result.usage.total_tokens > tokenLimit) {
           logger.info(
             `Token usage exceeded ${tokenLimit}, compressing messages...`,

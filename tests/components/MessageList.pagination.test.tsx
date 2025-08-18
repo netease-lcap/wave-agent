@@ -2,7 +2,7 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "@/components/MessageList";
-import { MESSAGES_PER_PAGE } from "@/hooks/usePagination";
+import { MESSAGES_PER_PAGE } from "@/utils/constants";
 import type { Message } from "@/types";
 
 // Mock useInput to prevent key handling during tests

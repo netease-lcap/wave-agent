@@ -40,3 +40,13 @@ export const ERROR_LOG_DIRECTORY = path.join(DATA_DIRECTORY, "error-logs");
  * 用户级记忆文件路径
  */
 export const USER_MEMORY_FILE = path.join(DATA_DIRECTORY, "user-memory.md");
+
+/**
+ * 分页相关常量
+ */
+export const MESSAGES_PER_PAGE = 10; // 每页显示的消息数量
+
+/**
+ * AI 相关常量
+ */
+export const DEFAULT_TOKEN_LIMIT = 32000; // 默认 token 限制（32k）
