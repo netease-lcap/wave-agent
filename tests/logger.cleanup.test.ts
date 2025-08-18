@@ -26,6 +26,8 @@ describe("Log Cleanup", () => {
     vi.clearAllMocks();
     // Mock console to suppress log output during tests
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    // 在此测试中启用 logger I/O 操作，因为我们需要测试文件操作功能
+    delete process.env.DISABLE_LOGGER_IO;
   });
 
   afterEach(() => {

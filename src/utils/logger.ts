@@ -2,6 +2,10 @@
  * 日志工具模块
  * 支持按照日志级别和关键词进行过滤
  * 日志会写入文件而不是终端，避免被 Ink 应用清空
+ *
+ * 性能优化：
+ * - 在测试环境中，可以通过设置环境变量 DISABLE_LOGGER_IO=true 来禁用所有文件和控制台 I/O 操作
+ * - 这样可以显著提升测试执行性能，避免不必要的磁盘写入
  */
 
 import * as fs from "fs";
@@ -135,6 +139,11 @@ const logMessage = (level: LogLevel, ...args: unknown[]): void => {
     return;
   }
 
+  // 如果禁用了 logger I/O 操作，直接返回以节约性能
+  if (process.env.DISABLE_LOGGER_IO === "true") {
+    return;
+  }
+
   const levelName = LOG_LEVEL_NAMES[level];
   const timestamp = new Date().toISOString();
   const formattedMessage = `[${timestamp}] [${levelName}] ${messageText}\n`;
@@ -229,6 +238,11 @@ const getCleanupConfig = (): LogCleanupConfig => {
  * 保留最后指定行数的日志
  */
 const truncateLogFileIfNeeded = (config: LogCleanupConfig): void => {
+  // 如果禁用了 logger I/O 操作，直接返回以节约性能
+  if (process.env.DISABLE_LOGGER_IO === "true") {
+    return;
+  }
+
   try {
     if (!fs.existsSync(logFile)) {
       return;
@@ -268,6 +282,11 @@ const truncateLogFileIfNeeded = (config: LogCleanupConfig): void => {
 export const cleanupLogs = async (
   customConfig?: Partial<LogCleanupConfig>,
 ): Promise<void> => {
+  // 如果禁用了 logger I/O 操作，直接返回以节约性能
+  if (process.env.DISABLE_LOGGER_IO === "true") {
+    return;
+  }
+
   const config = { ...getCleanupConfig(), ...customConfig };
 
   logger.info("Starting log cleanup...", {
@@ -285,6 +304,11 @@ export const cleanupLogs = async (
  * 清空日志文件
  */
 export const clearLog = (): void => {
+  // 如果禁用了 logger I/O 操作，直接返回以节约性能
+  if (process.env.DISABLE_LOGGER_IO === "true") {
+    return;
+  }
+
   try {
     fs.writeFileSync(logFile, "");
     logger.info("Log file cleared");

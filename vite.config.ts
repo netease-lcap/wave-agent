@@ -53,6 +53,10 @@ export default defineConfig(({ command, mode }) => {
       exclude: ["node_modules", "dist"],
       // CI 环境下启用重试：失败的测试最多重试 2 次
       retry: isCI ? 2 : 0,
+      // 测试环境变量：默认禁用 logger I/O 操作以提升性能
+      env: {
+        DISABLE_LOGGER_IO: "true",
+      },
     },
     resolve: {
       alias: {
