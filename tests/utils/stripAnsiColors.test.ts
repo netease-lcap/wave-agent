@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stripAnsiColors } from "../../src/types/common";
+import { stripAnsiColors } from "@/types/common";
 
 describe("stripAnsiColors", () => {
   it("should remove basic ANSI color codes", () => {

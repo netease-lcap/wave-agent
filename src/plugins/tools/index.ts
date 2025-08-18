@@ -1,14 +1,19 @@
-import type { ToolContext, ToolPlugin, ToolRegistry, ToolResult } from './types';
-import type { ChatCompletionTool } from '../../types/common';
-import { terminalTool } from './terminalTool';
-import { readFileTool } from './readFileTool';
-import { listDirTool } from './listDirTool';
-import { grepSearchTool } from './grepSearchTool';
-import { fileSearchTool } from './fileSearchTool';
-import { editFileTool } from './editFileTool';
-import { searchReplaceTool } from './searchReplaceTool';
-import { deleteFileTool } from './deleteFileTool';
-import { mcpToolManager } from '../../utils/mcpToolManager';
+import type {
+  ToolContext,
+  ToolPlugin,
+  ToolRegistry,
+  ToolResult,
+} from "./types";
+import type { ChatCompletionTool } from "../../types/common";
+import { terminalTool } from "./terminalTool";
+import { readFileTool } from "./readFileTool";
+import { listDirTool } from "./listDirTool";
+import { grepSearchTool } from "./grepSearchTool";
+import { fileSearchTool } from "./fileSearchTool";
+import { editFileTool } from "./editFileTool";
+import { searchReplaceTool } from "./searchReplaceTool";
+import { deleteFileTool } from "./deleteFileTool";
+import { mcpToolManager } from "../../services/mcpToolManager";
 
 /**
  * 工具注册中心
@@ -20,7 +25,11 @@ class ToolRegistryImpl implements ToolRegistry {
     this.tools.set(plugin.name, plugin);
   }
 
-  async execute(name: string, args: Record<string, unknown>, context?: ToolContext): Promise<ToolResult> {
+  async execute(
+    name: string,
+    args: Record<string, unknown>,
+    context?: ToolContext,
+  ): Promise<ToolResult> {
     // 首先检查是否是内置工具
     const plugin = this.tools.get(name);
     if (plugin) {
@@ -29,7 +38,7 @@ class ToolRegistryImpl implements ToolRegistry {
       } catch (error) {
         return {
           success: false,
-          content: '',
+          content: "",
           error: error instanceof Error ? error.message : String(error),
         };
       }
@@ -42,7 +51,7 @@ class ToolRegistryImpl implements ToolRegistry {
 
     return {
       success: false,
-      content: '',
+      content: "",
       error: `Tool '${name}' not found`,
     };
   }
@@ -54,7 +63,9 @@ class ToolRegistryImpl implements ToolRegistry {
   }
 
   getToolsConfig(): ChatCompletionTool[] {
-    const builtinTools = Array.from(this.tools.values()).map((tool) => tool.config);
+    const builtinTools = Array.from(this.tools.values()).map(
+      (tool) => tool.config,
+    );
     const mcpTools = mcpToolManager.getTools().map((tool) => tool.config);
     return [...builtinTools, ...mcpTools];
   }
@@ -72,4 +83,4 @@ toolRegistry.register(searchReplaceTool);
 toolRegistry.register(deleteFileTool);
 
 // 导出类型
-export type { ToolPlugin, ToolResult, ToolRegistry } from './types';
+export type { ToolPlugin, ToolResult, ToolRegistry } from "./types";

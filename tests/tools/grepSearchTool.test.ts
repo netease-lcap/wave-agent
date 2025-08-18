@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { grepSearchTool } from "../../src/plugins/tools/grepSearchTool";
-import type { ToolResult, ToolContext } from "../../src/plugins/tools/types";
-import type { FileTreeNode } from "../../src/types/common";
+import { grepSearchTool } from "@/plugins/tools/grepSearchTool";
+import type { ToolResult, ToolContext } from "@/plugins/tools/types";
+import type { FileTreeNode } from "@/types/common";
 
 describe("grepSearchTool", () => {
   let mockContext: ToolContext;
@@ -54,7 +54,7 @@ export type DiffResult = DiffBlock[];`,
       {
         path: "tests/Button.test.tsx",
         code: `import { render } from '@testing-library/react';
-import { Button } from '../src/components/Button';
+import { Button } from '@/components/Button';
 
 describe('Button', () => {
   it('should render correctly', () => {

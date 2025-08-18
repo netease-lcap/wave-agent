@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { compressMessages } from "../src/services/aiService";
-import { addCompressBlockToMessage } from "../src/utils/messageOperations";
-import { convertMessagesForAPI } from "../src/utils/convertMessagesForAPI";
-import type { Message } from "../src/types";
-import type { ChatCompletionMessageParam } from "../src/types/common";
+import { compressMessages } from "@/services/aiService";
+import { addCompressBlockToMessage } from "@/utils/messageOperations";
+import { convertMessagesForAPI } from "@/utils/convertMessagesForAPI";
+import type { Message } from "@/types";
+import type { ChatCompletionMessageParam } from "@/types/common";
 
 // Mock dependencies
-vi.mock("../src/services/aiService");
-vi.mock("../src/utils/convertMessagesForAPI");
-vi.mock("../src/utils/logger");
-vi.mock("../src/contexts/useFiles", () => ({
+vi.mock("@/services/aiService");
+vi.mock("@/utils/convertMessagesForAPI");
+vi.mock("@/utils/logger");
+vi.mock("@/contexts/useFiles", () => ({
   useFiles: () => ({
     workdir: "/test/workdir",
     setFlatFiles: vi.fn(),

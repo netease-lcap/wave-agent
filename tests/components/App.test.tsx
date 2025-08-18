@@ -1,0 +1,58 @@
+import React from "react";
+import { render } from "ink-testing-library";
+import { describe, it, expect, vi } from "vitest";
+import { App } from "@/components/App";
+
+// 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
+await vi.hoisted(async () => {
+  const { setupMocks } = await import("../mocks/contextMock");
+
+  // 为 App 测试设置自定义的文件 mock
+  const customFiles = [
+    {
+      label: "src",
+      path: "src",
+      code: "",
+      children: [
+        {
+          label: "test1.ts",
+          path: "src/test1.ts",
+          code: 'logger.info("test1");',
+          children: [],
+        },
+        {
+          label: "test2.tsx",
+          path: "src/test2.tsx",
+          code: "export const Test = () => <div>test</div>;",
+          children: [],
+        },
+      ],
+    },
+  ];
+
+  setupMocks(customFiles);
+});
+
+describe("App Component", () => {
+  it("should render the main interface with file count", () => {
+    const { lastFrame } = render(<App workdir="/test" />);
+
+    expect(lastFrame()).toContain("LCAP Code Assistant");
+  });
+
+  it("should render the chat interface", () => {
+    const { lastFrame } = render(<App workdir="/test" />);
+
+    // ChatInterface 会渲染 MessageList 和 InputBox，这里测试整体渲染
+    expect(lastFrame()).toBeTruthy();
+    // 可以测试是否包含输入框的边框等UI元素
+    expect(lastFrame()).toMatch(/[┌┐└┘│─]/); // 检查是否有边框字符
+  });
+
+  it("should wrap components with providers", () => {
+    const { lastFrame } = render(<App workdir="/test" />);
+
+    // Verify that the component renders without errors
+    expect(lastFrame()).toBeTruthy();
+  });
+});

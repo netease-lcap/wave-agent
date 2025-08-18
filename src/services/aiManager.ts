@@ -19,10 +19,7 @@ import type { ToolContext } from "../plugins/tools/types";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI";
 import { saveErrorLog } from "../utils/errorLogger";
 import { readMemoryFile } from "../utils/memoryUtils";
-import {
-  createMemoryManager,
-  type MemoryManager,
-} from "../utils/memoryManager";
+import { createMemoryManager, type MemoryManager } from "./memoryManager";
 import type { Message } from "../types";
 import { logger } from "../utils/logger";
 

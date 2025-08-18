@@ -3,12 +3,12 @@ import {
   readClipboardImage,
   cleanupTempImage,
   hasClipboardImage,
-} from "../../src/utils/clipboard";
+} from "@/utils/clipboard";
 import { createTestImage } from "../helpers/testImageHelper";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { existsSync, unlinkSync } from "fs";
-import { logger } from "../../src/utils/logger";
+import { logger } from "@/utils/logger";
 
 const execAsync = promisify(exec);
 const platform = process.platform;

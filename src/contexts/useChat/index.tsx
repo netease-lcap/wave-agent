@@ -20,7 +20,7 @@ import {
   type BashManager,
 } from "../../services/bashManager";
 import { useInputInsert } from "./useInputInsert";
-import { createMemoryManager } from "../../utils/memoryManager";
+import { createMemoryManager } from "../../services/memoryManager";
 
 export interface ChatContextType {
   messages: Message[];

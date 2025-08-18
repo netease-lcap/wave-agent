@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { editFileTool } from "../../src/plugins/tools/editFileTool";
-import type { ToolResult } from "../../src/plugins/tools/types";
+import { editFileTool } from "@/plugins/tools/editFileTool";
+import type { ToolResult } from "@/plugins/tools/types";
 
 // Mock fs/promises module
 vi.mock("fs/promises", async (importOriginal) => {
@@ -27,17 +27,17 @@ vi.mock("path", async (importOriginal) => {
 });
 
 // Mock aiService
-vi.mock("../../src/services/aiService", () => ({
+vi.mock("@/services/aiService", () => ({
   applyEdit: vi.fn(),
 }));
 
 // Mock stringUtils
-vi.mock("../../src/utils/stringUtils", () => ({
+vi.mock("@/utils/stringUtils", () => ({
   removeCodeBlockWrappers: vi.fn((content: string) => content),
 }));
 
 // Mock logger
-vi.mock("../../src/utils/logger", () => ({
+vi.mock("@/utils/logger", () => ({
   logger: {
     info: vi.fn(),
   },
@@ -46,10 +46,10 @@ vi.mock("../../src/utils/logger", () => ({
 const mockReadFile = vi.mocked(await import("fs/promises")).readFile;
 const mockWriteFile = vi.mocked(await import("fs/promises")).writeFile;
 const mockApplyEdit = vi.mocked(
-  (await import("../../src/services/aiService")).applyEdit,
+  (await import("@/services/aiService")).applyEdit,
 );
 const mockRemoveCodeBlockWrappers = vi.mocked(
-  (await import("../../src/utils/stringUtils")).removeCodeBlockWrappers,
+  (await import("@/utils/stringUtils")).removeCodeBlockWrappers,
 );
 
 describe("editFileTool", () => {

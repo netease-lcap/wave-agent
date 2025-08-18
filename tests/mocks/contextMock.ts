@@ -1,9 +1,9 @@
 import { vi } from "vitest";
-import type { ChatContextType } from "../../src/contexts/useChat";
-import type { FileContextType } from "../../src/contexts/useFiles";
-import type { AppConfig } from "../../src/contexts/useAppConfig";
-import type { FileTreeNode } from "../../src/types/common";
-import { flattenFiles } from "../../src/utils/flattenFiles";
+import type { ChatContextType } from "@/contexts/useChat";
+import type { FileContextType } from "@/contexts/useFiles";
+import type { AppConfig } from "@/contexts/useAppConfig";
+import type { FileTreeNode } from "@/types/common";
+import { flattenFiles } from "@/utils/flattenFiles";
 
 // 默认的 mock 文件数据
 export const defaultMockFiles: FileTreeNode[] = [
@@ -118,25 +118,25 @@ export const setupMocks = (customFiles?: FileTreeNode[]) => {
   mockAppConfig = createMockAppConfig();
 
   // Mock chat context
-  vi.doMock("../../src/contexts/useChat", () => ({
+  vi.doMock("@/contexts/useChat", () => ({
     ChatProvider: ({ children }: { children: React.ReactNode }) => children,
     useChat: () => mockChatContext,
   }));
 
   // Mock files context
-  vi.doMock("../../src/contexts/useFiles", () => ({
+  vi.doMock("@/contexts/useFiles", () => ({
     FileProvider: ({ children }: { children: React.ReactNode }) => children,
     useFiles: () => mockFilesContext,
   }));
 
   // Mock app config
-  vi.doMock("../../src/contexts/useAppConfig", () => ({
+  vi.doMock("@/contexts/useAppConfig", () => ({
     AppProvider: ({ children }: { children: React.ReactNode }) => children,
     useAppConfig: () => mockAppConfig,
   }));
 
   // Mock logger
-  vi.doMock("../../src/utils/logger", () => ({
+  vi.doMock("@/utils/logger", () => ({
     logger: {
       error: vi.fn(),
       info: vi.fn(),

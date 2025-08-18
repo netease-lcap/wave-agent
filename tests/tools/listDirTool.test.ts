@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { listDirTool } from "../../src/plugins/tools/listDirTool";
-import type { ToolResult, ToolContext } from "../../src/plugins/tools/types";
+import { listDirTool } from "@/plugins/tools/listDirTool";
+import type { ToolResult, ToolContext } from "@/plugins/tools/types";
 import type { PathLike, Stats } from "fs";
 import * as fs from "fs";
 

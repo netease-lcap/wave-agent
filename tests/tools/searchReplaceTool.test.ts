@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { searchReplaceTool } from "../../src/plugins/tools/searchReplaceTool";
-import type { ToolResult } from "../../src/plugins/tools/types";
+import { searchReplaceTool } from "@/plugins/tools/searchReplaceTool";
+import type { ToolResult } from "@/plugins/tools/types";
 
 // Mock fs/promises module
 vi.mock("fs/promises", async (importOriginal) => {

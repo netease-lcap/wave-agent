@@ -6,7 +6,7 @@ import chokidar, { FSWatcher } from "chokidar";
 import { createFileFilter } from "../utils/fileFilter";
 import { flattenFiles } from "../utils/flattenFiles";
 import { scanDirectory } from "../utils/scanDirectory";
-import { mcpToolManager } from "../utils/mcpToolManager";
+import { mcpToolManager } from "./mcpToolManager";
 import { logger } from "../utils/logger";
 
 // ===== Safety Configuration =====
