@@ -12,7 +12,6 @@ interface PaginationInfo {
 }
 
 export const usePagination = (messages: Message[]) => {
-  // 固定每页显示10条消息
   const messagesPerPage = MESSAGES_PER_PAGE;
 
   // 计算分页信息，确保第一页可以不完整，之后的页面都完整

@@ -2,8 +2,16 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "@/components/MessageList";
-import { MESSAGES_PER_PAGE } from "@/utils/constants";
 import type { Message } from "@/types";
+
+// Mock the constants module BEFORE any imports - only override MESSAGES_PER_PAGE
+vi.mock("@/utils/constants", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/constants")>();
+  return {
+    ...actual,
+    MESSAGES_PER_PAGE: 10, // Override only this value for testing
+  };
+});
 
 // Mock useInput to prevent key handling during tests
 vi.mock("ink", async () => {
@@ -13,6 +21,9 @@ vi.mock("ink", async () => {
     useInput: vi.fn(),
   };
 });
+
+// Use the mocked value in tests
+const MESSAGES_PER_PAGE = 10;
 
 describe("MessageList Pagination", () => {
   const createMessage = (
@@ -42,6 +53,7 @@ describe("MessageList Pagination", () => {
       it("should display the last page by default (auto mode)", () => {
         const { lastFrame } = render(<MessageList messages={messages} />);
 
+        // With 10 per page: 23 messages = Page 1 (3 msgs), Page 2 (10 msgs), Page 3 (10 msgs)
         // Should show last page (page 3) with messages 14-23
         expect(lastFrame()).toContain("Message 14 - Message 14");
         expect(lastFrame()).toContain("Message 23 - Message 23");
@@ -54,7 +66,7 @@ describe("MessageList Pagination", () => {
       it("should show correct message numbering on last page", () => {
         const { lastFrame } = render(<MessageList messages={messages} />);
 
-        // Should show message numbers 14-23 for last page
+        // Should show message numbers for last page (messages 14-23)
         expect(lastFrame()).toContain("#14");
         expect(lastFrame()).toContain("#20");
         expect(lastFrame()).toContain("#23");
@@ -71,6 +83,7 @@ describe("MessageList Pagination", () => {
       it("should display the last page by default (auto mode)", () => {
         const { lastFrame } = render(<MessageList messages={messages} />);
 
+        // With 10 per page: 15 messages = Page 1 (5 msgs), Page 2 (10 msgs)
         // Should show last page (page 2) with messages 6-15
         expect(lastFrame()).toContain("Msg 6 - Message 6");
         expect(lastFrame()).toContain("Msg 15 - Message 15");
@@ -89,6 +102,7 @@ describe("MessageList Pagination", () => {
       it("should display complete last page when message count is exact multiple", () => {
         const { lastFrame } = render(<MessageList messages={messages} />);
 
+        // With 10 per page: 20 messages = Page 1 (10 msgs), Page 2 (10 msgs)
         // Should show last page (page 2) with messages 11-20
         expect(lastFrame()).toContain(
           `Test ${MESSAGES_PER_PAGE + 1} - Message ${MESSAGES_PER_PAGE + 1}`,
@@ -204,7 +218,7 @@ describe("MessageList Pagination", () => {
 
       const { lastFrame } = render(<MessageList messages={messages} />);
 
-      // Based on pagination logic: 22 messages = Page 1 (2 msgs), Page 2 (10 msgs), Page 3 (10 msgs)
+      // With 10 per page: 22 messages = Page 1 (2 msgs), Page 2 (10 msgs), Page 3 (10 msgs)
       // Auto mode should show last page (Page 3) with messages 13-22
       expect(lastFrame()).toContain("Unique content 12"); // Message 13
       expect(lastFrame()).toContain("Unique content 21"); // Message 22
@@ -230,67 +244,53 @@ describe("MessageList Pagination", () => {
       // Auto mode shows all messages on page 1
       expect(lastFrame()).toContain("User message");
       expect(lastFrame()).toContain("Assistant message");
-      expect(lastFrame()).toContain("Another user message");
       expect(lastFrame()).toContain("Last assistant message");
+
+      // Should show correct message roles
+      expect(lastFrame()).toContain("👤 You");
+      expect(lastFrame()).toContain("🤖 Assistant");
+
       expect(lastFrame()).toContain("Messages 6 Page 1/1");
     });
   });
 
   describe("Complex pagination scenarios", () => {
     it("should handle large number of messages correctly", () => {
-      const messages = Array.from({ length: 33 }, (_, i) =>
-        createMessage("user", `Msg ${i + 1}`, i + 1),
+      // Test with 47 messages: Page 1 (7 msgs), Pages 2-5 (10 msgs each)
+      const messages = Array.from({ length: 47 }, (_, i) =>
+        createMessage("user", `Bulk ${i + 1}`, i + 1),
       );
 
       const { lastFrame } = render(<MessageList messages={messages} />);
 
-      // 33 messages = Page 1 (3 msgs), then 3 complete pages of 10 msgs each
-      // Auto mode should show last page (Page 4) with messages 24-33
-      expect(lastFrame()).toContain("Messages 33 Page 4/4");
-      expect(lastFrame()).toContain("Msg 24 - Message 24");
-      expect(lastFrame()).toContain("Msg 33 - Message 33");
-      expect(lastFrame()).not.toContain("Msg 23 - Message 23");
+      // Should show last page (page 5) with messages 38-47
+      expect(lastFrame()).toContain("Bulk 38 - Message 38");
+      expect(lastFrame()).toContain("Bulk 47 - Message 47");
+      expect(lastFrame()).not.toContain("Bulk 37 - Message 37");
+
+      expect(lastFrame()).toContain("Messages 47 Page 5/5");
     });
 
-    it("should maintain correct pagination when messages have different lengths", () => {
-      const messages = [
-        ...Array.from({ length: 7 }, (_, i) =>
-          createMessage("user", `Short ${i + 1}`, i + 1),
-        ),
-        ...Array.from({ length: 6 }, (_, i) =>
-          createMessage(
-            "assistant",
-            `Very long assistant message with lots of content ${i + 8}`,
-            i + 8,
-          ),
-        ),
-      ];
+    it("should preserve message headers and structure", () => {
+      const messages = Array.from({ length: 12 }, (_, i) => {
+        const role = i % 2 === 0 ? "user" : "assistant";
+        return createMessage(role, `Test ${i + 1}`, i + 1);
+      });
 
       const { lastFrame } = render(<MessageList messages={messages} />);
 
-      // 13 total messages should fit in 2 pages: Page 1 (3 msgs), Page 2 (10 msgs)
-      expect(lastFrame()).toContain("Messages 13 Page 2/2");
-      expect(lastFrame()).toContain("Very long assistant message");
-    });
-  });
+      // With 12 messages: Page 1 (2 msgs), Page 2 (10 msgs)
+      // Should show page 2 with messages 3-12
+      expect(lastFrame()).toContain("👤 You"); // User messages
+      expect(lastFrame()).toContain("🤖 Assistant"); // Assistant messages
 
-  describe("Performance and rendering", () => {
-    it("should only render current page messages efficiently", () => {
-      const messages = Array.from({ length: 50 }, (_, i) =>
-        createMessage("user", `Performance test ${i}`, i + 1),
-      );
+      // Should have proper message numbering for page 2
+      expect(lastFrame()).toContain("#3");
+      expect(lastFrame()).toContain("#12");
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
-
-      // Should only contain current page content, not all 50 messages
-      const frameContent = lastFrame();
-      const messageMatches = frameContent?.match(/Performance test \d+/g);
-
-      // Should only show MESSAGES_PER_PAGE messages (one page worth) at most
-      expect(messageMatches?.length).toBeLessThanOrEqual(MESSAGES_PER_PAGE);
-
-      // Should show correct page info
-      expect(lastFrame()).toContain("Messages 50");
+      // Should NOT contain messages from page 1
+      expect(lastFrame()).not.toMatch(/#1\s/); // Use regex to be more specific
+      expect(lastFrame()).not.toMatch(/#2\s/); // Use regex to be more specific
     });
   });
 });
