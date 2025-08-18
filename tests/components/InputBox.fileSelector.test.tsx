@@ -118,22 +118,22 @@ describe("InputBox File Selector", () => {
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(50);
+    await delay(10);
 
     // 然后输入过滤条件
     stdin.write("src");
-    await delay(50);
+    await delay(10);
     expect(lastFrame()).toContain("Select File");
 
     // 删除字符（模拟退格键）
     stdin.write("\u007F"); // Backspace
-    await delay(50);
+    await delay(10);
     stdin.write("\u007F"); // Backspace
-    await delay(50);
+    await delay(10);
     stdin.write("\u007F"); // Backspace
-    await delay(50);
+    await delay(10);
     stdin.write("\u007F"); // Backspace (删除 @ 符号)
-    await delay(50);
+    await delay(10);
 
     // 验证文件选择器消失
     expect(lastFrame()).not.toContain("Select File");
