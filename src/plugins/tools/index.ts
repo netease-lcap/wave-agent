@@ -13,7 +13,6 @@ import { fileSearchTool } from "./fileSearchTool";
 import { editFileTool } from "./editFileTool";
 import { searchReplaceTool } from "./searchReplaceTool";
 import { deleteFileTool } from "./deleteFileTool";
-import { mcpToolManager } from "../../services/mcpToolManager";
 
 /**
  * 工具注册中心
@@ -30,7 +29,6 @@ class ToolRegistryImpl implements ToolRegistry {
     args: Record<string, unknown>,
     context?: ToolContext,
   ): Promise<ToolResult> {
-    // 首先检查是否是内置工具
     const plugin = this.tools.get(name);
     if (plugin) {
       try {
@@ -44,11 +42,6 @@ class ToolRegistryImpl implements ToolRegistry {
       }
     }
 
-    // 如果不是内置工具，检查是否是 MCP 工具
-    if (mcpToolManager.isToolFromMCP(name)) {
-      return await mcpToolManager.callMCPTool(name, args);
-    }
-
     return {
       success: false,
       content: "",
@@ -57,17 +50,11 @@ class ToolRegistryImpl implements ToolRegistry {
   }
 
   list(): ToolPlugin[] {
-    const builtinTools = Array.from(this.tools.values());
-    const mcpTools = mcpToolManager.getTools();
-    return [...builtinTools, ...mcpTools];
+    return Array.from(this.tools.values());
   }
 
   getToolsConfig(): ChatCompletionTool[] {
-    const builtinTools = Array.from(this.tools.values()).map(
-      (tool) => tool.config,
-    );
-    const mcpTools = mcpToolManager.getTools().map((tool) => tool.config);
-    return [...builtinTools, ...mcpTools];
+    return Array.from(this.tools.values()).map((tool) => tool.config);
   }
 }
 

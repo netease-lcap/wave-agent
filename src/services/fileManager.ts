@@ -5,7 +5,6 @@ import chokidar, { FSWatcher } from "chokidar";
 import { createFileFilter } from "../utils/fileFilter";
 import { flattenFiles } from "../utils/flattenFiles";
 import { scanDirectory } from "../utils/scanDirectory";
-import { mcpToolManager } from "./mcpToolManager";
 import { logger } from "../utils/logger";
 
 // ===== Safety Configuration =====
@@ -189,16 +188,6 @@ export class FileManager {
 
   public async initialize(): Promise<void> {
     await this.syncFilesFromDisk();
-
-    // Initialize MCP tools
-    try {
-      await mcpToolManager.initialize(this.state.workdir);
-    } catch (error) {
-      logger.warn(
-        "Failed to initialize MCP tools:",
-        error instanceof Error ? error.name : "Unknown error",
-      );
-    }
   }
 
   public startWatching(): void {
@@ -271,12 +260,5 @@ export class FileManager {
 
   public async cleanup(): Promise<void> {
     this.stopWatching();
-
-    // Cleanup MCP connections
-    try {
-      await mcpToolManager.disconnect();
-    } catch (error) {
-      logger.error("Error disconnecting MCP tools:", error);
-    }
   }
 }

@@ -54,33 +54,6 @@ export type SSEData =
   | "[DONE]"
   | { error: boolean; message: string };
 
-/**
- * MCP 工具接口
- */
-export interface MCPTool {
-  name: string;
-  description?: string;
-  inputSchema: Record<string, unknown>;
-}
-
-/**
- * MCP 工具调用结果接口
- */
-export interface MCPToolResult {
-  content: Array<{ type: string; text: string }>;
-  isError?: boolean;
-}
-
-/**
- * MCP 操作结果接口
- */
-export interface MCPOperationResult {
-  success: boolean;
-  error?: string;
-  tools?: MCPTool[];
-  result?: MCPToolResult;
-}
-
 // ===== Constants =====
 
 /**

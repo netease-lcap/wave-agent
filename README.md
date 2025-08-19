@@ -74,7 +74,6 @@ npx lcap-code --help
 
 - [日志系统](docs/logging.md) - 日志配置和调试方法
 - [图片粘贴功能](docs/image-paste.md) - 图片粘贴和处理功能
-- [MCP协议](docs/MCP.md) - Model Context Protocol 支持
 - [分页功能](docs/PAGINATION.md) - 文件列表分页实现
 
 ## 兼容性说明
