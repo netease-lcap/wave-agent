@@ -6,6 +6,7 @@ import { createFileFilter } from "../utils/fileFilter";
 import { flattenFiles } from "../utils/flattenFiles";
 import { scanDirectory } from "../utils/scanDirectory";
 import { logger } from "../utils/logger";
+import { isBinary } from "../types/common";
 
 // ===== Safety Configuration =====
 
@@ -219,30 +220,25 @@ export class FileManager {
     this.watcher = watcher;
 
     watcher
-      .on("add", async () => {
-        // 文件变更时重新扫描整个目录结构
-        logger.debug("File added, rescanning directory...");
-        await this.syncFilesFromDisk();
+      .on("add", async (filePath) => {
+        logger.debug(`File added: ${filePath}`);
+        await this.addFileToFlatFiles(filePath);
       })
-      .on("change", async () => {
-        // 文件变更时重新扫描整个目录结构
-        logger.debug("File changed, rescanning directory...");
-        await this.syncFilesFromDisk();
+      .on("change", async (filePath) => {
+        logger.debug(`File changed: ${filePath}`);
+        await this.addFileToFlatFiles(filePath); // change 和 add 逻辑相同，都是更新或添加
       })
-      .on("unlink", async () => {
-        // 文件删除时重新扫描整个目录结构
-        logger.debug("File removed, rescanning directory...");
-        await this.syncFilesFromDisk();
+      .on("unlink", (filePath) => {
+        logger.debug(`File removed: ${filePath}`);
+        this.removeFileFromFlatFiles(filePath);
       })
-      .on("addDir", async () => {
-        // 目录添加时重新扫描整个目录结构
-        logger.debug("Directory added, rescanning directory...");
-        await this.syncFilesFromDisk();
+      .on("addDir", async (dirPath) => {
+        logger.debug(`Directory added: ${dirPath}`);
+        await this.addDirToFlatFiles(dirPath);
       })
-      .on("unlinkDir", async () => {
-        // 目录删除时重新扫描整个目录结构
-        logger.debug("Directory removed, rescanning directory...");
-        await this.syncFilesFromDisk();
+      .on("unlinkDir", (dirPath) => {
+        logger.debug(`Directory removed: ${dirPath}`);
+        this.removeDirFromFlatFiles(dirPath);
       })
       .on("error", (error) => {
         logger.error(`Watcher error: ${error}`);
@@ -260,5 +256,170 @@ export class FileManager {
 
   public async cleanup(): Promise<void> {
     this.stopWatching();
+  }
+
+  /**
+   * 将绝对路径转换为相对于工作目录的路径
+   */
+  private getRelativePath(absolutePath: string): string {
+    return path.relative(this.state.workdir, absolutePath);
+  }
+
+  /**
+   * 检查文件是否应该被忽略
+   */
+  private shouldIgnoreFile(filePath: string, isDirectory: boolean): boolean {
+    return this.fileFilter.shouldIgnore(filePath, isDirectory);
+  }
+
+  /**
+   * 添加单个文件到 flatFiles
+   */
+  private async addFileToFlatFiles(absolutePath: string): Promise<void> {
+    try {
+      const relativePath = this.getRelativePath(absolutePath);
+      const stats = await fs.promises.stat(absolutePath);
+
+      // 检查是否应该忽略
+      if (this.shouldIgnoreFile(absolutePath, stats.isDirectory())) {
+        return;
+      }
+
+      // 如果是目录，不添加到 flatFiles（只添加文件）
+      if (stats.isDirectory()) {
+        return;
+      }
+
+      // 检查文件大小限制
+      if (stats.size > this.safetyConfig.maxFileSize) {
+        logger.debug(
+          `File ${relativePath} exceeds size limit, marking as oversized`,
+        );
+      }
+
+      // 检查是否是二进制文件
+      const isBinaryFile = isBinary(path.basename(absolutePath));
+
+      const newFile: FileTreeNode = {
+        label: path.basename(absolutePath),
+        path: relativePath,
+        children: [],
+        isBinary: isBinaryFile,
+        fileSize: stats.size,
+        oversized: stats.size > this.safetyConfig.maxFileSize,
+      };
+
+      // 检查文件是否已存在
+      const existingIndex = this.state.flatFiles.findIndex(
+        (file) => file.path === relativePath,
+      );
+
+      if (existingIndex >= 0) {
+        // 更新现有文件
+        this.updateFlatFiles((files) => {
+          const updatedFiles = [...files];
+          updatedFiles[existingIndex] = newFile;
+          return updatedFiles;
+        });
+      } else {
+        // 添加新文件
+        this.updateFlatFiles((files) => [...files, newFile]);
+      }
+
+      logger.debug(`Added/updated file: ${relativePath}`);
+    } catch (error) {
+      logger.error(`Error adding file ${absolutePath}:`, error);
+    }
+  }
+
+  /**
+   * 从 flatFiles 中移除文件
+   */
+  private removeFileFromFlatFiles(absolutePath: string): void {
+    const relativePath = this.getRelativePath(absolutePath);
+
+    this.updateFlatFiles((files) => {
+      const filteredFiles = files.filter((file) => file.path !== relativePath);
+      if (filteredFiles.length !== files.length) {
+        logger.debug(`Removed file: ${relativePath}`);
+      }
+      return filteredFiles;
+    });
+  }
+
+  /**
+   * 移除目录及其所有子文件
+   */
+  private removeDirFromFlatFiles(absolutePath: string): void {
+    const relativePath = this.getRelativePath(absolutePath);
+    const dirPrefix = relativePath + path.sep;
+
+    this.updateFlatFiles((files) => {
+      const filteredFiles = files.filter((file) => {
+        return file.path !== relativePath && !file.path.startsWith(dirPrefix);
+      });
+
+      const removedCount = files.length - filteredFiles.length;
+      if (removedCount > 0) {
+        logger.debug(
+          `Removed directory and ${removedCount} files: ${relativePath}`,
+        );
+      }
+
+      return filteredFiles;
+    });
+  }
+
+  /**
+   * 扫描目录并添加所有文件到 flatFiles
+   */
+  private async addDirToFlatFiles(absolutePath: string): Promise<void> {
+    try {
+      // 检查是否应该忽略
+      if (this.shouldIgnoreFile(absolutePath, true)) {
+        return;
+      }
+
+      const context = {
+        fileCount: this.state.flatFiles.length,
+        maxFileCount: this.safetyConfig.maxFileCount,
+        maxFileSize: this.safetyConfig.maxFileSize,
+      };
+
+      const relativePath = this.getRelativePath(absolutePath);
+      const fileTree = await scanDirectory(
+        absolutePath,
+        this.fileFilter,
+        relativePath,
+        context,
+      );
+
+      const newFiles = flattenFiles(fileTree);
+
+      this.updateFlatFiles((files) => {
+        // 合并新文件，避免重复
+        const existingPaths = new Set(files.map((f) => f.path));
+        const filesToAdd = newFiles.filter((f) => !existingPaths.has(f.path));
+
+        if (filesToAdd.length > 0) {
+          logger.debug(
+            `Added directory with ${filesToAdd.length} files: ${relativePath}`,
+          );
+        }
+
+        return [...files, ...filesToAdd];
+      });
+    } catch (error) {
+      logger.error(`Error adding directory ${absolutePath}:`, error);
+
+      // 如果是文件数量限制错误，重新扫描整个目录
+      if (
+        error instanceof Error &&
+        error.message.startsWith("FILE_COUNT_LIMIT:")
+      ) {
+        logger.warn("File count limit reached, performing full rescan...");
+        await this.syncFilesFromDisk();
+      }
+    }
   }
 }
