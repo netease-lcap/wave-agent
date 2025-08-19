@@ -7,13 +7,12 @@ import { cleanupLogs } from "./utils/logger.js";
 
 export interface CliOptions {
   workdir: string;
-  ignore?: string[];
   restoreSessionId?: string;
   continueLastSession?: boolean;
 }
 
 export async function startCli(options: CliOptions): Promise<void> {
-  let { workdir, ignore } = options;
+  let { workdir } = options;
   const { restoreSessionId, continueLastSession } = options;
   let sessionToRestore: SessionData | null = null;
 
@@ -41,9 +40,8 @@ export async function startCli(options: CliOptions): Promise<void> {
         );
 
         if (pathValidation.isValid) {
-          // Use session's workdir and ignore patterns
+          // Use session's workdir
           workdir = pathValidation.resolvedPath!;
-          ignore = sessionToRestore.metadata.ignore || ignore;
           console.log(`Restoring session: ${sessionToRestore.id}`);
           console.log(`Working directory: ${workdir}`);
         } else {
@@ -74,13 +72,7 @@ export async function startCli(options: CliOptions): Promise<void> {
   });
 
   // Render the application
-  render(
-    <App
-      workdir={workdir}
-      ignore={ignore}
-      sessionToRestore={sessionToRestore}
-    />,
-  );
+  render(<App workdir={workdir} sessionToRestore={sessionToRestore} />);
 
   // Return a promise that never resolves to keep the CLI running
   return new Promise(() => {});

@@ -7,15 +7,14 @@ import type { SessionData } from "../services/sessionManager";
 
 interface AppProps {
   workdir: string;
-  ignore?: string[];
   sessionToRestore?: SessionData | null;
 }
 
 const AppWithProviders: React.FC = () => {
-  const { workdir, ignore, sessionToRestore } = useAppConfig();
+  const { workdir, sessionToRestore } = useAppConfig();
 
   return (
-    <FileProvider workdir={workdir} ignore={ignore}>
+    <FileProvider workdir={workdir}>
       <ChatProvider sessionToRestore={sessionToRestore}>
         <ChatInterface />
       </ChatProvider>
@@ -23,17 +22,9 @@ const AppWithProviders: React.FC = () => {
   );
 };
 
-export const App: React.FC<AppProps> = ({
-  workdir,
-  ignore,
-  sessionToRestore,
-}) => {
+export const App: React.FC<AppProps> = ({ workdir, sessionToRestore }) => {
   return (
-    <AppProvider
-      workdir={workdir}
-      ignore={ignore}
-      sessionToRestore={sessionToRestore}
-    >
+    <AppProvider workdir={workdir} sessionToRestore={sessionToRestore}>
       <AppWithProviders />
     </AppProvider>
   );

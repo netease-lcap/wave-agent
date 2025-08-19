@@ -1,13 +1,15 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "./types";
-import type { FileTreeNode } from "../../types/common";
-import micromatch from "micromatch";
+import { spawn } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
 
 /**
- * Grep搜索工具插件 - 从内存中搜索文件内容
+ * Grep搜索工具插件 - 使用系统的 grep 或 git grep 命令
  */
 export const grepSearchTool: ToolPlugin = {
   name: "grep_search",
-  description: "Search for text patterns in files loaded in memory",
+  description:
+    "Search for text patterns in files using system grep or git grep",
   config: {
     type: "function",
     function: {
@@ -61,51 +63,103 @@ export const grepSearchTool: ToolPlugin = {
       };
     }
 
+    if (!context?.workdir) {
+      return {
+        success: false,
+        content: "",
+        error: "Working directory not available in context",
+      };
+    }
+
     try {
-      // 创建正则表达式
-      const flags = caseSensitive ? "g" : "gi";
-      const regex = new RegExp(query, flags);
+      const workdir = context.workdir;
 
-      // 搜索结果
-      const results: string[] = [];
-      const maxResults = 50;
+      // 检查是否是 git 仓库
+      const isGitRepo = fs.existsSync(path.join(workdir, ".git"));
 
-      // 从 context 中获取文件列表，如果没有则返回错误
-      if (!context || !context.flatFiles) {
+      // 构建命令参数
+      let command: string;
+      let args: string[] = [];
+
+      if (isGitRepo) {
+        // 使用 git grep
+        command = "git";
+        args = ["grep", "-n", "-H"]; // -n 显示行号, -H 显示文件名
+
+        if (!caseSensitive) {
+          args.push("-i");
+        }
+
+        // 添加模式
+        args.push(query);
+
+        // 添加文件包含模式
+        if (includePattern) {
+          const patterns = includePattern.split(",").map((p) => p.trim());
+          for (const pattern of patterns) {
+            args.push("--", pattern);
+          }
+        }
+      } else {
+        // 使用系统 grep
+        command = "grep";
+        args = ["-r", "-n", "-H"]; // -r 递归, -n 显示行号, -H 显示文件名
+
+        if (!caseSensitive) {
+          args.push("-i");
+        }
+
+        // 添加排除模式
+        if (excludePattern) {
+          const patterns = excludePattern.split(",").map((p) => p.trim());
+          for (const pattern of patterns) {
+            args.push("--exclude-dir=" + pattern);
+          }
+        }
+
+        // 默认排除常见的不需要搜索的目录
+        args.push("--exclude-dir=node_modules");
+        args.push("--exclude-dir=.git");
+        args.push("--exclude-dir=dist");
+        args.push("--exclude-dir=build");
+
+        // 添加包含模式
+        if (includePattern) {
+          const patterns = includePattern.split(",").map((p) => p.trim());
+          for (const pattern of patterns) {
+            args.push("--include=" + pattern);
+          }
+        }
+
+        // 添加搜索模式
+        args.push(query);
+
+        // 添加搜索路径
+        args.push(".");
+      }
+
+      // 执行命令
+      const result = await executeCommand(command, args, workdir);
+
+      if (result.error && result.stderr.includes("command not found")) {
         return {
           success: false,
           content: "",
-          error: "File context not available. Cannot search in memory.",
+          error: `Command '${command}' not found. Please install ${isGitRepo ? "git" : "grep"}.`,
         };
       }
 
-      const flatFiles = context.flatFiles as FileTreeNode[];
-
-      // 遍历内存中的文件
-      for (const file of flatFiles) {
-        if (results.length >= maxResults) break;
-
-        // 跳过没有内容的文件
-        if (!file.code) continue;
-
-        // 检查文件是否匹配包含/排除模式
-        if (!shouldIncludeFile(file.path, includePattern, excludePattern)) {
-          continue;
-        }
-
-        // 在文件内容中搜索
-        const lines = file.code.split("\n");
-        for (let i = 0; i < lines.length; i++) {
-          if (results.length >= maxResults) break;
-
-          const line = lines[i];
-          if (regex.test(line)) {
-            results.push(`${file.path}:${i + 1}:${line}`);
-          }
-        }
+      if (result.error && result.exitCode !== 1) {
+        // grep 返回 1 表示没有匹配，不是错误
+        return {
+          success: false,
+          content: "",
+          error: `Search failed: ${result.stderr}`,
+        };
       }
 
-      if (results.length === 0) {
+      const output = result.stdout.trim();
+      if (!output) {
         return {
           success: true,
           content: "No matches found",
@@ -113,10 +167,15 @@ export const grepSearchTool: ToolPlugin = {
         };
       }
 
+      // 限制结果数量
+      const lines = output.split("\n");
+      const maxResults = 50;
+      const limitedLines = lines.slice(0, maxResults);
+
       return {
         success: true,
-        content: results.join("\n"),
-        shortResult: `Found ${results.length} matches${results.length === maxResults ? " (capped)" : ""}`,
+        content: limitedLines.join("\n"),
+        shortResult: `Found ${lines.length} matches${lines.length > maxResults ? ` (showing first ${maxResults})` : ""}`,
       };
     } catch (error) {
       return {
@@ -141,73 +200,51 @@ export const grepSearchTool: ToolPlugin = {
 };
 
 /**
- * 检查文件是否应该被包含在搜索中
+ * 执行命令并返回结果
  */
-function shouldIncludeFile(
-  filePath: string,
-  includePattern?: string,
-  excludePattern?: string,
-): boolean {
-  // 如果有包含模式，检查是否匹配
-  if (includePattern) {
-    if (!matchesGlobPattern(filePath, includePattern)) {
-      return false;
-    }
-  }
+function executeCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+): Promise<{
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  error: boolean;
+}> {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
-  // 如果有排除模式，检查是否匹配
-  if (excludePattern) {
-    if (matchesGlobPattern(filePath, excludePattern)) {
-      return false;
-    }
-  }
+    let stdout = "";
+    let stderr = "";
 
-  return true;
-}
+    child.stdout?.on("data", (data) => {
+      stdout += data.toString();
+    });
 
-/**
- * 检查文件路径是否匹配 glob 模式
- * 使用 micromatch 库，支持花括号语法如 *.{ts,tsx}
- * 如果模式包含逗号但没有花括号，则按逗号分割处理
- */
-function matchesGlobPattern(filePath: string, pattern: string): boolean {
-  if (!pattern || pattern.trim() === "") {
-    return false;
-  }
+    child.stderr?.on("data", (data) => {
+      stderr += data.toString();
+    });
 
-  // 标准化路径，确保使用正斜杠
-  const normalizedPath = filePath.replace(/\\/g, "/");
+    child.on("close", (code) => {
+      resolve({
+        stdout,
+        stderr,
+        exitCode: code,
+        error: code !== 0 && code !== 1, // grep 返回 1 表示没有匹配，不是错误
+      });
+    });
 
-  // 处理模式
-  let patterns: string[];
-
-  // 如果模式包含花括号，直接使用 micromatch 处理（支持 *.{ts,tsx} 语法）
-  if (pattern.includes("{") && pattern.includes("}")) {
-    patterns = [pattern.trim()];
-  }
-  // 如果模式包含逗号但没有花括号，按逗号分割
-  else if (pattern.includes(",")) {
-    patterns = pattern
-      .split(",")
-      .map((p) => p.trim())
-      .filter((p) => p.length > 0);
-  }
-  // 否则作为单个模式处理
-  else {
-    patterns = [pattern.trim()];
-  }
-
-  // 自动为简单模式添加 **/ 前缀以匹配任意路径深度
-  const normalizedPatterns = patterns.map((p) => {
-    // 如果模式不包含 / 且以 * 开头，自动添加 **/ 前缀
-    if (!p.includes("/") && p.startsWith("*")) {
-      return `**/${p}`;
-    }
-    return p;
-  });
-
-  // 使用 micromatch 进行匹配
-  return micromatch.isMatch(normalizedPath, normalizedPatterns, {
-    dot: true, // 匹配以点开头的文件
+    child.on("error", (err) => {
+      resolve({
+        stdout: "",
+        stderr: err.message,
+        exitCode: null,
+        error: true,
+      });
+    });
   });
 }

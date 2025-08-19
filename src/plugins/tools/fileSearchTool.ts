@@ -77,8 +77,8 @@ export const fileSearchTool: ToolPlugin = {
           // 通过检查是否有children来判断是否为目录
           const isDirectory = result.children && result.children.length > 0;
           const fileInfo = isDirectory ? "directory" : "file";
-          // 通过代码内容长度来估算大小
-          const sizeInfo = result.code ? ` (${result.code.length} chars)` : "";
+          // 显示文件大小信息（如果可用）
+          const sizeInfo = result.fileSize ? ` (${result.fileSize} bytes)` : "";
           return `${index + 1}. ${result.path} (${fileInfo})${sizeInfo}`;
         })
         .join("\n");

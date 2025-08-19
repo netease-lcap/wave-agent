@@ -250,10 +250,14 @@ export async function compressMessages(
 ): Promise<string> {
   const { messages, abortSignal } = options;
 
+  // 获取模型配置
+  const envModel = process.env.AIGW_MODEL;
+  const modelId: ModelId = (envModel as ModelId) || DEFAULT_MODEL_ID;
+
   try {
     const response = await openai.chat.completions.create(
       {
-        model: "gemini-2.5-flash",
+        model: modelId,
         messages: [
           {
             role: "system",

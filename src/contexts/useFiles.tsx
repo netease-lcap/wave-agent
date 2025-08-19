@@ -14,14 +14,6 @@ export interface FileContextType {
   workdir: string;
   fileManager: FileManager | null;
   syncFilesFromDisk: () => Promise<void>;
-  readFileFromMemory: (path: string) => string | null;
-  writeFileToMemory: (path: string, content: string) => void;
-  deleteFileFromMemory: (path: string) => void;
-  createFileInMemory: (
-    path: string,
-    isDirectory: boolean,
-    content?: string,
-  ) => void;
   setFlatFiles: React.Dispatch<React.SetStateAction<FileTreeNode[]>>;
 }
 
@@ -38,13 +30,11 @@ export const useFiles = () => {
 export interface FileProviderProps {
   workdir: string;
   children: React.ReactNode;
-  ignore?: string[];
 }
 
 export const FileProvider: React.FC<FileProviderProps> = ({
   workdir,
   children,
-  ignore: ignorePatterns,
 }) => {
   const [flatFiles, setFlatFiles] = useState<FileTreeNode[]>([]);
   const fileManagerRef = useRef<FileManager | null>(null);
@@ -57,7 +47,7 @@ export const FileProvider: React.FC<FileProviderProps> = ({
       },
     };
 
-    const fileManager = new FileManager(workdir, callbacks, ignorePatterns);
+    const fileManager = new FileManager(workdir, callbacks);
     fileManagerRef.current = fileManager;
 
     // Initialize and start watching
@@ -78,51 +68,19 @@ export const FileProvider: React.FC<FileProviderProps> = ({
         fileManagerRef.current.cleanup();
       }
     };
-  }, [workdir, ignorePatterns]);
+  }, [workdir]);
 
-  // Update file manager when workdir or ignore patterns change
+  // Update file manager when workdir changes
   useEffect(() => {
     if (fileManagerRef.current) {
-      fileManagerRef.current.updateFileFilter(workdir, ignorePatterns);
+      fileManagerRef.current.updateFileFilter(workdir);
     }
-  }, [workdir, ignorePatterns]);
+  }, [workdir]);
 
   const syncFilesFromDisk = useCallback(async () => {
     if (fileManagerRef.current) {
       await fileManagerRef.current.syncFilesFromDisk();
     }
-  }, []);
-
-  const writeFileToMemory = useCallback((filePath: string, content: string) => {
-    if (fileManagerRef.current) {
-      fileManagerRef.current.writeFileToMemory(filePath, content);
-    }
-  }, []);
-
-  const createFileInMemory = useCallback(
-    (targetPath: string, isDirectory: boolean, content?: string) => {
-      if (fileManagerRef.current) {
-        fileManagerRef.current.createFileInMemory(
-          targetPath,
-          isDirectory,
-          content,
-        );
-      }
-    },
-    [],
-  );
-
-  const deleteFileFromMemory = useCallback((filePath: string): void => {
-    if (fileManagerRef.current) {
-      fileManagerRef.current.deleteFileFromMemory(filePath);
-    }
-  }, []);
-
-  const readFileFromMemory = useCallback((path: string): string | null => {
-    if (fileManagerRef.current) {
-      return fileManagerRef.current.readFileFromMemory(path);
-    }
-    return null;
   }, []);
 
   // Custom setFlatFiles that updates the file manager
@@ -148,10 +106,6 @@ export const FileProvider: React.FC<FileProviderProps> = ({
         workdir,
         fileManager: fileManagerRef.current,
         syncFilesFromDisk,
-        readFileFromMemory,
-        writeFileToMemory,
-        deleteFileFromMemory,
-        createFileInMemory,
         setFlatFiles: setFlatFilesWrapper,
       }}
     >

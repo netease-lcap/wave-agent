@@ -68,7 +68,6 @@ describe("SessionManager", () => {
     version: "1.0.0",
     metadata: {
       workdir: mockWorkdir,
-      ignore: ["node_modules"],
       startedAt: "2024-01-01T00:00:00.000Z",
       lastActiveAt: "2024-01-01T00:00:00.000Z",
       totalTokens: 100,
@@ -112,7 +111,6 @@ describe("SessionManager", () => {
         mockMessages,
         mockInputHistory,
         mockWorkdir,
-        ["node_modules"],
         100,
         "2024-01-01T00:00:00.000Z",
       );

@@ -44,8 +44,6 @@ export interface FileTreeNode {
   label: string;
   path: string;
   children: FileTreeNode[];
-  code: string;
-  binaryData?: Uint8Array;
   isBinary?: boolean;
   fileSize?: number; // 文件大小（字节）
   oversized?: boolean; // 标记文件是否超过大小限制

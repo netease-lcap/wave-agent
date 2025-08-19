@@ -9,7 +9,6 @@ export interface SessionData {
   version: string;
   metadata: {
     workdir: string;
-    ignore?: string[];
     startedAt: string;
     lastActiveAt: string;
     totalTokens: number;
@@ -65,7 +64,6 @@ export class SessionManager {
     messages: Message[],
     inputHistory: string[],
     workdir: string,
-    ignore?: string[],
     totalTokens: number = 0,
     startedAt?: string,
   ): Promise<void> {
@@ -88,7 +86,6 @@ export class SessionManager {
       version: this.VERSION,
       metadata: {
         workdir,
-        ignore,
         startedAt: startedAt || now,
         lastActiveAt: now,
         totalTokens,

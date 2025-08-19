@@ -45,7 +45,7 @@ export interface ToolRegistry {
 }
 
 export interface ToolContext {
-  flatFiles: FileTreeNode[];
+  flatFiles?: FileTreeNode[];
   abortSignal?: AbortSignal;
   workdir?: string;
 }

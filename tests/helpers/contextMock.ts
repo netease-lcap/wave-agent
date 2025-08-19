@@ -10,25 +10,22 @@ export const defaultMockFiles: FileTreeNode[] = [
   {
     path: "src",
     label: "src",
-    code: "",
     children: [
-      { path: "src/index.ts", label: "index.ts", code: "", children: [] },
+      { path: "src/index.ts", label: "index.ts", children: [] },
       {
         path: "src/components",
         label: "components",
-        code: "",
         children: [
           {
             path: "src/components/App.tsx",
             label: "App.tsx",
-            code: "",
             children: [],
           },
         ],
       },
     ],
   },
-  { path: "package.json", label: "package.json", code: "", children: [] },
+  { path: "package.json", label: "package.json", children: [] },
 ];
 
 // 创建 mock 函数
@@ -47,10 +44,6 @@ export const createMockFunctions = () => ({
   abortAIMessage: vi.fn(),
   resetSession: vi.fn(),
   syncFilesFromDisk: vi.fn(),
-  readFileFromMemory: vi.fn(),
-  writeFileToMemory: vi.fn(),
-  deleteFileFromMemory: vi.fn(),
-  createFileInMemory: vi.fn(),
   setFlatFiles: vi.fn(),
   saveMemory: vi.fn().mockResolvedValue(undefined),
 });
@@ -91,17 +84,12 @@ export const createMockFilesContext = (
   workdir: "/mock/workdir",
   fileManager: null, // Add the missing fileManager property
   syncFilesFromDisk: mockFunctions.syncFilesFromDisk,
-  readFileFromMemory: mockFunctions.readFileFromMemory,
-  writeFileToMemory: mockFunctions.writeFileToMemory,
-  deleteFileFromMemory: mockFunctions.deleteFileFromMemory,
-  createFileInMemory: mockFunctions.createFileInMemory,
   setFlatFiles: mockFunctions.setFlatFiles,
 });
 
 // 创建默认的 App Config Mock
 export const createMockAppConfig = (): AppConfig => ({
   workdir: "/mock/workdir",
-  ignore: [],
 });
 
 // 全局变量存储 mock 实例

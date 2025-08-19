@@ -12,18 +12,15 @@ await vi.hoisted(async () => {
     {
       label: "src",
       path: "src",
-      code: "",
       children: [
         {
           label: "test1.ts",
           path: "src/test1.ts",
-          code: 'logger.info("test1");',
           children: [],
         },
         {
           label: "test2.tsx",
           path: "src/test2.tsx",
-          code: "export const Test = () => <div>test</div>;",
           children: [],
         },
       ],

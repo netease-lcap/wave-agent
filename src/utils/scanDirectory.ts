@@ -56,7 +56,6 @@ export const scanDirectory = async (
             label: entry.name,
             path: entryRelativePath,
             children,
-            code: "",
           });
         }
       } else {
@@ -91,7 +90,6 @@ export const scanDirectory = async (
             items.push({
               label: entry.name,
               path: entryRelativePath,
-              code: "", // 大文件的code字段设置为空
               children: [],
               isBinary: isBinary(entry.name),
               fileSize: fileSize,
@@ -100,27 +98,14 @@ export const scanDirectory = async (
             continue; // 跳过后续处理
           }
 
-          if (isBinary(entry.name)) {
-            // 对于二进制文件，不读取内容，但添加文件节点
-            items.push({
-              label: entry.name,
-              path: entryRelativePath,
-              code: "",
-              children: [],
-              isBinary: true,
-              fileSize: fileSize,
-            });
-          } else {
-            // 对于文本文件，读取内容
-            const content = await fs.promises.readFile(fullPath, "utf-8");
-            items.push({
-              label: entry.name,
-              path: entryRelativePath,
-              code: content,
-              children: [],
-              fileSize: fileSize,
-            });
-          }
+          // 添加文件节点但不读取内容
+          items.push({
+            label: entry.name,
+            path: entryRelativePath,
+            children: [],
+            isBinary: isBinary(entry.name),
+            fileSize: fileSize,
+          });
         } catch (error) {
           // FILE_COUNT_LIMIT错误需要重新抛出
           if (

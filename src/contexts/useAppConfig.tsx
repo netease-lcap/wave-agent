@@ -3,7 +3,6 @@ import type { SessionData } from "../services/sessionManager";
 
 export interface AppConfig {
   workdir: string;
-  ignore?: string[];
   sessionToRestore?: SessionData | null;
 }
 
@@ -23,12 +22,11 @@ export interface AppProviderProps extends AppConfig {
 
 export const AppProvider: React.FC<AppProviderProps> = ({
   workdir,
-  ignore,
   sessionToRestore,
   children,
 }) => {
   return (
-    <AppContext.Provider value={{ workdir, ignore, sessionToRestore }}>
+    <AppContext.Provider value={{ workdir, sessionToRestore }}>
       {children}
     </AppContext.Provider>
   );

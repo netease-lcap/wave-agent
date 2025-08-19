@@ -1,4 +1,3 @@
-import { isBinary } from "../types/common";
 import type { FileTreeNode } from "../types/common";
 import * as fs from "fs";
 import * as path from "path";
@@ -106,13 +105,11 @@ export class FileManager {
   private callbacks: FileManagerCallbacks;
   private watcher: FSWatcher | null = null;
   private fileFilter: ReturnType<typeof createFileFilter>;
-  private ignorePatterns?: string[];
   private safetyConfig: SafetyConfig;
 
   constructor(
     workdir: string,
     callbacks: FileManagerCallbacks,
-    ignorePatterns?: string[],
     safetyConfig?: Partial<SafetyConfig>,
   ) {
     // 危险目录检测 - 最高优先级
@@ -127,9 +124,8 @@ export class FileManager {
       workdir,
     };
     this.callbacks = callbacks;
-    this.ignorePatterns = ignorePatterns;
     this.safetyConfig = { ...DEFAULT_SAFETY_CONFIG, ...safetyConfig };
-    this.fileFilter = createFileFilter(workdir, ignorePatterns);
+    this.fileFilter = createFileFilter(workdir);
   }
 
   public getState(): FileManagerState {
@@ -156,14 +152,11 @@ export class FileManager {
     this.setFlatFiles(newFiles);
   }
 
-  public updateFileFilter(workdir?: string, ignorePatterns?: string[]): void {
+  public updateFileFilter(workdir?: string): void {
     if (workdir) {
       this.state.workdir = workdir;
     }
-    if (ignorePatterns !== undefined) {
-      this.ignorePatterns = ignorePatterns;
-    }
-    this.fileFilter = createFileFilter(this.state.workdir, this.ignorePatterns);
+    this.fileFilter = createFileFilter(this.state.workdir);
   }
 
   public async syncFilesFromDisk(): Promise<void> {
@@ -184,7 +177,6 @@ export class FileManager {
     } catch (error) {
       logger.error("Error syncing files from disk:", error);
       this.setFlatFiles([]);
-      // FILE_SIZE_LIMIT错误不再重新抛出，只记录日志
       // FILE_COUNT_LIMIT错误仍然需要重新抛出，因为这是严重的限制
       if (
         error instanceof Error &&
@@ -192,136 +184,7 @@ export class FileManager {
       ) {
         throw error;
       }
-      // FILE_SIZE_LIMIT错误已经在scanDirectory中处理，不再需要重新抛出
     }
-  }
-
-  // 写入文件内容到内存中的文件树（不会写入磁盘）
-  public writeFileToMemory(filePath: string, content: string): void {
-    this.updateFlatFiles((prevFlatFiles) => {
-      return prevFlatFiles.map((file) =>
-        file.path === filePath ? { ...file, code: content } : file,
-      );
-    });
-  }
-
-  // 添加文件到树中
-  public createFileInMemory(
-    targetPath: string,
-    isDirectory: boolean,
-    content?: string,
-  ): void {
-    try {
-      const fullPath = path.join(this.state.workdir, targetPath);
-
-      // Check if should be ignored
-      if (this.fileFilter.shouldIgnore(fullPath, isDirectory)) {
-        return;
-      }
-
-      if (!isDirectory) {
-        // 检查文件数量限制
-        if (this.state.flatFiles.length >= this.safetyConfig.maxFileCount) {
-          throw new Error(
-            `FILE_COUNT_LIMIT: Cannot add file "${targetPath}". Maximum file count of ${this.safetyConfig.maxFileCount} reached.`,
-          );
-        }
-
-        // 对于二进制文件，不设置内容，只添加文件节点
-        let fileContent = isBinary(targetPath) ? "" : content || "";
-        let oversized = false;
-
-        // 检查文件大小限制（基于内容长度估算）
-        let estimatedSize = Buffer.byteLength(fileContent, "utf8");
-        if (estimatedSize > this.safetyConfig.maxFileSize) {
-          const fileSizeMB = (estimatedSize / (1024 * 1024)).toFixed(2);
-          const limitSizeMB = (
-            this.safetyConfig.maxFileSize /
-            (1024 * 1024)
-          ).toFixed(2);
-
-          // 记录警告而非抛出错误
-          logger.warn(
-            `FILE_SIZE_LIMIT: File "${targetPath}" (${fileSizeMB}MB) exceeds size limit of ${limitSizeMB}MB. Content will be empty.`,
-          );
-
-          // 将大文件的内容设置为空
-          fileContent = "";
-          oversized = true;
-          estimatedSize = 0; // 重新计算大小
-        }
-
-        // 直接添加到flatFiles中
-        this.updateFlatFiles((prevFlatFiles) => {
-          // 检查文件是否已存在，如果存在则更新，否则添加
-          const existingIndex = prevFlatFiles.findIndex(
-            (f) => f.path === targetPath,
-          );
-          if (existingIndex >= 0) {
-            const newFlatFiles = [...prevFlatFiles];
-            newFlatFiles[existingIndex] = {
-              ...newFlatFiles[existingIndex],
-              code: fileContent,
-              isBinary: isBinary(targetPath),
-              fileSize: estimatedSize,
-              oversized,
-            };
-            return newFlatFiles;
-          } else {
-            return [
-              ...prevFlatFiles,
-              {
-                label: path.basename(targetPath),
-                path: targetPath,
-                code: fileContent,
-                children: [],
-                isBinary: isBinary(targetPath),
-                fileSize: estimatedSize,
-                oversized,
-              },
-            ];
-          }
-        });
-      }
-      // 目录不需要添加到flatFiles中
-    } catch (error) {
-      logger.error("Error adding file to tree:", error);
-      // FILE_COUNT_LIMIT错误仍然需要重新抛出
-      if (
-        error instanceof Error &&
-        error.message.startsWith("FILE_COUNT_LIMIT:")
-      ) {
-        throw error;
-      }
-      // FILE_SIZE_LIMIT错误不再重新抛出，已经在上面处理
-    }
-  }
-
-  // 从内存中的文件树删除文件（不会删除磁盘文件）
-  public deleteFileFromMemory(filePath: string): void {
-    this.updateFlatFiles((prevFlatFiles) => {
-      return prevFlatFiles.filter(
-        (file) =>
-          !file.path.startsWith(filePath + "/") && file.path !== filePath,
-      );
-    });
-  }
-
-  // 从内存中的文件树读取文件内容（不会访问磁盘）
-  public readFileFromMemory(path: string): string | null {
-    const file = this.state.flatFiles.find((f) => f.path === path);
-    if (!file) {
-      return null;
-    }
-
-    // 检查文件是否被标记为超限
-    if (file.oversized) {
-      throw new Error(
-        `FILE_SIZE_LIMIT: File "${path}" is oversized and content cannot be read.`,
-      );
-    }
-
-    return file.code;
   }
 
   public async initialize(): Promise<void> {
@@ -367,54 +230,30 @@ export class FileManager {
     this.watcher = watcher;
 
     watcher
-      .on("add", async (filePath) => {
-        const relativePath = path.relative(this.state.workdir, filePath);
-        logger.debug(`File ${relativePath} has been added`);
-
-        try {
-          if (isBinary(relativePath)) {
-            // 对于二进制文件，不读取内容，只添加节点
-            this.createFileInMemory(relativePath, false, "");
-          } else {
-            // 对于文本文件，读取内容
-            const content = await fs.promises.readFile(filePath, "utf-8");
-            this.createFileInMemory(relativePath, false, content);
-          }
-        } catch (error) {
-          logger.error("Error reading added file:", error);
-        }
+      .on("add", async () => {
+        // 文件变更时重新扫描整个目录结构
+        logger.debug("File added, rescanning directory...");
+        await this.syncFilesFromDisk();
       })
-      .on("change", async (filePath) => {
-        const relativePath = path.relative(this.state.workdir, filePath);
-        logger.debug(`File ${relativePath} has been changed`);
-
-        try {
-          if (isBinary(relativePath)) {
-            // 对于二进制文件，不读取内容，只更新节点（但内容保持为空）
-            this.writeFileToMemory(relativePath, "");
-          } else {
-            // 对于文本文件，读取内容
-            const content = await fs.promises.readFile(filePath, "utf-8");
-            this.writeFileToMemory(relativePath, content);
-          }
-        } catch (error) {
-          logger.error("Error reading changed file:", error);
-        }
+      .on("change", async () => {
+        // 文件变更时重新扫描整个目录结构
+        logger.debug("File changed, rescanning directory...");
+        await this.syncFilesFromDisk();
       })
-      .on("unlink", (filePath) => {
-        const relativePath = path.relative(this.state.workdir, filePath);
-        logger.debug(`File ${relativePath} has been removed`);
-        this.deleteFileFromMemory(relativePath);
+      .on("unlink", async () => {
+        // 文件删除时重新扫描整个目录结构
+        logger.debug("File removed, rescanning directory...");
+        await this.syncFilesFromDisk();
       })
-      .on("addDir", (dirPath) => {
-        const relativePath = path.relative(this.state.workdir, dirPath);
-        logger.debug(`Directory ${relativePath} has been added`);
-        this.createFileInMemory(relativePath, true);
+      .on("addDir", async () => {
+        // 目录添加时重新扫描整个目录结构
+        logger.debug("Directory added, rescanning directory...");
+        await this.syncFilesFromDisk();
       })
-      .on("unlinkDir", (dirPath) => {
-        const relativePath = path.relative(this.state.workdir, dirPath);
-        logger.debug(`Directory ${relativePath} has been removed`);
-        this.deleteFileFromMemory(relativePath);
+      .on("unlinkDir", async () => {
+        // 目录删除时重新扫描整个目录结构
+        logger.debug("Directory removed, rescanning directory...");
+        await this.syncFilesFromDisk();
       })
       .on("error", (error) => {
         logger.error(`Watcher error: ${error}`);

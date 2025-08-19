@@ -12,12 +12,6 @@ export async function main() {
       type: "string",
       default: process.cwd(),
     })
-    .option("ignore", {
-      alias: "i",
-      description: "Additional ignore patterns (can be used multiple times)",
-      type: "array",
-      string: true,
-    })
     .option("restore", {
       alias: "r",
       description: "Restore session by ID",
@@ -34,10 +28,6 @@ export async function main() {
     })
     .example("$0", "Start CLI with default settings")
     .example("$0 --workdir /path/to/project", "Use custom working directory")
-    .example(
-      '$0 --ignore "*.log" --ignore "temp/*"',
-      "Add custom ignore patterns",
-    )
     .example("$0 --restore session_123", "Restore specific session")
     .example("$0 --continue", "Continue from last session")
     .example("$0 --list-sessions", "List all available sessions")
@@ -78,7 +68,6 @@ export async function main() {
 
   await startCli({
     workdir: argv.workdir,
-    ignore: argv.ignore as string[],
     restoreSessionId: argv.restore,
     continueLastSession: argv.continue,
   });

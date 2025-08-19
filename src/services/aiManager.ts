@@ -163,7 +163,6 @@ export class AIManager {
         this.state.messages,
         historyToSave,
         this.workdir,
-        undefined, // ignore patterns - 需要从外部获取
         this.state.totalTokens,
         this.sessionStartTime,
       );
