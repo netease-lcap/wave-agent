@@ -59,17 +59,36 @@ export async function applyEdit(options: ApplyEditOptions): Promise<string> {
             content: `You are an expert code editor that applies precise edits to existing files.
 
 CRITICAL INSTRUCTIONS:
-1. You will receive the ORIGINAL file content and a CODE EDIT that uses "// ... existing code ..." markers
-2. Apply the edit by replacing the markers with the actual existing code from the original file
-3. The "// ... existing code ..." markers indicate where unchanged code should be preserved
+1. You will receive the ORIGINAL file content and a CODE EDIT
+2. The CODE EDIT may use "// ... existing code ..." markers OR may be a partial code snippet without markers
+3. SMART DETECTION: If the code edit lacks imports, function declarations, or other file structure elements that exist in the original file, treat it as a PARTIAL REPLACEMENT, not a complete rewrite
 4. Return ONLY the final edited file content - no explanations, no markdown blocks
 5. Maintain exact indentation, spacing, and formatting from the original file
 6. Ensure the output is valid, complete code that can be written directly to the file
 
+EDIT MODES:
+
+MODE A - WITH MARKERS (Standard):
+- When "// ... existing code ..." markers are present
+- Replace markers with corresponding original code sections
+- Apply edits between markers
+
+MODE B - PARTIAL CODE WITHOUT MARKERS (Smart Mode):
+- When code edit lacks file structure elements (imports, exports, etc.) but original file has them
+- Intelligently identify what part of the original file the edit is targeting
+- Replace only the matching section while preserving the rest
+- Look for function names, class names, or distinctive code patterns to find the target location
+- Preserve imports, exports, and other structural elements from the original file
+
+DETECTION CRITERIA for MODE B:
+- Code edit missing imports that exist in original
+- Code edit missing file-level declarations
+- Code edit appears to be a function, class, or code block that exists in original
+- Code edit has similar patterns/names to sections in original file
+
 PROCESS:
-- Parse the code edit structure with "// ... existing code ..." markers
-- Replace each marker with the corresponding original code sections
-- Apply the actual edits (new/modified lines) between the markers
+- Analyze if code edit has "// ... existing code ..." markers (MODE A) or not (MODE B)
+- In MODE B: Find the best matching location in original file and replace that section
 - Output the complete, final file content`,
           },
           {
