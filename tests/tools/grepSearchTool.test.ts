@@ -158,6 +158,34 @@ This project uses diff libraries for comparing text.
       expect(result.content).toContain("Button");
       expect(result.content).toContain("<button");
     });
+
+    it("should find function definitions with regex", async () => {
+      const result: ToolResult = await grepSearchTool.execute(
+        {
+          query: "function.*\\(",
+          explanation: "Testing regex search for function definitions",
+        },
+        mockContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("src/utils/helpers.js");
+      expect(result.content).toContain("function generateDiff(");
+    });
+
+    it("should handle over-escaped parentheses in query", async () => {
+      const result: ToolResult = await grepSearchTool.execute(
+        {
+          query: "function.*\\(",
+          explanation: "Testing regex search with over-escaped parentheses",
+        },
+        mockContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("src/utils/helpers.js");
+      expect(result.content).toContain("function generateDiff(");
+    });
   });
 
   describe("file pattern filtering", () => {

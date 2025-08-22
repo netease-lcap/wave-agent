@@ -15,7 +15,7 @@ export const grepSearchTool: ToolPlugin = {
     function: {
       name: "grep_search",
       description:
-        "### Instructions:\nThis is best for finding exact text matches or regex patterns.\nThis is preferred over semantic search when we know the exact symbol/function name/etc. to search in some set of directories/file types.\n\nUse this tool to run fast, exact regex searches over text files.\nTo avoid overwhelming output, the results are capped at 50 matches.\nUse the include or exclude patterns to filter the search scope by file type or specific paths.\n\n- Always escape special regex characters: ( ) [ ] { } + * ? ^ $ | . \\\n- Use `\\` to escape any of these characters when they appear in your search string.\n- Do NOT perform fuzzy or semantic matches.\n- Return only a valid regex pattern string.\n\n### Examples:\n| Literal               | Regex Pattern            |\n|-----------------------|--------------------------|\n| function(             | function\\(              |\n| value[index]          | value\\[index\\]         |\n| file.txt               | file\\.txt                |\n| user|admin            | user\\|admin             |\n| path\\to\\file         | path\\\\to\\\\file        |\n| hello world           | hello world              |\n| foo\\(bar\\)          | foo\\\\(bar\\\\)         |",
+        "### Instructions:\nThis tool uses extended regex mode (grep -E) for powerful pattern matching.\nThis is best for finding exact text matches or regex patterns.\nThis is preferred over semantic search when we know the exact symbol/function name/etc. to search in some set of directories/file types.\n\nUse this tool to run fast, exact regex searches over text files.\nTo avoid overwhelming output, the results are capped at 50 matches.\nUse the include or exclude patterns to filter the search scope by file type or specific paths.\n\n- With -E mode, use standard extended regex syntax\n- For literal parentheses in patterns, escape them: \\( \\)\n- Other regex characters: . * + ? ^ $ | [ ] { } may need escaping depending on context\n- Do NOT perform fuzzy or semantic matches.\n- Return only a valid regex pattern string.\n\n### Examples:\n| Literal               | Regex Pattern            |\n|-----------------------|--------------------------|\n| function(             | function\\(              |\n| value[index]          | value\\[index\\]         |\n| file.txt               | file\\.txt                |\n| user OR admin         | user\\|admin             |\n| path\\to\\file         | path\\\\to\\\\file        |\n| hello world           | hello world              |",
       parameters: {
         type: "object",
         properties: {
@@ -84,7 +84,7 @@ export const grepSearchTool: ToolPlugin = {
       if (isGitRepo) {
         // 使用 git grep
         command = "git";
-        args = ["grep", "-n", "-H"]; // -n 显示行号, -H 显示文件名
+        args = ["grep", "-E", "-n", "-H"]; // -E 启用扩展正则, -n 显示行号, -H 显示文件名
 
         if (!caseSensitive) {
           args.push("-i");
@@ -103,7 +103,7 @@ export const grepSearchTool: ToolPlugin = {
       } else {
         // 使用系统 grep
         command = "grep";
-        args = ["-r", "-n", "-H"]; // -r 递归, -n 显示行号, -H 显示文件名
+        args = ["-E", "-r", "-n", "-H"]; // -E 启用扩展正则, -r 递归, -n 显示行号, -H 显示文件名
 
         if (!caseSensitive) {
           args.push("-i");
