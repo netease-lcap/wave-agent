@@ -35,13 +35,12 @@ export interface GenerateCommitMessageOptions {
 
 export interface ApplyEditOptions {
   targetFile: string;
-  instructions: string;
   codeEdit: string;
   abortSignal?: AbortSignal;
 }
 
 export async function applyEdit(options: ApplyEditOptions): Promise<string> {
-  const { targetFile, instructions, codeEdit, abortSignal } = options;
+  const { targetFile, codeEdit, abortSignal } = options;
 
   // 如果 targetFile 为空字符串，说明是新建文件，直接返回 codeEdit
   if (!targetFile || targetFile.trim() === "") {
@@ -95,8 +94,6 @@ PROCESS:
             role: "user",
             content: `ORIGINAL FILE CONTENT:
 ${targetFile}
-
-INSTRUCTIONS: ${instructions}
 
 CODE EDIT TO APPLY:
 ${codeEdit}

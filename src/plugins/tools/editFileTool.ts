@@ -27,18 +27,13 @@ export const editFileTool: ToolPlugin = {
             description:
               "The target file to modify. Always specify the target file as the first argument. You can use either a relative path in the workspace or an absolute path. If an absolute path is provided, it will be preserved as is.",
           },
-          instructions: {
-            type: "string",
-            description:
-              "A single sentence instruction describing what you are going to do for the sketched edit. This is used to assist the less intelligent model in applying the edit. Please use the first person to describe what you are going to do. Dont repeat what you have said previously in normal messages. And use it to disambiguate uncertainty in the edit.",
-          },
           code_edit: {
             type: "string",
             description:
               "Specify ONLY the precise lines of code that you wish to edit. **NEVER specify or write out unchanged code**. Instead, represent all unchanged code using the comment of the language you're editing in - example: `// ... existing code ...`\n\n🚨 MANDATORY for existing files: You MUST use `// ... existing code ...` (or appropriate comment syntax) between your edits to preserve existing code. The ONLY exceptions are:\n- Creating a NEW file (doesn't exist yet)\n- Completely REWRITING an existing file (replacing ALL content)\n\nFor partial edits, omitting this will cause permanent code deletion!",
           },
         },
-        required: ["target_file", "instructions", "code_edit"],
+        required: ["target_file", "code_edit"],
       },
     },
   },
@@ -47,7 +42,6 @@ export const editFileTool: ToolPlugin = {
     context?: ToolContext,
   ): Promise<ToolResult> => {
     const targetFile = args.target_file as string;
-    const instructions = args.instructions as string;
     const codeEdit = args.code_edit as string;
 
     if (!targetFile || typeof targetFile !== "string") {
@@ -55,14 +49,6 @@ export const editFileTool: ToolPlugin = {
         success: false,
         content: "",
         error: "target_file parameter is required and must be a string",
-      };
-    }
-
-    if (!instructions || typeof instructions !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "instructions parameter is required and must be a string",
       };
     }
 
@@ -99,7 +85,6 @@ export const editFileTool: ToolPlugin = {
         );
         const rawEditedContent = await applyEdit({
           targetFile: existingContent, // 传递现有文件内容作为上下文
-          instructions,
           codeEdit,
         });
         editedContent = removeCodeBlockWrappers(rawEditedContent);
@@ -146,18 +131,6 @@ export const editFileTool: ToolPlugin = {
   },
   formatCompactParams: (params: Record<string, unknown>) => {
     const targetFile = params.target_file as string;
-    const instructions = params.instructions as string;
-
-    if (!targetFile) return "";
-
-    // 截断过长的说明
-    const shortInstructions =
-      instructions?.length > 50
-        ? instructions.substring(0, 50) + "..."
-        : instructions;
-
-    return shortInstructions
-      ? `${targetFile}, ${shortInstructions}`
-      : targetFile;
+    return targetFile || "";
   },
 };

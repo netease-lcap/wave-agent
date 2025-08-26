@@ -2,49 +2,38 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { editFileTool } from "@/plugins/tools/editFileTool";
 import type { ToolResult } from "@/plugins/tools/types";
 
-// Mock fs/promises module
-vi.mock("fs/promises", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("fs/promises")>();
-  return {
-    ...actual,
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-  };
-});
-
-// Mock path module
-vi.mock("path", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("path")>();
-  return {
-    ...actual,
-    resolve: vi.fn((...paths: string[]) => {
-      if (paths.length === 1) {
-        return paths[0];
-      }
-      return `${paths[0]}/${paths[1]}`.replace(/\/+/g, "/");
-    }),
-  };
-});
-
-// Mock aiService
-vi.mock("@/services/aiService", () => ({
-  applyEdit: vi.fn(),
+// Mock file system operations
+vi.mock("fs/promises", () => ({
+  readFile: vi.fn(),
+  writeFile: vi.fn(),
 }));
 
-// Mock stringUtils
-vi.mock("@/utils/stringUtils", () => ({
-  removeCodeBlockWrappers: vi.fn((content: string) => content),
+// Mock path operations
+vi.mock("path", () => ({
+  resolve: vi.fn(),
 }));
 
 // Mock logger
 vi.mock("@/utils/logger", () => ({
   logger: {
     info: vi.fn(),
+    error: vi.fn(),
   },
 }));
 
-const mockReadFile = vi.mocked(await import("fs/promises")).readFile;
-const mockWriteFile = vi.mocked(await import("fs/promises")).writeFile;
+// Mock AI service
+vi.mock("@/services/aiService", () => ({
+  applyEdit: vi.fn(),
+}));
+
+// Mock string utils
+vi.mock("@/utils/stringUtils", () => ({
+  removeCodeBlockWrappers: vi.fn(),
+}));
+
+const mockReadFile = vi.mocked((await import("fs/promises")).readFile);
+const mockWriteFile = vi.mocked((await import("fs/promises")).writeFile);
+const mockResolve = vi.mocked((await import("path")).resolve);
 const mockApplyEdit = vi.mocked(
   (await import("@/services/aiService")).applyEdit,
 );
@@ -55,23 +44,19 @@ const mockRemoveCodeBlockWrappers = vi.mocked(
 describe("editFileTool", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRemoveCodeBlockWrappers.mockImplementation(
-      (content: string) => content,
-    );
-    // Reset writeFile to resolve successfully by default
-    mockWriteFile.mockResolvedValue(void 0);
+    mockResolve.mockImplementation((...paths) => paths.join("/"));
+    mockRemoveCodeBlockWrappers.mockImplementation((content) => content);
   });
 
   it("should successfully edit an existing file with existing code markers", async () => {
-    const existingContent = 'function test() {\n  console.log("old");\n}';
-    const editedContent = 'function test() {\n  console.log("new");\n}';
+    const existingContent = 'console.log("old");';
+    const editedContent = 'console.log("new");';
 
     mockReadFile.mockResolvedValue(existingContent);
     mockApplyEdit.mockResolvedValue(editedContent);
 
     const result: ToolResult = await editFileTool.execute({
       target_file: "test.js",
-      instructions: 'I am changing the console.log message from "old" to "new"',
       code_edit:
         '// ... existing code ...\nconsole.log("new");\n// ... existing code ...',
     });
@@ -79,7 +64,6 @@ describe("editFileTool", () => {
     expect(mockReadFile).toHaveBeenCalledWith("test.js", "utf-8");
     expect(mockApplyEdit).toHaveBeenCalledWith({
       targetFile: existingContent,
-      instructions: 'I am changing the console.log message from "old" to "new"',
       codeEdit:
         '// ... existing code ...\nconsole.log("new");\n// ... existing code ...',
     });
@@ -107,14 +91,12 @@ describe("editFileTool", () => {
 
     const result: ToolResult = await editFileTool.execute({
       target_file: "newFile.ts",
-      instructions: "I am creating a new file with a simple export function",
       code_edit: newFileContent,
     });
 
     expect(mockReadFile).toHaveBeenCalledWith("newFile.ts", "utf-8");
     expect(mockApplyEdit).toHaveBeenCalledWith({
       targetFile: "", // empty content for new file
-      instructions: "I am creating a new file with a simple export function",
       codeEdit: newFileContent,
     });
     expect(mockWriteFile).toHaveBeenCalledWith(
@@ -138,7 +120,6 @@ describe("editFileTool", () => {
 
     const result: ToolResult = await editFileTool.execute({
       target_file: "test.js",
-      instructions: "I am completely rewriting this file",
       code_edit: newContent,
     });
 
@@ -162,7 +143,6 @@ describe("editFileTool", () => {
     const result: ToolResult = await editFileTool.execute(
       {
         target_file: "src/test.js",
-        instructions: "I am adding a console.log",
         code_edit:
           '// ... existing code ...\nconsole.log("test");\n// ... existing code ...',
       },
@@ -190,7 +170,6 @@ describe("editFileTool", () => {
 
     const result: ToolResult = await editFileTool.execute({
       target_file: "test.js",
-      instructions: "I am trying to edit the function",
       code_edit:
         '// ... existing code ...\nconsole.log("test");\n// ... existing code ...',
     });
@@ -202,7 +181,6 @@ describe("editFileTool", () => {
   it("should validate required parameters", async () => {
     // Test missing target_file
     let result = await editFileTool.execute({
-      instructions: "test",
       code_edit: "test",
     });
     expect(result.success).toBe(false);
@@ -210,20 +188,9 @@ describe("editFileTool", () => {
       "target_file parameter is required and must be a string",
     );
 
-    // Test missing instructions
-    result = await editFileTool.execute({
-      target_file: "test.js",
-      code_edit: "test",
-    });
-    expect(result.success).toBe(false);
-    expect(result.error).toBe(
-      "instructions parameter is required and must be a string",
-    );
-
     // Test missing code_edit
     result = await editFileTool.execute({
       target_file: "test.js",
-      instructions: "test",
     });
     expect(result.success).toBe(false);
     expect(result.error).toBe(
@@ -233,7 +200,6 @@ describe("editFileTool", () => {
     // Test invalid parameter types
     result = await editFileTool.execute({
       target_file: 123,
-      instructions: "test",
       code_edit: "test",
     });
     expect(result.success).toBe(false);
@@ -252,7 +218,6 @@ describe("editFileTool", () => {
 
     const result: ToolResult = await editFileTool.execute({
       target_file: "test.js",
-      instructions: "I am trying to edit the function",
       code_edit:
         '// ... existing code ...\nconsole.log("test");\n// ... existing code ...',
     });
@@ -273,7 +238,6 @@ describe("editFileTool", () => {
 
     const result: ToolResult = await editFileTool.execute({
       target_file: "test.js",
-      instructions: "I am trying to edit the function",
       code_edit:
         '// ... existing code ...\nconsole.log("test");\n// ... existing code ...',
     });
@@ -291,10 +255,10 @@ describe("editFileTool", () => {
     mockReadFile.mockResolvedValue(existingContent);
     mockApplyEdit.mockResolvedValue(rawEditedContent);
     mockRemoveCodeBlockWrappers.mockReturnValue(cleanEditedContent);
+    mockWriteFile.mockResolvedValue(undefined); // Ensure write succeeds
 
     const result: ToolResult = await editFileTool.execute({
       target_file: "test.js",
-      instructions: "I am trying to edit the function",
       code_edit:
         '// ... existing code ...\nconsole.log("test");\n// ... existing code ...',
     });
@@ -310,13 +274,18 @@ describe("editFileTool", () => {
   });
 
   it("should provide proper shortResult for different operations", async () => {
+    // Clear all mocks before starting this test
+    vi.clearAllMocks();
+    mockResolve.mockImplementation((...paths) => paths.join("/"));
+    mockRemoveCodeBlockWrappers.mockImplementation((content) => content);
+
     // Test new file creation
     mockReadFile.mockRejectedValue(new Error("ENOENT"));
     mockApplyEdit.mockResolvedValue("new content\nline 2");
+    mockWriteFile.mockResolvedValue(undefined);
 
     let result = await editFileTool.execute({
       target_file: "new.js",
-      instructions: "Creating new file",
       code_edit: "new content\nline 2",
     });
 
@@ -324,29 +293,44 @@ describe("editFileTool", () => {
 
     // Test file rewrite
     mockReadFile.mockResolvedValue("old content");
-    mockRemoveCodeBlockWrappers.mockReturnValue(
-      "completely new content\nline 2\nline 3",
-    );
+    mockRemoveCodeBlockWrappers.mockReturnValue("new content\nline 2");
+    mockWriteFile.mockResolvedValue(undefined);
 
     result = await editFileTool.execute({
       target_file: "existing.js",
-      instructions: "Rewriting file",
-      code_edit: "completely new content\nline 2\nline 3",
+      code_edit: "new content\nline 2", // No existing code markers
     });
 
     expect(result.shortResult).toMatch(/Rewrote file \(\d+ lines\)/);
 
     // Test file modification
-    mockReadFile.mockResolvedValue("existing content");
+    mockReadFile.mockResolvedValue("old content");
     mockApplyEdit.mockResolvedValue("modified content");
+    mockWriteFile.mockResolvedValue(undefined);
 
     result = await editFileTool.execute({
       target_file: "existing.js",
-      instructions: "Modifying file",
-      code_edit:
-        "// ... existing code ...\nmodification\n// ... existing code ...",
+      code_edit: "// ... existing code ...\nmodified content",
     });
 
     expect(result.shortResult).toMatch(/Modified file \(\+\d+ -\d+ lines\)/);
+  });
+
+  describe("formatCompactParams", () => {
+    it("should format parameters correctly", () => {
+      const params = {
+        target_file: "test.js",
+      };
+
+      const result = editFileTool.formatCompactParams?.(params);
+      expect(result).toBe("test.js");
+    });
+
+    it("should handle empty target_file", () => {
+      const params = {};
+
+      const result = editFileTool.formatCompactParams?.(params);
+      expect(result).toBe("");
+    });
   });
 });
