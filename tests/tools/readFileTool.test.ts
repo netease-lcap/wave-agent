@@ -57,7 +57,6 @@ describe("readFileTool", () => {
       target_file: "test-file.ts",
       start_line_one_indexed: 5,
       end_line_one_indexed_inclusive: 10,
-      explanation: "Testing file reading functionality",
     });
 
     // 验证 fs 方法被正确调用
@@ -96,7 +95,6 @@ describe("readFileTool", () => {
 
     const result: ToolResult = await readFileTool.execute({
       target_file: "non-existent-file.ts",
-      explanation: "Testing file not found scenario",
     });
 
     // 验证 fs 方法被调用
@@ -116,7 +114,6 @@ describe("readFileTool", () => {
     const result: ToolResult = await readFileTool.execute({
       target_file: "test-file.ts",
       should_read_entire_file: true,
-      explanation: "Reading entire file",
     });
 
     expect(result.success).toBe(true);
@@ -128,7 +125,6 @@ describe("readFileTool", () => {
 
     const result: ToolResult = await readFileTool.execute({
       target_file: "test-file.ts",
-      explanation: "Testing read error scenario",
     });
 
     expect(result.success).toBe(false);
@@ -145,7 +141,6 @@ describe("readFileTool", () => {
       target_file: "test-file.ts",
       start_line_one_indexed: 5,
       end_line_one_indexed_inclusive: 10,
-      explanation: "Testing invalid line range",
     });
 
     expect(result.success).toBe(false);
@@ -163,7 +158,6 @@ describe("readFileTool", () => {
 
     const result: ToolResult = await readFileTool.execute({
       target_file: "test-file.ts",
-      explanation: "Testing default line range",
     });
 
     expect(result.success).toBe(true);
@@ -185,7 +179,6 @@ describe("readFileTool", () => {
     // 当没有指定行范围时，应该使用默认的200行
     const result1: ToolResult = await readFileTool.execute({
       target_file: "test-file.ts",
-      explanation: "Testing default behavior",
     });
 
     expect(result1.success).toBe(true);
@@ -198,7 +191,6 @@ describe("readFileTool", () => {
       target_file: "test-file.ts",
       start_line_one_indexed: 250,
       end_line_one_indexed_inclusive: 260,
-      explanation: "Testing specific range",
     });
 
     expect(result2.success).toBe(true);
@@ -220,7 +212,6 @@ describe("readFileTool", () => {
       target_file: "test-file.ts",
       start_line_one_indexed: 10,
       end_line_one_indexed_inclusive: 20,
-      explanation: "Testing small file handling",
     });
 
     expect(result.success).toBe(true);
@@ -262,7 +253,6 @@ describe("readFileTool", () => {
       target_file: "packages/ide-essential/src/stores/d2c/index.ts",
       start_line_one_indexed: 860,
       end_line_one_indexed_inclusive: 900,
-      explanation: "查看第876行周围更大范围的代码，包括函数定义和完整逻辑",
     });
 
     // 验证 fs 方法被正确调用
@@ -330,7 +320,6 @@ describe("readFileTool", () => {
     const result: ToolResult = await readFileTool.execute({
       target_file: "packages/code/tests/tools/grepSearchTool.test.ts",
       start_line_one_indexed: 200,
-      explanation: "查看测试文件的完整内容以确保没有遗漏",
     });
 
     // 验证 fs 方法被正确调用

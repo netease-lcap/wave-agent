@@ -21,13 +21,8 @@ export const fileSearchTool: ToolPlugin = {
             type: "string",
             description: "Fuzzy filename to search for",
           },
-          explanation: {
-            type: "string",
-            description:
-              "One sentence explanation as to why this tool is being used, and how it contributes to the goal.",
-          },
         },
-        required: ["query", "explanation"],
+        required: ["query"],
       },
     },
   },

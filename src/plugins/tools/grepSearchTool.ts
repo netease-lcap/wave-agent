@@ -36,11 +36,6 @@ export const grepSearchTool: ToolPlugin = {
             type: "boolean",
             description: "Whether the search should be case sensitive",
           },
-          explanation: {
-            type: "string",
-            description:
-              "One sentence explanation as to why this tool is being used, and how it contributes to the goal.",
-          },
         },
         required: ["query"],
       },

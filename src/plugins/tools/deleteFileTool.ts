@@ -25,11 +25,6 @@ export const deleteFileTool: ToolPlugin = {
             description:
               "The path of the file to delete, relative to the workspace root.",
           },
-          explanation: {
-            type: "string",
-            description:
-              "One sentence explanation as to why this tool is being used, and how it contributes to the goal.",
-          },
         },
         required: ["target_file"],
       },
@@ -40,7 +35,6 @@ export const deleteFileTool: ToolPlugin = {
     context?: ToolContext,
   ): Promise<ToolResult> => {
     const targetFile = args.target_file as string;
-    const explanation = args.explanation as string;
 
     if (!targetFile || typeof targetFile !== "string") {
       return {
@@ -58,9 +52,7 @@ export const deleteFileTool: ToolPlugin = {
       // 删除文件
       await unlink(filePath);
 
-      logger.info(
-        `Successfully deleted file: ${filePath}${explanation ? ` - ${explanation}` : ""}`,
-      );
+      logger.info(`Successfully deleted file: ${filePath}`);
 
       return {
         success: true,

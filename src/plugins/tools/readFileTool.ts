@@ -37,11 +37,6 @@ export const readFileTool: ToolPlugin = {
             description:
               "The one-indexed line number to end reading at (inclusive).",
           },
-          explanation: {
-            type: "string",
-            description:
-              "One sentence explanation as to why this tool is being used, and how it contributes to the goal.",
-          },
         },
         required: ["target_file"],
       },

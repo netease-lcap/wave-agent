@@ -35,19 +35,6 @@ describe("deleteFileTool", () => {
 
     const result: ToolResult = await deleteFileTool.execute({
       target_file: "test.js",
-      explanation: "Removing obsolete test file",
-    });
-
-    expect(mockUnlink).toHaveBeenCalledWith("test.js");
-    expect(result.success).toBe(true);
-    expect(result.content).toBe("Successfully deleted file: test.js");
-  });
-
-  it("should successfully delete file without explanation", async () => {
-    mockUnlink.mockResolvedValue();
-
-    const result: ToolResult = await deleteFileTool.execute({
-      target_file: "test.js",
     });
 
     expect(mockUnlink).toHaveBeenCalledWith("test.js");
@@ -65,7 +52,6 @@ describe("deleteFileTool", () => {
 
     const result: ToolResult = await deleteFileTool.execute({
       target_file: "nonexistent.js",
-      explanation: "Trying to delete non-existent file",
     });
 
     expect(mockUnlink).toHaveBeenCalledWith("nonexistent.js");
@@ -83,7 +69,6 @@ describe("deleteFileTool", () => {
 
     const result: ToolResult = await deleteFileTool.execute({
       target_file: "protected.js",
-      explanation: "Trying to delete protected file",
     });
 
     expect(mockUnlink).toHaveBeenCalledWith("protected.js");
@@ -93,9 +78,7 @@ describe("deleteFileTool", () => {
 
   it("should validate required parameters", async () => {
     // Test missing target_file
-    const result = await deleteFileTool.execute({
-      explanation: "test explanation",
-    });
+    const result = await deleteFileTool.execute({});
 
     expect(result.success).toBe(false);
     expect(result.error).toBe(
@@ -108,7 +91,6 @@ describe("deleteFileTool", () => {
     // Test non-string target_file
     const result = await deleteFileTool.execute({
       target_file: 123 as unknown as string,
-      explanation: "test explanation",
     });
 
     expect(result.success).toBe(false);
@@ -129,7 +111,6 @@ describe("deleteFileTool", () => {
     const result: ToolResult = await deleteFileTool.execute(
       {
         target_file: "src/test.js",
-        explanation: "Deleting file with relative path",
       },
       context,
     );
@@ -148,7 +129,6 @@ describe("deleteFileTool", () => {
 
     const result: ToolResult = await deleteFileTool.execute({
       target_file: "test.js",
-      explanation: "Deleting file when disk is full",
     });
 
     expect(mockUnlink).toHaveBeenCalledWith("test.js");

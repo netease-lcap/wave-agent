@@ -102,7 +102,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "Button",
-          explanation: "Testing basic text search",
         },
         mockContext,
       );
@@ -116,7 +115,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "import.*React",
-          explanation: "Testing regex pattern search",
         },
         mockContext,
       );
@@ -131,7 +129,6 @@ This project uses diff libraries for comparing text.
         {
           query: "button",
           case_sensitive: true,
-          explanation: "Testing case sensitive search",
         },
         mockContext,
       );
@@ -149,7 +146,6 @@ This project uses diff libraries for comparing text.
         {
           query: "button",
           case_sensitive: false,
-          explanation: "Testing case insensitive search",
         },
         mockContext,
       );
@@ -163,7 +159,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "function.*\\(",
-          explanation: "Testing regex search for function definitions",
         },
         mockContext,
       );
@@ -177,7 +172,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "function.*\\(",
-          explanation: "Testing regex search with over-escaped parentheses",
         },
         mockContext,
       );
@@ -194,7 +188,6 @@ This project uses diff libraries for comparing text.
         {
           query: "import",
           include_pattern: "*.tsx",
-          explanation: "Testing single extension filter",
         },
         mockContext,
       );
@@ -210,7 +203,6 @@ This project uses diff libraries for comparing text.
         {
           query: "Button",
           exclude_pattern: "tests",
-          explanation: "Testing file exclusion",
         },
         mockContext,
       );
@@ -225,7 +217,6 @@ This project uses diff libraries for comparing text.
         {
           query: "export",
           include_pattern: "*.ts,*.js",
-          explanation: "Testing multiple include patterns",
         },
         mockContext,
       );
@@ -241,7 +232,6 @@ This project uses diff libraries for comparing text.
         {
           query: "DiffBlock",
           include_pattern: "*.ts",
-          explanation: "Testing TypeScript file search",
         },
         mockContext,
       );
@@ -256,7 +246,6 @@ This project uses diff libraries for comparing text.
         {
           query: "generateDiff",
           include_pattern: "*.js",
-          explanation: "Testing JavaScript file search",
         },
         mockContext,
       );
@@ -271,7 +260,6 @@ This project uses diff libraries for comparing text.
         {
           query: "React.FC",
           include_pattern: "*.tsx",
-          explanation: "Testing React component file search",
         },
         mockContext,
       );
@@ -286,7 +274,6 @@ This project uses diff libraries for comparing text.
         {
           query: "import",
           exclude_pattern: "tests,README.md",
-          explanation: "Testing multiple exclude patterns",
         },
         mockContext,
       );
@@ -303,7 +290,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "nonexistentpattern",
-          explanation: "Testing no matches scenario",
         },
         mockContext,
       );
@@ -316,7 +302,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "[invalid",
-          explanation: "Testing invalid regex handling",
         },
         mockContext,
       );
@@ -330,7 +315,6 @@ This project uses diff libraries for comparing text.
     it("should handle missing context", async () => {
       const result: ToolResult = await grepSearchTool.execute({
         query: "test",
-        explanation: "Testing missing context",
       });
 
       expect(result.success).toBe(false);
@@ -343,7 +327,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "",
-          explanation: "Testing empty query",
         },
         mockContext,
       );
@@ -365,7 +348,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "test",
-          explanation: "Testing result limit",
         },
         mockContext,
       );
@@ -384,7 +366,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "test",
-          explanation: "Testing non-existent directory",
         },
         badContext,
       );
@@ -399,7 +380,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "diff",
-          explanation: "Testing content search",
         },
         mockContext,
       );
@@ -414,7 +394,6 @@ This project uses diff libraries for comparing text.
       const result: ToolResult = await grepSearchTool.execute(
         {
           query: "export",
-          explanation: "Testing line number display",
         },
         mockContext,
       );

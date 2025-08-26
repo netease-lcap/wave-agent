@@ -23,11 +23,6 @@ export const listDirTool: ToolPlugin = {
             description:
               "Path to list contents of, relative to the workspace root.",
           },
-          explanation: {
-            type: "string",
-            description:
-              "One sentence explanation as to why this tool is being used, and how it contributes to the goal.",
-          },
         },
         required: ["relative_workspace_path"],
       },
