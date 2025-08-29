@@ -80,14 +80,14 @@ describe("InputBox Memory Mode", () => {
     expect(output).not.toContain("📝 Memory Mode");
   });
 
-  it("should show memory mode with additional text after #", async () => {
+  it("should stay in memory mode when additional text is added after #", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
     // Type # to enter memory mode first
     stdin.write("#");
     await delay(10);
 
-    // Then type additional text character by character
+    // Then type additional text character by character - should stay in memory mode since it still starts with #
     const text = " remember this";
     for (const char of text) {
       stdin.write(char);
@@ -98,6 +98,34 @@ describe("InputBox Memory Mode", () => {
     expect(output).toContain("📝 Memory Mode");
     expect(output).toContain("Add memory content (remove # to exit)");
     expect(output).toContain("# remember this");
+  });
+
+  it("should exit memory mode only when # is deleted from the beginning", async () => {
+    const { stdin, lastFrame } = render(<InputBox />);
+
+    // Type # to enter memory mode first
+    stdin.write("#");
+    await delay(10);
+    let output = lastFrame();
+    expect(output).toContain("📝 Memory Mode");
+
+    // Add some text after # - should stay in memory mode
+    stdin.write(" content");
+    await delay(10);
+    output = lastFrame();
+    expect(output).toContain("📝 Memory Mode");
+
+    // Use backspace to delete all characters including the #
+    // This simulates deleting " content#" character by character
+    for (let i = 0; i < 9; i++) {
+      // " content" = 8 chars + "#" = 1 char = 9 total
+      stdin.write("\u0008"); // Backspace
+    }
+    await delay(10);
+
+    output = lastFrame();
+    expect(output).not.toContain("📝 Memory Mode");
+    expect(output).not.toContain("Add memory content (remove # to exit)");
   });
 
   it("should change border color in memory mode", async () => {
