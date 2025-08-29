@@ -69,6 +69,11 @@ interface KeyboardHandlerProps {
 
   // Memory mode
   checkMemoryMode: (inputText: string) => boolean;
+  isMemoryMode: boolean;
+
+  // Bash mode
+  checkBashMode: (inputText: string) => boolean;
+  isBashMode: boolean;
 
   // Memory type selector
   showMemoryTypeSelector: boolean;
@@ -117,6 +122,9 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     checkForExclamationDeletion,
     exclamationPosition,
     checkMemoryMode,
+    isMemoryMode,
+    checkBashMode,
+    isBashMode,
     showMemoryTypeSelector,
     activateMemoryTypeSelector,
     handleMemoryTypeSelect,
@@ -185,6 +193,10 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           setInputText(newInput);
           setCursorPosition(cursorPosition - 1);
 
+          // 检查模式状态（删除字符后）
+          checkMemoryMode(newInput);
+          checkBashMode(newInput);
+
           // 更新搜索查询
           if (atPosition >= 0) {
             const queryStart = atPosition + 1;
@@ -244,6 +256,10 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         setInputText(newInput);
         setCursorPosition(cursorPosition + input.length);
 
+        // 检查模式状态（在选择器模式下也需要更新）
+        checkMemoryMode(newInput);
+        checkBashMode(newInput);
+
         // 更新搜索查询
         if (atPosition >= 0) {
           const queryStart = atPosition + 1;
@@ -277,6 +293,8 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       updateSearchQuery,
       updateCommandSearchQuery,
       updateBashHistorySearchQuery,
+      checkMemoryMode,
+      checkBashMode,
     ],
   );
 
@@ -284,8 +302,8 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     (input: string, key: Key) => {
       if (key.return) {
         if (inputText.trim()) {
-          // 检查是否是记忆消息（以#开头）
-          if (inputText.trim().startsWith("#")) {
+          // 检查是否是记忆消息（在记忆模式下且以#开头）
+          if (isMemoryMode && inputText.trim().startsWith("#")) {
             // 激活记忆类型选择器
             activateMemoryTypeSelector(inputText.trim());
             return;
@@ -311,10 +329,18 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           sendMessage(
             cleanContent,
             referencedImages.length > 0 ? referencedImages : undefined,
+            {
+              isMemoryMode,
+              isBashMode,
+            },
           );
           clearInput();
           clearImages();
           resetHistoryNavigation();
+
+          // 发送消息后重置模式状态
+          checkMemoryMode("");
+          checkBashMode("");
 
           // 清理长文本映射
           longTextMapRef.current.clear();
@@ -343,6 +369,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
             inputText.substring(0, cursorPosition - 1) +
             inputText.substring(cursorPosition);
           checkMemoryMode(newText);
+          checkBashMode(newText);
 
           // Check if we deleted any special characters
           const newCursorPosition = cursorPosition - 1;
@@ -532,6 +559,13 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
               inputText.substring(cursorPosition),
           );
 
+          // 检查Bash模式状态
+          checkBashMode(
+            inputText.substring(0, cursorPosition) +
+              char +
+              inputText.substring(cursorPosition),
+          );
+
           // 检查特殊字符并设置相应的选择器
           if (char === "@") {
             activateFileSelector(cursorPosition);
@@ -602,6 +636,9 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       clearImages,
       handlePasteImage,
       checkMemoryMode,
+      checkBashMode,
+      isBashMode,
+      isMemoryMode,
       activateMemoryTypeSelector,
     ],
   );
@@ -712,8 +749,9 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         handleMemoryTypeSelect(type);
         // 清空输入框
         clearInput();
-        // 显式更新记忆模式状态，确保记忆模式被正确退出
+        // 显式更新模式状态，确保所有模式都被正确退出
         checkMemoryMode("");
+        checkBashMode("");
       },
       [
         inputText,
@@ -721,6 +759,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         handleMemoryTypeSelect,
         clearInput,
         checkMemoryMode,
+        checkBashMode,
       ],
     ),
   };

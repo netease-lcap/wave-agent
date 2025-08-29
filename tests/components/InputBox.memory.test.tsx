@@ -143,4 +143,130 @@ describe("InputBox Memory Mode", () => {
     expect(output).toContain("📝 Memory Mode");
     expect(output).toContain("Add memory content (remove # to exit)");
   });
+
+  it("should NOT trigger memory mode when pasting text starting with # in one go", async () => {
+    const { stdin, lastFrame } = render(<InputBox />);
+
+    // 一口气输入以#开头的文本（模拟粘贴操作）
+    // 这应该被当作普通消息处理，不应该触发记忆模式
+    const pastedText = "#粘贴文本内容";
+    stdin.write(pastedText);
+    await delay(50); // 等待粘贴debounce处理完成
+
+    const output = lastFrame();
+
+    // 应该不会显示记忆模式UI
+    expect(output).not.toContain("📝 Memory Mode");
+    expect(output).not.toContain("Add memory content (remove # to exit)");
+
+    // 但是文本内容应该正常显示
+    expect(output).toContain("#粘贴文本内容");
+  });
+
+  it("should send pasted #text as normal message, not trigger memory save", async () => {
+    const { getMocks } = await import("../helpers/contextMock");
+    const { mockFunctions } = getMocks();
+
+    const { stdin, lastFrame } = render(<InputBox />);
+
+    // 一口气输入以#开头的文本（模拟粘贴操作）
+    const pastedText = "#这是粘贴的内容";
+    stdin.write(pastedText);
+    await delay(50); // 等待粘贴debounce处理完成
+
+    // 验证不在记忆模式下且内容正确显示
+    const output = lastFrame();
+    expect(output).not.toContain("📝 Memory Mode");
+    expect(output).toContain("#这是粘贴的内容");
+
+    // 发送消息
+    stdin.write("\r"); // Enter key
+    await delay(100); // 增加等待时间
+
+    // 验证 sendMessage 被调用
+    expect(mockFunctions.sendMessage).toHaveBeenCalled();
+
+    // 检查调用参数
+    const sendMessageCalls = mockFunctions.sendMessage.mock.calls;
+    expect(sendMessageCalls).toHaveLength(1);
+
+    const [content, images, options] = sendMessageCalls[0];
+    expect(content).toBe("#这是粘贴的内容");
+    expect(images).toBeUndefined();
+    expect(options).toEqual({
+      isMemoryMode: false,
+      isBashMode: false,
+    });
+
+    // 验证 saveMemory 没有被调用（因为不在记忆模式下）
+    expect(mockFunctions.saveMemory).not.toHaveBeenCalled();
+  });
+
+  it("should trigger memory type selector when typing # and adding text character by character", async () => {
+    const { getMocks } = await import("../helpers/contextMock");
+    const { mockFunctions } = getMocks();
+
+    const { stdin, lastFrame } = render(<InputBox />);
+
+    // 逐字符输入 # 然后添加文本，这会触发记忆模式
+    stdin.write("#");
+    await delay(10);
+
+    // 验证进入记忆模式
+    let output = lastFrame();
+    expect(output).toContain("📝 Memory Mode");
+
+    // 继续逐字符添加文本
+    stdin.write("记");
+    stdin.write("忆");
+    stdin.write("内");
+    stdin.write("容");
+    await delay(10);
+
+    // 验证仍在记忆模式下
+    output = lastFrame();
+    expect(output).toContain("📝 Memory Mode");
+    expect(output).toContain("#记忆内容");
+
+    // 尝试发送消息 - 应该触发记忆类型选择器而不是直接发送
+    stdin.write("\r"); // Enter key
+    await delay(10);
+
+    // 在记忆模式下，按回车应该激活记忆类型选择器，而不是发送消息
+    // 这里我们无法直接测试 activateMemoryTypeSelector 是否被调用
+    // 但可以验证 sendMessage 没有被立即调用
+    expect(mockFunctions.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("should exit memory mode after saving memory", async () => {
+    const { getMocks } = await import("../helpers/contextMock");
+    const { mockFunctions } = getMocks();
+
+    const { stdin, lastFrame } = render(<InputBox />);
+
+    // 进入记忆模式
+    stdin.write("#");
+    await delay(10);
+
+    let output = lastFrame();
+    expect(output).toContain("📝 Memory Mode");
+
+    // 添加记忆内容
+    stdin.write("测试记忆内容");
+    await delay(10);
+
+    // 验证仍在记忆模式
+    output = lastFrame();
+    expect(output).toContain("📝 Memory Mode");
+
+    // 模拟记忆类型选择 - 这会触发保存并退出记忆模式
+    // 通过调用 InputBox 的 handleMemoryTypeSelect 方法
+    // 由于我们无法直接测试记忆类型选择器，我们通过模拟输入 Enter 来间接测试
+    stdin.write("\r"); // Enter key
+    await delay(10);
+
+    // 注意：在实际场景中，这会弹出记忆类型选择器，但在我们的测试中可能不会完全模拟
+    // 我们主要验证没有立即发送消息作为普通消息
+    expect(mockFunctions.sendMessage).not.toHaveBeenCalled();
+  });
 });

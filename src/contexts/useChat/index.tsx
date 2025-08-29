@@ -41,6 +41,10 @@ export interface ChatContextType {
   sendMessage: (
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
+    options?: {
+      isMemoryMode?: boolean;
+      isBashMode?: boolean;
+    },
   ) => Promise<void>;
   sendAIMessage: (recursionDepth?: number) => Promise<void>;
   abortAIMessage: () => void;
@@ -202,6 +206,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     async (
       content: string,
       images?: Array<{ path: string; mimeType: string }>,
+      options?: {
+        isMemoryMode?: boolean;
+        isBashMode?: boolean;
+      },
     ) => {
       if (isLoading) {
         return;
@@ -210,8 +218,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       // 添加到输入历史记录
       addToInputHistory(content);
 
-      // Check if this is a memory message (starts with #)
-      if (memoryManager.isMemoryMessage(content)) {
+      // 根据模式状态和内容来判断消息类型
+      const isMemoryMessage = options?.isMemoryMode && content.startsWith("#");
+      const isBashCommand = options?.isBashMode && content.startsWith("!");
+
+      // Check if this is a memory message (在记忆模式下且以#开头)
+      if (isMemoryMessage) {
         try {
           await memoryManager.addMemory(content);
           // 添加 MemoryBlock 到最后一个助手消息
@@ -231,8 +243,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         return;
       }
 
-      // Check if this is a command (starts with ! as the first character)
-      if (content.startsWith("!")) {
+      // Check if this is a command (在bash模式下且以!开头)
+      if (isBashCommand) {
         const command = content.substring(1).trim();
         if (command) {
           await executeCommand(command);
