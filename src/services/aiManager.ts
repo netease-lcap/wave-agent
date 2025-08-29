@@ -274,11 +274,78 @@ export class AIManager {
         combinedMemory += userMemoryContent;
       }
 
+      // 流式处理工具调用的状态
+      const toolCallStates = new Map<
+        string,
+        {
+          id: string;
+          name: string;
+          args: string;
+          isComplete: boolean;
+          added: boolean;
+        }
+      >();
+
       const result = await callAgent({
         messages: recentMessages,
         sessionId: this.state.sessionId,
         abortSignal: abortController.signal,
         memory: combinedMemory, // 传递合并后的记忆内容
+        // 流式内容更新回调
+        onContentUpdate: (content: string) => {
+          currentMessages = updateAnswerBlockInMessage(
+            currentMessages,
+            content,
+          );
+          this.setMessages(currentMessages);
+        },
+        // 流式工具调用更新回调
+        onToolCallUpdate: (toolCall, isComplete) => {
+          if (!toolCall.id || !toolCall.function?.name) return;
+
+          const toolId = toolCall.id;
+          const existing = toolCallStates.get(toolId);
+
+          if (!existing) {
+            // 新工具调用
+            toolCallStates.set(toolId, {
+              id: toolId,
+              name: toolCall.function.name,
+              args: toolCall.function.arguments || "",
+              isComplete,
+              added: false,
+            });
+
+            // 添加工具块到UI
+            currentMessages = addToolBlockToMessage(currentMessages, {
+              id: toolId,
+              name: toolCall.function.name,
+            });
+            toolCallStates.get(toolId)!.added = true;
+            this.setMessages(currentMessages);
+          } else {
+            // 更新现有工具调用
+            existing.args = toolCall.function?.arguments || "";
+            existing.isComplete = isComplete;
+
+            // 如果工具块已经添加到UI，更新参数显示
+            if (existing.added) {
+              currentMessages = updateToolBlockInMessage(
+                currentMessages,
+                toolId,
+                existing.args,
+                undefined, // result
+                undefined, // success
+                undefined, // error
+                !isComplete, // isStreaming: true if not complete
+                false, // isRunning: false (还未开始执行)
+                existing.name,
+                undefined, // shortResult
+              );
+              this.setMessages(currentMessages);
+            }
+          }
+        },
       });
 
       // 更新 token 统计 - 显示最新一次的token使用量
@@ -330,45 +397,47 @@ export class AIManager {
         }
       }
 
-      // 处理返回的内容
-      if (result.content) {
-        // 直接更新答案内容（非流式，一次性接收完整内容）
-        currentMessages = updateAnswerBlockInMessage(
-          currentMessages,
-          result.content || "",
-        );
-        this.setMessages(currentMessages);
-      }
-
-      // 处理返回的工具调用
+      // 处理返回的工具调用（执行阶段）
       if (result.tool_calls) {
         for (const toolCall of result.tool_calls) {
           if (toolCall.type !== "function") continue; // 跳过没有 function 的工具调用
 
           hasToolOperations = true;
 
-          // 添加工具块
-          currentMessages = addToolBlockToMessage(currentMessages, {
-            id: toolCall.id || "",
-            name: toolCall.function?.name || "",
-          });
-          this.setMessages(currentMessages);
+          const toolId = toolCall.id || "";
+          const toolState = toolCallStates.get(toolId);
+          const functionToolCall = toolCall as {
+            id: string;
+            type: "function";
+            function: { name: string; arguments: string };
+          };
+
+          // 如果工具块还没有添加（理论上不应该发生，但防止意外情况）
+          if (!toolState?.added) {
+            currentMessages = addToolBlockToMessage(currentMessages, {
+              id: toolId,
+              name: functionToolCall.function?.name || "",
+            });
+            this.setMessages(currentMessages);
+          }
 
           // 执行工具
           try {
-            const toolArgs = JSON.parse(toolCall.function?.arguments || "{}");
+            const toolArgs = JSON.parse(
+              functionToolCall.function?.arguments || "{}",
+            );
 
             // 设置工具开始执行状态
             currentMessages = updateToolBlockInMessage(
               currentMessages,
-              toolCall.id || "",
+              toolId,
               JSON.stringify(toolArgs, null, 2),
               undefined,
               undefined,
               undefined,
-              false, // isStreaming: false
+              false, // isStreaming: false (参数已完整)
               true, // isRunning: true
-              toolCall.function?.name || "",
+              functionToolCall.function?.name || "",
               undefined,
             );
             this.setMessages(currentMessages);
@@ -386,7 +455,7 @@ export class AIManager {
 
               // 执行工具
               const toolResult = await toolRegistry.execute(
-                toolCall.function?.name || "",
+                functionToolCall.function?.name || "",
                 toolArgs,
                 context,
               );
@@ -394,7 +463,7 @@ export class AIManager {
               // 更新消息状态 - 工具执行完成
               currentMessages = updateToolBlockInMessage(
                 currentMessages,
-                toolCall.id || "",
+                toolId,
                 JSON.stringify(toolArgs, null, 2),
                 toolResult.content ||
                   (toolResult.error ? `Error: ${toolResult.error}` : ""),
@@ -402,7 +471,7 @@ export class AIManager {
                 toolResult.error,
                 false, // isStreaming: false
                 false, // isRunning: false
-                toolCall.function?.name || "",
+                functionToolCall.function?.name || "",
                 toolResult.shortResult,
               );
               this.setMessages(currentMessages);
@@ -432,14 +501,14 @@ export class AIManager {
 
               currentMessages = updateToolBlockInMessage(
                 currentMessages,
-                toolCall.id || "",
+                toolId,
                 JSON.stringify(toolArgs, null, 2),
                 `Tool execution failed: ${errorMessage}`,
                 false,
                 errorMessage,
                 false,
                 false,
-                toolCall.function?.name || "",
+                functionToolCall.function?.name || "",
                 undefined,
               );
               this.setMessages(currentMessages);
@@ -451,7 +520,7 @@ export class AIManager {
                 : String(parseError);
             currentMessages = addErrorBlockToMessage(
               currentMessages,
-              `Failed to parse tool arguments for ${toolCall.function?.name}: ${errorMessage}`,
+              `Failed to parse tool arguments for ${functionToolCall.function?.name}: ${errorMessage}`,
             );
             this.setMessages(currentMessages);
           }

@@ -59,4 +59,21 @@ export default [
       }],
     },
   },
+  {
+    files: ['scripts/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      // Scripts can have more relaxed rules
+      'no-warning-comments': ['error', {
+        terms: ['todo', 'fixme', 'hack', 'bug', 'eslint-disable', 'eslint-disable-line', 'eslint-disable-next-line'],
+        location: 'anywhere',
+      }],
+      // Allow console.log in scripts
+      'no-console': 'off',
+    },
+  },
 ];

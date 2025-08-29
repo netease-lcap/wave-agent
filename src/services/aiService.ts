@@ -4,6 +4,7 @@ import { toolRegistry } from "../plugins/tools";
 import { logger } from "@/utils/logger";
 import OpenAI from "openai";
 import { ChatCompletionMessageToolCall } from "openai/resources";
+import { FunctionToolCall } from "openai/resources/beta/threads/runs.mjs";
 
 // Initialize OpenAI client with environment variables
 const openai = new OpenAI({
@@ -16,6 +17,8 @@ export interface CallAgentOptions {
   sessionId?: string;
   abortSignal?: AbortSignal;
   memory?: string; // 记忆内容参数，从 LCAP.md 读取的内容
+  onContentUpdate?: (content: string) => void; // 流式更新内容回调
+  onToolCallUpdate?: (toolCall: FunctionToolCall, isComplete: boolean) => void; // 工具调用更新回调
 }
 
 export interface CallAgentResult {
@@ -158,7 +161,8 @@ export async function generateCommitMessage(
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
-  const { messages, abortSignal, memory } = options;
+  const { messages, abortSignal, memory, onContentUpdate, onToolCallUpdate } =
+    options;
 
   // 获取模型配置
   const envModel = process.env.AIGW_MODEL;
@@ -206,44 +210,137 @@ Remember: Execute tasks systematically and show updated TODOs after each complet
     // 获取工具配置
     const tools = toolRegistry.getToolsConfig();
 
-    // 调用 OpenAI API（非流式）
-    const response = await openai.chat.completions.create(
+    // 调用 OpenAI API（流式）
+    const stream = await openai.chat.completions.create(
       {
         model: modelId,
         messages: openaiMessages,
         tools,
         temperature: 0,
         max_completion_tokens: 8192,
+        stream: true,
       },
       {
         signal: abortSignal,
       },
     );
 
-    const choice = response.choices[0];
-    if (!choice) {
-      throw new Error("No response from OpenAI");
+    // 构建最终消息
+    const finalMessage: OpenAI.Chat.Completions.ChatCompletionMessage = {
+      role: "assistant",
+      content: "",
+      refusal: null,
+      tool_calls: [],
+    };
+
+    let accumulatedContent = "";
+    let totalUsage:
+      | {
+          prompt_tokens: number;
+          completion_tokens: number;
+          total_tokens: number;
+        }
+      | undefined;
+
+    // 处理流式响应
+    for await (const chunk of stream) {
+      const choice = chunk.choices[0];
+      if (!choice) continue;
+
+      // 处理内容流
+      if (choice.delta.content) {
+        accumulatedContent += choice.delta.content;
+        finalMessage.content += choice.delta.content;
+
+        // 实时回调内容更新
+        if (onContentUpdate) {
+          onContentUpdate(accumulatedContent);
+        }
+      }
+
+      // 处理工具调用流
+      if (choice.delta.tool_calls) {
+        for (const toolCallDelta of choice.delta.tool_calls) {
+          const index = toolCallDelta.index || 0;
+
+          // 确保工具调用数组有足够的元素
+          while (finalMessage.tool_calls!.length <= index) {
+            finalMessage.tool_calls!.push({
+              id: "",
+              type: "function",
+              function: {
+                name: "",
+                arguments: "",
+              },
+            });
+          }
+
+          const existingToolCall = finalMessage.tool_calls![index];
+
+          // 更新工具调用信息
+          if (toolCallDelta.id) {
+            existingToolCall.id = toolCallDelta.id;
+          }
+          if (toolCallDelta.type) {
+            existingToolCall.type = toolCallDelta.type;
+          }
+          if (toolCallDelta.function?.name) {
+            (existingToolCall as FunctionToolCall).function.name =
+              toolCallDelta.function.name;
+          }
+          if (toolCallDelta.function?.arguments) {
+            (existingToolCall as FunctionToolCall).function.arguments +=
+              toolCallDelta.function.arguments;
+          }
+
+          // 实时回调工具调用更新
+          if (onToolCallUpdate) {
+            const functionToolCall = existingToolCall as FunctionToolCall;
+            // 判断工具调用是否完整（有id、name，且arguments看起来完整）
+            const isComplete = !!(
+              functionToolCall.id &&
+              functionToolCall.function?.name &&
+              functionToolCall.function?.arguments &&
+              // 简单检查arguments是否可能完整（以}结尾）
+              functionToolCall.function.arguments.trim().endsWith("}")
+            );
+            onToolCallUpdate(functionToolCall, isComplete);
+          }
+        }
+      }
+
+      // 处理使用统计
+      if (chunk.usage) {
+        totalUsage = {
+          prompt_tokens: chunk.usage.prompt_tokens,
+          completion_tokens: chunk.usage.completion_tokens,
+          total_tokens: chunk.usage.total_tokens,
+        };
+      }
     }
 
     const result: CallAgentResult = {};
 
     // 返回内容
-    if (choice.message.content) {
-      result.content = choice.message.content;
+    if (finalMessage.content) {
+      result.content = finalMessage.content;
     }
 
     // 返回工具调用
-    if (choice.message.tool_calls) {
-      result.tool_calls = choice.message.tool_calls;
+    if (finalMessage.tool_calls && finalMessage.tool_calls.length > 0) {
+      // 过滤掉空的工具调用
+      const validToolCalls = finalMessage.tool_calls.filter((tc) => {
+        const functionTc = tc as FunctionToolCall;
+        return (
+          tc.id && functionTc.function?.name && functionTc.function?.arguments
+        );
+      });
+      result.tool_calls = validToolCalls;
     }
 
     // 返回 token 使用信息
-    if (response.usage) {
-      result.usage = {
-        prompt_tokens: response.usage.prompt_tokens,
-        completion_tokens: response.usage.completion_tokens,
-        total_tokens: response.usage.total_tokens,
-      };
+    if (totalUsage) {
+      result.usage = totalUsage;
     }
 
     return result;
