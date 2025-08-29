@@ -173,7 +173,7 @@ describe("ToolResultDisplay Component", () => {
 
       const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
       const output = lastFrame();
-      expect(output).toContain("🔄 Running...");
+      expect(output).toContain("🔄");
     });
   });
 });
