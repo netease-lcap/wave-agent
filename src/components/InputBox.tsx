@@ -108,7 +108,7 @@ export const InputBox: React.FC = () => {
   const { isMemoryMode, checkMemoryMode } = useMemoryMode();
 
   // Bash模式功能
-  const { isBashMode, checkBashMode } = useBashMode();
+  const { isBashMode, activateBashMode, checkBashMode } = useBashMode();
 
   // 键盘处理
   const {
@@ -160,6 +160,7 @@ export const InputBox: React.FC = () => {
     isMemoryMode,
     checkBashMode,
     isBashMode,
+    activateBashMode,
     showMemoryTypeSelector,
     activateMemoryTypeSelector,
     handleMemoryTypeSelect: handleMemoryTypeSelectorSelect,

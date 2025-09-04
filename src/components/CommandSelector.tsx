@@ -1,10 +1,9 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { spawn } from "child_process";
 import { generateCommitMessage } from "../services/aiService";
 import { useFiles } from "../contexts/useFiles";
 import { logger } from "../utils/logger";
-import { limitGitDiff } from "../utils/diffUtils";
+import { getGitDiff } from "../utils/gitUtils";
 
 export interface Command {
   name: string;
@@ -49,42 +48,6 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       command.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  // 获取 git diff (包括未跟踪的文件)
-  const getGitDiff = (): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      // 使用 git add -N . 将未跟踪文件添加到索引（不添加内容），然后用 git diff HEAD 可以看到所有变更
-      const child = spawn("sh", ["-c", "git add -N . && git diff HEAD"], {
-        cwd: workdir,
-        stdio: "pipe",
-      });
-
-      let output = "";
-      let error = "";
-
-      child.stdout?.on("data", (data) => {
-        output += data.toString();
-      });
-
-      child.stderr?.on("data", (data) => {
-        error += data.toString();
-      });
-
-      child.on("exit", (code) => {
-        if (code === 0) {
-          // 使用新的 utils 函数限制 diff 内容
-          const limitedOutput = limitGitDiff(output, 1000);
-          resolve(limitedOutput);
-        } else {
-          reject(new Error(error || "Git diff failed"));
-        }
-      });
-
-      child.on("error", (err) => {
-        reject(err);
-      });
-    });
-  };
-
   // 处理 git-commit 命令
   const handleGitCommit = async () => {
     if (isGenerating) return;
@@ -96,7 +59,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       logger.debug("Starting git commit message generation");
 
       // 获取 git diff
-      const diff = await getGitDiff();
+      const diff = await getGitDiff(workdir);
       if (!diff.trim()) {
         logger.debug("No changes detected in git diff");
         setWarning("No changes detected. Please make some changes first.");

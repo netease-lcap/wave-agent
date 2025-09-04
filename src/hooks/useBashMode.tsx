@@ -3,6 +3,10 @@ import { useState, useCallback } from "react";
 export const useBashMode = () => {
   const [isBashMode, setIsBashMode] = useState(false);
 
+  const activateBashMode = useCallback(() => {
+    setIsBashMode(true);
+  }, []);
+
   const deactivateBashMode = useCallback(() => {
     setIsBashMode(false);
   }, []);
@@ -29,6 +33,7 @@ export const useBashMode = () => {
 
   return {
     isBashMode,
+    activateBashMode,
     deactivateBashMode,
     checkBashMode,
   };

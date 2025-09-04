@@ -45,7 +45,10 @@ interface KeyboardHandlerProps {
     inputText: string,
     cursorPosition: number,
   ) => { newInput: string; newCursorPosition: number };
-  handleCommandGenerated: (generatedCommand: string) => {
+  handleCommandGenerated: (
+    generatedCommand: string,
+    activateBashMode?: () => void,
+  ) => {
     newInput: string;
     newCursorPosition: number;
   };
@@ -74,6 +77,7 @@ interface KeyboardHandlerProps {
   // Bash mode
   checkBashMode: (inputText: string) => boolean;
   isBashMode: boolean;
+  activateBashMode: () => void;
 
   // Memory type selector
   showMemoryTypeSelector: boolean;
@@ -125,6 +129,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     isMemoryMode,
     checkBashMode,
     isBashMode,
+    activateBashMode,
     showMemoryTypeSelector,
     activateMemoryTypeSelector,
     handleMemoryTypeSelect,
@@ -712,12 +717,19 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
 
     handleCommandGenerated: useCallback(
       (generatedCommand: string) => {
-        const { newInput, newCursorPosition } =
-          handleCommandGenerated(generatedCommand);
+        const { newInput, newCursorPosition } = handleCommandGenerated(
+          generatedCommand,
+          activateBashMode,
+        );
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
       },
-      [handleCommandGenerated, setInputText, setCursorPosition],
+      [
+        handleCommandGenerated,
+        setInputText,
+        setCursorPosition,
+        activateBashMode,
+      ],
     ),
 
     handleBashHistorySelect: useCallback(

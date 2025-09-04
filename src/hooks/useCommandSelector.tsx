@@ -1,17 +1,17 @@
-import { useState, useCallback } from 'react';
-import { useChat } from '../contexts/useChat';
+import { useState, useCallback } from "react";
+import { useChat } from "../contexts/useChat";
 
 export const useCommandSelector = () => {
   const [showCommandSelector, setShowCommandSelector] = useState(false);
   const [slashPosition, setSlashPosition] = useState(-1);
-  const [commandSearchQuery, setCommandSearchQuery] = useState('');
+  const [commandSearchQuery, setCommandSearchQuery] = useState("");
 
   const { clearMessages } = useChat();
 
   const activateCommandSelector = useCallback((position: number) => {
     setShowCommandSelector(true);
     setSlashPosition(position);
-    setCommandSearchQuery('');
+    setCommandSearchQuery("");
   }, []);
 
   const handleCommandSelect = useCallback(
@@ -24,13 +24,13 @@ export const useCommandSelector = () => {
         const newCursorPosition = beforeSlash.length;
 
         // 执行命令
-        if (command === 'clean') {
+        if (command === "clean") {
           clearMessages();
         }
 
         setShowCommandSelector(false);
         setSlashPosition(-1);
-        setCommandSearchQuery('');
+        setCommandSearchQuery("");
 
         return { newInput, newCursorPosition };
       }
@@ -39,22 +39,30 @@ export const useCommandSelector = () => {
     [slashPosition, clearMessages],
   );
 
-  const handleCommandGenerated = useCallback((generatedCommand: string) => {
-    // 将生成的命令放入输入框
-    setShowCommandSelector(false);
-    setSlashPosition(-1);
-    setCommandSearchQuery('');
+  const handleCommandGenerated = useCallback(
+    (generatedCommand: string, activateBashMode?: () => void) => {
+      // 将生成的命令放入输入框
+      setShowCommandSelector(false);
+      setSlashPosition(-1);
+      setCommandSearchQuery("");
 
-    return {
-      newInput: generatedCommand,
-      newCursorPosition: generatedCommand.length,
-    };
-  }, []);
+      // 如果是 git commit 命令（以 ! 开头的 bash 命令），激活 bash mode
+      if (generatedCommand.startsWith("!") && activateBashMode) {
+        activateBashMode();
+      }
+
+      return {
+        newInput: generatedCommand,
+        newCursorPosition: generatedCommand.length,
+      };
+    },
+    [],
+  );
 
   const handleCancelCommandSelect = useCallback(() => {
     setShowCommandSelector(false);
     setSlashPosition(-1);
-    setCommandSearchQuery('');
+    setCommandSearchQuery("");
   }, []);
 
   const updateCommandSearchQuery = useCallback((query: string) => {
