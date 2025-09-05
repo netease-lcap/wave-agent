@@ -36,7 +36,8 @@
     "release:patch": "pnpm version patch && npm publish",
     "release:minor": "pnpm version minor && npm publish",
     "release:major": "pnpm version major && npm publish",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test-streaming-tools": "tsx scripts/test-streaming-tools.ts"
   },
   "dependencies": {
     "chokidar": "^4.0.3",
