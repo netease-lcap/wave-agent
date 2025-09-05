@@ -1,5 +1,3 @@
-#!/usr/bin/env -S pnpm tsx
-
 import { toolRegistry } from "@/plugins/tools";
 import OpenAI from "openai";
 

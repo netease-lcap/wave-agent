@@ -261,21 +261,34 @@ Remember: Execute tasks systematically and show updated TODOs after each complet
       // 处理工具调用流
       if (choice.delta.tool_calls) {
         for (const toolCallDelta of choice.delta.tool_calls) {
-          const index = toolCallDelta.index || 0;
+          // 使用工具调用的 ID 来标识，而不是依赖 index
+          let existingToolCall: ChatCompletionMessageToolCall | undefined;
 
-          // 确保工具调用数组有足够的元素
-          while (finalMessage.tool_calls!.length <= index) {
-            finalMessage.tool_calls!.push({
-              id: "",
+          // 如果有 ID，尝试找到现有的工具调用
+          if (toolCallDelta.id) {
+            existingToolCall = finalMessage.tool_calls!.find(
+              (tc) => tc.id === toolCallDelta.id,
+            );
+          } else {
+            // 如果没有 ID，取最后一个工具调用
+            existingToolCall =
+              finalMessage.tool_calls!.length > 0
+                ? finalMessage.tool_calls![finalMessage.tool_calls!.length - 1]
+                : undefined;
+          }
+
+          // 如果没有找到现有的工具调用，创建新的
+          if (!existingToolCall) {
+            existingToolCall = {
+              id: toolCallDelta.id || "",
               type: "function",
               function: {
                 name: "",
                 arguments: "",
               },
-            });
+            };
+            finalMessage.tool_calls!.push(existingToolCall);
           }
-
-          const existingToolCall = finalMessage.tool_calls![index];
 
           // 更新工具调用信息
           if (toolCallDelta.id) {
