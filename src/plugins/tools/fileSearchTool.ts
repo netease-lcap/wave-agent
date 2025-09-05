@@ -13,13 +13,14 @@ export const fileSearchTool: ToolPlugin = {
     function: {
       name: "file_search",
       description:
-        "Fast file search based on fuzzy matching against file path. Use if you know part of the file path but don't know where it's located exactly. Response will be capped to 10 results. Make your query more specific if need to filter results further.",
+        "Fast file search based on fuzzy matching against file path. Use if you know part of the file path but don't know where it's located exactly. Response will be capped to 10 results. Make your query more specific if need to filter results further. Supports multiple keywords separated by spaces.",
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "Fuzzy filename to search for",
+            description:
+              "Fuzzy filename to search for. Can be a single word or multiple keywords separated by spaces (e.g., 'test utils' to find files containing both 'test' and 'utils')",
           },
         },
         required: ["query"],
@@ -40,6 +41,16 @@ export const fileSearchTool: ToolPlugin = {
       };
     }
 
+    // 清理查询字符串，去除多余空格
+    const cleanedQuery = query.trim();
+    if (!cleanedQuery) {
+      return {
+        success: false,
+        content: "",
+        error: "query parameter cannot be empty",
+      };
+    }
+
     try {
       // 从 context 中获取文件列表，如果没有则返回错误
       if (!context || !context.flatFiles) {
@@ -52,8 +63,8 @@ export const fileSearchTool: ToolPlugin = {
 
       const flatFiles = context.flatFiles as FileTreeNode[];
 
-      // 进行模糊匹配
-      const results = fuzzySearchFiles(query, flatFiles);
+      // 进行模糊匹配，使用清理后的查询
+      const results = fuzzySearchFiles(cleanedQuery, flatFiles);
 
       // 限制结果数量为10
       const limitedResults = results.slice(0, 10);
