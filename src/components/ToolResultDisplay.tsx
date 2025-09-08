@@ -49,7 +49,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   const getStatusText = () => {
     if (attributes?.isStreaming) return "📡";
     if (attributes?.isRunning) return "🔄";
-    if (attributes?.success) return "✅";
+    if (attributes?.success) return "";
     return "❌ Failed";
   };
 
