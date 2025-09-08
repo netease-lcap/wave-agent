@@ -17,12 +17,18 @@ export function extractCompleteParams(
 
   const result: Record<string, string | number | boolean | null> = {};
 
-  // 匹配完整的字符串参数: "key": "value"
-  const stringPattern = /"([^"]+)"\s*:\s*"([^"]*)"/g;
+  // 匹配完整的字符串参数: "key": "value" (处理转义引号)
+  // 使用更复杂的正则来匹配字符串值，包括转义字符
+  const stringPattern = /"([^"]+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
   let match;
   while ((match = stringPattern.exec(incompleteJson)) !== null) {
     const key = match[1];
-    const value = match[2];
+    let value = match[2];
+    // 简单处理转义字符
+    value = value
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, "\n")
+      .replace(/\\\\/g, "\\");
     result[key] = value;
   }
 
