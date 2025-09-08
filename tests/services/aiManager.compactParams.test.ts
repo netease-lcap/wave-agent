@@ -10,6 +10,9 @@ vi.mock("../../src/services/aiService", () => ({
   applyEdit: vi.fn(),
 }));
 
+// Mock the file manager
+vi.mock("../../src/services/fileManager");
+
 // Mock the tool registry
 vi.mock("../../src/plugins/tools", () => ({
   toolRegistry: {
@@ -43,7 +46,7 @@ vi.mock("../../src/utils/errorLogger", () => ({
 
 describe("AIManager - Compact Params Display", () => {
   let aiManager: AIManager;
-  let fileManager: FileManager;
+  let mockFileManager: FileManager;
 
   const callbacks = {
     onMessagesChange: vi.fn(),
@@ -54,8 +57,22 @@ describe("AIManager - Compact Params Display", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    fileManager = new FileManager("/test", { onFlatFilesChange: vi.fn() });
-    aiManager = new AIManager("/test", callbacks, fileManager);
+
+    // Create a mock FileManager instance following the pattern from other tests
+    mockFileManager = {
+      getFiles: vi.fn(() => []),
+      getFileContent: vi.fn(() => ""),
+      updateFile: vi.fn(),
+      deleteFile: vi.fn(),
+      addFile: vi.fn(),
+      initialize: vi.fn(),
+      startWatching: vi.fn(),
+      stopWatching: vi.fn(),
+      syncFilesFromDisk: vi.fn(),
+      getFlatFiles: vi.fn(() => []),
+    } as unknown as FileManager;
+
+    aiManager = new AIManager("/test", callbacks, mockFileManager);
   });
 
   afterEach(() => {
