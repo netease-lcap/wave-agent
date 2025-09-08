@@ -23,6 +23,7 @@ import { createMemoryManager, type MemoryManager } from "./memoryManager";
 import type { Message } from "../types";
 import { logger } from "../utils/logger";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
+import { extractCompleteParams } from "../utils/jsonExtractor";
 
 export interface AIManagerCallbacks {
   onMessagesChange: (messages: Message[]) => void;
@@ -330,10 +331,34 @@ export class AIManager {
 
             // 如果工具块已经添加到UI，更新参数显示
             if (existing.added) {
+              // 当参数还在流式传输时，显示紧凑格式的参数
+              let paramsToShow = existing.args;
+              if (!isComplete && existing.args) {
+                // 从不完整的JSON中提取完整的参数，并格式化显示
+                const completeParams = extractCompleteParams(existing.args);
+                if (Object.keys(completeParams).length > 0) {
+                  paramsToShow = JSON.stringify(completeParams, null, 2);
+                } else {
+                  // 如果没有提取到完整参数，显示原始内容的前50个字符
+                  paramsToShow =
+                    existing.args.length > 50
+                      ? existing.args.substring(0, 50) + "..."
+                      : existing.args;
+                }
+              } else if (isComplete && existing.args) {
+                // 参数完整时，显示格式化的完整参数
+                try {
+                  const parsedArgs = JSON.parse(existing.args);
+                  paramsToShow = JSON.stringify(parsedArgs, null, 2);
+                } catch {
+                  paramsToShow = existing.args;
+                }
+              }
+
               currentMessages = updateToolBlockInMessage(
                 currentMessages,
                 toolId,
-                existing.args,
+                paramsToShow,
                 undefined, // result
                 undefined, // success
                 undefined, // error
