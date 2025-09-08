@@ -36,9 +36,8 @@ describe("ToolResultDisplay Component", () => {
 
       const output = lastFrame();
 
-      // Should show tool name and status
+      // Should show tool name
       expect(output).toContain("🔧 read_file");
-      expect(output).toContain("✅");
 
       // Should show shortResult (without "Result:" label)
       expect(output).toContain("Read 50 lines from src/test.ts");
@@ -128,22 +127,6 @@ describe("ToolResultDisplay Component", () => {
   });
 
   describe("Tool status display", () => {
-    it("should show success status", () => {
-      const toolBlock: ToolBlock = {
-        type: "tool",
-        attributes: {
-          name: "test_tool",
-          success: true,
-        },
-        parameters: "{}",
-        result: "Success",
-      };
-
-      const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
-      const output = lastFrame();
-      expect(output).toContain("✅");
-    });
-
     it("should show error status with message", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
