@@ -217,7 +217,7 @@ Remember: Execute tasks systematically and show updated TODOs after each complet
         messages: openaiMessages,
         tools,
         temperature: 0,
-        max_completion_tokens: 8192,
+        max_completion_tokens: 32768,
         stream: true,
       },
       {
