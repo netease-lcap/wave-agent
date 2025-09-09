@@ -409,4 +409,170 @@ This project uses diff libraries for comparing text.
       }
     });
   });
+
+  describe("gitignore integration", () => {
+    it("should automatically exclude directories from .gitignore", async () => {
+      // 创建 .gitignore 文件
+      const gitignorePath = path.join(tempDir, ".gitignore");
+      fs.writeFileSync(
+        gitignorePath,
+        `# Test gitignore
+temp-dir/
+logs/
+*.log
+.env`,
+      );
+
+      // 创建应该被忽略的目录和文件
+      const tempDirPath = path.join(tempDir, "temp-dir");
+      const logsDirPath = path.join(tempDir, "logs");
+      fs.mkdirSync(tempDirPath);
+      fs.mkdirSync(logsDirPath);
+
+      fs.writeFileSync(
+        path.join(tempDirPath, "test.txt"),
+        "search_target in ignored dir",
+      );
+      fs.writeFileSync(
+        path.join(logsDirPath, "app.log"),
+        "search_target in logs",
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "debug.log"),
+        "search_target in log file",
+      );
+      fs.writeFileSync(path.join(tempDir, ".env"), "search_target in env file");
+      fs.writeFileSync(
+        path.join(tempDir, "normal.txt"),
+        "search_target in normal file",
+      );
+
+      const result: ToolResult = await grepSearchTool.execute(
+        {
+          query: "search_target",
+        },
+        mockContext,
+      );
+
+      expect(result.success).toBe(true);
+
+      // 应该找到正常文件中的内容
+      expect(result.content).toContain("normal.txt");
+
+      // 不应该找到被 gitignore 排除的内容
+      expect(result.content).not.toContain("temp-dir");
+      expect(result.content).not.toContain("logs");
+      expect(result.content).not.toContain("debug.log");
+      expect(result.content).not.toContain(".env");
+    });
+
+    it("should combine user exclude patterns with gitignore patterns", async () => {
+      // 创建 .gitignore 文件
+      const gitignorePath = path.join(tempDir, ".gitignore");
+      fs.writeFileSync(gitignorePath, `auto-excluded/`);
+
+      // 创建目录和文件
+      const autoExcludedDir = path.join(tempDir, "auto-excluded");
+      const userExcludedDir = path.join(tempDir, "user-excluded");
+      fs.mkdirSync(autoExcludedDir);
+      fs.mkdirSync(userExcludedDir);
+
+      fs.writeFileSync(
+        path.join(autoExcludedDir, "test.txt"),
+        "target_content in auto-excluded",
+      );
+      fs.writeFileSync(
+        path.join(userExcludedDir, "test.txt"),
+        "target_content in user-excluded",
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "normal.txt"),
+        "target_content in normal",
+      );
+
+      const result: ToolResult = await grepSearchTool.execute(
+        {
+          query: "target_content",
+          exclude_pattern: "user-excluded",
+        },
+        mockContext,
+      );
+
+      expect(result.success).toBe(true);
+
+      // 应该只找到正常文件
+      expect(result.content).toContain("normal.txt");
+
+      // 不应该找到任何被排除的内容
+      expect(result.content).not.toContain("auto-excluded");
+      expect(result.content).not.toContain("user-excluded");
+    });
+
+    it("should handle gitignore patterns with leading slashes", async () => {
+      // 创建 .gitignore 文件
+      const gitignorePath = path.join(tempDir, ".gitignore");
+      fs.writeFileSync(
+        gitignorePath,
+        `/root-only/
+/root-file.txt`,
+      );
+
+      // 创建目录和文件
+      const rootOnlyDir = path.join(tempDir, "root-only");
+      fs.mkdirSync(rootOnlyDir);
+
+      fs.writeFileSync(
+        path.join(rootOnlyDir, "test.txt"),
+        "pattern_match in root-only",
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "root-file.txt"),
+        "pattern_match in root-file",
+      );
+      fs.writeFileSync(
+        path.join(tempDir, "normal.txt"),
+        "pattern_match in normal",
+      );
+
+      const result: ToolResult = await grepSearchTool.execute(
+        {
+          query: "pattern_match",
+        },
+        mockContext,
+      );
+
+      expect(result.success).toBe(true);
+
+      // 应该只找到正常文件
+      expect(result.content).toContain("normal.txt");
+
+      // 不应该找到被 gitignore 排除的内容
+      expect(result.content).not.toContain("root-only");
+      expect(result.content).not.toContain("root-file.txt");
+    });
+
+    it("should handle missing .gitignore gracefully", async () => {
+      // 确保没有 .gitignore 文件
+      const gitignorePath = path.join(tempDir, ".gitignore");
+      if (fs.existsSync(gitignorePath)) {
+        fs.unlinkSync(gitignorePath);
+      }
+
+      fs.writeFileSync(path.join(tempDir, "test.txt"), "fallback_test content");
+
+      const result: ToolResult = await grepSearchTool.execute(
+        {
+          query: "fallback_test",
+        },
+        mockContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("test.txt");
+
+      // 应该仍然排除默认的目录
+      expect(result.content).not.toContain("node_modules");
+      expect(result.content).not.toContain("dist");
+    });
+  });
 });

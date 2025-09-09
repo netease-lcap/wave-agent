@@ -118,3 +118,91 @@ export const createFileFilter = (workdir: string): FileFilter => {
     },
   };
 };
+
+/**
+ * 解析 .gitignore 文件并转换为适合 grep 命令的排除参数
+ * @param workdir 工作目录
+ * @returns 适合 grep --exclude-dir 和 --exclude 参数的模式数组
+ */
+export const parseGitignoreForGrep = (
+  workdir: string,
+): {
+  excludeDirs: string[];
+  excludeFiles: string[];
+} => {
+  const excludeDirs: string[] = [];
+  const excludeFiles: string[] = [];
+
+  // 默认排除的目录
+  const defaultExcludeDirs = ["node_modules", ".git", "dist", "build"];
+  excludeDirs.push(...defaultExcludeDirs);
+
+  try {
+    const gitignorePath = path.join(workdir, ".gitignore");
+    if (fs.existsSync(gitignorePath)) {
+      const gitignoreContent = fs.readFileSync(gitignorePath, "utf8");
+
+      const lines = gitignoreContent
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#"));
+
+      for (const line of lines) {
+        // 跳过否定规则（以 ! 开头），grep 不支持
+        if (line.startsWith("!")) {
+          continue;
+        }
+
+        // 移除开头的 /，因为 grep 的 exclude 参数不支持
+        const pattern = line.startsWith("/") ? line.slice(1) : line;
+
+        // 如果是目录模式（以 / 结尾）
+        if (pattern.endsWith("/")) {
+          excludeDirs.push(pattern.slice(0, -1)); // 移除结尾的 /
+        }
+        // 以点开头的目录（如 .git, .nyc_output），但不是文件名（不包含文件扩展名特征）
+        else if (
+          pattern.startsWith(".") &&
+          !pattern.includes("*") &&
+          !pattern.includes("/")
+        ) {
+          // 判断是否是隐藏文件（包含明显的文件扩展名或常见文件名）
+          const commonHiddenFiles = [
+            ".env",
+            ".DS_Store",
+            ".npmrc",
+            ".gitignore",
+            ".eslintrc",
+          ];
+          const hasFileExtension = /\.[a-zA-Z0-9]+$/.test(pattern.slice(1)); // 去掉开头的点后检查扩展名
+
+          if (commonHiddenFiles.includes(pattern) || hasFileExtension) {
+            excludeFiles.push(pattern);
+          } else {
+            excludeDirs.push(pattern);
+          }
+        }
+        // 常见的目录模式（不包含扩展名且没有通配符的模式）
+        else if (
+          !pattern.includes(".") &&
+          !pattern.includes("*") &&
+          !pattern.includes("/")
+        ) {
+          excludeDirs.push(pattern);
+        }
+        // 包含通配符的模式
+        else if (pattern.includes("*")) {
+          excludeFiles.push(pattern);
+        }
+        // 具体的文件名或扩展名模式
+        else {
+          excludeFiles.push(pattern);
+        }
+      }
+    }
+  } catch {
+    // 忽略读取错误，继续使用默认排除模式
+  }
+
+  return { excludeDirs, excludeFiles };
+};

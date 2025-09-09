@@ -2,7 +2,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { type Ignore } from "ignore";
 import { beforeEach, afterEach, describe, it, expect, vi } from "vitest";
-import { collectGitignoreFiles } from "../../src/utils/fileFilter";
+import {
+  collectGitignoreFiles,
+  parseGitignoreForGrep,
+} from "../../src/utils/fileFilter";
 
 // Mock fs 和 path 模块
 vi.mock("fs");
@@ -301,5 +304,175 @@ node_modules/
 
     // Verify
     expect(mockIgnoreInstance.add).toHaveBeenCalledWith(["a/b/c/*.test"]);
+  });
+});
+
+describe("parseGitignoreForGrep", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Mock path.join
+    mockPath.join.mockImplementation((...args) => args.join("/"));
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should return default exclude patterns when no .gitignore exists", () => {
+    // Setup
+    const workdir = "/project";
+    mockFs.existsSync.mockReturnValue(false);
+
+    // Execute
+    const result = parseGitignoreForGrep(workdir);
+
+    // Verify
+    expect(result.excludeDirs).toEqual([
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+    ]);
+    expect(result.excludeFiles).toEqual([]);
+  });
+
+  it("should parse directory patterns from .gitignore", () => {
+    // Setup
+    const workdir = "/project";
+    const gitignoreContent = `# Comments should be ignored
+node_modules/
+dist/
+temp/
+logs
+coverage
+.nyc_output`;
+
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(gitignoreContent);
+
+    // Execute
+    const result = parseGitignoreForGrep(workdir);
+
+    // Verify
+    expect(result.excludeDirs).toContain("node_modules");
+    expect(result.excludeDirs).toContain("dist");
+    expect(result.excludeDirs).toContain("temp");
+    expect(result.excludeDirs).toContain("logs");
+    expect(result.excludeDirs).toContain("coverage");
+    expect(result.excludeDirs).toContain(".nyc_output");
+  });
+
+  it("should parse file patterns from .gitignore", () => {
+    // Setup
+    const workdir = "/project";
+    const gitignoreContent = `*.log
+*.tmp
+.DS_Store
+.env
+package-lock.json
+*.min.js`;
+
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(gitignoreContent);
+
+    // Execute
+    const result = parseGitignoreForGrep(workdir);
+
+    // Verify
+    expect(result.excludeFiles).toContain("*.log");
+    expect(result.excludeFiles).toContain("*.tmp");
+    expect(result.excludeFiles).toContain(".DS_Store");
+    expect(result.excludeFiles).toContain(".env");
+    expect(result.excludeFiles).toContain("package-lock.json");
+    expect(result.excludeFiles).toContain("*.min.js");
+  });
+
+  it("should handle patterns with leading slashes", () => {
+    // Setup
+    const workdir = "/project";
+    const gitignoreContent = `/dist/
+/build/
+/.env
+/temp.txt`;
+
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(gitignoreContent);
+
+    // Execute
+    const result = parseGitignoreForGrep(workdir);
+
+    // Verify
+    expect(result.excludeDirs).toContain("dist");
+    expect(result.excludeDirs).toContain("build");
+    expect(result.excludeFiles).toContain(".env");
+    expect(result.excludeFiles).toContain("temp.txt");
+  });
+
+  it("should skip negation rules", () => {
+    // Setup
+    const workdir = "/project";
+    const gitignoreContent = `*.log
+!important.log
+node_modules/
+!node_modules/important/`;
+
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(gitignoreContent);
+
+    // Execute
+    const result = parseGitignoreForGrep(workdir);
+
+    // Verify - negation rules should be skipped
+    expect(result.excludeFiles).toContain("*.log");
+    expect(result.excludeFiles).not.toContain("!important.log");
+    expect(result.excludeDirs).toContain("node_modules");
+    expect(result.excludeDirs).not.toContain("!node_modules/important/");
+  });
+
+  it("should handle read errors gracefully", () => {
+    // Setup
+    const workdir = "/project";
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockImplementation(() => {
+      throw new Error("Permission denied");
+    });
+
+    // Execute - should not throw
+    const result = parseGitignoreForGrep(workdir);
+
+    // Verify - should return only default patterns
+    expect(result.excludeDirs).toEqual([
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+    ]);
+    expect(result.excludeFiles).toEqual([]);
+  });
+
+  it("should filter out empty lines and comments", () => {
+    // Setup
+    const workdir = "/project";
+    const gitignoreContent = `
+# This is a comment
+*.log
+
+# Another comment
+node_modules/
+
+
+# Empty lines should be ignored
+`;
+
+    mockFs.existsSync.mockReturnValue(true);
+    mockFs.readFileSync.mockReturnValue(gitignoreContent);
+
+    // Execute
+    const result = parseGitignoreForGrep(workdir);
+
+    // Verify
+    expect(result.excludeFiles).toEqual(["*.log"]);
+    expect(result.excludeDirs).toContain("node_modules");
   });
 });

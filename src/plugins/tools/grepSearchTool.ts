@@ -1,15 +1,13 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "./types";
 import { spawn } from "child_process";
-import * as fs from "fs";
-import * as path from "path";
+import { parseGitignoreForGrep } from "../../utils/fileFilter";
 
 /**
- * Grep搜索工具插件 - 使用系统的 grep 或 git grep 命令
+ * Grep搜索工具插件 - 使用系统的 grep 命令
  */
 export const grepSearchTool: ToolPlugin = {
   name: "grep_search",
-  description:
-    "Search for text patterns in files using system grep or git grep",
+  description: "Search for text patterns in files using system grep command",
   config: {
     type: "function",
     function: {
@@ -69,69 +67,48 @@ export const grepSearchTool: ToolPlugin = {
     try {
       const workdir = context.workdir;
 
-      // 检查是否是 git 仓库
-      const isGitRepo = fs.existsSync(path.join(workdir, ".git"));
+      // 统一使用系统 grep，避免 git grep 只搜索已跟踪文件的限制
+      const command = "grep";
+      const args = ["-E", "-r", "-n", "-H"]; // -E 启用扩展正则, -r 递归, -n 显示行号, -H 显示文件名
 
-      // 构建命令参数
-      let command: string;
-      let args: string[] = [];
-
-      if (isGitRepo) {
-        // 使用 git grep
-        command = "git";
-        args = ["grep", "-E", "-n", "-H"]; // -E 启用扩展正则, -n 显示行号, -H 显示文件名
-
-        if (!caseSensitive) {
-          args.push("-i");
-        }
-
-        // 添加模式
-        args.push(query);
-
-        // 添加文件包含模式
-        if (includePattern) {
-          const patterns = includePattern.split(",").map((p) => p.trim());
-          for (const pattern of patterns) {
-            args.push("--", pattern);
-          }
-        }
-      } else {
-        // 使用系统 grep
-        command = "grep";
-        args = ["-E", "-r", "-n", "-H"]; // -E 启用扩展正则, -r 递归, -n 显示行号, -H 显示文件名
-
-        if (!caseSensitive) {
-          args.push("-i");
-        }
-
-        // 添加排除模式
-        if (excludePattern) {
-          const patterns = excludePattern.split(",").map((p) => p.trim());
-          for (const pattern of patterns) {
-            args.push("--exclude-dir=" + pattern);
-          }
-        }
-
-        // 默认排除常见的不需要搜索的目录
-        args.push("--exclude-dir=node_modules");
-        args.push("--exclude-dir=.git");
-        args.push("--exclude-dir=dist");
-        args.push("--exclude-dir=build");
-
-        // 添加包含模式
-        if (includePattern) {
-          const patterns = includePattern.split(",").map((p) => p.trim());
-          for (const pattern of patterns) {
-            args.push("--include=" + pattern);
-          }
-        }
-
-        // 添加搜索模式
-        args.push(query);
-
-        // 添加搜索路径
-        args.push(".");
+      if (!caseSensitive) {
+        args.push("-i");
       }
+
+      // 获取 gitignore 中的排除规则
+      const { excludeDirs, excludeFiles } = parseGitignoreForGrep(workdir);
+
+      // 添加用户指定的排除模式
+      if (excludePattern) {
+        const patterns = excludePattern.split(",").map((p) => p.trim());
+        for (const pattern of patterns) {
+          excludeDirs.push(pattern);
+        }
+      }
+
+      // 添加目录排除参数
+      for (const dir of excludeDirs) {
+        args.push("--exclude-dir=" + dir);
+      }
+
+      // 添加文件排除参数
+      for (const file of excludeFiles) {
+        args.push("--exclude=" + file);
+      }
+
+      // 添加包含模式
+      if (includePattern) {
+        const patterns = includePattern.split(",").map((p) => p.trim());
+        for (const pattern of patterns) {
+          args.push("--include=" + pattern);
+        }
+      }
+
+      // 添加搜索模式
+      args.push(query);
+
+      // 添加搜索路径
+      args.push(".");
 
       // 执行命令
       const result = await executeCommand(command, args, workdir);
@@ -140,7 +117,7 @@ export const grepSearchTool: ToolPlugin = {
         return {
           success: false,
           content: "",
-          error: `Command '${command}' not found. Please install ${isGitRepo ? "git" : "grep"}.`,
+          error: `Command 'grep' not found. Please install grep.`,
         };
       }
 
