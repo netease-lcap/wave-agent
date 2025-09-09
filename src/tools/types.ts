@@ -2,7 +2,7 @@
  * 工具插件接口定义
  */
 
-import type { ChatCompletionTool, FileTreeNode } from "../../types/common";
+import type { ChatCompletionTool, FileTreeNode } from "../types/common";
 
 export interface ToolPlugin {
   name: string;

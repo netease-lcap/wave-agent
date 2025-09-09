@@ -21,7 +21,7 @@ vi.mock("@/utils/memoryUtils", () => ({
 }));
 
 // Mock tool registry to control tool execution
-vi.mock("@/plugins/tools", () => ({
+vi.mock("@/tools", () => ({
   toolRegistry: {
     execute: vi.fn(),
   },
@@ -83,7 +83,7 @@ describe("AIManager Diff Integration Tests", () => {
     aiManager.setMessages([initialUserMessage]);
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/plugins/tools");
+    const { toolRegistry } = await import("@/tools");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
@@ -220,7 +220,7 @@ describe("AIManager Diff Integration Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/plugins/tools");
+    const { toolRegistry } = await import("@/tools");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
@@ -342,7 +342,7 @@ describe("AIManager Diff Integration Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/plugins/tools");
+    const { toolRegistry } = await import("@/tools");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
@@ -535,7 +535,7 @@ describe("AIManager Diff Integration Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/plugins/tools");
+    const { toolRegistry } = await import("@/tools");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {

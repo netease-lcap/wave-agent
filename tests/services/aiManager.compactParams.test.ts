@@ -14,7 +14,7 @@ vi.mock("../../src/services/aiService", () => ({
 vi.mock("../../src/services/fileManager");
 
 // Mock the tool registry
-vi.mock("../../src/plugins/tools", () => ({
+vi.mock("../../src/tools", () => ({
   toolRegistry: {
     execute: vi.fn(),
     getToolsConfig: vi.fn(() => []),

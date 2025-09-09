@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { editFileTool } from "@/plugins/tools/editFileTool";
-import type { ToolResult } from "@/plugins/tools/types";
+import { editFileTool } from "@/tools/editFileTool";
+import type { ToolResult } from "@/tools/types";
 
 // Mock file system operations
 vi.mock("fs/promises", () => ({

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { grepSearchTool } from "@/plugins/tools/grepSearchTool";
-import type { ToolResult, ToolContext } from "@/plugins/tools/types";
+import { grepSearchTool } from "@/tools/grepSearchTool";
+import type { ToolResult, ToolContext } from "@/tools/types";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";

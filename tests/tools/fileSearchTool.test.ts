@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { fileSearchTool } from "../../src/plugins/tools/fileSearchTool";
+import { fileSearchTool } from "../../src/tools/fileSearchTool";
 import type { FileTreeNode } from "../../src/types/common";
-import type { ToolContext } from "../../src/plugins/tools/types";
+import type { ToolContext } from "../../src/tools/types";
 
 describe("fileSearchTool", () => {
   const mockFiles: FileTreeNode[] = [
@@ -32,7 +32,7 @@ describe("fileSearchTool", () => {
     },
     { path: "docs/tool-guide.md", label: "tool-guide.md", children: [] },
     {
-      path: "src/plugins/tools/fileSearchTool.ts",
+      path: "src/tools/fileSearchTool.ts",
       label: "fileSearchTool.ts",
       children: [],
     },

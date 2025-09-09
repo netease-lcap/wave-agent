@@ -1,4 +1,4 @@
-import { toolRegistry } from "@/plugins/tools";
+import { toolRegistry } from "@/tools";
 import OpenAI from "openai";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources";
 

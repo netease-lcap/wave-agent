@@ -2,7 +2,7 @@ import { writeFile, readFile } from "fs/promises";
 import { resolve } from "path";
 import { diffLines } from "diff";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
-import { logger } from "../../utils/logger";
+import { logger } from "../utils/logger";
 
 /**
  * 搜索替换工具插件

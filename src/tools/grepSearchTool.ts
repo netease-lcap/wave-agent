@@ -1,6 +1,6 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "./types";
 import { spawn } from "child_process";
-import { parseGitignoreForGrep } from "../../utils/fileFilter";
+import { parseGitignoreForGrep } from "../utils/fileFilter";
 
 /**
  * Grep搜索工具插件 - 使用系统的 grep 命令

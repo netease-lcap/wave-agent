@@ -14,8 +14,8 @@ import {
   addDiffBlockToMessage,
   getMessagesToCompress,
 } from "../utils/messageOperations";
-import { toolRegistry } from "../plugins/tools";
-import type { ToolContext } from "../plugins/tools/types";
+import { toolRegistry } from "../tools";
+import type { ToolContext } from "../tools/types";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI";
 import { saveErrorLog } from "../utils/errorLogger";
 import { readMemoryFile } from "../utils/memoryUtils";

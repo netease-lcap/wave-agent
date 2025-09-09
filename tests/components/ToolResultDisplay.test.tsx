@@ -5,7 +5,7 @@ import { ToolResultDisplay } from "@/components/ToolResultDisplay";
 import type { ToolBlock } from "@/types";
 
 // Mock toolRegistry - no longer needed since we removed display fields
-vi.mock("@/plugins/tools", () => ({
+vi.mock("@/tools", () => ({
   toolRegistry: {},
 }));
 

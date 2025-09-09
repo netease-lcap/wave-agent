@@ -4,7 +4,7 @@ import type {
   ToolRegistry,
   ToolResult,
 } from "./types";
-import type { ChatCompletionTool } from "../../types/common";
+import type { ChatCompletionTool } from "../types/common";
 import { terminalTool } from "./terminalTool";
 import { readFileTool } from "./readFileTool";
 import { listDirTool } from "./listDirTool";

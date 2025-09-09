@@ -1,7 +1,7 @@
 import { unlink } from "fs/promises";
 import { resolve } from "path";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
-import { logger } from "../../utils/logger";
+import { logger } from "../utils/logger";
 
 /**
  * 删除文件工具插件

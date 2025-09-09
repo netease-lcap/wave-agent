@@ -1,6 +1,6 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "./types";
-import type { FileTreeNode } from "../../types/common";
-import { fuzzySearchFiles } from "../../utils/fileScoring";
+import type { FileTreeNode } from "../types/common";
+import { fuzzySearchFiles } from "../utils/fileScoring";
 
 /**
  * 文件搜索工具插件 - 基于模糊匹配搜索文件路径

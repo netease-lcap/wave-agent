@@ -1,6 +1,6 @@
 import type { ChatCompletionMessageParam, ModelId } from "../types/common";
 import { DEFAULT_MODEL_ID } from "../types/common";
-import { toolRegistry } from "../plugins/tools";
+import { toolRegistry } from "../tools";
 import { logger } from "@/utils/logger";
 import OpenAI from "openai";
 import { ChatCompletionMessageToolCall } from "openai/resources";

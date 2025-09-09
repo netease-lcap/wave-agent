@@ -34,7 +34,7 @@ describe("fileScoring", () => {
     },
     { path: "docs/tool-guide.md", label: "tool-guide.md", children: [] },
     {
-      path: "src/plugins/tools/fileSearchTool.ts",
+      path: "src/tools/fileSearchTool.ts",
       label: "fileSearchTool.ts",
       children: [],
     },

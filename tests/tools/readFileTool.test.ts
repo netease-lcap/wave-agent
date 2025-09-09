@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { readFileTool } from "@/plugins/tools/readFileTool";
-import type { ToolResult } from "@/plugins/tools/types";
+import { readFileTool } from "@/tools/readFileTool";
+import type { ToolResult } from "@/tools/types";
 
 // Mock fs/promises module
 vi.mock("fs/promises", async (importOriginal) => {

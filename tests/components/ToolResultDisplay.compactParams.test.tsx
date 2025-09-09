@@ -4,7 +4,7 @@ import { ToolResultDisplay } from "@/components/ToolResultDisplay";
 import type { ToolBlock } from "@/types";
 
 // Mock toolRegistry
-vi.mock("@/plugins/tools", () => ({
+vi.mock("@/tools", () => ({
   toolRegistry: {
     list: () => [
       {
@@ -101,7 +101,7 @@ describe("ToolResultDisplay - Dynamic CompactParams", () => {
 
   it("should handle missing formatCompactParams method", () => {
     // Mock toolRegistry with a tool that doesn't have formatCompactParams
-    vi.doMock("@/plugins/tools", () => ({
+    vi.doMock("@/tools", () => ({
       toolRegistry: {
         list: () => [
           {

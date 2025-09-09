@@ -21,7 +21,7 @@ vi.mock("@/utils/memoryUtils", () => ({
 }));
 
 // Mock tool registry to control tool execution
-vi.mock("@/plugins/tools", () => ({
+vi.mock("@/tools", () => ({
   toolRegistry: {
     execute: vi.fn(),
   },
@@ -84,7 +84,7 @@ describe("AIManager Tool Recursion Tests", () => {
 
     // Mock AI service 返回工具调用，然后在第二次调用时返回简单响应
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/plugins/tools");
+    const { toolRegistry } = await import("@/tools");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
@@ -187,7 +187,7 @@ describe("AIManager Tool Recursion Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/plugins/tools");
+    const { toolRegistry } = await import("@/tools");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
@@ -325,7 +325,7 @@ describe("AIManager Tool Recursion Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/plugins/tools");
+    const { toolRegistry } = await import("@/tools");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
@@ -399,7 +399,7 @@ describe("AIManager Tool Recursion Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/plugins/tools");
+    const { toolRegistry } = await import("@/tools");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {

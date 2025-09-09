@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { Box, Text } from "ink";
 import type { ToolBlock } from "../types";
-import { toolRegistry } from "../plugins/tools";
+import { toolRegistry } from "../tools";
 
 interface ToolResultDisplayProps {
   block: ToolBlock;

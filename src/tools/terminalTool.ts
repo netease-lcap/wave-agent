@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from "child_process";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
-import { logger } from "../../utils/logger";
+import { logger } from "../utils/logger";
 
 /**
  * Terminal command execution tool plugin

@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import { resolve } from "path";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
-import { logger } from "../../utils/logger";
+import { logger } from "../utils/logger";
 
 /**
  * 读取文件工具插件
