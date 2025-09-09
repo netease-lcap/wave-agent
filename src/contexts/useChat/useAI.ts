@@ -143,6 +143,19 @@ export const useAI = (
     [],
   );
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (aiManagerRef.current) {
+        // Save session before cleanup
+        aiManagerRef.current.saveSession().catch((error) => {
+          console.error("Failed to save session during cleanup:", error);
+        });
+        aiManagerRef.current.destroy();
+      }
+    };
+  }, []);
+
   return {
     sessionId,
     isLoading,

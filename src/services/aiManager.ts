@@ -73,11 +73,7 @@ export class AIManager {
     // Set up auto-save
     this.startAutoSave();
 
-    // Handle process termination to save session (skip in test environment)
-    if (process.env.NODE_ENV !== "test" && process.env.VITEST !== "true") {
-      process.on("SIGINT", this.handleProcessExit.bind(this));
-      process.on("SIGTERM", this.handleProcessExit.bind(this));
-    }
+    // Note: Process termination handling is now done at the CLI level
   }
 
   public getState(): AIManagerState {
@@ -195,15 +191,6 @@ export class AIManager {
       clearInterval(this.autoSaveTimer);
       this.autoSaveTimer = null;
     }
-  }
-
-  /**
-   * 处理进程退出，保存会话
-   */
-  private async handleProcessExit(): Promise<void> {
-    this.stopAutoSave();
-    await this.saveSession();
-    process.exit(0);
   }
 
   /**
