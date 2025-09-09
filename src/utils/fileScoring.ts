@@ -52,47 +52,117 @@ export function scoreAndSortFiles(
 }
 
 /**
- * 计算模糊匹配分数
+ * 计算模糊匹配分数 - 支持空格分词和乱序匹配
  */
 export function calculateFuzzyScore(query: string, filePath: string): number {
   if (!query || !filePath) return 0;
 
-  // 如果完全匹配，给最高分
-  if (filePath === query) return 1000;
-
-  // 如果文件名完全匹配，给高分
+  // 预处理：分词并过滤空字符串
+  const keywords = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const lowerFilePath = filePath.toLowerCase();
   const fileName = filePath.split("/").pop() || "";
-  if (fileName === query) return 800;
+  const lowerFileName = fileName.toLowerCase();
 
-  // 如果包含完整查询字符串，给较高分
-  if (filePath.includes(query)) return 600;
+  // 如果没有关键词，返回0分
+  if (keywords.length === 0) return 0;
 
-  // 如果文件名包含查询字符串，给中等分数
-  if (fileName.includes(query)) return 400;
+  // 检查是否所有关键词都存在于文件路径中（必要条件）
+  const allKeywordsMatch = keywords.every((keyword) =>
+    lowerFilePath.includes(keyword),
+  );
+  if (!allKeywordsMatch) return 0;
 
-  // 模糊匹配：检查查询字符串的字符是否按顺序出现在文件路径中
   let score = 0;
-  let queryIndex = 0;
-  let consecutiveMatches = 0;
 
-  for (let i = 0; i < filePath.length && queryIndex < query.length; i++) {
-    if (filePath[i] === query[queryIndex]) {
-      queryIndex++;
+  // 1. 完全匹配奖励
+  if (keywords.length === 1 && lowerFilePath === keywords[0]) {
+    score += 1000;
+  }
+
+  // 2. 文件名完全匹配奖励
+  if (keywords.length === 1 && lowerFileName === keywords[0]) {
+    score += 800;
+  }
+
+  // 3. 连续匹配奖励（原查询字符串完整出现）
+  if (keywords.length > 1 && lowerFilePath.includes(query.toLowerCase())) {
+    score += 600;
+  }
+
+  // 4. 文件名包含所有关键词奖励
+  const fileNameContainsAll = keywords.every((keyword) =>
+    lowerFileName.includes(keyword),
+  );
+  if (fileNameContainsAll) {
+    score += 400;
+  }
+
+  // 5. 关键词匹配基础分数
+  keywords.forEach((keyword) => {
+    // 文件名中的匹配权重更高
+    if (lowerFileName.includes(keyword)) {
+      score += 100;
+
+      // 如果在文件名开头匹配，额外加分
+      if (lowerFileName.startsWith(keyword)) {
+        score += 50;
+      }
+    } else if (lowerFilePath.includes(keyword)) {
+      score += 50;
+
+      // 如果在路径开头匹配，额外加分
+      if (lowerFilePath.startsWith(keyword)) {
+        score += 25;
+      }
+    }
+  });
+
+  // 6. 连续字符匹配奖励（类似VSCode的fuzzy matching）
+  keywords.forEach((keyword) => {
+    const consecutiveScore = calculateConsecutiveMatchScore(
+      keyword,
+      lowerFilePath,
+    );
+    score += consecutiveScore;
+  });
+
+  // 7. 长度惩罚：较短的路径更相关
+  const lengthPenalty = lowerFilePath.length / 200;
+  score = Math.max(0, score - lengthPenalty);
+
+  // 8. 关键词数量奖励：匹配更多关键词的文件分数更高
+  score += keywords.length * 10;
+
+  return score;
+}
+
+/**
+ * 计算连续字符匹配分数
+ */
+function calculateConsecutiveMatchScore(keyword: string, text: string): number {
+  let score = 0;
+  let keywordIndex = 0;
+  let consecutiveMatches = 0;
+  let maxConsecutiveMatches = 0;
+
+  for (let i = 0; i < text.length && keywordIndex < keyword.length; i++) {
+    if (text[i] === keyword[keywordIndex]) {
+      keywordIndex++;
       consecutiveMatches++;
-      score += consecutiveMatches * 10; // 连续匹配给更高分数
+      maxConsecutiveMatches = Math.max(
+        maxConsecutiveMatches,
+        consecutiveMatches,
+      );
     } else {
       consecutiveMatches = 0;
     }
   }
 
-  // 如果没有完全匹配所有查询字符，返回0分（严格过滤）
-  if (queryIndex < query.length) {
-    return 0;
+  // 如果完全匹配了关键词，给予分数
+  if (keywordIndex === keyword.length) {
+    score += maxConsecutiveMatches * 5; // 连续匹配的字符越多，分数越高
+    score += (keywordIndex / keyword.length) * 20; // 完整匹配奖励
   }
-
-  // 给较短的路径更高的分数（更相关）
-  const lengthPenalty = filePath.length / 100;
-  score = Math.max(0, score - lengthPenalty);
 
   return score;
 }
