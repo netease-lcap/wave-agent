@@ -30,28 +30,6 @@ export function fuzzySearchFiles(
 }
 
 /**
- * 对文件列表进行评分排序（不过滤，仅排序）
- */
-export function scoreAndSortFiles(
-  query: string,
-  files: FileTreeNode[],
-): FileScoringResult[] {
-  if (!query.trim()) {
-    // 如果没有查询，返回原始顺序，分数为0
-    return files.map((file) => ({ file, score: 0 }));
-  }
-
-  const normalizedQuery = query.toLowerCase();
-
-  return files
-    .map((file) => ({
-      file,
-      score: calculateFuzzyScore(normalizedQuery, file.path.toLowerCase()),
-    }))
-    .sort((a, b) => b.score - a.score); // 按分数降序排序
-}
-
-/**
  * 计算模糊匹配分数 - 支持空格分词和乱序匹配
  */
 export function calculateFuzzyScore(query: string, filePath: string): number {
@@ -66,9 +44,11 @@ export function calculateFuzzyScore(query: string, filePath: string): number {
   // 如果没有关键词，返回0分
   if (keywords.length === 0) return 0;
 
-  // 检查是否所有关键词都存在于文件路径中（必要条件）
-  const allKeywordsMatch = keywords.every((keyword) =>
-    lowerFilePath.includes(keyword),
+  // 检查是否所有关键词都存在于文件路径中，或者能够通过模糊匹配找到
+  const allKeywordsMatch = keywords.every(
+    (keyword) =>
+      lowerFilePath.includes(keyword) ||
+      hasSubsequenceMatch(keyword, lowerFilePath),
   );
   if (!allKeywordsMatch) return 0;
 
@@ -114,6 +94,12 @@ export function calculateFuzzyScore(query: string, filePath: string): number {
       if (lowerFilePath.startsWith(keyword)) {
         score += 25;
       }
+    } else if (hasSubsequenceMatch(keyword, lowerFileName)) {
+      // 文件名子序列匹配
+      score += 60;
+    } else if (hasSubsequenceMatch(keyword, lowerFilePath)) {
+      // 路径子序列匹配
+      score += 30;
     }
   });
 
@@ -165,4 +151,18 @@ function calculateConsecutiveMatchScore(keyword: string, text: string): number {
   }
 
   return score;
+}
+
+/**
+ * 检查是否存在子序列匹配 - 查询字符串的字符能够按顺序在目标字符串中找到
+ * 例如: "displayr" 可以匹配 "ToolResultDisplay" (d-i-s-p-l-a-y 按顺序出现)
+ */
+function hasSubsequenceMatch(query: string, target: string): boolean {
+  let queryIndex = 0;
+  for (let i = 0; i < target.length && queryIndex < query.length; i++) {
+    if (target[i] === query[queryIndex]) {
+      queryIndex++;
+    }
+  }
+  return queryIndex === query.length;
 }

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { useFiles } from "../contexts/useFiles";
-import { scoreAndSortFiles } from "../utils/fileScoring";
+import { fuzzySearchFiles } from "../utils/fileScoring";
 
 export const useFileSelector = () => {
   const [showFileSelector, setShowFileSelector] = useState(false);
@@ -15,11 +15,8 @@ export const useFileSelector = () => {
       return flatFiles;
     }
 
-    const scoredFiles = scoreAndSortFiles(searchQuery, flatFiles);
-    // 只返回有匹配分数的文件
-    return scoredFiles
-      .filter((item) => item.score > 0)
-      .map((item) => item.file);
+    const scoredFiles = fuzzySearchFiles(searchQuery, flatFiles);
+    return scoredFiles;
   }, [flatFiles, searchQuery]);
 
   const activateFileSelector = useCallback((position: number) => {

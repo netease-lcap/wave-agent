@@ -160,5 +160,36 @@ describe("fileScoring", () => {
       const firstResult = results[0];
       expect(firstResult.path.toLowerCase()).toMatch(/tool/);
     });
+
+    it("should match partial keywords with fuzzy logic - displayr case", () => {
+      // Test case: typing "displayr" should match "ToolResultDisplay.compactParams.test.tsx"
+      const results = fuzzySearchFiles("displayr", mockFiles);
+      expect(results.length).toBeGreaterThan(0);
+
+      // Should find the ToolResultDisplay.compactParams.test.tsx file
+      const compactParamsFile = results.find(
+        (f) =>
+          f.path ===
+          "tests/components/ToolResultDisplay.compactParams.test.tsx",
+      );
+      expect(compactParamsFile).toBeDefined();
+
+      // Should also find other Display files
+      const displayFiles = results.filter((f) =>
+        f.path.toLowerCase().includes("display"),
+      );
+      expect(displayFiles.length).toBeGreaterThan(0);
+    });
+
+    it("should handle fuzzy character sequence matching", () => {
+      // Test that character sequence matching works properly
+      const results = fuzzySearchFiles("trd", mockFiles); // Should match ToolResultDisplay
+      expect(results.length).toBeGreaterThan(0);
+
+      const toolResultFiles = results.filter((f) =>
+        f.path.toLowerCase().includes("toolresultdisplay"),
+      );
+      expect(toolResultFiles.length).toBeGreaterThan(0);
+    });
   });
 });
