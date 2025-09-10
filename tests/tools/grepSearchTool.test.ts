@@ -335,6 +335,65 @@ This project uses diff libraries for comparing text.
       expect(result.error).toContain("query parameter is required");
     });
 
+    it("should reject include_pattern with path separators", async () => {
+      const result1: ToolResult = await grepSearchTool.execute(
+        {
+          query: "test",
+          include_pattern: "src/**/*.ts",
+        },
+        mockContext,
+      );
+
+      expect(result1.success).toBe(false);
+      expect(result1.error).toContain(
+        'Invalid include_pattern: "src/**/*.ts" contains path separators',
+      );
+      expect(result1.error).toContain(
+        'only supports filename patterns like "*.ts"',
+      );
+      expect(result1.error).toContain('not path patterns like "src/**/*.ts"');
+
+      const result2: ToolResult = await grepSearchTool.execute(
+        {
+          query: "test",
+          include_pattern: "src/components/*.tsx",
+        },
+        mockContext,
+      );
+
+      expect(result2.success).toBe(false);
+      expect(result2.error).toContain(
+        'Invalid include_pattern: "src/components/*.tsx" contains path separators',
+      );
+
+      const result3: ToolResult = await grepSearchTool.execute(
+        {
+          query: "test",
+          include_pattern: "*.ts,src/**/*.js,*.vue",
+        },
+        mockContext,
+      );
+
+      expect(result3.success).toBe(false);
+      expect(result3.error).toContain(
+        'Invalid include_pattern: "src/**/*.js" contains path separators',
+      );
+    });
+
+    it("should accept valid filename patterns", async () => {
+      const result: ToolResult = await grepSearchTool.execute(
+        {
+          query: "export",
+          include_pattern: "*.ts,*.js,*.vue",
+        },
+        mockContext,
+      );
+
+      expect(result.success).toBe(true);
+      // 不应该有错误
+      expect(result.error).toBeUndefined();
+    });
+
     it("should limit results to 50 matches", async () => {
       // 创建包含很多匹配的文件
       const largeFilePath = path.join(tempDir, "large-file.txt");

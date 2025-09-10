@@ -3,6 +3,16 @@ import { spawn } from "child_process";
 import { parseGitignoreForGrep } from "../utils/fileFilter";
 
 /**
+ * 检查模式是否包含路径分隔符
+ */
+function containsPathSeparator(pattern: string): boolean {
+  // 检查是否包含 / 或 \ 或 ** (glob 路径模式)
+  return (
+    pattern.includes("/") || pattern.includes("\\") || pattern.includes("**")
+  );
+}
+
+/**
  * Grep搜索工具插件 - 使用系统的 grep 命令
  */
 export const grepSearchTool: ToolPlugin = {
@@ -24,7 +34,7 @@ export const grepSearchTool: ToolPlugin = {
           include_pattern: {
             type: "string",
             description:
-              "Glob pattern for files to include (e.g. '*.ts' for TypeScript files, or '*.ts,*.js,*.vue' for multiple file types)",
+              "Glob pattern for FILENAMES to include (e.g. '*.ts' for TypeScript files, or '*.ts,*.js,*.vue' for multiple file types). Note: Only filename patterns are supported, not path patterns like 'src/**/*.ts'.",
           },
           exclude_pattern: {
             type: "string",
@@ -62,6 +72,20 @@ export const grepSearchTool: ToolPlugin = {
         content: "",
         error: "Working directory not available in context",
       };
+    }
+
+    // 验证 include_pattern 是否包含路径
+    if (includePattern) {
+      const patterns = includePattern.split(",").map((p) => p.trim());
+      const invalidPatterns = patterns.filter(containsPathSeparator);
+
+      if (invalidPatterns.length > 0) {
+        return {
+          success: false,
+          content: "",
+          error: `Invalid include_pattern: "${invalidPatterns.join('", "')}" contains path separators. The include_pattern only supports filename patterns like "*.ts", "*.js", not path patterns like "src/**/*.ts". Use exclude_pattern to filter directories instead.`,
+        };
+      }
     }
 
     try {
