@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import React, { useState } from "react";
+import { Box, Text, useInput } from "ink";
 
 export interface FileSelectorProps {
   files: Array<{ path: string }>;
@@ -8,7 +8,12 @@ export interface FileSelectorProps {
   onCancel: () => void;
 }
 
-export const FileSelector: React.FC<FileSelectorProps> = ({ files, searchQuery, onSelect, onCancel }) => {
+export const FileSelector: React.FC<FileSelectorProps> = ({
+  files,
+  searchQuery,
+  onSelect,
+  onCancel,
+}) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   useInput((input, key) => {
@@ -37,7 +42,13 @@ export const FileSelector: React.FC<FileSelectorProps> = ({ files, searchQuery, 
 
   if (files.length === 0) {
     return (
-      <Box flexDirection="column" borderStyle="single" borderColor="yellow" padding={1} marginBottom={1}>
+      <Box
+        flexDirection="column"
+        borderStyle="single"
+        borderColor="yellow"
+        padding={1}
+        marginBottom={1}
+      >
         <Text color="yellow">📁 No files found for "{searchQuery}"</Text>
         <Text dimColor>Press Escape to cancel</Text>
       </Box>
@@ -45,30 +56,74 @@ export const FileSelector: React.FC<FileSelectorProps> = ({ files, searchQuery, 
   }
 
   const maxDisplay = 10;
-  const displayFiles = files.slice(0, maxDisplay);
+
+  // 计算显示窗口的开始和结束位置
+  const getDisplayWindow = () => {
+    const startIndex = Math.max(
+      0,
+      Math.min(
+        selectedIndex - Math.floor(maxDisplay / 2),
+        files.length - maxDisplay,
+      ),
+    );
+    const endIndex = Math.min(files.length, startIndex + maxDisplay);
+    const adjustedStartIndex = Math.max(0, endIndex - maxDisplay);
+
+    return {
+      startIndex: adjustedStartIndex,
+      endIndex: endIndex,
+      displayFiles: files.slice(adjustedStartIndex, endIndex),
+    };
+  };
+
+  const { startIndex, endIndex, displayFiles } = getDisplayWindow();
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="cyan" padding={1} marginBottom={1}>
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      borderColor="cyan"
+      padding={1}
+      marginBottom={1}
+    >
       <Text color="cyan" bold>
         📁 Select File {searchQuery && `(filtering: "${searchQuery}")`}
       </Text>
 
-      {displayFiles.map((file, index) => (
-        <Box key={file.path}>
-          <Text
-            color={index === selectedIndex ? 'black' : 'white'}
-            backgroundColor={index === selectedIndex ? 'cyan' : undefined}
-          >
-            {index === selectedIndex ? '▶ ' : '  '}
-            {file.path}
-          </Text>
-        </Box>
-      ))}
+      {/* 显示上方还有更多文件的提示 */}
+      {startIndex > 0 && (
+        <Text dimColor>... {startIndex} more files above</Text>
+      )}
 
-      {files.length > maxDisplay && <Text dimColor>... and {files.length - maxDisplay} more files</Text>}
+      {displayFiles.map((file, displayIndex) => {
+        const actualIndex = startIndex + displayIndex;
+        const isSelected = actualIndex === selectedIndex;
+
+        return (
+          <Box key={file.path}>
+            <Text
+              color={isSelected ? "black" : "white"}
+              backgroundColor={isSelected ? "cyan" : undefined}
+            >
+              {isSelected ? "▶ " : "  "}
+              {file.path}
+            </Text>
+          </Box>
+        );
+      })}
+
+      {/* 显示下方还有更多文件的提示 */}
+      {endIndex < files.length && (
+        <Text dimColor>... {files.length - endIndex} more files below</Text>
+      )}
 
       <Box marginTop={1}>
-        <Text dimColor>Use ↑↓ to navigate, Enter to select, Escape to cancel</Text>
+        <Text dimColor>
+          Use ↑↓ to navigate, Enter to select, Escape to cancel
+        </Text>
+        <Text dimColor>
+          File {selectedIndex + 1} of {files.length}
+        </Text>
       </Box>
     </Box>
   );
