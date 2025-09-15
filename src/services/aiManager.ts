@@ -435,6 +435,14 @@ export class AIManager {
 
           // 执行工具
           try {
+            // 检查是否已被中断，如果是则跳过工具执行
+            if (
+              abortController.signal.aborted ||
+              toolAbortController.signal.aborted
+            ) {
+              return;
+            }
+
             const toolArgs = JSON.parse(
               functionToolCall.function?.arguments || "{}",
             );
@@ -526,6 +534,16 @@ export class AIManager {
               this.setMessages(currentMessages);
             }
           } catch (parseError) {
+            // 检查是否是因为中断导致的解析错误
+            const isAborted =
+              abortController.signal.aborted ||
+              toolAbortController.signal.aborted;
+
+            if (isAborted) {
+              // 如果是中断导致的，直接返回，不显示错误
+              return;
+            }
+
             const errorMessage =
               parseError instanceof Error
                 ? parseError.message
