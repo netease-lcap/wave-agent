@@ -1,5 +1,5 @@
-import { useCallback, useEffect } from 'react';
-import { useChat } from '../contexts/useChat';
+import { useCallback, useEffect } from "react";
+import { useChat } from "../contexts/useChat";
 
 export const useTextInsertion = (
   setInputText: (text: string) => void,
@@ -11,8 +11,8 @@ export const useTextInsertion = (
   // 处理文本插入到输入框
   const handleTextInsert = useCallback(
     (text: string) => {
-      const prefix = '命令输出：\n\n```\n';
-      const suffix = '\n```';
+      const prefix = "命令输出：\n\n```\n";
+      const suffix = "\n```";
       const fullText = prefix + text + suffix;
 
       setInputText(fullText);

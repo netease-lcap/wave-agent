@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 
 export const useInputState = () => {
-  const [inputText, setInputText] = useState('');
+  const [inputText, setInputText] = useState("");
   const [cursorPosition, setCursorPosition] = useState(0);
 
   const insertTextAtCursor = useCallback((text: string) => {
@@ -30,7 +30,7 @@ export const useInputState = () => {
   }, []);
 
   const clearInput = useCallback(() => {
-    setInputText('');
+    setInputText("");
     setCursorPosition(0);
   }, []);
 

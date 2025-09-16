@@ -1,14 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 
 export const useBashHistorySelector = () => {
   const [showBashHistorySelector, setShowBashHistorySelector] = useState(false);
   const [exclamationPosition, setExclamationPosition] = useState(-1);
-  const [bashHistorySearchQuery, setBashHistorySearchQuery] = useState('');
+  const [bashHistorySearchQuery, setBashHistorySearchQuery] = useState("");
 
   const activateBashHistorySelector = useCallback((position: number) => {
     setShowBashHistorySelector(true);
     setExclamationPosition(position);
-    setBashHistorySearchQuery('');
+    setBashHistorySearchQuery("");
   }, []);
 
   const handleBashHistorySelect = useCallback(
@@ -22,7 +22,7 @@ export const useBashHistorySelector = () => {
 
         setShowBashHistorySelector(false);
         setExclamationPosition(-1);
-        setBashHistorySearchQuery('');
+        setBashHistorySearchQuery("");
 
         return { newInput, newCursorPosition };
       }
@@ -34,7 +34,7 @@ export const useBashHistorySelector = () => {
   const handleCancelBashHistorySelect = useCallback(() => {
     setShowBashHistorySelector(false);
     setExclamationPosition(-1);
-    setBashHistorySearchQuery('');
+    setBashHistorySearchQuery("");
   }, []);
 
   const updateBashHistorySearchQuery = useCallback((query: string) => {
@@ -49,7 +49,11 @@ export const useBashHistorySelector = () => {
       }
       return false;
     },
-    [showBashHistorySelector, exclamationPosition, handleCancelBashHistorySelect],
+    [
+      showBashHistorySelector,
+      exclamationPosition,
+      handleCancelBashHistorySelect,
+    ],
   );
 
   return {
