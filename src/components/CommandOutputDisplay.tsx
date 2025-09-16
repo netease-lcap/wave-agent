@@ -30,14 +30,16 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
   const getStatusColor = () => {
     if (isRunning) return "yellow";
     if (exitCode === 0) return "green";
-    return "red";
+    if (exitCode !== null && exitCode !== 0) return "red";
+    return "gray"; // 未知状态
   };
 
   const getStatusText = () => {
     if (isRunning) return "🔄";
     if (exitCode === 0) return "✅";
-    if (exitCode === 130) return "⚠️";
-    return `❌`;
+    if (exitCode === 130) return "⚠️"; // SIGINT (Ctrl+C)
+    if (exitCode !== null && exitCode !== 0) return "❌";
+    return ""; // 未知状态时不显示文本
   };
 
   useInput((input, key) => {

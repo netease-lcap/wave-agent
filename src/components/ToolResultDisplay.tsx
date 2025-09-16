@@ -43,14 +43,16 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
     if (attributes?.isStreaming) return "blue";
     if (attributes?.isRunning) return "yellow";
     if (attributes?.success) return "green";
-    return "red";
+    if (attributes?.error || attributes?.success === false) return "red";
+    return "gray"; // 未知状态或无状态信息
   };
 
   const getStatusText = () => {
     if (attributes?.isStreaming) return "📡";
     if (attributes?.isRunning) return "🔄";
     if (attributes?.success) return "";
-    return "❌ Failed";
+    if (attributes?.error || attributes?.success === false) return "❌ Failed";
+    return ""; // 未知状态时不显示文本
   };
 
   const toolName = attributes?.name ? String(attributes.name) : "Tool";
