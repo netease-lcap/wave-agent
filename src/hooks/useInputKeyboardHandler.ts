@@ -648,6 +648,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       isBashMode,
       isMemoryMode,
       activateMemoryTypeSelector,
+      activateBashMode,
     ],
   );
 

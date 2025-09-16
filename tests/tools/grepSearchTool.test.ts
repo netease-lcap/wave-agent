@@ -335,49 +335,37 @@ This project uses diff libraries for comparing text.
       expect(result.error).toContain("query parameter is required");
     });
 
-    it("should reject include_pattern with path separators", async () => {
+    it("should support path patterns with ripgrep", async () => {
+      // 这个测试验证路径模式现在是支持的（使用 ripgrep）
       const result1: ToolResult = await grepSearchTool.execute(
         {
-          query: "test",
+          query: "export",
           include_pattern: "src/**/*.ts",
         },
         mockContext,
       );
 
-      expect(result1.success).toBe(false);
-      expect(result1.error).toContain(
-        'Invalid include_pattern: "src/**/*.ts" contains path separators',
-      );
-      expect(result1.error).toContain(
-        'only supports filename patterns like "*.ts"',
-      );
-      expect(result1.error).toContain('not path patterns like "src/**/*.ts"');
+      expect(result1.success).toBe(true);
 
       const result2: ToolResult = await grepSearchTool.execute(
         {
-          query: "test",
+          query: "export",
           include_pattern: "src/components/*.tsx",
         },
         mockContext,
       );
 
-      expect(result2.success).toBe(false);
-      expect(result2.error).toContain(
-        'Invalid include_pattern: "src/components/*.tsx" contains path separators',
-      );
+      expect(result2.success).toBe(true);
 
       const result3: ToolResult = await grepSearchTool.execute(
         {
-          query: "test",
+          query: "export",
           include_pattern: "*.ts,src/**/*.js,*.vue",
         },
         mockContext,
       );
 
-      expect(result3.success).toBe(false);
-      expect(result3.error).toContain(
-        'Invalid include_pattern: "src/**/*.js" contains path separators',
-      );
+      expect(result3.success).toBe(true);
     });
 
     it("should accept valid filename patterns", async () => {
@@ -430,7 +418,7 @@ This project uses diff libraries for comparing text.
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Search failed");
+      expect(result.error).toMatch(/ripgrep failed|Search failed/);
     });
   });
 
