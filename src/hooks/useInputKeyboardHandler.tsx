@@ -19,6 +19,7 @@ interface KeyboardHandlerProps {
   navigateHistory: (
     direction: "up" | "down",
     inputText: string,
+    activateBashMode?: () => void,
   ) => { newInput: string; newCursorPosition: number };
   handlePasteImage: () => Promise<boolean>;
   attachedImages: Array<{ id: number; path: string; mimeType: string }>;
@@ -423,6 +424,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         const { newInput, newCursorPosition } = navigateHistory(
           "up",
           inputText,
+          activateBashMode,
         );
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
@@ -438,6 +440,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         const { newInput, newCursorPosition } = navigateHistory(
           "down",
           inputText,
+          activateBashMode,
         );
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
