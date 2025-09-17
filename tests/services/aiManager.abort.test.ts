@@ -149,7 +149,7 @@ describe("AIManager - Abort Handling", () => {
     expect(hasParseError).toBe(false);
   });
 
-  it.skip("should show JSON parse error when not aborted but has malformed JSON", async () => {
+  it("should show JSON parse error when not aborted but has malformed JSON", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
     const { toolRegistry } = await import("@/tools");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
@@ -174,24 +174,60 @@ describe("AIManager - Abort Handling", () => {
 
     aiManager.setMessages([initialUserMessage]);
 
-    // Mock callAgent to return malformed JSON tool call
-    mockCallAgent.mockResolvedValue({
-      content: "",
-      tool_calls: [
-        {
-          id: "tool_123",
-          type: "function" as const,
-          function: {
-            name: "search_replace",
-            arguments: '{"file_path": "test.ts", "old_string": malformed}', // malformed JSON - missing quotes
+    // Use a call counter to prevent infinite recursion
+    let callCount = 0;
+
+    // Mock callAgent to return malformed JSON tool call on first call, then no tools
+    mockCallAgent.mockImplementation(async ({ onToolCallUpdate }) => {
+      callCount++;
+
+      if (callCount === 1) {
+        // First call: return malformed JSON tool call
+        if (onToolCallUpdate) {
+          onToolCallUpdate(
+            {
+              id: "tool_123",
+              function: {
+                name: "search_replace",
+                arguments:
+                  '{"file_path": "test.ts", "old_string": "malformed"}', // complete but will be malformed in return
+              },
+            } as FunctionToolCall,
+            true, // complete
+          );
+        }
+
+        return {
+          content: "",
+          tool_calls: [
+            {
+              id: "tool_123",
+              type: "function" as const,
+              function: {
+                name: "search_replace",
+                arguments: '{"file_path": "test.ts", "old_string": malformed}', // malformed JSON - missing quotes
+              },
+            },
+          ],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30,
           },
-        },
-      ],
-      usage: {
-        prompt_tokens: 10,
-        completion_tokens: 20,
-        total_tokens: 30,
-      },
+        };
+      } else {
+        // Subsequent calls: return no tool calls to stop recursion
+        return {
+          content:
+            "I see there was a JSON parsing error. Let me provide a proper response.",
+          tool_calls: [], // No more tool calls to prevent infinite recursion
+          usage: {
+            prompt_tokens: 5,
+            completion_tokens: 10,
+            total_tokens: 15,
+          },
+        };
+      }
     });
 
     // Execute the test
@@ -211,6 +247,9 @@ describe("AIManager - Abort Handling", () => {
 
     // Verify tool execute was not called due to JSON parse error
     expect(mockToolExecute).not.toHaveBeenCalled();
+
+    // Verify callAgent was called at least twice (initial + recursive after error)
+    expect(mockCallAgent).toHaveBeenCalledTimes(2);
   });
 
   it("should abort gracefully without executing tools when interrupted during streaming", async () => {
