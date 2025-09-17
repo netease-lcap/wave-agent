@@ -459,18 +459,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           const memoryText = content.substring(1).trim();
           if (!memoryText) return;
 
-          // 添加用户消息到UI
-          setMessages((prev) =>
-            addUserMessageToMessages(
-              prev,
-              content,
-              images?.map((img) => ({
-                path: img.path,
-                mimeType: img.mimeType,
-              })),
-            ),
-          );
-
+          // 在记忆模式下，不添加用户消息，只等待用户选择记忆类型后添加助手消息
           // 不自动保存，等待用户选择记忆类型
           return;
         }
@@ -480,22 +469,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           const command = content.substring(1).trim();
           if (!command) return;
 
-          // 添加用户消息到历史记录
+          // 添加用户消息到历史记录（但不显示在UI中）
           addToInputHistory(content);
 
-          // 添加用户消息到UI
-          setMessages((prev) =>
-            addUserMessageToMessages(
-              prev,
-              content,
-              images?.map((img) => ({
-                path: img.path,
-                mimeType: img.mimeType,
-              })),
-            ),
-          );
-
-          // 执行bash命令
+          // 在bash模式下，不添加用户消息到UI，直接执行命令
+          // 执行bash命令会自动添加助手消息
           await executeCommand(command);
           return;
         }
