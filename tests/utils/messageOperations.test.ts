@@ -9,8 +9,143 @@ import {
   addCommandOutputMessage,
   updateCommandOutputInMessage,
   completeCommandInMessage,
+  addUserMessageToMessages,
 } from "@/utils/messageOperations";
 import type { Message } from "@/types";
+
+describe("addUserMessageToMessages", () => {
+  it("should add user message with text content only", () => {
+    const initialMessages: Message[] = [];
+
+    const result = addUserMessageToMessages(initialMessages, "Hello world");
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      role: "user",
+      blocks: [{ type: "text", content: "Hello world" }],
+    });
+  });
+
+  it("should add user message with single image", () => {
+    const initialMessages: Message[] = [];
+    const images = [{ path: "/tmp/test-image.png", mimeType: "image/png" }];
+
+    const result = addUserMessageToMessages(
+      initialMessages,
+      "Check this out",
+      images,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      role: "user",
+      blocks: [
+        { type: "text", content: "Check this out" },
+        {
+          type: "image",
+          attributes: {
+            imageUrls: ["/tmp/test-image.png"],
+          },
+        },
+      ],
+    });
+  });
+
+  it("should add user message with multiple images", () => {
+    const initialMessages: Message[] = [];
+    const images = [
+      { path: "/tmp/image1.png", mimeType: "image/png" },
+      { path: "/tmp/image2.jpg", mimeType: "image/jpeg" },
+    ];
+
+    const result = addUserMessageToMessages(
+      initialMessages,
+      "Look at these",
+      images,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      role: "user",
+      blocks: [
+        { type: "text", content: "Look at these" },
+        {
+          type: "image",
+          attributes: {
+            imageUrls: ["/tmp/image1.png", "/tmp/image2.jpg"],
+          },
+        },
+      ],
+    });
+  });
+
+  it("should add user message with only images (no text)", () => {
+    const initialMessages: Message[] = [];
+    const images = [{ path: "/tmp/test-image.png", mimeType: "image/png" }];
+
+    const result = addUserMessageToMessages(initialMessages, "", images);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      role: "user",
+      blocks: [
+        { type: "text", content: "" },
+        {
+          type: "image",
+          attributes: {
+            imageUrls: ["/tmp/test-image.png"],
+          },
+        },
+      ],
+    });
+  });
+
+  it("should add to existing messages", () => {
+    const initialMessages: Message[] = [
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "Previous message" }],
+      },
+    ];
+    const images = [{ path: "/tmp/test.png", mimeType: "image/png" }];
+
+    const result = addUserMessageToMessages(
+      initialMessages,
+      "New message",
+      images,
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual(initialMessages[0]);
+    expect(result[1]).toEqual({
+      role: "user",
+      blocks: [
+        { type: "text", content: "New message" },
+        {
+          type: "image",
+          attributes: {
+            imageUrls: ["/tmp/test.png"],
+          },
+        },
+      ],
+    });
+  });
+
+  it("should not modify original messages array", () => {
+    const initialMessages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Original" }],
+      },
+    ];
+
+    const result = addUserMessageToMessages(initialMessages, "New message");
+
+    expect(initialMessages).toHaveLength(1);
+    expect(result).toHaveLength(2);
+    expect(result).not.toBe(initialMessages);
+  });
+});
 
 describe("convertImageToBase64", () => {
   let tempImagePath: string;

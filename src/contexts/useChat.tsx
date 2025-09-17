@@ -447,7 +447,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         isBashMode?: boolean;
       },
     ) => {
-      if (!content.trim()) return;
+      // 检查是否有内容可以发送（文本内容或图片附件）
+      const hasTextContent = content.trim();
+      const hasImageAttachments = images && images.length > 0;
+
+      if (!hasTextContent && !hasImageAttachments) return;
 
       try {
         // Handle memory mode
