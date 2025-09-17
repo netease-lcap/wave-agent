@@ -1,8 +1,8 @@
 import { writeFile, readFile } from "fs/promises";
-import { resolve } from "path";
 import { diffLines } from "diff";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/path";
 
 /**
  * 搜索替换工具插件
@@ -101,9 +101,7 @@ CRITICAL REQUIREMENTS FOR USING THIS TOOL:
     }
 
     try {
-      const resolvedPath = context?.workdir
-        ? resolve(context.workdir, filePath)
-        : resolve(filePath);
+      const resolvedPath = resolvePath(filePath, context?.workdir);
 
       // 读取文件内容
       const fileContent = await readFile(resolvedPath, "utf-8");

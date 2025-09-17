@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
-import { resolve } from "path";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/path";
 
 /**
  * 读取文件工具插件
@@ -76,9 +76,7 @@ export const readFileTool: ToolPlugin = {
       if (!hasStartLine && !hasEndLine) {
         // 如果没有提供任何行号参数，先读取文件以获取总行数来设置默认值
         try {
-          const filePath = context?.workdir
-            ? resolve(context.workdir, targetFile)
-            : resolve(targetFile);
+          const filePath = resolvePath(targetFile, context?.workdir);
           const fileContent = await readFile(filePath, "utf-8");
           const lines = fileContent.split("\n");
           const totalLines = lines.length;
@@ -100,9 +98,7 @@ export const readFileTool: ToolPlugin = {
       } else {
         // 至少提供了一个行号参数，需要读取文件来确定总行数
         try {
-          const filePath = context?.workdir
-            ? resolve(context.workdir, targetFile)
-            : resolve(targetFile);
+          const filePath = resolvePath(targetFile, context?.workdir);
           const fileContent = await readFile(filePath, "utf-8");
           const lines = fileContent.split("\n");
           const totalLines = lines.length;
@@ -132,9 +128,7 @@ export const readFileTool: ToolPlugin = {
     }
 
     try {
-      const filePath = context?.workdir
-        ? resolve(context.workdir, targetFile)
-        : resolve(targetFile);
+      const filePath = resolvePath(targetFile, context?.workdir);
       const fileContent = await readFile(filePath, "utf-8");
       const lines = fileContent.split("\n");
       const totalLines = lines.length;

@@ -1,7 +1,7 @@
 import { unlink } from "fs/promises";
-import { resolve } from "path";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
+import { resolvePath } from "../utils/path";
 
 /**
  * 删除文件工具插件
@@ -45,9 +45,7 @@ export const deleteFileTool: ToolPlugin = {
     }
 
     try {
-      const filePath = context?.workdir
-        ? resolve(context.workdir, targetFile)
-        : resolve(targetFile);
+      const filePath = resolvePath(targetFile, context?.workdir);
 
       // 删除文件
       await unlink(filePath);

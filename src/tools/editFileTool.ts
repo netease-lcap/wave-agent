@@ -1,10 +1,10 @@
 import { writeFile, readFile } from "fs/promises";
-import { resolve } from "path";
 import { diffLines } from "diff";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
 import { applyEdit } from "../services/aiService";
 import { removeCodeBlockWrappers } from "../utils/stringUtils";
+import { resolvePath } from "../utils/path";
 
 /**
  * 编辑文件工具插件
@@ -61,9 +61,7 @@ export const editFileTool: ToolPlugin = {
     }
 
     try {
-      const filePath = context?.workdir
-        ? resolve(context.workdir, targetFile)
-        : resolve(targetFile);
+      const filePath = resolvePath(targetFile, context?.workdir);
 
       // 检查文件是否存在
       let existingContent = "";
