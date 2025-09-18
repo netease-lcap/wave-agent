@@ -16,7 +16,6 @@ import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler";
 import { useImageManager } from "../hooks/useImageManager";
 import { useMemoryMode } from "../hooks/useMemoryMode";
 import { useBashMode } from "../hooks/useBashMode";
-import { useLoadingTimer } from "../hooks/useLoadingTimer";
 
 export const INPUT_PLACEHOLDER_TEXT =
   "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory)...";
@@ -27,10 +26,7 @@ export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
 );
 
 export const InputBox: React.FC = () => {
-  const { isLoading, isCommandRunning, totalTokens } = useChat();
-
-  // 计时器 hook
-  const { formattedTime } = useLoadingTimer(isLoading);
+  const { isLoading } = useChat();
 
   // 基础输入状态
   const {
@@ -167,11 +163,7 @@ export const InputBox: React.FC = () => {
   });
 
   const isPlaceholder = !inputText;
-  const placeholderText = isLoading
-    ? `AI is thinking... ${formattedTime} (Tokens: ${totalTokens.toLocaleString()})`
-    : isCommandRunning
-      ? "Command is running..."
-      : INPUT_PLACEHOLDER_TEXT;
+  const placeholderText = INPUT_PLACEHOLDER_TEXT;
 
   // 将文本拆分为光标前、光标位置、光标后三部分
   const displayText = isPlaceholder ? placeholderText : inputText;
@@ -180,8 +172,8 @@ export const InputBox: React.FC = () => {
     cursorPosition < displayText.length ? displayText[cursorPosition] : " ";
   const afterCursor = displayText.substring(cursorPosition + 1);
 
-  // Loading 或命令运行期间不显示光标
-  const shouldShowCursor = !isLoading && !isCommandRunning;
+  // 始终显示光标，允许用户在 loading 期间继续输入
+  const shouldShowCursor = true;
 
   return (
     <Box
@@ -261,7 +253,7 @@ export const InputBox: React.FC = () => {
             )}
           </Text>
           {isLoading && (
-            <Text color="red" bold>
+            <Text color="yellow" bold>
               {"[Press Esc to abort]"}
             </Text>
           )}

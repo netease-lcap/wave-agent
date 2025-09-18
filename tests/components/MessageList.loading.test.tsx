@@ -1,8 +1,24 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MessageList } from "@/components/MessageList";
 import type { Message } from "@/types";
+
+// Mock useChat hook with factory function
+vi.mock("@/contexts/useChat", () => ({
+  useChat: vi.fn(() => ({
+    isLoading: false,
+    isCommandRunning: false,
+    totalTokens: 1000,
+  })),
+}));
+
+// Mock useLoadingTimer hook
+vi.mock("@/hooks/useLoadingTimer", () => ({
+  useLoadingTimer: vi.fn(() => ({
+    formattedTime: "5s",
+  })),
+}));
 
 const createMessage = (
   role: "user" | "assistant",
@@ -13,62 +29,96 @@ const createMessage = (
 });
 
 describe("MessageList Loading State", () => {
-  it("should not display AI thinking message when loading", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should show loading message when AI is thinking", async () => {
+    const { useChat } = await import("@/contexts/useChat");
+    (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
+      isLoading: true,
+      isCommandRunning: false,
+      totalTokens: 1000,
+    });
+
     const messages = [
       createMessage("user", "Hello"),
       createMessage("assistant", "Hi there!"),
     ];
 
-    const { lastFrame } = render(
-      <MessageList messages={messages} isLoading={true} />,
-    );
+    const { lastFrame } = render(<MessageList messages={messages} />);
     const output = lastFrame();
 
-    // Should not show the loading message in MessageList
-    expect(output).not.toContain("AI is thinking...");
+    // Should show the loading message
+    expect(output).toContain("💭 AI is thinking... 5s (Tokens: 1,000)");
 
     // Should still show the actual messages
     expect(output).toContain("Hello");
     expect(output).toContain("Hi there!");
   });
 
-  it("should display messages normally when not loading", () => {
+  it("should show command running message when command is running", async () => {
+    const { useChat } = await import("@/contexts/useChat");
+    (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
+      isLoading: false,
+      isCommandRunning: true,
+      totalTokens: 1000,
+    });
+
     const messages = [
       createMessage("user", "Hello"),
       createMessage("assistant", "Hi there!"),
     ];
 
-    const { lastFrame } = render(
-      <MessageList messages={messages} isLoading={false} />,
-    );
+    const { lastFrame } = render(<MessageList messages={messages} />);
+    const output = lastFrame();
+
+    // Should show the command running message
+    expect(output).toContain("Command is running...");
+
+    // Should still show the actual messages
+    expect(output).toContain("Hello");
+    expect(output).toContain("Hi there!");
+  });
+
+  it("should display messages normally when not loading", async () => {
+    const { useChat } = await import("@/contexts/useChat");
+    (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
+      isLoading: false,
+      isCommandRunning: false,
+      totalTokens: 1000,
+    });
+
+    const messages = [
+      createMessage("user", "Hello"),
+      createMessage("assistant", "Hi there!"),
+    ];
+
+    const { lastFrame } = render(<MessageList messages={messages} />);
     const output = lastFrame();
 
     // Should not show any loading message
-    expect(output).not.toContain("AI is thinking...");
+    expect(output).not.toContain("💭 AI is thinking...");
+    expect(output).not.toContain("Command is running...");
 
     // Should show the actual messages
     expect(output).toContain("Hello");
     expect(output).toContain("Hi there!");
   });
 
-  it("should display welcome message when no messages and not loading", () => {
-    const { lastFrame } = render(
-      <MessageList messages={[]} isLoading={false} />,
-    );
+  it("should display welcome message only when no messages and not loading", async () => {
+    const { useChat } = await import("@/contexts/useChat");
+    (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
+      isLoading: false,
+      isCommandRunning: false,
+      totalTokens: 1000,
+    });
+
+    const { lastFrame } = render(<MessageList messages={[]} />);
     const output = lastFrame();
 
     expect(output).toContain("Welcome to LCAP Code Assistant!");
-    expect(output).not.toContain("AI is thinking...");
-  });
-
-  it("should display welcome message when no messages and loading", () => {
-    const { lastFrame } = render(
-      <MessageList messages={[]} isLoading={true} />,
-    );
-    const output = lastFrame();
-
-    // Should still show welcome message, not loading message
-    expect(output).toContain("Welcome to LCAP Code Assistant!");
-    expect(output).not.toContain("AI is thinking...");
+    expect(output).not.toContain("💭 AI is thinking...");
+    expect(output).not.toContain("Command is running...");
   });
 });

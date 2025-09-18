@@ -307,6 +307,11 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
   const handleNormalInput = useCallback(
     (input: string, key: Key) => {
       if (key.return) {
+        // 在 loading 或命令运行期间阻止提交
+        if (isLoading || isCommandRunning) {
+          return;
+        }
+
         if (inputText.trim()) {
           // 检查是否是记忆消息（在记忆模式下且以#开头）
           if (isMemoryMode && inputText.trim().startsWith("#")) {
@@ -649,6 +654,8 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       isMemoryMode,
       activateMemoryTypeSelector,
       activateBashMode,
+      isLoading,
+      isCommandRunning,
     ],
   );
 
@@ -662,7 +669,8 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       return;
     }
 
-    if (isLoading || isCommandRunning) return;
+    // 在 loading 或命令运行期间，除了 Esc 键以外，其他输入操作继续正常处理
+    // 但会在 handleNormalInput 中阻止回车提交
 
     if (
       showFileSelector ||

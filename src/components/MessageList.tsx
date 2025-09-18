@@ -7,6 +7,8 @@ import { ToolResultDisplay } from "./ToolResultDisplay";
 import { MemoryDisplay } from "./MemoryDisplay";
 import { usePagination } from "../hooks/usePagination";
 import { processMessageGroups } from "../utils/messageGrouping";
+import { useLoadingTimer } from "../hooks/useLoadingTimer";
+import { useChat } from "../contexts/useChat";
 
 export interface MessageListProps {
   messages: Message[];
@@ -14,6 +16,9 @@ export interface MessageListProps {
 }
 
 export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
+  const { isLoading, isCommandRunning, totalTokens } = useChat();
+  const { formattedTime } = useLoadingTimer(isLoading);
+
   // 预处理消息，添加分组信息（仅用于显示）
   const processedMessages = useMemo(
     () => processMessageGroups(messages),
@@ -134,6 +139,21 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
           );
         })}
       </Box>
+
+      {/* Loading 状态显示 */}
+      {(isLoading || isCommandRunning) && (
+        <Box marginTop={1}>
+          {isLoading && (
+            <Text color="yellow">
+              💭 AI is thinking... {formattedTime} (Tokens:{" "}
+              {totalTokens.toLocaleString()})
+            </Text>
+          )}
+          {isCommandRunning && (
+            <Text color="blue">⚙️ Command is running...</Text>
+          )}
+        </Box>
+      )}
 
       {/* 底部信息和快捷键提示 */}
       {messages.length > 0 && (

@@ -4,6 +4,22 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "@/components/MessageList";
 import type { Message } from "@/types";
 
+// Mock useChat hook
+vi.mock("@/contexts/useChat", () => ({
+  useChat: vi.fn(() => ({
+    isLoading: false,
+    isCommandRunning: false,
+    totalTokens: 1000,
+  })),
+}));
+
+// Mock useLoadingTimer hook
+vi.mock("@/hooks/useLoadingTimer", () => ({
+  useLoadingTimer: vi.fn(() => ({
+    formattedTime: "5s",
+  })),
+}));
+
 // Mock usePagination hook using vi.hoisted
 const mockUsePagination = vi.hoisted(() => vi.fn());
 
