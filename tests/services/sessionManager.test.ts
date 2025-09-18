@@ -737,4 +737,80 @@ describe("SessionManager", () => {
       });
     });
   });
+
+  describe("project-specific session handling", () => {
+    it("should get latest session only from the specified project workdir", async () => {
+      const projectA = "/path/to/project-a";
+      const projectB = "/path/to/project-b";
+
+      const sessionA: SessionMetadata = {
+        id: "sessionA",
+        timestamp: "2024-01-01T00:00:00.000Z",
+        workdir: projectA,
+        startedAt: "2024-01-01T00:00:00.000Z",
+        lastActiveAt: "2024-01-01T12:00:00.000Z", // More recent
+        totalTokens: 100,
+      };
+
+      const sessionB: SessionMetadata = {
+        id: "sessionB",
+        timestamp: "2024-01-01T00:00:00.000Z",
+        workdir: projectB,
+        startedAt: "2024-01-01T00:00:00.000Z",
+        lastActiveAt: "2024-01-01T10:00:00.000Z", // Less recent
+        totalTokens: 50,
+      };
+
+      const sessionAData: SessionData = {
+        ...mockSessionData,
+        id: "sessionA",
+        metadata: {
+          ...mockSessionData.metadata,
+          workdir: projectA,
+          lastActiveAt: "2024-01-01T12:00:00.000Z",
+        },
+      };
+
+      // Mock listSessions to return sessions filtered by workdir
+      vi.spyOn(SessionManager, "listSessions").mockImplementation(
+        async (workdir?: string) => {
+          if (workdir === projectA) {
+            return [sessionA]; // Only return sessions for project A
+          } else if (workdir === projectB) {
+            return [sessionB]; // Only return sessions for project B
+          } else {
+            return [sessionA, sessionB]; // Return all if no filter
+          }
+        },
+      );
+
+      vi.spyOn(SessionManager, "loadSession").mockResolvedValue(sessionAData);
+
+      // Test getting latest session for project A specifically
+      const result = await SessionManager.getLatestSession(projectA);
+
+      expect(SessionManager.listSessions).toHaveBeenCalledWith(projectA);
+      expect(SessionManager.loadSession).toHaveBeenCalledWith("sessionA");
+      expect(result).toEqual(sessionAData);
+    });
+
+    it("should return null when no sessions exist for the specified project", async () => {
+      const projectC = "/path/to/project-c";
+
+      // Mock listSessions to return empty array for project C
+      vi.spyOn(SessionManager, "listSessions").mockImplementation(
+        async (workdir?: string) => {
+          if (workdir === projectC) {
+            return []; // No sessions for project C
+          }
+          return []; // No sessions at all
+        },
+      );
+
+      const result = await SessionManager.getLatestSession(projectC);
+
+      expect(SessionManager.listSessions).toHaveBeenCalledWith(projectC);
+      expect(result).toBeNull();
+    });
+  });
 });

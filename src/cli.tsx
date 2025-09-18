@@ -26,9 +26,9 @@ export async function startCli(options: CliOptions): Promise<void> {
           process.exit(1);
         }
       } else if (continueLastSession) {
-        sessionToRestore = await SessionManager.getLatestSession();
+        sessionToRestore = await SessionManager.getLatestSession(workdir);
         if (!sessionToRestore) {
-          console.error("No previous session found.");
+          console.error(`No previous session found for workdir: ${workdir}`);
           process.exit(1);
         }
       }
