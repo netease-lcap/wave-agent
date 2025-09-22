@@ -25,7 +25,7 @@ describe("InputBox History Navigation", () => {
 
     // 输入一些文本
     stdin.write("current input");
-    await waitForText(renderResult, "current input");
+    await waitForText(renderResult.lastFrame, "current input");
 
     // 按上键，因为没有历史记录，应该没有变化
     stdin.write("\u001B[A"); // Up arrow
@@ -50,21 +50,21 @@ describe("InputBox History Navigation", () => {
 
     // 输入当前文本
     stdin.write("current draft");
-    await waitForText(renderResult, "current draft");
+    await waitForText(renderResult.lastFrame, "current draft");
 
     // 按上键，应该显示最新的历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "test message");
+    await waitForText(renderResult.lastFrame, "test message");
     expect(lastFrame()).not.toContain("current draft");
 
     // 再按上键，应该显示更早的历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "how are you");
+    await waitForText(renderResult.lastFrame, "how are you");
     expect(lastFrame()).not.toContain("test message");
 
     // 再按上键，应该显示最早的历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "hello world");
+    await waitForText(renderResult.lastFrame, "hello world");
     expect(lastFrame()).not.toContain("how are you");
 
     // 再按上键，应该停留在最早的记录（不应该再变化）
@@ -91,26 +91,26 @@ describe("InputBox History Navigation", () => {
 
     // 输入草稿文本
     stdin.write("my draft");
-    await waitForText(renderResult, "my draft");
+    await waitForText(renderResult.lastFrame, "my draft");
 
     // 向上导航到历史记录
     stdin.write("\u001B[A"); // Up arrow - 到最新历史
-    await waitForText(renderResult, "third message");
+    await waitForText(renderResult.lastFrame, "third message");
 
     stdin.write("\u001B[A"); // Up arrow - 到中间历史
-    await waitForText(renderResult, "second message");
+    await waitForText(renderResult.lastFrame, "second message");
 
     // 现在向下导航
     stdin.write("\u001B[B"); // Down arrow
-    await waitForText(renderResult, "third message");
+    await waitForText(renderResult.lastFrame, "third message");
 
     // 继续向下，应该回到草稿
     stdin.write("\u001B[B"); // Down arrow
-    await waitForText(renderResult, "my draft");
+    await waitForText(renderResult.lastFrame, "my draft");
 
     // 再向下，应该清空输入
     stdin.write("\u001B[B"); // Down arrow
-    await waitForText(renderResult, INPUT_PLACEHOLDER_TEXT_PREFIX);
+    await waitForText(renderResult.lastFrame, INPUT_PLACEHOLDER_TEXT_PREFIX);
     expect(lastFrame()).not.toContain("my draft");
 
     unmount();
@@ -127,23 +127,23 @@ describe("InputBox History Navigation", () => {
 
     // 输入一些文本作为草稿
     stdin.write("work in progress");
-    await waitForText(renderResult, "work in progress");
+    await waitForText(renderResult.lastFrame, "work in progress");
 
     // 导航到历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "another command");
+    await waitForText(renderResult.lastFrame, "another command");
 
     // 导航到更早的历史
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "previous command");
+    await waitForText(renderResult.lastFrame, "previous command");
 
     // 向下导航回到较新的历史
     stdin.write("\u001B[B"); // Down arrow
-    await waitForText(renderResult, "another command");
+    await waitForText(renderResult.lastFrame, "another command");
 
     // 继续向下，应该恢复到原来的草稿
     stdin.write("\u001B[B"); // Down arrow
-    await waitForText(renderResult, "work in progress");
+    await waitForText(renderResult.lastFrame, "work in progress");
 
     unmount();
   });

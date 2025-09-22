@@ -1,7 +1,3 @@
-import { render } from "ink-testing-library";
-
-type RenderResult = ReturnType<typeof render>;
-
 /**
  * 通用的等待函数，等待特定条件满足
  * @param condition 条件函数，返回true表示条件满足
@@ -44,12 +40,12 @@ export async function waitFor(
 
 /**
  * 等待渲染结果中包含特定文本
- * @param renderResult ink-testing-library 的渲染结果
+ * @param lastFrame lastFrame 函数，用于获取最新的渲染帧
  * @param expectedText 期望包含的文本
  * @param options 配置选项
  */
 export async function waitForText(
-  renderResult: RenderResult,
+  lastFrame: () => string | undefined,
   expectedText: string,
   options?: {
     timeout?: number;
@@ -61,7 +57,7 @@ export async function waitForText(
 
   return waitFor(
     () => {
-      const frame = renderResult.lastFrame?.();
+      const frame = lastFrame();
       return frame ? frame.includes(expectedText) : false;
     },
     {
@@ -75,12 +71,12 @@ export async function waitForText(
 
 /**
  * 等待渲染结果中不包含特定文本
- * @param renderResult ink-testing-library 的渲染结果
+ * @param lastFrame lastFrame 函数，用于获取最新的渲染帧
  * @param unexpectedText 不应该包含的文本
  * @param options 配置选项
  */
 export async function waitForTextToDisappear(
-  renderResult: RenderResult,
+  lastFrame: () => string | undefined,
   unexpectedText: string,
   options?: {
     timeout?: number;
@@ -92,7 +88,7 @@ export async function waitForTextToDisappear(
 
   return waitFor(
     () => {
-      const frame = renderResult.lastFrame?.();
+      const frame = lastFrame();
       return frame ? !frame.includes(unexpectedText) : true;
     },
     {

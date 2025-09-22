@@ -197,7 +197,9 @@ describe("InputBox Image Paste", () => {
     stdin.write("\r"); // Enter key
 
     // Wait for images to be cleared using waitForTextToDisappear
-    await waitForTextToDisappear(renderResult, "[Image #1]", { timeout: 2000 });
+    await waitForTextToDisappear(renderResult.lastFrame, "[Image #1]", {
+      timeout: 2000,
+    });
 
     // Verify no images are shown
     expect(renderResult.lastFrame()).not.toContain("[Image #");
@@ -229,7 +231,9 @@ describe("InputBox Image Paste", () => {
     stdin.write("\r"); // Enter key
 
     // Wait for images to be cleared - this should work now
-    await waitForTextToDisappear(renderResult, "[Image #1]", { timeout: 2000 });
+    await waitForTextToDisappear(renderResult.lastFrame, "[Image #1]", {
+      timeout: 2000,
+    });
 
     // Verify images are cleared after sending
     expect(renderResult.lastFrame()).not.toContain("[Image #");

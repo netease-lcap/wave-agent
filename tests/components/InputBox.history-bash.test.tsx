@@ -48,12 +48,12 @@ describe("InputBox History Navigation with Bash Commands", () => {
 
     // 按上键应该得到"normal command"（最新的）
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "normal command");
+    await waitForText(renderResult.lastFrame, "normal command");
     expect(lastFrame()).toContain("normal command");
 
     // 再按上键应该得到"!npm install"（更早的）
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "!npm install");
+    await waitForText(renderResult.lastFrame, "!npm install");
     expect(lastFrame()).toContain("!npm install");
   });
 
@@ -73,14 +73,14 @@ describe("InputBox History Navigation with Bash Commands", () => {
 
     // 按上键导航到最新的历史记录（多行命令）
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "!echo first");
+    await waitForText(renderResult.lastFrame, "!echo first");
     const output = lastFrame();
     expect(output).toContain("!echo first");
     expect(output).toContain("echo second");
 
     // 再按上键导航到更早的历史记录（单行命令）
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "!single line command");
+    await waitForText(renderResult.lastFrame, "!single line command");
     expect(lastFrame()).toContain("!single line command");
   });
 
@@ -96,12 +96,12 @@ describe("InputBox History Navigation with Bash Commands", () => {
 
     // 按上键导航到最新的历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "second message");
+    await waitForText(renderResult.lastFrame, "second message");
     expect(lastFrame()).toContain("second message");
 
     // 再按上键导航到更早的历史记录
     stdin.write("\u001B[A"); // Up arrow
-    await waitForText(renderResult, "first message");
+    await waitForText(renderResult.lastFrame, "first message");
     expect(lastFrame()).toContain("first message");
   });
 });
