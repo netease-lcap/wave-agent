@@ -156,6 +156,6 @@ describe("InputBox Bash Functionality", () => {
 
     // Send command
     stdin.write("\r"); // Enter key
-    await waitForText(lastFrame, "Type your message");
+    await waitForTextToDisappear(lastFrame, "!pwd");
   });
 });
