@@ -101,12 +101,16 @@ export const useFileSelector = () => {
     };
   }, [searchQuery, debouncedSearchFiles]);
 
-  const activateFileSelector = useCallback((position: number) => {
-    setShowFileSelector(true);
-    setAtPosition(position);
-    setSearchQuery("");
-    setFilteredFiles([]);
-  }, []);
+  const activateFileSelector = useCallback(
+    (position: number) => {
+      setShowFileSelector(true);
+      setAtPosition(position);
+      setSearchQuery("");
+      // 立即触发搜索以显示初始文件列表，而不是等待防抖
+      searchFiles("");
+    },
+    [searchFiles],
+  );
 
   const handleFileSelect = useCallback(
     (filePath: string, inputText: string, cursorPosition: number) => {
