@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox } from "@/components/InputBox";
 import { resetMocks } from "../helpers/contextMock";
+import { waitForText } from "tests/helpers/waitHelpers";
 
 // 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
 await vi.hoisted(async () => {
@@ -23,7 +24,7 @@ describe("InputBox Memory Functionality", () => {
 
     // Type # - should not show memory mode UI
     stdin.write("#");
-    await delay(10);
+    await waitForText(lastFrame, "#");
 
     const output = lastFrame();
     // Should not show memory mode UI anymore
@@ -44,9 +45,11 @@ describe("InputBox Memory Functionality", () => {
       await delay(5);
     }
 
+    await waitForText(lastFrame, "# remember this");
+
     // Send message
     stdin.write("\r"); // Enter key
-    await delay(100);
+    await waitForText(lastFrame, "Save Memory:");
 
     // Should trigger memory type selector, not send normal message
     expect(mockFunctions.sendMessage).not.toHaveBeenCalled();
@@ -63,16 +66,16 @@ describe("InputBox Memory Functionality", () => {
     const { getMocks } = await import("../helpers/contextMock");
     const { mockFunctions } = getMocks();
 
-    const { stdin } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // 一口气输入包含换行的#文本（模拟粘贴操作）
     const pastedText = "#这是多行\n记忆内容";
     stdin.write(pastedText);
-    await delay(50); // 等待粘贴debounce处理完成
+    await waitForText(lastFrame, "#这是多行");
 
     // 发送消息
     stdin.write("\r"); // Enter key
-    await delay(100);
+    await waitForText(lastFrame, "Type your message");
 
     // 验证 sendMessage 被调用，因为包含换行符
     expect(mockFunctions.sendMessage).toHaveBeenCalled();
@@ -101,9 +104,11 @@ describe("InputBox Memory Functionality", () => {
       await delay(5);
     }
 
+    await waitForText(lastFrame, "# important note");
+
     // 发送消息
     stdin.write("\r"); // Enter key
-    await delay(100);
+    await waitForText(lastFrame, "Save Memory:");
 
     // 应该触发记忆类型选择器，而不是发送消息
     expect(mockFunctions.sendMessage).not.toHaveBeenCalled();
@@ -129,9 +134,11 @@ describe("InputBox Memory Functionality", () => {
       await delay(5);
     }
 
+    await waitForText(lastFrame, "# test memory");
+
     // Send message to trigger memory type selector
     stdin.write("\r"); // Enter key
-    await delay(10);
+    await waitForText(lastFrame, "Save Memory:");
 
     // Verify memory type selector is shown
     let output = lastFrame();
@@ -140,7 +147,7 @@ describe("InputBox Memory Functionality", () => {
 
     // Select project memory (press Enter, defaults to first option)
     stdin.write("\r");
-    await delay(100);
+    await waitForText(lastFrame, "Type your message");
 
     // Verify saveMemory was called
     expect(mockFunctions.saveMemory).toHaveBeenCalledWith(
@@ -166,15 +173,17 @@ describe("InputBox Memory Functionality", () => {
       await delay(5);
     }
 
+    await waitForText(lastFrame, "# another memory");
+
     // Send message to trigger memory type selector
     stdin.write("\r"); // Enter key
-    await delay(10);
+    await waitForText(lastFrame, "Save Memory:");
 
     // Select user memory (press down arrow, then Enter)
     stdin.write("\u001B[B"); // Down arrow to select user memory
     await delay(10);
     stdin.write("\r"); // Enter to select
-    await delay(100);
+    await waitForText(lastFrame, "Type your message");
 
     // Verify saveMemory was called
     expect(mockFunctions.saveMemory).toHaveBeenCalledWith(
