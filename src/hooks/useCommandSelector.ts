@@ -39,25 +39,17 @@ export const useCommandSelector = () => {
     [slashPosition, clearMessages],
   );
 
-  const handleCommandGenerated = useCallback(
-    (generatedCommand: string, activateBashMode?: () => void) => {
-      // 将生成的命令放入输入框
-      setShowCommandSelector(false);
-      setSlashPosition(-1);
-      setCommandSearchQuery("");
+  const handleCommandGenerated = useCallback((generatedCommand: string) => {
+    // 将生成的命令放入输入框
+    setShowCommandSelector(false);
+    setSlashPosition(-1);
+    setCommandSearchQuery("");
 
-      // 如果是 git commit 命令（以 ! 开头的 bash 命令），激活 bash mode
-      if (generatedCommand.startsWith("!") && activateBashMode) {
-        activateBashMode();
-      }
-
-      return {
-        newInput: generatedCommand,
-        newCursorPosition: generatedCommand.length,
-      };
-    },
-    [],
-  );
+    return {
+      newInput: generatedCommand,
+      newCursorPosition: generatedCommand.length,
+    };
+  }, []);
 
   const handleCancelCommandSelect = useCallback(() => {
     setShowCommandSelector(false);

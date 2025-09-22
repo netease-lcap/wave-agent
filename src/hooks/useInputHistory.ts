@@ -13,18 +13,13 @@ export const useInputHistory = () => {
     setCurrentDraftText("");
   }, []);
 
-  // 处理历史导航，支持叹号开头单行消息自动进入bash模式
+  // 处理历史导航
   const navigateHistory = useCallback(
-    (
-      direction: "up" | "down",
-      inputText: string,
-      activateBashMode?: () => void,
-    ) => {
+    (direction: "up" | "down", inputText: string) => {
       if (userInputHistory.length === 0)
         return { newInput: inputText, newCursorPosition: inputText.length };
 
       let newInput: string;
-      let shouldCheckBashMode = false;
 
       if (direction === "up") {
         // 向上导航到更早的历史记录
@@ -34,12 +29,10 @@ export const useInputHistory = () => {
           const newIndex = userInputHistory.length - 1;
           setHistoryIndex(newIndex);
           newInput = userInputHistory[newIndex];
-          shouldCheckBashMode = true;
         } else if (historyIndex > 0) {
           const newIndex = historyIndex - 1;
           setHistoryIndex(newIndex);
           newInput = userInputHistory[newIndex];
-          shouldCheckBashMode = true;
         } else {
           newInput = inputText;
         }
@@ -50,7 +43,6 @@ export const useInputHistory = () => {
             const newIndex = historyIndex + 1;
             setHistoryIndex(newIndex);
             newInput = userInputHistory[newIndex];
-            shouldCheckBashMode = true;
           } else {
             // 回到草稿文本
             setHistoryIndex(-1);
@@ -65,16 +57,6 @@ export const useInputHistory = () => {
             newInput = inputText;
           }
         }
-      }
-
-      // 检查是否需要激活bash模式：以叹号开头且只有一行
-      if (
-        shouldCheckBashMode &&
-        activateBashMode &&
-        newInput.startsWith("!") &&
-        !newInput.includes("\n")
-      ) {
-        activateBashMode();
       }
 
       return { newInput, newCursorPosition: newInput.length };

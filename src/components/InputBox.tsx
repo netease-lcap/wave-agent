@@ -14,8 +14,6 @@ import { useInputHistory } from "../hooks/useInputHistory";
 import { useTextInsertion } from "../hooks/useTextInsertion";
 import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler";
 import { useImageManager } from "../hooks/useImageManager";
-import { useMemoryMode } from "../hooks/useMemoryMode";
-import { useBashMode } from "../hooks/useBashMode";
 
 export const INPUT_PLACEHOLDER_TEXT =
   "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory)...";
@@ -100,12 +98,6 @@ export const InputBox: React.FC = () => {
   // 文本插入功能
   useTextInsertion(setInputText, setCursorPosition, resetHistoryNavigation);
 
-  // 记忆模式功能
-  const { isMemoryMode, checkMemoryMode } = useMemoryMode();
-
-  // Bash模式功能
-  const { isBashMode, activateBashMode, checkBashMode } = useBashMode();
-
   // 键盘处理
   const {
     handleFileSelect,
@@ -152,11 +144,6 @@ export const InputBox: React.FC = () => {
     updateBashHistorySearchQuery,
     checkForExclamationDeletion,
     exclamationPosition,
-    checkMemoryMode,
-    isMemoryMode,
-    checkBashMode,
-    isBashMode,
-    activateBashMode,
     showMemoryTypeSelector,
     activateMemoryTypeSelector,
     handleMemoryTypeSelect: handleMemoryTypeSelectorSelect,
@@ -176,34 +163,8 @@ export const InputBox: React.FC = () => {
   const shouldShowCursor = true;
 
   return (
-    <Box
-      borderStyle="single"
-      borderColor={isMemoryMode ? "blue" : isBashMode ? "yellow" : "gray"}
-      paddingX={1}
-    >
+    <Box borderStyle="single" borderColor="gray" paddingX={1}>
       <Box flexDirection="column" width={"100%"}>
-        {/* 记忆模式提示 */}
-        {isMemoryMode && (
-          <Box marginBottom={1} flexDirection="column">
-            <Text color="blue" bold>
-              📝 Memory Mode
-            </Text>
-            <Text color="gray" dimColor>
-              Add memory content (remove # to exit)
-            </Text>
-          </Box>
-        )}
-        {/* Bash模式提示 */}
-        {isBashMode && (
-          <Box marginBottom={1} flexDirection="column">
-            <Text color="yellow" bold>
-              💻 Bash Mode
-            </Text>
-            <Text color="gray" dimColor>
-              Execute bash command (remove ! to exit)
-            </Text>
-          </Box>
-        )}
         {showFileSelector && (
           <FileSelector
             files={filteredFiles}

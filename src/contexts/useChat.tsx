@@ -260,8 +260,7 @@ export interface ChatContextType {
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
     options?: {
-      isMemoryMode?: boolean;
-      isBashMode?: boolean;
+      isBashCommand?: boolean;
     },
   ) => Promise<void>;
   sendAIMessage: (recursionDepth?: number) => Promise<void>;
@@ -422,8 +421,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       content: string,
       images?: Array<{ path: string; mimeType: string }>,
       options?: {
-        isMemoryMode?: boolean;
-        isBashMode?: boolean;
+        isBashCommand?: boolean;
       },
     ) => {
       // 检查是否有内容可以发送（文本内容或图片附件）
@@ -433,8 +431,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       if (!hasTextContent && !hasImageAttachments) return;
 
       try {
-        // Handle memory mode
-        if (options?.isMemoryMode && content.startsWith("#")) {
+        // Handle memory mode - 检查是否是记忆消息（以#开头且只有一行）
+        if (content.startsWith("#") && !content.includes("\n")) {
           const memoryText = content.substring(1).trim();
           if (!memoryText) return;
 
@@ -443,8 +441,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           return;
         }
 
-        // Handle bash mode
-        if (options?.isBashMode && content.startsWith("!")) {
+        // Handle bash mode - 检查是否是bash命令（以!开头且只有一行）
+        if (
+          options?.isBashCommand ||
+          (content.startsWith("!") && !content.includes("\n"))
+        ) {
           const command = content.substring(1).trim();
           if (!command) return;
 

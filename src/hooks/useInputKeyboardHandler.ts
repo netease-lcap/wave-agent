@@ -71,15 +71,6 @@ interface KeyboardHandlerProps {
   checkForExclamationDeletion: (cursorPosition: number) => boolean;
   exclamationPosition: number;
 
-  // Memory mode
-  checkMemoryMode: (inputText: string) => boolean;
-  isMemoryMode: boolean;
-
-  // Bash mode
-  checkBashMode: (inputText: string) => boolean;
-  isBashMode: boolean;
-  activateBashMode: () => void;
-
   // Memory type selector
   showMemoryTypeSelector: boolean;
   activateMemoryTypeSelector: (message: string) => void;
@@ -126,11 +117,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     updateBashHistorySearchQuery,
     checkForExclamationDeletion,
     exclamationPosition,
-    checkMemoryMode,
-    isMemoryMode,
-    checkBashMode,
-    isBashMode,
-    activateBashMode,
     showMemoryTypeSelector,
     activateMemoryTypeSelector,
     handleMemoryTypeSelect,
@@ -199,10 +185,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           setInputText(newInput);
           setCursorPosition(cursorPosition - 1);
 
-          // 检查模式状态（删除字符后）
-          checkMemoryMode(newInput);
-          checkBashMode(newInput);
-
           // 更新搜索查询
           if (atPosition >= 0) {
             const queryStart = atPosition + 1;
@@ -239,6 +221,12 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         return;
       }
 
+      // 箭头键应该被选择器组件处理，不需要在这里过滤
+      if (key.upArrow || key.downArrow) {
+        // 让选择器组件处理箭头键导航
+        return;
+      }
+
       if (
         input &&
         !key.ctrl &&
@@ -249,9 +237,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         !key.leftArrow &&
         !key.rightArrow &&
         !("home" in key && key.home) &&
-        !("end" in key && key.end) &&
-        !key.upArrow &&
-        !key.downArrow
+        !("end" in key && key.end)
       ) {
         // 处理字符输入用于搜索
         const char = input;
@@ -261,10 +247,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           inputText.substring(cursorPosition);
         setInputText(newInput);
         setCursorPosition(cursorPosition + input.length);
-
-        // 检查模式状态（在选择器模式下也需要更新）
-        checkMemoryMode(newInput);
-        checkBashMode(newInput);
 
         // 更新搜索查询
         if (atPosition >= 0) {
@@ -299,8 +281,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       updateSearchQuery,
       updateCommandSearchQuery,
       updateBashHistorySearchQuery,
-      checkMemoryMode,
-      checkBashMode,
     ],
   );
 
@@ -313,10 +293,11 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         }
 
         if (inputText.trim()) {
-          // 检查是否是记忆消息（在记忆模式下且以#开头）
-          if (isMemoryMode && inputText.trim().startsWith("#")) {
+          // 检查是否是记忆消息（以#开头且只有一行）
+          const trimmedInput = inputText.trim();
+          if (trimmedInput.startsWith("#") && !trimmedInput.includes("\n")) {
             // 激活记忆类型选择器
-            activateMemoryTypeSelector(inputText.trim());
+            activateMemoryTypeSelector(trimmedInput);
             return;
           }
 
@@ -337,21 +318,21 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           // 移除图片占位符，展开长文本占位符，发送消息
           let cleanContent = inputText.replace(imageRegex, "").trim();
           cleanContent = expandLongTextPlaceholders(cleanContent);
+
+          // 检查是否是 bash 命令（以!开头且只有一行）
+          const isBashCommand =
+            cleanContent.startsWith("!") && !cleanContent.includes("\n");
+
           sendMessage(
             cleanContent,
             referencedImages.length > 0 ? referencedImages : undefined,
             {
-              isMemoryMode,
-              isBashMode,
+              isBashCommand,
             },
           );
           clearInput();
           clearImages();
           resetHistoryNavigation();
-
-          // 发送消息后重置模式状态
-          checkMemoryMode("");
-          checkBashMode("");
 
           // 清理长文本映射
           longTextMapRef.current.clear();
@@ -374,13 +355,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         if (cursorPosition > 0) {
           deleteCharAtCursor();
           resetHistoryNavigation();
-
-          // 检查记忆模式状态（删除字符后）
-          const newText =
-            inputText.substring(0, cursorPosition - 1) +
-            inputText.substring(cursorPosition);
-          checkMemoryMode(newText);
-          checkBashMode(newText);
 
           // Check if we deleted any special characters
           const newCursorPosition = cursorPosition - 1;
@@ -429,7 +403,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         const { newInput, newCursorPosition } = navigateHistory(
           "up",
           inputText,
-          activateBashMode,
         );
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
@@ -445,7 +418,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         const { newInput, newCursorPosition } = navigateHistory(
           "down",
           inputText,
-          activateBashMode,
         );
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
@@ -565,20 +537,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           insertTextAtCursor(char);
           resetHistoryNavigation();
 
-          // 检查记忆模式状态
-          checkMemoryMode(
-            inputText.substring(0, cursorPosition) +
-              char +
-              inputText.substring(cursorPosition),
-          );
-
-          // 检查Bash模式状态
-          checkBashMode(
-            inputText.substring(0, cursorPosition) +
-              char +
-              inputText.substring(cursorPosition),
-          );
-
           // 检查特殊字符并设置相应的选择器
           if (char === "@") {
             activateFileSelector(cursorPosition);
@@ -588,8 +546,8 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
             // ! 必须在第一个字符才能唤起 bash selector
             activateBashHistorySelector(cursorPosition);
           } else if (char === "#" && cursorPosition === 0) {
-            // # 在开头位置启用记忆模式
-            logger.debug("[InputBox] 📝 记忆模式已激活，输入以 # 开头");
+            // # 在开头位置，将被发送时自动检测为记忆消息
+            logger.debug("[InputBox] 📝 记忆消息检测，输入以 # 开头");
           } else if (showFileSelector && atPosition >= 0) {
             // 更新搜索查询
             const queryStart = atPosition + 1;
@@ -648,12 +606,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       attachedImages,
       clearImages,
       handlePasteImage,
-      checkMemoryMode,
-      checkBashMode,
-      isBashMode,
-      isMemoryMode,
       activateMemoryTypeSelector,
-      activateBashMode,
       isLoading,
       isCommandRunning,
     ],
@@ -729,19 +682,12 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
 
     handleCommandGenerated: useCallback(
       (generatedCommand: string) => {
-        const { newInput, newCursorPosition } = handleCommandGenerated(
-          generatedCommand,
-          activateBashMode,
-        );
+        const { newInput, newCursorPosition } =
+          handleCommandGenerated(generatedCommand);
         setInputText(newInput);
         setCursorPosition(newCursorPosition);
       },
-      [
-        handleCommandGenerated,
-        setInputText,
-        setCursorPosition,
-        activateBashMode,
-      ],
+      [handleCommandGenerated, setInputText, setCursorPosition],
     ),
 
     handleBashHistorySelect: useCallback(
@@ -773,18 +719,8 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         handleMemoryTypeSelect(type);
         // 清空输入框
         clearInput();
-        // 显式更新模式状态，确保所有模式都被正确退出
-        checkMemoryMode("");
-        checkBashMode("");
       },
-      [
-        inputText,
-        saveMemory,
-        handleMemoryTypeSelect,
-        clearInput,
-        checkMemoryMode,
-        checkBashMode,
-      ],
+      [inputText, saveMemory, handleMemoryTypeSelect, clearInput],
     ),
   };
 };

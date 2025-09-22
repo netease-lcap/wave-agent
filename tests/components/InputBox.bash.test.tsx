@@ -12,154 +12,145 @@ await vi.hoisted(async () => {
 // 延迟函数
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-describe("InputBox Bash Mode", () => {
+describe("InputBox Bash Functionality", () => {
   // 在每个测试前重置 mock 状态
   beforeEach(() => {
     resetMocks();
   });
 
-  it("should show bash mode when input starts with !", async () => {
+  it("should trigger bash history selector when input starts with !", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // Type ! to enter bash mode
+    // Type ! to trigger bash history selector
     stdin.write("!");
     await delay(10);
 
     const output = lastFrame();
-    expect(output).toContain("💻 Bash Mode");
-    expect(output).toContain("Execute bash command (remove ! to exit)");
+    // Should show bash history selector, not bash mode UI
+    expect(output).toContain("No bash history found");
     expect(output).toContain("!");
   });
 
-  it("should not show bash mode for normal input", async () => {
+  it("should not trigger bash history selector for normal input", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // Type normal text
-    stdin.write("hello");
-    await delay(10);
+    // Type normal text character by character
+    for (const char of "hello") {
+      stdin.write(char);
+      await delay(5);
+    }
 
     const output = lastFrame();
-    expect(output).not.toContain("💻 Bash Mode");
-    expect(output).not.toContain("Execute bash command (remove ! to exit)");
+    expect(output).not.toContain("No bash history found");
+    expect(output).toContain("hello");
   });
 
-  it("should exit bash mode when ! is removed", async () => {
+  it("should close bash history selector when ! is removed", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // Type ! to enter bash mode
+    // Type ! to trigger bash history selector
     stdin.write("!");
     await delay(10);
     let output = lastFrame();
-    expect(output).toContain("💻 Bash Mode");
+    expect(output).toContain("No bash history found");
 
-    // Remove ! to exit bash mode
+    // Remove ! to close bash history selector
     stdin.write("\u0008"); // backspace
     await delay(10);
     output = lastFrame();
-    expect(output).not.toContain("💻 Bash Mode");
+    expect(output).not.toContain("No bash history found");
   });
 
-  it("should stay in bash mode when additional text is added after !", async () => {
+  it("should keep bash history selector active when additional text is added after !", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // Type ! to enter bash mode first
+    // Type ! to trigger bash history selector first
     stdin.write("!");
     await delay(10);
 
-    // Then type additional text character by character - should stay in bash mode since it still starts with !
-    const text = "ls -la";
-    for (const char of text) {
+    // Then type additional text character by character
+    for (const char of "ls") {
       stdin.write(char);
+      await delay(5);
     }
-    await delay(10);
 
     const output = lastFrame();
-    expect(output).toContain("💻 Bash Mode");
-    expect(output).toContain("Execute bash command (remove ! to exit)");
-    // 注意：当bash历史选择器激活时，它会显示搜索结果，而不是完整的输入文本
-    // 这里我们主要验证bash模式仍然激活
+    // Should show bash history selector with search query
+    expect(output).toContain('No bash history found for "ls"');
+    expect(output).toContain("Press Enter to execute: ls");
   });
 
-  it("should NOT trigger bash mode when pasting text starting with ! in one go", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
-
-    // 一口气输入以!开头的文本（模拟粘贴操作）
-    const pastedText = "!粘贴的命令";
-    stdin.write(pastedText);
-    await delay(50); // 等待粘贴debounce处理完成
-
-    const output = lastFrame();
-
-    // 应该不会显示bash模式UI
-    expect(output).not.toContain("💻 Bash Mode");
-    expect(output).not.toContain("Execute bash command (remove ! to exit)");
-
-    // 但是文本内容应该正常显示
-    expect(output).toContain("!粘贴的命令");
-  });
-
-  it("should send pasted !text as normal message, not trigger bash execution", async () => {
+  it("should send pasted !text as bash command when it's single line", async () => {
     const { getMocks } = await import("../helpers/contextMock");
     const { mockFunctions } = getMocks();
 
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin } = render(<InputBox />);
 
-    // 一口气输入以!开头的文本（模拟粘贴操作）
-    const pastedText = "!这是粘贴的命令";
+    // 一口气输入以!开头的单行文本（模拟粘贴操作）
+    const pastedText = "!pwd";
     stdin.write(pastedText);
     await delay(50); // 等待粘贴debounce处理完成
-
-    // 验证不在bash模式下且内容正确显示
-    const output = lastFrame();
-    expect(output).not.toContain("💻 Bash Mode");
-    expect(output).toContain("!这是粘贴的命令");
 
     // 发送消息
     stdin.write("\r"); // Enter key
     await delay(100);
 
-    // 验证 sendMessage 被调用且 isBashMode 为 false
+    // 验证 sendMessage 被调用且检测为 bash 命令
     expect(mockFunctions.sendMessage).toHaveBeenCalled();
 
     const sendMessageCalls = mockFunctions.sendMessage.mock.calls;
     expect(sendMessageCalls).toHaveLength(1);
 
     const [content, images, options] = sendMessageCalls[0];
-    expect(content).toBe("!这是粘贴的命令");
+    expect(content).toBe("!pwd");
     expect(images).toBeUndefined();
     expect(options).toEqual({
-      isMemoryMode: false,
-      isBashMode: false,
+      isBashCommand: true,
     });
-
-    // 验证 executeCommand 没有被调用（因为不在bash模式下）
-    expect(mockFunctions.executeCommand).not.toHaveBeenCalled();
   });
 
-  it("should trigger bash execution when typing ! and adding text character by character", async () => {
+  it("should NOT send pasted multiline !text as bash command", async () => {
     const { getMocks } = await import("../helpers/contextMock");
     const { mockFunctions } = getMocks();
 
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin } = render(<InputBox />);
 
-    // 逐字符输入 ! 然后添加命令，这会触发bash模式
+    // 一口气输入以!开头的多行文本（模拟粘贴操作）
+    const pastedText = "!这是多行\n命令";
+    stdin.write(pastedText);
+    await delay(50); // 等待粘贴debounce处理完成
+
+    // 发送消息
+    stdin.write("\r"); // Enter key
+    await delay(100);
+
+    // 验证 sendMessage 被调用但不会检测为 bash 命令
+    expect(mockFunctions.sendMessage).toHaveBeenCalled();
+
+    const sendMessageCalls = mockFunctions.sendMessage.mock.calls;
+    expect(sendMessageCalls).toHaveLength(1);
+
+    const [content, images, options] = sendMessageCalls[0];
+    expect(content).toBe("!这是多行\n命令");
+    expect(images).toBeUndefined();
+    expect(options).toEqual({
+      isBashCommand: false,
+    });
+  });
+
+  it("should execute bash command when typing ! and single line text", async () => {
+    const { getMocks } = await import("../helpers/contextMock");
+    const { mockFunctions } = getMocks();
+
+    const { stdin } = render(<InputBox />);
+
+    // 逐字符输入 ! 然后添加命令
     stdin.write("!");
     await delay(10);
-
-    // 验证进入bash模式
-    let output = lastFrame();
-    expect(output).toContain("💻 Bash Mode");
-
-    // 继续逐字符添加命令
     stdin.write("l");
     await delay(10);
-
     stdin.write("s");
     await delay(10);
-
-    // 验证仍在bash模式下
-    output = lastFrame();
-    expect(output).toContain("💻 Bash Mode");
 
     // 按Escape退出选择器，然后发送命令
     stdin.write("\u001b"); // Escape key
@@ -169,7 +160,7 @@ describe("InputBox Bash Mode", () => {
     stdin.write("\r"); // Enter key
     await delay(100);
 
-    // 在bash模式下，sendMessage 应该被调用且 isBashMode 为 true
+    // 应该被检测为 bash 命令
     expect(mockFunctions.sendMessage).toHaveBeenCalled();
 
     const sendMessageCalls = mockFunctions.sendMessage.mock.calls;
@@ -179,63 +170,35 @@ describe("InputBox Bash Mode", () => {
     expect(content).toBe("!ls");
     expect(images).toBeUndefined();
     expect(options).toEqual({
-      isMemoryMode: false,
-      isBashMode: true,
+      isBashCommand: true,
     });
   });
 
-  it("should change border color in bash mode", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
-
-    // Type ! to enter bash mode
-    stdin.write("!");
-    await delay(10);
-
-    const output = lastFrame();
-    expect(output).toContain("💻 Bash Mode");
-    expect(output).toContain("Execute bash command (remove ! to exit)");
-  });
-
-  it("should exit bash mode after sending a message", async () => {
+  it("should clear input after sending bash command", async () => {
     const { getMocks } = await import("../helpers/contextMock");
     const { mockFunctions } = getMocks();
 
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 进入bash模式
-    stdin.write("!");
-    await delay(10);
+    // Type bash command character by character
+    for (const char of "!pwd") {
+      stdin.write(char);
+      await delay(5);
+    }
 
-    let output = lastFrame();
-    expect(output).toContain("💻 Bash Mode");
-
-    // 添加命令
-    stdin.write("l");
-    stdin.write("s");
-    await delay(10);
-
-    // 按Escape退出选择器
+    // Press Escape to exit selector
     stdin.write("\u001b"); // Escape key
     await delay(10);
 
-    // 验证仍在bash模式
-    output = lastFrame();
-    expect(output).toContain("💻 Bash Mode");
-
-    // 发送消息
+    // Send command
     stdin.write("\r"); // Enter key
-    await delay(100);
+    await delay(200); // Increase delay for clearing
 
-    // 验证消息已发送
+    // Verify message was sent
     expect(mockFunctions.sendMessage).toHaveBeenCalled();
 
-    // 验证bash模式已退出
-    output = lastFrame();
-    expect(output).not.toContain("💻 Bash Mode");
-    expect(output).not.toContain("Execute bash command (remove ! to exit)");
-
-    // 验证输入框已清空且显示普通占位符
+    // Verify input box is cleared and shows normal placeholder
+    const output = lastFrame();
     expect(output).toContain("Type your message");
-    expect(output).toContain("! for bash history");
   });
 });
