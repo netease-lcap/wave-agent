@@ -79,8 +79,8 @@ describe("InputBox Image Paste", () => {
     // Simulate Ctrl+V
     stdin.write("\u0016"); // Ctrl+V
 
-    // Wait for the async operation
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Wait for the image placeholder to appear
+    await waitForText(lastFrame, "[Image #1]");
 
     const output = lastFrame();
     expect(output).toContain("[Image #1]");
@@ -103,8 +103,8 @@ describe("InputBox Image Paste", () => {
     // Simulate Ctrl+V
     stdin.write("\u0016"); // Ctrl+V
 
-    // Wait for the async operation
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Wait for the image placeholder to appear
+    await waitForText(lastFrame, "[Image #1]");
 
     const output = lastFrame();
     // Should show placeholder in input text, but not attachment list
@@ -134,10 +134,10 @@ describe("InputBox Image Paste", () => {
 
     // Simulate two Ctrl+V operations
     stdin.write("\u0016"); // First Ctrl+V
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForText(lastFrame, "[Image #1]");
 
     stdin.write("\u0016"); // Second Ctrl+V
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForText(lastFrame, "[Image #1][Image #2]");
 
     const output = lastFrame();
     // Should show both placeholders in input text, but no attachment list
@@ -161,8 +161,8 @@ describe("InputBox Image Paste", () => {
     // Simulate Ctrl+V
     stdin.write("\u0016"); // Ctrl+V
 
-    // Wait for the async operation
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    // Wait for the input to stabilize - ensure we still have the initial placeholder
+    await waitForText(lastFrame, "Type your message");
 
     const output = lastFrame();
     // Should not contain image placeholder when paste fails
@@ -187,7 +187,7 @@ describe("InputBox Image Paste", () => {
 
     // Paste image
     stdin.write("\u0016"); // Ctrl+V
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitForText(renderResult.lastFrame, "[Image #1]");
 
     // Add some text (using individual characters to avoid triggering paste debounce)
     stdin.write("H");
