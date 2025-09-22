@@ -136,17 +136,9 @@ describe("InputBox Bash Functionality", () => {
 
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 逐字符输入 ! 然后添加命令
-    stdin.write("!");
-    await delay(10);
-    stdin.write("l");
-    await delay(10);
-    stdin.write("s");
-    await delay(10);
+    stdin.write("!ls");
 
-    // 按Escape退出选择器，然后发送命令
-    stdin.write("\u001b"); // Escape key
-    await delay(10);
+    await waitForText(lastFrame, "!ls");
 
     // 发送命令
     stdin.write("\r"); // Enter key
@@ -169,15 +161,9 @@ describe("InputBox Bash Functionality", () => {
   it("should clear input after sending bash command", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // Type bash command character by character
-    for (const char of "!pwd") {
-      stdin.write(char);
-      await delay(5);
-    }
+    stdin.write("!pwd");
 
-    // Press Escape to exit selector
-    stdin.write("\u001b"); // Escape key
-    await delay(10);
+    await waitForText(lastFrame, "!pwd");
 
     // Send command
     stdin.write("\r"); // Enter key
