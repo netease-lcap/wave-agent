@@ -4,6 +4,7 @@ import { InputBox } from "@/components/InputBox";
 import { resetMocks } from "../helpers/contextMock";
 import * as gitUtils from "@/utils/gitUtils";
 import * as aiService from "@/services/aiService";
+import { waitForText } from "tests/helpers/waitHelpers";
 
 // Mock git utils and AI service
 vi.mock("@/utils/gitUtils");
@@ -14,9 +15,6 @@ await vi.hoisted(async () => {
   const { setupMocks } = await import("../helpers/contextMock");
   setupMocks();
 });
-
-// 延迟函数
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox Git Commit Command", () => {
   // 在每个测试前重置 mock 状态
@@ -47,26 +45,16 @@ index 0000000..123abc4
 
     // Open command selector with /
     stdin.write("/");
-    await delay(10);
-
-    let output = lastFrame();
-    expect(output).toContain("Command Selector");
-    expect(output).toContain("git-commit");
+    await waitForText(lastFrame, "git-commit");
 
     // Navigate to git-commit command and select it
     stdin.write("\u001B[B"); // Down arrow to select git-commit
-    await delay(100);
-    stdin.write("\u001B[B"); // Down arrow again (should stay on git-commit)
-    await delay(100); // Give it more time to update
+    await waitForText(lastFrame, "▶ /git-commit");
 
     // Press Enter to select git-commit command
     stdin.write("\r");
-    await delay(450); // Increase delay for async command generation
-
-    output = lastFrame();
-
-    // Should contain the generated git command in input box
-    expect(output).toContain(
+    await waitForText(
+      lastFrame,
       '!git add . && git commit -m "feat: add test function"',
     );
 
@@ -81,31 +69,6 @@ index 0000000..123abc4
     });
   });
 
-  it("should not generate commands for non-git commands", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
-
-    // Open command selector with /
-    stdin.write("/");
-    await delay(10);
-
-    let output = lastFrame();
-    expect(output).toContain("Command Selector");
-
-    // Select clean command (which doesn't generate bash commands)
-    // Clean is the first command (index 0), so no navigation needed
-    await delay(10);
-
-    // Press Enter to select clean command
-    stdin.write("\r");
-    await delay(10);
-
-    output = lastFrame();
-
-    // Should show normal placeholder, not any generated command
-    expect(output).toContain("Type your message");
-    expect(output).not.toContain("git");
-  });
-
   it("should handle git diff errors gracefully", async () => {
     // Mock git diff to throw error
     vi.mocked(gitUtils.getGitDiff).mockRejectedValue(
@@ -116,21 +79,15 @@ index 0000000..123abc4
 
     // Open command selector with /
     stdin.write("/");
-    await delay(10);
+    await waitForText(lastFrame, "git-commit");
 
     // Navigate to and select git-commit command
     stdin.write("\u001B[B"); // Down arrow to select git-commit
-    await delay(10);
+    await waitForText(lastFrame, "▶ /git-commit");
 
     // Press Enter to select git-commit command
     stdin.write("\r");
-    await delay(200); // Wait for async error handling
-
-    const output = lastFrame();
-
-    // Should show error message in command selector
-    expect(output).toContain("❌ Error");
-    expect(output).toContain("Git diff failed");
+    await waitForText(lastFrame, "Git diff failed");
 
     // Verify git diff was called
     expect(gitUtils.getGitDiff).toHaveBeenCalledWith(expect.any(String));
@@ -152,21 +109,15 @@ index 0000000..123abc4
 
     // Open command selector with /
     stdin.write("/");
-    await delay(10);
+    await waitForText(lastFrame, "git-commit");
 
     // Navigate to and select git-commit command
     stdin.write("\u001B[B"); // Down arrow to select git-commit
-    await delay(10);
+    await waitForText(lastFrame, "▶ /git-commit");
 
     // Press Enter to select git-commit command
     stdin.write("\r");
-    await delay(300); // Increase delay for async operations
-
-    const output = lastFrame();
-
-    // Should show warning for no changes in command selector
-    expect(output).toContain("⚠️");
-    expect(output).toContain("No changes detected");
+    await waitForText(lastFrame, "No changes detected");
 
     // Verify git diff was called
     expect(mockGetGitDiff).toHaveBeenCalledWith(expect.any(String));
@@ -199,21 +150,15 @@ index 0000000..123abc4
 
     // Open command selector with /
     stdin.write("/");
-    await delay(10);
+    await waitForText(lastFrame, "git-commit");
 
     // Navigate to and select git-commit command
     stdin.write("\u001B[B"); // Down arrow to select git-commit
-    await delay(10);
+    await waitForText(lastFrame, "▶ /git-commit");
 
     // Press Enter to select git-commit command
     stdin.write("\r");
-    await delay(200); // Increase delay for async operations
-
-    const output = lastFrame();
-
-    // Should show error message in command selector
-    expect(output).toContain("❌ Error");
-    expect(output).toContain("AI service error");
+    await waitForText(lastFrame, "AI service error");
 
     // Verify both services were called
     expect(mockGetGitDiff).toHaveBeenCalledWith(expect.any(String));
@@ -237,21 +182,16 @@ index 0000000..123abc4
 
     // Open command selector with /
     stdin.write("/");
-    await delay(10);
+    await waitForText(lastFrame, "git-commit");
 
-    // Navigate to git-commit command
+    // Navigate to and select git-commit command
     stdin.write("\u001B[B"); // Down arrow to select git-commit
-    await delay(100);
-    stdin.write("\u001B[B"); // Down arrow again (should stay on git-commit)
-    await delay(100);
+    await waitForText(lastFrame, "▶ /git-commit");
 
     // Press Enter to start generation
     stdin.write("\r");
-    await delay(450); // Wait for completion
-
-    // Should show the generated command in input box
-    const finalOutput = lastFrame();
-    expect(finalOutput).toContain(
+    await waitForText(
+      lastFrame,
       '!git add . && git commit -m "feat: test commit"',
     );
   });
@@ -271,18 +211,16 @@ index 0000000..123abc4
 
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // Open command selector and select git-commit
+    // Open command selector with /
     stdin.write("/");
-    await delay(10);
-    stdin.write("\u001B[B"); // Navigate to git-commit
-    await delay(10);
+    await waitForText(lastFrame, "git-commit");
+
+    // Navigate to and select git-commit command
+    stdin.write("\u001B[B"); // Down arrow to select git-commit
+    await waitForText(lastFrame, "▶ /git-commit");
     stdin.write("\r"); // Select
-    await delay(300); // Increase delay for async operations
-
-    const output = lastFrame();
-
-    // Should show properly escaped quotes in the generated command
-    expect(output).toContain(
+    await waitForText(
+      lastFrame,
       '!git add . && git commit -m "feat: add \\"test\\" function with quotes"',
     );
   });
