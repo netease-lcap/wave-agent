@@ -6,7 +6,7 @@ import { ChatProvider } from "@/contexts/useChat";
 import { AppProvider } from "@/contexts/useAppConfig";
 import * as clipboardModule from "@/utils/clipboard";
 import * as messageOperationsModule from "@/utils/messageOperations";
-import { waitForTextToDisappear } from "../helpers/waitHelpers";
+import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers";
 
 // Mock the clipboard module
 vi.mock("@/utils/clipboard", () => ({
@@ -222,10 +222,7 @@ describe("InputBox Image Paste", () => {
 
     // Paste image only (no text)
     stdin.write("\u0016"); // Ctrl+V
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    // Verify image placeholder is shown
-    expect(renderResult.lastFrame()).toContain("[Image #1]");
+    await waitForText(renderResult.lastFrame, "[Image #1]");
 
     // Send message with Enter key (should work even without text)
     stdin.write("\r"); // Enter key
