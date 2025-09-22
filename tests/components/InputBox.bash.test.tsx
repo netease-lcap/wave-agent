@@ -10,9 +10,6 @@ await vi.hoisted(async () => {
   setupMocks();
 });
 
-// 延迟函数
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 describe("InputBox Bash Functionality", () => {
   // 在每个测试前重置 mock 状态
   beforeEach(() => {
@@ -31,15 +28,11 @@ describe("InputBox Bash Functionality", () => {
   it("should not trigger bash history selector for normal input", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // Type normal text character by character
-    for (const char of "hello") {
-      stdin.write(char);
-      await delay(5);
-    }
+    stdin.write("hello");
 
-    const output = lastFrame();
-    expect(output).not.toContain("No bash history found");
-    expect(output).toContain("hello");
+    await waitForText(lastFrame, "hello");
+
+    expect(lastFrame()).not.toContain("No bash history found");
   });
 
   it("should close bash history selector when ! is removed", async () => {
@@ -61,11 +54,7 @@ describe("InputBox Bash Functionality", () => {
     stdin.write("!");
     await waitForText(lastFrame, "No bash history found");
 
-    // Then type additional text character by character
-    for (const char of "ls") {
-      stdin.write(char);
-      await delay(5);
-    }
+    stdin.write("ls");
 
     // Should show bash history selector with search query
     await waitForText(lastFrame, 'No bash history found for "ls"');
