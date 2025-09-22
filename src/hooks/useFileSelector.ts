@@ -28,6 +28,7 @@ export const useFileSelector = () => {
             ignore: getGlobIgnorePatterns(),
             nodir: true,
             maxDepth: 10,
+            nocase: true, // 不区分大小写
           }),
         );
 
@@ -40,6 +41,7 @@ export const useFileSelector = () => {
           ignore: getGlobIgnorePatterns(),
           nodir: true, // 只返回文件，不返回目录
           maxDepth: 10, // 限制搜索深度
+          nocase: true, // 不区分大小写
         });
       }
 
