@@ -53,7 +53,7 @@ export async function waitForText(
     message?: string;
   },
 ): Promise<void> {
-  const { timeout = 5000, interval = 50, message } = options || {};
+  const { timeout = 5000, interval = 20, message } = options || {};
 
   return waitFor(
     () => {
@@ -84,7 +84,7 @@ export async function waitForTextToDisappear(
     message?: string;
   },
 ): Promise<void> {
-  const { timeout = 5000, interval = 50, message } = options || {};
+  const { timeout = 5000, interval = 20, message } = options || {};
 
   return waitFor(
     () => {

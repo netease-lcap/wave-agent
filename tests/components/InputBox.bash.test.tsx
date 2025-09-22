@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox } from "@/components/InputBox";
 import { resetMocks } from "../helpers/contextMock";
+import { waitForText, waitForTextToDisappear } from "tests/helpers/waitHelpers";
 
 // 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
 await vi.hoisted(async () => {
@@ -23,12 +24,8 @@ describe("InputBox Bash Functionality", () => {
 
     // Type ! to trigger bash history selector
     stdin.write("!");
-    await delay(10);
-
-    const output = lastFrame();
-    // Should show bash history selector, not bash mode UI
-    expect(output).toContain("No bash history found");
-    expect(output).toContain("!");
+    await waitForText(lastFrame, "No bash history found");
+    expect(lastFrame()).toContain("!");
   });
 
   it("should not trigger bash history selector for normal input", async () => {
@@ -50,15 +47,11 @@ describe("InputBox Bash Functionality", () => {
 
     // Type ! to trigger bash history selector
     stdin.write("!");
-    await delay(10);
-    let output = lastFrame();
-    expect(output).toContain("No bash history found");
+    await waitForText(lastFrame, "No bash history found");
 
     // Remove ! to close bash history selector
     stdin.write("\u0008"); // backspace
-    await delay(10);
-    output = lastFrame();
-    expect(output).not.toContain("No bash history found");
+    await waitForTextToDisappear(lastFrame, "No bash history found");
   });
 
   it("should keep bash history selector active when additional text is added after !", async () => {
@@ -66,7 +59,7 @@ describe("InputBox Bash Functionality", () => {
 
     // Type ! to trigger bash history selector first
     stdin.write("!");
-    await delay(10);
+    await waitForText(lastFrame, "No bash history found");
 
     // Then type additional text character by character
     for (const char of "ls") {
@@ -74,26 +67,25 @@ describe("InputBox Bash Functionality", () => {
       await delay(5);
     }
 
-    const output = lastFrame();
     // Should show bash history selector with search query
-    expect(output).toContain('No bash history found for "ls"');
-    expect(output).toContain("Press Enter to execute: ls");
+    await waitForText(lastFrame, 'No bash history found for "ls"');
+    expect(lastFrame()).toContain("Press Enter to execute: ls");
   });
 
   it("should send pasted !text as bash command when it's single line", async () => {
     const { getMocks } = await import("../helpers/contextMock");
     const { mockFunctions } = getMocks();
 
-    const { stdin } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // 一口气输入以!开头的单行文本（模拟粘贴操作）
     const pastedText = "!pwd";
     stdin.write(pastedText);
-    await delay(50); // 等待粘贴debounce处理完成
+    await waitForText(lastFrame, "pwd");
 
     // 发送消息
     stdin.write("\r"); // Enter key
-    await delay(100);
+    await waitForTextToDisappear(lastFrame, "pwd");
 
     // 验证 sendMessage 被调用且检测为 bash 命令
     expect(mockFunctions.sendMessage).toHaveBeenCalled();
@@ -113,16 +105,16 @@ describe("InputBox Bash Functionality", () => {
     const { getMocks } = await import("../helpers/contextMock");
     const { mockFunctions } = getMocks();
 
-    const { stdin } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // 一口气输入以!开头的多行文本（模拟粘贴操作）
     const pastedText = "!这是多行\n命令";
     stdin.write(pastedText);
-    await delay(50); // 等待粘贴debounce处理完成
+    await waitForText(lastFrame, "!这是多行");
 
     // 发送消息
     stdin.write("\r"); // Enter key
-    await delay(100);
+    await waitForTextToDisappear(lastFrame, "!这是多行");
 
     // 验证 sendMessage 被调用但不会检测为 bash 命令
     expect(mockFunctions.sendMessage).toHaveBeenCalled();
@@ -142,7 +134,7 @@ describe("InputBox Bash Functionality", () => {
     const { getMocks } = await import("../helpers/contextMock");
     const { mockFunctions } = getMocks();
 
-    const { stdin } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // 逐字符输入 ! 然后添加命令
     stdin.write("!");
@@ -158,7 +150,7 @@ describe("InputBox Bash Functionality", () => {
 
     // 发送命令
     stdin.write("\r"); // Enter key
-    await delay(100);
+    await waitForTextToDisappear(lastFrame, "!ls");
 
     // 应该被检测为 bash 命令
     expect(mockFunctions.sendMessage).toHaveBeenCalled();
@@ -175,9 +167,6 @@ describe("InputBox Bash Functionality", () => {
   });
 
   it("should clear input after sending bash command", async () => {
-    const { getMocks } = await import("../helpers/contextMock");
-    const { mockFunctions } = getMocks();
-
     const { stdin, lastFrame } = render(<InputBox />);
 
     // Type bash command character by character
@@ -192,13 +181,6 @@ describe("InputBox Bash Functionality", () => {
 
     // Send command
     stdin.write("\r"); // Enter key
-    await delay(200); // Increase delay for clearing
-
-    // Verify message was sent
-    expect(mockFunctions.sendMessage).toHaveBeenCalled();
-
-    // Verify input box is cleared and shows normal placeholder
-    const output = lastFrame();
-    expect(output).toContain("Type your message");
+    await waitForText(lastFrame, "Type your message");
   });
 });
