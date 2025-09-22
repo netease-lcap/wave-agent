@@ -1,6 +1,7 @@
 import { glob } from "glob";
 import type { ToolContext, ToolPlugin, ToolResult } from "./types";
 import { resolvePath } from "../utils/path";
+import { getGlobIgnorePatterns } from "../utils/fileFilter";
 
 /**
  * 文件搜索工具插件 - 使用 glob 进行快速文件搜索
@@ -84,17 +85,7 @@ export const fileSearchTool: ToolPlugin = {
         try {
           const matches = await glob(pattern, {
             cwd: workdir,
-            ignore: [
-              "node_modules/**",
-              ".git/**",
-              "dist/**",
-              "build/**",
-              ".next/**",
-              "coverage/**",
-              "*.log",
-              ".DS_Store",
-              "Thumbs.db",
-            ],
+            ignore: getGlobIgnorePatterns(workdir),
             dot: false,
             absolute: false,
             nocase: true, // 不区分大小写

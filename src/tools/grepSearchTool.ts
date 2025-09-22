@@ -1,6 +1,6 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "./types";
 import { spawn } from "child_process";
-import { parseGitignoreForGrep } from "../utils/fileFilter";
+import { getGlobIgnorePatterns } from "../utils/fileFilter";
 import { rgPath } from "vscode-ripgrep";
 
 /**
@@ -90,11 +90,11 @@ export const grepSearchTool: ToolPlugin = {
         }
       }
 
-      // 获取 gitignore 中的排除规则
-      const { excludeDirs, excludeFiles } = parseGitignoreForGrep(workdir);
+      // 获取通用忽略规则（包含 gitignore）
+      const ignorePatterns = getGlobIgnorePatterns(workdir);
 
       // 添加排除模式
-      const allExcludes = [...excludeDirs, ...excludeFiles];
+      const allExcludes = [...ignorePatterns];
       if (excludePattern) {
         const patterns = excludePattern.split(",").map((p) => p.trim());
         allExcludes.push(...patterns);

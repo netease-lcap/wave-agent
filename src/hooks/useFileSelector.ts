@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { glob } from "glob";
+import { getGlobIgnorePatterns } from "../utils/fileFilter";
 
 export const useFileSelector = () => {
   const [showFileSelector, setShowFileSelector] = useState(false);
@@ -24,18 +25,7 @@ export const useFileSelector = () => {
         ];
         const promises = commonPatterns.map((pattern) =>
           glob(pattern, {
-            ignore: [
-              "node_modules/**",
-              ".git/**",
-              "dist/**",
-              "build/**",
-              ".next/**",
-              "coverage/**",
-              ".nyc_output/**",
-              "**/*.log",
-              "tmp/**",
-              "temp/**",
-            ],
+            ignore: getGlobIgnorePatterns(),
             nodir: true,
             maxDepth: 10,
           }),
@@ -47,18 +37,7 @@ export const useFileSelector = () => {
         // 构建 glob 模式，支持通配符搜索
         const pattern = `**/*${query}*`;
         files = await glob(pattern, {
-          ignore: [
-            "node_modules/**",
-            ".git/**",
-            "dist/**",
-            "build/**",
-            ".next/**",
-            "coverage/**",
-            ".nyc_output/**",
-            "**/*.log",
-            "tmp/**",
-            "temp/**",
-          ],
+          ignore: getGlobIgnorePatterns(),
           nodir: true, // 只返回文件，不返回目录
           maxDepth: 10, // 限制搜索深度
         });
