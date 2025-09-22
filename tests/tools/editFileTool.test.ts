@@ -148,7 +148,6 @@ describe("editFileTool", () => {
       },
       {
         workdir: "/project",
-        flatFiles: [],
       },
     );
 

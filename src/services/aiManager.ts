@@ -463,12 +463,8 @@ export class AIManager {
             this.setMessages(currentMessages);
 
             try {
-              // 获取最新的 flatFiles 状态
-              const currentFlatFiles = this.fileManager.getFlatFiles();
-
               // 创建工具执行上下文
               const context: ToolContext = {
-                flatFiles: currentFlatFiles,
                 abortSignal: toolAbortController.signal,
                 workdir: this.workdir,
               };

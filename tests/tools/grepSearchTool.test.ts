@@ -85,7 +85,6 @@ This project uses diff libraries for comparing text.
     }
 
     mockContext = {
-      flatFiles: [], // 不再需要，但保持接口兼容
       workdir: tempDir,
     };
   });
@@ -406,7 +405,6 @@ This project uses diff libraries for comparing text.
 
     it("should handle non-existent working directory", async () => {
       const badContext: ToolContext = {
-        flatFiles: [],
         workdir: "/non/existent/directory",
       };
 

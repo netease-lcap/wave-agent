@@ -18,7 +18,6 @@ describe("listDirTool with real fs", () => {
 
   it("should list directory contents using real fs", async () => {
     const context: ToolContext = {
-      flatFiles: [],
       workdir: "/test/project",
     };
 
@@ -80,7 +79,6 @@ describe("listDirTool with real fs", () => {
 
   it("should handle non-existent directory", async () => {
     const context: ToolContext = {
-      flatFiles: [],
       workdir: "/test/project",
     };
 
@@ -99,7 +97,6 @@ describe("listDirTool with real fs", () => {
 
   it("should handle file instead of directory", async () => {
     const context: ToolContext = {
-      flatFiles: [],
       workdir: "/test/project",
     };
 
@@ -117,9 +114,7 @@ describe("listDirTool with real fs", () => {
   });
 
   it("should require workdir in context", async () => {
-    const context: ToolContext = {
-      flatFiles: [],
-    };
+    const context: ToolContext = {};
 
     const result: ToolResult = await listDirTool.execute(
       {

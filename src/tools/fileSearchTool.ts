@@ -1,9 +1,9 @@
+import { glob } from "glob";
 import type { ToolContext, ToolPlugin, ToolResult } from "./types";
-import type { FileTreeNode } from "../types/common";
-import { fuzzySearchFiles } from "../utils/fileScoring";
+import { resolvePath } from "../utils/path";
 
 /**
- * 文件搜索工具插件 - 基于模糊匹配搜索文件路径
+ * 文件搜索工具插件 - 使用 glob 进行快速文件搜索
  */
 export const fileSearchTool: ToolPlugin = {
   name: "file_search",
@@ -41,19 +41,74 @@ export const fileSearchTool: ToolPlugin = {
     }
 
     try {
-      // 从 context 中获取文件列表，如果没有则返回错误
-      if (!context || !context.flatFiles) {
+      const workdir = resolvePath(".", context?.workdir);
+
+      // 预处理查询字符串
+      const cleanQuery = query.trim().toLowerCase();
+      const queryParts = cleanQuery
+        .split(/\s+/)
+        .filter((part) => part.length > 0);
+
+      // 如果是空查询，返回错误
+      if (queryParts.length === 0) {
         return {
           success: false,
           content: "",
-          error: "File context not available. Cannot search in memory.",
+          error: "Query cannot be empty",
         };
       }
 
-      const flatFiles = context.flatFiles as FileTreeNode[];
+      // 构建搜索模式
+      const patterns = [];
 
-      // 进行模糊匹配
-      const results = fuzzySearchFiles(query, flatFiles);
+      // 对于单个查询词，创建基本模式
+      if (queryParts.length === 1) {
+        const term = queryParts[0];
+        patterns.push(
+          `**/*${term}*`, // 包含查询字符串的文件
+          `**/${term}`, // 精确匹配文件名
+          `**/${term}.*`, // 匹配带扩展名的文件
+          `**/*.${term}`, // 匹配扩展名
+        );
+      } else {
+        // 对于多个查询词，为每个词创建模式
+        for (const term of queryParts) {
+          patterns.push(`**/*${term}*`);
+        }
+      }
+
+      const allMatches = new Set<string>();
+
+      // 对每个模式进行搜索
+      for (const pattern of patterns) {
+        try {
+          const matches = await glob(pattern, {
+            cwd: workdir,
+            ignore: [
+              "node_modules/**",
+              ".git/**",
+              "dist/**",
+              "build/**",
+              ".next/**",
+              "coverage/**",
+              "*.log",
+              ".DS_Store",
+              "Thumbs.db",
+            ],
+            dot: false,
+            absolute: false,
+            nocase: true, // 不区分大小写
+          });
+
+          matches.forEach((match) => allMatches.add(match));
+        } catch {
+          // 忽略单个模式的错误，继续其他模式
+          continue;
+        }
+      }
+
+      // 转换为数组并排序
+      const results = Array.from(allMatches).sort();
 
       // 限制结果数量为10
       const limitedResults = results.slice(0, 10);
@@ -69,12 +124,7 @@ export const fileSearchTool: ToolPlugin = {
       // 格式化输出
       const output = limitedResults
         .map((result, index) => {
-          // 通过检查是否有children来判断是否为目录
-          const isDirectory = result.children && result.children.length > 0;
-          const fileInfo = isDirectory ? "directory" : "file";
-          // 显示文件大小信息（如果可用）
-          const sizeInfo = result.fileSize ? ` (${result.fileSize} bytes)` : "";
-          return `${index + 1}. ${result.path} (${fileInfo})${sizeInfo}`;
+          return `${index + 1}. ${result}`;
         })
         .join("\n");
 

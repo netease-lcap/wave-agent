@@ -2,7 +2,7 @@
  * 工具插件接口定义
  */
 
-import type { ChatCompletionTool, FileTreeNode } from "../types/common";
+import type { ChatCompletionTool } from "../types/common";
 
 export interface ToolPlugin {
   name: string;
@@ -45,7 +45,6 @@ export interface ToolRegistry {
 }
 
 export interface ToolContext {
-  flatFiles?: FileTreeNode[];
   abortSignal?: AbortSignal;
   workdir?: string;
 }

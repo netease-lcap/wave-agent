@@ -1,50 +1,35 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fileSearchTool } from "../../src/tools/fileSearchTool";
-import type { FileTreeNode } from "../../src/types/common";
 import type { ToolContext } from "../../src/tools/types";
+import { glob } from "glob";
+
+// Mock glob
+vi.mock("glob", () => ({
+  glob: vi.fn(),
+}));
+
+const mockGlob = vi.mocked(glob);
 
 describe("fileSearchTool", () => {
-  const mockFiles: FileTreeNode[] = [
-    {
-      path: "src/components/ToolResultDisplay.tsx",
-      label: "ToolResultDisplay.tsx",
-      children: [],
-    },
-    {
-      path: "tests/components/ToolResultDisplay.test.tsx",
-      label: "ToolResultDisplay.test.tsx",
-      children: [],
-    },
-    {
-      path: "src/components/CommandOutputDisplay.tsx",
-      label: "CommandOutputDisplay.tsx",
-      children: [],
-    },
-    {
-      path: "tests/components/ToolResultDisplay.compactParams.test.tsx",
-      label: "ToolResultDisplay.compactParams.test.tsx",
-      children: [],
-    },
-    {
-      path: "src/utils/resultProcessor.ts",
-      label: "resultProcessor.ts",
-      children: [],
-    },
-    { path: "docs/tool-guide.md", label: "tool-guide.md", children: [] },
-    {
-      path: "src/tools/fileSearchTool.ts",
-      label: "fileSearchTool.ts",
-      children: [],
-    },
-    { path: "package.json", label: "package.json", children: [] },
-    { path: "README.md", label: "README.md", children: [] },
-  ];
-
   const mockContext: ToolContext = {
-    flatFiles: mockFiles,
+    workdir: "/test/workspace",
   };
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
   it("should find files with single keyword", async () => {
+    mockGlob.mockResolvedValue([
+      "src/components/ToolResultDisplay.tsx",
+      "src/tools/fileSearchTool.ts",
+      "docs/tool-guide.md",
+    ]);
+
     const result = await fileSearchTool.execute({ query: "tool" }, mockContext);
 
     expect(result.success).toBe(true);
@@ -53,6 +38,18 @@ describe("fileSearchTool", () => {
   });
 
   it("should find files with space-separated keywords", async () => {
+    // Mock multiple glob calls for "result tool" - each call returns files matching individual terms
+    mockGlob
+      .mockResolvedValueOnce([
+        "src/components/ToolResultDisplay.tsx",
+        "src/utils/resultProcessor.ts",
+      ]) // *result*
+      .mockResolvedValueOnce([
+        "src/components/ToolResultDisplay.tsx",
+        "src/tools/fileSearchTool.ts",
+        "docs/tool-guide.md",
+      ]); // *tool*
+
     const result = await fileSearchTool.execute(
       { query: "result tool" },
       mockContext,
@@ -63,6 +60,16 @@ describe("fileSearchTool", () => {
   });
 
   it("should support out-of-order keyword matching", async () => {
+    mockGlob
+      .mockResolvedValueOnce([
+        "src/components/ToolResultDisplay.tsx",
+        "src/components/CommandOutputDisplay.tsx",
+      ]) // *display*
+      .mockResolvedValueOnce([
+        "src/components/ToolResultDisplay.tsx",
+        "src/utils/resultProcessor.ts",
+      ]); // *result*
+
     const result = await fileSearchTool.execute(
       { query: "display result" },
       mockContext,
@@ -73,6 +80,16 @@ describe("fileSearchTool", () => {
   });
 
   it("should handle case-insensitive queries", async () => {
+    mockGlob
+      .mockResolvedValueOnce([
+        "src/components/ToolResultDisplay.tsx",
+        "src/tools/fileSearchTool.ts",
+      ]) // *tool*
+      .mockResolvedValueOnce([
+        "src/components/ToolResultDisplay.tsx",
+        "src/utils/resultProcessor.ts",
+      ]); // *result*
+
     const result = await fileSearchTool.execute(
       { query: "TOOL RESULT" },
       mockContext,
@@ -83,6 +100,20 @@ describe("fileSearchTool", () => {
   });
 
   it("should handle queries with multiple spaces", async () => {
+    mockGlob
+      .mockResolvedValueOnce([
+        "src/components/ToolResultDisplay.tsx",
+        "src/utils/resultProcessor.ts",
+      ]) // *result*
+      .mockResolvedValueOnce([
+        "src/components/ToolResultDisplay.tsx",
+        "src/tools/fileSearchTool.ts",
+      ]) // *tool*
+      .mockResolvedValueOnce([
+        "src/components/ToolResultDisplay.tsx",
+        "src/components/CommandOutputDisplay.tsx",
+      ]); // *display*
+
     const result = await fileSearchTool.execute(
       { query: "result   tool   display" },
       mockContext,
@@ -93,6 +124,8 @@ describe("fileSearchTool", () => {
   });
 
   it('should return "No matching files found" for unmatched queries', async () => {
+    mockGlob.mockResolvedValue([]);
+
     const result = await fileSearchTool.execute(
       { query: "nonexistent missing" },
       mockContext,
@@ -105,20 +138,10 @@ describe("fileSearchTool", () => {
 
   it("should limit results to 10 items", async () => {
     // Create a large list of files to test the limit
-    const manyFiles: FileTreeNode[] = Array.from({ length: 20 }, (_, i) => ({
-      path: `src/tool-${i}.ts`,
-      label: `tool-${i}.ts`,
-      children: [],
-    }));
+    const manyFiles = Array.from({ length: 20 }, (_, i) => `src/tool-${i}.ts`);
+    mockGlob.mockResolvedValue(manyFiles);
 
-    const largeContext: ToolContext = {
-      flatFiles: manyFiles,
-    };
-
-    const result = await fileSearchTool.execute(
-      { query: "tool" },
-      largeContext,
-    );
+    const result = await fileSearchTool.execute({ query: "tool" }, mockContext);
 
     expect(result.success).toBe(true);
     const lines = result.content.split("\n").filter((line) => line.trim());
@@ -142,21 +165,20 @@ describe("fileSearchTool", () => {
     );
   });
 
-  it("should return error when context is missing", async () => {
-    const result = await fileSearchTool.execute({ query: "test" });
+  it("should handle empty or whitespace-only queries", async () => {
+    const result = await fileSearchTool.execute({ query: "   " }, mockContext);
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("File context not available");
+    expect(result.error).toContain("Query cannot be empty");
   });
 
-  it("should return error when flatFiles is missing from context", async () => {
-    const result = await fileSearchTool.execute(
-      { query: "test" },
-      {}, // Empty context without flatFiles
-    );
+  it("should work without context", async () => {
+    mockGlob.mockResolvedValue(["test-file.ts"]);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("File context not available");
+    const result = await fileSearchTool.execute({ query: "test" });
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("test-file.ts");
   });
 
   it("should format compact params correctly", () => {

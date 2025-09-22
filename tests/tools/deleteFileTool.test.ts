@@ -104,7 +104,6 @@ describe("deleteFileTool", () => {
     mockUnlink.mockResolvedValue();
 
     const context = {
-      flatFiles: [],
       workdir: "/project/root",
     };
 

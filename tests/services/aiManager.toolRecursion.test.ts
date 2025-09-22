@@ -137,7 +137,6 @@ describe("AIManager Tool Recursion Tests", () => {
       "run_terminal_cmd",
       { command: "ls -la ." },
       expect.objectContaining({
-        flatFiles: [],
         workdir: "/test/workdir",
         abortSignal: expect.any(AbortSignal),
       }),
@@ -271,7 +270,6 @@ describe("AIManager Tool Recursion Tests", () => {
       "run_terminal_cmd",
       { command: "pwd" },
       expect.objectContaining({
-        flatFiles: [],
         workdir: "/test/workdir",
         abortSignal: expect.any(AbortSignal),
       }),
@@ -283,7 +281,6 @@ describe("AIManager Tool Recursion Tests", () => {
       "run_terminal_cmd",
       { command: "date" },
       expect.objectContaining({
-        flatFiles: [],
         workdir: "/test/workdir",
         abortSignal: expect.any(AbortSignal),
       }),

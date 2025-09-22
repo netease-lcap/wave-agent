@@ -166,7 +166,6 @@ describe("AIManager Diff Integration Tests", () => {
         code_edit: expect.stringContaining("throw new Error"),
       },
       expect.objectContaining({
-        flatFiles: [],
         workdir: "/test/workdir",
         abortSignal: expect.any(AbortSignal),
       }),
@@ -292,7 +291,6 @@ describe("AIManager Diff Integration Tests", () => {
         new_string: "console.log(`Hello, ${name}!`);",
       },
       expect.objectContaining({
-        flatFiles: [],
         workdir: "/test/workdir",
         abortSignal: expect.any(AbortSignal),
       }),
