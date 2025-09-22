@@ -150,7 +150,7 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
             </Text>
           )}
           {isCommandRunning && (
-            <Text color="blue">⚙️ Command is running...</Text>
+            <Text color="blue">🚀 Command is running...</Text>
           )}
         </Box>
       )}
