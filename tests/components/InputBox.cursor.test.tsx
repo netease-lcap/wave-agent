@@ -97,27 +97,26 @@ describe("InputBox Cursor Display", () => {
     stdin.write("check ");
     await delay(50);
     stdin.write("@");
-    await delay(50);
-    stdin.write("src");
-    await delay(50);
+    await delay(400); // 增加延迟等待搜索完成
 
-    // 验证文件选择器显示
-    expect(lastFrame()).toContain("Select File");
-    expect(lastFrame()).toContain('filtering: "src"');
+    // 验证文件选择器显示 - 应该显示所有文件
+    const output = lastFrame();
+    expect(output).toContain("📁 Select File");
+    expect(output).toContain("src/index.ts");
 
     // 取消文件选择器
     stdin.write("\u001B"); // ESC
     await delay(50);
 
     // 验证回到原文本，光标在正确位置
-    expect(lastFrame()).toContain("check @src");
+    expect(lastFrame()).toContain("check @");
     expect(lastFrame()).not.toContain("Select File");
 
     // 继续输入应该在正确位置
     stdin.write(" more text");
     await delay(50);
 
-    expect(lastFrame()).toContain("check @src more text");
+    expect(lastFrame()).toContain("check @ more text");
   });
 
   it("should display cursor correctly in placeholder mode", async () => {

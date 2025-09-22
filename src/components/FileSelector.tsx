@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 
 export interface FileSelectorProps {
-  files: Array<{ path: string }>;
+  files: string[];
   searchQuery: string;
   onSelect: (filePath: string) => void;
   onCancel: () => void;
@@ -19,7 +19,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   useInput((input, key) => {
     if (key.return) {
       if (files.length > 0 && selectedIndex < files.length) {
-        onSelect(files[selectedIndex].path);
+        onSelect(files[selectedIndex]);
       }
       return;
     }
@@ -95,18 +95,18 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
         <Text dimColor>... {startIndex} more files above</Text>
       )}
 
-      {displayFiles.map((file, displayIndex) => {
+      {displayFiles.map((filePath, displayIndex) => {
         const actualIndex = startIndex + displayIndex;
         const isSelected = actualIndex === selectedIndex;
 
         return (
-          <Box key={file.path}>
+          <Box key={filePath}>
             <Text
               color={isSelected ? "black" : "white"}
               backgroundColor={isSelected ? "cyan" : undefined}
             >
               {isSelected ? "▶ " : "  "}
-              {file.path}
+              {filePath}
             </Text>
           </Box>
         );

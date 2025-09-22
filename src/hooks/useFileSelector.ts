@@ -1,28 +1,111 @@
-import { useState, useCallback, useMemo } from "react";
-import { useFiles } from "../contexts/useFiles";
-import { fuzzySearchFiles } from "../utils/fileScoring";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { glob } from "glob";
 
 export const useFileSelector = () => {
   const [showFileSelector, setShowFileSelector] = useState(false);
   const [atPosition, setAtPosition] = useState(-1);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filteredFiles, setFilteredFiles] = useState<string[]>([]);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { flatFiles } = useFiles();
+  // 使用 glob 搜索文件
+  const searchFiles = useCallback(async (query: string) => {
+    try {
+      let files: string[] = [];
 
-  // 使用智能评分算法过滤和排序文件列表
-  const filteredFiles = useMemo(() => {
-    if (!searchQuery) {
-      return flatFiles;
+      if (!query.trim()) {
+        // 当查询为空时，显示一些常见的文件类型
+        const commonPatterns = [
+          "**/*.ts",
+          "**/*.tsx",
+          "**/*.js",
+          "**/*.jsx",
+          "**/*.json",
+        ];
+        const promises = commonPatterns.map((pattern) =>
+          glob(pattern, {
+            ignore: [
+              "node_modules/**",
+              ".git/**",
+              "dist/**",
+              "build/**",
+              ".next/**",
+              "coverage/**",
+              ".nyc_output/**",
+              "**/*.log",
+              "tmp/**",
+              "temp/**",
+            ],
+            nodir: true,
+            maxDepth: 10,
+          }),
+        );
+
+        const results = await Promise.all(promises);
+        files = results.flat();
+      } else {
+        // 构建 glob 模式，支持通配符搜索
+        const pattern = `**/*${query}*`;
+        files = await glob(pattern, {
+          ignore: [
+            "node_modules/**",
+            ".git/**",
+            "dist/**",
+            "build/**",
+            ".next/**",
+            "coverage/**",
+            ".nyc_output/**",
+            "**/*.log",
+            "tmp/**",
+            "temp/**",
+          ],
+          nodir: true, // 只返回文件，不返回目录
+          maxDepth: 10, // 限制搜索深度
+        });
+      }
+
+      // 去重并限制最多显示 10 条结果
+      const uniqueFiles = Array.from(new Set(files));
+      setFilteredFiles(uniqueFiles.slice(0, 10));
+    } catch (error) {
+      console.error("Glob search error:", error);
+      setFilteredFiles([]);
     }
+  }, []);
 
-    const scoredFiles = fuzzySearchFiles(searchQuery, flatFiles);
-    return scoredFiles;
-  }, [flatFiles, searchQuery]);
+  // 防抖搜索
+  const debouncedSearchFiles = useCallback(
+    (query: string) => {
+      // 清除之前的定时器
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+
+      // 设置新的定时器
+      debounceTimerRef.current = setTimeout(() => {
+        searchFiles(query);
+      }, 300); // 300ms 防抖延迟
+    },
+    [searchFiles],
+  );
+
+  // 当搜索查询改变时触发防抖搜索
+  useEffect(() => {
+    debouncedSearchFiles(searchQuery);
+
+    // 清理函数：组件卸载时清除定时器
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [searchQuery, debouncedSearchFiles]);
 
   const activateFileSelector = useCallback((position: number) => {
     setShowFileSelector(true);
     setAtPosition(position);
     setSearchQuery("");
+    setFilteredFiles([]);
   }, []);
 
   const handleFileSelect = useCallback(
@@ -37,6 +120,7 @@ export const useFileSelector = () => {
         setShowFileSelector(false);
         setAtPosition(-1);
         setSearchQuery("");
+        setFilteredFiles([]);
 
         return { newInput, newCursorPosition };
       }
@@ -49,6 +133,7 @@ export const useFileSelector = () => {
     setShowFileSelector(false);
     setAtPosition(-1);
     setSearchQuery("");
+    setFilteredFiles([]);
   }, []);
 
   const updateSearchQuery = useCallback((query: string) => {

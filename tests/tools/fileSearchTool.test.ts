@@ -1,55 +1,95 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fileSearchTool } from "../../src/tools/fileSearchTool";
 import type { ToolContext } from "../../src/tools/types";
-import { glob } from "glob";
-
-// Mock glob
-vi.mock("glob", () => ({
-  glob: vi.fn(),
-}));
-
-const mockGlob = vi.mocked(glob);
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 describe("fileSearchTool", () => {
-  const mockContext: ToolContext = {
-    workdir: "/test/workspace",
-  };
+  let tempDir: string;
+  let originalCwd: string;
+  let mockContext: ToolContext;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+
+    // 保存原始工作目录
+    originalCwd = process.cwd();
+
+    // 创建临时目录
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "file-search-test-"));
+
+    // 创建测试文件结构
+    const testFiles = [
+      "src/components/ToolResultDisplay.tsx",
+      "src/tools/fileSearchTool.ts",
+      "src/utils/resultProcessor.ts",
+      "src/components/CommandOutputDisplay.tsx",
+      "docs/tool-guide.md",
+      "docs/result-processing.md",
+      "tests/tool.test.ts",
+      "tests/display.test.ts",
+      "config/tool-config.json",
+      "README.md",
+      "package.json",
+      // 创建更多文件来测试限制功能
+      ...Array.from({ length: 15 }, (_, i) => `src/tool-${i}.ts`),
+    ];
+
+    // 创建目录结构和文件
+    for (const filePath of testFiles) {
+      const fullPath = path.join(tempDir, filePath);
+      const dir = path.dirname(fullPath);
+
+      // 确保目录存在
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      // 写入文件内容
+      fs.writeFileSync(fullPath, `// Test file: ${filePath}`);
+    }
+
+    // 改变工作目录到临时目录
+    process.chdir(tempDir);
+
+    mockContext = {
+      workdir: tempDir,
+    };
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    // 恢复原始工作目录
+    process.chdir(originalCwd);
+
+    // 清理临时目录
+    if (fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 
   it("should find files with single keyword", async () => {
-    mockGlob.mockResolvedValue([
-      "src/components/ToolResultDisplay.tsx",
-      "src/tools/fileSearchTool.ts",
-      "docs/tool-guide.md",
-    ]);
-
     const result = await fileSearchTool.execute({ query: "tool" }, mockContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("ToolResultDisplay.tsx");
+    expect(result.content).toContain("tool-guide.md");
+    // 由于结果限制为10个，且按字母序排序，fileSearchTool.ts 可能不在前10个中
+    // 但是应该包含一些包含"tool"的文件
+    expect(result.content).toMatch(/tool/i);
+  });
+
+  it("should find specific files with more targeted search", async () => {
+    const result = await fileSearchTool.execute(
+      { query: "fileSearchTool" },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
     expect(result.content).toContain("fileSearchTool.ts");
   });
 
   it("should find files with space-separated keywords", async () => {
-    // Mock multiple glob calls for "result tool" - each call returns files matching individual terms
-    mockGlob
-      .mockResolvedValueOnce([
-        "src/components/ToolResultDisplay.tsx",
-        "src/utils/resultProcessor.ts",
-      ]) // *result*
-      .mockResolvedValueOnce([
-        "src/components/ToolResultDisplay.tsx",
-        "src/tools/fileSearchTool.ts",
-        "docs/tool-guide.md",
-      ]); // *tool*
-
     const result = await fileSearchTool.execute(
       { query: "result tool" },
       mockContext,
@@ -60,16 +100,6 @@ describe("fileSearchTool", () => {
   });
 
   it("should support out-of-order keyword matching", async () => {
-    mockGlob
-      .mockResolvedValueOnce([
-        "src/components/ToolResultDisplay.tsx",
-        "src/components/CommandOutputDisplay.tsx",
-      ]) // *display*
-      .mockResolvedValueOnce([
-        "src/components/ToolResultDisplay.tsx",
-        "src/utils/resultProcessor.ts",
-      ]); // *result*
-
     const result = await fileSearchTool.execute(
       { query: "display result" },
       mockContext,
@@ -80,16 +110,6 @@ describe("fileSearchTool", () => {
   });
 
   it("should handle case-insensitive queries", async () => {
-    mockGlob
-      .mockResolvedValueOnce([
-        "src/components/ToolResultDisplay.tsx",
-        "src/tools/fileSearchTool.ts",
-      ]) // *tool*
-      .mockResolvedValueOnce([
-        "src/components/ToolResultDisplay.tsx",
-        "src/utils/resultProcessor.ts",
-      ]); // *result*
-
     const result = await fileSearchTool.execute(
       { query: "TOOL RESULT" },
       mockContext,
@@ -100,20 +120,6 @@ describe("fileSearchTool", () => {
   });
 
   it("should handle queries with multiple spaces", async () => {
-    mockGlob
-      .mockResolvedValueOnce([
-        "src/components/ToolResultDisplay.tsx",
-        "src/utils/resultProcessor.ts",
-      ]) // *result*
-      .mockResolvedValueOnce([
-        "src/components/ToolResultDisplay.tsx",
-        "src/tools/fileSearchTool.ts",
-      ]) // *tool*
-      .mockResolvedValueOnce([
-        "src/components/ToolResultDisplay.tsx",
-        "src/components/CommandOutputDisplay.tsx",
-      ]); // *display*
-
     const result = await fileSearchTool.execute(
       { query: "result   tool   display" },
       mockContext,
@@ -124,8 +130,6 @@ describe("fileSearchTool", () => {
   });
 
   it('should return "No matching files found" for unmatched queries', async () => {
-    mockGlob.mockResolvedValue([]);
-
     const result = await fileSearchTool.execute(
       { query: "nonexistent missing" },
       mockContext,
@@ -137,10 +141,6 @@ describe("fileSearchTool", () => {
   });
 
   it("should limit results to 10 items", async () => {
-    // Create a large list of files to test the limit
-    const manyFiles = Array.from({ length: 20 }, (_, i) => `src/tool-${i}.ts`);
-    mockGlob.mockResolvedValue(manyFiles);
-
     const result = await fileSearchTool.execute({ query: "tool" }, mockContext);
 
     expect(result.success).toBe(true);
@@ -173,12 +173,10 @@ describe("fileSearchTool", () => {
   });
 
   it("should work without context", async () => {
-    mockGlob.mockResolvedValue(["test-file.ts"]);
-
-    const result = await fileSearchTool.execute({ query: "test" });
+    const result = await fileSearchTool.execute({ query: "tool" });
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("test-file.ts");
+    expect(result.content).toContain("ToolResultDisplay.tsx");
   });
 
   it("should format compact params correctly", () => {

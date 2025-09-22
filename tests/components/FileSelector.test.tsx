@@ -4,9 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 import { FileSelector } from "../../src/components/FileSelector";
 
 describe("FileSelector", () => {
-  const mockFiles = Array.from({ length: 20 }, (_, i) => ({
-    path: `file${i + 1}.txt`,
-  }));
+  const mockFiles = Array.from({ length: 20 }, (_, i) => `file${i + 1}.txt`);
 
   const mockProps = {
     files: mockFiles,
@@ -30,9 +28,7 @@ describe("FileSelector", () => {
     // Test with files that require scrolling
     const propsWithManyFiles = {
       ...mockProps,
-      files: Array.from({ length: 25 }, (_, i) => ({
-        path: `file${i + 1}.txt`,
-      })),
+      files: Array.from({ length: 25 }, (_, i) => `file${i + 1}.txt`),
     };
 
     const { lastFrame } = render(<FileSelector {...propsWithManyFiles} />);
@@ -63,9 +59,7 @@ describe("FileSelector", () => {
   it("should handle scroll window logic correctly", () => {
     // 测试滚动窗口逻辑
     const maxDisplay = 10;
-    const files = Array.from({ length: 20 }, (_, i) => ({
-      path: `file${i + 1}.txt`,
-    }));
+    const files = Array.from({ length: 20 }, (_, i) => `file${i + 1}.txt`);
 
     // 测试选择第一个文件时的窗口计算
     const getDisplayWindow = (selectedIndex: number) => {
