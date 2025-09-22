@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AIManager } from "../../src/services/aiManager";
-import { FileManager } from "../../src/services/fileManager";
 import { extractCompleteParams } from "../../src/utils/jsonExtractor";
 
 // Mock the AI service
@@ -46,33 +45,17 @@ vi.mock("../../src/utils/errorLogger", () => ({
 
 describe("AIManager - Compact Params Display", () => {
   let aiManager: AIManager;
-  let mockFileManager: FileManager;
 
   const callbacks = {
     onMessagesChange: vi.fn(),
     onLoadingChange: vi.fn(),
-    onFlatFilesChange: vi.fn(),
     getCurrentInputHistory: () => [],
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Create a mock FileManager instance following the pattern from other tests
-    mockFileManager = {
-      getFiles: vi.fn(() => []),
-      getFileContent: vi.fn(() => ""),
-      updateFile: vi.fn(),
-      deleteFile: vi.fn(),
-      addFile: vi.fn(),
-      initialize: vi.fn(),
-      startWatching: vi.fn(),
-      stopWatching: vi.fn(),
-      syncFilesFromDisk: vi.fn(),
-      getFlatFiles: vi.fn(() => []),
-    } as unknown as FileManager;
-
-    aiManager = new AIManager("/test", callbacks, mockFileManager);
+    aiManager = new AIManager("/test", callbacks);
   });
 
   afterEach(() => {

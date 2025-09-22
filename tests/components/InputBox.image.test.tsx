@@ -3,7 +3,7 @@ import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { InputBox } from "@/components/InputBox";
 import { ChatProvider } from "@/contexts/useChat";
-import { FileProvider } from "@/contexts/useFiles";
+import { AppProvider } from "@/contexts/useAppConfig";
 import * as clipboardModule from "@/utils/clipboard";
 import * as messageOperationsModule from "@/utils/messageOperations";
 import { waitForTextToDisappear } from "../helpers/waitHelpers";
@@ -40,9 +40,9 @@ const mockMessageOperations =
 
 // Mock the context providers
 const TestWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <FileProvider workdir={process.cwd()}>
+  <AppProvider workdir={process.cwd()}>
     <ChatProvider>{children}</ChatProvider>
-  </FileProvider>
+  </AppProvider>
 );
 
 describe("InputBox Image Paste", () => {

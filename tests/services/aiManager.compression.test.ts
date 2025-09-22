@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AIManager } from "@/services/aiManager";
 import * as aiService from "@/services/aiService";
-import { FileManager } from "@/services/fileManager";
 import { SessionManager } from "@/services/sessionManager";
 import { Message } from "@/types";
 import { ChatCompletionMessageParam } from "@/types/common";
@@ -9,9 +8,6 @@ import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
-
-// Mock File Manager
-vi.mock("@/services/fileManager");
 
 // Mock Session Manager
 vi.mock("@/services/sessionManager");
@@ -24,23 +20,8 @@ vi.mock("@/utils/memoryUtils", () => ({
 
 describe("AIManager Message Compression Tests", () => {
   let aiManager: AIManager;
-  let mockFileManager: FileManager;
 
   beforeEach(() => {
-    // Create a mock FileManager instance
-    mockFileManager = {
-      getFiles: vi.fn(() => []),
-      getFileContent: vi.fn(() => ""),
-      updateFile: vi.fn(),
-      deleteFile: vi.fn(),
-      addFile: vi.fn(),
-      initialize: vi.fn(),
-      startWatching: vi.fn(),
-      stopWatching: vi.fn(),
-      syncFilesFromDisk: vi.fn(),
-      getFlatFiles: vi.fn(() => []),
-    } as unknown as FileManager;
-
     // Mock SessionManager
     const mockSessionManager = vi.mocked(SessionManager);
     mockSessionManager.saveSession = vi.fn();
@@ -49,12 +30,11 @@ describe("AIManager Message Compression Tests", () => {
     const mockCallbacks = {
       onMessagesChange: vi.fn(),
       onLoadingChange: vi.fn(),
-      onFlatFilesChange: vi.fn(),
       getCurrentInputHistory: vi.fn(() => []),
     };
 
     // Create AIManager instance with required parameters
-    aiManager = new AIManager("/mock/workdir", mockCallbacks, mockFileManager);
+    aiManager = new AIManager("/mock/workdir", mockCallbacks);
 
     vi.clearAllMocks();
   });

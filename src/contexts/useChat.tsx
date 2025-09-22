@@ -7,9 +7,8 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { useFiles } from "./useFiles";
+import { useAppConfig } from "./useAppConfig";
 import type { Message } from "../types";
-import type { SessionData } from "../services/sessionManager";
 import {
   addUserMessageToMessages,
   addMemoryBlockToMessage,
@@ -103,12 +102,8 @@ export interface UseAIReturn {
   totalTokens: number;
 }
 
-export const useAI = (
-  sessionToRestore?: SessionData | null,
-  getCurrentInputHistory?: () => string[],
-): UseAIReturn => {
-  const filesContext = useFiles();
-  const { workdir, setFlatFiles, fileManager } = filesContext;
+export const useAI = (getCurrentInputHistory?: () => string[]): UseAIReturn => {
+  const { workdir, sessionToRestore } = useAppConfig();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [totalTokens, setTotalTokens] = useState(0);
@@ -118,9 +113,6 @@ export const useAI = (
 
   // Initialize AI manager
   useEffect(() => {
-    // Only initialize if fileManager is available
-    if (!fileManager) return;
-
     const callbacks: AIManagerCallbacks = {
       onMessagesChange: (newMessages) => {
         setMessages([...newMessages]);
@@ -128,13 +120,10 @@ export const useAI = (
       onLoadingChange: (loading) => {
         setIsLoading(loading);
       },
-      onFlatFilesChange: (updater) => {
-        setFlatFiles(updater);
-      },
       getCurrentInputHistory,
     };
 
-    aiManagerRef.current = new AIManager(workdir, callbacks, fileManager);
+    aiManagerRef.current = new AIManager(workdir, callbacks);
 
     // Initialize from session or default state
     if (sessionToRestore) {
@@ -157,13 +146,7 @@ export const useAI = (
       setIsLoading(state.isLoading);
       setTotalTokens(state.totalTokens);
     }
-  }, [
-    workdir,
-    setFlatFiles,
-    fileManager,
-    sessionToRestore,
-    getCurrentInputHistory,
-  ]);
+  }, [workdir, sessionToRestore, getCurrentInputHistory]);
 
   // Update totalTokens when AI manager state changes
   useEffect(() => {
@@ -302,14 +285,10 @@ export const useChat = () => {
 
 export interface ChatProviderProps {
   children: React.ReactNode;
-  sessionToRestore?: SessionData | null;
 }
 
-export const ChatProvider: React.FC<ChatProviderProps> = ({
-  children,
-  sessionToRestore,
-}) => {
-  const { workdir } = useFiles();
+export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
+  const { workdir, sessionToRestore } = useAppConfig();
 
   // Use the Input History hook
   const { userInputHistory, addToInputHistory, clearInputHistory } =
@@ -337,7 +316,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     abortAIMessage,
     resetSession,
     totalTokens,
-  } = useAI(sessionToRestore, getCurrentInputHistory);
+  } = useAI(getCurrentInputHistory);
 
   // Create bash manager
   const bashManagerRef = useRef<BashManager | null>(null);

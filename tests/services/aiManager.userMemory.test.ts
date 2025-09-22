@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { AIManager } from "@/services/aiManager";
 import type { AIManagerCallbacks } from "@/services/aiManager";
-import type { FileManager } from "@/services/fileManager";
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
@@ -57,7 +56,6 @@ vi.mock("@/services/memoryManager", () => ({
 describe("AIManager User Memory Integration", () => {
   let aiManager: AIManager;
   let mockCallbacks: AIManagerCallbacks;
-  let mockFileManager: FileManager;
   let tempDir: string;
 
   let mockCallAgent: ReturnType<typeof vi.fn>;
@@ -83,15 +81,10 @@ describe("AIManager User Memory Integration", () => {
     mockCallbacks = {
       onMessagesChange: vi.fn(),
       onLoadingChange: vi.fn(),
-      onFlatFilesChange: vi.fn(),
       getCurrentInputHistory: vi.fn().mockReturnValue([]),
     };
 
-    mockFileManager = {
-      getFlatFiles: vi.fn().mockReturnValue([]),
-    } as unknown as FileManager;
-
-    aiManager = new AIManager(tempDir, mockCallbacks, mockFileManager);
+    aiManager = new AIManager(tempDir, mockCallbacks);
   });
 
   afterEach(async () => {
@@ -118,7 +111,7 @@ describe("AIManager User Memory Integration", () => {
 
     // Create a new AIManager to pick up the new mocks
     aiManager.destroy();
-    aiManager = new AIManager(tempDir, mockCallbacks, mockFileManager);
+    aiManager = new AIManager(tempDir, mockCallbacks);
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -163,7 +156,7 @@ describe("AIManager User Memory Integration", () => {
 
     // Create a new AIManager to pick up the new mocks
     aiManager.destroy();
-    aiManager = new AIManager(tempDir, mockCallbacks, mockFileManager);
+    aiManager = new AIManager(tempDir, mockCallbacks);
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -207,7 +200,7 @@ describe("AIManager User Memory Integration", () => {
 
     // Create a new AIManager to pick up the new mocks
     aiManager.destroy();
-    aiManager = new AIManager(tempDir, mockCallbacks, mockFileManager);
+    aiManager = new AIManager(tempDir, mockCallbacks);
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -251,7 +244,7 @@ describe("AIManager User Memory Integration", () => {
 
     // Create a new AIManager to pick up the new mocks
     aiManager.destroy();
-    aiManager = new AIManager(tempDir, mockCallbacks, mockFileManager);
+    aiManager = new AIManager(tempDir, mockCallbacks);
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -299,7 +292,7 @@ describe("AIManager User Memory Integration", () => {
 
     // Create a new AIManager to pick up the new mocks
     aiManager.destroy();
-    aiManager = new AIManager(tempDir, mockCallbacks, mockFileManager);
+    aiManager = new AIManager(tempDir, mockCallbacks);
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -332,8 +325,8 @@ describe("AIManager User Memory Integration", () => {
     const tempDir1 = await fs.mkdtemp(path.join(os.tmpdir(), "test1-"));
     const tempDir2 = await fs.mkdtemp(path.join(os.tmpdir(), "test2-"));
 
-    const aiManager1 = new AIManager(tempDir1, mockCallbacks, mockFileManager);
-    const aiManager2 = new AIManager(tempDir2, mockCallbacks, mockFileManager);
+    const aiManager1 = new AIManager(tempDir1, mockCallbacks);
+    const aiManager2 = new AIManager(tempDir2, mockCallbacks);
 
     // Verify createMemoryManager was called with correct workdirs
     expect(mockCreateMemoryManager).toHaveBeenCalledWith(tempDir1);

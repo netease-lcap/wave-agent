@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { searchBashHistory, type BashHistoryEntry } from "../utils/bashHistory";
-import { useFiles } from "../contexts/useFiles";
+import { useAppConfig } from "../contexts/useAppConfig";
 import { logger } from "../utils/logger";
 
 export interface BashHistorySelectorProps {
@@ -17,7 +17,7 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [commands, setCommands] = useState<BashHistoryEntry[]>([]);
-  const { workdir } = useFiles();
+  const { workdir } = useAppConfig();
 
   // 搜索bash历史
   useEffect(() => {

@@ -1,32 +1,6 @@
 import { vi } from "vitest";
 import type { ChatContextType } from "@/contexts/useChat";
-import type { FileContextType } from "@/contexts/useFiles";
 import type { AppConfig } from "@/contexts/useAppConfig";
-import type { FileTreeNode } from "@/types/common";
-import { flattenFiles } from "@/utils/flattenFiles";
-
-// 默认的 mock 文件数据
-export const defaultMockFiles: FileTreeNode[] = [
-  {
-    path: "src",
-    label: "src",
-    children: [
-      { path: "src/index.ts", label: "index.ts", children: [] },
-      {
-        path: "src/components",
-        label: "components",
-        children: [
-          {
-            path: "src/components/App.tsx",
-            label: "App.tsx",
-            children: [],
-          },
-        ],
-      },
-    ],
-  },
-  { path: "package.json", label: "package.json", children: [] },
-];
 
 // 创建 mock 函数
 export const createMockFunctions = () => ({
@@ -43,8 +17,6 @@ export const createMockFunctions = () => ({
   sendAIMessage: vi.fn(),
   abortAIMessage: vi.fn(),
   resetSession: vi.fn(),
-  syncFilesFromDisk: vi.fn(),
-  setFlatFiles: vi.fn(),
   saveMemory: vi.fn().mockResolvedValue(undefined),
 });
 
@@ -75,18 +47,6 @@ export const createMockChatContext = (
   saveMemory: mockFunctions.saveMemory,
 });
 
-// 创建默认的 Files Context Mock
-export const createMockFilesContext = (
-  mockFunctions: ReturnType<typeof createMockFunctions>,
-  files = defaultMockFiles,
-): FileContextType => ({
-  flatFiles: flattenFiles(files),
-  workdir: "/mock/workdir",
-  fileManager: null, // Add the missing fileManager property
-  syncFilesFromDisk: mockFunctions.syncFilesFromDisk,
-  setFlatFiles: mockFunctions.setFlatFiles,
-});
-
 // 创建默认的 App Config Mock
 export const createMockAppConfig = (): AppConfig => ({
   workdir: "/mock/workdir",
@@ -95,26 +55,18 @@ export const createMockAppConfig = (): AppConfig => ({
 // 全局变量存储 mock 实例
 let mockFunctions: ReturnType<typeof createMockFunctions>;
 let mockChatContext: ChatContextType;
-let mockFilesContext: FileContextType;
 let mockAppConfig: AppConfig;
 
 // 设置 mocks 的函数
-export const setupMocks = (customFiles?: FileTreeNode[]) => {
+export const setupMocks = () => {
   mockFunctions = createMockFunctions();
   mockChatContext = createMockChatContext(mockFunctions);
-  mockFilesContext = createMockFilesContext(mockFunctions, customFiles);
   mockAppConfig = createMockAppConfig();
 
   // Mock chat context
   vi.doMock("@/contexts/useChat", () => ({
     ChatProvider: ({ children }: { children: React.ReactNode }) => children,
     useChat: () => mockChatContext,
-  }));
-
-  // Mock files context
-  vi.doMock("@/contexts/useFiles", () => ({
-    FileProvider: ({ children }: { children: React.ReactNode }) => children,
-    useFiles: () => mockFilesContext,
   }));
 
   // Mock app config
@@ -136,7 +88,6 @@ export const setupMocks = (customFiles?: FileTreeNode[]) => {
   return {
     mockFunctions,
     mockChatContext,
-    mockFilesContext,
     mockAppConfig,
   };
 };
@@ -157,6 +108,5 @@ export const resetMocks = () => {
 export const getMocks = () => ({
   mockFunctions,
   mockChatContext,
-  mockFilesContext,
   mockAppConfig,
 });

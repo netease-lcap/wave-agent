@@ -9,11 +9,9 @@ import type { ChatCompletionMessageParam } from "@/types/common";
 vi.mock("@/services/aiService");
 vi.mock("@/utils/convertMessagesForAPI");
 vi.mock("@/utils/logger");
-vi.mock("@/contexts/useFiles", () => ({
-  useFiles: () => ({
+vi.mock("@/contexts/useAppConfig", () => ({
+  useAppConfig: () => ({
     workdir: "/test/workdir",
-    setFlatFiles: vi.fn(),
-    flatFiles: [],
   }),
 }));
 

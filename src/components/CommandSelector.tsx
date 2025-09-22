@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { generateCommitMessage } from "../services/aiService";
-import { useFiles } from "../contexts/useFiles";
+import { useAppConfig } from "../contexts/useAppConfig";
 import { logger } from "../utils/logger";
 import { getGitDiff } from "../utils/gitUtils";
 
@@ -39,7 +39,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
-  const { workdir } = useFiles();
+  const { workdir } = useAppConfig();
 
   // 过滤命令列表
   const filteredCommands = AVAILABLE_COMMANDS.filter(

@@ -1,8 +1,7 @@
 import React from "react";
 import { ChatInterface } from "./ChatInterface";
-import { FileProvider } from "../contexts/useFiles";
 import { ChatProvider } from "../contexts/useChat";
-import { AppProvider, useAppConfig } from "../contexts/useAppConfig";
+import { AppProvider } from "../contexts/useAppConfig";
 import type { SessionData } from "../services/sessionManager";
 
 interface AppProps {
@@ -11,14 +10,10 @@ interface AppProps {
 }
 
 const AppWithProviders: React.FC = () => {
-  const { workdir, sessionToRestore } = useAppConfig();
-
   return (
-    <FileProvider workdir={workdir}>
-      <ChatProvider sessionToRestore={sessionToRestore}>
-        <ChatInterface />
-      </ChatProvider>
-    </FileProvider>
+    <ChatProvider>
+      <ChatInterface />
+    </ChatProvider>
   );
 };
 

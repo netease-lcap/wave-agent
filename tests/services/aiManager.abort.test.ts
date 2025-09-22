@@ -1,16 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AIManager } from "@/services/aiManager";
 import * as aiService from "@/services/aiService";
-import { FileManager } from "@/services/fileManager";
 import { SessionManager } from "@/services/sessionManager";
 import type { Message, ErrorBlock } from "@/types";
 import { FunctionToolCall } from "openai/resources/beta/threads/runs.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
-
-// Mock File Manager
-vi.mock("@/services/fileManager");
 
 // Mock Session Manager
 vi.mock("@/services/sessionManager");
@@ -30,23 +26,8 @@ vi.mock("@/tools", () => ({
 
 describe("AIManager - Abort Handling", () => {
   let aiManager: AIManager;
-  let mockFileManager: FileManager;
 
   beforeEach(() => {
-    // Create a mock FileManager instance
-    mockFileManager = {
-      getFiles: vi.fn(() => []),
-      getFileContent: vi.fn(() => ""),
-      updateFile: vi.fn(),
-      deleteFile: vi.fn(),
-      addFile: vi.fn(),
-      initialize: vi.fn(),
-      startWatching: vi.fn(),
-      stopWatching: vi.fn(),
-      syncFilesFromDisk: vi.fn(),
-      getFlatFiles: vi.fn(() => []),
-    } as unknown as FileManager;
-
     // Mock SessionManager
     const mockSessionManager = vi.mocked(SessionManager);
     mockSessionManager.saveSession = vi.fn();
@@ -55,12 +36,11 @@ describe("AIManager - Abort Handling", () => {
     const mockCallbacks = {
       onMessagesChange: vi.fn(),
       onLoadingChange: vi.fn(),
-      onFlatFilesChange: vi.fn(),
       getCurrentInputHistory: vi.fn(() => []),
     };
 
     // Create AIManager instance with required parameters
-    aiManager = new AIManager("/test/workdir", mockCallbacks, mockFileManager);
+    aiManager = new AIManager("/test/workdir", mockCallbacks);
 
     vi.clearAllMocks();
   });

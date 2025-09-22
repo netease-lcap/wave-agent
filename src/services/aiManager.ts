@@ -1,7 +1,5 @@
 import { randomUUID } from "crypto";
 import { callAgent, compressMessages } from "./aiService";
-import { FileTreeNode } from "../types/common";
-import { FileManager } from "./fileManager";
 import { SessionManager } from "./sessionManager";
 import {
   addAssistantMessageToMessages,
@@ -28,9 +26,6 @@ import { extractCompleteParams } from "../utils/jsonExtractor";
 export interface AIManagerCallbacks {
   onMessagesChange: (messages: Message[]) => void;
   onLoadingChange: (isLoading: boolean) => void;
-  onFlatFilesChange: (
-    updater: (files: FileTreeNode[]) => FileTreeNode[],
-  ) => void;
   getCurrentInputHistory?: () => string[];
 }
 
@@ -47,20 +42,14 @@ export class AIManager {
   private abortController: AbortController | null = null;
   private toolAbortController: AbortController | null = null;
   private workdir: string;
-  private fileManager: FileManager;
   private sessionStartTime: string;
   private autoSaveTimer: NodeJS.Timeout | null = null;
   private lastSaveTime: number = 0;
   private userMemoryManager: MemoryManager;
 
-  constructor(
-    workdir: string,
-    callbacks: AIManagerCallbacks,
-    fileManager: FileManager,
-  ) {
+  constructor(workdir: string, callbacks: AIManagerCallbacks) {
     this.workdir = workdir;
     this.callbacks = callbacks;
-    this.fileManager = fileManager;
     this.userMemoryManager = createMemoryManager(workdir);
     this.sessionStartTime = new Date().toISOString();
     this.state = {
