@@ -560,10 +560,14 @@ export class AIManager {
           return;
         }
 
-        // 等一秒后再发起下一次 AI 服务调用，因为要等文件同步
-        // 在测试环境中减少延迟
-        const delay = process.env.NODE_ENV === "test" ? 100 : 500;
-        await new Promise((resolve) => setTimeout(resolve, delay));
+        // 等待后再发起下一次 AI 服务调用，因为要等文件同步
+        // 通过环境变量控制延迟时间：
+        // - 生产环境默认500ms，确保文件操作完成
+        // - 测试环境设为0以加速测试
+        const delay = parseInt(process.env.AI_TOOL_RECURSION_DELAY_MS || "500");
+        if (delay > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
 
         // 再次检查是否已被中断
         const isStillAborted =
