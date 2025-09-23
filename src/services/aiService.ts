@@ -54,7 +54,7 @@ export async function applyEdit(options: ApplyEditOptions): Promise<string> {
   try {
     const response = await openai.chat.completions.create(
       {
-        model: "gemini-2.5-flash",
+        model: "claude-3-5-sonnet-20241022",
         messages: [
           {
             role: "system",
@@ -183,6 +183,7 @@ export async function callAgent(
 - If the user provides a specific value for a parameter (especially in quotes), use that value EXACTLY
 - DO NOT make up values for or ask about optional parameters
 - Carefully analyze descriptive terms in the request as they may indicate required parameter values
+- Make multiple tool calls in a single response whenever possible
 
 ## TODO Management:
 
