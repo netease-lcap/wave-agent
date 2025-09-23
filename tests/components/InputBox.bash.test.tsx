@@ -5,25 +5,27 @@ import { waitForText, waitForTextToDisappear } from "tests/helpers/waitHelpers";
 
 describe("InputBox Bash Functionality", () => {
   let mockSendMessage: ReturnType<typeof vi.fn>;
+  const virtualWorkdir = "/virtual/test/directory";
 
   beforeEach(() => {
     mockSendMessage = vi.fn();
   });
+
   it("should trigger bash history selector when input starts with !", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={virtualWorkdir} />);
 
     // Type ! to trigger bash history selector
     stdin.write("!");
-    await waitForText(lastFrame, "!");
+    await waitForText(lastFrame, "No bash history found");
 
-    // Should contain the ! character and show some bash-related UI
+    // Should show "No bash history found" message since we're using a virtual workdir
     const output = lastFrame();
+    expect(output).toContain("No bash history found");
     expect(output).toContain("!");
-    // The bash history selector should be triggered, even if no history exists
   });
 
   it("should not trigger bash history selector for normal input", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={virtualWorkdir} />);
 
     stdin.write("hello");
 
@@ -33,11 +35,11 @@ describe("InputBox Bash Functionality", () => {
   });
 
   it("should close bash history selector when ! is removed", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={virtualWorkdir} />);
 
     // Type ! to trigger bash history selector
     stdin.write("!");
-    await waitForText(lastFrame, "!");
+    await waitForText(lastFrame, "No bash history found");
 
     // Remove ! to close bash history selector
     stdin.write("\u0008"); // backspace
@@ -48,11 +50,11 @@ describe("InputBox Bash Functionality", () => {
   });
 
   it("should keep bash history selector active when additional text is added after !", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={virtualWorkdir} />);
 
     // Type ! to trigger bash history selector first
     stdin.write("!");
-    await waitForText(lastFrame, "!");
+    await waitForText(lastFrame, "No bash history found");
 
     stdin.write("ls");
     await waitForText(lastFrame, "!ls");
@@ -64,7 +66,7 @@ describe("InputBox Bash Functionality", () => {
 
   it("should send pasted !text as bash command when it's single line", async () => {
     const { stdin, lastFrame } = render(
-      <InputBox sendMessage={mockSendMessage} />,
+      <InputBox sendMessage={mockSendMessage} workdir={virtualWorkdir} />,
     );
 
     // 一口气输入以!开头的单行文本（模拟粘贴操作）
@@ -92,7 +94,7 @@ describe("InputBox Bash Functionality", () => {
 
   it("should NOT send pasted multiline !text as bash command", async () => {
     const { stdin, lastFrame } = render(
-      <InputBox sendMessage={mockSendMessage} />,
+      <InputBox sendMessage={mockSendMessage} workdir={virtualWorkdir} />,
     );
 
     // 一口气输入以!开头的多行文本（模拟粘贴操作）
@@ -120,7 +122,7 @@ describe("InputBox Bash Functionality", () => {
 
   it("should execute bash command when typing ! and single line text", async () => {
     const { stdin, lastFrame } = render(
-      <InputBox sendMessage={mockSendMessage} />,
+      <InputBox sendMessage={mockSendMessage} workdir={virtualWorkdir} />,
     );
 
     stdin.write("!ls");
@@ -146,7 +148,7 @@ describe("InputBox Bash Functionality", () => {
   });
 
   it("should clear input after sending bash command", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={virtualWorkdir} />);
 
     stdin.write("!pwd");
 
