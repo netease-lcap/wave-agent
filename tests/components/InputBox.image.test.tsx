@@ -2,8 +2,6 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { InputBox } from "@/components/InputBox";
-import { ChatProvider } from "@/contexts/useChat";
-import { AppProvider } from "@/contexts/useAppConfig";
 import * as clipboardModule from "@/utils/clipboard";
 import * as messageOperationsModule from "@/utils/messageOperations";
 import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers";
@@ -38,13 +36,6 @@ const mockMessageOperations =
     addUserMessageToMessages: ReturnType<typeof vi.fn>;
   };
 
-// Mock the context providers
-const TestWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <AppProvider workdir={process.cwd()}>
-    <ChatProvider>{children}</ChatProvider>
-  </AppProvider>
-);
-
 describe("InputBox Image Paste", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -71,9 +62,7 @@ describe("InputBox Image Paste", () => {
     });
 
     const { lastFrame, stdin } = render(
-      <TestWrapper>
-        <InputBox />
-      </TestWrapper>,
+      <InputBox workdir="/tmp/test-workdir" />,
     );
 
     // Simulate Ctrl+V
@@ -95,9 +84,7 @@ describe("InputBox Image Paste", () => {
     });
 
     const { lastFrame, stdin } = render(
-      <TestWrapper>
-        <InputBox />
-      </TestWrapper>,
+      <InputBox workdir="/tmp/test-workdir" />,
     );
 
     // Simulate Ctrl+V
@@ -127,9 +114,7 @@ describe("InputBox Image Paste", () => {
       });
 
     const { lastFrame, stdin } = render(
-      <TestWrapper>
-        <InputBox />
-      </TestWrapper>,
+      <InputBox workdir="/tmp/test-workdir" />,
     );
 
     // Simulate two Ctrl+V operations
@@ -153,9 +138,7 @@ describe("InputBox Image Paste", () => {
     });
 
     const { lastFrame, stdin } = render(
-      <TestWrapper>
-        <InputBox />
-      </TestWrapper>,
+      <InputBox workdir="/tmp/test-workdir" />,
     );
 
     // Simulate Ctrl+V
@@ -178,11 +161,7 @@ describe("InputBox Image Paste", () => {
       mimeType: "image/png",
     });
 
-    const renderResult = render(
-      <TestWrapper>
-        <InputBox />
-      </TestWrapper>,
-    );
+    const renderResult = render(<InputBox workdir="/tmp/test-workdir" />);
     const { stdin } = renderResult;
 
     // Paste image
@@ -213,11 +192,7 @@ describe("InputBox Image Paste", () => {
       mimeType: "image/png",
     });
 
-    const renderResult = render(
-      <TestWrapper>
-        <InputBox />
-      </TestWrapper>,
-    );
+    const renderResult = render(<InputBox workdir="/tmp/test-workdir" />);
     const { stdin } = renderResult;
 
     // Paste image only (no text)
