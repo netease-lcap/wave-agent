@@ -1,26 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox, INPUT_PLACEHOLDER_TEXT_PREFIX } from "@/components/InputBox";
-import { resetMocks, getMocks } from "../helpers/contextMock";
 import { waitForText } from "../helpers/waitHelpers";
 
-// 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
-await vi.hoisted(async () => {
-  const { setupMocks } = await import("../helpers/contextMock");
-  setupMocks();
-});
-
-// 延迟函数（保留作为备用）
+// 延迟函数
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox History Navigation", () => {
-  // 在每个测试前重置 mock 状态
-  beforeEach(() => {
-    resetMocks();
-  });
-
   it("should not navigate when no history exists", async () => {
-    const renderResult = render(<InputBox />);
+    const renderResult = render(<InputBox userInputHistory={[]} />);
     const { stdin, lastFrame } = renderResult;
 
     // 输入一些文本
@@ -29,23 +17,21 @@ describe("InputBox History Navigation", () => {
 
     // 按上键，因为没有历史记录，应该没有变化
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10); // 给一点时间让按键处理
+    await delay(10);
     expect(lastFrame()).toContain("current input");
 
     // 按下键，也应该没有变化
     stdin.write("\u001B[B"); // Down arrow
-    await delay(10); // 给一点时间让按键处理
+    await delay(10);
     expect(lastFrame()).toContain("current input");
   });
 
   it("should navigate up to previous history entry", async () => {
-    const { mockChatContext } = getMocks();
-
-    // 设置带有历史记录的 mock
     const mockHistoryData = ["hello world", "how are you", "test message"];
-    mockChatContext.userInputHistory = mockHistoryData;
 
-    const renderResult = render(<InputBox />);
+    const renderResult = render(
+      <InputBox userInputHistory={mockHistoryData} />,
+    );
     const { stdin, lastFrame, unmount } = renderResult;
 
     // 输入当前文本
@@ -69,24 +55,22 @@ describe("InputBox History Navigation", () => {
 
     // 再按上键，应该停留在最早的记录（不应该再变化）
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10); // 这里仍使用delay，因为期望没有变化
+    await delay(10);
     expect(lastFrame()).toContain("hello world");
 
     unmount();
   });
 
   it("should navigate down through history and back to draft", async () => {
-    const { mockChatContext } = getMocks();
-
-    // 设置带有历史记录的 mock
     const mockHistoryData = [
       "first message",
       "second message",
       "third message",
     ];
-    mockChatContext.userInputHistory = mockHistoryData;
 
-    const renderResult = render(<InputBox />);
+    const renderResult = render(
+      <InputBox userInputHistory={mockHistoryData} />,
+    );
     const { stdin, lastFrame, unmount } = renderResult;
 
     // 输入草稿文本
@@ -117,12 +101,11 @@ describe("InputBox History Navigation", () => {
   });
 
   it("should preserve current input as draft when navigating to history", async () => {
-    const { mockChatContext } = getMocks();
-
     const mockHistoryData = ["previous command", "another command"];
-    mockChatContext.userInputHistory = mockHistoryData;
 
-    const renderResult = render(<InputBox />);
+    const renderResult = render(
+      <InputBox userInputHistory={mockHistoryData} />,
+    );
     const { stdin, unmount } = renderResult;
 
     // 输入一些文本作为草稿
@@ -149,12 +132,11 @@ describe("InputBox History Navigation", () => {
   });
 
   it("should reset history navigation when typing new text", async () => {
-    const { mockChatContext } = getMocks();
-
     const mockHistoryData = ["old message"];
-    mockChatContext.userInputHistory = mockHistoryData;
 
-    const { stdin, lastFrame, unmount } = render(<InputBox />);
+    const { stdin, lastFrame, unmount } = render(
+      <InputBox userInputHistory={mockHistoryData} />,
+    );
 
     // 导航到历史记录
     stdin.write("\u001B[A"); // Up arrow
@@ -176,12 +158,11 @@ describe("InputBox History Navigation", () => {
   });
 
   it("should reset history navigation when deleting text", async () => {
-    const { mockChatContext } = getMocks();
-
     const mockHistoryData = ["test history"];
-    mockChatContext.userInputHistory = mockHistoryData;
 
-    const { stdin, lastFrame, unmount } = render(<InputBox />);
+    const { stdin, lastFrame, unmount } = render(
+      <InputBox userInputHistory={mockHistoryData} />,
+    );
 
     // 导航到历史记录
     stdin.write("\u001B[A"); // Up arrow
@@ -202,12 +183,11 @@ describe("InputBox History Navigation", () => {
   });
 
   it("should not navigate history when file selector is active", async () => {
-    const { mockChatContext } = getMocks();
-
     const mockHistoryData = ["some history"];
-    mockChatContext.userInputHistory = mockHistoryData;
 
-    const { stdin, lastFrame, unmount } = render(<InputBox />);
+    const { stdin, lastFrame, unmount } = render(
+      <InputBox userInputHistory={mockHistoryData} />,
+    );
 
     // 输入 @ 触发文件选择器
     stdin.write("@");
@@ -234,33 +214,30 @@ describe("InputBox History Navigation", () => {
   });
 
   it("should not navigate history when command selector is active", async () => {
-    const { mockChatContext } = getMocks();
-
     const mockHistoryData = ["some command history"];
-    mockChatContext.userInputHistory = mockHistoryData;
 
-    const { stdin, lastFrame, unmount } = render(<InputBox />);
+    const { stdin, lastFrame, unmount } = render(
+      <InputBox userInputHistory={mockHistoryData} />,
+    );
 
     // 输入 / 触发命令选择器
     stdin.write("/");
-    await delay(10);
-    expect(lastFrame()).toContain("Command Selector");
+    await waitForText(lastFrame, "/");
 
     // 按上键应该用于命令选择器导航，不是历史导航
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10);
-    expect(lastFrame()).toContain("Command Selector");
-    expect(lastFrame()).toContain("/");
-    // 注意：历史记录可能仍然显示在输入框中，但关键是命令选择器在工作
 
-    // 取消命令选择器
-    stdin.write("\u001B"); // ESC
-    await delay(10);
+    // 命令选择器应该还在，不应该切换到历史
+    expect(lastFrame()).toContain("/");
+    expect(lastFrame()).not.toContain("some command history");
+
+    // 取消命令选择器（按 ESC 或删除 /）
+    stdin.write("\u0008"); // Backspace to remove /
+    await waitForText(lastFrame, "Type your message");
 
     // 现在按上键应该进行历史导航
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10);
-    expect(lastFrame()).toContain("some command history");
+    await waitForText(lastFrame, "some command history");
 
     unmount();
   });

@@ -1,13 +1,7 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { App } from "@/components/App";
-
-// 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
-await vi.hoisted(async () => {
-  const { setupMocks } = await import("../helpers/contextMock");
-  setupMocks();
-});
 
 describe("App Component", () => {
   it("should render the main interface with file count", () => {

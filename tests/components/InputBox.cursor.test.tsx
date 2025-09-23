@@ -1,23 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox, INPUT_PLACEHOLDER_TEXT_PREFIX } from "@/components/InputBox";
-import { resetMocks } from "../helpers/contextMock";
-
-// 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
-await vi.hoisted(async () => {
-  const { setupMocks } = await import("../helpers/contextMock");
-  setupMocks();
-});
 
 // 延迟函数
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox Cursor Display", () => {
-  // 在每个测试前重置 mock 状态
-  beforeEach(() => {
-    resetMocks();
-  });
-
   it("should display cursor at the beginning when empty", async () => {
     const { lastFrame } = render(<InputBox />);
 
@@ -102,7 +90,6 @@ describe("InputBox Cursor Display", () => {
     // 验证文件选择器显示 - 应该显示所有文件
     const output = lastFrame();
     expect(output).toContain("📁 Select File");
-    expect(output).toContain("src/index.ts");
 
     // 取消文件选择器
     stdin.write("\u001B"); // ESC

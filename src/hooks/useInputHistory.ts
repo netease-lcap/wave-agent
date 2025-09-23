@@ -1,11 +1,14 @@
 import { useState, useCallback } from "react";
-import { useChat } from "../contexts/useChat";
 
-export const useInputHistory = () => {
+export interface UseInputHistoryParams {
+  userInputHistory: string[];
+}
+
+export const useInputHistory = ({
+  userInputHistory,
+}: UseInputHistoryParams) => {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [currentDraftText, setCurrentDraftText] = useState("");
-
-  const { userInputHistory } = useChat();
 
   // 重置历史导航状态
   const resetHistoryNavigation = useCallback(() => {

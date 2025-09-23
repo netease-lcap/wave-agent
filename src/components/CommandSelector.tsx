@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { generateCommitMessage } from "../services/aiService";
-import { useAppConfig } from "../contexts/useAppConfig";
 import { logger } from "../utils/logger";
 import { getGitDiff } from "../utils/gitUtils";
 
@@ -23,6 +22,7 @@ const AVAILABLE_COMMANDS: Command[] = [
 
 export interface CommandSelectorProps {
   searchQuery: string;
+  workdir: string;
   onSelect: (command: string) => void;
   onCancel: () => void;
   onCommandGenerated?: (command: string) => void;
@@ -30,6 +30,7 @@ export interface CommandSelectorProps {
 
 export const CommandSelector: React.FC<CommandSelectorProps> = ({
   searchQuery,
+  workdir,
   onSelect,
   onCancel,
   onCommandGenerated,
@@ -39,7 +40,6 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
-  const { workdir } = useAppConfig();
 
   // 过滤命令列表
   const filteredCommands = AVAILABLE_COMMANDS.filter(

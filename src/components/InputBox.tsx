@@ -4,7 +4,6 @@ import { FileSelector } from "./FileSelector";
 import { CommandSelector } from "./CommandSelector";
 import { BashHistorySelector } from "./BashHistorySelector";
 import { MemoryTypeSelector } from "./MemoryTypeSelector";
-import { useChat } from "../contexts/useChat";
 import { useInputState } from "../hooks/useInputState";
 import { useFileSelector } from "../hooks/useFileSelector";
 import { useCommandSelector } from "../hooks/useCommandSelector";
@@ -23,9 +22,33 @@ export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
   10,
 );
 
-export const InputBox: React.FC = () => {
-  const { isLoading } = useChat();
+export interface InputBoxProps {
+  isLoading?: boolean;
+  isCommandRunning?: boolean;
+  userInputHistory?: string[];
+  workdir?: string;
+  clearMessages?: () => void;
+  sendMessage?: (
+    message: string,
+    images?: Array<{ path: string; mimeType: string }>,
+    options?: { isBashCommand?: boolean },
+  ) => void;
+  abortMessage?: () => void;
+  saveMemory?: (message: string, type: "project" | "user") => Promise<void>;
+  setInputInsertHandler?: (handler: (text: string) => void) => void;
+}
 
+export const InputBox: React.FC<InputBoxProps> = ({
+  isLoading = false,
+  isCommandRunning = false,
+  userInputHistory = [],
+  workdir = process.cwd(),
+  clearMessages = () => {},
+  sendMessage = () => {},
+  abortMessage = () => {},
+  saveMemory = async () => {},
+  setInputInsertHandler = () => {},
+}) => {
   // 基础输入状态
   const {
     inputText,
@@ -65,7 +88,7 @@ export const InputBox: React.FC = () => {
     updateCommandSearchQuery,
     checkForSlashDeletion,
     slashPosition,
-  } = useCommandSelector();
+  } = useCommandSelector({ clearMessages });
 
   // Bash历史选择器功能
   const {
@@ -89,14 +112,18 @@ export const InputBox: React.FC = () => {
   } = useMemoryTypeSelector();
 
   // 输入历史功能
-  const { resetHistoryNavigation, navigateHistory } = useInputHistory();
+  const { resetHistoryNavigation, navigateHistory } = useInputHistory({
+    userInputHistory,
+  });
 
   // 图片管理功能（包含剪贴板粘贴）
   const { attachedImages, clearImages, handlePasteImage } =
     useImageManager(insertTextAtCursor);
 
   // 文本插入功能
-  useTextInsertion(setInputText, setCursorPosition, resetHistoryNavigation);
+  useTextInsertion(setInputText, setCursorPosition, resetHistoryNavigation, {
+    setInputInsertHandler,
+  });
 
   // 键盘处理
   const {
@@ -147,6 +174,11 @@ export const InputBox: React.FC = () => {
     showMemoryTypeSelector,
     activateMemoryTypeSelector,
     handleMemoryTypeSelect: handleMemoryTypeSelectorSelect,
+    isCommandRunning,
+    isLoading,
+    sendMessage,
+    abortMessage,
+    saveMemory,
   });
 
   const isPlaceholder = !inputText;
@@ -177,6 +209,7 @@ export const InputBox: React.FC = () => {
         {showCommandSelector && (
           <CommandSelector
             searchQuery={commandSearchQuery}
+            workdir={workdir}
             onSelect={handleCommandSelect}
             onCancel={handleCancelCommandSelect}
             onCommandGenerated={handleCommandGenerated}
@@ -186,6 +219,7 @@ export const InputBox: React.FC = () => {
         {showBashHistorySelector && (
           <BashHistorySelector
             searchQuery={bashHistorySearchQuery}
+            workdir={workdir}
             onSelect={handleBashHistorySelect}
             onCancel={handleCancelBashHistorySelect}
           />

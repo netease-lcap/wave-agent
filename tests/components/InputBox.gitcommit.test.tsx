@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox } from "@/components/InputBox";
-import { resetMocks } from "../helpers/contextMock";
 import * as gitUtils from "@/utils/gitUtils";
 import * as aiService from "@/services/aiService";
 import { waitForText } from "tests/helpers/waitHelpers";
@@ -10,16 +9,9 @@ import { waitForText } from "tests/helpers/waitHelpers";
 vi.mock("@/utils/gitUtils");
 vi.mock("@/services/aiService");
 
-// 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
-await vi.hoisted(async () => {
-  const { setupMocks } = await import("../helpers/contextMock");
-  setupMocks();
-});
-
 describe("InputBox Git Commit Command", () => {
   // 在每个测试前重置 mock 状态
   beforeEach(() => {
-    resetMocks();
     vi.clearAllMocks();
   });
 
@@ -41,7 +33,7 @@ index 0000000..123abc4
       "feat: add test function",
     );
 
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
 
     // Open command selector with /
     stdin.write("/");
@@ -75,7 +67,7 @@ index 0000000..123abc4
       new Error("Git diff failed"),
     );
 
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
 
     // Open command selector with /
     stdin.write("/");
@@ -105,7 +97,7 @@ index 0000000..123abc4
 
     mockGetGitDiff.mockResolvedValue("");
 
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
 
     // Open command selector with /
     stdin.write("/");
@@ -146,7 +138,7 @@ index 0000000..123abc4
     mockGetGitDiff.mockResolvedValue(mockDiff);
     mockGenerateCommitMessage.mockRejectedValue(new Error("AI service error"));
 
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
 
     // Open command selector with /
     stdin.write("/");
@@ -178,7 +170,7 @@ index 0000000..123abc4
     mockGetGitDiff.mockResolvedValue(mockDiff);
     mockGenerateCommitMessage.mockResolvedValue("feat: test commit");
 
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
 
     // Open command selector with /
     stdin.write("/");
@@ -209,7 +201,7 @@ index 0000000..123abc4
       'feat: add "test" function with quotes',
     );
 
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
 
     // Open command selector with /
     stdin.write("/");

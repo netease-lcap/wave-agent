@@ -1,13 +1,15 @@
 import { useCallback, useEffect } from "react";
-import { useChat } from "../contexts/useChat";
+
+export interface UseTextInsertionParams {
+  setInputInsertHandler: (handler: (text: string) => void) => void;
+}
 
 export const useTextInsertion = (
   setInputText: (text: string) => void,
   setCursorPosition: (position: number) => void,
   resetHistoryNavigation: () => void,
+  { setInputInsertHandler }: UseTextInsertionParams,
 ) => {
-  const { setInputInsertHandler } = useChat();
-
   // 处理文本插入到输入框
   const handleTextInsert = useCallback(
     (text: string) => {

@@ -1,16 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox } from "@/components/InputBox";
-import { resetMocks } from "../helpers/contextMock";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-
-// 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
-await vi.hoisted(async () => {
-  const { setupMocks } = await import("../helpers/contextMock");
-  setupMocks();
-});
 
 // 延迟函数
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -20,8 +13,6 @@ describe("InputBox File Selector", () => {
   let originalCwd: string;
 
   beforeEach(async () => {
-    resetMocks();
-
     // 保存原始工作目录
     originalCwd = process.cwd();
 

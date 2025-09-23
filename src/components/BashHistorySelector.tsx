@@ -1,23 +1,23 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { searchBashHistory, type BashHistoryEntry } from "../utils/bashHistory";
-import { useAppConfig } from "../contexts/useAppConfig";
 import { logger } from "../utils/logger";
 
 export interface BashHistorySelectorProps {
   searchQuery: string;
+  workdir: string;
   onSelect: (command: string) => void;
   onCancel: () => void;
 }
 
 export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
   searchQuery,
+  workdir,
   onSelect,
   onCancel,
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [commands, setCommands] = useState<BashHistoryEntry[]>([]);
-  const { workdir } = useAppConfig();
 
   // 搜索bash历史
   useEffect(() => {

@@ -1,6 +1,5 @@
 import { useCallback, useRef, useEffect } from "react";
 import { useInput, Key } from "ink";
-import { useChat } from "../contexts/useChat";
 import { logger } from "@/utils/logger";
 
 interface KeyboardHandlerProps {
@@ -75,6 +74,17 @@ interface KeyboardHandlerProps {
   showMemoryTypeSelector: boolean;
   activateMemoryTypeSelector: (message: string) => void;
   handleMemoryTypeSelect: (type: "project" | "user") => void;
+
+  // Chat actions
+  isCommandRunning: boolean;
+  isLoading: boolean;
+  sendMessage: (
+    message: string,
+    images?: Array<{ path: string; mimeType: string }>,
+    options?: { isBashCommand?: boolean },
+  ) => void;
+  abortMessage: () => void;
+  saveMemory: (message: string, type: "project" | "user") => Promise<void>;
 }
 
 export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
@@ -120,10 +130,12 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     showMemoryTypeSelector,
     activateMemoryTypeSelector,
     handleMemoryTypeSelect,
+    isCommandRunning,
+    isLoading,
+    sendMessage,
+    abortMessage,
+    saveMemory,
   } = props;
-
-  const { isCommandRunning, isLoading, sendMessage, abortMessage, saveMemory } =
-    useChat();
 
   // Debounce for paste operations
   const pasteDebounceRef = useRef<{

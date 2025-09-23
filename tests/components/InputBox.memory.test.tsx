@@ -1,22 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox } from "@/components/InputBox";
-import { resetMocks } from "../helpers/contextMock";
 import { waitForText } from "tests/helpers/waitHelpers";
-
-// 使用 vi.hoisted 来确保 mock 在静态导入之前被设置
-await vi.hoisted(async () => {
-  const { setupMocks } = await import("../helpers/contextMock");
-  setupMocks();
-});
 
 // 延迟函数
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox Memory Functionality", () => {
-  // 在每个测试前重置 mock 状态
+  let mockSendMessage: ReturnType<typeof vi.fn>;
+  let mockSaveMemory: ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
-    resetMocks();
+    mockSendMessage = vi.fn();
+    mockSaveMemory = vi.fn();
   });
 
   it("should not show memory mode UI when input starts with #", async () => {
@@ -33,10 +29,9 @@ describe("InputBox Memory Functionality", () => {
   });
 
   it("should trigger memory type selector when sending message that starts with #", async () => {
-    const { getMocks } = await import("../helpers/contextMock");
-    const { mockFunctions } = getMocks();
-
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(
+      <InputBox sendMessage={mockSendMessage} saveMemory={mockSaveMemory} />,
+    );
 
     // Type memory content (character by character to avoid paste detection)
     const text = "# remember this";
@@ -52,7 +47,7 @@ describe("InputBox Memory Functionality", () => {
     await waitForText(lastFrame, "Save Memory:");
 
     // Should trigger memory type selector, not send normal message
-    expect(mockFunctions.sendMessage).not.toHaveBeenCalled();
+    expect(mockSendMessage).not.toHaveBeenCalled();
 
     // Should show memory type selector
     const output = lastFrame();
@@ -63,10 +58,9 @@ describe("InputBox Memory Functionality", () => {
   });
 
   it("should send pasted #text as normal message when it contains newlines", async () => {
-    const { getMocks } = await import("../helpers/contextMock");
-    const { mockFunctions } = getMocks();
-
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(
+      <InputBox sendMessage={mockSendMessage} saveMemory={mockSaveMemory} />,
+    );
 
     // 一口气输入包含换行的#文本（模拟粘贴操作）
     const pastedText = "#这是多行\n记忆内容";
@@ -78,9 +72,9 @@ describe("InputBox Memory Functionality", () => {
     await waitForText(lastFrame, "Type your message");
 
     // 验证 sendMessage 被调用，因为包含换行符
-    expect(mockFunctions.sendMessage).toHaveBeenCalled();
+    expect(mockSendMessage).toHaveBeenCalled();
 
-    const sendMessageCalls = mockFunctions.sendMessage.mock.calls;
+    const sendMessageCalls = mockSendMessage.mock.calls;
     expect(sendMessageCalls).toHaveLength(1);
 
     const [content, images, options] = sendMessageCalls[0];
@@ -92,10 +86,9 @@ describe("InputBox Memory Functionality", () => {
   });
 
   it("should send single line #text to memory type selector", async () => {
-    const { getMocks } = await import("../helpers/contextMock");
-    const { mockFunctions } = getMocks();
-
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(
+      <InputBox sendMessage={mockSendMessage} saveMemory={mockSaveMemory} />,
+    );
 
     // 逐字符输入单行记忆内容
     const memoryText = "# important note";
@@ -111,7 +104,7 @@ describe("InputBox Memory Functionality", () => {
     await waitForText(lastFrame, "Save Memory:");
 
     // 应该触发记忆类型选择器，而不是发送消息
-    expect(mockFunctions.sendMessage).not.toHaveBeenCalled();
+    expect(mockSendMessage).not.toHaveBeenCalled();
 
     // 应该显示记忆类型选择器
     const output = lastFrame();
@@ -122,10 +115,9 @@ describe("InputBox Memory Functionality", () => {
   });
 
   it("should save memory when selecting memory type", async () => {
-    const { getMocks } = await import("../helpers/contextMock");
-    const { mockFunctions } = getMocks();
-
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(
+      <InputBox sendMessage={mockSendMessage} saveMemory={mockSaveMemory} />,
+    );
 
     // Type memory content (character by character)
     const text = "# test memory";
@@ -150,10 +142,7 @@ describe("InputBox Memory Functionality", () => {
     await waitForText(lastFrame, "Type your message");
 
     // Verify saveMemory was called
-    expect(mockFunctions.saveMemory).toHaveBeenCalledWith(
-      "# test memory",
-      "project",
-    );
+    expect(mockSaveMemory).toHaveBeenCalledWith("# test memory", "project");
 
     // Verify input box is cleared
     output = lastFrame();
@@ -161,10 +150,9 @@ describe("InputBox Memory Functionality", () => {
   });
 
   it("should clear input after saving memory", async () => {
-    const { getMocks } = await import("../helpers/contextMock");
-    const { mockFunctions } = getMocks();
-
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(
+      <InputBox sendMessage={mockSendMessage} saveMemory={mockSaveMemory} />,
+    );
 
     // Type memory content (character by character)
     const text = "# another memory";
@@ -186,10 +174,7 @@ describe("InputBox Memory Functionality", () => {
     await waitForText(lastFrame, "Type your message");
 
     // Verify saveMemory was called
-    expect(mockFunctions.saveMemory).toHaveBeenCalledWith(
-      "# another memory",
-      "user",
-    );
+    expect(mockSaveMemory).toHaveBeenCalledWith("# another memory", "user");
 
     // Verify input box is cleared and shows normal placeholder
     const output = lastFrame();

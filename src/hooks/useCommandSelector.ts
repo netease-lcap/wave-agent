@@ -1,12 +1,15 @@
 import { useState, useCallback } from "react";
-import { useChat } from "../contexts/useChat";
 
-export const useCommandSelector = () => {
+export interface UseCommandSelectorParams {
+  clearMessages: () => void;
+}
+
+export const useCommandSelector = ({
+  clearMessages,
+}: UseCommandSelectorParams) => {
   const [showCommandSelector, setShowCommandSelector] = useState(false);
   const [slashPosition, setSlashPosition] = useState(-1);
   const [commandSearchQuery, setCommandSearchQuery] = useState("");
-
-  const { clearMessages } = useChat();
 
   const activateCommandSelector = useCallback((position: number) => {
     setShowCommandSelector(true);

@@ -4,9 +4,21 @@ import { MessageList } from "./MessageList";
 import { InputBox } from "./InputBox";
 import { NonRawInput } from "./NonRawInput";
 import { useChat } from "../contexts/useChat";
+import { useAppConfig } from "../contexts/useAppConfig";
 
 export const ChatInterface: React.FC = () => {
-  const { messages, isLoading } = useChat();
+  const {
+    messages,
+    isLoading,
+    isCommandRunning,
+    userInputHistory,
+    clearMessages,
+    sendMessage,
+    abortMessage,
+    saveMemory,
+    setInputInsertHandler,
+  } = useChat();
+  const { workdir } = useAppConfig();
   const { isRawModeSupported } = useStdin();
 
   // 检查环境变量是否禁用了 raw mode
@@ -22,7 +34,21 @@ export const ChatInterface: React.FC = () => {
         )}
       </Box>
 
-      {shouldUseRawMode ? <InputBox /> : <NonRawInput />}
+      {shouldUseRawMode ? (
+        <InputBox
+          isLoading={isLoading}
+          isCommandRunning={isCommandRunning}
+          userInputHistory={userInputHistory}
+          workdir={workdir}
+          clearMessages={clearMessages}
+          sendMessage={sendMessage}
+          abortMessage={abortMessage}
+          saveMemory={saveMemory}
+          setInputInsertHandler={setInputInsertHandler}
+        />
+      ) : (
+        <NonRawInput />
+      )}
     </Box>
   );
 };
