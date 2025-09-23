@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox } from "@/components/InputBox";
-import { waitForText, waitForTextToDisappear } from "tests/helpers/waitHelpers";
+import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers";
 
 describe("InputBox Bash Functionality", () => {
   let mockSendMessage: ReturnType<typeof vi.fn>;

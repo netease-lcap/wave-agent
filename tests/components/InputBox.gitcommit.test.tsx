@@ -3,7 +3,7 @@ import { render } from "ink-testing-library";
 import { InputBox } from "@/components/InputBox";
 import * as gitUtils from "@/utils/gitUtils";
 import * as aiService from "@/services/aiService";
-import { waitForText } from "tests/helpers/waitHelpers";
+import { waitForText } from "../helpers/waitHelpers";
 
 // Mock git utils and AI service
 vi.mock("@/utils/gitUtils");

@@ -25,7 +25,7 @@ describe("InputBox File Selector", () => {
       "src/components/App.tsx",
       "src/cli.tsx",
       "package.json",
-      "tests/helpers/HookTester.tsx",
+      "../helpers/HookTester.tsx",
       "tests/hooks/useMemoryMode.test.tsx",
       "tests/hooks/useLoadingTimer.test.tsx",
       "tests/hooks/useImageManager.test.tsx",
