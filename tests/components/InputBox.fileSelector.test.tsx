@@ -21,15 +21,6 @@ describe("InputBox File Selector", () => {
       "src/components/App.tsx",
       "src/cli.tsx",
       "package.json",
-      "../helpers/HookTester.tsx",
-      "tests/hooks/useMemoryMode.test.tsx",
-      "tests/hooks/useLoadingTimer.test.tsx",
-      "tests/hooks/useImageManager.test.tsx",
-      "tests/hooks/useBashMode.test.tsx",
-      "tests/components/ToolResultDisplay.test.tsx",
-      "tests/components/ToolResultDisplay.compactParams.test.tsx",
-      "tests/components/MessageList.pagination.test.tsx",
-      "tests/components/MessageList.loading.test.tsx",
     ];
 
     // 创建目录结构和文件
@@ -79,15 +70,14 @@ describe("InputBox File Selector", () => {
     // 验证文件选择器已经显示
     expect(lastFrame()).toContain("Select File");
 
-    // 然后输入过滤条件（搜索包含 "test" 的文件）
-    stdin.write("test");
+    // 然后输入过滤条件（搜索包含 "src" 的文件）
+    stdin.write("src");
     await delay(100); // 等待防抖搜索完成
 
     // 验证文件选择器显示了过滤后的结果
     const output = lastFrame();
-    expect(output).toContain("Select File");
-    expect(output).toContain('filtering: "test"');
-    expect(output).toContain("tests/hooks/useMemoryMode.test.tsx");
+    expect(output).toContain('filtering: "src"');
+    expect(output).toContain("src/index.ts");
     // package.json 应该被过滤掉
     expect(output).not.toContain("package.json");
   });

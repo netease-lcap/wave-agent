@@ -38,9 +38,20 @@ export const useFileSelector = (workdir?: string) => {
           const results = await Promise.all(promises);
           files = results.flat();
         } else {
-          // 构建 glob 模式，支持通配符搜索
-          const pattern = `**/*${query}*`;
-          files = await glob(pattern, globOptions);
+          // 构建多个 glob 模式来支持更灵活的搜索
+          const patterns = [
+            // 匹配文件名包含查询词的文件
+            `**/*${query}*`,
+            // 匹配路径中包含查询词的文件（匹配目录名）
+            `**/${query}*/**/*`,
+          ];
+
+          const promises = patterns.map((pattern) =>
+            glob(pattern, globOptions),
+          );
+
+          const results = await Promise.all(promises);
+          files = results.flat();
         }
 
         // 去重并限制最多显示 10 条结果
