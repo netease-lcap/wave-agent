@@ -75,7 +75,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     updateSearchQuery,
     checkForAtDeletion,
     atPosition,
-  } = useFileSelector();
+  } = useFileSelector(workdir);
 
   // 命令选择器功能
   const {

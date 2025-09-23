@@ -10,12 +10,8 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox File Selector", () => {
   let tempDir: string;
-  let originalCwd: string;
 
   beforeEach(async () => {
-    // 保存原始工作目录
-    originalCwd = process.cwd();
-
     // 创建临时目录
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "file-selector-test-"));
 
@@ -49,15 +45,9 @@ describe("InputBox File Selector", () => {
       // 写入文件内容
       fs.writeFileSync(fullPath, `// Test file: ${filePath}`);
     }
-
-    // 改变工作目录到临时目录
-    process.chdir(tempDir);
   });
 
   afterEach(() => {
-    // 恢复原始工作目录
-    process.chdir(originalCwd);
-
     // 清理临时目录
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
@@ -65,7 +55,7 @@ describe("InputBox File Selector", () => {
   });
 
   it("should trigger file selector when @ is typed", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={tempDir} />);
 
     // 输入 @ 符号
     stdin.write("@");
@@ -80,7 +70,7 @@ describe("InputBox File Selector", () => {
   });
 
   it("should filter files when typing after @", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={tempDir} />);
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
@@ -103,7 +93,7 @@ describe("InputBox File Selector", () => {
   });
 
   it("should filter files with more specific query", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={tempDir} />);
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
@@ -123,7 +113,7 @@ describe("InputBox File Selector", () => {
   });
 
   it("should show no files message when no matches found", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={tempDir} />);
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
@@ -139,7 +129,7 @@ describe("InputBox File Selector", () => {
   });
 
   it("should close file selector when escape is pressed", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={tempDir} />);
 
     // 输入 @ 触发文件选择器
     stdin.write("@");
@@ -156,7 +146,7 @@ describe("InputBox File Selector", () => {
   });
 
   it("should close file selector when @ is deleted", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={tempDir} />);
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
@@ -174,7 +164,7 @@ describe("InputBox File Selector", () => {
   });
 
   it("should select file and replace @ query when Enter is pressed", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={tempDir} />);
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
@@ -198,7 +188,7 @@ describe("InputBox File Selector", () => {
   });
 
   it("should navigate files with arrow keys in file selector", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={tempDir} />);
 
     // 输入 @ 触发文件选择器
     stdin.write("@");
@@ -225,7 +215,7 @@ describe("InputBox File Selector", () => {
   });
 
   it("should handle complex input with @ in the middle", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
+    const { stdin, lastFrame } = render(<InputBox workdir={tempDir} />);
 
     // 输入一些文本，然后在中间插入 @
     stdin.write("Check this file ");

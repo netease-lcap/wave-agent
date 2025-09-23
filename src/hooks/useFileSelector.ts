@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { glob } from "glob";
 import { getGlobIgnorePatterns } from "../utils/fileFilter";
 
-export const useFileSelector = () => {
+export const useFileSelector = (workdir?: string) => {
   const [showFileSelector, setShowFileSelector] = useState(false);
   const [atPosition, setAtPosition] = useState(-1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -10,49 +10,49 @@ export const useFileSelector = () => {
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 使用 glob 搜索文件
-  const searchFiles = useCallback(async (query: string) => {
-    try {
-      let files: string[] = [];
-
-      if (!query.trim()) {
-        // 当查询为空时，显示一些常见的文件类型
-        const commonPatterns = [
-          "**/*.ts",
-          "**/*.tsx",
-          "**/*.js",
-          "**/*.jsx",
-          "**/*.json",
-        ];
-        const promises = commonPatterns.map((pattern) =>
-          glob(pattern, {
-            ignore: getGlobIgnorePatterns(),
-            nodir: true,
-            maxDepth: 10,
-            nocase: true, // 不区分大小写
-          }),
-        );
-
-        const results = await Promise.all(promises);
-        files = results.flat();
-      } else {
-        // 构建 glob 模式，支持通配符搜索
-        const pattern = `**/*${query}*`;
-        files = await glob(pattern, {
+  const searchFiles = useCallback(
+    async (query: string) => {
+      try {
+        let files: string[] = [];
+        const globOptions = {
           ignore: getGlobIgnorePatterns(),
-          nodir: true, // 只返回文件，不返回目录
-          maxDepth: 10, // 限制搜索深度
+          nodir: true,
+          maxDepth: 10,
           nocase: true, // 不区分大小写
-        });
-      }
+          cwd: workdir, // 指定搜索的根目录
+        };
 
-      // 去重并限制最多显示 10 条结果
-      const uniqueFiles = Array.from(new Set(files));
-      setFilteredFiles(uniqueFiles.slice(0, 10));
-    } catch (error) {
-      console.error("Glob search error:", error);
-      setFilteredFiles([]);
-    }
-  }, []);
+        if (!query.trim()) {
+          // 当查询为空时，显示一些常见的文件类型
+          const commonPatterns = [
+            "**/*.ts",
+            "**/*.tsx",
+            "**/*.js",
+            "**/*.jsx",
+            "**/*.json",
+          ];
+          const promises = commonPatterns.map((pattern) =>
+            glob(pattern, globOptions),
+          );
+
+          const results = await Promise.all(promises);
+          files = results.flat();
+        } else {
+          // 构建 glob 模式，支持通配符搜索
+          const pattern = `**/*${query}*`;
+          files = await glob(pattern, globOptions);
+        }
+
+        // 去重并限制最多显示 10 条结果
+        const uniqueFiles = Array.from(new Set(files));
+        setFilteredFiles(uniqueFiles.slice(0, 10));
+      } catch (error) {
+        console.error("Glob search error:", error);
+        setFilteredFiles([]);
+      }
+    },
+    [workdir],
+  );
 
   // 防抖搜索
   const debouncedSearchFiles = useCallback(
