@@ -56,6 +56,8 @@ export default defineConfig(({ command, mode }) => {
       // 测试环境变量：默认禁用 logger I/O 操作以提升性能
       env: {
         DISABLE_LOGGER_IO: "true",
+        // 设置较短的防抖时间以加速测试
+        FILE_SELECTOR_DEBOUNCE_MS: "50",
       },
     },
     resolve: {

@@ -62,10 +62,14 @@ export const useFileSelector = () => {
         clearTimeout(debounceTimerRef.current);
       }
 
-      // 设置新的定时器
+      // 设置新的定时器，支持环境变量配置
+      const debounceDelay = parseInt(
+        process.env.FILE_SELECTOR_DEBOUNCE_MS || "300",
+        10,
+      );
       debounceTimerRef.current = setTimeout(() => {
         searchFiles(query);
-      }, 300); // 300ms 防抖延迟
+      }, debounceDelay);
     },
     [searchFiles],
   );

@@ -69,7 +69,7 @@ describe("InputBox File Selector", () => {
 
     // 输入 @ 符号
     stdin.write("@");
-    await delay(400); // 增加延迟以等待防抖搜索完成
+    await delay(100); // 增加延迟以等待防抖搜索完成
 
     // 验证文件选择器出现
     expect(lastFrame()).toContain("Select File");
@@ -84,14 +84,14 @@ describe("InputBox File Selector", () => {
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(400); // 等待防抖搜索完成
+    await delay(100); // 等待防抖搜索完成
 
     // 验证文件选择器已经显示
     expect(lastFrame()).toContain("Select File");
 
     // 然后输入过滤条件（搜索包含 "test" 的文件）
     stdin.write("test");
-    await delay(400); // 等待防抖搜索完成
+    await delay(100); // 等待防抖搜索完成
 
     // 验证文件选择器显示了过滤后的结果
     const output = lastFrame();
@@ -107,11 +107,11 @@ describe("InputBox File Selector", () => {
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(400); // 等待初始搜索完成
+    await delay(100); // 等待初始搜索完成
 
     // 然后输入更具体的过滤条件
     stdin.write("tsx");
-    await delay(400); // 等待防抖搜索完成
+    await delay(100); // 等待防抖搜索完成
 
     // 验证只显示匹配的文件
     expect(lastFrame()).toContain("Select File");
@@ -127,11 +127,11 @@ describe("InputBox File Selector", () => {
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(400); // 等待初始搜索完成
+    await delay(100); // 等待初始搜索完成
 
     // 然后输入不存在的文件过滤条件
     stdin.write("nonexistent");
-    await delay(400); // 等待防抖搜索完成
+    await delay(100); // 等待防抖搜索完成
 
     // 验证显示无匹配文件的消息
     expect(lastFrame()).toContain('No files found for "nonexistent"');
@@ -143,7 +143,7 @@ describe("InputBox File Selector", () => {
 
     // 输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(400); // 等待防抖搜索完成
+    await delay(100); // 等待防抖搜索完成
     expect(lastFrame()).toContain("Select File");
 
     // 按 Escape 键
@@ -160,7 +160,7 @@ describe("InputBox File Selector", () => {
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(400); // 等待防抖搜索完成
+    await delay(100); // 等待防抖搜索完成
 
     // 验证文件选择器出现
     expect(lastFrame()).toContain("Select File");
@@ -178,11 +178,11 @@ describe("InputBox File Selector", () => {
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(400); // 等待初始搜索完成
+    await delay(100); // 等待初始搜索完成
 
     // 然后输入过滤条件
     stdin.write("tsx");
-    await delay(400); // 等待防抖搜索完成
+    await delay(100); // 等待防抖搜索完成
 
     // 验证文件选择器显示
     expect(lastFrame()).toContain("Select File");
@@ -202,7 +202,7 @@ describe("InputBox File Selector", () => {
 
     // 输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(400); // 等待防抖搜索完成
+    await delay(100); // 等待防抖搜索完成
 
     // 验证第一个文件被选中（默认选中第一个）
     expect(lastFrame()).toContain("▶ src/index.ts");
@@ -233,11 +233,11 @@ describe("InputBox File Selector", () => {
 
     // 先输入 @ 触发文件选择器
     stdin.write("@");
-    await delay(400); // 等待初始搜索完成
+    await delay(100); // 等待初始搜索完成
 
     // 然后输入过滤条件
     stdin.write("tsx");
-    await delay(400); // 等待防抖搜索完成
+    await delay(100); // 等待防抖搜索完成
 
     // 验证文件选择器显示
     expect(lastFrame()).toContain("Select File");
