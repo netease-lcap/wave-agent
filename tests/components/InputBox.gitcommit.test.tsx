@@ -216,4 +216,62 @@ index 0000000..123abc4
       '!git add . && git commit -m "feat: add \\"test\\" function with quotes"',
     );
   });
+
+  it("should escape backticks in commit message properly", async () => {
+    // Mock git diff and AI response with backticks
+    const mockDiff = "mock diff with changes";
+    const mockGetGitDiff = vi.mocked(gitUtils.getGitDiff);
+    const mockGenerateCommitMessage = vi.mocked(
+      aiService.generateCommitMessage,
+    );
+
+    mockGetGitDiff.mockResolvedValue(mockDiff);
+    mockGenerateCommitMessage.mockResolvedValue(
+      "feat: add `test` function with backticks",
+    );
+
+    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
+
+    // Open command selector with /
+    stdin.write("/");
+    await waitForText(lastFrame, "git-commit");
+
+    // Navigate to and select git-commit command
+    stdin.write("\u001B[B"); // Down arrow to select git-commit
+    await waitForText(lastFrame, "▶ /git-commit");
+    stdin.write("\r"); // Select
+    await waitForText(
+      lastFrame,
+      '!git add . && git commit -m "feat: add \\`test\\` function with backticks"',
+    );
+  });
+
+  it("should escape both quotes and backticks in commit message", async () => {
+    // Mock git diff and AI response with both quotes and backticks
+    const mockDiff = "mock diff with changes";
+    const mockGetGitDiff = vi.mocked(gitUtils.getGitDiff);
+    const mockGenerateCommitMessage = vi.mocked(
+      aiService.generateCommitMessage,
+    );
+
+    mockGetGitDiff.mockResolvedValue(mockDiff);
+    mockGenerateCommitMessage.mockResolvedValue(
+      'feat: add "test" function with `backticks` and "quotes"',
+    );
+
+    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
+
+    // Open command selector with /
+    stdin.write("/");
+    await waitForText(lastFrame, "git-commit");
+
+    // Navigate to and select git-commit command
+    stdin.write("\u001B[B"); // Down arrow to select git-commit
+    await waitForText(lastFrame, "▶ /git-commit");
+    stdin.write("\r"); // Select
+    await waitForText(
+      lastFrame,
+      '!git add . && git commit -m "feat: add \\"test\\" function with \\`backticks\\` and \\"quotes\\""',
+    );
+  });
 });

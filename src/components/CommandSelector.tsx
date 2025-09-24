@@ -83,7 +83,9 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       }
 
       // 构建命令
-      const command = `git add . && git commit -m "${commitMessage.replace(/"/g, '\\"')}"`;
+      const command = `git add . && git commit -m "${commitMessage
+        .replace(/"/g, '\\"')
+        .replace(/`/g, "\\`")}"`;
       const commandWithPrefix = `!${command}`;
 
       logger.debug("Generated command:", commandWithPrefix);
