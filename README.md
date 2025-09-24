@@ -44,7 +44,7 @@ export DISABLE_RAW_MODE="false"
 ```bash
 export AIGW_TOKEN="your_token_here"
 export AIGW_URL="https://your-api-gateway-url.com"
-npx lcap-code
+lcap-code
 ```
 
 #### 方法2：使用.env文件
@@ -59,15 +59,23 @@ AIGW_URL=https://your-api-gateway-url.com
 
 ⚠️ **重要提示**：不设置 `AIGW_TOKEN` 和 `AIGW_URL` 环境变量，模型将无法进行鉴权，应用无法正常工作。
 
+## 安装
+
+### 全局安装
+
+```bash
+npm install -g lcap-code
+```
+
 ## 使用方法
 
 ### 命令行使用
 
 ```bash
 # 打开当前目录
-npx lcap-code
+lcap-code
 
-npx lcap-code --help
+lcap-code --help
 ```
 
 ## 文档

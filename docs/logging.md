@@ -44,7 +44,7 @@ rm ~/.lcap-code/app.log
 
 ```bash
 # 只显示包含 "file" 或 "error" 的日志
-LOG_KEYWORDS=file,error npx lcap-code
+LOG_KEYWORDS=file,error lcap-code
 ```
 
 ## 代码中使用日志
@@ -69,7 +69,7 @@ logger.error('[network] 网络请求失败:', error);
 
 ```bash
 # 启用详细日志
-LOG_LEVEL=DEBUG npx lcap-code
+LOG_LEVEL=DEBUG lcap-code
 ```
 
 ### 测试调试
@@ -83,7 +83,7 @@ LOG_LEVEL=DEBUG npm test
 
 ```bash
 # 生产环境建议配置
-LOG_LEVEL=WARN npx lcap-code
+LOG_LEVEL=WARN lcap-code
 ```
 
 ### 调试技巧
