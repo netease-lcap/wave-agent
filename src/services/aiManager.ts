@@ -542,43 +542,32 @@ export class AIManager {
         }
       }
 
-      // AI 服务调用结束，清除 abort controller
-      this.abortController = null;
-
-      // 工具执行完成后清理工具的AbortController
-      if (this.toolAbortController) {
-        this.toolAbortController = null;
-      }
-
       // 检查是否有工具操作，如果有则自动发起下一次 AI 服务调用
       if (hasToolOperations) {
-        // 检查全局中断标志和AbortController状态
+        // 检查中断状态
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
+
+        // AI 服务调用结束，清除 abort controller
+        this.abortController = null;
+
+        // 工具执行完成后清理工具的AbortController
+        if (this.toolAbortController) {
+          this.toolAbortController = null;
+        }
 
         if (isCurrentlyAborted) {
           return;
         }
 
-        // 等待后再发起下一次 AI 服务调用，因为要等文件同步
-        // 通过环境变量控制延迟时间：
-        // - 生产环境默认500ms，确保文件操作完成
-        // - 测试环境设为0以加速测试
-        const delay = parseInt(process.env.AI_TOOL_RECURSION_DELAY_MS || "500");
-        if (delay > 0) {
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-
-        // 再次检查是否已被中断
-        const isStillAborted =
-          abortController.signal.aborted || toolAbortController.signal.aborted;
-
-        if (isStillAborted) {
-          return;
-        }
-
         // 递归调用 AI 服务，递增的递归深度
         await this.sendAIMessage(recursionDepth + 1);
+      } else {
+        // 没有工具操作时也要清除 abort controller
+        this.abortController = null;
+        if (this.toolAbortController) {
+          this.toolAbortController = null;
+        }
       }
     } catch (error) {
       // 检查是否是由于用户中断操作导致的错误

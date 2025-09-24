@@ -58,8 +58,6 @@ export default defineConfig(({ command, mode }) => {
         DISABLE_LOGGER_IO: "true",
         // 设置较短的防抖时间以加速测试
         FILE_SELECTOR_DEBOUNCE_MS: "50",
-        // 设置AI工具递归调用延迟：测试环境设为0以加速测试
-        AI_TOOL_RECURSION_DELAY_MS: "0",
       },
     },
     resolve: {
