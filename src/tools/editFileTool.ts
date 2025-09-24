@@ -18,7 +18,7 @@ export const editFileTool: ToolPlugin = {
     function: {
       name: "edit_file",
       description:
-        "Use this tool to propose an edit to an existing file or create a new file.\n\nThis will be read by a less intelligent model, which will quickly apply the edit. You should make it clear what the edit is, while also minimizing the unchanged code you write.\nWhen writing the edit, you should specify each edit in sequence, with the special comment `// ... existing code ...` to represent unchanged code in between edited lines.\n\nFor example:\n\n```\n// ... existing code ...\nFIRST_EDIT\n// ... existing code ...\nSECOND_EDIT\n// ... existing code ...\nTHIRD_EDIT\n// ... existing code ...\n```\n\nYou should still bias towards repeating as few lines of the original file as possible to convey the change.\nBut, each edit should contain sufficient context of unchanged lines around the code you're editing to resolve ambiguity.\n\n🚨 CRITICAL WARNING: When editing an EXISTING file, you MUST use `// ... existing code ...` comments to indicate preserved code sections. The ONLY exceptions are:\n- Creating a completely NEW file (file doesn't exist yet)\n- Completely REWRITING an existing file (replacing ALL content)\n\nFor ANY partial edits to existing files, omitting `// ... existing code ...` will cause severe code deletion!\n\n⚠️ IMPORTANT: Always use `// ... existing code ...` (or the appropriate comment syntax for the file language) when making partial edits. Failure to do so WILL result in code deletion.\n\nMake sure it is clear what the edit should be, and where it should be applied.\nTo create a new file, simply specify the content of the file in the `code_edit` field.\n\nYou should specify the following arguments before the others: [target_file]\n\nALWAYS make all edits to a file in a single edit_file instead of multiple edit_file calls to the same file. The apply model can handle many distinct edits at once. When editing multiple files, ALWAYS make parallel edit_file calls.",
+        "Use this tool to propose an edit to an existing file or create a new file.\n\nThis will be read by a less intelligent model, which will quickly apply the edit. You should make it clear what the edit is, while also minimizing the unchanged code you write.\nWhen writing the edit, you should specify each edit in sequence, with the special comment `// ... existing code ...` to represent unchanged code in between edited lines.\n\nFor example:\n\n```\n// ... existing code ...\nFIRST_EDIT\n// ... existing code ...\nSECOND_EDIT\n// ... existing code ...\nTHIRD_EDIT\n// ... existing code ...\n```\n\nYou should still bias towards repeating as few lines of the original file as possible to convey the change.\nBut, each edit should contain sufficient context of unchanged lines around the code you're editing to resolve ambiguity.\nDO NOT omit spans of pre-existing code (or comments) without using the `// ... existing code ...` comment to indicate its absence. If you omit the existing code comment, the model may inadvertently delete these lines.\nMake sure it is clear what the edit should be, and where it should be applied.\nTo create a new file, simply specify the content of the file in the `code_edit` field.\n\nYou should specify the following arguments before the others: [target_file]\n\nALWAYS make all edits to a file in a single edit_file instead of multiple edit_file calls to the same file. The apply model can handle many distinct edits at once. When editing multiple files, ALWAYS make parallel edit_file calls.",
       parameters: {
         type: "object",
         properties: {
@@ -72,23 +72,24 @@ export const editFileTool: ToolPlugin = {
         logger.info(`Creating new file: ${filePath}`);
       }
 
-      // 检查是否包含 existing code 标记，判断是编辑还是重写
+      // 检查是否包含 existing code 标记，判断是增量编辑还是直接替换
       const hasExistingCodeMarker = codeEdit.includes("... existing code ...");
+      const isNewFile = existingContent.trim() === "";
       let editedContent: string;
 
-      if (hasExistingCodeMarker || existingContent.trim() === "") {
-        // 包含 existing code 标记或创建新文件，调用AI服务应用编辑
-        logger.info(
-          `${existingContent.trim() === "" ? "Creating new file" : "Applying edit to file"}: ${filePath}`,
-        );
+      if (hasExistingCodeMarker) {
+        // 包含 existing code 标记，调用AI服务应用增量编辑
+        logger.info(`Applying incremental edit to file: ${filePath}`);
         const rawEditedContent = await applyEdit({
           targetFile: existingContent, // 传递现有文件内容作为上下文
           codeEdit,
         });
         editedContent = removeCodeBlockWrappers(rawEditedContent);
       } else {
-        // 不包含 existing code 标记且文件已存在，直接重写文件
-        logger.info(`Rewriting file: ${filePath}`);
+        // 不包含 existing code 标记，直接使用编辑内容（创建新文件或重写现有文件）
+        logger.info(
+          `${isNewFile ? "Creating new file" : "Rewriting file"}: ${filePath}`,
+        );
         editedContent = removeCodeBlockWrappers(codeEdit);
       }
 
@@ -99,7 +100,6 @@ export const editFileTool: ToolPlugin = {
       const diffResult = diffLines(existingContent, editedContent);
       const addedLines = diffResult.filter((d) => d.added).length;
       const removedLines = diffResult.filter((d) => d.removed).length;
-      const isNewFile = existingContent.trim() === "";
       const isRewrite = !hasExistingCodeMarker && !isNewFile;
 
       return {
