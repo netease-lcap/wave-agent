@@ -47,7 +47,7 @@
     "micromatch": "^4.0.8",
     "openai": "^5.12.2",
     "react": "^19.1.0",
-    "vscode-ripgrep": "^1.13.2",
+    "@vscode/ripgrep": "^1.15.14",
     "yargs": "^17.7.2"
   },
   "devDependencies": {

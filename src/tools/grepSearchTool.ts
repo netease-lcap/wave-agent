@@ -1,7 +1,7 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "./types";
 import { spawn } from "child_process";
 import { getGlobIgnorePatterns } from "../utils/fileFilter";
-import { rgPath } from "vscode-ripgrep";
+import { rgPath } from "@vscode/ripgrep";
 
 /**
  * Grep搜索工具插件 - 使用 ripgrep
@@ -70,7 +70,7 @@ export const grepSearchTool: ToolPlugin = {
         success: false,
         content: "",
         error:
-          "ripgrep is not available. Please install vscode-ripgrep package.",
+          "ripgrep is not available. Please install @vscode/ripgrep package.",
       };
     }
 
