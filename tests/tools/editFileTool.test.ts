@@ -87,7 +87,7 @@ describe("editFileTool", () => {
     mockReadFile.mockRejectedValue(
       new Error("ENOENT: no such file or directory"),
     );
-    mockApplyEdit.mockResolvedValue(newFileContent);
+    mockRemoveCodeBlockWrappers.mockReturnValue(newFileContent);
 
     const result: ToolResult = await editFileTool.execute({
       target_file: "newFile.ts",
@@ -95,10 +95,9 @@ describe("editFileTool", () => {
     });
 
     expect(mockReadFile).toHaveBeenCalledWith("newFile.ts", "utf-8");
-    expect(mockApplyEdit).toHaveBeenCalledWith({
-      targetFile: "", // empty content for new file
-      codeEdit: newFileContent,
-    });
+    // For new files without existing code markers, applyEdit should NOT be called
+    expect(mockApplyEdit).not.toHaveBeenCalled();
+    expect(mockRemoveCodeBlockWrappers).toHaveBeenCalledWith(newFileContent);
     expect(mockWriteFile).toHaveBeenCalledWith(
       "newFile.ts",
       newFileContent,
