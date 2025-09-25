@@ -105,7 +105,7 @@ export const editTool: ToolPlugin = {
         return {
           success: false,
           content: "",
-          error: `old_string not found in file: "${oldString}"`,
+          error: `old_string not found in file`,
         };
       }
 
