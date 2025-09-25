@@ -4,7 +4,6 @@ import type {
   ToolRegistry,
   ToolResult,
 } from "./types";
-import type { ChatCompletionTool } from "../types/common";
 import { terminalTool } from "./terminalTool";
 import { readFileTool } from "./readFileTool";
 import { listDirTool } from "./listDirTool";
@@ -13,6 +12,7 @@ import { fileSearchTool } from "./fileSearchTool";
 import { editFileTool } from "./editFileTool";
 import { searchReplaceTool } from "./searchReplaceTool";
 import { deleteFileTool } from "./deleteFileTool";
+import { ChatCompletionTool } from "openai/resources.js";
 
 /**
  * 工具注册中心

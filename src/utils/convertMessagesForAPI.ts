@@ -1,12 +1,12 @@
-import type {
-  ChatCompletionMessageParam,
-  ChatCompletionContentPart,
-} from "../types/common";
 import type { Message } from "../types";
 import { convertImageToBase64 } from "./messageOperations";
 import { logger } from "./logger";
 import { ChatCompletionMessageToolCall } from "openai/resources";
-import { stripAnsiColors } from "../types/common";
+import { stripAnsiColors } from "./stringUtils";
+import {
+  ChatCompletionContentPart,
+  ChatCompletionMessageParam,
+} from "openai/resources.js";
 
 /**
  * 安全处理工具调用参数，确保返回合法的 JSON 字符串

@@ -3,7 +3,7 @@ import { compressMessages } from "@/services/aiService";
 import { addCompressBlockToMessage } from "@/utils/messageOperations";
 import { convertMessagesForAPI } from "@/utils/convertMessagesForAPI";
 import type { Message } from "@/types";
-import type { ChatCompletionMessageParam } from "@/types/common";
+import { ChatCompletionMessageParam } from "openai/resources.js";
 
 // Mock dependencies
 vi.mock("@/services/aiService");

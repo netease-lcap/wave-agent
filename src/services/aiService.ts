@@ -1,16 +1,51 @@
-import type { ChatCompletionMessageParam, ModelId } from "../types/common";
-import { DEFAULT_MODEL_ID } from "../types/common";
 import { toolRegistry } from "../tools";
 import { logger } from "@/utils/logger";
 import OpenAI from "openai";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import { FunctionToolCall } from "openai/resources/beta/threads/runs.mjs";
+import { ChatCompletionMessageParam } from "openai/resources.js";
+import { DEFAULT_MODEL_ID } from "@/utils/constants";
+
+/**
+ * 模型配置类型，基于 OpenAI 的参数但排除 messages 和 stream
+ */
+type ModelConfig = Omit<
+  OpenAI.Chat.Completions.ChatCompletionCreateParams,
+  "messages" | "stream"
+>;
+
+/**
+ * 根据模型名称获取特定的配置参数
+ * @param modelName 模型名称
+ * @param baseConfig 基础配置
+ * @returns 配置好的模型参数
+ */
+function getModelConfig(
+  modelName: string,
+  baseConfig: Partial<ModelConfig> = {},
+): ModelConfig {
+  const config: ModelConfig = {
+    model: modelName,
+    ...baseConfig,
+  };
+
+  // 针对特定模型的配置规则
+  if (modelName.includes("gpt-5-codex")) {
+    // gpt-5-codex 模型设置 temperature 为 undefined
+    config.temperature = undefined;
+  }
+
+  return config;
+}
 
 // Initialize OpenAI client with environment variables
 const openai = new OpenAI({
   apiKey: process.env.AIGW_TOKEN,
   baseURL: process.env.AIGW_URL,
 });
+
+const FAST_MODEL_ID = process.env.AIGW_FAST_MODEL || "gemini-2.5-flash";
+const AGENT_MODEL_ID = process.env.AIGW_MODEL || DEFAULT_MODEL_ID;
 
 export interface CallAgentOptions {
   messages: ChatCompletionMessageParam[];
@@ -52,9 +87,14 @@ export async function applyEdit(options: ApplyEditOptions): Promise<string> {
 
   // 使用 OpenAI 来处理文件编辑
   try {
+    // 使用固定的模型，不使用环境变量
+    const modelConfig = getModelConfig(FAST_MODEL_ID, {
+      temperature: 0.1,
+    });
+
     const response = await openai.chat.completions.create(
       {
-        model: "gemini-2.5-flash",
+        ...modelConfig,
         messages: [
           {
             role: "system",
@@ -89,7 +129,6 @@ ${codeEdit}
 Apply the edit and return the complete final file content:`,
           },
         ],
-        temperature: 0.1,
       },
       {
         signal: abortSignal,
@@ -112,9 +151,15 @@ export async function generateCommitMessage(
   const { diff, abortSignal } = options;
 
   try {
+    // 使用固定的模型，不使用环境变量
+    const modelConfig = getModelConfig(FAST_MODEL_ID, {
+      temperature: 0.3,
+      max_tokens: 100,
+    });
+
     const response = await openai.chat.completions.create(
       {
-        model: "gemini-2.5-flash",
+        ...modelConfig,
         messages: [
           {
             role: "system",
@@ -125,8 +170,6 @@ export async function generateCommitMessage(
             content: diff,
           },
         ],
-        temperature: 0.3,
-        max_tokens: 100,
       },
       {
         signal: abortSignal,
@@ -148,10 +191,6 @@ export async function callAgent(
 ): Promise<CallAgentResult> {
   const { messages, abortSignal, memory, onContentUpdate, onToolCallUpdate } =
     options;
-
-  // 获取模型配置
-  const envModel = process.env.AIGW_MODEL;
-  const modelId: ModelId = (envModel as ModelId) || DEFAULT_MODEL_ID;
 
   try {
     // 构建系统提示词内容
@@ -196,14 +235,18 @@ Remember: Execute tasks systematically and show updated TODOs after each complet
     // 获取工具配置
     const tools = toolRegistry.getToolsConfig();
 
+    // 获取模型配置
+    const modelConfig = getModelConfig(AGENT_MODEL_ID, {
+      temperature: 0,
+      max_completion_tokens: 32768,
+    });
+
     // 调用 OpenAI API（流式）
     const stream = await openai.chat.completions.create(
       {
-        model: modelId,
+        ...modelConfig,
         messages: openaiMessages,
         tools,
-        temperature: 0,
-        max_completion_tokens: 32768,
         stream: true,
       },
       {
@@ -363,13 +406,15 @@ export async function compressMessages(
   const { messages, abortSignal } = options;
 
   // 获取模型配置
-  const envModel = process.env.AIGW_MODEL;
-  const modelId: ModelId = (envModel as ModelId) || DEFAULT_MODEL_ID;
+  const modelConfig = getModelConfig(AGENT_MODEL_ID, {
+    temperature: 0.1,
+    max_tokens: 8192,
+  });
 
   try {
     const response = await openai.chat.completions.create(
       {
-        model: modelId,
+        ...modelConfig,
         messages: [
           {
             role: "system",
@@ -423,8 +468,6 @@ For technical conversations, structure as:
             content: `Please compress this conversation following the structured approach. Focus on preserving all technical details, file operations, and problem-solving context while creating a concise summary.`,
           },
         ],
-        temperature: 0.1,
-        max_tokens: 1500,
       },
       {
         signal: abortSignal,

@@ -50,3 +50,8 @@ export const MESSAGES_PER_PAGE = 20; // 每页显示的消息数量
  * AI 相关常量
  */
 export const DEFAULT_TOKEN_LIMIT = 64000; // 默认 token 限制
+
+/**
+ * 默认模型ID
+ */
+export const DEFAULT_MODEL_ID = "claude-sonnet-4-20250514";

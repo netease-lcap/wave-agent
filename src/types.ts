@@ -1,4 +1,4 @@
-import { Delta } from "./types/common";
+import { ChatCompletionChunk } from "openai/resources.js";
 
 export interface MessageGroupInfo {
   isGroupStart: boolean; // 是否是连续组的开始
@@ -9,7 +9,7 @@ export interface MessageGroupInfo {
 export interface Message {
   role: "user" | "assistant";
   blocks: MessageBlock[];
-  originalDeltas?: Delta[]; // 添加原始 delta 数组
+  originalDeltas?: ChatCompletionChunk.Choice.Delta[]; // 添加原始 delta 数组
   groupInfo?: MessageGroupInfo; // 添加分组信息
 }
 

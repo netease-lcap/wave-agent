@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
-import { isBinary } from "../types/common";
+import { isBinary } from "@/utils/path";
 
 /**
  * 列出目录内容工具插件

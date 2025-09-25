@@ -2,7 +2,7 @@ import * as fs from "fs";
 import path from "path";
 import { logger } from "./logger";
 import { ERROR_LOG_DIRECTORY } from "./constants";
-import { ChatCompletionMessageParam } from "../types/common";
+import { ChatCompletionMessageParam } from "openai/resources.js";
 
 /**
  * 错误日志数据结构

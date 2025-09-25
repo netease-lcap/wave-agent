@@ -3,8 +3,8 @@ import { AIManager } from "@/services/aiManager";
 import * as aiService from "@/services/aiService";
 import { SessionManager } from "@/services/sessionManager";
 import { Message } from "@/types";
-import { ChatCompletionMessageParam } from "@/types/common";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
+import { ChatCompletionMessageParam } from "openai/resources.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");

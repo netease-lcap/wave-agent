@@ -2,7 +2,7 @@
  * 工具插件接口定义
  */
 
-import type { ChatCompletionTool } from "../types/common";
+import { ChatCompletionTool } from "openai/resources.js";
 
 export interface ToolPlugin {
   name: string;
