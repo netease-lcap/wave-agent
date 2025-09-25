@@ -23,6 +23,9 @@ importers:
       micromatch:
         specifier: ^4.0.8
         version: 4.0.8
+      minimatch:
+        specifier: ^10.0.3
+        version: 10.0.3
       openai:
         specifier: ^5.12.2
         version: 5.12.2(ws@8.18.3)(zod@3.25.76)
