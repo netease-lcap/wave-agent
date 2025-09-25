@@ -60,11 +60,7 @@ const renderMessageItem = (
             )}
 
             {block.type === "diff" && (
-              <DiffViewer
-                block={block}
-                isExpanded={isExpanded}
-                workdir={workdir}
-              />
+              <DiffViewer block={block} isExpanded={isExpanded} />
             )}
 
             {block.type === "command_output" && (

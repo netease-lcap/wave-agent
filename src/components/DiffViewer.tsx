@@ -2,12 +2,10 @@ import React, { useMemo } from "react";
 import { Text, Box } from "ink";
 import { diffWords } from "diff";
 import type { DiffBlock } from "../types";
-import { getDisplayPath } from "../utils/path";
 
 interface DiffViewerProps {
   block: DiffBlock;
   isExpanded?: boolean;
-  workdir?: string;
 }
 
 // 渲染单词级 diff
@@ -51,7 +49,6 @@ const renderWordLevelDiff = (removedLine: string, addedLine: string) => {
 export const DiffViewer: React.FC<DiffViewerProps> = ({
   block,
   isExpanded = false,
-  workdir,
 }) => {
   const { diffResult } = block;
 
@@ -275,13 +272,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
 
   return (
     <Box flexDirection="column">
-      {/* 显示文件路径 */}
-      <Box marginBottom={1}>
-        <Text color="cyan" bold>
-          📄 {getDisplayPath(block.path, workdir)}
-        </Text>
-      </Box>
-
       {block.warning && (
         <Box marginBottom={1}>
           <Text color="red" bold>
