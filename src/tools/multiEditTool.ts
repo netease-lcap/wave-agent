@@ -234,8 +234,8 @@ export const multiEditTool: ToolPlugin = {
       const diffResult = diffLines(originalContent, currentContent);
 
       const shortResult = isNewFile
-        ? `Created ${filePath} with ${edits.length} operations`
-        : `Applied ${edits.length} edits to ${filePath}`;
+        ? `Created file with ${edits.length} operations`
+        : `Applied ${edits.length} edits`;
 
       const detailedContent = `${shortResult}\n\nOperations performed:\n${appliedEdits.map((edit, i) => `${i + 1}. ${edit}`).join("\n")}`;
 

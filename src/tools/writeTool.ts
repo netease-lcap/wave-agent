@@ -117,9 +117,7 @@ export const writeTool: ToolPlugin = {
       // 生成 diff 信息
       const diffResult = diffLines(originalContent, content);
 
-      const shortResult = isExistingFile
-        ? `Overwrote ${filePath}`
-        : `Created ${filePath}`;
+      const shortResult = isExistingFile ? "File overwritten" : "File created";
 
       const lines = content.split("\n").length;
       const chars = content.length;

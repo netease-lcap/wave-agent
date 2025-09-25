@@ -57,8 +57,8 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Created /test/newfile.js");
-    expect(result.shortResult).toBe("Created /test/newfile.js");
+    expect(result.content).toContain("File created");
+    expect(result.shortResult).toBe("File created");
     expect(result.filePath).toBe("/test/newfile.js");
     expect(result.originalContent).toBe("");
     expect(result.newContent).toBe(content);
@@ -89,8 +89,8 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Overwrote /test/file.js");
-    expect(result.shortResult).toBe("Overwrote /test/file.js");
+    expect(result.content).toContain("File overwritten");
+    expect(result.shortResult).toBe("File overwritten");
     expect(result.filePath).toBe("/test/file.js");
     expect(result.originalContent).toBe(originalContent);
     expect(result.newContent).toBe(newContent);
@@ -211,7 +211,7 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Created /test/file.js");
+    expect(result.content).toContain("File created");
   });
 
   it("should provide detailed content information", async () => {
@@ -230,9 +230,7 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain(
-      "Created /test/file.txt (3 lines, 20 characters)",
-    );
+    expect(result.content).toContain("File created (3 lines, 20 characters)");
   });
 
   it("should handle empty content", async () => {
@@ -251,9 +249,7 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain(
-      "Created /test/empty.txt (1 lines, 0 characters)",
-    );
+    expect(result.content).toContain("File created (1 lines, 0 characters)");
     expect(result.newContent).toBe("");
   });
 

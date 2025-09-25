@@ -61,7 +61,7 @@ describe("editTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Successfully replaced text in");
+    expect(result.content).toContain("Text replaced successfully");
     expect(result.filePath).toBe("/test/file.js");
     expect(result.originalContent).toBe(mockContent);
     expect(result.newContent).toBe(expectedContent);

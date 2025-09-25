@@ -69,7 +69,7 @@ describe("multiEditTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Applied 2 edits to");
+    expect(result.content).toContain("Applied 2 edits");
     expect(result.filePath).toBe("/test/file.js");
     expect(result.originalContent).toBe(mockContent);
     expect(result.newContent).toBe(expectedContent);
@@ -103,7 +103,7 @@ describe("multiEditTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Created /test/newfile.js");
+    expect(result.content).toContain("Created file with");
     expect(result.originalContent).toBe("");
     expect(result.newContent).toBe(content);
 
@@ -140,7 +140,7 @@ describe("multiEditTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Applied 2 edits to");
+    expect(result.content).toContain("Applied 2 edits");
     expect(result.newContent).toBe(expectedContent);
   });
 
@@ -359,7 +359,7 @@ describe("multiEditTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Applied 2 edits to");
+    expect(result.content).toContain("Applied 2 edits");
     expect(result.content).toContain("Operations performed:");
     expect(result.content).toContain('1. Replaced "var x"');
     expect(result.content).toContain('2. Replaced "var y"');

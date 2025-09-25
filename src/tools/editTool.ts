@@ -159,8 +159,8 @@ export const editTool: ToolPlugin = {
       const diffResult = diffLines(originalContent, newContent);
 
       const shortResult = replaceAll
-        ? `Replaced ${replacementCount} instances in ${filePath}`
-        : `Successfully replaced text in ${filePath}`;
+        ? `Replaced ${replacementCount} instances`
+        : "Text replaced successfully";
 
       logger.info(`Edit tool: ${shortResult}`);
 
