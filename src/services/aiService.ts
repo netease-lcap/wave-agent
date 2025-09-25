@@ -49,6 +49,7 @@ export interface CallAgentOptions {
   sessionId?: string;
   abortSignal?: AbortSignal;
   memory?: string; // 记忆内容参数，从 LCAP.md 读取的内容
+  workdir?: string; // 当前工作目录
   onContentUpdate?: (content: string) => void; // 流式更新内容回调
   onToolCallUpdate?: (toolCall: FunctionToolCall, isComplete: boolean) => void; // 工具调用更新回调
 }
@@ -112,12 +113,21 @@ export async function generateCommitMessage(
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
-  const { messages, abortSignal, memory, onContentUpdate, onToolCallUpdate } =
-    options;
+  const {
+    messages,
+    abortSignal,
+    memory,
+    workdir,
+    onContentUpdate,
+    onToolCallUpdate,
+  } = options;
 
   try {
     // 构建系统提示词内容
     let systemContent = `You are a professional web development expert.
+
+## Current Working Directory
+${workdir || process.cwd()}
 
 ## TODOs
 ⏳ Pending tasks

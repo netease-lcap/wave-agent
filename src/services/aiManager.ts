@@ -268,6 +268,7 @@ export class AIManager {
         sessionId: this.state.sessionId,
         abortSignal: abortController.signal,
         memory: combinedMemory, // 传递合并后的记忆内容
+        workdir: this.workdir, // 传递当前工作目录
         // 流式内容更新回调
         onContentUpdate: (content: string) => {
           currentMessages = updateAnswerBlockInMessage(
