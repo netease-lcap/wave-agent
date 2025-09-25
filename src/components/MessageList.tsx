@@ -10,6 +10,89 @@ import { processMessageGroups } from "../utils/messageGrouping";
 import { useLoadingTimer } from "../hooks/useLoadingTimer";
 import { useChat } from "../contexts/useChat";
 
+// 渲染单个消息的函数
+const renderMessageItem = (
+  message: Message,
+  originalIndex: number,
+  pageIndex: number,
+  isExpanded: boolean,
+) => {
+  const isPageStart = pageIndex === 0;
+  const shouldShowHeader =
+    message.role === "user" ||
+    !message.groupInfo ||
+    message.groupInfo.isGroupStart ||
+    isPageStart;
+
+  return (
+    <Box key={`message-${originalIndex}`} flexDirection="column" marginTop={1}>
+      {shouldShowHeader && (
+        <Box>
+          <Text color={message.role === "user" ? "cyan" : "green"} bold>
+            {message.role === "user" ? "👤 You" : "🤖 Assistant"}
+            <Text color="gray" dimColor>
+              {" "}
+              #{message.groupInfo?.groupRange || originalIndex + 1}
+            </Text>
+          </Text>
+        </Box>
+      )}
+
+      <Box
+        marginLeft={2}
+        flexDirection="column"
+        gap={1}
+        marginTop={shouldShowHeader ? 1 : 0}
+      >
+        {message.blocks.map((block, blockIndex) => (
+          <Box key={blockIndex}>
+            {block.type === "text" && block.content.trim() && (
+              <Box>
+                <Text>{block.content}</Text>
+              </Box>
+            )}
+
+            {block.type === "error" && (
+              <Box>
+                <Text color="red">❌ Error: {block.content}</Text>
+              </Box>
+            )}
+
+            {block.type === "diff" && (
+              <DiffViewer block={block} isExpanded={isExpanded} />
+            )}
+
+            {block.type === "command_output" && (
+              <CommandOutputDisplay block={block} isExpanded={isExpanded} />
+            )}
+
+            {block.type === "tool" && (
+              <ToolResultDisplay block={block} isExpanded={isExpanded} />
+            )}
+
+            {block.type === "image" && (
+              <Box>
+                <Text color="magenta" bold>
+                  📷 Image
+                </Text>
+                {block.attributes?.imageUrls &&
+                  block.attributes.imageUrls.length > 0 && (
+                    <Text color="gray" dimColor>
+                      {" "}
+                      ({block.attributes.imageUrls.length})
+                    </Text>
+                  )}
+              </Box>
+            )}
+
+            {block.type === "memory" && <MemoryDisplay block={block} />}
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+};
+
 export interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
@@ -29,6 +112,17 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   const { displayInfo } = usePagination(messages);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // 获取当前页的消息，同时保留原始索引信息
+  const currentMessagesWithIndex = useMemo(() => {
+    return processedMessages
+      .slice(displayInfo.startIndex, displayInfo.endIndex)
+      .map((message, index) => ({
+        message,
+        originalIndex: displayInfo.startIndex + index,
+        pageIndex: index,
+      }));
+  }, [processedMessages, displayInfo.startIndex, displayInfo.endIndex]);
+
   // 监听 Ctrl+R 快捷键切换折叠/展开状态
   useInput((input, key) => {
     if (key.ctrl && input === "r") {
@@ -45,99 +139,13 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
     );
   }
 
-  // 获取当前页的消息
-  const currentMessages = processedMessages.slice(
-    displayInfo.startIndex,
-    displayInfo.endIndex,
-  );
-
   return (
     <Box flexDirection="column">
       {/* 消息列表 */}
       <Box flexDirection="column">
-        {currentMessages.map((message, index) => {
-          const messageIndex = displayInfo.startIndex + index;
-          const isPageStart = index === 0;
-          const shouldShowHeader =
-            message.role === "user" ||
-            !message.groupInfo ||
-            message.groupInfo.isGroupStart ||
-            isPageStart;
-
-          return (
-            <Box key={messageIndex} flexDirection="column" marginTop={1}>
-              {shouldShowHeader && (
-                <Box>
-                  <Text color={message.role === "user" ? "cyan" : "green"} bold>
-                    {message.role === "user" ? "👤 You" : "🤖 Assistant"}
-                    <Text color="gray" dimColor>
-                      {" "}
-                      #{message.groupInfo?.groupRange || messageIndex + 1}
-                    </Text>
-                  </Text>
-                </Box>
-              )}
-
-              <Box
-                marginLeft={2} // 统一使用2个字符的缩进，确保组内消息对齐
-                flexDirection="column"
-                gap={1}
-                marginTop={shouldShowHeader ? 1 : 0}
-              >
-                {message.blocks.map((block, blockIndex) => (
-                  <Box key={blockIndex}>
-                    {block.type === "text" && block.content.trim() && (
-                      <Box>
-                        <Text>{block.content}</Text>
-                      </Box>
-                    )}
-
-                    {block.type === "error" && (
-                      <Box>
-                        <Text color="red">❌ Error: {block.content}</Text>
-                      </Box>
-                    )}
-
-                    {block.type === "diff" && (
-                      <DiffViewer block={block} isExpanded={isExpanded} />
-                    )}
-
-                    {block.type === "command_output" && (
-                      <CommandOutputDisplay
-                        block={block}
-                        isExpanded={isExpanded}
-                      />
-                    )}
-
-                    {block.type === "tool" && (
-                      <ToolResultDisplay
-                        block={block}
-                        isExpanded={isExpanded}
-                      />
-                    )}
-
-                    {block.type === "image" && (
-                      <Box>
-                        <Text color="magenta" bold>
-                          📷 Image
-                        </Text>
-                        {block.attributes?.imageUrls &&
-                          block.attributes.imageUrls.length > 0 && (
-                            <Text color="gray" dimColor>
-                              {" "}
-                              ({block.attributes.imageUrls.length})
-                            </Text>
-                          )}
-                      </Box>
-                    )}
-
-                    {block.type === "memory" && <MemoryDisplay block={block} />}
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-          );
-        })}
+        {currentMessagesWithIndex.map(({ message, originalIndex, pageIndex }) =>
+          renderMessageItem(message, originalIndex, pageIndex, isExpanded),
+        )}
       </Box>
 
       {/* Loading 状态显示 */}
