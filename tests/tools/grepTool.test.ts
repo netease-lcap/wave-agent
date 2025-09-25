@@ -324,13 +324,13 @@ It contains various files with different content.`,
     expect(grepTool.formatCompactParams?.(params1)).toBe("export");
 
     const params2 = { pattern: "import", type: "ts" };
-    expect(grepTool.formatCompactParams?.(params2)).toBe("import (ts)");
+    expect(grepTool.formatCompactParams?.(params2)).toBe("import ts");
 
     const params3 = { pattern: "console", output_mode: "count" };
     expect(grepTool.formatCompactParams?.(params3)).toBe("console [count]");
 
     const params4 = { pattern: "test", type: "js", output_mode: "content" };
-    expect(grepTool.formatCompactParams?.(params4)).toBe("test (js) [content]");
+    expect(grepTool.formatCompactParams?.(params4)).toBe("test js [content]");
   });
 
   it("should handle special regex characters", async () => {

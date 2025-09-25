@@ -290,7 +290,7 @@ describe("writeTool", () => {
 
       expect(writeTool.formatCompactParams).toBeDefined();
       const result = writeTool.formatCompactParams!(params);
-      expect(result).toBe("/test/example.txt (3 lines, 16 chars)");
+      expect(result).toBe("/test/example.txt 3 lines, 16 chars");
     });
 
     it("should handle empty content", () => {
@@ -311,7 +311,7 @@ describe("writeTool", () => {
 
       expect(writeTool.formatCompactParams).toBeDefined();
       const result = writeTool.formatCompactParams!(params);
-      expect(result).toBe(" (1 lines, 12 chars)");
+      expect(result).toBe(" 1 lines, 12 chars");
     });
 
     it("should handle missing content", () => {

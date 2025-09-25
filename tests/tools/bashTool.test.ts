@@ -201,7 +201,7 @@ describe("bashTool", () => {
 
       const params2 = { command: "echo hello", run_in_background: true };
       const result2 = bashTool.formatCompactParams?.(params2);
-      expect(result2).toBe("echo hello (background)");
+      expect(result2).toBe("echo hello background");
     });
   });
 
@@ -280,7 +280,7 @@ describe("bashTool", () => {
 
       const params2 = { bash_id: "bash_1", filter: "error" };
       const result2 = bashOutputTool.formatCompactParams?.(params2);
-      expect(result2).toBe("bash_1 (filtered: error)");
+      expect(result2).toBe("bash_1 filtered: error");
     });
   });
 

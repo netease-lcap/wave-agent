@@ -276,7 +276,7 @@ Multi-byte: café naïve résumé`,
       limit: 20,
     };
     expect(readTool.formatCompactParams?.(params2)).toBe(
-      "/path/to/file.txt (10:20)",
+      "/path/to/file.txt 10:20",
     );
 
     const params3 = {
@@ -284,7 +284,7 @@ Multi-byte: café naïve résumé`,
       offset: 5,
     };
     expect(readTool.formatCompactParams?.(params3)).toBe(
-      "/path/to/file.txt (5:2000)",
+      "/path/to/file.txt 5:2000",
     );
 
     const params4 = {
@@ -292,7 +292,7 @@ Multi-byte: café naïve résumé`,
       limit: 50,
     };
     expect(readTool.formatCompactParams?.(params4)).toBe(
-      "/path/to/file.txt (1:50)",
+      "/path/to/file.txt 1:50",
     );
   });
 

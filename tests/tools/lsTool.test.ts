@@ -217,7 +217,7 @@ describe("lsTool", () => {
       ignore: ["*.tmp", "*.log"],
     };
     expect(lsTool.formatCompactParams?.(params2)).toBe(
-      "/home/user/project (ignore: *.tmp, *.log)",
+      "/home/user/project ignore: *.tmp, *.log",
     );
 
     const params3 = { path: "/test" };
