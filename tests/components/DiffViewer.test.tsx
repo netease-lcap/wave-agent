@@ -104,6 +104,21 @@ describe("DiffViewer", () => {
       expect(lastFrame()).toContain("📄 src/example.ts");
     });
 
+    it("should display relative path when workdir is provided", () => {
+      const block: DiffBlock = {
+        type: "diff",
+        path: "/Users/test/project/src/example.ts",
+        original: "test",
+        modified: "test",
+        diffResult: [{ value: "test\n", added: false, removed: false }],
+      };
+
+      const { lastFrame } = render(
+        <DiffViewer block={block} workdir="/Users/test/project" />,
+      );
+      expect(lastFrame()).toContain("📄 src/example.ts");
+    });
+
     it("should display warning when present", () => {
       const block: DiffBlock = {
         type: "diff",
