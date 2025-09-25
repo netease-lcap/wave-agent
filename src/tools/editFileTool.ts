@@ -101,23 +101,40 @@ export const editFileTool: ToolPlugin = {
       const addedLines = diffResult.filter((d) => d.added).length;
       const removedLines = diffResult.filter((d) => d.removed).length;
       const isRewrite = !hasExistingCodeMarker && !isNewFile;
+      const lineCount = editedContent.split("\n").length;
+
+      const summary = isNewFile
+        ? `Created new file (${lineCount} lines)`
+        : isRewrite
+          ? `Rewrote file (${lineCount} lines)`
+          : `Modified file (+${addedLines} -${removedLines} lines)`;
+
+      let diffText = "";
+      if (hasExistingCodeMarker) {
+        diffText = diffResult
+          .map((part) => {
+            const prefix = part.added ? "+" : part.removed ? "-" : " ";
+            return part.value
+              .split("\n")
+              .filter((line) => line.trim() !== "")
+              .map((line) => `${prefix}${line}`)
+              .join("\n");
+          })
+          .filter((block) => block !== "")
+          .join("\n");
+      }
+
+      const content = hasExistingCodeMarker ? diffText || summary : summary;
+      const shortResult = summary;
 
       return {
         success: true,
-        content: isNewFile
-          ? `Created new file (${editedContent.split("\n").length} lines)`
-          : isRewrite
-            ? `Rewrote file (${editedContent.split("\n").length} lines)`
-            : `Modified file (+${addedLines} -${removedLines} lines)`,
+        content,
         originalContent: existingContent,
         newContent: editedContent,
         diffResult: diffResult,
         filePath: targetFile,
-        shortResult: isNewFile
-          ? `Created new file (${editedContent.split("\n").length} lines)`
-          : isRewrite
-            ? `Rewrote file (${editedContent.split("\n").length} lines)`
-            : `Modified file (+${addedLines} -${removedLines} lines)`,
+        shortResult,
       };
     } catch (error) {
       return {

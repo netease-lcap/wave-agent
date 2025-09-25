@@ -73,11 +73,30 @@ describe("editFileTool", () => {
       "utf-8",
     );
     expect(result.success).toBe(true);
-    expect(result.content).toMatch(/Modified file \(\+\d+ -\d+ lines\)/);
+    expect(result.content).toBe('-console.log("old");\n+console.log("new");');
     expect(result.originalContent).toBe(existingContent);
     expect(result.newContent).toBe(editedContent);
     expect(result.filePath).toBe("test.js");
     expect(result.diffResult).toBeDefined();
+    expect(result.shortResult).toMatch(/Modified file \(\+\d+ -\d+ lines\)/);
+  });
+
+  it("should include diff output when existing code markers are used", async () => {
+    const existingContent = 'const value = "old";\nconsole.log(value);\n';
+    const editedContent = 'const value = "new";\nconsole.log(value);\n';
+
+    mockReadFile.mockResolvedValue(existingContent);
+    mockApplyEdit.mockResolvedValue(editedContent);
+
+    const result: ToolResult = await editFileTool.execute({
+      target_file: "test.js",
+      code_edit:
+        '// ... existing code ...\nconst value = "new";\nconsole.log(value);\n// ... existing code ...',
+    });
+
+    expect(result.content).toBe(
+      '-const value = "old";\n+const value = "new";\n console.log(value);',
+    );
   });
 
   it("should successfully create a new file", async () => {
