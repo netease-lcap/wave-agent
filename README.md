@@ -22,6 +22,9 @@ export AIGW_URL="https://your-api-gateway-url.com"
 # 指定使用的AI模型（可选，默认使用系统配置的模型）
 export AIGW_MODEL="gemini-2.5-flash"
 
+# 指定快速AI模型（可选，用于快速响应场景）
+export AIGW_FAST_MODEL="gemini-1.5-flash"
+
 # 日志级别（可选，默认为info）
 export LOG_LEVEL="debug"
 
