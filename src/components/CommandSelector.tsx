@@ -18,6 +18,10 @@ const AVAILABLE_COMMANDS: Command[] = [
     name: "git-commit",
     description: "Generate git commit message and create commit command",
   },
+  {
+    name: "bashes",
+    description: "View and manage background bash shells",
+  },
 ];
 
 export interface CommandSelectorProps {

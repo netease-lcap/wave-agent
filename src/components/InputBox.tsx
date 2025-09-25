@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { Box, Text } from "ink";
 import { FileSelector } from "./FileSelector";
 import { CommandSelector } from "./CommandSelector";
 import { BashHistorySelector } from "./BashHistorySelector";
 import { MemoryTypeSelector } from "./MemoryTypeSelector";
+import { BashShellManager } from "./BashShellManager";
 import { useInputState } from "../hooks/useInputState";
 import { useFileSelector } from "../hooks/useFileSelector";
 import { useCommandSelector } from "../hooks/useCommandSelector";
@@ -49,6 +50,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   saveMemory = async () => {},
   setInputInsertHandler = () => {},
 }) => {
+  // Bash shell manager state
+  const [showBashManager, setShowBashManager] = useState(false);
   // 基础输入状态
   const {
     inputText,
@@ -88,7 +91,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
     updateCommandSearchQuery,
     checkForSlashDeletion,
     slashPosition,
-  } = useCommandSelector({ clearMessages });
+  } = useCommandSelector({
+    clearMessages,
+    onShowBashManager: () => setShowBashManager(true),
+  });
 
   // Bash历史选择器功能
   const {
@@ -174,6 +180,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showMemoryTypeSelector,
     activateMemoryTypeSelector,
     handleMemoryTypeSelect: handleMemoryTypeSelectorSelect,
+    showBashManager,
     isCommandRunning,
     isLoading,
     sendMessage,
@@ -231,6 +238,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
             onSelect={handleMemoryTypeSelect}
             onCancel={handleCancelMemoryTypeSelect}
           />
+        )}
+
+        {showBashManager && (
+          <BashShellManager onCancel={() => setShowBashManager(false)} />
         )}
 
         <Box width="100%" flexDirection="row" justifyContent="space-between">

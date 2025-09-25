@@ -2,10 +2,12 @@ import { useState, useCallback } from "react";
 
 export interface UseCommandSelectorParams {
   clearMessages: () => void;
+  onShowBashManager?: () => void;
 }
 
 export const useCommandSelector = ({
   clearMessages,
+  onShowBashManager,
 }: UseCommandSelectorParams) => {
   const [showCommandSelector, setShowCommandSelector] = useState(false);
   const [slashPosition, setSlashPosition] = useState(-1);
@@ -29,6 +31,8 @@ export const useCommandSelector = ({
         // 执行命令
         if (command === "clean") {
           clearMessages();
+        } else if (command === "bashes" && onShowBashManager) {
+          onShowBashManager();
         }
 
         setShowCommandSelector(false);
@@ -39,7 +43,7 @@ export const useCommandSelector = ({
       }
       return { newInput: inputText, newCursorPosition: cursorPosition };
     },
-    [slashPosition, clearMessages],
+    [slashPosition, clearMessages, onShowBashManager],
   );
 
   const handleCommandGenerated = useCallback((generatedCommand: string) => {

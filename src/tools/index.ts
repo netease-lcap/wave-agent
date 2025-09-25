@@ -4,7 +4,7 @@ import type {
   ToolRegistry,
   ToolResult,
 } from "./types";
-import { terminalTool } from "./terminalTool";
+import { bashTool, bashOutputTool, killBashTool } from "./bashTool";
 import { deleteFileTool } from "./deleteFileTool";
 import { editTool } from "./editTool";
 import { multiEditTool } from "./multiEditTool";
@@ -61,7 +61,9 @@ class ToolRegistryImpl implements ToolRegistry {
 
 // 创建全局工具注册中心实例
 export const toolRegistry = new ToolRegistryImpl();
-toolRegistry.register(terminalTool);
+toolRegistry.register(bashTool);
+toolRegistry.register(bashOutputTool);
+toolRegistry.register(killBashTool);
 toolRegistry.register(deleteFileTool);
 toolRegistry.register(editTool);
 toolRegistry.register(multiEditTool);

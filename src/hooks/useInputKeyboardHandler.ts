@@ -75,6 +75,9 @@ interface KeyboardHandlerProps {
   activateMemoryTypeSelector: (message: string) => void;
   handleMemoryTypeSelect: (type: "project" | "user") => void;
 
+  // Bash shell manager
+  showBashManager: boolean;
+
   // Chat actions
   isCommandRunning: boolean;
   isLoading: boolean;
@@ -130,6 +133,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     showMemoryTypeSelector,
     activateMemoryTypeSelector,
     handleMemoryTypeSelect,
+    showBashManager,
     isCommandRunning,
     isLoading,
     sendMessage,
@@ -641,10 +645,11 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       showFileSelector ||
       showCommandSelector ||
       showBashHistorySelector ||
-      showMemoryTypeSelector
+      showMemoryTypeSelector ||
+      showBashManager
     ) {
-      if (showMemoryTypeSelector) {
-        // 记忆类型选择器不需要处理输入，由组件自己处理
+      if (showMemoryTypeSelector || showBashManager) {
+        // 记忆类型选择器和bash管理器不需要处理输入，由组件自己处理
         return;
       }
       handleSelectorInput(input, key);
