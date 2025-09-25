@@ -2,7 +2,7 @@ import { readFile, writeFile } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/path";
-import { diffChars } from "diff";
+import { diffLines } from "diff";
 
 interface EditOperation {
   old_string: string;
@@ -216,7 +216,7 @@ export const multiEditTool: ToolPlugin = {
       }
 
       // 生成 diff 信息
-      const diffResult = diffChars(originalContent, currentContent);
+      const diffResult = diffLines(originalContent, currentContent);
 
       const shortResult = isNewFile
         ? `Created ${filePath} with ${edits.length} operations`

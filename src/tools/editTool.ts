@@ -2,7 +2,7 @@ import { readFile, writeFile } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/path";
-import { diffChars } from "diff";
+import { diffLines } from "diff";
 
 /**
  * 单文件编辑工具插件
@@ -144,7 +144,7 @@ export const editTool: ToolPlugin = {
       }
 
       // 生成 diff 信息
-      const diffResult = diffChars(originalContent, newContent);
+      const diffResult = diffLines(originalContent, newContent);
 
       const shortResult = replaceAll
         ? `Replaced ${replacementCount} instances in ${filePath}`

@@ -3,7 +3,7 @@ import { dirname } from "path";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
 import { resolvePath } from "../utils/path";
-import { diffChars } from "diff";
+import { diffLines } from "diff";
 
 /**
  * 文件写入工具插件
@@ -115,7 +115,7 @@ export const writeTool: ToolPlugin = {
       }
 
       // 生成 diff 信息
-      const diffResult = diffChars(originalContent, content);
+      const diffResult = diffLines(originalContent, content);
 
       const shortResult = isExistingFile
         ? `Overwrote ${filePath}`
