@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { homedir } from "os";
 import { promises as fs } from "fs";
+import { relative } from "path";
 
 /**
  * 处理路径，支持 ~ 开头的路径扩展
@@ -88,6 +89,28 @@ export const isBinary = (filename: string): boolean => {
   const ext = parts.length > 1 ? parts.pop()?.toLowerCase() || "" : "";
   return binaryExtensions.includes(ext as (typeof binaryExtensions)[number]);
 };
+
+/**
+ * 获取相对路径用于显示，如果相对路径更短且不在父目录则使用相对路径
+ * @param filePath 绝对路径
+ * @returns 用于显示的路径（相对路径或绝对路径）
+ */
+export function getDisplayPath(filePath: string): string {
+  try {
+    const cwd = process.cwd();
+    const relativePath = relative(cwd, filePath);
+    // 如果相对路径比绝对路径短且不以 .. 开头（不在父目录），则使用相对路径
+    if (
+      relativePath.length < filePath.length &&
+      !relativePath.startsWith("..")
+    ) {
+      return relativePath;
+    }
+  } catch {
+    // 如果计算相对路径失败，保持原路径
+  }
+  return filePath;
+}
 
 export interface PathValidationResult {
   isValid: boolean;

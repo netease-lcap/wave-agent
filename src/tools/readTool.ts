@@ -1,7 +1,7 @@
 import { readFile } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
-import { resolvePath } from "../utils/path";
+import { resolvePath, getDisplayPath } from "../utils/path";
 
 /**
  * Read 工具插件 - 读取文件内容
@@ -151,14 +151,14 @@ export const readTool: ToolPlugin = {
     const offset = params.offset as number;
     const limit = params.limit as number;
 
-    let result = filePath || "";
+    let displayPath = getDisplayPath(filePath || "");
 
     if (typeof offset === "number" || typeof limit === "number") {
       const offsetStr = typeof offset === "number" ? offset.toString() : "1";
       const limitStr = typeof limit === "number" ? limit.toString() : "2000";
-      result += ` (${offsetStr}:${limitStr})`;
+      displayPath += ` (${offsetStr}:${limitStr})`;
     }
 
-    return result;
+    return displayPath;
   },
 };

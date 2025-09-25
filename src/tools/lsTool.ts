@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { minimatch } from "minimatch";
 import type { ToolPlugin, ToolResult } from "./types";
-import { isBinary } from "@/utils/path";
+import { isBinary, getDisplayPath } from "@/utils/path";
 
 /**
  * LS 工具插件 - 列出文件和目录
@@ -164,7 +164,7 @@ export const lsTool: ToolPlugin = {
     const targetPath = params.path as string;
     const ignorePatterns = params.ignore as string[];
 
-    let result = targetPath || "";
+    let result = getDisplayPath(targetPath || "");
 
     if (
       ignorePatterns &&

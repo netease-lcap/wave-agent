@@ -2,7 +2,7 @@ import React from "react";
 import { render } from "ink";
 import { App } from "./components/App.js";
 import { SessionManager, type SessionData } from "./services/sessionManager.js";
-import { PathValidator } from "./utils/pathValidator.js";
+import { PathValidator } from "./utils/path.js";
 import { cleanupLogs } from "./utils/logger.js";
 
 export interface CliOptions {
