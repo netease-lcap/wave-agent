@@ -4,7 +4,7 @@ import OpenAI from "openai";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import { FunctionToolCall } from "openai/resources/beta/threads/runs.mjs";
 import { ChatCompletionMessageParam } from "openai/resources.js";
-import { DEFAULT_MODEL_ID } from "@/utils/constants";
+import { FAST_MODEL_ID, AGENT_MODEL_ID } from "@/utils/constants";
 
 /**
  * 模型配置类型，基于 OpenAI 的参数但排除 messages 和 stream
@@ -43,9 +43,6 @@ const openai = new OpenAI({
   apiKey: process.env.AIGW_TOKEN,
   baseURL: process.env.AIGW_URL,
 });
-
-const FAST_MODEL_ID = process.env.AIGW_FAST_MODEL || "gemini-2.5-flash";
-const AGENT_MODEL_ID = process.env.AIGW_MODEL || DEFAULT_MODEL_ID;
 
 export interface CallAgentOptions {
   messages: ChatCompletionMessageParam[];

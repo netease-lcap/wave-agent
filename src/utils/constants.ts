@@ -22,16 +22,6 @@ export const LOG_FILE = path.join(DATA_DIRECTORY, "app.log");
 export const BASH_HISTORY_FILE = path.join(DATA_DIRECTORY, "bash-history.json");
 
 /**
- * 认证token文件路径
- */
-export const AUTH_TOKEN_FILE = path.join(DATA_DIRECTORY, "auth-token.json");
-
-/**
- * 用户凭据文件路径
- */
-export const CREDENTIALS_FILE = path.join(DATA_DIRECTORY, "credentials.json");
-
-/**
  * 错误日志目录路径
  */
 export const ERROR_LOG_DIRECTORY = path.join(DATA_DIRECTORY, "error-logs");
@@ -51,7 +41,7 @@ export const MESSAGES_PER_PAGE = 20; // 每页显示的消息数量
  */
 export const DEFAULT_TOKEN_LIMIT = 64000; // 默认 token 限制
 
-/**
- * 默认模型ID
- */
-export const DEFAULT_MODEL_ID = "claude-sonnet-4-20250514";
+export const FAST_MODEL_ID = process.env.AIGW_FAST_MODEL || "gemini-2.5-flash";
+
+export const AGENT_MODEL_ID =
+  process.env.AIGW_MODEL || "claude-sonnet-4-20250514";
