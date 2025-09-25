@@ -96,9 +96,19 @@ export const isBinary = (filename: string): boolean => {
  * @returns 用于显示的路径（相对路径或绝对路径）
  */
 export function getDisplayPath(filePath: string): string {
+  if (!filePath) {
+    return filePath;
+  }
+
   try {
     const cwd = process.cwd();
     const relativePath = relative(cwd, filePath);
+
+    // 如果相对路径为空（即路径相同），返回 "."
+    if (relativePath === "") {
+      return ".";
+    }
+
     // 如果相对路径比绝对路径短且不以 .. 开头（不在父目录），则使用相对路径
     if (
       relativePath.length < filePath.length &&

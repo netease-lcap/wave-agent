@@ -92,6 +92,14 @@ describe("path utils", () => {
       expect(result).toBe("package.json");
     });
 
+    it("should return '.' when path equals current working directory", () => {
+      const mockCwd = "/Users/test/project";
+      vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
+
+      const result = getDisplayPath("/Users/test/project");
+      expect(result).toBe(".");
+    });
+
     it("should handle process.cwd() throwing error", () => {
       vi.spyOn(process, "cwd").mockImplementation(() => {
         throw new Error("Access denied");
