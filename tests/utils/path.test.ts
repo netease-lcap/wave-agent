@@ -132,5 +132,35 @@ describe("path utils", () => {
       const result = getDisplayPath("C:\\Users\\test\\project\\src\\file.ts");
       expect(result).toBe("src\\file.ts");
     });
+
+    it("should use custom workdir when provided", () => {
+      const customWorkdir = "/Users/test/project";
+
+      const result = getDisplayPath(
+        "/Users/test/project/src/utils/file.ts",
+        customWorkdir,
+      );
+      expect(result).toBe("src/utils/file.ts");
+    });
+
+    it("should return absolute path when relative to custom workdir starts with ..", () => {
+      const customWorkdir = "/Users/test/project";
+
+      const absolutePath = "/Users/test/other-project/file.ts";
+      const result = getDisplayPath(absolutePath, customWorkdir);
+      expect(result).toBe(absolutePath);
+    });
+
+    it("should prefer custom workdir over process.cwd()", () => {
+      const mockCwd = "/different/directory";
+      const customWorkdir = "/Users/test/project";
+      vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
+
+      const result = getDisplayPath(
+        "/Users/test/project/src/file.ts",
+        customWorkdir,
+      );
+      expect(result).toBe("src/file.ts");
+    });
   });
 });

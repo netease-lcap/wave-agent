@@ -16,6 +16,7 @@ const renderMessageItem = (
   originalIndex: number,
   pageIndex: number,
   isExpanded: boolean,
+  workdir?: string,
 ) => {
   const isPageStart = pageIndex === 0;
   const shouldShowHeader =
@@ -67,7 +68,11 @@ const renderMessageItem = (
             )}
 
             {block.type === "tool" && (
-              <ToolResultDisplay block={block} isExpanded={isExpanded} />
+              <ToolResultDisplay
+                block={block}
+                isExpanded={isExpanded}
+                workdir={workdir}
+              />
             )}
 
             {block.type === "image" && (
@@ -96,9 +101,13 @@ const renderMessageItem = (
 export interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
+  workdir?: string;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
+export const MessageList: React.FC<MessageListProps> = ({
+  messages,
+  workdir,
+}) => {
   const { isLoading, isCommandRunning, totalTokens } = useChat();
   const { formattedTime } = useLoadingTimer(isLoading);
 
@@ -144,7 +153,13 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
       {/* 消息列表 */}
       <Box flexDirection="column">
         {currentMessagesWithIndex.map(({ message, originalIndex, pageIndex }) =>
-          renderMessageItem(message, originalIndex, pageIndex, isExpanded),
+          renderMessageItem(
+            message,
+            originalIndex,
+            pageIndex,
+            isExpanded,
+            workdir,
+          ),
         )}
       </Box>
 

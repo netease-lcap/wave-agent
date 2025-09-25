@@ -93,15 +93,16 @@ export const isBinary = (filename: string): boolean => {
 /**
  * 获取相对路径用于显示，如果相对路径更短且不在父目录则使用相对路径
  * @param filePath 绝对路径
+ * @param workdir 工作目录（可选，默认使用当前工作目录）
  * @returns 用于显示的路径（相对路径或绝对路径）
  */
-export function getDisplayPath(filePath: string): string {
+export function getDisplayPath(filePath: string, workdir?: string): string {
   if (!filePath) {
     return filePath;
   }
 
   try {
-    const cwd = process.cwd();
+    const cwd = workdir || process.cwd();
     const relativePath = relative(cwd, filePath);
 
     // 如果相对路径为空（即路径相同），返回 "."

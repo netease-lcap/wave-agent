@@ -1,7 +1,7 @@
 import { glob } from "glob";
 import { stat } from "fs/promises";
 import type { ToolContext, ToolPlugin, ToolResult } from "./types";
-import { resolvePath } from "../utils/path";
+import { resolvePath, getDisplayPath } from "../utils/path";
 import { getGlobIgnorePatterns } from "../utils/fileFilter";
 
 /**
@@ -121,12 +121,13 @@ export const globTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>) => {
+  formatCompactParams: (params: Record<string, unknown>, workdir?: string) => {
     const pattern = params.pattern as string;
     const path = params.path as string;
 
     if (path) {
-      return `${pattern} in ${path}`;
+      const displayPath = getDisplayPath(path, workdir);
+      return `${pattern} in ${displayPath}`;
     }
     return pattern || "";
   },

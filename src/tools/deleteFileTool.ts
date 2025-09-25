@@ -1,7 +1,7 @@
 import { unlink } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
-import { resolvePath } from "../utils/path";
+import { resolvePath, getDisplayPath } from "../utils/path";
 
 /**
  * 删除文件工具插件
@@ -73,8 +73,8 @@ export const deleteFileTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>) => {
+  formatCompactParams: (params: Record<string, unknown>, workdir?: string) => {
     const targetFile = params.target_file as string;
-    return targetFile || "";
+    return getDisplayPath(targetFile || "", workdir);
   },
 };

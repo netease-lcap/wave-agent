@@ -12,7 +12,10 @@ export interface ToolPlugin {
     args: Record<string, unknown>,
     context?: ToolContext,
   ) => Promise<ToolResult>;
-  formatCompactParams?: (params: Record<string, unknown>) => string;
+  formatCompactParams?: (
+    params: Record<string, unknown>,
+    workdir?: string,
+  ) => string;
 }
 
 export interface ToolResult {

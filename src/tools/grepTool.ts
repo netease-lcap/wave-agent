@@ -2,6 +2,7 @@ import type { ToolContext, ToolPlugin, ToolResult } from "./types";
 import { spawn } from "child_process";
 import { getGlobIgnorePatterns } from "../utils/fileFilter";
 import { rgPath } from "@vscode/ripgrep";
+import { getDisplayPath } from "../utils/path";
 
 /**
  * Grep 工具插件 - 基于 ripgrep 的强大搜索工具
@@ -258,15 +259,21 @@ export const grepTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>) => {
+  formatCompactParams: (params: Record<string, unknown>, workdir?: string) => {
     const pattern = params.pattern as string;
     const outputMode = params.output_mode as string;
     const fileType = params.type as string;
+    const path = params.path as string;
 
     let result = pattern || "";
 
     if (fileType) {
       result += ` (${fileType})`;
+    }
+
+    if (path) {
+      const displayPath = getDisplayPath(path, workdir);
+      result += ` in ${displayPath}`;
     }
 
     if (outputMode && outputMode !== "files_with_matches") {

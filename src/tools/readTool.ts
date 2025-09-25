@@ -146,12 +146,12 @@ export const readTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>) => {
+  formatCompactParams: (params: Record<string, unknown>, workdir?: string) => {
     const filePath = params.file_path as string;
     const offset = params.offset as number;
     const limit = params.limit as number;
 
-    let displayPath = getDisplayPath(filePath || "");
+    let displayPath = getDisplayPath(filePath || "", workdir);
 
     if (typeof offset === "number" || typeof limit === "number") {
       const offsetStr = typeof offset === "number" ? offset.toString() : "1";

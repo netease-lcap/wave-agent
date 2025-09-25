@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
-import { resolvePath } from "../utils/path";
+import { resolvePath, getDisplayPath } from "../utils/path";
 import { diffLines } from "diff";
 
 interface EditOperation {
@@ -13,11 +13,15 @@ interface EditOperation {
 /**
  * 格式化紧凑参数显示
  */
-function formatCompactParams(args: Record<string, unknown>): string {
+function formatCompactParams(
+  args: Record<string, unknown>,
+  workdir?: string,
+): string {
   const filePath = args.file_path as string;
   const edits = args.edits as EditOperation[];
   const editCount = edits ? edits.length : 0;
-  return `${filePath} (${editCount} edits)`;
+  const displayPath = getDisplayPath(filePath || "", workdir);
+  return `${displayPath} (${editCount} edits)`;
 }
 
 /**

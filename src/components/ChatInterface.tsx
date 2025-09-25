@@ -30,7 +30,11 @@ export const ChatInterface: React.FC = () => {
       <Box flexGrow={1} flexDirection="column" paddingX={1}>
         {/* 只在 raw mode 下显示 MessageList */}
         {shouldUseRawMode && (
-          <MessageList messages={messages} isLoading={isLoading} />
+          <MessageList
+            messages={messages}
+            isLoading={isLoading}
+            workdir={workdir}
+          />
         )}
       </Box>
 

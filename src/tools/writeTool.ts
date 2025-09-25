@@ -147,11 +147,11 @@ export const writeTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>) => {
+  formatCompactParams: (params: Record<string, unknown>, workdir?: string) => {
     const filePath = params.file_path as string;
     const content = params.content as string;
 
-    let displayPath = getDisplayPath(filePath || "");
+    let displayPath = getDisplayPath(filePath || "", workdir);
 
     if (content) {
       const lines = content.split("\n").length;

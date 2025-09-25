@@ -6,11 +6,13 @@ import { toolRegistry } from "../tools";
 interface ToolResultDisplayProps {
   block: ToolBlock;
   isExpanded?: boolean;
+  workdir?: string;
 }
 
 export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   block,
   isExpanded = false,
+  workdir,
 }) => {
   const { parameters, result, attributes } = block;
 
@@ -29,7 +31,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
 
         // 如果找到了工具插件且有 formatCompactParams 方法，使用它
         if (toolPlugin?.formatCompactParams) {
-          return toolPlugin.formatCompactParams(toolArgs);
+          return toolPlugin.formatCompactParams(toolArgs, workdir);
         }
       } catch {
         // 解析参数失败，忽略错误
@@ -37,7 +39,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
     }
 
     return undefined;
-  }, [attributes?.name, parameters]);
+  }, [attributes?.name, parameters, workdir]);
 
   const getStatusColor = () => {
     if (attributes?.isStreaming) return "blue";
