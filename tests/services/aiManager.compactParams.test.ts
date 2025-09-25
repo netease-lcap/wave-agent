@@ -6,7 +6,6 @@ import { extractCompleteParams } from "../../src/utils/jsonExtractor";
 vi.mock("../../src/services/aiService", () => ({
   callAgent: vi.fn(),
   compressMessages: vi.fn(),
-  applyEdit: vi.fn(),
 }));
 
 // Mock the file manager
