@@ -268,7 +268,7 @@ export const grepTool: ToolPlugin = {
     let result = pattern || "";
 
     if (fileType) {
-      result += ` (${fileType})`;
+      result += ` ${fileType}`;
     }
 
     if (path) {

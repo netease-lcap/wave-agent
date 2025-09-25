@@ -424,7 +424,7 @@ export const bashTool: ToolPlugin = {
   formatCompactParams: (params: Record<string, unknown>) => {
     const command = params.command as string;
     const runInBackground = params.run_in_background as boolean;
-    return `${command}${runInBackground ? " (background)" : ""}`;
+    return `${command}${runInBackground ? " background" : ""}`;
   },
 };
 
@@ -507,7 +507,7 @@ export const bashOutputTool: ToolPlugin = {
   formatCompactParams: (params: Record<string, unknown>) => {
     const bashId = params.bash_id as string;
     const filter = params.filter as string | undefined;
-    return filter ? `${bashId} (filtered: ${filter})` : bashId;
+    return filter ? `${bashId} filtered: ${filter}` : bashId;
   },
 };
 

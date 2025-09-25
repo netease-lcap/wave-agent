@@ -21,7 +21,7 @@ function formatCompactParams(
   const edits = args.edits as EditOperation[];
   const editCount = edits ? edits.length : 0;
   const displayPath = getDisplayPath(filePath || "", workdir);
-  return `${displayPath} (${editCount} edits)`;
+  return `${displayPath} ${editCount} edits`;
 }
 
 /**

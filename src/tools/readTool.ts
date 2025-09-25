@@ -156,7 +156,7 @@ export const readTool: ToolPlugin = {
     if (typeof offset === "number" || typeof limit === "number") {
       const offsetStr = typeof offset === "number" ? offset.toString() : "1";
       const limitStr = typeof limit === "number" ? limit.toString() : "2000";
-      displayPath += ` (${offsetStr}:${limitStr})`;
+      displayPath += ` ${offsetStr}:${limitStr}`;
     }
 
     return displayPath;

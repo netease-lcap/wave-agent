@@ -171,7 +171,7 @@ export const lsTool: ToolPlugin = {
       Array.isArray(ignorePatterns) &&
       ignorePatterns.length > 0
     ) {
-      result += ` (ignore: ${ignorePatterns.join(", ")})`;
+      result += ` ignore: ${ignorePatterns.join(", ")}`;
     }
 
     return result;

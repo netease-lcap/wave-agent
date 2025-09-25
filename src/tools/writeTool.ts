@@ -156,7 +156,7 @@ export const writeTool: ToolPlugin = {
     if (content) {
       const lines = content.split("\n").length;
       const chars = content.length;
-      displayPath += ` (${lines} lines, ${chars} chars)`;
+      displayPath += ` ${lines} lines, ${chars} chars`;
     }
 
     return displayPath;
