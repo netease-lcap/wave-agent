@@ -9,18 +9,14 @@ describe("InputBox Loading State", () => {
     const output = lastFrame();
 
     expect(output).toContain("Type your message");
-    expect(output).not.toContain("Press Esc to abort");
   });
 
-  it("should show normal placeholder and abort hint when loading", async () => {
+  it("should show normal placeholder when loading", async () => {
     const { lastFrame } = render(<InputBox isLoading={true} />);
     const output = lastFrame();
 
     // Should show normal placeholder
     expect(output).toContain("Type your message");
-
-    // Should show abort hint (may be wrapped)
-    expect(output).toMatch(/Press Esc to[\s\S]*abort/);
   });
 
   it("should show cursor and allow input when not loading", async () => {
@@ -38,7 +34,6 @@ describe("InputBox Loading State", () => {
 
     // Should show normal placeholder, allowing user to continue typing
     expect(output).toContain("Type your message");
-    expect(output).toMatch(/Press Esc to[\s\S]*abort/);
   });
 
   it("should default to not loading when no props provided", async () => {
@@ -46,6 +41,5 @@ describe("InputBox Loading State", () => {
     const output = lastFrame();
 
     expect(output).toContain("Type your message");
-    expect(output).not.toContain("Press Esc to abort");
   });
 });

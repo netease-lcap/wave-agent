@@ -6,20 +6,6 @@ import { InputBox, INPUT_PLACEHOLDER_TEXT } from "@/components/InputBox";
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox Basic Functionality", () => {
-  it("should show loading indicator when isLoading is true", async () => {
-    const { lastFrame } = render(<InputBox isLoading={true} />);
-
-    // 验证显示了 loading 指示器（可能被换行）
-    expect(lastFrame()).toMatch(/Press Esc to[\s\S]*abort/);
-  });
-
-  it("should not show loading indicator when isLoading is false", async () => {
-    const { lastFrame } = render(<InputBox isLoading={false} />);
-
-    // 验证没有显示 loading 指示器
-    expect(lastFrame()).not.toContain("[Press Esc to abort]");
-  });
-
   it("should show placeholder text when empty", async () => {
     const { lastFrame } = render(<InputBox />);
 

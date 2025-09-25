@@ -49,8 +49,10 @@ describe("MessageList Loading State", () => {
     const { lastFrame } = render(<MessageList messages={messages} />);
     const output = lastFrame();
 
-    // Should show the loading message
-    expect(output).toContain("💭 AI is thinking... 5s (Tokens: 1,000)");
+    // Should show the loading message with simplified format
+    expect(output).toContain(
+      "💭 AI is thinking... 5s | 1,000 tokens | Esc to abort",
+    );
 
     // Should still show the actual messages
     expect(output).toContain("Hello");

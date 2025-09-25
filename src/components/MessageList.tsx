@@ -152,10 +152,30 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
       {(isLoading || isCommandRunning) && (
         <Box marginTop={1}>
           {isLoading && (
-            <Text color="yellow">
-              💭 AI is thinking... {formattedTime} (Tokens:{" "}
-              {totalTokens.toLocaleString()})
-            </Text>
+            <Box>
+              <Text color="yellow">💭 AI is thinking... </Text>
+              <Text color="cyan" bold>
+                {formattedTime}
+              </Text>
+              <Text color="gray" dimColor>
+                {" "}
+                |{" "}
+              </Text>
+              <Text color="blue" bold>
+                {totalTokens.toLocaleString()}
+              </Text>
+              <Text color="gray" dimColor>
+                {" "}
+                tokens |{" "}
+              </Text>
+              <Text color="red" bold>
+                Esc
+              </Text>
+              <Text color="gray" dimColor>
+                {" "}
+                to abort
+              </Text>
+            </Box>
           )}
           {isCommandRunning && (
             <Text color="blue">🚀 Command is running...</Text>

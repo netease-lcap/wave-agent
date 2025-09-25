@@ -258,11 +258,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
               displayText
             )}
           </Text>
-          {isLoading && (
-            <Text color="yellow" bold>
-              {"[Press Esc to abort]"}
-            </Text>
-          )}
         </Box>
       </Box>
     </Box>
