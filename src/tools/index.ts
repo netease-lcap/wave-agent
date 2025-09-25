@@ -14,7 +14,7 @@ import { globTool } from "./globTool";
 import { grepTool } from "./grepTool";
 import { lsTool } from "./lsTool";
 import { readTool } from "./readTool";
-import { ChatCompletionTool } from "openai/resources.js";
+import { ChatCompletionFunctionTool } from "openai/resources.js";
 /**
  * 工具注册中心
  */
@@ -54,7 +54,7 @@ class ToolRegistryImpl implements ToolRegistry {
     return Array.from(this.tools.values());
   }
 
-  getToolsConfig(): ChatCompletionTool[] {
+  getToolsConfig(): ChatCompletionFunctionTool[] {
     return Array.from(this.tools.values()).map((tool) => tool.config);
   }
 }

@@ -2,12 +2,12 @@
  * 工具插件接口定义
  */
 
-import { ChatCompletionTool } from "openai/resources.js";
+import { ChatCompletionFunctionTool } from "openai/resources.js";
 
 export interface ToolPlugin {
   name: string;
   description: string;
-  config: ChatCompletionTool;
+  config: ChatCompletionFunctionTool;
   execute: (
     args: Record<string, unknown>,
     context?: ToolContext,
@@ -41,7 +41,7 @@ export interface ToolRegistry {
     context?: ToolContext,
   ) => Promise<ToolResult>;
   list: () => ToolPlugin[];
-  getToolsConfig: () => ChatCompletionTool[];
+  getToolsConfig: () => ChatCompletionFunctionTool[];
 }
 
 export interface ToolContext {
