@@ -5,11 +5,20 @@ import { resolvePath } from "../utils/path";
 import { diffLines } from "diff";
 
 /**
+ * 格式化紧凑参数显示
+ */
+function formatCompactParams(args: Record<string, unknown>): string {
+  const filePath = args.file_path as string;
+  return filePath;
+}
+
+/**
  * 单文件编辑工具插件
  */
 export const editTool: ToolPlugin = {
   name: "edit_file",
   description: "Performs exact string replacements in files",
+  formatCompactParams,
   config: {
     type: "function",
     function: {

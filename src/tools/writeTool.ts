@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import { dirname } from "path";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types";
 import { logger } from "../utils/logger";
-import { resolvePath } from "../utils/path";
+import { resolvePath, getDisplayPath } from "../utils/path";
 import { diffLines } from "diff";
 
 /**
@@ -146,5 +146,19 @@ export const writeTool: ToolPlugin = {
         error: errorMessage,
       };
     }
+  },
+  formatCompactParams: (params: Record<string, unknown>) => {
+    const filePath = params.file_path as string;
+    const content = params.content as string;
+
+    let displayPath = getDisplayPath(filePath || "");
+
+    if (content) {
+      const lines = content.split("\n").length;
+      const chars = content.length;
+      displayPath += ` (${lines} lines, ${chars} chars)`;
+    }
+
+    return displayPath;
   },
 };

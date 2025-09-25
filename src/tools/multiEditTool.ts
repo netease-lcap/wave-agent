@@ -11,12 +11,23 @@ interface EditOperation {
 }
 
 /**
+ * 格式化紧凑参数显示
+ */
+function formatCompactParams(args: Record<string, unknown>): string {
+  const filePath = args.file_path as string;
+  const edits = args.edits as EditOperation[];
+  const editCount = edits ? edits.length : 0;
+  return `${filePath} (${editCount} edits)`;
+}
+
+/**
  * 多重编辑工具插件
  */
 export const multiEditTool: ToolPlugin = {
   name: "multi_edit",
   description:
     "This is a tool for making multiple edits to a single file in one operation",
+  formatCompactParams,
   config: {
     type: "function",
     function: {

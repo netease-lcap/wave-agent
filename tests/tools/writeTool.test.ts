@@ -280,4 +280,48 @@ describe("writeTool", () => {
       "utf-8",
     );
   });
+
+  describe("formatCompactParams", () => {
+    it("should format parameters correctly", () => {
+      const params = {
+        file_path: "/test/example.txt",
+        content: "Hello\nWorld\nTest",
+      };
+
+      expect(writeTool.formatCompactParams).toBeDefined();
+      const result = writeTool.formatCompactParams!(params);
+      expect(result).toBe("/test/example.txt (3 lines, 16 chars)");
+    });
+
+    it("should handle empty content", () => {
+      const params = {
+        file_path: "/test/empty.txt",
+        content: "",
+      };
+
+      expect(writeTool.formatCompactParams).toBeDefined();
+      const result = writeTool.formatCompactParams!(params);
+      expect(result).toBe("/test/empty.txt");
+    });
+
+    it("should handle missing file_path", () => {
+      const params = {
+        content: "test content",
+      };
+
+      expect(writeTool.formatCompactParams).toBeDefined();
+      const result = writeTool.formatCompactParams!(params);
+      expect(result).toBe(" (1 lines, 12 chars)");
+    });
+
+    it("should handle missing content", () => {
+      const params = {
+        file_path: "/test/file.txt",
+      };
+
+      expect(writeTool.formatCompactParams).toBeDefined();
+      const result = writeTool.formatCompactParams!(params);
+      expect(result).toBe("/test/file.txt");
+    });
+  });
 });
