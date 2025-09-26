@@ -36,11 +36,10 @@
     "release:patch": "pnpm version patch && npm publish",
     "release:minor": "pnpm version minor && npm publish",
     "release:major": "pnpm version major && npm publish",
-    "prepublishOnly": "npm run build",
-    "sdk-streaming": "tsx scripts/sdk-streaming.ts",
-    "manual-streaming": "tsx scripts/manual-streaming.ts"
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.2",
     "@vscode/ripgrep": "^1.15.14",
     "diff": "^8.0.2",
     "glob": "^11.0.3",

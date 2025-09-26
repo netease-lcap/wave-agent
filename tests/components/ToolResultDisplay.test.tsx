@@ -159,4 +159,110 @@ describe("ToolResultDisplay Component", () => {
       expect(output).toContain("🔄");
     });
   });
+
+  describe("Image indicator display", () => {
+    it("should show single image indicator when tool result has one image", () => {
+      const toolBlock: ToolBlock = {
+        type: "tool",
+        attributes: {
+          name: "screenshot_tool",
+          success: true,
+        },
+        parameters: JSON.stringify({ action: "capture" }),
+        result: "Screenshot captured successfully",
+        images: [
+          {
+            data: "base64_image_data",
+            mediaType: "image/png",
+          },
+        ],
+      };
+
+      const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
+      const output = lastFrame();
+
+      expect(output).toContain("🔧 screenshot_tool");
+      expect(output).toContain("🖼️");
+      expect(output).not.toContain("🖼️×");
+    });
+
+    it("should show multiple image indicator when tool result has multiple images", () => {
+      const toolBlock: ToolBlock = {
+        type: "tool",
+        attributes: {
+          name: "multi_screenshot_tool",
+          success: true,
+        },
+        parameters: JSON.stringify({ count: 3 }),
+        result: "Multiple screenshots captured",
+        images: [
+          { data: "image1_data", mediaType: "image/png" },
+          { data: "image2_data", mediaType: "image/png" },
+          { data: "image3_data", mediaType: "image/png" },
+        ],
+      };
+
+      const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
+      const output = lastFrame();
+
+      expect(output).toContain("🔧 multi_screenshot_tool");
+      expect(output).toContain("🖼️×3");
+    });
+
+    it("should not show image indicator when tool result has no images", () => {
+      const toolBlock: ToolBlock = {
+        type: "tool",
+        attributes: {
+          name: "text_tool",
+          success: true,
+        },
+        parameters: JSON.stringify({ action: "process" }),
+        result: "Text processing completed",
+      };
+
+      const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
+      const output = lastFrame();
+
+      expect(output).toContain("🔧 text_tool");
+      expect(output).not.toContain("🖼️");
+    });
+
+    it("should not show image indicator when images array is empty", () => {
+      const toolBlock: ToolBlock = {
+        type: "tool",
+        attributes: {
+          name: "empty_images_tool",
+          success: true,
+        },
+        parameters: JSON.stringify({ action: "test" }),
+        result: "Tool executed",
+        images: [],
+      };
+
+      const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
+      const output = lastFrame();
+
+      expect(output).toContain("🔧 empty_images_tool");
+      expect(output).not.toContain("🖼️");
+    });
+
+    it("should show image indicator combined with status text", () => {
+      const toolBlock: ToolBlock = {
+        type: "tool",
+        attributes: {
+          name: "screenshot_tool",
+          isRunning: true,
+        },
+        parameters: JSON.stringify({ action: "capture" }),
+        images: [{ data: "image_data", mediaType: "image/png" }],
+      };
+
+      const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
+      const output = lastFrame();
+
+      expect(output).toContain("🔧 screenshot_tool");
+      expect(output).toContain("🔄"); // Running status
+      expect(output).toContain("🖼️"); // Image indicator
+    });
+  });
 });

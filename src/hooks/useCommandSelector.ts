@@ -3,11 +3,13 @@ import { useState, useCallback } from "react";
 export interface UseCommandSelectorParams {
   clearMessages: () => void;
   onShowBashManager?: () => void;
+  onShowMcpManager?: () => void;
 }
 
 export const useCommandSelector = ({
   clearMessages,
   onShowBashManager,
+  onShowMcpManager,
 }: UseCommandSelectorParams) => {
   const [showCommandSelector, setShowCommandSelector] = useState(false);
   const [slashPosition, setSlashPosition] = useState(-1);
@@ -33,6 +35,8 @@ export const useCommandSelector = ({
           clearMessages();
         } else if (command === "bashes" && onShowBashManager) {
           onShowBashManager();
+        } else if (command === "mcp" && onShowMcpManager) {
+          onShowMcpManager();
         }
 
         setShowCommandSelector(false);
@@ -43,7 +47,7 @@ export const useCommandSelector = ({
       }
       return { newInput: inputText, newCursorPosition: cursorPosition };
     },
-    [slashPosition, clearMessages, onShowBashManager],
+    [slashPosition, clearMessages, onShowBashManager, onShowMcpManager],
   );
 
   const handleCommandGenerated = useCallback((generatedCommand: string) => {

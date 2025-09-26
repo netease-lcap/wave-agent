@@ -34,6 +34,11 @@ export interface ToolResult {
     removed?: boolean;
   }>;
   filePath?: string;
+  // 图片数据，用于支持多媒体内容
+  images?: Array<{
+    data: string; // base64 编码的图片数据
+    mediaType?: string; // 图片的媒体类型，如 "image/png"
+  }>;
 }
 
 export interface ToolRegistry {

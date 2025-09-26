@@ -89,7 +89,7 @@ describe("AIManager User Memory Integration", () => {
 
   afterEach(async () => {
     // Clean up
-    aiManager.destroy();
+    await aiManager.destroy();
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
@@ -110,7 +110,7 @@ describe("AIManager User Memory Integration", () => {
     mockCreateMemoryManager.mockReturnValue(mockMemoryManager);
 
     // Create a new AIManager to pick up the new mocks
-    aiManager.destroy();
+    await aiManager.destroy();
     aiManager = new AIManager(tempDir, mockCallbacks);
 
     // Add a user message first with correct structure
@@ -155,7 +155,7 @@ describe("AIManager User Memory Integration", () => {
     mockCreateMemoryManager.mockReturnValue(mockMemoryManager);
 
     // Create a new AIManager to pick up the new mocks
-    aiManager.destroy();
+    await aiManager.destroy();
     aiManager = new AIManager(tempDir, mockCallbacks);
 
     // Add a user message first with correct structure
@@ -199,7 +199,7 @@ describe("AIManager User Memory Integration", () => {
     mockCreateMemoryManager.mockReturnValue(mockMemoryManager);
 
     // Create a new AIManager to pick up the new mocks
-    aiManager.destroy();
+    await aiManager.destroy();
     aiManager = new AIManager(tempDir, mockCallbacks);
 
     // Add a user message first with correct structure
@@ -243,7 +243,7 @@ describe("AIManager User Memory Integration", () => {
     mockCreateMemoryManager.mockReturnValue(mockMemoryManager);
 
     // Create a new AIManager to pick up the new mocks
-    aiManager.destroy();
+    await aiManager.destroy();
     aiManager = new AIManager(tempDir, mockCallbacks);
 
     // Add a user message first with correct structure
@@ -291,7 +291,7 @@ describe("AIManager User Memory Integration", () => {
     mockCreateMemoryManager.mockReturnValue(mockMemoryManager);
 
     // Create a new AIManager to pick up the new mocks
-    aiManager.destroy();
+    await aiManager.destroy();
     aiManager = new AIManager(tempDir, mockCallbacks);
 
     // Add a user message first with correct structure
@@ -333,8 +333,8 @@ describe("AIManager User Memory Integration", () => {
     expect(mockCreateMemoryManager).toHaveBeenCalledWith(tempDir2);
 
     // Clean up
-    aiManager1.destroy();
-    aiManager2.destroy();
+    await aiManager1.destroy();
+    await aiManager2.destroy();
     await fs.rm(tempDir1, { recursive: true, force: true });
     await fs.rm(tempDir2, { recursive: true, force: true });
   });

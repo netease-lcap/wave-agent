@@ -11,16 +11,20 @@ export interface Command {
 
 const AVAILABLE_COMMANDS: Command[] = [
   {
-    name: "clean",
-    description: "Clear the chat session",
-  },
-  {
     name: "git-commit",
     description: "Generate git commit message and create commit command",
   },
   {
     name: "bashes",
     description: "View and manage background bash shells",
+  },
+  {
+    name: "mcp",
+    description: "View and manage MCP servers",
+  },
+  {
+    name: "clean",
+    description: "Clear the chat session",
   },
 ];
 

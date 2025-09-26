@@ -14,6 +14,7 @@ import { globTool } from "./globTool";
 import { grepTool } from "./grepTool";
 import { lsTool } from "./lsTool";
 import { readTool } from "./readTool";
+import { mcpManager } from "../services/mcpManager";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 /**
  * 工具注册中心
@@ -30,6 +31,12 @@ class ToolRegistryImpl implements ToolRegistry {
     args: Record<string, unknown>,
     context?: ToolContext,
   ): Promise<ToolResult> {
+    // Check if it's an MCP tool first
+    if (mcpManager.isMcpTool(name)) {
+      return mcpManager.executeMcpToolByRegistry(name, args, context);
+    }
+
+    // Check built-in tools
     const plugin = this.tools.get(name);
     if (plugin) {
       try {
@@ -51,11 +58,17 @@ class ToolRegistryImpl implements ToolRegistry {
   }
 
   list(): ToolPlugin[] {
-    return Array.from(this.tools.values());
+    const builtInTools = Array.from(this.tools.values());
+    const mcpTools = mcpManager.getMcpToolPlugins();
+    return [...builtInTools, ...mcpTools];
   }
 
   getToolsConfig(): ChatCompletionFunctionTool[] {
-    return Array.from(this.tools.values()).map((tool) => tool.config);
+    const builtInToolsConfig = Array.from(this.tools.values()).map(
+      (tool) => tool.config,
+    );
+    const mcpToolsConfig = mcpManager.getMcpToolsConfig();
+    return [...builtInToolsConfig, ...mcpToolsConfig];
   }
 }
 

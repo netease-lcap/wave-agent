@@ -61,16 +61,6 @@ export async function startCli(options: CliOptions): Promise<void> {
     }
   }
 
-  // Clean up expired sessions in background
-  SessionManager.cleanupExpiredSessions().catch((error) => {
-    console.warn("Failed to cleanup expired sessions:", error);
-  });
-
-  // Clean up old log files in background
-  cleanupLogs().catch((error) => {
-    console.warn("Failed to cleanup old logs:", error);
-  });
-
   // Global cleanup tracker
   let isCleaningUp = false;
   let appUnmounted = false;
@@ -82,6 +72,16 @@ export async function startCli(options: CliOptions): Promise<void> {
     console.log("\nShutting down gracefully...");
 
     try {
+      // Clean up expired sessions
+      await SessionManager.cleanupExpiredSessions().catch((error) => {
+        console.warn("Failed to cleanup expired sessions:", error);
+      });
+
+      // Clean up old log files
+      await cleanupLogs().catch((error) => {
+        console.warn("Failed to cleanup old logs:", error);
+      });
+
       // Unmount the React app to trigger cleanup
       if (!appUnmounted) {
         unmount();

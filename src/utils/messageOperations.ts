@@ -192,6 +192,7 @@ export const updateToolBlockInMessage = (
   isRunning?: boolean,
   name?: string,
   shortResult?: string, // 添加 shortResult 参数
+  images?: Array<{ data: string; mediaType?: string }>, // 添加图片数据参数
 ): Message[] => {
   const newMessages = [...messages];
   // 找到最后一个助手消息
@@ -207,6 +208,7 @@ export const updateToolBlockInMessage = (
           toolBlock.parameters = parameters;
           if (result !== undefined) toolBlock.result = result;
           if (shortResult !== undefined) toolBlock.shortResult = shortResult;
+          if (images !== undefined) toolBlock.images = images; // 添加图片数据更新
           if (toolBlock.attributes) {
             if (success !== undefined) toolBlock.attributes.success = success;
             if (error !== undefined) toolBlock.attributes.error = error;
@@ -223,6 +225,7 @@ export const updateToolBlockInMessage = (
           parameters: parameters,
           result: result,
           shortResult: shortResult,
+          images: images, // 添加图片数据
           attributes: {
             id: id,
             name: name || "unknown",

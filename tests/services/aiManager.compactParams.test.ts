@@ -57,8 +57,8 @@ describe("AIManager - Compact Params Display", () => {
     aiManager = new AIManager("/test", callbacks);
   });
 
-  afterEach(() => {
-    aiManager.destroy();
+  afterEach(async () => {
+    await aiManager.destroy();
   });
 
   it("should extract and display complete params from incomplete JSON during streaming", async () => {

@@ -78,6 +78,9 @@ interface KeyboardHandlerProps {
   // Bash shell manager
   showBashManager: boolean;
 
+  // MCP manager
+  showMcpManager: boolean;
+
   // Chat actions
   isCommandRunning: boolean;
   isLoading: boolean;
@@ -134,6 +137,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     activateMemoryTypeSelector,
     handleMemoryTypeSelect,
     showBashManager,
+    showMcpManager,
     isCommandRunning,
     isLoading,
     sendMessage,
@@ -646,10 +650,11 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       showCommandSelector ||
       showBashHistorySelector ||
       showMemoryTypeSelector ||
-      showBashManager
+      showBashManager ||
+      showMcpManager
     ) {
-      if (showMemoryTypeSelector || showBashManager) {
-        // 记忆类型选择器和bash管理器不需要处理输入，由组件自己处理
+      if (showMemoryTypeSelector || showBashManager || showMcpManager) {
+        // 记忆类型选择器、bash管理器和MCP管理器不需要处理输入，由组件自己处理
         return;
       }
       handleSelectorInput(input, key);

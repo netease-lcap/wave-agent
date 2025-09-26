@@ -57,6 +57,16 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
     return ""; // 未知状态时不显示文本
   };
 
+  const hasImages = () => {
+    return block.images && block.images.length > 0;
+  };
+
+  const getImageIndicator = () => {
+    if (!hasImages()) return "";
+    const imageCount = block.images!.length;
+    return imageCount === 1 ? "🖼️" : `🖼️×${imageCount}`;
+  };
+
   const toolName = attributes?.name ? String(attributes.name) : "Tool";
 
   // 获取shortResult，如果没有则显示result的后5行
@@ -89,6 +99,8 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
           <Text color="gray"> ({compactParams})</Text>
         )}
         <Text color={getStatusColor()}> {getStatusText()}</Text>
+        {/* 显示图片指示器 */}
+        {hasImages() && <Text color="blue"> {getImageIndicator()}</Text>}
       </Box>
 
       {/* 折叠状态下显示shortResult */}

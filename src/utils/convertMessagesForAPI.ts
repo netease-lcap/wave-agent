@@ -79,11 +79,47 @@ export function convertMessagesForAPI(
           // 只添加已完成的 tool blocks
           if (toolBlock.attributes?.id && !toolBlock.attributes.isStreaming) {
             completedToolIds.add(toolBlock.attributes.id);
-            recentMessages.unshift({
-              tool_call_id: toolBlock.attributes.id,
-              role: "tool",
-              content: stripAnsiColors(toolBlock.result || ""),
-            });
+
+            // 检查是否有图片数据
+            if (toolBlock.images && toolBlock.images.length > 0) {
+              // 如果有图片，创建用户消息而不是 tool 消息
+              const contentParts: ChatCompletionContentPart[] = [];
+
+              // 添加工具结果作为文本
+              const toolResultText = `Tool result for ${toolBlock.attributes.name || "unknown tool"}:\n${stripAnsiColors(toolBlock.result || "")}`;
+              contentParts.push({
+                type: "text",
+                text: toolResultText,
+              });
+
+              // 添加图片
+              toolBlock.images.forEach((image) => {
+                const imageUrl = image.data.startsWith("data:")
+                  ? image.data
+                  : `data:${image.mediaType || "image/png"};base64,${image.data}`;
+
+                contentParts.push({
+                  type: "image_url",
+                  image_url: {
+                    url: imageUrl,
+                    detail: "auto",
+                  },
+                });
+              });
+
+              // 添加用户消息
+              recentMessages.unshift({
+                role: "user",
+                content: contentParts,
+              });
+            } else {
+              // 正常的 tool 消息
+              recentMessages.unshift({
+                tool_call_id: toolBlock.attributes.id,
+                role: "tool",
+                content: stripAnsiColors(toolBlock.result || ""),
+              });
+            }
           }
         });
       }

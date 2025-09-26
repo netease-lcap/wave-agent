@@ -5,6 +5,7 @@ import { CommandSelector } from "./CommandSelector";
 import { BashHistorySelector } from "./BashHistorySelector";
 import { MemoryTypeSelector } from "./MemoryTypeSelector";
 import { BashShellManager } from "./BashShellManager";
+import { McpManager } from "./McpManager";
 import { useInputState } from "../hooks/useInputState";
 import { useFileSelector } from "../hooks/useFileSelector";
 import { useCommandSelector } from "../hooks/useCommandSelector";
@@ -52,6 +53,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
 }) => {
   // Bash shell manager state
   const [showBashManager, setShowBashManager] = useState(false);
+  // MCP manager state
+  const [showMcpManager, setShowMcpManager] = useState(false);
   // 基础输入状态
   const {
     inputText,
@@ -94,6 +97,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   } = useCommandSelector({
     clearMessages,
     onShowBashManager: () => setShowBashManager(true),
+    onShowMcpManager: () => setShowMcpManager(true),
   });
 
   // Bash历史选择器功能
@@ -181,6 +185,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     activateMemoryTypeSelector,
     handleMemoryTypeSelect: handleMemoryTypeSelectorSelect,
     showBashManager,
+    showMcpManager,
     isCommandRunning,
     isLoading,
     sendMessage,
@@ -202,64 +207,69 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const shouldShowCursor = true;
 
   return (
-    <Box borderStyle="single" borderColor="gray" paddingX={1}>
-      <Box flexDirection="column" width={"100%"}>
-        {showFileSelector && (
-          <FileSelector
-            files={filteredFiles}
-            searchQuery={searchQuery}
-            onSelect={handleFileSelect}
-            onCancel={handleCancelFileSelect}
-          />
-        )}
+    <Box flexDirection="column" width={"100%"}>
+      {showFileSelector && (
+        <FileSelector
+          files={filteredFiles}
+          searchQuery={searchQuery}
+          onSelect={handleFileSelect}
+          onCancel={handleCancelFileSelect}
+        />
+      )}
 
-        {showCommandSelector && (
-          <CommandSelector
-            searchQuery={commandSearchQuery}
-            workdir={workdir}
-            onSelect={handleCommandSelect}
-            onCancel={handleCancelCommandSelect}
-            onCommandGenerated={handleCommandGenerated}
-          />
-        )}
+      {showCommandSelector && (
+        <CommandSelector
+          searchQuery={commandSearchQuery}
+          workdir={workdir}
+          onSelect={handleCommandSelect}
+          onCancel={handleCancelCommandSelect}
+          onCommandGenerated={handleCommandGenerated}
+        />
+      )}
 
-        {showBashHistorySelector && (
-          <BashHistorySelector
-            searchQuery={bashHistorySearchQuery}
-            workdir={workdir}
-            onSelect={handleBashHistorySelect}
-            onCancel={handleCancelBashHistorySelect}
-          />
-        )}
+      {showBashHistorySelector && (
+        <BashHistorySelector
+          searchQuery={bashHistorySearchQuery}
+          workdir={workdir}
+          onSelect={handleBashHistorySelect}
+          onCancel={handleCancelBashHistorySelect}
+        />
+      )}
 
-        {showMemoryTypeSelector && (
-          <MemoryTypeSelector
-            message={memoryMessage}
-            onSelect={handleMemoryTypeSelect}
-            onCancel={handleCancelMemoryTypeSelect}
-          />
-        )}
+      {showMemoryTypeSelector && (
+        <MemoryTypeSelector
+          message={memoryMessage}
+          onSelect={handleMemoryTypeSelect}
+          onCancel={handleCancelMemoryTypeSelect}
+        />
+      )}
 
-        {showBashManager && (
-          <BashShellManager onCancel={() => setShowBashManager(false)} />
-        )}
+      {showBashManager && (
+        <BashShellManager onCancel={() => setShowBashManager(false)} />
+      )}
 
-        <Box width="100%" flexDirection="row" justifyContent="space-between">
-          <Text color={isPlaceholder ? "gray" : "white"}>
-            {shouldShowCursor ? (
-              <>
-                {beforeCursor}
-                <Text backgroundColor="white" color="black">
-                  {atCursor}
-                </Text>
-                {afterCursor}
-              </>
-            ) : (
-              displayText
-            )}
-          </Text>
+      {showMcpManager && (
+        <McpManager onCancel={() => setShowMcpManager(false)} />
+      )}
+      {showBashManager || showMcpManager || (
+        <Box borderStyle="single" borderColor="gray" paddingX={1}>
+          <Box width="100%" flexDirection="row" justifyContent="space-between">
+            <Text color={isPlaceholder ? "gray" : "white"}>
+              {shouldShowCursor ? (
+                <>
+                  {beforeCursor}
+                  <Text backgroundColor="white" color="black">
+                    {atCursor}
+                  </Text>
+                  {afterCursor}
+                </>
+              ) : (
+                displayText
+              )}
+            </Text>
+          </Box>
         </Box>
-      </Box>
+      )}
     </Box>
   );
 };

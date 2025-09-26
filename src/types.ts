@@ -38,6 +38,11 @@ export interface ToolBlock {
   parameters?: string;
   result?: string;
   shortResult?: string; // 添加 shortResult 字段
+  images?: Array<{
+    // 添加图片数据支持
+    data: string; // base64 编码的图片数据
+    mediaType?: string; // 图片的媒体类型
+  }>;
   attributes?: {
     id?: string;
     name?: string;

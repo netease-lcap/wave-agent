@@ -271,14 +271,18 @@ Remember: Execute tasks systematically and show updated TODOs after each complet
           // 实时回调工具调用更新
           if (onToolCallUpdate) {
             const functionToolCall = existingToolCall as FunctionToolCall;
-            // 判断工具调用是否完整（有id、name，且arguments看起来完整）
-            const isComplete = !!(
-              functionToolCall.id &&
-              functionToolCall.function?.name &&
-              functionToolCall.function?.arguments &&
-              // 简单检查arguments是否可能完整（以}结尾）
-              functionToolCall.function.arguments.trim().endsWith("}")
-            );
+            // 判断工具调用是否完整
+            // 对于无参数工具，arguments可能是空字符串或"{}"，都应该被认为是完整的
+            const hasValidId = !!functionToolCall.id;
+            const hasValidName = !!functionToolCall.function?.name;
+            const argsString =
+              functionToolCall.function?.arguments?.trim() || "";
+            const hasValidArgs =
+              argsString === "" ||
+              argsString === "{}" ||
+              (argsString.length > 0 && argsString.endsWith("}"));
+
+            const isComplete = hasValidId && hasValidName && hasValidArgs;
             onToolCallUpdate(functionToolCall, isComplete);
           }
         }
@@ -303,12 +307,19 @@ Remember: Execute tasks systematically and show updated TODOs after each complet
 
     // 返回工具调用
     if (finalMessage.tool_calls && finalMessage.tool_calls.length > 0) {
-      // 过滤掉空的工具调用
+      // 过滤掉无效的工具调用
       const validToolCalls = finalMessage.tool_calls.filter((tc) => {
         const functionTc = tc as FunctionToolCall;
-        return (
-          tc.id && functionTc.function?.name && functionTc.function?.arguments
-        );
+        const hasId = !!tc.id;
+        const hasName = !!functionTc.function?.name;
+        // 对于参数，允许空字符串、"{}"或有效的JSON字符串
+        const argsString = functionTc.function?.arguments?.trim() || "";
+        const hasValidArgs =
+          argsString === "" ||
+          argsString === "{}" ||
+          (argsString.length > 0 && argsString.startsWith("{"));
+
+        return hasId && hasName && hasValidArgs;
       });
       result.tool_calls = validToolCalls;
     }

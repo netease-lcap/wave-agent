@@ -18,6 +18,7 @@ import { convertMessagesForAPI } from "../utils/convertMessagesForAPI";
 import { saveErrorLog } from "../utils/errorLogger";
 import { readMemoryFile } from "../utils/memoryUtils";
 import { createMemoryManager, type MemoryManager } from "./memoryManager";
+import { mcpManager } from "./mcpManager";
 import type { Message } from "../types";
 import { logger } from "../utils/logger";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
@@ -61,6 +62,9 @@ export class AIManager {
 
     // Set up auto-save
     this.startAutoSave();
+
+    // Initialize MCP servers
+    this.initializeMcpServers();
 
     // Note: Process termination handling is now done at the CLI level
   }
@@ -185,9 +189,11 @@ export class AIManager {
   /**
    * 销毁管理器，清理资源
    */
-  public destroy(): void {
+  public async destroy(): Promise<void> {
     this.stopAutoSave();
     this.abortAIMessage();
+    // Cleanup MCP connections
+    await mcpManager.cleanup();
   }
 
   public async sendAIMessage(recursionDepth: number = 0): Promise<void> {
@@ -322,13 +328,18 @@ export class AIManager {
                       ? existing.args.substring(0, 50) + "..."
                       : existing.args;
                 }
-              } else if (isComplete && existing.args) {
+              } else if (isComplete) {
                 // 参数完整时，显示格式化的完整参数
-                try {
-                  const parsedArgs = JSON.parse(existing.args);
-                  paramsToShow = JSON.stringify(parsedArgs, null, 2);
-                } catch {
-                  paramsToShow = existing.args;
+                if (existing.args && existing.args.trim() !== "") {
+                  try {
+                    const parsedArgs = JSON.parse(existing.args);
+                    paramsToShow = JSON.stringify(parsedArgs, null, 2);
+                  } catch {
+                    paramsToShow = existing.args;
+                  }
+                } else {
+                  // 无参数工具显示空对象
+                  paramsToShow = "{}";
                 }
               }
 
@@ -433,9 +444,23 @@ export class AIManager {
               return;
             }
 
-            const toolArgs = JSON.parse(
-              functionToolCall.function?.arguments || "{}",
-            );
+            // 安全解析工具参数，处理无参数工具的情况
+            let toolArgs: Record<string, unknown> = {};
+            const argsString = functionToolCall.function?.arguments?.trim();
+
+            if (!argsString || argsString === "") {
+              // 无参数工具，使用空对象
+              toolArgs = {};
+            } else {
+              try {
+                toolArgs = JSON.parse(argsString);
+              } catch (parseError) {
+                // 对于非空但格式错误的JSON，仍然抛出异常
+                const errorMessage = `Failed to parse tool arguments: ${argsString}`;
+                logger.error(errorMessage, parseError);
+                throw new Error(errorMessage);
+              }
+            }
 
             // 设置工具开始执行状态
             currentMessages = updateToolBlockInMessage(
@@ -479,6 +504,7 @@ export class AIManager {
                 false, // isRunning: false
                 functionToolCall.function?.name || "",
                 toolResult.shortResult,
+                toolResult.images, // 传递图片数据
               );
               this.setMessages(currentMessages);
 
@@ -612,6 +638,53 @@ export class AIManager {
       if (recursionDepth === 0) {
         this.setIsLoading(false);
       }
+    }
+  }
+
+  /**
+   * Initialize MCP servers
+   */
+  private async initializeMcpServers(): Promise<void> {
+    try {
+      logger.info("Initializing MCP servers...");
+
+      // Initialize MCP manager with workdir
+      mcpManager.initialize(this.workdir);
+
+      // Ensure MCP configuration is loaded
+      const config = await mcpManager.ensureConfigLoaded();
+
+      if (config && config.mcpServers) {
+        // Connect to all configured servers
+        const connectionPromises = Object.keys(config.mcpServers).map(
+          async (serverName) => {
+            try {
+              logger.info(`Connecting to MCP server: ${serverName}`);
+              const success = await mcpManager.connectServer(serverName);
+              if (success) {
+                logger.info(
+                  `Successfully connected to MCP server: ${serverName}`,
+                );
+              } else {
+                logger.warn(`Failed to connect to MCP server: ${serverName}`);
+              }
+            } catch (error) {
+              logger.error(
+                `Error connecting to MCP server ${serverName}:`,
+                error,
+              );
+            }
+          },
+        );
+
+        // Wait for all connection attempts to complete
+        await Promise.all(connectionPromises);
+      }
+
+      logger.info("MCP servers initialization completed");
+    } catch (error) {
+      logger.error("Failed to initialize MCP servers:", error);
+      // Don't throw error to prevent app startup failure
     }
   }
 }
