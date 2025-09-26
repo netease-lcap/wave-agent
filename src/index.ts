@@ -26,12 +26,14 @@ export async function main() {
       description: "List all available sessions",
       type: "boolean",
     })
+    .version()
+    .alias("v", "version")
     .example("$0", "Start CLI with default settings")
     .example("$0 --workdir /path/to/project", "Use custom working directory")
     .example("$0 --restore session_123", "Restore specific session")
     .example("$0 --continue", "Continue from last session")
     .example("$0 --list-sessions", "List all available sessions")
-    .help()
+    .help("h")
     .parseAsync();
 
   // Handle list sessions command
