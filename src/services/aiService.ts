@@ -124,31 +124,11 @@ export async function callAgent(
 
   try {
     // 构建系统提示词内容
-    let systemContent = `You are a professional web development expert.
+    let systemContent = `You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
 ## Current Working Directory
 ${workdir || process.cwd()}
-
-## TODOs
-⏳ Pending tasks
-✅ Completed tasks
-
-## Tool Usage Guidelines:
-
-- Check that all required parameters for each tool call are provided or can reasonably be inferred from context
-- If there are missing values for required parameters, ask the user to supply these values before proceeding
-- If the user provides a specific value for a parameter (especially in quotes), use that value EXACTLY
-- DO NOT make up values for or ask about optional parameters
-- Carefully analyze descriptive terms in the request as they may indicate required parameter values
-- Make multiple tool calls in a single response whenever possible
-
-## TODO Management:
-
-- Update TODO status: ⏳ for pending, ✅ for completed
-- **IMPORTANT**: After completing each item, show the updated TODO list
-- Keep TODO descriptions brief and clear
-
-Remember: Execute tasks systematically and show updated TODOs after each completion.`;
+`;
 
     // 如果有记忆内容，添加到系统提示词中
     if (memory && memory.trim()) {
