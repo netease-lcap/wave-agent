@@ -206,6 +206,14 @@ Remember: Execute tasks systematically and show updated TODOs after each complet
 
     // 处理流式响应
     for await (const chunk of stream) {
+      // 处理使用统计
+      if (chunk.usage) {
+        totalUsage = {
+          prompt_tokens: chunk.usage.prompt_tokens,
+          completion_tokens: chunk.usage.completion_tokens,
+          total_tokens: chunk.usage.total_tokens,
+        };
+      }
       const choice = chunk.choices[0];
       if (!choice) continue;
 
@@ -286,15 +294,6 @@ Remember: Execute tasks systematically and show updated TODOs after each complet
             onToolCallUpdate(functionToolCall, isComplete);
           }
         }
-      }
-
-      // 处理使用统计
-      if (chunk.usage) {
-        totalUsage = {
-          prompt_tokens: chunk.usage.prompt_tokens,
-          completion_tokens: chunk.usage.completion_tokens,
-          total_tokens: chunk.usage.total_tokens,
-        };
       }
     }
 
