@@ -87,7 +87,6 @@ interface KeyboardHandlerProps {
   sendMessage: (
     message: string,
     images?: Array<{ path: string; mimeType: string }>,
-    options?: { isBashCommand?: boolean },
   ) => void;
   abortMessage: () => void;
   saveMemory: (message: string, type: "project" | "user") => Promise<void>;
@@ -339,16 +338,9 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           let cleanContent = inputText.replace(imageRegex, "").trim();
           cleanContent = expandLongTextPlaceholders(cleanContent);
 
-          // 检查是否是 bash 命令（以!开头且只有一行）
-          const isBashCommand =
-            cleanContent.startsWith("!") && !cleanContent.includes("\n");
-
           sendMessage(
             cleanContent,
             referencedImages.length > 0 ? referencedImages : undefined,
-            {
-              isBashCommand,
-            },
           );
           clearInput();
           clearImages();

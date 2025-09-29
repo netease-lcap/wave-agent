@@ -84,12 +84,9 @@ describe("InputBox Bash Functionality", () => {
     const sendMessageCalls = mockSendMessage.mock.calls;
     expect(sendMessageCalls).toHaveLength(1);
 
-    const [content, images, options] = sendMessageCalls[0];
+    const [content, images] = sendMessageCalls[0];
     expect(content).toBe("!pwd");
     expect(images).toBeUndefined();
-    expect(options).toEqual({
-      isBashCommand: true,
-    });
   });
 
   it("should NOT send pasted multiline !text as bash command", async () => {
@@ -112,12 +109,9 @@ describe("InputBox Bash Functionality", () => {
     const sendMessageCalls = mockSendMessage.mock.calls;
     expect(sendMessageCalls).toHaveLength(1);
 
-    const [content, images, options] = sendMessageCalls[0];
+    const [content, images] = sendMessageCalls[0];
     expect(content).toBe("!这是多行\n命令");
     expect(images).toBeUndefined();
-    expect(options).toEqual({
-      isBashCommand: false,
-    });
   });
 
   it("should execute bash command when typing ! and single line text", async () => {
@@ -139,12 +133,9 @@ describe("InputBox Bash Functionality", () => {
     const sendMessageCalls = mockSendMessage.mock.calls;
     expect(sendMessageCalls).toHaveLength(1);
 
-    const [content, images, options] = sendMessageCalls[0];
+    const [content, images] = sendMessageCalls[0];
     expect(content).toBe("!ls");
     expect(images).toBeUndefined();
-    expect(options).toEqual({
-      isBashCommand: true,
-    });
   });
 
   it("should clear input after sending bash command", async () => {

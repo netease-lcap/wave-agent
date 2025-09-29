@@ -77,12 +77,9 @@ describe("InputBox Memory Functionality", () => {
     const sendMessageCalls = mockSendMessage.mock.calls;
     expect(sendMessageCalls).toHaveLength(1);
 
-    const [content, images, options] = sendMessageCalls[0];
+    const [content, images] = sendMessageCalls[0];
     expect(content).toBe("#这是多行\n记忆内容");
     expect(images).toBeUndefined();
-    expect(options).toEqual({
-      isBashCommand: false,
-    });
   });
 
   it("should send single line #text to memory type selector", async () => {

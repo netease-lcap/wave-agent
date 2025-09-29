@@ -259,9 +259,6 @@ export interface ChatContextType {
   sendMessage: (
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
-    options?: {
-      isBashCommand?: boolean;
-    },
   ) => Promise<void>;
   sendAIMessage: (recursionDepth?: number) => Promise<void>;
   abortAIMessage: () => void;
@@ -417,9 +414,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     async (
       content: string,
       images?: Array<{ path: string; mimeType: string }>,
-      options?: {
-        isBashCommand?: boolean;
-      },
     ) => {
       // 检查是否有内容可以发送（文本内容或图片附件）
       const hasTextContent = content.trim();
@@ -439,10 +433,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         }
 
         // Handle bash mode - 检查是否是bash命令（以!开头且只有一行）
-        if (
-          options?.isBashCommand ||
-          (content.startsWith("!") && !content.includes("\n"))
-        ) {
+        if (content.startsWith("!") && !content.includes("\n")) {
           const command = content.substring(1).trim();
           if (!command) return;
 

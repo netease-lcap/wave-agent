@@ -33,7 +33,6 @@ export interface InputBoxProps {
   sendMessage?: (
     message: string,
     images?: Array<{ path: string; mimeType: string }>,
-    options?: { isBashCommand?: boolean },
   ) => void;
   abortMessage?: () => void;
   saveMemory?: (message: string, type: "project" | "user") => Promise<void>;
