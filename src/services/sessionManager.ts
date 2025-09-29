@@ -15,7 +15,6 @@ export interface SessionData {
   };
   state: {
     messages: Message[];
-    inputHistory: string[];
   };
 }
 
@@ -62,18 +61,12 @@ export class SessionManager {
   static async saveSession(
     sessionId: string,
     messages: Message[],
-    inputHistory: string[],
     workdir: string,
     totalTokens: number = 0,
     startedAt?: string,
   ): Promise<void> {
     // 在测试环境下不保存session文件
     if (process.env.NODE_ENV === "test") {
-      return;
-    }
-
-    // 如果 inputHistory 长度为0，不保存 session
-    if (inputHistory.length === 0) {
       return;
     }
 
@@ -92,7 +85,6 @@ export class SessionManager {
       },
       state: {
         messages,
-        inputHistory,
       },
     };
 

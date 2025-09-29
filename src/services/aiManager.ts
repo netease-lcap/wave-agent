@@ -27,7 +27,6 @@ import { extractCompleteParams } from "../utils/jsonExtractor";
 export interface AIManagerCallbacks {
   onMessagesChange: (messages: Message[]) => void;
   onLoadingChange: (isLoading: boolean) => void;
-  getCurrentInputHistory?: () => string[];
 }
 
 export interface AIManagerState {
@@ -136,22 +135,13 @@ export class AIManager {
   }
 
   /**
-   * 获取当前输入历史（从ChatProvider获取）
-   */
-  private getCurrentInputHistory(): string[] {
-    return this.callbacks.getCurrentInputHistory?.() || [];
-  }
-
-  /**
    * 保存当前会话
    */
-  public async saveSession(inputHistory?: string[]): Promise<void> {
+  public async saveSession(): Promise<void> {
     try {
-      const historyToSave = inputHistory || this.getCurrentInputHistory();
       await SessionManager.saveSession(
         this.state.sessionId,
         this.state.messages,
-        historyToSave,
         this.workdir,
         this.state.totalTokens,
         this.sessionStartTime,

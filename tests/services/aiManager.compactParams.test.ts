@@ -48,7 +48,6 @@ describe("AIManager - Compact Params Display", () => {
   const callbacks = {
     onMessagesChange: vi.fn(),
     onLoadingChange: vi.fn(),
-    getCurrentInputHistory: () => [],
   };
 
   beforeEach(() => {

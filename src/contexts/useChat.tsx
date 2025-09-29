@@ -12,6 +12,7 @@ import type { Message } from "../types";
 import {
   addUserMessageToMessages,
   addMemoryBlockToMessage,
+  extractUserInputHistory,
 } from "../utils/messageOperations";
 import { createBashManager, type BashManager } from "../services/bashManager";
 import { createMemoryManager } from "../services/memoryManager";
@@ -102,7 +103,7 @@ export interface UseAIReturn {
   totalTokens: number;
 }
 
-export const useAI = (getCurrentInputHistory?: () => string[]): UseAIReturn => {
+export const useAI = (): UseAIReturn => {
   const { workdir, sessionToRestore } = useAppConfig();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -120,7 +121,6 @@ export const useAI = (getCurrentInputHistory?: () => string[]): UseAIReturn => {
       onLoadingChange: (loading) => {
         setIsLoading(loading);
       },
-      getCurrentInputHistory,
     };
 
     aiManagerRef.current = new AIManager(workdir, callbacks);
@@ -146,7 +146,7 @@ export const useAI = (getCurrentInputHistory?: () => string[]): UseAIReturn => {
       setIsLoading(state.isLoading);
       setTotalTokens(state.totalTokens);
     }
-  }, [workdir, sessionToRestore, getCurrentInputHistory]);
+  }, [workdir, sessionToRestore]);
 
   // Update totalTokens when AI manager state changes
   useEffect(() => {
@@ -289,20 +289,17 @@ export interface ChatProviderProps {
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const { workdir, sessionToRestore } = useAppConfig();
 
+  // Extract user input history from session messages
+  const initialInputHistory = useMemo(() => {
+    if (sessionToRestore?.state?.messages) {
+      return extractUserInputHistory(sessionToRestore.state.messages);
+    }
+    return undefined;
+  }, [sessionToRestore]);
+
   // Use the Input History hook
   const { userInputHistory, addToInputHistory, clearInputHistory } =
-    useInputHistory(sessionToRestore?.state.inputHistory);
-
-  // Create stable callback to get current input history
-  const getCurrentInputHistoryRef = useRef<() => string[]>(() => []);
-
-  useEffect(() => {
-    getCurrentInputHistoryRef.current = () => userInputHistory;
-  }, [userInputHistory]);
-
-  const getCurrentInputHistory = useCallback(() => {
-    return getCurrentInputHistoryRef.current?.() || [];
-  }, []);
+    useInputHistory(initialInputHistory);
 
   // Use the AI hook
   const {
@@ -315,7 +312,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     abortAIMessage,
     resetSession,
     totalTokens,
-  } = useAI(getCurrentInputHistory);
+  } = useAI();
 
   // Create bash manager
   const bashManagerRef = useRef<BashManager | null>(null);

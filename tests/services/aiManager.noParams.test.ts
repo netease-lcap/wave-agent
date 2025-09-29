@@ -41,7 +41,6 @@ describe("AIManager - No Parameters Tool Handling", () => {
   const mockCallbacks = {
     onMessagesChange: vi.fn(),
     onLoadingChange: vi.fn(),
-    getCurrentInputHistory: vi.fn().mockReturnValue([]),
   };
 
   beforeEach(() => {

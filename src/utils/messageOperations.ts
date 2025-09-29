@@ -4,6 +4,25 @@ import { extname } from "path";
 import { logger } from "./logger";
 
 /**
+ * 从 messages 数组中提取用户消息的文本内容
+ */
+export const extractUserInputHistory = (messages: Message[]): string[] => {
+  return messages
+    .filter((message) => message.role === "user")
+    .map((message) => {
+      // 提取所有文本块的内容并合并
+      const textBlocks = message.blocks.filter(
+        (block) => block.type === "text",
+      );
+      return textBlocks
+        .map((block) => block.content)
+        .join(" ")
+        .trim();
+    })
+    .filter((text) => text.length > 0); // 过滤掉空文本
+};
+
+/**
  * 将图片文件路径转换为base64格式
  * @param imagePath 图片文件路径
  * @returns base64格式的图片数据URL

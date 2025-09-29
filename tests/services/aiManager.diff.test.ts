@@ -36,7 +36,6 @@ describe("AIManager Diff Integration Tests", () => {
     const mockCallbacks = {
       onMessagesChange: vi.fn(),
       onLoadingChange: vi.fn(),
-      getCurrentInputHistory: vi.fn(() => []),
     };
 
     // Create AIManager instance with required parameters
