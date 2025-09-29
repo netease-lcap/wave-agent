@@ -23,7 +23,6 @@ async function testCodexUsageViaAiManager() {
   console.log("🧪 通过 aiManager 测试 gpt-5-codex 模型的 usage 传输...\n");
 
   let messages: Message[] = [];
-  let isLoading = false;
 
   const callbacks: AIManagerCallbacks = {
     onMessagesChange: (updatedMessages) => {
@@ -31,7 +30,6 @@ async function testCodexUsageViaAiManager() {
       process.stdout.write(".");
     },
     onLoadingChange: (loading) => {
-      isLoading = loading;
       console.log(`\n⏱️ Loading state: ${loading ? "started" : "finished"}`);
     },
   };
@@ -49,10 +47,6 @@ async function testCodexUsageViaAiManager() {
 
     console.log("\n🤖 正在通过 aiManager 发送消息...");
     await aiManager.sendAIMessage();
-
-    while (isLoading) {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
 
     const finalState = aiManager.getState();
     const tokensDiff = finalState.totalTokens - initialState.totalTokens;

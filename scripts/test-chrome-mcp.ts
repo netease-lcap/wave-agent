@@ -31,14 +31,12 @@ async function testChromeScreenshot() {
 
   // 准备回调函数
   let messages: Message[] = [];
-  let isLoading = false;
 
   const callbacks: AIManagerCallbacks = {
     onMessagesChange: (newMessages: Message[]) => {
       messages = newMessages;
     },
     onLoadingChange: (loading: boolean) => {
-      isLoading = loading;
       console.log(`⏳ Loading state: ${loading ? "started" : "finished"}`);
     },
   };
@@ -63,12 +61,6 @@ async function testChromeScreenshot() {
     // 发送 AI 消息
     console.log("🤖 Sending to AI...");
     await aiManager.sendAIMessage();
-
-    // 等待处理完成
-    while (isLoading) {
-      console.log("⏳ Waiting for AI response...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
 
     console.log("\n📄 Final conversation:");
     console.log("=".repeat(50));
