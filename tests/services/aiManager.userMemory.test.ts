@@ -80,7 +80,6 @@ describe("AIManager User Memory Integration", () => {
 
     mockCallbacks = {
       onMessagesChange: vi.fn(),
-      onLoadingChange: vi.fn(),
     };
 
     aiManager = new AIManager(tempDir, mockCallbacks);

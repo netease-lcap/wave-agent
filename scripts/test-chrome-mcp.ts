@@ -36,9 +36,6 @@ async function testChromeScreenshot() {
     onMessagesChange: (newMessages: Message[]) => {
       messages = newMessages;
     },
-    onLoadingChange: (loading: boolean) => {
-      console.log(`⏳ Loading state: ${loading ? "started" : "finished"}`);
-    },
   };
 
   // 创建 AI Manager

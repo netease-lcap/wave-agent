@@ -13,6 +13,7 @@ import {
   addUserMessageToMessages,
   addMemoryBlockToMessage,
   extractUserInputHistory,
+  isAIMessageProcessing,
 } from "../utils/messageOperations";
 import { createBashManager, type BashManager } from "../services/bashManager";
 import { createMemoryManager } from "../services/memoryManager";
@@ -31,7 +32,6 @@ export interface UseChatReturn {
   // AI
   sessionId: string;
   isLoading: boolean;
-  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   sendAIMessage: (recursionDepth?: number) => Promise<void>;
@@ -101,9 +101,6 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
       onMessagesChange: (newMessages) => {
         setMessages([...newMessages]);
       },
-      onLoadingChange: (loading) => {
-        setIsLoading(loading);
-      },
     };
 
     aiManagerRef.current = new AIManager(workdir, callbacks);
@@ -131,14 +128,20 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
     }
   }, [workdir, sessionToRestore]);
 
-  // Update totalTokens when AI manager state changes
+  // Auto-update loading state based on messages
+  useEffect(() => {
+    const isProcessing = isAIMessageProcessing(messages);
+    setIsLoading(isProcessing);
+  }, [messages]);
+
+  // Update totalTokens and sessionId when messages change
   useEffect(() => {
     if (aiManagerRef.current) {
       const state = aiManagerRef.current.getState();
       setTotalTokens(state.totalTokens);
       setSessionId(state.sessionId);
     }
-  }, [messages, isLoading]);
+  }, [messages]);
 
   const sendAIMessage = useCallback(
     async (recursionDepth?: number): Promise<void> => {
@@ -180,22 +183,6 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
     [],
   );
 
-  // Custom setIsLoading that updates the AI manager
-  const setIsLoadingWrapper = useCallback(
-    (loading: boolean | ((prev: boolean) => boolean)) => {
-      if (aiManagerRef.current) {
-        if (typeof loading === "function") {
-          const currentState = aiManagerRef.current.getState();
-          const newLoading = loading(currentState.isLoading);
-          aiManagerRef.current.setIsLoading(newLoading);
-        } else {
-          aiManagerRef.current.setIsLoading(loading);
-        }
-      }
-    },
-    [],
-  );
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -221,7 +208,6 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
     // AI
     sessionId,
     isLoading,
-    setIsLoading: setIsLoadingWrapper,
     messages,
     setMessages: setMessagesWrapper,
     sendAIMessage,
@@ -236,7 +222,6 @@ export interface ChatContextType {
   messages: Message[];
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   isLoading: boolean;
-  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   clearMessages: () => void;
   executeCommand: (command: string) => Promise<number>;
   abortCommand: () => void;
@@ -290,7 +275,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const {
     sessionId,
     isLoading,
-    setIsLoading,
     messages,
     setMessages,
     sendAIMessage,
@@ -456,23 +440,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         await sendAIMessage();
       } catch (error) {
         console.error("Failed to send message:", error);
-        setIsLoading(false);
+        // Loading state will be automatically updated by the useEffect that watches messages
       }
     },
-    [
-      addToInputHistory,
-      setMessages,
-      executeCommand,
-      sendAIMessage,
-      setIsLoading,
-    ],
+    [addToInputHistory, setMessages, executeCommand, sendAIMessage],
   );
 
   const contextValue: ChatContextType = {
     messages,
     setMessages,
     isLoading,
-    setIsLoading,
     clearMessages,
     executeCommand,
     abortCommand,
