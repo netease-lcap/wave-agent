@@ -1,7 +1,12 @@
 import React from "react";
 import { render } from "ink";
 import { App } from "./components/App.js";
-import { SessionManager, type SessionData } from "./services/sessionManager.js";
+import {
+  loadSession,
+  getLatestSession,
+  cleanupExpiredSessions,
+  type SessionData,
+} from "./services/session.js";
 import { PathValidator } from "./utils/path.js";
 import { cleanupLogs } from "./utils/logger.js";
 
@@ -18,13 +23,13 @@ export async function startCli(options: CliOptions): Promise<void> {
   if (restoreSessionId || continueLastSession) {
     try {
       if (restoreSessionId) {
-        sessionToRestore = await SessionManager.loadSession(restoreSessionId);
+        sessionToRestore = await loadSession(restoreSessionId);
         if (!sessionToRestore) {
           console.error(`Session not found: ${restoreSessionId}`);
           process.exit(1);
         }
       } else if (continueLastSession) {
-        sessionToRestore = await SessionManager.getLatestSession();
+        sessionToRestore = await getLatestSession();
         if (!sessionToRestore) {
           console.error(
             `No previous session found for workdir: ${process.cwd()}`,
@@ -73,7 +78,7 @@ export async function startCli(options: CliOptions): Promise<void> {
 
     try {
       // Clean up expired sessions
-      await SessionManager.cleanupExpiredSessions().catch((error) => {
+      await cleanupExpiredSessions().catch((error) => {
         console.warn("Failed to cleanup expired sessions:", error);
       });
 

@@ -2,7 +2,7 @@ import React from "react";
 import { ChatInterface } from "./ChatInterface";
 import { ChatProvider } from "../contexts/useChat";
 import { AppProvider } from "../contexts/useAppConfig";
-import type { SessionData } from "../services/sessionManager";
+import type { SessionData } from "../services/session";
 
 interface AppProps {
   sessionToRestore?: SessionData | null;

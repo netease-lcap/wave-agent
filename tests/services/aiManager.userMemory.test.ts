@@ -21,11 +21,9 @@ vi.mock("@/services/fileManager", () => ({
   })),
 }));
 
-// Mock the SessionManager
-vi.mock("@/services/sessionManager", () => ({
-  SessionManager: {
-    saveSession: vi.fn().mockResolvedValue(undefined),
-  },
+// Mock the session service
+vi.mock("@/services/session", () => ({
+  saveSession: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock the memoryUtils

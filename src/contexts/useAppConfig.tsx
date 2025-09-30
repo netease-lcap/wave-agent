@@ -1,5 +1,5 @@
 import React, { createContext, useContext } from "react";
-import type { SessionData } from "../services/sessionManager";
+import type { SessionData } from "../services/session";
 
 export interface AppConfig {
   sessionToRestore?: SessionData | null;

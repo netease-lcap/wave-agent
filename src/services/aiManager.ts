@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { callAgent, compressMessages } from "./aiService";
-import { SessionManager } from "./sessionManager";
+import { saveSession } from "./session";
 import {
   addAssistantMessageToMessages,
   addAnswerBlockToMessage,
@@ -170,7 +170,7 @@ export class AIManager {
    */
   public async saveSession(): Promise<void> {
     try {
-      await SessionManager.saveSession(
+      await saveSession(
         this.state.sessionId,
         this.state.messages,
         this.state.totalTokens,

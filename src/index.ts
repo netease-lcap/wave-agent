@@ -1,7 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import { SessionManager } from "./services/sessionManager.js";
+import { listSessions } from "./services/session.js";
 
 // Export main function for external use
 export async function main() {
@@ -32,7 +32,7 @@ export async function main() {
   // Handle list sessions command
   if (argv.listSessions) {
     try {
-      const sessions = await SessionManager.listSessions();
+      const sessions = await listSessions();
 
       if (sessions.length === 0) {
         console.log(`No sessions found for workdir: ${process.cwd()}`);
@@ -69,7 +69,7 @@ export async function main() {
 
 // Export other functions that might be needed
 export { startCli } from "./cli.js";
-export { SessionManager } from "./services/sessionManager.js";
+export * from "./services/session.js";
 
 // Execute main function if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AIManager } from "@/services/aiManager";
 import * as aiService from "@/services/aiService";
-import { SessionManager } from "@/services/sessionManager";
+import { saveSession } from "@/services/session";
+
+// Mock the session service
+vi.mock("@/services/session", () => ({
+  saveSession: vi.fn(),
+}));
 import type { Message } from "@/types";
 
 // Mock AI Service
@@ -28,9 +33,9 @@ describe("AIManager Tool Recursion Tests", () => {
   let aiServiceCallCount: number;
 
   beforeEach(() => {
-    // Mock SessionManager
-    const mockSessionManager = vi.mocked(SessionManager);
-    mockSessionManager.saveSession = vi.fn();
+    // Mock session service
+    const mockSaveSession = vi.mocked(saveSession);
+    mockSaveSession.mockImplementation(vi.fn());
 
     // Create mock callbacks
     const mockCallbacks = {
