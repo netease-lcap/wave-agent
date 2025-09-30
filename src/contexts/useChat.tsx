@@ -18,34 +18,61 @@ import { createBashManager, type BashManager } from "../services/bashManager";
 import { createMemoryManager } from "../services/memoryManager";
 import { AIManager, AIManagerCallbacks } from "../services/aiManager";
 
-// Combined Chat Hook
-export interface UseChatReturn {
-  // Input History
+// Main Chat Context
+export interface ChatContextType {
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  isLoading: boolean;
+  clearMessages: () => void;
+  executeCommand: (command: string) => Promise<number>;
+  abortCommand: () => void;
+  isCommandRunning: boolean;
   userInputHistory: string[];
   addToInputHistory: (input: string) => void;
-  clearInputHistory: () => void;
-  // Input Insert
   insertToInput: (text: string) => void;
   inputInsertHandler: ((text: string) => void) | null;
   setInputInsertHandler: (handler: (text: string) => void) => void;
-  // AI
+  // AI functionality
   sessionId: string;
-  isLoading: boolean;
-  messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
-  sendAIMessage: (recursionDepth?: number) => Promise<void>;
-  abortAIMessage: () => void;
+  sendMessage: (
+    content: string,
+    images?: Array<{ path: string; mimeType: string }>,
+  ) => Promise<void>;
+  abortMessage: () => void;
   resetSession: () => void;
   totalTokens: number;
+  // Memory functionality
+  saveMemory: (message: string, type: "project" | "user") => Promise<void>;
 }
 
-export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
+const ChatContext = createContext<ChatContextType | null>(null);
+
+export const useChat = () => {
+  const context = useContext(ChatContext);
+  if (!context) {
+    throw new Error("useChat must be used within ChatProvider");
+  }
+  return context;
+};
+
+export interface ChatProviderProps {
+  children: React.ReactNode;
+}
+
+export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const { workdir, sessionToRestore } = useAppConfig();
 
+  // Extract user input history from session messages
+  const initialInputHistory = useMemo(() => {
+    if (sessionToRestore?.state?.messages) {
+      return extractUserInputHistory(sessionToRestore.state.messages);
+    }
+    return [];
+  }, [sessionToRestore]);
+
   // Input History State
-  const [userInputHistory, setUserInputHistory] = useState<string[]>(
-    initialHistory || [],
-  );
+  const [userInputHistory, setUserInputHistory] =
+    useState<string[]>(initialInputHistory);
 
   // Input Insert State
   const [inputInsertHandler, setInputInsertHandler] = useState<
@@ -179,7 +206,7 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
     [],
   );
 
-  // Cleanup on unmount
+  // Cleanup on unmount for AI Manager
   useEffect(() => {
     return () => {
       if (aiManagerRef.current) {
@@ -191,99 +218,6 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
       }
     };
   }, []);
-
-  return {
-    // Input History
-    userInputHistory,
-    addToInputHistory,
-    clearInputHistory,
-    // Input Insert
-    insertToInput,
-    inputInsertHandler,
-    setInputInsertHandler: setInputInsertHandlerCallback,
-    // AI
-    sessionId,
-    isLoading,
-    messages,
-    setMessages: setMessagesWrapper,
-    sendAIMessage,
-    abortAIMessage,
-    resetSession,
-    totalTokens,
-  };
-};
-
-// Main Chat Context
-export interface ChatContextType {
-  messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
-  isLoading: boolean;
-  clearMessages: () => void;
-  executeCommand: (command: string) => Promise<number>;
-  abortCommand: () => void;
-  isCommandRunning: boolean;
-  userInputHistory: string[];
-  addToInputHistory: (input: string) => void;
-  insertToInput: (text: string) => void;
-  inputInsertHandler: ((text: string) => void) | null;
-  setInputInsertHandler: (handler: (text: string) => void) => void;
-  // AI functionality
-  sessionId: string;
-  sendMessage: (
-    content: string,
-    images?: Array<{ path: string; mimeType: string }>,
-  ) => Promise<void>;
-  sendAIMessage: (recursionDepth?: number) => Promise<void>;
-  abortAIMessage: () => void;
-  abortMessage: () => void;
-  resetSession: () => void;
-  totalTokens: number;
-  // Memory functionality
-  saveMemory: (message: string, type: "project" | "user") => Promise<void>;
-}
-
-const ChatContext = createContext<ChatContextType | null>(null);
-
-export const useChat = () => {
-  const context = useContext(ChatContext);
-  if (!context) {
-    throw new Error("useChat must be used within ChatProvider");
-  }
-  return context;
-};
-
-export interface ChatProviderProps {
-  children: React.ReactNode;
-}
-
-export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
-  const { workdir, sessionToRestore } = useAppConfig();
-
-  // Extract user input history from session messages
-  const initialInputHistory = useMemo(() => {
-    if (sessionToRestore?.state?.messages) {
-      return extractUserInputHistory(sessionToRestore.state.messages);
-    }
-    return undefined;
-  }, [sessionToRestore]);
-
-  // Use the combined Chat hook
-  const {
-    sessionId,
-    isLoading,
-    messages,
-    setMessages,
-    sendAIMessage,
-    abortAIMessage,
-    resetSession,
-    totalTokens,
-    userInputHistory,
-    addToInputHistory,
-    clearInputHistory,
-    insertToInput,
-    inputInsertHandler,
-    setInputInsertHandler,
-  } = useChatHook(initialInputHistory);
 
   // Create bash manager
   const bashManagerRef = useRef<BashManager | null>(null);
@@ -444,7 +378,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   const contextValue: ChatContextType = {
     messages,
-    setMessages,
+    setMessages: setMessagesWrapper,
     isLoading,
     clearMessages,
     executeCommand,
@@ -454,11 +388,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     addToInputHistory,
     insertToInput,
     inputInsertHandler,
-    setInputInsertHandler,
+    setInputInsertHandler: setInputInsertHandlerCallback,
     sessionId,
     sendMessage,
-    sendAIMessage,
-    abortAIMessage,
     abortMessage,
     resetSession,
     totalTokens,
