@@ -25,6 +25,7 @@ import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
 
 export interface AIManagerCallbacks {
   onMessagesChange: (messages: Message[]) => void;
+  onLoadingChange: (isLoading: boolean) => void;
 }
 
 export interface AIManagerState {
@@ -87,6 +88,7 @@ export class AIManager {
 
   public setIsLoading(isLoading: boolean): void {
     this.state.isLoading = isLoading;
+    this.callbacks.onLoadingChange(isLoading);
   }
 
   public abortAIMessage(): void {

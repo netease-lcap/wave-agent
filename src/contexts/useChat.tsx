@@ -13,7 +13,6 @@ import {
   addUserMessageToMessages,
   addMemoryBlockToMessage,
   extractUserInputHistory,
-  isAIMessageProcessing,
 } from "../utils/messageOperations";
 import { createBashManager, type BashManager } from "../services/bashManager";
 import { createMemoryManager } from "../services/memoryManager";
@@ -101,6 +100,9 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
       onMessagesChange: (newMessages) => {
         setMessages([...newMessages]);
       },
+      onLoadingChange: (loading) => {
+        setIsLoading(loading);
+      },
     };
 
     aiManagerRef.current = new AIManager(workdir, callbacks);
@@ -127,12 +129,6 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
       setTotalTokens(state.totalTokens);
     }
   }, [workdir, sessionToRestore]);
-
-  // Auto-update loading state based on messages
-  useEffect(() => {
-    const isProcessing = isAIMessageProcessing(messages);
-    setIsLoading(isProcessing);
-  }, [messages]);
 
   // Update totalTokens and sessionId when messages change
   useEffect(() => {

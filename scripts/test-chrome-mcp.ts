@@ -34,6 +34,9 @@ async function testChromeScreenshot() {
     onMessagesChange: (newMessages: Message[]) => {
       messages = newMessages;
     },
+    onLoadingChange: () => {
+      // Handle loading state changes if needed
+    },
   };
 
   // 创建 AI Manager

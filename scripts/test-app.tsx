@@ -2,6 +2,18 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { App } from "../src/components/App";
 
+// 添加调试日志来监控 loading state
+const originalConsoleLog = console.log;
+const debugLog = (message: string, data?: unknown) => {
+  originalConsoleLog(
+    `[DEBUG] ${message}`,
+    data ? JSON.stringify(data, null, 2) : "",
+  );
+};
+
+// 使用 debugLog 避免未使用变量警告
+void debugLog;
+
 // 延迟函数
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -73,6 +85,29 @@ async function testApp() {
     await delay(300);
 
     console.log("📸 发送长消息后的界面状态:");
+    console.log("=".repeat(60));
+    console.log(lastFrame());
+    console.log("=".repeat(60));
+
+    // 测试 bash 命令
+    console.log("\n🔧 测试 bash 命令 '!echo hello'...");
+    // 先清空输入框
+    stdin.write("\x15"); // Ctrl+U 清空整行
+    await delay(50);
+    stdin.write("!echo hello");
+    await delay(100);
+
+    console.log("📸 输入 bash 命令后的界面状态:");
+    console.log("=".repeat(60));
+    console.log(lastFrame());
+    console.log("=".repeat(60));
+
+    // 发送 bash 命令
+    console.log("\n↵ 发送 bash 命令...");
+    stdin.write("\r");
+    await delay(500);
+
+    console.log("📸 执行 bash 命令后的界面状态:");
     console.log("=".repeat(60));
     console.log(lastFrame());
     console.log("=".repeat(60));

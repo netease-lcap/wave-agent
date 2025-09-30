@@ -29,6 +29,9 @@ async function testCodexUsageViaAiManager() {
       messages = updatedMessages;
       process.stdout.write(".");
     },
+    onLoadingChange: () => {
+      // Handle loading state changes if needed
+    },
   };
 
   const aiManager = new AIManager(process.cwd(), callbacks);

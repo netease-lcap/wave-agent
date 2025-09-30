@@ -10,7 +10,6 @@ import {
   updateCommandOutputInMessage,
   completeCommandInMessage,
   addUserMessageToMessages,
-  isAIMessageProcessing,
 } from "@/utils/messageOperations";
 import type { Message } from "@/types";
 
@@ -660,71 +659,5 @@ describe("Command Output Message Operations", () => {
         exitCode: 0, // Original exit code should remain
       });
     });
-  });
-});
-
-describe("isAIMessageProcessing", () => {
-  it("should return false for empty messages", () => {
-    expect(isAIMessageProcessing([])).toBe(false);
-  });
-
-  it("should return false when last message is not assistant", () => {
-    const messages: Message[] = [
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "Hello" }],
-      },
-    ];
-    expect(isAIMessageProcessing(messages)).toBe(false);
-  });
-
-  it("should return false when assistant message has no running tools", () => {
-    const messages: Message[] = [
-      {
-        role: "assistant",
-        blocks: [
-          { type: "text", content: "Response" },
-          {
-            type: "tool",
-            attributes: { isRunning: false },
-          },
-        ],
-      },
-    ];
-    expect(isAIMessageProcessing(messages)).toBe(false);
-  });
-
-  it("should return true when assistant message has running tool", () => {
-    const messages: Message[] = [
-      {
-        role: "assistant",
-        blocks: [
-          {
-            type: "tool",
-            attributes: { isRunning: true },
-          },
-        ],
-      },
-    ];
-    expect(isAIMessageProcessing(messages)).toBe(true);
-  });
-
-  it("should check only the last message", () => {
-    const messages: Message[] = [
-      {
-        role: "assistant",
-        blocks: [
-          {
-            type: "tool",
-            attributes: { isRunning: true },
-          },
-        ],
-      },
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "New message" }],
-      },
-    ];
-    expect(isAIMessageProcessing(messages)).toBe(false);
   });
 });
