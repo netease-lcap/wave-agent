@@ -51,8 +51,8 @@ async function testApp() {
 
     // 再等待一段时间查看可能的 AI 响应
     console.log("\n⏳ 等待 AI 响应...");
-    await delay(1000);
-    console.log("📸 等待 1 秒后的界面状态:");
+    await delay(5000);
+    console.log("📸 等待 5 秒后的界面状态:");
     console.log("=".repeat(60));
     console.log(lastFrame());
     console.log("=".repeat(60));
