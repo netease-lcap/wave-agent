@@ -6,10 +6,9 @@ import { relative } from "path";
 /**
  * 处理路径，支持 ~ 开头的路径扩展
  * @param filePath 文件路径
- * @param workdir 工作目录（可选）
  * @returns 解析后的绝对路径
  */
-export function resolvePath(filePath: string, workdir?: string): string {
+export function resolvePath(filePath: string): string {
   // 如果路径以 ~ 开头，将其替换为用户主目录
   if (filePath.startsWith("~/")) {
     return resolve(homedir(), filePath.slice(2));
@@ -20,11 +19,7 @@ export function resolvePath(filePath: string, workdir?: string): string {
     return homedir();
   }
 
-  // 对于其他路径，使用原有逻辑
-  if (workdir) {
-    return resolve(workdir, filePath);
-  }
-
+  // 对于其他路径，使用当前工作目录解析
   return resolve(filePath);
 }
 
@@ -93,16 +88,15 @@ export const isBinary = (filename: string): boolean => {
 /**
  * 获取相对路径用于显示，如果相对路径更短且不在父目录则使用相对路径
  * @param filePath 绝对路径
- * @param workdir 工作目录（可选，默认使用当前工作目录）
  * @returns 用于显示的路径（相对路径或绝对路径）
  */
-export function getDisplayPath(filePath: string, workdir?: string): string {
+export function getDisplayPath(filePath: string): string {
   if (!filePath) {
     return filePath;
   }
 
   try {
-    const cwd = workdir || process.cwd();
+    const cwd = process.cwd();
     const relativePath = relative(cwd, filePath);
 
     // 如果相对路径为空（即路径相同），返回 "."

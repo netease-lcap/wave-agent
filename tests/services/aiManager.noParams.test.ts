@@ -44,7 +44,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    aiManager = new AIManager("/test/workdir", mockCallbacks);
+    aiManager = new AIManager(mockCallbacks);
   });
 
   afterEach(async () => {

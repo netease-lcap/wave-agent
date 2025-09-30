@@ -16,11 +16,10 @@ export interface MemoryManager {
 
 /**
  * 创建记忆管理器 - 统一管理项目和用户内存
- * @param workdir 工作目录
  * @returns 记忆管理器实例
  */
-export function createMemoryManager(workdir: string): MemoryManager {
-  const memoryFilePath = path.join(workdir, "LCAP.md");
+export function createMemoryManager(): MemoryManager {
+  const memoryFilePath = path.join(process.cwd(), "LCAP.md");
 
   // 项目内存相关方法
   const isMemoryMessage = (message: string): boolean => {

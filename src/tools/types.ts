@@ -12,10 +12,7 @@ export interface ToolPlugin {
     args: Record<string, unknown>,
     context?: ToolContext,
   ) => Promise<ToolResult>;
-  formatCompactParams?: (
-    params: Record<string, unknown>,
-    workdir?: string,
-  ) => string;
+  formatCompactParams?: (params: Record<string, unknown>) => string;
 }
 
 export interface ToolResult {
@@ -54,5 +51,4 @@ export interface ToolRegistry {
 
 export interface ToolContext {
   abortSignal?: AbortSignal;
-  workdir?: string;
 }

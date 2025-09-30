@@ -30,7 +30,6 @@ const AVAILABLE_COMMANDS: Command[] = [
 
 export interface CommandSelectorProps {
   searchQuery: string;
-  workdir: string;
   onSelect: (command: string) => void;
   onCancel: () => void;
   onCommandGenerated?: (command: string) => void;
@@ -38,7 +37,6 @@ export interface CommandSelectorProps {
 
 export const CommandSelector: React.FC<CommandSelectorProps> = ({
   searchQuery,
-  workdir,
   onSelect,
   onCancel,
   onCommandGenerated,
@@ -67,7 +65,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       logger.debug("Starting git commit message generation");
 
       // 获取 git diff
-      const diff = await getGitDiff(workdir);
+      const diff = await getGitDiff();
       if (!diff.trim()) {
         logger.debug("No changes detected in git diff");
         setWarning("No changes detected. Please make some changes first.");

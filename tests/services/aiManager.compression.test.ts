@@ -33,7 +33,7 @@ describe("AIManager Message Compression Tests", () => {
     };
 
     // Create AIManager instance with required parameters
-    aiManager = new AIManager("/mock/workdir", mockCallbacks);
+    aiManager = new AIManager(mockCallbacks);
 
     vi.clearAllMocks();
   });

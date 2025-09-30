@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { grepTool } from "@/tools/grepTool";
-import { ToolContext } from "@/tools/types";
 import { mkdtemp, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -8,11 +7,12 @@ import { rimraf } from "rimraf";
 
 describe("grepTool", () => {
   let tempDir: string;
-  let context: ToolContext;
+  let originalCwd: string;
 
   beforeEach(async () => {
+    originalCwd = process.cwd();
     tempDir = await mkdtemp(join(tmpdir(), "grep-test-"));
-    context = { workdir: tempDir };
+    process.chdir(tempDir);
 
     // 创建测试文件结构
     await mkdir(join(tempDir, "src"), { recursive: true });
@@ -65,6 +65,7 @@ It contains various files with different content.`,
   });
 
   afterEach(async () => {
+    process.chdir(originalCwd);
     await rimraf(tempDir);
   });
 
@@ -81,10 +82,10 @@ It contains various files with different content.`,
   });
 
   it("should find files containing pattern (files_with_matches mode)", async () => {
-    const result = await grepTool.execute(
-      { pattern: "export", output_mode: "files_with_matches" },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "export",
+      output_mode: "files_with_matches",
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
@@ -93,10 +94,10 @@ It contains various files with different content.`,
   });
 
   it("should show matching lines (content mode)", async () => {
-    const result = await grepTool.execute(
-      { pattern: "export const", output_mode: "content" },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "export const",
+      output_mode: "content",
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
@@ -106,10 +107,10 @@ It contains various files with different content.`,
   });
 
   it("should show match counts (count mode)", async () => {
-    const result = await grepTool.execute(
-      { pattern: "export", output_mode: "count" },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "export",
+      output_mode: "count",
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts:");
@@ -118,14 +119,11 @@ It contains various files with different content.`,
   });
 
   it("should show line numbers in content mode", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "export const",
-        output_mode: "content",
-        "-n": true,
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "export const",
+      output_mode: "content",
+      "-n": true,
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toMatch(/src\/index\.ts:\d+:/);
@@ -133,28 +131,22 @@ It contains various files with different content.`,
   });
 
   it("should work with case insensitive search", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "APPLICATION",
-        "-i": true,
-        output_mode: "files_with_matches",
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "APPLICATION",
+      "-i": true,
+      output_mode: "files_with_matches",
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
   });
 
   it("should filter by file type", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "export",
-        type: "ts",
-        output_mode: "files_with_matches",
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "export",
+      type: "ts",
+      output_mode: "files_with_matches",
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
@@ -163,14 +155,11 @@ It contains various files with different content.`,
   });
 
   it("should filter by glob pattern", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "export",
-        glob: "*.ts",
-        output_mode: "files_with_matches",
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "export",
+      glob: "*.ts",
+      output_mode: "files_with_matches",
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
@@ -179,14 +168,11 @@ It contains various files with different content.`,
   });
 
   it("should show context lines", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "createApp",
-        output_mode: "content",
-        "-C": 2,
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "createApp",
+      output_mode: "content",
+      "-C": 2,
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("export const app");
@@ -195,14 +181,11 @@ It contains various files with different content.`,
   });
 
   it("should show context before matches", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "createApp",
-        output_mode: "content",
-        "-B": 1,
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "createApp",
+      output_mode: "content",
+      "-B": 1,
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("export const app");
@@ -210,14 +193,11 @@ It contains various files with different content.`,
   });
 
   it("should show context after matches", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "createApp",
-        output_mode: "content",
-        "-A": 1,
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "createApp",
+      output_mode: "content",
+      "-A": 1,
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("export function createApp");
@@ -225,14 +205,11 @@ It contains various files with different content.`,
   });
 
   it("should limit results with head_limit", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "export",
-        output_mode: "files_with_matches",
-        head_limit: 1,
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "export",
+      output_mode: "files_with_matches",
+      head_limit: 1,
+    });
 
     expect(result.success).toBe(true);
     const lines = result.content.split("\n").filter((line) => line.trim());
@@ -250,14 +227,11 @@ It contains various files with different content.`,
 }`,
     );
 
-    const result = await grepTool.execute(
-      {
-        pattern: "struct.*name",
-        multiline: true,
-        output_mode: "files_with_matches",
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "struct.*name",
+      multiline: true,
+      output_mode: "files_with_matches",
+    });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -266,14 +240,11 @@ It contains various files with different content.`,
   });
 
   it("should search in specific path", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "export",
-        path: "src",
-        output_mode: "files_with_matches",
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "export",
+      path: "src",
+      output_mode: "files_with_matches",
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
@@ -281,10 +252,9 @@ It contains various files with different content.`,
   });
 
   it("should return no matches message", async () => {
-    const result = await grepTool.execute(
-      { pattern: "NONEXISTENT_PATTERN_12345" },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "NONEXISTENT_PATTERN_12345",
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toBe("No matches found");
@@ -292,31 +262,19 @@ It contains various files with different content.`,
   });
 
   it("should return error for missing pattern", async () => {
-    const result = await grepTool.execute({}, context);
+    const result = await grepTool.execute({});
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("pattern parameter is required");
   });
 
   it("should return error for invalid pattern type", async () => {
-    const result = await grepTool.execute({ pattern: 123 }, context);
+    const result = await grepTool.execute({ pattern: 123 });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain(
       "pattern parameter is required and must be a string",
     );
-  });
-
-  it("should return error when ripgrep is not available", async () => {
-    // 这个测试在真实环境中很难模拟，因为我们无法轻易修改已加载的模块
-    // 我们将跳过这个测试或者用不同的方式测试
-    const result = await grepTool.execute(
-      { pattern: "test" },
-      { workdir: undefined } as ToolContext, // 测试无效的工作目录
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Working directory not available");
   });
 
   it("should format compact parameters correctly", () => {
@@ -334,13 +292,10 @@ It contains various files with different content.`,
   });
 
   it("should handle special regex characters", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "function\\s+\\w+",
-        output_mode: "files_with_matches",
-      },
-      context,
-    );
+    const result = await grepTool.execute({
+      pattern: "function\\s+\\w+",
+      output_mode: "files_with_matches",
+    });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");

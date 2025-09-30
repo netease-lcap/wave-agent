@@ -6,13 +6,11 @@ import { PathValidator } from "./utils/path.js";
 import { cleanupLogs } from "./utils/logger.js";
 
 export interface CliOptions {
-  workdir: string;
   restoreSessionId?: string;
   continueLastSession?: boolean;
 }
 
 export async function startCli(options: CliOptions): Promise<void> {
-  let { workdir } = options;
   const { restoreSessionId, continueLastSession } = options;
   let sessionToRestore: SessionData | null = null;
 
@@ -26,9 +24,11 @@ export async function startCli(options: CliOptions): Promise<void> {
           process.exit(1);
         }
       } else if (continueLastSession) {
-        sessionToRestore = await SessionManager.getLatestSession(workdir);
+        sessionToRestore = await SessionManager.getLatestSession();
         if (!sessionToRestore) {
-          console.error(`No previous session found for workdir: ${workdir}`);
+          console.error(
+            `No previous session found for workdir: ${process.cwd()}`,
+          );
           process.exit(1);
         }
       }
@@ -41,7 +41,7 @@ export async function startCli(options: CliOptions): Promise<void> {
 
         if (pathValidation.isValid) {
           // Use session's workdir
-          workdir = pathValidation.resolvedPath!;
+          const workdir = pathValidation.resolvedPath!;
           console.log(`Restoring session: ${sessionToRestore.id}`);
           console.log(`Working directory: ${workdir}`);
         } else {
@@ -50,7 +50,7 @@ export async function startCli(options: CliOptions): Promise<void> {
             `Session workdir is invalid: ${sessionToRestore.metadata.workdir}`,
           );
           console.warn(`Error: ${pathValidation.error}`);
-          console.log(`Using current directory instead: ${workdir}`);
+          console.log(`Using current directory instead: ${process.cwd()}`);
 
           // Keep the current workdir but still restore session data
         }
@@ -113,9 +113,7 @@ export async function startCli(options: CliOptions): Promise<void> {
   });
 
   // Render the application
-  const { unmount } = render(
-    <App workdir={workdir} sessionToRestore={sessionToRestore} />,
-  );
+  const { unmount } = render(<App sessionToRestore={sessionToRestore} />);
 
   // Store unmount function for cleanup when process exits normally
   process.on("exit", () => {

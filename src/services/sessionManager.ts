@@ -61,7 +61,6 @@ export class SessionManager {
   static async saveSession(
     sessionId: string,
     messages: Message[],
-    workdir: string,
     totalTokens: number = 0,
     startedAt?: string,
   ): Promise<void> {
@@ -78,7 +77,7 @@ export class SessionManager {
       timestamp: now,
       version: this.VERSION,
       metadata: {
-        workdir,
+        workdir: process.cwd(),
         startedAt: startedAt || now,
         lastActiveAt: now,
         totalTokens,
@@ -127,8 +126,8 @@ export class SessionManager {
   /**
    * 获取最近的会话
    */
-  static async getLatestSession(workdir?: string): Promise<SessionData | null> {
-    const sessions = await this.listSessions(workdir);
+  static async getLatestSession(): Promise<SessionData | null> {
+    const sessions = await this.listSessions();
     if (sessions.length === 0) {
       return null;
     }
@@ -145,7 +144,7 @@ export class SessionManager {
   /**
    * 列出所有会话
    */
-  static async listSessions(workdir?: string): Promise<SessionMetadata[]> {
+  static async listSessions(): Promise<SessionMetadata[]> {
     try {
       await this.ensureSessionDir();
       const files = await fs.readdir(this.SESSION_DIR);
@@ -162,8 +161,8 @@ export class SessionManager {
           const content = await fs.readFile(filePath, "utf-8");
           const sessionData = JSON.parse(content) as SessionData;
 
-          // 如果指定了workdir，只返回该目录的会话
-          if (workdir && sessionData.metadata.workdir !== workdir) {
+          // 只返回当前工作目录的会话
+          if (sessionData.metadata.workdir !== process.cwd()) {
             continue;
           }
 
@@ -211,13 +210,13 @@ export class SessionManager {
   /**
    * 清理过期会话
    */
-  static async cleanupExpiredSessions(workdir?: string): Promise<number> {
+  static async cleanupExpiredSessions(): Promise<number> {
     // 在测试环境下不执行清理操作
     if (process.env.NODE_ENV === "test") {
       return 0;
     }
 
-    const sessions = await this.listSessions(workdir);
+    const sessions = await this.listSessions();
     const now = new Date();
     const maxAge = this.MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // 转换为毫秒
 

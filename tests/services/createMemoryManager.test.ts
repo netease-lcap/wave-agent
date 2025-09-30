@@ -34,7 +34,10 @@ describe("createMemoryManager", () => {
 
   describe("isMemoryMessage", () => {
     it("should return true for messages starting with #", () => {
-      const memoryManager = createMemoryManager(testWorkdir);
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
+      const memoryManager = createMemoryManager();
 
       expect(memoryManager.isMemoryMessage("#这是一个记忆")).toBe(true);
       expect(memoryManager.isMemoryMessage("# 这是另一个记忆")).toBe(true);
@@ -42,7 +45,10 @@ describe("createMemoryManager", () => {
     });
 
     it("should return false for messages not starting with #", () => {
-      const memoryManager = createMemoryManager(testWorkdir);
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
+      const memoryManager = createMemoryManager();
 
       expect(memoryManager.isMemoryMessage("这不是记忆")).toBe(false);
       expect(memoryManager.isMemoryMessage("!命令")).toBe(false);
@@ -53,7 +59,10 @@ describe("createMemoryManager", () => {
 
   describe("addMemory", () => {
     it("should not process non-memory messages", async () => {
-      const memoryManager = createMemoryManager(testWorkdir);
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
+      const memoryManager = createMemoryManager();
 
       await memoryManager.addMemory("普通消息");
 
@@ -62,7 +71,10 @@ describe("createMemoryManager", () => {
     });
 
     it("should create new memory file if it doesn't exist", async () => {
-      const memoryManager = createMemoryManager(testWorkdir);
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
+      const memoryManager = createMemoryManager();
 
       // Mock file not existing
       mockFs.readFile.mockRejectedValue({ code: "ENOENT" });
@@ -84,7 +96,10 @@ describe("createMemoryManager", () => {
     });
 
     it("should append to existing memory file", async () => {
-      const memoryManager = createMemoryManager(testWorkdir);
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
+      const memoryManager = createMemoryManager();
 
       const existingContent = "# Memory\n\n这是AI助手的记忆文件。\n- 旧记忆\n";
       mockFs.readFile.mockResolvedValue(existingContent);
@@ -106,7 +121,10 @@ describe("createMemoryManager", () => {
     });
 
     it("should handle file read errors", async () => {
-      const memoryManager = createMemoryManager(testWorkdir);
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
+      const memoryManager = createMemoryManager();
 
       mockFs.readFile.mockRejectedValue(new Error("Permission denied"));
 
@@ -116,7 +134,10 @@ describe("createMemoryManager", () => {
     });
 
     it("should handle file write errors", async () => {
-      const memoryManager = createMemoryManager(testWorkdir);
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
+      const memoryManager = createMemoryManager();
 
       mockFs.readFile.mockRejectedValue({ code: "ENOENT" });
       mockFs.writeFile.mockRejectedValue(new Error("Disk full"));
@@ -129,7 +150,10 @@ describe("createMemoryManager", () => {
 
   describe("Memory Integration", () => {
     it("should complete memory workflow: add memory and read it back", async () => {
-      const memoryManager = createMemoryManager(testWorkdir);
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
+      const memoryManager = createMemoryManager();
 
       // Simulate adding memory to empty file
       mockFs.readFile.mockRejectedValueOnce({ code: "ENOENT" }); // File doesn't exist
@@ -155,15 +179,21 @@ describe("createMemoryManager", () => {
         "# Memory\n\n这是AI助手的记忆文件，记录重要信息和上下文。\n\n- 这是一个重要的项目设置\n";
       mockFs.readFile.mockResolvedValueOnce(memoryContent);
 
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
       // Read memory
-      const result = await readMemoryFile(testWorkdir);
+      const result = await readMemoryFile();
 
       expect(result).toBe(memoryContent.trim()); // trim to handle any whitespace differences
       expect(mockFs.readFile).toHaveBeenCalledWith(memoryFilePath, "utf-8");
     });
 
     it("should handle multiple memory entries", async () => {
-      const memoryManager = createMemoryManager(testWorkdir);
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
+      const memoryManager = createMemoryManager();
 
       // First memory entry
       const firstContent =
@@ -197,7 +227,10 @@ describe("createMemoryManager", () => {
     });
 
     it("should ignore non-memory messages in integration workflow", async () => {
-      const memoryManager = createMemoryManager(testWorkdir);
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
+      const memoryManager = createMemoryManager();
 
       await memoryManager.addMemory("这不是记忆消息");
       await memoryManager.addMemory("!这是命令");
@@ -209,20 +242,26 @@ describe("createMemoryManager", () => {
     });
 
     it("should handle memory file read errors gracefully in readMemoryFile", async () => {
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
       // Simulate file doesn't exist
       mockFs.readFile.mockRejectedValue({ code: "ENOENT" });
 
-      const result = await readMemoryFile(testWorkdir);
+      const result = await readMemoryFile();
 
       expect(result).toBe("");
       expect(mockFs.readFile).toHaveBeenCalledWith(memoryFilePath, "utf-8");
     });
 
     it("should handle memory file read permission errors in readMemoryFile", async () => {
+      // Mock process.cwd to return testWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
+
       // Simulate permission error
       mockFs.readFile.mockRejectedValue(new Error("Permission denied"));
 
-      const result = await readMemoryFile(testWorkdir);
+      const result = await readMemoryFile();
 
       expect(result).toBe("");
     });

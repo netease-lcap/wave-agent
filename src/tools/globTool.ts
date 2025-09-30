@@ -1,6 +1,6 @@
 import { glob } from "glob";
 import { stat } from "fs/promises";
-import type { ToolContext, ToolPlugin, ToolResult } from "./types";
+import type { ToolPlugin, ToolResult } from "./types";
 import { resolvePath, getDisplayPath } from "../utils/path";
 import { getGlobIgnorePatterns } from "../utils/fileFilter";
 
@@ -34,10 +34,7 @@ export const globTool: ToolPlugin = {
       },
     },
   },
-  execute: async (
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<ToolResult> => {
+  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
     const pattern = args.pattern as string;
     const searchPath = args.path as string;
 
@@ -51,9 +48,7 @@ export const globTool: ToolPlugin = {
 
     try {
       // 确定搜索目录
-      const workdir = searchPath
-        ? resolvePath(searchPath, context?.workdir)
-        : resolvePath(".", context?.workdir);
+      const workdir = searchPath ? resolvePath(searchPath) : resolvePath(".");
 
       // 执行 glob 搜索
       const matches = await glob(pattern, {
@@ -76,7 +71,7 @@ export const globTool: ToolPlugin = {
       const filesWithStats = await Promise.allSettled(
         matches.map(async (file) => {
           try {
-            const fullPath = resolvePath(file, workdir);
+            const fullPath = resolvePath(file);
             const stats = await stat(fullPath);
             return {
               path: file,
@@ -121,12 +116,12 @@ export const globTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>, workdir?: string) => {
+  formatCompactParams: (params: Record<string, unknown>) => {
     const pattern = params.pattern as string;
     const path = params.path as string;
 
     if (path) {
-      const displayPath = getDisplayPath(path, workdir);
+      const displayPath = getDisplayPath(path);
       return `${pattern} in ${displayPath}`;
     }
     return pattern || "";

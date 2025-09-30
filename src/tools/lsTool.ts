@@ -160,11 +160,11 @@ export const lsTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>, workdir?: string) => {
+  formatCompactParams: (params: Record<string, unknown>) => {
     const targetPath = params.path as string;
     const ignorePatterns = params.ignore as string[];
 
-    let result = getDisplayPath(targetPath || "", workdir);
+    let result = getDisplayPath(targetPath || "");
 
     if (
       ignorePatterns &&

@@ -40,7 +40,7 @@ export interface UseChatReturn {
 }
 
 export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
-  const { workdir, sessionToRestore } = useAppConfig();
+  const { sessionToRestore } = useAppConfig();
 
   // Input History State
   const [userInputHistory, setUserInputHistory] = useState<string[]>(
@@ -105,7 +105,7 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
       },
     };
 
-    aiManagerRef.current = new AIManager(workdir, callbacks);
+    aiManagerRef.current = new AIManager(callbacks);
 
     // Initialize from session or default state
     if (sessionToRestore) {
@@ -128,7 +128,7 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
       setIsLoading(state.isLoading);
       setTotalTokens(state.totalTokens);
     }
-  }, [workdir, sessionToRestore]);
+  }, [sessionToRestore]);
 
   // Update totalTokens and sessionId when messages change
   useEffect(() => {
@@ -257,7 +257,7 @@ export interface ChatProviderProps {
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
-  const { workdir, sessionToRestore } = useAppConfig();
+  const { sessionToRestore } = useAppConfig();
 
   // Extract user input history from session messages
   const initialInputHistory = useMemo(() => {
@@ -292,14 +292,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   useEffect(() => {
     if (!bashManagerRef.current) {
       bashManagerRef.current = createBashManager({
-        workdir,
         onMessagesUpdate: setMessages,
       });
-    } else {
-      // Update workdir when it changes
-      bashManagerRef.current.updateWorkdir(workdir);
     }
-  }, [workdir, setMessages]);
+  }, [setMessages]);
 
   // Command execution functions
   const executeCommand = useCallback(
@@ -322,7 +318,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     bashManagerRef.current?.getIsCommandRunning() ?? false;
 
   // Use the Memory hook
-  const memoryManager = useMemo(() => createMemoryManager(workdir), [workdir]);
+  const memoryManager = useMemo(() => createMemoryManager(), []);
 
   const clearMessages = useCallback(() => {
     setMessages([]);

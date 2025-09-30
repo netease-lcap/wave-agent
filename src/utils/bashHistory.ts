@@ -145,7 +145,6 @@ export const addBashCommandToHistory = (
  */
 export const searchBashHistory = (
   query: string,
-  workdir?: string,
   limit: number = 10,
 ): BashHistoryEntry[] => {
   try {
@@ -154,12 +153,10 @@ export const searchBashHistory = (
 
     let filteredCommands = history.commands;
 
-    // 工作目录过滤
-    if (workdir) {
-      filteredCommands = filteredCommands.filter(
-        (entry) => entry.workdir === workdir,
-      );
-    }
+    // 工作目录过滤 - 默认过滤当前工作目录
+    filteredCommands = filteredCommands.filter(
+      (entry) => entry.workdir === process.cwd(),
+    );
 
     if (!normalizedQuery) {
       // 如果没有查询词，返回最近的命令（去重后）
@@ -209,7 +206,7 @@ export const searchBashHistory = (
 
     logger.debug("Bash history search results:", {
       query,
-      workdir,
+      workdir: process.cwd(),
       originalCount: matches.length,
       dedupedCount: result.length,
     });

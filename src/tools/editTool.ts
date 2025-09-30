@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "fs/promises";
-import type { ToolPlugin, ToolResult, ToolContext } from "./types";
+import type { ToolPlugin, ToolResult } from "./types";
 import { logger } from "../utils/logger";
 import { resolvePath, getDisplayPath } from "../utils/path";
 import { diffLines } from "diff";
@@ -7,12 +7,9 @@ import { diffLines } from "diff";
 /**
  * 格式化紧凑参数显示
  */
-function formatCompactParams(
-  args: Record<string, unknown>,
-  workdir?: string,
-): string {
+function formatCompactParams(args: Record<string, unknown>): string {
   const filePath = args.file_path as string;
-  return getDisplayPath(filePath || "", workdir);
+  return getDisplayPath(filePath || "");
 }
 
 /**
@@ -55,10 +52,7 @@ export const editTool: ToolPlugin = {
       },
     },
   },
-  execute: async (
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<ToolResult> => {
+  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
     const filePath = args.file_path as string;
     const oldString = args.old_string as string;
     const newString = args.new_string as string;
@@ -98,7 +92,7 @@ export const editTool: ToolPlugin = {
     }
 
     try {
-      const resolvedPath = resolvePath(filePath, context?.workdir);
+      const resolvedPath = resolvePath(filePath);
 
       // 读取文件内容
       let originalContent: string;

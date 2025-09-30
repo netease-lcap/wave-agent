@@ -24,9 +24,15 @@ describe("path utils", () => {
     });
 
     it("should handle relative paths with workdir", () => {
-      const result = resolvePath("test.txt", "/workspace");
-      const expected = resolve("/workspace", "test.txt");
-      expect(result).toBe(expected);
+      vi.spyOn(process, "cwd").mockReturnValue("/workspace");
+
+      try {
+        const result = resolvePath("test.txt");
+        const expected = resolve("/workspace", "test.txt");
+        expect(result).toBe(expected);
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
 
     it("should handle absolute paths", () => {
@@ -36,9 +42,15 @@ describe("path utils", () => {
     });
 
     it("should not treat paths starting with ~ in middle as home directory", () => {
-      const result = resolvePath("some~path/file.txt", "/workspace");
-      const expected = resolve("/workspace", "some~path/file.txt");
-      expect(result).toBe(expected);
+      vi.spyOn(process, "cwd").mockReturnValue("/workspace");
+
+      try {
+        const result = resolvePath("some~path/file.txt");
+        const expected = resolve("/workspace", "some~path/file.txt");
+        expect(result).toBe(expected);
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
   });
 
@@ -134,33 +146,39 @@ describe("path utils", () => {
     });
 
     it("should use custom workdir when provided", () => {
-      const customWorkdir = "/Users/test/project";
+      vi.spyOn(process, "cwd").mockReturnValue("/Users/test/project");
 
-      const result = getDisplayPath(
-        "/Users/test/project/src/utils/file.ts",
-        customWorkdir,
-      );
-      expect(result).toBe("src/utils/file.ts");
+      try {
+        const result = getDisplayPath("/Users/test/project/src/utils/file.ts");
+        expect(result).toBe("src/utils/file.ts");
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
 
     it("should return absolute path when relative to custom workdir starts with ..", () => {
-      const customWorkdir = "/Users/test/project";
+      vi.spyOn(process, "cwd").mockReturnValue("/Users/test/project");
 
-      const absolutePath = "/Users/test/other-project/file.ts";
-      const result = getDisplayPath(absolutePath, customWorkdir);
-      expect(result).toBe(absolutePath);
+      try {
+        const absolutePath = "/Users/test/other-project/file.ts";
+        const result = getDisplayPath(absolutePath);
+        expect(result).toBe(absolutePath);
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
 
     it("should prefer custom workdir over process.cwd()", () => {
-      const mockCwd = "/different/directory";
-      const customWorkdir = "/Users/test/project";
-      vi.spyOn(process, "cwd").mockReturnValue(mockCwd);
+      // This test is no longer relevant since we always use process.cwd()
+      // But we can test that process.cwd() is used correctly
+      vi.spyOn(process, "cwd").mockReturnValue("/Users/test/project");
 
-      const result = getDisplayPath(
-        "/Users/test/project/src/file.ts",
-        customWorkdir,
-      );
-      expect(result).toBe("src/file.ts");
+      try {
+        const result = getDisplayPath("/Users/test/project/src/file.ts");
+        expect(result).toBe("src/file.ts");
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
   });
 });

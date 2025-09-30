@@ -19,18 +19,14 @@ class BackgroundBashManager {
   private shells = new Map<string, BackgroundShell>();
   private nextId = 1;
 
-  public startShell(
-    command: string,
-    timeout?: number,
-    workdir?: string,
-  ): string {
+  public startShell(command: string, timeout?: number): string {
     const id = `bash_${this.nextId++}`;
     const startTime = Date.now();
 
     const child = spawn(command, {
       shell: true,
       stdio: "pipe",
-      cwd: workdir || process.cwd(),
+      cwd: process.cwd(),
       env: {
         ...process.env,
       },
@@ -279,11 +275,7 @@ export const bashTool: ToolPlugin = {
 
     if (runInBackground) {
       // Background execution
-      const shellId = backgroundBashManager.startShell(
-        command,
-        timeout,
-        context?.workdir,
-      );
+      const shellId = backgroundBashManager.startShell(command, timeout);
       return {
         success: true,
         content: `Command started in background with ID: ${shellId}. Use BashOutput tool with bash_id="${shellId}" to monitor output.`,
@@ -296,7 +288,7 @@ export const bashTool: ToolPlugin = {
       const child: ChildProcess = spawn(command, {
         shell: true,
         stdio: "pipe",
-        cwd: context?.workdir || process.cwd(),
+        cwd: process.cwd(),
         env: {
           ...process.env,
         },

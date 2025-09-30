@@ -40,16 +40,14 @@ export class AIManager {
   private callbacks: AIManagerCallbacks;
   private abortController: AbortController | null = null;
   private toolAbortController: AbortController | null = null;
-  private workdir: string;
   private sessionStartTime: string;
   private autoSaveTimer: NodeJS.Timeout | null = null;
   private lastSaveTime: number = 0;
   private userMemoryManager: MemoryManager;
 
-  constructor(workdir: string, callbacks: AIManagerCallbacks) {
-    this.workdir = workdir;
+  constructor(callbacks: AIManagerCallbacks) {
     this.callbacks = callbacks;
-    this.userMemoryManager = createMemoryManager(workdir);
+    this.userMemoryManager = createMemoryManager();
     this.sessionStartTime = new Date().toISOString();
     this.state = {
       sessionId: randomUUID(),
@@ -141,7 +139,6 @@ export class AIManager {
       await SessionManager.saveSession(
         this.state.sessionId,
         this.state.messages,
-        this.workdir,
         this.state.totalTokens,
         this.sessionStartTime,
       );
@@ -221,7 +218,7 @@ export class AIManager {
       // 读取记忆文件内容
       let memoryContent = "";
       try {
-        memoryContent = await readMemoryFile(this.workdir);
+        memoryContent = await readMemoryFile();
       } catch (error) {
         logger.warn("Failed to read memory file:", error);
       }
@@ -252,7 +249,7 @@ export class AIManager {
         sessionId: this.state.sessionId,
         abortSignal: abortController.signal,
         memory: combinedMemory, // 传递合并后的记忆内容
-        workdir: this.workdir, // 传递当前工作目录
+        workdir: process.cwd(), // 传递当前工作目录
       });
 
       // 更新答案块中的内容
@@ -381,7 +378,6 @@ export class AIManager {
               // 创建工具执行上下文
               const context: ToolContext = {
                 abortSignal: toolAbortController.signal,
-                workdir: this.workdir,
               };
 
               // 执行工具
@@ -516,7 +512,7 @@ export class AIManager {
           await saveErrorLog(
             error,
             this.state.sessionId,
-            this.workdir,
+            process.cwd(),
             recentMessages,
             recursionDepth,
           );
@@ -548,8 +544,8 @@ export class AIManager {
     try {
       logger.info("Initializing MCP servers...");
 
-      // Initialize MCP manager with workdir
-      mcpManager.initialize(this.workdir);
+      // Initialize MCP manager with current working directory
+      mcpManager.initialize(process.cwd());
 
       // Ensure MCP configuration is loaded
       const config = await mcpManager.ensureConfigLoaded();

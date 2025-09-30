@@ -41,7 +41,8 @@ async function testChromeScreenshot() {
 
   // 创建 AI Manager
   console.log(`🔧 Initializing aiManager with workdir: ${tempDir}`);
-  const aiManager = new AIManager(tempDir, callbacks);
+  process.chdir(tempDir); // Set working directory
+  const aiManager = new AIManager(callbacks);
 
   try {
     // 等待一点时间让 MCP 服务器初始化

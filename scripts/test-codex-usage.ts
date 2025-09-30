@@ -34,7 +34,7 @@ async function testCodexUsageViaAiManager() {
     },
   };
 
-  const aiManager = new AIManager(process.cwd(), callbacks);
+  const aiManager = new AIManager(callbacks);
 
   try {
     const initialState = aiManager.getState();

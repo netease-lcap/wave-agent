@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { dirname } from "path";
-import type { ToolPlugin, ToolResult, ToolContext } from "./types";
+import type { ToolPlugin, ToolResult } from "./types";
 import { logger } from "../utils/logger";
 import { resolvePath, getDisplayPath } from "../utils/path";
 import { diffLines } from "diff";
@@ -35,10 +35,7 @@ export const writeTool: ToolPlugin = {
       },
     },
   },
-  execute: async (
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<ToolResult> => {
+  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
     const filePath = args.file_path as string;
     const content = args.content as string;
 
@@ -60,7 +57,7 @@ export const writeTool: ToolPlugin = {
     }
 
     try {
-      const resolvedPath = resolvePath(filePath, context?.workdir);
+      const resolvedPath = resolvePath(filePath);
 
       // 检查文件是否已存在
       let originalContent = "";
@@ -145,11 +142,11 @@ export const writeTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>, workdir?: string) => {
+  formatCompactParams: (params: Record<string, unknown>) => {
     const filePath = params.file_path as string;
     const content = params.content as string;
 
-    let displayPath = getDisplayPath(filePath || "", workdir);
+    let displayPath = getDisplayPath(filePath || "");
 
     if (content) {
       const lines = content.split("\n").length;

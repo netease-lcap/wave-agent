@@ -103,21 +103,37 @@ describe("deleteFileTool", () => {
   it("should work with relative paths in context", async () => {
     mockUnlink.mockResolvedValue();
 
-    const context = {
-      workdir: "/project/root",
-    };
+    // Store original resolve function
+    const mockResolve = vi.mocked(await import("path")).resolve;
+    const originalResolve = mockResolve.getMockImplementation();
 
-    const result: ToolResult = await deleteFileTool.execute(
-      {
+    // Mock path.resolve to simulate different working directory for this test only
+    mockResolve.mockImplementation((...paths: string[]) => {
+      if (paths.length === 1 && !paths[0].startsWith("/")) {
+        return `/project/root/${paths[0]}`;
+      }
+      return paths.join("/").replace(/\/+/g, "/");
+    });
+
+    try {
+      const result: ToolResult = await deleteFileTool.execute({
         target_file: "src/test.js",
-      },
-      context,
-    );
+      });
 
-    // The resolve mock should be called with workdir and target_file
-    expect(mockUnlink).toHaveBeenCalledWith("/project/root/src/test.js");
-    expect(result.success).toBe(true);
-    expect(result.content).toBe("Successfully deleted file: src/test.js");
+      expect(mockUnlink).toHaveBeenCalledWith("/project/root/src/test.js");
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("Successfully deleted file: src/test.js");
+    } finally {
+      // Restore original mock
+      if (originalResolve) {
+        mockResolve.mockImplementation(originalResolve);
+      } else {
+        mockResolve.mockImplementation((...paths: string[]) => {
+          if (paths.length === 1) return paths[0];
+          return paths.join("/").replace(/\/+/g, "/");
+        });
+      }
+    }
   });
 
   it("should handle other filesystem errors", async () => {

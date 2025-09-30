@@ -28,7 +28,6 @@ export interface InputBoxProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
   userInputHistory?: string[];
-  workdir?: string;
   clearMessages?: () => void;
   sendMessage?: (
     message: string,
@@ -43,7 +42,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   isLoading = false,
   isCommandRunning = false,
   userInputHistory = [],
-  workdir = process.cwd(),
   clearMessages = () => {},
   sendMessage = () => {},
   abortMessage = () => {},
@@ -80,7 +78,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     updateSearchQuery,
     checkForAtDeletion,
     atPosition,
-  } = useFileSelector(workdir);
+  } = useFileSelector();
 
   // 命令选择器功能
   const {
@@ -219,7 +217,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
       {showCommandSelector && (
         <CommandSelector
           searchQuery={commandSearchQuery}
-          workdir={workdir}
           onSelect={handleCommandSelect}
           onCancel={handleCancelCommandSelect}
           onCommandGenerated={handleCommandGenerated}
@@ -229,7 +226,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
       {showBashHistorySelector && (
         <BashHistorySelector
           searchQuery={bashHistorySearchQuery}
-          workdir={workdir}
           onSelect={handleBashHistorySelect}
           onCancel={handleCancelBashHistorySelect}
         />

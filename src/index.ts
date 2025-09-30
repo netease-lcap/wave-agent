@@ -6,12 +6,6 @@ import { SessionManager } from "./services/sessionManager.js";
 // Export main function for external use
 export async function main() {
   const argv = await yargs(hideBin(process.argv))
-    .option("workdir", {
-      alias: "w",
-      description: "Working directory path",
-      type: "string",
-      default: process.cwd(),
-    })
     .option("restore", {
       alias: "r",
       description: "Restore session by ID",
@@ -29,7 +23,6 @@ export async function main() {
     .version()
     .alias("v", "version")
     .example("$0", "Start CLI with default settings")
-    .example("$0 --workdir /path/to/project", "Use custom working directory")
     .example("$0 --restore session_123", "Restore specific session")
     .example("$0 --continue", "Continue from last session")
     .example("$0 --list-sessions", "List all available sessions")
@@ -39,14 +32,14 @@ export async function main() {
   // Handle list sessions command
   if (argv.listSessions) {
     try {
-      const sessions = await SessionManager.listSessions(argv.workdir);
+      const sessions = await SessionManager.listSessions();
 
       if (sessions.length === 0) {
-        console.log(`No sessions found for workdir: ${argv.workdir}`);
+        console.log(`No sessions found for workdir: ${process.cwd()}`);
         return;
       }
 
-      console.log(`Available sessions for: ${argv.workdir}`);
+      console.log(`Available sessions for: ${process.cwd()}`);
       console.log("==========================================");
 
       for (const session of sessions) {
@@ -69,7 +62,6 @@ export async function main() {
   }
 
   await startCli({
-    workdir: argv.workdir,
     restoreSessionId: argv.restore,
     continueLastSession: argv.continue,
   });

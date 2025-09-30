@@ -85,6 +85,8 @@ describe("SessionManager", () => {
     vi.clearAllMocks();
     // Reset NODE_ENV for each test
     delete process.env.NODE_ENV;
+    // Mock process.cwd() to return test workdir
+    vi.spyOn(process, "cwd").mockReturnValue(mockWorkdir);
   });
 
   afterEach(() => {
@@ -106,7 +108,6 @@ describe("SessionManager", () => {
       await SessionManager.saveSession(
         mockSessionId,
         mockMessages,
-        mockWorkdir,
         100,
         "2024-01-01T00:00:00.000Z",
       );
@@ -136,7 +137,7 @@ describe("SessionManager", () => {
       await SessionManager.saveSession(
         mockSessionId,
         mockMessages,
-        mockWorkdir,
+        0, // totalTokens
       );
 
       expect(mockFs.mkdir).not.toHaveBeenCalled();
@@ -153,7 +154,7 @@ describe("SessionManager", () => {
       await SessionManager.saveSession(
         mockSessionId,
         mockMessages,
-        mockWorkdir,
+        0, // totalTokens
       );
 
       const writeCall = mockFs.writeFile.mock.calls[0];
@@ -171,7 +172,7 @@ describe("SessionManager", () => {
       mockFs.mkdir.mockRejectedValue(error);
 
       await expect(
-        SessionManager.saveSession(mockSessionId, mockMessages, mockWorkdir),
+        SessionManager.saveSession(mockSessionId, mockMessages, 0),
       ).rejects.toThrow(
         "Failed to create session directory: Error: Permission denied",
       );
@@ -183,7 +184,7 @@ describe("SessionManager", () => {
       mockFs.writeFile.mockRejectedValue(error);
 
       await expect(
-        SessionManager.saveSession(mockSessionId, mockMessages, mockWorkdir),
+        SessionManager.saveSession(mockSessionId, mockMessages, 0),
       ).rejects.toThrow(
         `Failed to save session ${mockSessionId}: Error: Disk full`,
       );
@@ -197,7 +198,7 @@ describe("SessionManager", () => {
       await SessionManager.saveSession(
         sessionIdWithUnderscores,
         mockMessages,
-        mockWorkdir,
+        0, // totalTokens
       );
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
@@ -215,7 +216,7 @@ describe("SessionManager", () => {
       await SessionManager.saveSession(
         shortSessionId,
         mockMessages,
-        mockWorkdir,
+        0, // totalTokens
       );
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
@@ -306,9 +307,12 @@ describe("SessionManager", () => {
         mockSessionData,
       );
 
-      const result = await SessionManager.getLatestSession(mockWorkdir);
+      // Mock process.cwd to return mockWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(mockWorkdir);
 
-      expect(SessionManager.listSessions).toHaveBeenCalledWith(mockWorkdir);
+      const result = await SessionManager.getLatestSession();
+
+      expect(SessionManager.listSessions).toHaveBeenCalledWith();
       expect(SessionManager.loadSession).toHaveBeenCalledWith("session2");
       expect(result).toEqual(mockSessionData);
     });
@@ -316,7 +320,10 @@ describe("SessionManager", () => {
     it("should return null if no sessions exist", async () => {
       vi.spyOn(SessionManager, "listSessions").mockResolvedValue([]);
 
-      const result = await SessionManager.getLatestSession(mockWorkdir);
+      // Mock process.cwd to return mockWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(mockWorkdir);
+
+      const result = await SessionManager.getLatestSession();
 
       expect(result).toBeNull();
     });
@@ -340,7 +347,7 @@ describe("SessionManager", () => {
 
       const result = await SessionManager.getLatestSession();
 
-      expect(SessionManager.listSessions).toHaveBeenCalledWith(undefined);
+      expect(SessionManager.listSessions).toHaveBeenCalledWith();
       expect(result).toEqual(mockSessionData);
     });
   });
@@ -370,11 +377,23 @@ describe("SessionManager", () => {
     };
 
     it("should list all sessions sorted by last active time", async () => {
+      // Set non-test environment to enable functionality
+      process.env.NODE_ENV = "development";
+
+      // Create a mock session2 with the same workdir as session1 for this test
+      const mockSession2DataSameWorkdir: SessionData = {
+        ...mockSession2Data,
+        metadata: {
+          ...mockSession2Data.metadata,
+          workdir: "/test/workdir", // Same workdir as session1
+        },
+      };
+
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.readdir.mockResolvedValue(mockSessionFiles as never);
       mockFs.readFile
         .mockResolvedValueOnce(JSON.stringify(mockSession1Data))
-        .mockResolvedValueOnce(JSON.stringify(mockSession2Data));
+        .mockResolvedValueOnce(JSON.stringify(mockSession2DataSameWorkdir));
 
       const result = await SessionManager.listSessions();
 
@@ -387,7 +406,7 @@ describe("SessionManager", () => {
       // Should be sorted by lastActiveAt desc (most recent first)
       expect(result[0].id).toBe("session_67890");
       expect(result[1].id).toBe("session_12345");
-      expect(result[0].workdir).toBe("/different/workdir");
+      expect(result[0].workdir).toBe("/test/workdir"); // Now same workdir
       expect(result[1].workdir).toBe(mockWorkdir);
     });
 
@@ -398,7 +417,10 @@ describe("SessionManager", () => {
         .mockResolvedValueOnce(JSON.stringify(mockSession1Data))
         .mockResolvedValueOnce(JSON.stringify(mockSession2Data));
 
-      const result = await SessionManager.listSessions(mockWorkdir);
+      // Mock process.cwd to return mockWorkdir for filtering
+      vi.spyOn(process, "cwd").mockReturnValue(mockWorkdir);
+
+      const result = await SessionManager.listSessions();
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("session_12345");
@@ -419,6 +441,9 @@ describe("SessionManager", () => {
     });
 
     it("should skip corrupted session files with warning", async () => {
+      // Set non-test environment to enable functionality
+      process.env.NODE_ENV = "development";
+
       const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.readdir.mockResolvedValue([
@@ -525,9 +550,12 @@ describe("SessionManager", () => {
         .mockResolvedValueOnce(true) // expired session deleted
         .mockResolvedValueOnce(true); // shouldn't be called for recent session
 
-      const result = await SessionManager.cleanupExpiredSessions(mockWorkdir);
+      // Mock process.cwd to return mockWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(mockWorkdir);
 
-      expect(SessionManager.listSessions).toHaveBeenCalledWith(mockWorkdir);
+      const result = await SessionManager.cleanupExpiredSessions();
+
+      expect(SessionManager.listSessions).toHaveBeenCalledWith();
       expect(SessionManager.deleteSession).toHaveBeenCalledTimes(1);
       expect(SessionManager.deleteSession).toHaveBeenCalledWith(
         "expired_session",
@@ -546,7 +574,10 @@ describe("SessionManager", () => {
       ]);
       vi.spyOn(SessionManager, "deleteSession");
 
-      const result = await SessionManager.cleanupExpiredSessions(mockWorkdir);
+      // Mock process.cwd to return mockWorkdir
+      vi.spyOn(process, "cwd").mockReturnValue(mockWorkdir);
+
+      const result = await SessionManager.cleanupExpiredSessions();
 
       expect(SessionManager.deleteSession).not.toHaveBeenCalled();
       expect(result).toBe(0);
@@ -603,7 +634,7 @@ describe("SessionManager", () => {
 
       const result = await SessionManager.cleanupExpiredSessions();
 
-      expect(SessionManager.listSessions).toHaveBeenCalledWith(undefined);
+      expect(SessionManager.listSessions).toHaveBeenCalledWith();
       expect(result).toBe(1);
 
       vi.useRealTimers();
@@ -650,7 +681,7 @@ describe("SessionManager", () => {
       mockFs.writeFile.mockResolvedValue(undefined);
       mockFs.mkdir.mockResolvedValue(undefined);
 
-      await SessionManager.saveSession("prefix_middle_12345678", [], "/test");
+      await SessionManager.saveSession("prefix_middle_12345678", [], 0);
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         `${mockSessionDir}/session_12345678.json`,
@@ -663,7 +694,7 @@ describe("SessionManager", () => {
       mockFs.writeFile.mockResolvedValue(undefined);
       mockFs.mkdir.mockResolvedValue(undefined);
 
-      await SessionManager.saveSession("short", [], "/test");
+      await SessionManager.saveSession("short", [], 0);
 
       expect(mockFs.writeFile).toHaveBeenCalledWith(
         `${mockSessionDir}/session_short.json`,
@@ -684,7 +715,7 @@ describe("SessionManager", () => {
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.writeFile.mockResolvedValue(undefined);
 
-      await SessionManager.saveSession(mockSessionId, [], "/test");
+      await SessionManager.saveSession(mockSessionId, [], 0);
 
       expect(mockFs.mkdir).toHaveBeenCalledWith("/.lcap-code/sessions", {
         recursive: true,
@@ -725,25 +756,27 @@ describe("SessionManager", () => {
         },
       };
 
-      // Mock listSessions to return sessions filtered by workdir
-      vi.spyOn(SessionManager, "listSessions").mockImplementation(
-        async (workdir?: string) => {
-          if (workdir === projectA) {
-            return [sessionA]; // Only return sessions for project A
-          } else if (workdir === projectB) {
-            return [sessionB]; // Only return sessions for project B
-          } else {
-            return [sessionA, sessionB]; // Return all if no filter
-          }
-        },
-      );
+      // Mock listSessions to return sessions based on process.cwd()
+      vi.spyOn(SessionManager, "listSessions").mockImplementation(async () => {
+        const cwd = process.cwd();
+        if (cwd === projectA) {
+          return [sessionA]; // Only return sessions for project A
+        } else if (cwd === projectB) {
+          return [sessionB]; // Only return sessions for project B
+        } else {
+          return [sessionA, sessionB]; // Return all by default
+        }
+      });
 
       vi.spyOn(SessionManager, "loadSession").mockResolvedValue(sessionAData);
 
-      // Test getting latest session for project A specifically
-      const result = await SessionManager.getLatestSession(projectA);
+      // Mock process.cwd to return projectA
+      vi.spyOn(process, "cwd").mockReturnValue(projectA);
 
-      expect(SessionManager.listSessions).toHaveBeenCalledWith(projectA);
+      // Test getting latest session for project A specifically
+      const result = await SessionManager.getLatestSession();
+
+      expect(SessionManager.listSessions).toHaveBeenCalledWith();
       expect(SessionManager.loadSession).toHaveBeenCalledWith("sessionA");
       expect(result).toEqual(sessionAData);
     });
@@ -761,9 +794,12 @@ describe("SessionManager", () => {
         },
       );
 
-      const result = await SessionManager.getLatestSession(projectC);
+      // Mock process.cwd to return projectC
+      vi.spyOn(process, "cwd").mockReturnValue(projectC);
 
-      expect(SessionManager.listSessions).toHaveBeenCalledWith(projectC);
+      const result = await SessionManager.getLatestSession();
+
+      expect(SessionManager.listSessions).toHaveBeenCalledWith();
       expect(result).toBeNull();
     });
   });

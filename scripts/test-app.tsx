@@ -11,7 +11,7 @@ async function testApp() {
   try {
     // 渲染 App 组件
     console.log("📦 渲染 App 组件...");
-    const { stdin, lastFrame, unmount } = render(<App workdir="/tmp/test" />);
+    const { stdin, lastFrame, unmount } = render(<App />);
 
     // 等待初始渲染完成
     await delay(100);

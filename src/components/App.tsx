@@ -5,7 +5,6 @@ import { AppProvider } from "../contexts/useAppConfig";
 import type { SessionData } from "../services/sessionManager";
 
 interface AppProps {
-  workdir: string;
   sessionToRestore?: SessionData | null;
 }
 
@@ -17,9 +16,9 @@ const AppWithProviders: React.FC = () => {
   );
 };
 
-export const App: React.FC<AppProps> = ({ workdir, sessionToRestore }) => {
+export const App: React.FC<AppProps> = ({ sessionToRestore }) => {
   return (
-    <AppProvider workdir={workdir} sessionToRestore={sessionToRestore}>
+    <AppProvider sessionToRestore={sessionToRestore}>
       <AppWithProviders />
     </AppProvider>
   );

@@ -61,9 +61,7 @@ describe("InputBox Image Paste", () => {
       mimeType: "image/png",
     });
 
-    const { lastFrame, stdin } = render(
-      <InputBox workdir="/tmp/test-workdir" />,
-    );
+    const { lastFrame, stdin } = render(<InputBox />);
 
     // Simulate Ctrl+V
     stdin.write("\u0016"); // Ctrl+V
@@ -83,9 +81,7 @@ describe("InputBox Image Paste", () => {
       mimeType: "image/png",
     });
 
-    const { lastFrame, stdin } = render(
-      <InputBox workdir="/tmp/test-workdir" />,
-    );
+    const { lastFrame, stdin } = render(<InputBox />);
 
     // Simulate Ctrl+V
     stdin.write("\u0016"); // Ctrl+V
@@ -113,9 +109,7 @@ describe("InputBox Image Paste", () => {
         mimeType: "image/jpeg",
       });
 
-    const { lastFrame, stdin } = render(
-      <InputBox workdir="/tmp/test-workdir" />,
-    );
+    const { lastFrame, stdin } = render(<InputBox />);
 
     // Simulate two Ctrl+V operations
     stdin.write("\u0016"); // First Ctrl+V
@@ -137,9 +131,7 @@ describe("InputBox Image Paste", () => {
       error: "No image found in clipboard",
     });
 
-    const { lastFrame, stdin } = render(
-      <InputBox workdir="/tmp/test-workdir" />,
-    );
+    const { lastFrame, stdin } = render(<InputBox />);
 
     // Simulate Ctrl+V
     stdin.write("\u0016"); // Ctrl+V
@@ -161,7 +153,7 @@ describe("InputBox Image Paste", () => {
       mimeType: "image/png",
     });
 
-    const renderResult = render(<InputBox workdir="/tmp/test-workdir" />);
+    const renderResult = render(<InputBox />);
     const { stdin } = renderResult;
 
     // Paste image
@@ -192,7 +184,7 @@ describe("InputBox Image Paste", () => {
       mimeType: "image/png",
     });
 
-    const renderResult = render(<InputBox workdir="/tmp/test-workdir" />);
+    const renderResult = render(<InputBox />);
     const { stdin } = renderResult;
 
     // Paste image only (no text)

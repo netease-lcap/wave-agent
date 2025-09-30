@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "fs/promises";
-import type { ToolPlugin, ToolResult, ToolContext } from "./types";
+import type { ToolPlugin, ToolResult } from "./types";
 import { logger } from "../utils/logger";
 import { resolvePath, getDisplayPath } from "../utils/path";
 import { diffLines } from "diff";
@@ -13,14 +13,11 @@ interface EditOperation {
 /**
  * 格式化紧凑参数显示
  */
-function formatCompactParams(
-  args: Record<string, unknown>,
-  workdir?: string,
-): string {
+function formatCompactParams(args: Record<string, unknown>): string {
   const filePath = args.file_path as string;
   const edits = args.edits as EditOperation[];
   const editCount = edits ? edits.length : 0;
-  const displayPath = getDisplayPath(filePath || "", workdir);
+  const displayPath = getDisplayPath(filePath || "");
   return `${displayPath} ${editCount} edits`;
 }
 
@@ -78,10 +75,7 @@ export const multiEditTool: ToolPlugin = {
       },
     },
   },
-  execute: async (
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<ToolResult> => {
+  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
     const filePath = args.file_path as string;
     const edits = args.edits as EditOperation[];
 
@@ -139,7 +133,7 @@ export const multiEditTool: ToolPlugin = {
     }
 
     try {
-      const resolvedPath = resolvePath(filePath, context?.workdir);
+      const resolvedPath = resolvePath(filePath);
 
       // 读取文件内容
       let originalContent: string;

@@ -1,4 +1,4 @@
-import type { ToolContext, ToolPlugin, ToolResult } from "./types";
+import type { ToolPlugin, ToolResult } from "./types";
 import { spawn } from "child_process";
 import { getGlobIgnorePatterns } from "../utils/fileFilter";
 import { rgPath } from "@vscode/ripgrep";
@@ -84,10 +84,7 @@ export const grepTool: ToolPlugin = {
       },
     },
   },
-  execute: async (
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<ToolResult> => {
+  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
     const pattern = args.pattern as string;
     const searchPath = args.path as string;
     const globPattern = args.glob as string;
@@ -109,14 +106,6 @@ export const grepTool: ToolPlugin = {
       };
     }
 
-    if (!context?.workdir) {
-      return {
-        success: false,
-        content: "",
-        error: "Working directory not available in context",
-      };
-    }
-
     if (!rgPath) {
       return {
         success: false,
@@ -127,7 +116,7 @@ export const grepTool: ToolPlugin = {
     }
 
     try {
-      const workdir = context.workdir;
+      const workdir = process.cwd();
       const rgArgs: string[] = ["--color=never"];
 
       // 设置输出模式
@@ -259,7 +248,7 @@ export const grepTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>, workdir?: string) => {
+  formatCompactParams: (params: Record<string, unknown>) => {
     const pattern = params.pattern as string;
     const outputMode = params.output_mode as string;
     const fileType = params.type as string;
@@ -272,7 +261,7 @@ export const grepTool: ToolPlugin = {
     }
 
     if (path) {
-      const displayPath = getDisplayPath(path, workdir);
+      const displayPath = getDisplayPath(path);
       result += ` in ${displayPath}`;
     }
 

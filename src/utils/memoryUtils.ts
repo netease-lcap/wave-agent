@@ -4,11 +4,10 @@ import { logger } from "./logger";
 
 /**
  * 读取LCAP.md记忆文件内容
- * @param workdir 工作目录
  * @returns 记忆文件内容，如果文件不存在则返回空字符串
  */
-export async function readMemoryFile(workdir: string): Promise<string> {
-  const memoryFilePath = path.join(workdir, "LCAP.md");
+export async function readMemoryFile(): Promise<string> {
+  const memoryFilePath = path.join(process.cwd(), "LCAP.md");
 
   try {
     const content = await fs.readFile(memoryFilePath, "utf-8");
@@ -25,11 +24,10 @@ export async function readMemoryFile(workdir: string): Promise<string> {
 
 /**
  * 检查记忆文件是否存在
- * @param workdir 工作目录
  * @returns 是否存在记忆文件
  */
-export async function hasMemoryFile(workdir: string): Promise<boolean> {
-  const memoryFilePath = path.join(workdir, "LCAP.md");
+export async function hasMemoryFile(): Promise<boolean> {
+  const memoryFilePath = path.join(process.cwd(), "LCAP.md");
 
   try {
     await fs.access(memoryFilePath);

@@ -9,10 +9,12 @@ describe("InputBox Bash Functionality", () => {
 
   beforeEach(() => {
     mockSendMessage = vi.fn();
+    // Mock process.cwd to return the virtual workdir
+    vi.spyOn(process, "cwd").mockReturnValue(virtualWorkdir);
   });
 
   it("should trigger bash history selector when input starts with !", async () => {
-    const { stdin, lastFrame } = render(<InputBox workdir={virtualWorkdir} />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Type ! to trigger bash history selector
     stdin.write("!");
@@ -25,7 +27,7 @@ describe("InputBox Bash Functionality", () => {
   });
 
   it("should not trigger bash history selector for normal input", async () => {
-    const { stdin, lastFrame } = render(<InputBox workdir={virtualWorkdir} />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     stdin.write("hello");
 
@@ -35,7 +37,7 @@ describe("InputBox Bash Functionality", () => {
   });
 
   it("should close bash history selector when ! is removed", async () => {
-    const { stdin, lastFrame } = render(<InputBox workdir={virtualWorkdir} />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Type ! to trigger bash history selector
     stdin.write("!");
@@ -50,7 +52,7 @@ describe("InputBox Bash Functionality", () => {
   });
 
   it("should keep bash history selector active when additional text is added after !", async () => {
-    const { stdin, lastFrame } = render(<InputBox workdir={virtualWorkdir} />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Type ! to trigger bash history selector first
     stdin.write("!");
@@ -66,7 +68,7 @@ describe("InputBox Bash Functionality", () => {
 
   it("should send pasted !text as bash command when it's single line", async () => {
     const { stdin, lastFrame } = render(
-      <InputBox sendMessage={mockSendMessage} workdir={virtualWorkdir} />,
+      <InputBox sendMessage={mockSendMessage} />,
     );
 
     // 一口气输入以!开头的单行文本（模拟粘贴操作）
@@ -91,7 +93,7 @@ describe("InputBox Bash Functionality", () => {
 
   it("should NOT send pasted multiline !text as bash command", async () => {
     const { stdin, lastFrame } = render(
-      <InputBox sendMessage={mockSendMessage} workdir={virtualWorkdir} />,
+      <InputBox sendMessage={mockSendMessage} />,
     );
 
     // 一口气输入以!开头的多行文本（模拟粘贴操作）
@@ -116,7 +118,7 @@ describe("InputBox Bash Functionality", () => {
 
   it("should execute bash command when typing ! and single line text", async () => {
     const { stdin, lastFrame } = render(
-      <InputBox sendMessage={mockSendMessage} workdir={virtualWorkdir} />,
+      <InputBox sendMessage={mockSendMessage} />,
     );
 
     stdin.write("!ls");
@@ -139,7 +141,7 @@ describe("InputBox Bash Functionality", () => {
   });
 
   it("should clear input after sending bash command", async () => {
-    const { stdin, lastFrame } = render(<InputBox workdir={virtualWorkdir} />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     stdin.write("!pwd");
 

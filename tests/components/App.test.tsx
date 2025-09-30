@@ -5,13 +5,13 @@ import { App } from "@/components/App";
 
 describe("App Component", () => {
   it("should render the main interface with file count", () => {
-    const { lastFrame } = render(<App workdir="/test" />);
+    const { lastFrame } = render(<App />);
 
     expect(lastFrame()).toContain("LCAP Code Assistant");
   });
 
   it("should render the chat interface", () => {
-    const { lastFrame } = render(<App workdir="/test" />);
+    const { lastFrame } = render(<App />);
 
     // ChatInterface 会渲染 MessageList 和 InputBox，这里测试整体渲染
     expect(lastFrame()).toBeTruthy();
@@ -20,7 +20,7 @@ describe("App Component", () => {
   });
 
   it("should wrap components with providers", () => {
-    const { lastFrame } = render(<App workdir="/test" />);
+    const { lastFrame } = render(<App />);
 
     // Verify that the component renders without errors
     expect(lastFrame()).toBeTruthy();

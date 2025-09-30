@@ -8,7 +8,6 @@ import {
 } from "../utils/messageOperations";
 
 export interface BashManagerOptions {
-  workdir: string;
   onMessagesUpdate: (updater: (prev: Message[]) => Message[]) => void;
 }
 
@@ -24,7 +23,7 @@ export class BashManager {
   private currentProcess: ChildProcess | null = null;
 
   constructor(options: BashManagerOptions) {
-    this.workdir = options.workdir;
+    this.workdir = process.cwd();
     this.onMessagesUpdate = options.onMessagesUpdate;
   }
 

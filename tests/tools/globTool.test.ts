@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { globTool } from "@/tools/globTool";
-import { ToolContext } from "@/tools/types";
 import { mkdtemp, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -8,11 +7,12 @@ import { rimraf } from "rimraf";
 
 describe("globTool", () => {
   let tempDir: string;
-  let context: ToolContext;
+  let originalCwd: string;
 
   beforeEach(async () => {
+    originalCwd = process.cwd();
     tempDir = await mkdtemp(join(tmpdir(), "glob-test-"));
-    context = { workdir: tempDir };
+    process.chdir(tempDir);
 
     // 创建测试文件结构
     await mkdir(join(tempDir, "src"), { recursive: true });
@@ -40,6 +40,7 @@ describe("globTool", () => {
   });
 
   afterEach(async () => {
+    process.chdir(originalCwd);
     await rimraf(tempDir);
   });
 
@@ -56,7 +57,7 @@ describe("globTool", () => {
   });
 
   it("should find TypeScript files with **/*.ts pattern", async () => {
-    const result = await globTool.execute({ pattern: "**/*.ts" }, context);
+    const result = await globTool.execute({ pattern: "**/*.ts" });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
@@ -65,7 +66,7 @@ describe("globTool", () => {
   });
 
   it("should find all files with ** pattern", async () => {
-    const result = await globTool.execute({ pattern: "**/*" }, context);
+    const result = await globTool.execute({ pattern: "**/*" });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("package.json");
@@ -75,7 +76,7 @@ describe("globTool", () => {
   });
 
   it("should find files in specific directory", async () => {
-    const result = await globTool.execute({ pattern: "src/*" }, context);
+    const result = await globTool.execute({ pattern: "src/*" });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
@@ -84,10 +85,7 @@ describe("globTool", () => {
   });
 
   it("should return no matches for non-existent pattern", async () => {
-    const result = await globTool.execute(
-      { pattern: "**/*.nonexistent" },
-      context,
-    );
+    const result = await globTool.execute({ pattern: "**/*.nonexistent" });
 
     expect(result.success).toBe(true);
     expect(result.content).toBe("No files match the pattern");
@@ -96,10 +94,7 @@ describe("globTool", () => {
 
   it("should work with custom search path", async () => {
     const srcDir = join(tempDir, "src");
-    const result = await globTool.execute(
-      { pattern: "*.ts", path: srcDir },
-      context,
-    );
+    const result = await globTool.execute({ pattern: "*.ts", path: srcDir });
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("index.ts");
@@ -107,14 +102,14 @@ describe("globTool", () => {
   });
 
   it("should return error for missing pattern", async () => {
-    const result = await globTool.execute({}, context);
+    const result = await globTool.execute({});
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("pattern parameter is required");
   });
 
   it("should return error for invalid pattern type", async () => {
-    const result = await globTool.execute({ pattern: 123 }, context);
+    const result = await globTool.execute({ pattern: 123 });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain(
@@ -141,7 +136,7 @@ describe("globTool", () => {
     await new Promise((resolve) => setTimeout(resolve, 50)); // 等待确保时间差
     await writeFile(file2, "content2");
 
-    const result = await globTool.execute({ pattern: "file*.txt" }, context);
+    const result = await globTool.execute({ pattern: "file*.txt" });
 
     expect(result.success).toBe(true);
     const lines = result.content.split("\n");
@@ -158,7 +153,7 @@ describe("globTool", () => {
       "module.exports = {};",
     );
 
-    const result = await globTool.execute({ pattern: "**/*.js" }, context);
+    const result = await globTool.execute({ pattern: "**/*.js" });
 
     expect(result.success).toBe(true);
     // 应该包含 tests 目录下的 .js 文件

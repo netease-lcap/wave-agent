@@ -10,9 +10,13 @@ vi.mock("@/utils/gitUtils");
 vi.mock("@/services/aiService");
 
 describe("InputBox Git Commit Command", () => {
+  const virtualWorkdir = "/virtual/test/git-repo";
+
   // 在每个测试前重置 mock 状态
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mock process.cwd to return the virtual workdir
+    vi.spyOn(process, "cwd").mockReturnValue(virtualWorkdir);
   });
 
   it("should generate bash command when git-commit command is executed", async () => {
@@ -33,7 +37,7 @@ index 0000000..123abc4
       "feat: add test function",
     );
 
-    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Open command selector with /
     stdin.write("/");
@@ -51,9 +55,7 @@ index 0000000..123abc4
     );
 
     // Verify git diff was called
-    expect(vi.mocked(gitUtils.getGitDiff)).toHaveBeenCalledWith(
-      expect.any(String),
-    );
+    expect(vi.mocked(gitUtils.getGitDiff)).toHaveBeenCalledWith();
 
     // Verify commit message generation was called
     expect(vi.mocked(aiService.generateCommitMessage)).toHaveBeenCalledWith({
@@ -67,7 +69,7 @@ index 0000000..123abc4
       new Error("Git diff failed"),
     );
 
-    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Open command selector with /
     stdin.write("/");
@@ -82,7 +84,7 @@ index 0000000..123abc4
     await waitForText(lastFrame, "Git diff failed");
 
     // Verify git diff was called
-    expect(gitUtils.getGitDiff).toHaveBeenCalledWith(expect.any(String));
+    expect(gitUtils.getGitDiff).toHaveBeenCalledWith();
 
     // Verify commit message generation was not called due to error
     expect(aiService.generateCommitMessage).not.toHaveBeenCalled();
@@ -97,7 +99,7 @@ index 0000000..123abc4
 
     mockGetGitDiff.mockResolvedValue("");
 
-    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Open command selector with /
     stdin.write("/");
@@ -112,7 +114,7 @@ index 0000000..123abc4
     await waitForText(lastFrame, "No changes detected");
 
     // Verify git diff was called
-    expect(mockGetGitDiff).toHaveBeenCalledWith(expect.any(String));
+    expect(mockGetGitDiff).toHaveBeenCalledWith();
 
     // Verify commit message generation was not called due to no changes
     expect(mockGenerateCommitMessage).not.toHaveBeenCalled();
@@ -138,7 +140,7 @@ index 0000000..123abc4
     mockGetGitDiff.mockResolvedValue(mockDiff);
     mockGenerateCommitMessage.mockRejectedValue(new Error("AI service error"));
 
-    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Open command selector with /
     stdin.write("/");
@@ -153,7 +155,7 @@ index 0000000..123abc4
     await waitForText(lastFrame, "AI service error");
 
     // Verify both services were called
-    expect(mockGetGitDiff).toHaveBeenCalledWith(expect.any(String));
+    expect(mockGetGitDiff).toHaveBeenCalledWith();
     expect(mockGenerateCommitMessage).toHaveBeenCalledWith({
       diff: mockDiff,
     });
@@ -170,7 +172,7 @@ index 0000000..123abc4
     mockGetGitDiff.mockResolvedValue(mockDiff);
     mockGenerateCommitMessage.mockResolvedValue("feat: test commit");
 
-    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Open command selector with /
     stdin.write("/");
@@ -201,7 +203,7 @@ index 0000000..123abc4
       'feat: add "test" function with quotes',
     );
 
-    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Open command selector with /
     stdin.write("/");
@@ -230,7 +232,7 @@ index 0000000..123abc4
       "feat: add `test` function with backticks",
     );
 
-    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Open command selector with /
     stdin.write("/");
@@ -259,7 +261,7 @@ index 0000000..123abc4
       'feat: add "test" function with `backticks` and "quotes"',
     );
 
-    const { stdin, lastFrame } = render(<InputBox workdir="/mock/workdir" />);
+    const { stdin, lastFrame } = render(<InputBox />);
 
     // Open command selector with /
     stdin.write("/");

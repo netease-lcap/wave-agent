@@ -38,7 +38,7 @@ describe("AIManager - Abort Handling", () => {
     };
 
     // Create AIManager instance with required parameters
-    aiManager = new AIManager("/test/workdir", mockCallbacks);
+    aiManager = new AIManager(mockCallbacks);
 
     vi.clearAllMocks();
   });

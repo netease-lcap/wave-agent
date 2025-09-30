@@ -39,7 +39,7 @@ describe("AIManager Tool Recursion Tests", () => {
     };
 
     // Create AIManager instance with required parameters
-    aiManager = new AIManager("/test/workdir", mockCallbacks);
+    aiManager = new AIManager(mockCallbacks);
 
     // Reset counters
     aiServiceCallCount = 0;
@@ -116,7 +116,6 @@ describe("AIManager Tool Recursion Tests", () => {
       "run_terminal_cmd",
       { command: "ls -la ." },
       expect.objectContaining({
-        workdir: "/test/workdir",
         abortSignal: expect.any(AbortSignal),
       }),
     );
@@ -249,7 +248,6 @@ describe("AIManager Tool Recursion Tests", () => {
       "run_terminal_cmd",
       { command: "pwd" },
       expect.objectContaining({
-        workdir: "/test/workdir",
         abortSignal: expect.any(AbortSignal),
       }),
     );
@@ -260,7 +258,6 @@ describe("AIManager Tool Recursion Tests", () => {
       "run_terminal_cmd",
       { command: "date" },
       expect.objectContaining({
-        workdir: "/test/workdir",
         abortSignal: expect.any(AbortSignal),
       }),
     );

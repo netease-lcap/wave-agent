@@ -39,7 +39,7 @@ describe("AIManager Diff Integration Tests", () => {
     };
 
     // Create AIManager instance with required parameters
-    aiManager = new AIManager("/test/workdir", mockCallbacks);
+    aiManager = new AIManager(mockCallbacks);
 
     // Reset counters
     aiServiceCallCount = 0;
@@ -145,7 +145,6 @@ describe("AIManager Diff Integration Tests", () => {
         code_edit: expect.stringContaining("throw new Error"),
       },
       expect.objectContaining({
-        workdir: "/test/workdir",
         abortSignal: expect.any(AbortSignal),
       }),
     );
@@ -270,7 +269,6 @@ describe("AIManager Diff Integration Tests", () => {
         new_string: "console.log(`Hello, ${name}!`);",
       },
       expect.objectContaining({
-        workdir: "/test/workdir",
         abortSignal: expect.any(AbortSignal),
       }),
     );

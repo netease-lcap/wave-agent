@@ -5,7 +5,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { FileItem } from "../components/FileSelector";
 
-export const useFileSelector = (workdir?: string) => {
+export const useFileSelector = () => {
   const [showFileSelector, setShowFileSelector] = useState(false);
   const [atPosition, setAtPosition] = useState(-1);
   const [searchQuery, setSearchQuery] = useState("");
@@ -13,17 +13,16 @@ export const useFileSelector = (workdir?: string) => {
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 检查路径是否为目录
-  const isDirectory = useCallback(
-    (filePath: string): boolean => {
-      try {
-        const fullPath = workdir ? path.join(workdir, filePath) : filePath;
-        return fs.statSync(fullPath).isDirectory();
-      } catch {
-        return false;
-      }
-    },
-    [workdir],
-  );
+  const isDirectory = useCallback((filePath: string): boolean => {
+    try {
+      const fullPath = path.isAbsolute(filePath)
+        ? filePath
+        : path.join(process.cwd(), filePath);
+      return fs.statSync(fullPath).isDirectory();
+    } catch {
+      return false;
+    }
+  }, []);
 
   // 将字符串路径转换为 FileItem 对象
   const convertToFileItems = useCallback(
@@ -46,7 +45,7 @@ export const useFileSelector = (workdir?: string) => {
           ignore: getGlobIgnorePatterns(),
           maxDepth: 10,
           nocase: true, // 不区分大小写
-          cwd: workdir, // 指定搜索的根目录
+          cwd: process.cwd(), // 指定搜索的根目录
         };
 
         if (!query.trim()) {
@@ -124,7 +123,7 @@ export const useFileSelector = (workdir?: string) => {
         setFilteredFiles([]);
       }
     },
-    [workdir, convertToFileItems],
+    [convertToFileItems],
   );
 
   // 防抖搜索

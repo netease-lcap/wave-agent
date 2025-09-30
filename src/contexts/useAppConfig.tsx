@@ -2,7 +2,6 @@ import React, { createContext, useContext } from "react";
 import type { SessionData } from "../services/sessionManager";
 
 export interface AppConfig {
-  workdir: string;
   sessionToRestore?: SessionData | null;
 }
 
@@ -21,12 +20,11 @@ export interface AppProviderProps extends AppConfig {
 }
 
 export const AppProvider: React.FC<AppProviderProps> = ({
-  workdir,
   sessionToRestore,
   children,
 }) => {
   return (
-    <AppContext.Provider value={{ workdir, sessionToRestore }}>
+    <AppContext.Provider value={{ sessionToRestore }}>
       {children}
     </AppContext.Provider>
   );

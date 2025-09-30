@@ -12,7 +12,6 @@ vi.mock("fs/promises", () => ({
 
 describe("writeTool", () => {
   const mockContext: ToolContext = {
-    workdir: "/test/workdir",
     abortSignal: new AbortController().signal,
   };
 

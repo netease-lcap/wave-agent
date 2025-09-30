@@ -1,5 +1,5 @@
 import { unlink } from "fs/promises";
-import type { ToolPlugin, ToolResult, ToolContext } from "./types";
+import type { ToolPlugin, ToolResult } from "./types";
 import { logger } from "../utils/logger";
 import { resolvePath, getDisplayPath } from "../utils/path";
 
@@ -30,10 +30,7 @@ export const deleteFileTool: ToolPlugin = {
       },
     },
   },
-  execute: async (
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ): Promise<ToolResult> => {
+  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
     const targetFile = args.target_file as string;
 
     if (!targetFile || typeof targetFile !== "string") {
@@ -45,7 +42,7 @@ export const deleteFileTool: ToolPlugin = {
     }
 
     try {
-      const filePath = resolvePath(targetFile, context?.workdir);
+      const filePath = resolvePath(targetFile);
 
       // 删除文件
       await unlink(filePath);
@@ -73,8 +70,8 @@ export const deleteFileTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>, workdir?: string) => {
+  formatCompactParams: (params: Record<string, unknown>) => {
     const targetFile = params.target_file as string;
-    return getDisplayPath(targetFile || "", workdir);
+    return getDisplayPath(targetFile || "");
   },
 };
