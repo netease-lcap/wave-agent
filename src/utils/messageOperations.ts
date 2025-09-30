@@ -5,7 +5,7 @@ import { logger } from "./logger";
 
 /**
  * 检查是否有正在处理的 AI 消息
- * 判断条件：最后一条消息是助手消息且有正在流式传输或运行的工具块
+ * 判断条件：最后一条消息是助手消息且有正在运行的工具块
  */
 export const isAIMessageProcessing = (messages: Message[]): boolean => {
   if (messages.length === 0) return false;
@@ -15,13 +15,10 @@ export const isAIMessageProcessing = (messages: Message[]): boolean => {
   // 只检查助手消息
   if (lastMessage.role !== "assistant") return false;
 
-  // 检查是否有正在流式传输或运行的工具块
+  // 检查是否有正在运行的工具块
   return lastMessage.blocks.some((block) => {
     if (block.type === "tool") {
-      return (
-        block.attributes?.isStreaming === true ||
-        block.attributes?.isRunning === true
-      );
+      return block.attributes?.isRunning === true;
     }
     return false;
   });

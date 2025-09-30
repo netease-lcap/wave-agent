@@ -678,7 +678,7 @@ describe("isAIMessageProcessing", () => {
     expect(isAIMessageProcessing(messages)).toBe(false);
   });
 
-  it("should return false when assistant message has no streaming tools", () => {
+  it("should return false when assistant message has no running tools", () => {
     const messages: Message[] = [
       {
         role: "assistant",
@@ -686,27 +686,12 @@ describe("isAIMessageProcessing", () => {
           { type: "text", content: "Response" },
           {
             type: "tool",
-            attributes: { isStreaming: false, isRunning: false },
+            attributes: { isRunning: false },
           },
         ],
       },
     ];
     expect(isAIMessageProcessing(messages)).toBe(false);
-  });
-
-  it("should return true when assistant message has streaming tool", () => {
-    const messages: Message[] = [
-      {
-        role: "assistant",
-        blocks: [
-          {
-            type: "tool",
-            attributes: { isStreaming: true },
-          },
-        ],
-      },
-    ];
-    expect(isAIMessageProcessing(messages)).toBe(true);
   });
 
   it("should return true when assistant message has running tool", () => {
@@ -724,21 +709,6 @@ describe("isAIMessageProcessing", () => {
     expect(isAIMessageProcessing(messages)).toBe(true);
   });
 
-  it("should return true when assistant message has both streaming and running tools", () => {
-    const messages: Message[] = [
-      {
-        role: "assistant",
-        blocks: [
-          {
-            type: "tool",
-            attributes: { isStreaming: true, isRunning: true },
-          },
-        ],
-      },
-    ];
-    expect(isAIMessageProcessing(messages)).toBe(true);
-  });
-
   it("should check only the last message", () => {
     const messages: Message[] = [
       {
@@ -746,7 +716,7 @@ describe("isAIMessageProcessing", () => {
         blocks: [
           {
             type: "tool",
-            attributes: { isStreaming: true },
+            attributes: { isRunning: true },
           },
         ],
       },
