@@ -2,17 +2,16 @@ import { toolRegistry } from "../tools";
 import { logger } from "@/utils/logger";
 import OpenAI from "openai";
 import { ChatCompletionMessageToolCall } from "openai/resources";
-import { FunctionToolCall } from "openai/resources/beta/threads/runs.mjs";
-import { ChatCompletionMessageParam } from "openai/resources.js";
+import {
+  ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionMessageParam,
+} from "openai/resources.js";
 import { FAST_MODEL_ID, AGENT_MODEL_ID } from "@/utils/constants";
 
 /**
- * 模型配置类型，基于 OpenAI 的参数但排除 messages 和 stream
+ * 模型配置类型，基于 OpenAI 的参数但排除 messages
  */
-type ModelConfig = Omit<
-  OpenAI.Chat.Completions.ChatCompletionCreateParams,
-  "messages" | "stream"
->;
+type ModelConfig = Omit<ChatCompletionCreateParamsNonStreaming, "messages">;
 
 /**
  * 根据模型名称获取特定的配置参数
@@ -26,6 +25,7 @@ function getModelConfig(
 ): ModelConfig {
   const config: ModelConfig = {
     model: modelName,
+    stream: false,
     ...baseConfig,
   };
 
@@ -50,8 +50,6 @@ export interface CallAgentOptions {
   abortSignal?: AbortSignal;
   memory?: string; // 记忆内容参数，从 LCAP.md 读取的内容
   workdir?: string; // 当前工作目录
-  onContentUpdate?: (content: string) => void; // 流式更新内容回调
-  onToolCallUpdate?: (toolCall: FunctionToolCall, isComplete: boolean) => void; // 工具调用更新回调
 }
 
 export interface CallAgentResult {
@@ -113,14 +111,7 @@ export async function generateCommitMessage(
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
-  const {
-    messages,
-    abortSignal,
-    memory,
-    workdir,
-    onContentUpdate,
-    onToolCallUpdate,
-  } = options;
+  const { messages, abortSignal, memory, workdir } = options;
 
   try {
     // 构建系统提示词内容
@@ -154,153 +145,37 @@ ${workdir || process.cwd()}
       max_completion_tokens: 32768,
     });
 
-    // 调用 OpenAI API（流式）
-    const stream = await openai.chat.completions.create(
+    // 调用 OpenAI API（非流式）
+    const response = await openai.chat.completions.create(
       {
         ...modelConfig,
         messages: openaiMessages,
         tools,
-        stream: true,
       },
       {
         signal: abortSignal,
       },
     );
 
-    // 构建最终消息
-    const finalMessage: OpenAI.Chat.Completions.ChatCompletionMessage = {
-      role: "assistant",
-      content: "",
-      refusal: null,
-      tool_calls: [],
-    };
-
-    let accumulatedContent = "";
-    let totalUsage:
-      | {
-          prompt_tokens: number;
-          completion_tokens: number;
-          total_tokens: number;
+    const finalMessage = response.choices[0]?.message;
+    const totalUsage = response.usage
+      ? {
+          prompt_tokens: response.usage.prompt_tokens,
+          completion_tokens: response.usage.completion_tokens,
+          total_tokens: response.usage.total_tokens,
         }
-      | undefined;
-
-    // 处理流式响应
-    for await (const chunk of stream) {
-      // 处理使用统计
-      if (chunk.usage) {
-        totalUsage = {
-          prompt_tokens: chunk.usage.prompt_tokens,
-          completion_tokens: chunk.usage.completion_tokens,
-          total_tokens: chunk.usage.total_tokens,
-        };
-      }
-      const choice = chunk.choices[0];
-      if (!choice) continue;
-
-      // 处理内容流
-      if (choice.delta.content) {
-        accumulatedContent += choice.delta.content;
-        finalMessage.content += choice.delta.content;
-
-        // 实时回调内容更新
-        if (onContentUpdate) {
-          onContentUpdate(accumulatedContent);
-        }
-      }
-
-      // 处理工具调用流
-      if (choice.delta.tool_calls) {
-        for (const toolCallDelta of choice.delta.tool_calls) {
-          // 使用工具调用的 ID 来标识，而不是依赖 index
-          let existingToolCall: ChatCompletionMessageToolCall | undefined;
-
-          // 如果有 ID，尝试找到现有的工具调用
-          if (toolCallDelta.id) {
-            existingToolCall = finalMessage.tool_calls!.find(
-              (tc) => tc.id === toolCallDelta.id,
-            );
-          } else {
-            // 如果没有 ID，取最后一个工具调用
-            existingToolCall =
-              finalMessage.tool_calls!.length > 0
-                ? finalMessage.tool_calls![finalMessage.tool_calls!.length - 1]
-                : undefined;
-          }
-
-          // 如果没有找到现有的工具调用，创建新的
-          if (!existingToolCall) {
-            existingToolCall = {
-              id: toolCallDelta.id || "",
-              type: "function",
-              function: {
-                name: "",
-                arguments: "",
-              },
-            };
-            finalMessage.tool_calls!.push(existingToolCall);
-          }
-
-          // 更新工具调用信息
-          if (toolCallDelta.id) {
-            existingToolCall.id = toolCallDelta.id;
-          }
-          if (toolCallDelta.type) {
-            existingToolCall.type = toolCallDelta.type;
-          }
-          if (toolCallDelta.function?.name) {
-            (existingToolCall as FunctionToolCall).function.name =
-              toolCallDelta.function.name;
-          }
-          if (toolCallDelta.function?.arguments) {
-            (existingToolCall as FunctionToolCall).function.arguments +=
-              toolCallDelta.function.arguments;
-          }
-
-          // 实时回调工具调用更新
-          if (onToolCallUpdate) {
-            const functionToolCall = existingToolCall as FunctionToolCall;
-            // 判断工具调用是否完整
-            // 对于无参数工具，arguments可能是空字符串或"{}"，都应该被认为是完整的
-            const hasValidId = !!functionToolCall.id;
-            const hasValidName = !!functionToolCall.function?.name;
-            const argsString =
-              functionToolCall.function?.arguments?.trim() || "";
-            const hasValidArgs =
-              argsString === "" ||
-              argsString === "{}" ||
-              (argsString.length > 0 && argsString.endsWith("}"));
-
-            const isComplete = hasValidId && hasValidName && hasValidArgs;
-            onToolCallUpdate(functionToolCall, isComplete);
-          }
-        }
-      }
-    }
+      : undefined;
 
     const result: CallAgentResult = {};
 
     // 返回内容
-    if (finalMessage.content) {
+    if (finalMessage?.content) {
       result.content = finalMessage.content;
     }
 
     // 返回工具调用
-    if (finalMessage.tool_calls && finalMessage.tool_calls.length > 0) {
-      // 过滤掉无效的工具调用
-      const validToolCalls = finalMessage.tool_calls.filter((tc) => {
-        const functionTc = tc as FunctionToolCall;
-        const hasId = !!tc.id;
-        const hasName = !!functionTc.function?.name;
-        // 对于参数，允许空字符串、"{}"或有效的JSON字符串
-        const argsString = functionTc.function?.arguments?.trim() || "";
-        const hasValidArgs =
-          argsString === "" ||
-          argsString === "{}" ||
-          (argsString.length > 0 && argsString.startsWith("{"));
-
-        return hasId && hasName && hasValidArgs;
-      });
-      result.tool_calls = validToolCalls;
+    if (finalMessage?.tool_calls && finalMessage.tool_calls.length > 0) {
+      result.tool_calls = finalMessage.tool_calls;
     }
 
     // 返回 token 使用信息

@@ -22,7 +22,6 @@ import { mcpManager } from "./mcpManager";
 import type { Message } from "../types";
 import { logger } from "../utils/logger";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
-import { extractCompleteParams } from "../utils/jsonExtractor";
 
 export interface AIManagerCallbacks {
   onMessagesChange: (messages: Message[]) => void;
@@ -247,109 +246,23 @@ export class AIManager {
         combinedMemory += userMemoryContent;
       }
 
-      // 流式处理工具调用的状态
-      const toolCallStates = new Map<
-        string,
-        {
-          id: string;
-          name: string;
-          args: string;
-          isComplete: boolean;
-          added: boolean;
-        }
-      >();
-
+      // 调用 AI 服务（非流式）
       const result = await callAgent({
         messages: recentMessages,
         sessionId: this.state.sessionId,
         abortSignal: abortController.signal,
         memory: combinedMemory, // 传递合并后的记忆内容
         workdir: this.workdir, // 传递当前工作目录
-        // 流式内容更新回调
-        onContentUpdate: (content: string) => {
-          currentMessages = updateAnswerBlockInMessage(
-            currentMessages,
-            content,
-          );
-          this.setMessages(currentMessages);
-        },
-        // 流式工具调用更新回调
-        onToolCallUpdate: (toolCall, isComplete) => {
-          if (!toolCall.id || !toolCall.function?.name) return;
-
-          const toolId = toolCall.id;
-          const existing = toolCallStates.get(toolId);
-
-          if (!existing) {
-            // 新工具调用
-            toolCallStates.set(toolId, {
-              id: toolId,
-              name: toolCall.function.name,
-              args: toolCall.function.arguments || "",
-              isComplete,
-              added: false,
-            });
-
-            // 添加工具块到UI
-            currentMessages = addToolBlockToMessage(currentMessages, {
-              id: toolId,
-              name: toolCall.function.name,
-            });
-            toolCallStates.get(toolId)!.added = true;
-            this.setMessages(currentMessages);
-          } else {
-            // 更新现有工具调用
-            existing.args = toolCall.function?.arguments || "";
-            existing.isComplete = isComplete;
-
-            // 如果工具块已经添加到UI，更新参数显示
-            if (existing.added) {
-              // 当参数还在流式传输时，显示紧凑格式的参数
-              let paramsToShow = existing.args;
-              if (!isComplete && existing.args) {
-                // 从不完整的JSON中提取完整的参数，并格式化显示
-                const completeParams = extractCompleteParams(existing.args);
-                if (Object.keys(completeParams).length > 0) {
-                  paramsToShow = JSON.stringify(completeParams, null, 2);
-                } else {
-                  // 如果没有提取到完整参数，显示原始内容的前50个字符
-                  paramsToShow =
-                    existing.args.length > 50
-                      ? existing.args.substring(0, 50) + "..."
-                      : existing.args;
-                }
-              } else if (isComplete) {
-                // 参数完整时，显示格式化的完整参数
-                if (existing.args && existing.args.trim() !== "") {
-                  try {
-                    const parsedArgs = JSON.parse(existing.args);
-                    paramsToShow = JSON.stringify(parsedArgs, null, 2);
-                  } catch {
-                    paramsToShow = existing.args;
-                  }
-                } else {
-                  // 无参数工具显示空对象
-                  paramsToShow = "{}";
-                }
-              }
-
-              currentMessages = updateToolBlockInMessage(
-                currentMessages,
-                toolId,
-                paramsToShow,
-                undefined, // result
-                undefined, // success
-                undefined, // error
-                !isComplete, // isStreaming: true if not complete
-                false, // isRunning: false (还未开始执行)
-                existing.name,
-                undefined, // shortResult
-              );
-              this.setMessages(currentMessages);
-            }
-          }
-        },
       });
+
+      // 更新答案块中的内容
+      if (result.content) {
+        currentMessages = updateAnswerBlockInMessage(
+          currentMessages,
+          result.content,
+        );
+        this.setMessages(currentMessages);
+      }
 
       // 更新 token 统计 - 显示最新一次的token使用量
       if (result.usage) {
@@ -408,21 +321,18 @@ export class AIManager {
           hasToolOperations = true;
 
           const toolId = toolCall.id || "";
-          const toolState = toolCallStates.get(toolId);
           const functionToolCall = toolCall as {
             id: string;
             type: "function";
             function: { name: string; arguments: string };
           };
 
-          // 如果工具块还没有添加（理论上不应该发生，但防止意外情况）
-          if (!toolState?.added) {
-            currentMessages = addToolBlockToMessage(currentMessages, {
-              id: toolId,
-              name: functionToolCall.function?.name || "",
-            });
-            this.setMessages(currentMessages);
-          }
+          // 添加工具块到 UI
+          currentMessages = addToolBlockToMessage(currentMessages, {
+            id: toolId,
+            name: functionToolCall.function?.name || "",
+          });
+          this.setMessages(currentMessages);
 
           // 执行工具
           try {

@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { AIManager } from "@/services/aiManager";
 import type { Message } from "@/types";
 import * as aiService from "@/services/aiService";
-import { FunctionToolCall } from "openai/resources/beta/threads/runs.mjs";
 
 // Mock the aiService module
 vi.mock("@/services/aiService");
@@ -79,24 +78,11 @@ describe("AIManager - No Parameters Tool Handling", () => {
     let callCount = 0;
 
     // Mock callAgent to return a tool call with empty arguments
-    mockCallAgent.mockImplementation(async ({ onToolCallUpdate }) => {
+    mockCallAgent.mockImplementation(async () => {
       callCount++;
 
       if (callCount === 1) {
         // First call: return tool call with empty arguments
-        if (onToolCallUpdate) {
-          onToolCallUpdate(
-            {
-              id: "tool_123",
-              function: {
-                name: "list_pages",
-                arguments: "", // No parameters - empty string
-              },
-            } as FunctionToolCall,
-            true, // complete
-          );
-        }
-
         return {
           content: "",
           tool_calls: [
@@ -180,24 +166,11 @@ describe("AIManager - No Parameters Tool Handling", () => {
     let callCount = 0;
 
     // Mock callAgent to return a tool call with empty object arguments
-    mockCallAgent.mockImplementation(async ({ onToolCallUpdate }) => {
+    mockCallAgent.mockImplementation(async () => {
       callCount++;
 
       if (callCount === 1) {
         // First call: return tool call with empty object arguments
-        if (onToolCallUpdate) {
-          onToolCallUpdate(
-            {
-              id: "tool_456",
-              function: {
-                name: "list_pages",
-                arguments: "{}", // No parameters - empty object
-              },
-            } as FunctionToolCall,
-            true, // complete
-          );
-        }
-
         return {
           content: "",
           tool_calls: [
@@ -282,24 +255,11 @@ describe("AIManager - No Parameters Tool Handling", () => {
     let callCount = 0;
 
     // Mock callAgent to return malformed JSON tool call
-    mockCallAgent.mockImplementation(async ({ onToolCallUpdate }) => {
+    mockCallAgent.mockImplementation(async () => {
       callCount++;
 
       if (callCount === 1) {
         // First call: return malformed JSON tool call
-        if (onToolCallUpdate) {
-          onToolCallUpdate(
-            {
-              id: "tool_789",
-              function: {
-                name: "search_replace",
-                arguments: '{"file_path": "test.ts", malformed', // Malformed JSON
-              },
-            } as FunctionToolCall,
-            true, // complete
-          );
-        }
-
         return {
           content: "",
           tool_calls: [

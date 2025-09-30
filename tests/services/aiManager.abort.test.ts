@@ -3,7 +3,6 @@ import { AIManager } from "@/services/aiManager";
 import * as aiService from "@/services/aiService";
 import { SessionManager } from "@/services/sessionManager";
 import type { Message, ErrorBlock } from "@/types";
-import { FunctionToolCall } from "openai/resources/beta/threads/runs.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -60,56 +59,39 @@ describe("AIManager - Abort Handling", () => {
 
     aiManager.setMessages([initialUserMessage]);
 
-    mockCallAgent.mockImplementation(
-      async ({ abortSignal, onToolCallUpdate }) => {
-        // Simulate streaming incomplete tool call arguments
-        if (onToolCallUpdate) {
-          // Simulate incomplete JSON being streamed
-          onToolCallUpdate(
-            {
-              id: "tool_123",
-              function: {
-                name: "search_replace",
-                arguments: '{"file_path": "test.ts", "old_string": "incomplete', // incomplete JSON
-              },
-            } as FunctionToolCall,
-            false, // not complete
-          );
+    mockCallAgent.mockImplementation(async ({ abortSignal }) => {
+      // Simulate user pressing ESC - abort the operation
+      if (abortSignal) {
+        // Create a new AbortController to simulate the abort
+        const controller = new AbortController();
+        controller.abort();
+        // Mock the aborted signal
+        Object.defineProperty(abortSignal, "aborted", {
+          value: true,
+          writable: true,
+        });
+      }
 
-          // Simulate user pressing ESC - abort the operation
-          if (abortSignal) {
-            // Create a new AbortController to simulate the abort
-            const controller = new AbortController();
-            controller.abort();
-            // Mock the aborted signal
-            Object.defineProperty(abortSignal, "aborted", {
-              value: true,
-              writable: true,
-            });
-          }
-        }
-
-        // Return tool call with incomplete arguments
-        return {
-          content: "",
-          tool_calls: [
-            {
-              id: "tool_123",
-              type: "function" as const,
-              function: {
-                name: "search_replace",
-                arguments: '{"file_path": "test.ts", "old_string": "incomplete', // incomplete JSON that will cause parse error
-              },
+      // Return tool call with incomplete arguments
+      return {
+        content: "",
+        tool_calls: [
+          {
+            id: "tool_123",
+            type: "function" as const,
+            function: {
+              name: "search_replace",
+              arguments: '{"file_path": "test.ts", "old_string": "incomplete', // incomplete JSON that will cause parse error
             },
-          ],
-          usage: {
-            prompt_tokens: 10,
-            completion_tokens: 20,
-            total_tokens: 30,
           },
-        };
-      },
-    );
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+    });
 
     // Execute the test - should not throw error even with incomplete JSON and abort
     await expect(aiManager.sendAIMessage()).resolves.not.toThrow();
@@ -157,25 +139,11 @@ describe("AIManager - Abort Handling", () => {
     let callCount = 0;
 
     // Mock callAgent to return malformed JSON tool call on first call, then no tools
-    mockCallAgent.mockImplementation(async ({ onToolCallUpdate }) => {
+    mockCallAgent.mockImplementation(async () => {
       callCount++;
 
       if (callCount === 1) {
         // First call: return malformed JSON tool call
-        if (onToolCallUpdate) {
-          onToolCallUpdate(
-            {
-              id: "tool_123",
-              function: {
-                name: "search_replace",
-                arguments:
-                  '{"file_path": "test.ts", "old_string": "malformed"}', // complete but will be malformed in return
-              },
-            } as FunctionToolCall,
-            true, // complete
-          );
-        }
-
         return {
           content: "",
           tool_calls: [
@@ -249,55 +217,39 @@ describe("AIManager - Abort Handling", () => {
 
     aiManager.setMessages([initialUserMessage]);
 
-    mockCallAgent.mockImplementation(
-      async ({ abortSignal, onToolCallUpdate }) => {
-        // Simulate streaming tool call
-        if (onToolCallUpdate) {
-          onToolCallUpdate(
-            {
-              id: "tool_123",
-              function: {
-                name: "search_replace",
-                arguments: '{"file_path": "test.ts"',
-              },
-            } as FunctionToolCall,
-            false,
-          );
+    mockCallAgent.mockImplementation(async ({ abortSignal }) => {
+      // Simulate abort during processing
+      if (abortSignal) {
+        // Create a new AbortController to simulate the abort
+        const controller = new AbortController();
+        controller.abort();
+        // Mock the aborted signal
+        Object.defineProperty(abortSignal, "aborted", {
+          value: true,
+          writable: true,
+        });
+      }
 
-          // Simulate abort during streaming
-          if (abortSignal) {
-            // Create a new AbortController to simulate the abort
-            const controller = new AbortController();
-            controller.abort();
-            // Mock the aborted signal
-            Object.defineProperty(abortSignal, "aborted", {
-              value: true,
-              writable: true,
-            });
-          }
-        }
-
-        // Even though we return tool calls, they shouldn't be executed due to abort
-        return {
-          content: "",
-          tool_calls: [
-            {
-              id: "tool_123",
-              type: "function" as const,
-              function: {
-                name: "search_replace",
-                arguments: '{"file_path": "test.ts"}', // valid JSON
-              },
+      // Even though we return tool calls, they shouldn't be executed due to abort
+      return {
+        content: "",
+        tool_calls: [
+          {
+            id: "tool_123",
+            type: "function" as const,
+            function: {
+              name: "search_replace",
+              arguments: '{"file_path": "test.ts"}', // valid JSON
             },
-          ],
-          usage: {
-            prompt_tokens: 10,
-            completion_tokens: 20,
-            total_tokens: 30,
           },
-        };
-      },
-    );
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      };
+    });
 
     // Mock tool execute to ensure it's not called
     mockToolExecute.mockResolvedValue({
