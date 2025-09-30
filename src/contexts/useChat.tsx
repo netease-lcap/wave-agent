@@ -4,13 +4,10 @@ import React, {
   useCallback,
   useRef,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import { useAppConfig } from "./useAppConfig";
 import type { Message } from "../types";
-import { addMemoryBlockToMessage } from "../utils/messageOperations";
-import { createMemoryManager } from "../services/memoryManager";
 import { AIManager, AIManagerCallbacks } from "../services/aiManager";
 
 // Main Chat Context
@@ -150,9 +147,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const userInputHistory =
     aiManagerRef.current?.getState().userInputHistory ?? [];
 
-  // Use the Memory hook
-  const memoryManager = useMemo(() => createMemoryManager(), []);
-
   const clearMessages = useCallback(() => {
     aiManagerRef.current?.clearMessages();
   }, []);
@@ -162,47 +156,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     aiManagerRef.current?.abortMessage();
   }, []);
 
-  // 记忆保存函数
+  // 记忆保存函数 - 委托给 AIManager
   const saveMemory = useCallback(
     async (message: string, type: "project" | "user") => {
-      try {
-        if (type === "project") {
-          await memoryManager.addMemory(message);
-        } else {
-          await memoryManager.addUserMemory(message);
-        }
-
-        // 添加成功的 MemoryBlock 到最后一个助手消息
-        const memoryText = message.substring(1).trim();
-        const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
-        const storagePath = type === "project" ? "LCAP.md" : "user-memory.md";
-
-        setMessages((prev) =>
-          addMemoryBlockToMessage(
-            prev,
-            `${typeLabel}: ${memoryText}`,
-            true,
-            type,
-            storagePath,
-          ),
-        );
-      } catch (error) {
-        // 添加失败的 MemoryBlock 到最后一个助手消息
-        const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
-        const storagePath = type === "project" ? "LCAP.md" : "user-memory.md";
-
-        setMessages((prev) =>
-          addMemoryBlockToMessage(
-            prev,
-            `${typeLabel}添加失败: ${error instanceof Error ? error.message : String(error)}`,
-            false,
-            type,
-            storagePath,
-          ),
-        );
-      }
+      await aiManagerRef.current?.saveMemory(message, type);
     },
-    [memoryManager, setMessages],
+    [],
   );
 
   // 发送消息函数 (简化，逻辑移动到 AIManager)

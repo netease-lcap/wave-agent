@@ -19,7 +19,8 @@ import type { ToolContext } from "../tools/types";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI";
 import { saveErrorLog } from "../utils/errorLogger";
 import { readMemoryFile } from "../utils/memoryUtils";
-import { createMemoryManager, type MemoryManager } from "./memoryManager";
+import * as memory from "./memory";
+import { addMemoryBlockToMessage } from "../utils/messageOperations";
 import { mcpManager } from "./mcpManager";
 import { BashManager } from "./bashManager";
 import type { Message } from "../types";
@@ -47,12 +48,10 @@ export class AIManager {
   private sessionStartTime: string;
   private autoSaveTimer: NodeJS.Timeout | null = null;
   private lastSaveTime: number = 0;
-  private userMemoryManager: MemoryManager;
   private bashManagerRef: BashManager | null = null;
 
   constructor(callbacks: AIManagerCallbacks, initialHistory?: string[]) {
     this.callbacks = callbacks;
-    this.userMemoryManager = createMemoryManager();
     this.sessionStartTime = new Date().toISOString();
     this.state = {
       sessionId: randomUUID(),
@@ -360,7 +359,7 @@ export class AIManager {
       // 读取用户级记忆内容
       let userMemoryContent = "";
       try {
-        userMemoryContent = await this.userMemoryManager.getUserMemoryContent();
+        userMemoryContent = await memory.getUserMemoryContent();
       } catch (error) {
         logger.warn("Failed to read user memory file:", error);
       }
@@ -668,6 +667,51 @@ export class AIManager {
       if (recursionDepth === 0) {
         this.setIsLoading(false);
       }
+    }
+  }
+
+  /**
+   * 保存记忆到项目或用户记忆文件
+   */
+  public async saveMemory(
+    message: string,
+    type: "project" | "user",
+  ): Promise<void> {
+    try {
+      if (type === "project") {
+        await memory.addMemory(message);
+      } else {
+        await memory.addUserMemory(message);
+      }
+
+      // 添加成功的 MemoryBlock 到最后一个助手消息
+      const memoryText = message.substring(1).trim();
+      const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
+      const storagePath = type === "project" ? "LCAP.md" : "user-memory.md";
+
+      const newMessages = addMemoryBlockToMessage(
+        this.state.messages,
+        `${typeLabel}: ${memoryText}`,
+        true,
+        type,
+        storagePath,
+      );
+      this.setMessages(newMessages);
+    } catch (error) {
+      // 添加失败的 MemoryBlock 到最后一个助手消息
+      const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
+      const storagePath = type === "project" ? "LCAP.md" : "user-memory.md";
+
+      const newMessages = addMemoryBlockToMessage(
+        this.state.messages,
+        `${typeLabel}添加失败: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        false,
+        type,
+        storagePath,
+      );
+      this.setMessages(newMessages);
     }
   }
 

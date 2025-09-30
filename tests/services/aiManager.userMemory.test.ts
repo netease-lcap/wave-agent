@@ -42,15 +42,13 @@ vi.mock("@/utils/logger", () => ({
   },
 }));
 
-// Mock memoryManager
-vi.mock("@/services/memoryManager", () => ({
-  createMemoryManager: vi.fn(() => ({
-    addMemory: vi.fn().mockResolvedValue(undefined),
-    isMemoryMessage: vi.fn().mockReturnValue(true),
-    addUserMemory: vi.fn().mockResolvedValue(undefined),
-    getUserMemoryContent: vi.fn().mockResolvedValue("User memory content"),
-    ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
-  })),
+// Mock memory
+vi.mock("@/services/memory", () => ({
+  addMemory: vi.fn().mockResolvedValue(undefined),
+  isMemoryMessage: vi.fn().mockReturnValue(true),
+  addUserMemory: vi.fn().mockResolvedValue(undefined),
+  getUserMemoryContent: vi.fn().mockResolvedValue("User memory content"),
+  ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("AIManager User Memory Integration", () => {
@@ -60,7 +58,7 @@ describe("AIManager User Memory Integration", () => {
 
   let mockCallAgent: ReturnType<typeof vi.fn>;
   let mockReadMemoryFile: ReturnType<typeof vi.fn>;
-  let mockCreateMemoryManager: ReturnType<typeof vi.fn>;
+  let mockGetUserMemoryContent: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     // Create a temporary directory for testing
@@ -69,11 +67,11 @@ describe("AIManager User Memory Integration", () => {
     // Get mock references after module imports
     const { callAgent } = await import("@/services/aiService");
     const { readMemoryFile } = await import("@/utils/memoryUtils");
-    const { createMemoryManager } = await import("@/services/memoryManager");
+    const memory = await import("@/services/memory");
 
     mockCallAgent = vi.mocked(callAgent);
     mockReadMemoryFile = vi.mocked(readMemoryFile);
-    mockCreateMemoryManager = vi.mocked(createMemoryManager);
+    mockGetUserMemoryContent = vi.mocked(memory.getUserMemoryContent);
 
     // Reset all mocks
     vi.clearAllMocks();
@@ -98,18 +96,7 @@ describe("AIManager User Memory Integration", () => {
   it("should read and combine project and user memory when sending AI message", async () => {
     // Set up mock return values
     mockReadMemoryFile.mockResolvedValue("Project memory: important context");
-
-    // Mock the memory manager to return specific content
-    const mockMemoryManager = {
-      addMemory: vi.fn().mockResolvedValue(undefined),
-      isMemoryMessage: vi.fn().mockReturnValue(true),
-      addUserMemory: vi.fn().mockResolvedValue(undefined),
-      getUserMemoryContent: vi
-        .fn()
-        .mockResolvedValue("User memory: user preferences"),
-      ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
-    };
-    mockCreateMemoryManager.mockReturnValue(mockMemoryManager);
+    mockGetUserMemoryContent.mockResolvedValue("User memory: user preferences");
 
     // Create a new AIManager to pick up the new mocks
     await aiManager.destroy();
@@ -148,16 +135,7 @@ describe("AIManager User Memory Integration", () => {
   it("should handle project memory only when user memory is empty", async () => {
     // Set up mock return values
     mockReadMemoryFile.mockResolvedValue("Project memory only");
-
-    // Mock the memory manager to return empty user content
-    const mockMemoryManager = {
-      addMemory: vi.fn().mockResolvedValue(undefined),
-      isMemoryMessage: vi.fn().mockReturnValue(true),
-      addUserMemory: vi.fn().mockResolvedValue(undefined),
-      getUserMemoryContent: vi.fn().mockResolvedValue(""),
-      ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
-    };
-    mockCreateMemoryManager.mockReturnValue(mockMemoryManager);
+    mockGetUserMemoryContent.mockResolvedValue("");
 
     // Create a new AIManager to pick up the new mocks
     await aiManager.destroy();
@@ -195,16 +173,7 @@ describe("AIManager User Memory Integration", () => {
   it("should handle user memory only when project memory is empty", async () => {
     // Set up mock return values
     mockReadMemoryFile.mockResolvedValue("");
-
-    // Mock the memory manager to return user content only
-    const mockMemoryManager = {
-      addMemory: vi.fn().mockResolvedValue(undefined),
-      isMemoryMessage: vi.fn().mockReturnValue(true),
-      addUserMemory: vi.fn().mockResolvedValue(undefined),
-      getUserMemoryContent: vi.fn().mockResolvedValue("User memory only"),
-      ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
-    };
-    mockCreateMemoryManager.mockReturnValue(mockMemoryManager);
+    mockGetUserMemoryContent.mockResolvedValue("User memory only");
 
     // Create a new AIManager to pick up the new mocks
     await aiManager.destroy();
@@ -242,16 +211,7 @@ describe("AIManager User Memory Integration", () => {
   it("should handle empty memory gracefully", async () => {
     // Set up mock return values for empty memory
     mockReadMemoryFile.mockResolvedValue("");
-
-    // Mock the memory manager to return empty content
-    const mockMemoryManager = {
-      addMemory: vi.fn().mockResolvedValue(undefined),
-      isMemoryMessage: vi.fn().mockReturnValue(true),
-      addUserMemory: vi.fn().mockResolvedValue(undefined),
-      getUserMemoryContent: vi.fn().mockResolvedValue(""),
-      ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
-    };
-    mockCreateMemoryManager.mockReturnValue(mockMemoryManager);
+    mockGetUserMemoryContent.mockResolvedValue("");
 
     // Create a new AIManager to pick up the new mocks
     await aiManager.destroy();
@@ -291,18 +251,9 @@ describe("AIManager User Memory Integration", () => {
     mockReadMemoryFile.mockRejectedValue(
       new Error("Failed to read project memory"),
     );
-
-    // Mock the memory manager to throw error
-    const mockMemoryManager = {
-      addMemory: vi.fn().mockResolvedValue(undefined),
-      isMemoryMessage: vi.fn().mockReturnValue(true),
-      addUserMemory: vi.fn().mockResolvedValue(undefined),
-      getUserMemoryContent: vi
-        .fn()
-        .mockRejectedValue(new Error("Failed to read user memory")),
-      ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
-    };
-    mockCreateMemoryManager.mockReturnValue(mockMemoryManager);
+    mockGetUserMemoryContent.mockRejectedValue(
+      new Error("Failed to read user memory"),
+    );
 
     // Create a new AIManager to pick up the new mocks
     await aiManager.destroy();
@@ -337,7 +288,7 @@ describe("AIManager User Memory Integration", () => {
     );
   });
 
-  it("should create separate memory managers for different workdirs", async () => {
+  it("should create separate instances for different workdirs", async () => {
     // Create temporary directories
     const tempDir1 = await fs.mkdtemp(path.join(os.tmpdir(), "test1-"));
     const tempDir2 = await fs.mkdtemp(path.join(os.tmpdir(), "test2-"));
@@ -350,9 +301,9 @@ describe("AIManager User Memory Integration", () => {
     vi.spyOn(process, "cwd").mockReturnValue(tempDir2);
     const aiManager2 = new AIManager(mockCallbacks);
 
-    // Verify createMemoryManager was called (without parameters now)
-    expect(mockCreateMemoryManager).toHaveBeenCalledTimes(3); // 1 for initial setup + 2 for test
-    expect(mockCreateMemoryManager).toHaveBeenCalledWith();
+    // Both managers should work independently
+    expect(aiManager1).toBeInstanceOf(AIManager);
+    expect(aiManager2).toBeInstanceOf(AIManager);
 
     // Clean up
     await aiManager1.destroy();
