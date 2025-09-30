@@ -1,8 +1,12 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { App } from "../src/components/App";
+import {
+  waitForText,
+  waitForTextToDisappear,
+} from "../tests/helpers/waitHelpers";
 
-// 延迟函数
+// 延迟函数，作为 waitHelper 的补充
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function testApp() {
@@ -13,49 +17,48 @@ async function testApp() {
     console.log("📦 渲染 App 组件...");
     const { stdin, lastFrame, unmount } = render(<App />);
 
-    // 等待初始渲染完成
-    await delay(100);
+    // 等待初始渲染完成 - 等待欢迎消息出现
+    console.log("⏳ 等待初始渲染完成...");
+    await waitForText(lastFrame, "Welcome to LCAP Code Assistant!");
     console.log("✅ 初始渲染完成");
 
     // 显示初始状态
     console.log("\n📸 初始界面状态:");
-    console.log("=".repeat(60));
     console.log(lastFrame());
-    console.log("=".repeat(60));
 
     // 模拟输入 "hi"
     console.log("\n⌨️ 模拟输入 'hi'...");
     stdin.write("hi");
 
     // 等待输入处理
-    await delay(100);
+    await delay(50); // 基础延迟确保输入被处理
 
     // 显示输入后的状态
     console.log("📸 输入 'hi' 后的界面状态:");
-    console.log("=".repeat(60));
     console.log(lastFrame());
-    console.log("=".repeat(60));
 
     // 模拟按 Enter 键发送消息
     console.log("\n↵ 模拟按 Enter 键发送消息...");
     stdin.write("\r"); // 回车键
 
-    // 等待消息发送处理
-    await delay(200);
-
     // 显示发送消息后的状态
     console.log("📸 发送消息后的界面状态:");
-    console.log("=".repeat(60));
     console.log(lastFrame());
-    console.log("=".repeat(60));
 
-    // 再等待一段时间查看可能的 AI 响应
-    console.log("\n⏳ 等待 AI 响应...");
-    await delay(5000);
-    console.log("📸 等待 5 秒后的界面状态:");
-    console.log("=".repeat(60));
+    console.log("✅ 用户消息已发送");
+
+    // 等待 AI 开始思考
+    console.log("⏳ 等待 AI 开始思考...");
+    await waitForText(lastFrame, "AI is thinking");
+
+    // 等待 AI 响应完成
+    console.log("⏳ 等待 AI 响应...");
+    await waitForTextToDisappear(lastFrame, "AI is thinking", {
+      timeout: 20 * 1000,
+    });
+    console.log("✅ AI 已响应！");
+    console.log("📸 AI 响应后的界面状态:");
     console.log(lastFrame());
-    console.log("=".repeat(60));
 
     // 清理资源
     unmount();
