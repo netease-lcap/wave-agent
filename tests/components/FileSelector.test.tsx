@@ -1,10 +1,13 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi } from "vitest";
-import { FileSelector } from "../../src/components/FileSelector";
+import { FileSelector, FileItem } from "../../src/components/FileSelector";
 
 describe("FileSelector", () => {
-  const mockFiles = Array.from({ length: 20 }, (_, i) => `file${i + 1}.txt`);
+  const mockFiles: FileItem[] = Array.from({ length: 20 }, (_, i) => ({
+    path: `file${i + 1}.txt`,
+    type: "file",
+  }));
 
   const mockProps = {
     files: mockFiles,
@@ -17,7 +20,7 @@ describe("FileSelector", () => {
     const { lastFrame } = render(<FileSelector {...mockProps} />);
 
     const output = lastFrame();
-    expect(output).toContain("Select File");
+    expect(output).toContain("Select File/Directory");
     expect(output).toContain("file1.txt");
     expect(output).toContain("file10.txt");
     expect(output).toContain("File 1 of 20");
@@ -28,13 +31,16 @@ describe("FileSelector", () => {
     // Test with files that require scrolling
     const propsWithManyFiles = {
       ...mockProps,
-      files: Array.from({ length: 25 }, (_, i) => `file${i + 1}.txt`),
+      files: Array.from({ length: 25 }, (_, i) => ({
+        path: `file${i + 1}.txt`,
+        type: "file" as const,
+      })),
     };
 
     const { lastFrame } = render(<FileSelector {...propsWithManyFiles} />);
 
     const output = lastFrame();
-    expect(output).toContain("Select File");
+    expect(output).toContain("Select File/Directory");
     expect(output).toContain("File 1 of 25");
     expect(output).toContain("... 15 more files below");
   });
@@ -59,7 +65,10 @@ describe("FileSelector", () => {
   it("should handle scroll window logic correctly", () => {
     // 测试滚动窗口逻辑
     const maxDisplay = 10;
-    const files = Array.from({ length: 20 }, (_, i) => `file${i + 1}.txt`);
+    const files: FileItem[] = Array.from({ length: 20 }, (_, i) => ({
+      path: `file${i + 1}.txt`,
+      type: "file",
+    }));
 
     // 测试选择第一个文件时的窗口计算
     const getDisplayWindow = (selectedIndex: number) => {
@@ -91,5 +100,23 @@ describe("FileSelector", () => {
     const windowAt19 = getDisplayWindow(19);
     expect(windowAt19.startIndex).toBe(10);
     expect(windowAt19.endIndex).toBe(20);
+  });
+
+  it("should display directory icons correctly", () => {
+    const mixedFiles: FileItem[] = [
+      { path: "src", type: "directory" },
+      { path: "src/components", type: "directory" },
+      { path: "package.json", type: "file" },
+      { path: "README.md", type: "file" },
+    ];
+
+    const propsWithMixed = { ...mockProps, files: mixedFiles };
+    const { lastFrame } = render(<FileSelector {...propsWithMixed} />);
+
+    const output = lastFrame();
+    expect(output).toContain("📁 src");
+    expect(output).toContain("📁 src/components");
+    expect(output).toContain("📄 package.json");
+    expect(output).toContain("📄 README.md");
   });
 });

@@ -1,8 +1,13 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 
+export interface FileItem {
+  path: string;
+  type: "file" | "directory";
+}
+
 export interface FileSelectorProps {
-  files: string[];
+  files: FileItem[];
   searchQuery: string;
   onSelect: (filePath: string) => void;
   onCancel: () => void;
@@ -19,7 +24,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   useInput((input, key) => {
     if (key.return) {
       if (files.length > 0 && selectedIndex < files.length) {
-        onSelect(files[selectedIndex]);
+        onSelect(files[selectedIndex].path);
       }
       return;
     }
@@ -87,7 +92,8 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
       marginBottom={1}
     >
       <Text color="cyan" bold>
-        📁 Select File {searchQuery && `(filtering: "${searchQuery}")`}
+        📁 Select File/Directory{" "}
+        {searchQuery && `(filtering: "${searchQuery}")`}
       </Text>
 
       {/* 显示上方还有更多文件的提示 */}
@@ -95,18 +101,19 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
         <Text dimColor>... {startIndex} more files above</Text>
       )}
 
-      {displayFiles.map((filePath, displayIndex) => {
+      {displayFiles.map((fileItem, displayIndex) => {
         const actualIndex = startIndex + displayIndex;
         const isSelected = actualIndex === selectedIndex;
+        const icon = fileItem.type === "directory" ? "📁" : "📄";
 
         return (
-          <Box key={filePath}>
+          <Box key={fileItem.path}>
             <Text
               color={isSelected ? "black" : "white"}
               backgroundColor={isSelected ? "cyan" : undefined}
             >
               {isSelected ? "▶ " : "  "}
-              {filePath}
+              {icon} {fileItem.path}
             </Text>
           </Box>
         );

@@ -184,24 +184,24 @@ describe("InputBox File Selector", () => {
     stdin.write("@");
     await delay(100); // 等待防抖搜索完成
 
-    // 验证第一个文件被选中（默认选中第一个）
-    expect(lastFrame()).toContain("▶ src/index.ts");
+    // 验证第一个项目被选中（现在目录优先显示，所以应该是 src 目录）
+    expect(lastFrame()).toContain("▶ 📁 src");
 
     // 按下箭头键移动选择
     stdin.write("\u001B[B"); // Down arrow
     await delay(50);
 
-    // 验证选择移动到第二个文件
-    expect(lastFrame()).toContain("▶ src/cli.tsx");
-    expect(lastFrame()).not.toContain("▶ src/index.ts");
+    // 验证选择移动到第二个项目（应该是第一个文件）
+    expect(lastFrame()).toContain("▶ 📄 src/index.ts");
+    expect(lastFrame()).not.toContain("▶ 📁 src");
 
     // 按上箭头键
     stdin.write("\u001B[A"); // Up arrow
     await delay(50);
 
-    // 验证选择回到第一个文件
-    expect(lastFrame()).toContain("▶ src/index.ts");
-    expect(lastFrame()).not.toContain("▶ src/cli.tsx");
+    // 验证选择回到第一个项目（目录）
+    expect(lastFrame()).toContain("▶ 📁 src");
+    expect(lastFrame()).not.toContain("▶ 📄 src/index.ts");
   });
 
   it("should handle complex input with @ in the middle", async () => {
