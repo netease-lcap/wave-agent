@@ -10,7 +10,6 @@ import React, {
 import { useAppConfig } from "./useAppConfig";
 import type { Message } from "../types";
 import {
-  addUserMessageToMessages,
   addMemoryBlockToMessage,
   extractUserInputHistory,
 } from "../utils/messageOperations";
@@ -18,29 +17,58 @@ import { createBashManager, type BashManager } from "../services/bashManager";
 import { createMemoryManager } from "../services/memoryManager";
 import { AIManager, AIManagerCallbacks } from "../services/aiManager";
 
-// Combined Chat Hook
-export interface UseChatReturn {
-  // Input History
+// Main Chat Context
+export interface ChatContextType {
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  isLoading: boolean;
+  clearMessages: () => void;
+  executeCommand: (command: string) => Promise<number>;
+  abortCommand: () => void;
+  isCommandRunning: boolean;
   userInputHistory: string[];
   addToInputHistory: (input: string) => void;
-  clearInputHistory: () => void;
-  // Input Insert
   insertToInput: (text: string) => void;
   inputInsertHandler: ((text: string) => void) | null;
   setInputInsertHandler: (handler: (text: string) => void) => void;
-  // AI
+  // AI functionality
   sessionId: string;
-  isLoading: boolean;
-  messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
-  sendAIMessage: (recursionDepth?: number) => Promise<void>;
+  sendMessage: (
+    content: string,
+    images?: Array<{ path: string; mimeType: string }>,
+  ) => Promise<void>;
   abortAIMessage: () => void;
+  abortMessage: () => void;
   resetSession: () => void;
   totalTokens: number;
+  // Memory functionality
+  saveMemory: (message: string, type: "project" | "user") => Promise<void>;
 }
 
-export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
+const ChatContext = createContext<ChatContextType | null>(null);
+
+export const useChat = () => {
+  const context = useContext(ChatContext);
+  if (!context) {
+    throw new Error("useChat must be used within ChatProvider");
+  }
+  return context;
+};
+
+export interface ChatProviderProps {
+  children: React.ReactNode;
+}
+
+export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const { sessionToRestore } = useAppConfig();
+
+  // Extract user input history from session messages
+  const initialHistory = useMemo(() => {
+    if (sessionToRestore?.state?.messages) {
+      return extractUserInputHistory(sessionToRestore.state.messages);
+    }
+    return undefined;
+  }, [sessionToRestore]);
 
   // Input History State
   const [userInputHistory, setUserInputHistory] = useState<string[]>(
@@ -85,13 +113,6 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
       }
     },
     [inputInsertHandler],
-  );
-
-  const setInputInsertHandlerCallback = useCallback(
-    (handler: (text: string) => void) => {
-      setInputInsertHandler(() => handler);
-    },
-    [],
   );
 
   // Initialize AI manager
@@ -139,15 +160,6 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
     }
   }, [messages]);
 
-  const sendAIMessage = useCallback(
-    async (recursionDepth?: number): Promise<void> => {
-      if (aiManagerRef.current) {
-        await aiManagerRef.current.sendAIMessage(recursionDepth);
-      }
-    },
-    [],
-  );
-
   const abortAIMessage = useCallback(() => {
     if (aiManagerRef.current) {
       aiManagerRef.current.abortAIMessage();
@@ -163,22 +175,6 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
     }
   }, []);
 
-  // Custom setMessages that updates the AI manager
-  const setMessagesWrapper = useCallback(
-    (messages: Message[] | ((prev: Message[]) => Message[])) => {
-      if (aiManagerRef.current) {
-        if (typeof messages === "function") {
-          const currentState = aiManagerRef.current.getState();
-          const newMessages = messages(currentState.messages);
-          aiManagerRef.current.setMessages(newMessages);
-        } else {
-          aiManagerRef.current.setMessages(messages);
-        }
-      }
-    },
-    [],
-  );
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -191,99 +187,6 @@ export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
       }
     };
   }, []);
-
-  return {
-    // Input History
-    userInputHistory,
-    addToInputHistory,
-    clearInputHistory,
-    // Input Insert
-    insertToInput,
-    inputInsertHandler,
-    setInputInsertHandler: setInputInsertHandlerCallback,
-    // AI
-    sessionId,
-    isLoading,
-    messages,
-    setMessages: setMessagesWrapper,
-    sendAIMessage,
-    abortAIMessage,
-    resetSession,
-    totalTokens,
-  };
-};
-
-// Main Chat Context
-export interface ChatContextType {
-  messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
-  isLoading: boolean;
-  clearMessages: () => void;
-  executeCommand: (command: string) => Promise<number>;
-  abortCommand: () => void;
-  isCommandRunning: boolean;
-  userInputHistory: string[];
-  addToInputHistory: (input: string) => void;
-  insertToInput: (text: string) => void;
-  inputInsertHandler: ((text: string) => void) | null;
-  setInputInsertHandler: (handler: (text: string) => void) => void;
-  // AI functionality
-  sessionId: string;
-  sendMessage: (
-    content: string,
-    images?: Array<{ path: string; mimeType: string }>,
-  ) => Promise<void>;
-  sendAIMessage: (recursionDepth?: number) => Promise<void>;
-  abortAIMessage: () => void;
-  abortMessage: () => void;
-  resetSession: () => void;
-  totalTokens: number;
-  // Memory functionality
-  saveMemory: (message: string, type: "project" | "user") => Promise<void>;
-}
-
-const ChatContext = createContext<ChatContextType | null>(null);
-
-export const useChat = () => {
-  const context = useContext(ChatContext);
-  if (!context) {
-    throw new Error("useChat must be used within ChatProvider");
-  }
-  return context;
-};
-
-export interface ChatProviderProps {
-  children: React.ReactNode;
-}
-
-export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
-  const { sessionToRestore } = useAppConfig();
-
-  // Extract user input history from session messages
-  const initialInputHistory = useMemo(() => {
-    if (sessionToRestore?.state?.messages) {
-      return extractUserInputHistory(sessionToRestore.state.messages);
-    }
-    return undefined;
-  }, [sessionToRestore]);
-
-  // Use the combined Chat hook
-  const {
-    sessionId,
-    isLoading,
-    messages,
-    setMessages,
-    sendAIMessage,
-    abortAIMessage,
-    resetSession,
-    totalTokens,
-    userInputHistory,
-    addToInputHistory,
-    clearInputHistory,
-    insertToInput,
-    inputInsertHandler,
-    setInputInsertHandler,
-  } = useChatHook(initialInputHistory);
 
   // Create bash manager
   const bashManagerRef = useRef<BashManager | null>(null);
@@ -416,26 +319,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         // 添加用户消息到历史记录
         addToInputHistory(content);
 
-        // 添加用户消息到UI
-        setMessages((prev) =>
-          addUserMessageToMessages(
-            prev,
-            content,
-            images?.map((img) => ({
-              path: img.path,
-              mimeType: img.mimeType,
-            })),
-          ),
-        );
+        // 添加用户消息，会自动同步到 UI
+        aiManagerRef.current?.addUserMessage(content, images);
 
         // 发送AI消息
-        await sendAIMessage();
+        await aiManagerRef.current?.sendAIMessage();
       } catch (error) {
         console.error("Failed to send message:", error);
         // Loading state will be automatically updated by the useEffect that watches messages
       }
     },
-    [addToInputHistory, setMessages, executeCommand, sendAIMessage],
+    [addToInputHistory, executeCommand],
   );
 
   const contextValue: ChatContextType = {
@@ -453,7 +347,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     setInputInsertHandler,
     sessionId,
     sendMessage,
-    sendAIMessage,
     abortAIMessage,
     abortMessage,
     resetSession,

@@ -26,7 +26,7 @@ export const useTextInsertion = (
 
   // 注册输入插入处理器
   useEffect(() => {
-    setInputInsertHandler(handleTextInsert);
+    setInputInsertHandler(() => handleTextInsert);
     return () => {
       setInputInsertHandler(() => {});
     };

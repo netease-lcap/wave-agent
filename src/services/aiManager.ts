@@ -11,6 +11,7 @@ import {
   addCompressBlockToMessage,
   addDiffBlockToMessage,
   getMessagesToCompress,
+  addUserMessageToMessages,
 } from "../utils/messageOperations";
 import { toolRegistry } from "../tools";
 import type { ToolContext } from "../tools/types";
@@ -180,6 +181,22 @@ export class AIManager {
     this.abortAIMessage();
     // Cleanup MCP connections
     await mcpManager.cleanup();
+  }
+
+  public addUserMessage(
+    content: string,
+    images?: Array<{ path: string; mimeType: string }>,
+  ) {
+    this.setMessages(
+      addUserMessageToMessages(
+        this.state.messages,
+        content,
+        images?.map((img) => ({
+          path: img.path,
+          mimeType: img.mimeType,
+        })),
+      ),
+    );
   }
 
   public async sendAIMessage(recursionDepth: number = 0): Promise<void> {
