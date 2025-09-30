@@ -9,11 +9,7 @@ import React, {
 } from "react";
 import { useAppConfig } from "./useAppConfig";
 import type { Message } from "../types";
-import {
-  addMemoryBlockToMessage,
-  extractUserInputHistory,
-} from "../utils/messageOperations";
-import { BashManager } from "../services/bashManager";
+import { addMemoryBlockToMessage } from "../utils/messageOperations";
 import { createMemoryManager } from "../services/memoryManager";
 import { AIManager, AIManagerCallbacks } from "../services/aiManager";
 
@@ -24,7 +20,6 @@ export interface ChatContextType {
   clearMessages: () => void;
   isCommandRunning: boolean;
   userInputHistory: string[];
-  addToInputHistory: (input: string) => void;
   insertToInput: (text: string) => void;
   inputInsertHandler: ((text: string) => void) | null;
   setInputInsertHandler: (handler: (text: string) => void) => void;
@@ -58,19 +53,6 @@ export interface ChatProviderProps {
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const { sessionToRestore } = useAppConfig();
 
-  // Extract user input history from session messages
-  const initialHistory = useMemo(() => {
-    if (sessionToRestore?.state?.messages) {
-      return extractUserInputHistory(sessionToRestore.state.messages);
-    }
-    return undefined;
-  }, [sessionToRestore]);
-
-  // Input History State
-  const [userInputHistory, setUserInputHistory] = useState<string[]>(
-    initialHistory || [],
-  );
-
   // Input Insert State
   const [inputInsertHandler, setInputInsertHandler] = useState<
     ((text: string) => void) | null
@@ -83,23 +65,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [sessionId, setSessionId] = useState("");
 
   const aiManagerRef = useRef<AIManager | null>(null);
-
-  // Input History Functions
-  const addToInputHistory = useCallback((input: string) => {
-    setUserInputHistory((prev) => {
-      // 避免重复添加相同的输入
-      if (prev.length > 0 && prev[prev.length - 1] === input) {
-        return prev;
-      }
-      // 限制历史记录数量，保留最近的100条
-      const newHistory = [...prev, input];
-      return newHistory.slice(-100);
-    });
-  }, []);
-
-  const clearInputHistory = useCallback(() => {
-    setUserInputHistory([]);
-  }, []);
 
   // Input Insert Functions
   const insertToInput = useCallback(
@@ -178,34 +143,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     };
   }, []);
 
-  // Create bash manager
-  const bashManagerRef = useRef<BashManager | null>(null);
+  // Get command running state from AI manager
+  const isCommandRunning = aiManagerRef.current?.getIsCommandRunning() ?? false;
 
-  // Initialize bash manager
-  useEffect(() => {
-    if (!bashManagerRef.current) {
-      bashManagerRef.current = new BashManager({
-        onMessagesUpdate: setMessages,
-      });
-    }
-  }, [setMessages]);
-
-  const isCommandRunning =
-    bashManagerRef.current?.getIsCommandRunning() ?? false;
+  // Get user input history from AI manager
+  const userInputHistory =
+    aiManagerRef.current?.getState().userInputHistory ?? [];
 
   // Use the Memory hook
   const memoryManager = useMemo(() => createMemoryManager(), []);
 
   const clearMessages = useCallback(() => {
-    setMessages([]);
-    clearInputHistory(); // 也清空历史记录
-    resetSession();
-  }, [setMessages, clearInputHistory, resetSession]);
+    aiManagerRef.current?.clearMessages();
+  }, []);
 
   // 统一的中断方法，同时中断AI消息和命令执行
   const abortMessage = useCallback(() => {
-    aiManagerRef.current?.abortAIMessage();
-    bashManagerRef.current?.abortCommand();
+    aiManagerRef.current?.abortMessage();
   }, []);
 
   // 记忆保存函数
@@ -251,58 +205,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     [memoryManager, setMessages],
   );
 
-  // 发送消息函数
+  // 发送消息函数 (简化，逻辑移动到 AIManager)
   const sendMessage = useCallback(
     async (
       content: string,
       images?: Array<{ path: string; mimeType: string }>,
     ) => {
-      // 检查是否有内容可以发送（文本内容或图片附件）
-      const hasTextContent = content.trim();
-      const hasImageAttachments = images && images.length > 0;
-
-      if (!hasTextContent && !hasImageAttachments) return;
-
-      try {
-        // Handle memory mode - 检查是否是记忆消息（以#开头且只有一行）
-        if (content.startsWith("#") && !content.includes("\n")) {
-          const memoryText = content.substring(1).trim();
-          if (!memoryText) return;
-
-          // 在记忆模式下，不添加用户消息，只等待用户选择记忆类型后添加助手消息
-          // 不自动保存，等待用户选择记忆类型
-          return;
-        }
-
-        // Handle bash mode - 检查是否是bash命令（以!开头且只有一行）
-        if (content.startsWith("!") && !content.includes("\n")) {
-          const command = content.substring(1).trim();
-          if (!command) return;
-
-          // 添加用户消息到历史记录（但不显示在UI中）
-          addToInputHistory(content);
-
-          // 在bash模式下，不添加用户消息到UI，直接执行命令
-          // 执行bash命令会自动添加助手消息
-          await bashManagerRef.current?.executeCommand(command);
-          return;
-        }
-
-        // Handle normal AI message
-        // 添加用户消息到历史记录
-        addToInputHistory(content);
-
-        // 添加用户消息，会自动同步到 UI
-        aiManagerRef.current?.addUserMessage(content, images);
-
-        // 发送AI消息
-        await aiManagerRef.current?.sendAIMessage();
-      } catch (error) {
-        console.error("Failed to send message:", error);
-        // Loading state will be automatically updated by the useEffect that watches messages
-      }
+      await aiManagerRef.current?.sendMessage(content, images);
     },
-    [addToInputHistory],
+    [],
   );
 
   const contextValue: ChatContextType = {
@@ -311,7 +222,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     clearMessages,
     isCommandRunning,
     userInputHistory,
-    addToInputHistory,
     insertToInput,
     inputInsertHandler,
     setInputInsertHandler,

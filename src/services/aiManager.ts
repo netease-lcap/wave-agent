@@ -12,6 +12,7 @@ import {
   addDiffBlockToMessage,
   getMessagesToCompress,
   addUserMessageToMessages,
+  extractUserInputHistory,
 } from "../utils/messageOperations";
 import { toolRegistry } from "../tools";
 import type { ToolContext } from "../tools/types";
@@ -20,6 +21,7 @@ import { saveErrorLog } from "../utils/errorLogger";
 import { readMemoryFile } from "../utils/memoryUtils";
 import { createMemoryManager, type MemoryManager } from "./memoryManager";
 import { mcpManager } from "./mcpManager";
+import { BashManager } from "./bashManager";
 import type { Message } from "../types";
 import { logger } from "../utils/logger";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
@@ -34,6 +36,7 @@ export interface AIManagerState {
   isLoading: boolean;
   messages: Message[];
   totalTokens: number;
+  userInputHistory: string[];
 }
 
 export class AIManager {
@@ -45,8 +48,9 @@ export class AIManager {
   private autoSaveTimer: NodeJS.Timeout | null = null;
   private lastSaveTime: number = 0;
   private userMemoryManager: MemoryManager;
+  private bashManagerRef: BashManager | null = null;
 
-  constructor(callbacks: AIManagerCallbacks) {
+  constructor(callbacks: AIManagerCallbacks, initialHistory?: string[]) {
     this.callbacks = callbacks;
     this.userMemoryManager = createMemoryManager();
     this.sessionStartTime = new Date().toISOString();
@@ -55,7 +59,15 @@ export class AIManager {
       isLoading: false,
       messages: [],
       totalTokens: 0,
+      userInputHistory: initialHistory || [],
     };
+
+    // Initialize bash manager
+    this.bashManagerRef = new BashManager({
+      onMessagesUpdate: (updater) => {
+        this.setMessages(updater(this.state.messages));
+      },
+    });
 
     // Set up auto-save
     this.startAutoSave();
@@ -116,6 +128,25 @@ export class AIManager {
     this.state.sessionId = randomUUID();
     this.state.totalTokens = 0;
     this.sessionStartTime = new Date().toISOString();
+    this.state.userInputHistory = [];
+  }
+
+  /**
+   * 清空消息和输入历史
+   */
+  public clearMessages(): void {
+    this.state.messages = [];
+    this.state.userInputHistory = [];
+    this.callbacks.onMessagesChange([]);
+    this.resetSession();
+  }
+
+  /**
+   * 统一的中断方法，同时中断AI消息和命令执行
+   */
+  public abortMessage(): void {
+    this.abortAIMessage();
+    this.abortBashCommand();
   }
 
   /**
@@ -130,6 +161,9 @@ export class AIManager {
     this.state.messages = [...messages];
     this.state.totalTokens = totalTokens;
     this.state.isLoading = false;
+
+    // Extract user input history from session messages
+    this.state.userInputHistory = extractUserInputHistory(messages);
   }
 
   /**
@@ -174,29 +208,112 @@ export class AIManager {
   }
 
   /**
+   * 添加到输入历史记录
+   */
+  public addToInputHistory(input: string): void {
+    // 避免重复添加相同的输入
+    if (
+      this.state.userInputHistory.length > 0 &&
+      this.state.userInputHistory[this.state.userInputHistory.length - 1] ===
+        input
+    ) {
+      return;
+    }
+    // 限制历史记录数量，保留最近的100条
+    this.state.userInputHistory = [...this.state.userInputHistory, input].slice(
+      -100,
+    );
+  }
+
+  /**
+   * 清空输入历史记录
+   */
+  public clearInputHistory(): void {
+    this.state.userInputHistory = [];
+  }
+
+  /**
+   * 获取bash命令执行状态
+   */
+  public getIsCommandRunning(): boolean {
+    return this.bashManagerRef?.getIsCommandRunning() ?? false;
+  }
+
+  /**
+   * 中断bash命令执行
+   */
+  public abortBashCommand(): void {
+    this.bashManagerRef?.abortCommand();
+  }
+
+  /**
    * 销毁管理器，清理资源
    */
   public async destroy(): Promise<void> {
     this.stopAutoSave();
     this.abortAIMessage();
+    this.abortBashCommand();
     // Cleanup MCP connections
     await mcpManager.cleanup();
   }
 
-  public addUserMessage(
+  public async sendMessage(
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
-  ) {
-    this.setMessages(
-      addUserMessageToMessages(
-        this.state.messages,
-        content,
-        images?.map((img) => ({
-          path: img.path,
-          mimeType: img.mimeType,
-        })),
-      ),
-    );
+  ): Promise<void> {
+    // 检查是否有内容可以发送（文本内容或图片附件）
+    const hasTextContent = content.trim();
+    const hasImageAttachments = images && images.length > 0;
+
+    if (!hasTextContent && !hasImageAttachments) return;
+
+    try {
+      // Handle memory mode - 检查是否是记忆消息（以#开头且只有一行）
+      if (content.startsWith("#") && !content.includes("\n")) {
+        const memoryText = content.substring(1).trim();
+        if (!memoryText) return;
+
+        // 在记忆模式下，不添加用户消息，只等待用户选择记忆类型后添加助手消息
+        // 不自动保存，等待用户选择记忆类型
+        return;
+      }
+
+      // Handle bash mode - 检查是否是bash命令（以!开头且只有一行）
+      if (content.startsWith("!") && !content.includes("\n")) {
+        const command = content.substring(1).trim();
+        if (!command) return;
+
+        // 添加用户消息到历史记录（但不显示在UI中）
+        this.addToInputHistory(content);
+
+        // 在bash模式下，不添加用户消息到UI，直接执行命令
+        // 执行bash命令会自动添加助手消息
+        await this.bashManagerRef?.executeCommand(command);
+        return;
+      }
+
+      // Handle normal AI message
+      // 添加用户消息到历史记录
+      this.addToInputHistory(content);
+
+      // 添加用户消息，会自动同步到 UI
+      this.setMessages(
+        addUserMessageToMessages(
+          this.state.messages,
+          content,
+          images?.map((img) => ({
+            path: img.path,
+            mimeType: img.mimeType,
+          })),
+        ),
+      );
+
+      // 发送AI消息
+      await this.sendAIMessage();
+    } catch (error) {
+      console.error("Failed to add user message:", error);
+      // Loading state will be automatically updated by the useEffect that watches messages
+    }
   }
 
   public async sendAIMessage(recursionDepth: number = 0): Promise<void> {
