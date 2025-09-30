@@ -12,7 +12,7 @@ vi.mock("@/utils/bashHistory", () => ({
   addBashCommandToHistory: vi.fn(),
 }));
 
-import { BashManager, createBashManager } from "@/services/bashManager";
+import { BashManager } from "@/services/bashManager";
 import type { Message } from "@/types";
 
 const mockSpawn = vi.mocked(spawn);
@@ -61,7 +61,7 @@ describe("BashManager", () => {
     // Mock process.cwd() to return test workdir
     vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
 
-    bashManager = createBashManager({
+    bashManager = new BashManager({
       onMessagesUpdate: mockMessagesUpdater,
     });
   });
@@ -77,7 +77,7 @@ describe("BashManager", () => {
     });
 
     it("should create BashManager using factory function", () => {
-      const manager = createBashManager({
+      const manager = new BashManager({
         onMessagesUpdate: vi.fn(),
       });
       expect(manager).toBeInstanceOf(BashManager);
@@ -339,25 +339,6 @@ describe("BashManager", () => {
       bashManager.abortCommand();
 
       expect(mockChildProcess.kill).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("updateWorkdir", () => {
-    it("should update working directory", () => {
-      const newWorkdir = "/new/working/directory";
-
-      bashManager.updateWorkdir(newWorkdir);
-
-      // Execute a command to verify new workdir is used
-      const command = "pwd";
-      bashManager.executeCommand(command);
-
-      expect(mockSpawn).toHaveBeenCalledWith(command, {
-        shell: true,
-        stdio: "pipe",
-        cwd: newWorkdir,
-        env: expect.any(Object),
-      });
     });
   });
 

@@ -13,18 +13,15 @@ import {
   addMemoryBlockToMessage,
   extractUserInputHistory,
 } from "../utils/messageOperations";
-import { createBashManager, type BashManager } from "../services/bashManager";
+import { BashManager } from "../services/bashManager";
 import { createMemoryManager } from "../services/memoryManager";
 import { AIManager, AIManagerCallbacks } from "../services/aiManager";
 
 // Main Chat Context
 export interface ChatContextType {
   messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   isLoading: boolean;
   clearMessages: () => void;
-  executeCommand: (command: string) => Promise<number>;
-  abortCommand: () => void;
   isCommandRunning: boolean;
   userInputHistory: string[];
   addToInputHistory: (input: string) => void;
@@ -37,7 +34,6 @@ export interface ChatContextType {
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
   ) => Promise<void>;
-  abortAIMessage: () => void;
   abortMessage: () => void;
   resetSession: () => void;
   totalTokens: number;
@@ -160,12 +156,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     }
   }, [messages]);
 
-  const abortAIMessage = useCallback(() => {
-    if (aiManagerRef.current) {
-      aiManagerRef.current.abortAIMessage();
-    }
-  }, []);
-
   const resetSession = useCallback(() => {
     if (aiManagerRef.current) {
       aiManagerRef.current.resetSession();
@@ -194,28 +184,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // Initialize bash manager
   useEffect(() => {
     if (!bashManagerRef.current) {
-      bashManagerRef.current = createBashManager({
+      bashManagerRef.current = new BashManager({
         onMessagesUpdate: setMessages,
       });
     }
   }, [setMessages]);
-
-  // Command execution functions
-  const executeCommand = useCallback(
-    async (command: string): Promise<number> => {
-      if (!bashManagerRef.current) {
-        throw new Error("Bash manager not initialized");
-      }
-      return bashManagerRef.current.executeCommand(command);
-    },
-    [],
-  );
-
-  const abortCommand = useCallback(() => {
-    if (bashManagerRef.current) {
-      bashManagerRef.current.abortCommand();
-    }
-  }, []);
 
   const isCommandRunning =
     bashManagerRef.current?.getIsCommandRunning() ?? false;
@@ -231,9 +204,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // 统一的中断方法，同时中断AI消息和命令执行
   const abortMessage = useCallback(() => {
-    abortAIMessage();
-    abortCommand();
-  }, [abortAIMessage, abortCommand]);
+    aiManagerRef.current?.abortAIMessage();
+    bashManagerRef.current?.abortCommand();
+  }, []);
 
   // 记忆保存函数
   const saveMemory = useCallback(
@@ -311,7 +284,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
           // 在bash模式下，不添加用户消息到UI，直接执行命令
           // 执行bash命令会自动添加助手消息
-          await executeCommand(command);
+          await bashManagerRef.current?.executeCommand(command);
           return;
         }
 
@@ -329,16 +302,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         // Loading state will be automatically updated by the useEffect that watches messages
       }
     },
-    [addToInputHistory, executeCommand],
+    [addToInputHistory],
   );
 
   const contextValue: ChatContextType = {
     messages,
-    setMessages,
     isLoading,
     clearMessages,
-    executeCommand,
-    abortCommand,
     isCommandRunning,
     userInputHistory,
     addToInputHistory,
@@ -347,7 +317,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     setInputInsertHandler,
     sessionId,
     sendMessage,
-    abortAIMessage,
     abortMessage,
     resetSession,
     totalTokens,

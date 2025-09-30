@@ -106,12 +106,4 @@ export class BashManager {
       this.isCommandRunning = false;
     }
   }
-
-  public updateWorkdir(newWorkdir: string): void {
-    this.workdir = newWorkdir;
-  }
 }
-
-export const createBashManager = (options: BashManagerOptions): BashManager => {
-  return new BashManager(options);
-};
