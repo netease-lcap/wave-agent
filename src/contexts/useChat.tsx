@@ -18,20 +18,50 @@ import { createBashManager, type BashManager } from "../services/bashManager";
 import { createMemoryManager } from "../services/memoryManager";
 import { AIManager, AIManagerCallbacks } from "../services/aiManager";
 
-// Input History Hook
-export interface InputHistoryContextType {
+// Combined Chat Hook
+export interface UseChatReturn {
+  // Input History
   userInputHistory: string[];
   addToInputHistory: (input: string) => void;
   clearInputHistory: () => void;
+  // Input Insert
+  insertToInput: (text: string) => void;
+  inputInsertHandler: ((text: string) => void) | null;
+  setInputInsertHandler: (handler: (text: string) => void) => void;
+  // AI
+  sessionId: string;
+  isLoading: boolean;
+  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  sendAIMessage: (recursionDepth?: number) => Promise<void>;
+  abortAIMessage: () => void;
+  resetSession: () => void;
+  totalTokens: number;
 }
 
-export const useInputHistory = (
-  initialHistory?: string[],
-): InputHistoryContextType => {
+export const useChatHook = (initialHistory?: string[]): UseChatReturn => {
+  const { workdir, sessionToRestore } = useAppConfig();
+
+  // Input History State
   const [userInputHistory, setUserInputHistory] = useState<string[]>(
     initialHistory || [],
   );
 
+  // Input Insert State
+  const [inputInsertHandler, setInputInsertHandler] = useState<
+    ((text: string) => void) | null
+  >(null);
+
+  // AI State
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [totalTokens, setTotalTokens] = useState(0);
+  const [sessionId, setSessionId] = useState("");
+
+  const aiManagerRef = useRef<AIManager | null>(null);
+
+  // Input History Functions
   const addToInputHistory = useCallback((input: string) => {
     setUserInputHistory((prev) => {
       // 避免重复添加相同的输入
@@ -48,25 +78,7 @@ export const useInputHistory = (
     setUserInputHistory([]);
   }, []);
 
-  return {
-    userInputHistory,
-    addToInputHistory,
-    clearInputHistory,
-  };
-};
-
-// Input Insert Hook
-export interface InputInsertContextType {
-  insertToInput: (text: string) => void;
-  inputInsertHandler: ((text: string) => void) | null;
-  setInputInsertHandler: (handler: (text: string) => void) => void;
-}
-
-export const useInputInsert = (): InputInsertContextType => {
-  const [inputInsertHandler, setInputInsertHandler] = useState<
-    ((text: string) => void) | null
-  >(null);
-
+  // Input Insert Functions
   const insertToInput = useCallback(
     (text: string) => {
       if (inputInsertHandler) {
@@ -82,35 +94,6 @@ export const useInputInsert = (): InputInsertContextType => {
     },
     [],
   );
-
-  return {
-    insertToInput,
-    inputInsertHandler,
-    setInputInsertHandler: setInputInsertHandlerCallback,
-  };
-};
-
-// AI Hook
-export interface UseAIReturn {
-  sessionId: string;
-  isLoading: boolean;
-  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
-  messages: Message[];
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
-  sendAIMessage: (recursionDepth?: number) => Promise<void>;
-  abortAIMessage: () => void;
-  resetSession: () => void;
-  totalTokens: number;
-}
-
-export const useAI = (): UseAIReturn => {
-  const { workdir, sessionToRestore } = useAppConfig();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [totalTokens, setTotalTokens] = useState(0);
-  const [sessionId, setSessionId] = useState("");
-
-  const aiManagerRef = useRef<AIManager | null>(null);
 
   // Initialize AI manager
   useEffect(() => {
@@ -227,6 +210,15 @@ export const useAI = (): UseAIReturn => {
   }, []);
 
   return {
+    // Input History
+    userInputHistory,
+    addToInputHistory,
+    clearInputHistory,
+    // Input Insert
+    insertToInput,
+    inputInsertHandler,
+    setInputInsertHandler: setInputInsertHandlerCallback,
+    // AI
     sessionId,
     isLoading,
     setIsLoading: setIsLoadingWrapper,
@@ -294,11 +286,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     return undefined;
   }, [sessionToRestore]);
 
-  // Use the Input History hook
-  const { userInputHistory, addToInputHistory, clearInputHistory } =
-    useInputHistory(initialInputHistory);
-
-  // Use the AI hook
+  // Use the combined Chat hook
   const {
     sessionId,
     isLoading,
@@ -309,7 +297,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     abortAIMessage,
     resetSession,
     totalTokens,
-  } = useAI();
+    userInputHistory,
+    addToInputHistory,
+    clearInputHistory,
+    insertToInput,
+    inputInsertHandler,
+    setInputInsertHandler,
+  } = useChatHook(initialInputHistory);
 
   // Create bash manager
   const bashManagerRef = useRef<BashManager | null>(null);
@@ -349,10 +343,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Use the Memory hook
   const memoryManager = useMemo(() => createMemoryManager(workdir), [workdir]);
-
-  // Use the Input Insert hook
-  const { insertToInput, inputInsertHandler, setInputInsertHandler } =
-    useInputInsert();
 
   const clearMessages = useCallback(() => {
     setMessages([]);
