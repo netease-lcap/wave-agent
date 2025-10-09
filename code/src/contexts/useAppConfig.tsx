@@ -1,8 +1,8 @@
 import React, { createContext, useContext } from "react";
-import type { SessionData } from "wave-agent-sdk";
 
 export interface AppConfig {
-  sessionToRestore?: SessionData | null;
+  restoreSessionId?: string;
+  continueLastSession?: boolean;
 }
 
 const AppContext = createContext<AppConfig | null>(null);
@@ -20,11 +20,12 @@ export interface AppProviderProps extends AppConfig {
 }
 
 export const AppProvider: React.FC<AppProviderProps> = ({
-  sessionToRestore,
+  restoreSessionId,
+  continueLastSession,
   children,
 }) => {
   return (
-    <AppContext.Provider value={{ sessionToRestore }}>
+    <AppContext.Provider value={{ restoreSessionId, continueLastSession }}>
       {children}
     </AppContext.Provider>
   );

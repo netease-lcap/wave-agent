@@ -1,6 +1,12 @@
 import { randomUUID } from "crypto";
 import { callAgent, compressMessages } from "./aiService.js";
-import { saveSession } from "./session.js";
+import {
+  saveSession,
+  loadSession,
+  getLatestSession,
+  cleanupExpiredSessions,
+  type SessionData,
+} from "./session.js";
 import {
   addAssistantMessageToMessages,
   addAnswerBlockToMessage,
@@ -27,6 +33,13 @@ import { BashManager } from "./bashManager.js";
 import type { Message } from "../types.js";
 import { logger } from "../utils/logger.js";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
+
+export interface AIManagerOptions {
+  callbacks: AIManagerCallbacks;
+  initialHistory?: string[];
+  restoreSessionId?: string;
+  continueLastSession?: boolean;
+}
 
 export interface AIManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
@@ -71,7 +84,10 @@ export class AIManager {
   private lastSaveTime: number = 0;
   private bashManagerRef: BashManager | null = null;
 
-  constructor(callbacks: AIManagerCallbacks, initialHistory?: string[]) {
+  // 私有构造函数，防止直接实例化
+  private constructor(options: AIManagerOptions) {
+    const { callbacks, initialHistory } = options;
+
     this.callbacks = callbacks;
     this.sessionStartTime = new Date().toISOString();
     this.state = {
@@ -92,10 +108,87 @@ export class AIManager {
     // Set up auto-save
     this.startAutoSave();
 
-    // Initialize MCP servers
-    this.initializeMcpServers();
-
     // Note: Process termination handling is now done at the CLI level
+    // Note: MCP servers and session restoration are handled in initialize()
+  }
+
+  /**
+   * 静态异步工厂方法
+   */
+  static async create(options: AIManagerOptions): Promise<AIManager> {
+    const instance = new AIManager(options);
+    await instance.initialize(
+      options.restoreSessionId,
+      options.continueLastSession,
+    );
+    return instance;
+  }
+
+  /**
+   * 私有初始化方法，处理异步初始化逻辑
+   */
+  private async initialize(
+    restoreSessionId?: string,
+    continueLastSession?: boolean,
+  ): Promise<void> {
+    // Initialize MCP servers first
+    await this.initializeMcpServers();
+
+    // Then handle session restoration
+    await this.handleSessionRestoration(restoreSessionId, continueLastSession);
+  }
+
+  /**
+   * Handle session restoration logic
+   */
+  private async handleSessionRestoration(
+    restoreSessionId?: string,
+    continueLastSession?: boolean,
+  ): Promise<void> {
+    // Clean up expired sessions first
+    try {
+      await cleanupExpiredSessions();
+    } catch (error) {
+      console.warn("Failed to cleanup expired sessions:", error);
+    }
+
+    if (!restoreSessionId && !continueLastSession) {
+      return;
+    }
+
+    try {
+      let sessionToRestore: SessionData | null = null;
+
+      if (restoreSessionId) {
+        sessionToRestore = await loadSession(restoreSessionId);
+        if (!sessionToRestore) {
+          console.error(`Session not found: ${restoreSessionId}`);
+          process.exit(1);
+        }
+      } else if (continueLastSession) {
+        sessionToRestore = await getLatestSession();
+        if (!sessionToRestore) {
+          console.error(
+            `No previous session found for workdir: ${process.cwd()}`,
+          );
+          process.exit(1);
+        }
+      }
+
+      if (sessionToRestore) {
+        console.log(`Restoring session: ${sessionToRestore.id}`);
+
+        // Initialize from session data
+        this.initializeFromSession(
+          sessionToRestore.id,
+          sessionToRestore.state.messages,
+          sessionToRestore.metadata.totalTokens,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to restore session:", error);
+      process.exit(1);
+    }
   }
 
   public getState(): AIManagerState {

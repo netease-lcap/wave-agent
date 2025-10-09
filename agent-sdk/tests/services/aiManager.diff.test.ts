@@ -6,6 +6,9 @@ import { saveSession } from "@/services/session.js";
 // Mock the session service
 vi.mock("@/services/session", () => ({
   saveSession: vi.fn(),
+  loadSession: vi.fn(() => Promise.resolve(null)),
+  getLatestSession: vi.fn(() => Promise.resolve(null)),
+  cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
 }));
 import type { Message } from "@/types.js";
 
@@ -32,7 +35,7 @@ describe("AIManager Diff Integration Tests", () => {
   let aiManager: AIManager;
   let aiServiceCallCount: number;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Mock session service
     const mockSaveSession = vi.mocked(saveSession);
     mockSaveSession.mockImplementation(vi.fn());
@@ -44,7 +47,9 @@ describe("AIManager Diff Integration Tests", () => {
     };
 
     // Create AIManager instance with required parameters
-    aiManager = new AIManager(mockCallbacks);
+    aiManager = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
 
     // Reset counters
     aiServiceCallCount = 0;

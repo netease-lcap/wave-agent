@@ -6,6 +6,9 @@ import { saveSession } from "@/services/session.js";
 // Mock the session service
 vi.mock("@/services/session", () => ({
   saveSession: vi.fn(),
+  loadSession: vi.fn(() => Promise.resolve(null)),
+  getLatestSession: vi.fn(() => Promise.resolve(null)),
+  cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
 }));
 import { Message } from "@/types.js";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
@@ -26,7 +29,7 @@ vi.mock("@/utils/memoryUtils", () => ({
 describe("AIManager Message Compression Tests", () => {
   let aiManager: AIManager;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Mock session service
     const mockSaveSession = vi.mocked(saveSession);
     mockSaveSession.mockImplementation(vi.fn());
@@ -38,7 +41,9 @@ describe("AIManager Message Compression Tests", () => {
     };
 
     // Create AIManager instance with required parameters
-    aiManager = new AIManager(mockCallbacks);
+    aiManager = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
 
     vi.clearAllMocks();
   });

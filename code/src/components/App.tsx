@@ -2,10 +2,10 @@ import React from "react";
 import { ChatInterface } from "./ChatInterface.js";
 import { ChatProvider } from "../contexts/useChat.js";
 import { AppProvider } from "../contexts/useAppConfig.js";
-import type { SessionData } from "wave-agent-sdk";
 
 interface AppProps {
-  sessionToRestore?: SessionData | null;
+  restoreSessionId?: string;
+  continueLastSession?: boolean;
 }
 
 const AppWithProviders: React.FC = () => {
@@ -16,9 +16,15 @@ const AppWithProviders: React.FC = () => {
   );
 };
 
-export const App: React.FC<AppProps> = ({ sessionToRestore }) => {
+export const App: React.FC<AppProps> = ({
+  restoreSessionId,
+  continueLastSession,
+}) => {
   return (
-    <AppProvider sessionToRestore={sessionToRestore}>
+    <AppProvider
+      restoreSessionId={restoreSessionId}
+      continueLastSession={continueLastSession}
+    >
       <AppWithProviders />
     </AppProvider>
   );

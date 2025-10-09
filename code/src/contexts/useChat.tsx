@@ -48,7 +48,7 @@ export interface ChatProviderProps {
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
-  const { sessionToRestore } = useAppConfig();
+  const { restoreSessionId, continueLastSession } = useAppConfig();
 
   // Input Insert State
   const [inputInsertHandler, setInputInsertHandler] = useState<
@@ -75,39 +75,50 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Initialize AI manager
   useEffect(() => {
-    const callbacks: AIManagerCallbacks = {
-      onMessagesChange: (newMessages) => {
-        setMessages([...newMessages]);
-      },
-      onLoadingChange: (loading) => {
-        setIsLoading(loading);
-      },
+    let isMounted = true;
+
+    const initializeAIManager = async () => {
+      const callbacks: AIManagerCallbacks = {
+        onMessagesChange: (newMessages) => {
+          if (isMounted) {
+            setMessages([...newMessages]);
+          }
+        },
+        onLoadingChange: (loading) => {
+          if (isMounted) {
+            setIsLoading(loading);
+          }
+        },
+      };
+
+      try {
+        const aiManager = await AIManager.create({
+          callbacks,
+          restoreSessionId,
+          continueLastSession,
+        });
+
+        if (isMounted) {
+          aiManagerRef.current = aiManager;
+
+          // Get initial state
+          const state = aiManager.getState();
+          setSessionId(state.sessionId);
+          setMessages(state.messages);
+          setIsLoading(state.isLoading);
+          setTotalTokens(state.totalTokens);
+        }
+      } catch (error) {
+        console.error("Failed to initialize AI manager:", error);
+      }
     };
 
-    aiManagerRef.current = new AIManager(callbacks);
+    initializeAIManager();
 
-    // Initialize from session or default state
-    if (sessionToRestore) {
-      // Restore from session data
-      aiManagerRef.current.initializeFromSession(
-        sessionToRestore.id,
-        sessionToRestore.state.messages,
-        sessionToRestore.metadata.totalTokens,
-      );
-
-      setSessionId(sessionToRestore.id);
-      setMessages(sessionToRestore.state.messages);
-      setTotalTokens(sessionToRestore.metadata.totalTokens);
-      setIsLoading(false);
-    } else {
-      // Initialize with default state
-      const state = aiManagerRef.current.getState();
-      setSessionId(state.sessionId);
-      setMessages(state.messages);
-      setIsLoading(state.isLoading);
-      setTotalTokens(state.totalTokens);
-    }
-  }, [sessionToRestore]);
+    return () => {
+      isMounted = false;
+    };
+  }, [restoreSessionId, continueLastSession]);
 
   // Update totalTokens and sessionId when messages change
   useEffect(() => {

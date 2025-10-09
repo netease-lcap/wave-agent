@@ -3,6 +3,14 @@ import { AIManager } from "@/services/aiManager.js";
 import type { Message } from "@/types.js";
 import * as aiService from "@/services/aiService.js";
 
+// Mock the session service
+vi.mock("@/services/session", () => ({
+  saveSession: vi.fn(),
+  loadSession: vi.fn(() => Promise.resolve(null)),
+  getLatestSession: vi.fn(() => Promise.resolve(null)),
+  cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
+}));
+
 // Mock the aiService module
 vi.mock("@/services/aiService");
 
@@ -42,9 +50,11 @@ describe("AIManager - No Parameters Tool Handling", () => {
     onLoadingChange: vi.fn(),
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
-    aiManager = new AIManager(mockCallbacks);
+    aiManager = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
   });
 
   afterEach(async () => {

@@ -24,6 +24,9 @@ vi.mock("@/services/fileManager", () => ({
 // Mock the session service
 vi.mock("@/services/session", () => ({
   saveSession: vi.fn().mockResolvedValue(undefined),
+  loadSession: vi.fn(() => Promise.resolve(null)),
+  getLatestSession: vi.fn(() => Promise.resolve(null)),
+  cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock the memoryUtils
@@ -82,7 +85,9 @@ describe("AIManager User Memory Integration", () => {
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = new AIManager(mockCallbacks);
+    aiManager = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
   });
 
   afterEach(async () => {
@@ -101,7 +106,9 @@ describe("AIManager User Memory Integration", () => {
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = new AIManager(mockCallbacks);
+    aiManager = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -140,7 +147,9 @@ describe("AIManager User Memory Integration", () => {
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = new AIManager(mockCallbacks);
+    aiManager = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -178,7 +187,9 @@ describe("AIManager User Memory Integration", () => {
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = new AIManager(mockCallbacks);
+    aiManager = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -216,7 +227,9 @@ describe("AIManager User Memory Integration", () => {
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = new AIManager(mockCallbacks);
+    aiManager = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -258,7 +271,9 @@ describe("AIManager User Memory Integration", () => {
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = new AIManager(mockCallbacks);
+    aiManager = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -293,11 +308,15 @@ describe("AIManager User Memory Integration", () => {
 
     // Mock process.cwd for first manager
     vi.spyOn(process, "cwd").mockReturnValue(tempDir1);
-    const aiManager1 = new AIManager(mockCallbacks);
+    const aiManager1 = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
 
     // Mock process.cwd for second manager
     vi.spyOn(process, "cwd").mockReturnValue(tempDir2);
-    const aiManager2 = new AIManager(mockCallbacks);
+    const aiManager2 = await AIManager.create({
+      callbacks: mockCallbacks,
+    });
 
     // Both managers should work independently
     expect(aiManager1).toBeInstanceOf(AIManager);

@@ -1,13 +1,6 @@
 import React from "react";
 import { render } from "ink";
 import { App } from "./components/App.js";
-import {
-  loadSession,
-  getLatestSession,
-  cleanupExpiredSessions,
-  type SessionData,
-} from "wave-agent-sdk";
-import { PathValidator } from "wave-agent-sdk";
 import { cleanupLogs } from "wave-agent-sdk";
 
 export interface CliOptions {
@@ -17,54 +10,6 @@ export interface CliOptions {
 
 export async function startCli(options: CliOptions): Promise<void> {
   const { restoreSessionId, continueLastSession } = options;
-  let sessionToRestore: SessionData | null = null;
-
-  // Handle session restoration
-  if (restoreSessionId || continueLastSession) {
-    try {
-      if (restoreSessionId) {
-        sessionToRestore = await loadSession(restoreSessionId);
-        if (!sessionToRestore) {
-          console.error(`Session not found: ${restoreSessionId}`);
-          process.exit(1);
-        }
-      } else if (continueLastSession) {
-        sessionToRestore = await getLatestSession();
-        if (!sessionToRestore) {
-          console.error(
-            `No previous session found for workdir: ${process.cwd()}`,
-          );
-          process.exit(1);
-        }
-      }
-
-      if (sessionToRestore) {
-        // Validate the session's workdir
-        const pathValidation = await PathValidator.validatePath(
-          sessionToRestore.metadata.workdir,
-        );
-
-        if (pathValidation.isValid) {
-          // Use session's workdir
-          const workdir = pathValidation.resolvedPath!;
-          console.log(`Restoring session: ${sessionToRestore.id}`);
-          console.log(`Working directory: ${workdir}`);
-        } else {
-          // Session's workdir is invalid, ask user what to do
-          console.warn(
-            `Session workdir is invalid: ${sessionToRestore.metadata.workdir}`,
-          );
-          console.warn(`Error: ${pathValidation.error}`);
-          console.log(`Using current directory instead: ${process.cwd()}`);
-
-          // Keep the current workdir but still restore session data
-        }
-      }
-    } catch (error) {
-      console.error("Failed to restore session:", error);
-      process.exit(1);
-    }
-  }
 
   // Global cleanup tracker
   let isCleaningUp = false;
@@ -77,11 +22,6 @@ export async function startCli(options: CliOptions): Promise<void> {
     console.log("\nShutting down gracefully...");
 
     try {
-      // Clean up expired sessions
-      await cleanupExpiredSessions().catch((error) => {
-        console.warn("Failed to cleanup expired sessions:", error);
-      });
-
       // Clean up old log files
       await cleanupLogs().catch((error) => {
         console.warn("Failed to cleanup old logs:", error);
@@ -118,7 +58,12 @@ export async function startCli(options: CliOptions): Promise<void> {
   });
 
   // Render the application
-  const { unmount } = render(<App sessionToRestore={sessionToRestore} />);
+  const { unmount } = render(
+    <App
+      restoreSessionId={restoreSessionId}
+      continueLastSession={continueLastSession}
+    />,
+  );
 
   // Store unmount function for cleanup when process exits normally
   process.on("exit", () => {
