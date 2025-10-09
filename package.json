@@ -14,11 +14,7 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "format": "prettier --write .",
-    "prepare": "husky",
-    "dev:code": "pnpm --filter wave-code dev",
-    "dev:agent-sdk": "pnpm --filter wave-agent-sdk dev",
-    "release:code": "pnpm --filter wave-code release",
-    "release:agent-sdk": "pnpm --filter wave-agent-sdk release"
+    "prepare": "husky"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
