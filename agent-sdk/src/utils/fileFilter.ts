@@ -135,13 +135,23 @@ const parseGitignoreFile = (
 
         // 如果是目录模式（以 / 结尾）
         if (pattern.endsWith("/")) {
-          patterns.push(`${pattern.slice(0, -1)}/**`); // 目录及其所有子内容
+          const dirName = pattern.slice(0, -1);
+          // 对于目录模式，同时添加精确匹配和通配符匹配
+          patterns.push(`${dirName}/**`); // 目录及其所有子内容
+          // 如果不包含路径分隔符，说明是简单的目录名，添加全局匹配
+          if (!dirName.includes("/") && !dirName.includes("*")) {
+            patterns.push(`**/${dirName}/**`); // 匹配任意层级的同名目录
+          }
         } else {
           // 文件模式
           patterns.push(pattern);
           // 如果没有通配符且不包含扩展名，也作为目录处理
           if (!pattern.includes("*") && !pattern.includes(".")) {
             patterns.push(`${pattern}/**`);
+            // 同样为简单目录名添加全局匹配
+            if (!pattern.includes("/")) {
+              patterns.push(`**/${pattern}/**`);
+            }
           }
         }
       }
