@@ -2,50 +2,43 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { InputBox } from "../../src/components/InputBox.js";
-import * as clipboardModule from "wave-agent-sdk";
-import * as messageOperationsModule from "wave-agent-sdk";
 import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers.js";
 
-// Mock the clipboard module
-vi.mock("wave-agent-sdk", () => ({
-  readClipboardImage: vi.fn(),
-  hasClipboardImage: vi.fn(),
-  cleanupTempImage: vi.fn(),
-}));
-
-// Mock the messageOperations module
+// Mock the wave-agent-sdk module
 vi.mock("wave-agent-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("wave-agent-sdk")>();
   return {
     ...actual,
+    readClipboardImage: vi.fn(),
+    hasClipboardImage: vi.fn(),
+    cleanupTempImage: vi.fn(),
     addUserMessageToMessages: vi.fn(),
     convertImageToBase64: vi.fn(),
   };
 });
 
-const mockClipboard = clipboardModule as typeof clipboardModule & {
-  readClipboardImage: ReturnType<typeof vi.fn>;
-  hasClipboardImage: ReturnType<typeof vi.fn>;
-  cleanupTempImage: ReturnType<typeof vi.fn>;
-};
+// Import the mocked module functions
+import {
+  readClipboardImage,
+  convertImageToBase64,
+  addUserMessageToMessages,
+} from "wave-agent-sdk";
 
-const mockMessageOperations =
-  messageOperationsModule as typeof messageOperationsModule & {
-    convertImageToBase64: ReturnType<typeof vi.fn>;
-    addUserMessageToMessages: ReturnType<typeof vi.fn>;
-  };
+const mockReadClipboardImage = vi.mocked(readClipboardImage);
+const mockConvertImageToBase64 = vi.mocked(convertImageToBase64);
+const mockAddUserMessageToMessages = vi.mocked(addUserMessageToMessages);
 
 describe("InputBox Image Paste", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
     // Mock convertImageToBase64 to return a mock base64 string
-    mockMessageOperations.convertImageToBase64.mockReturnValue(
+    mockConvertImageToBase64.mockReturnValue(
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
     );
 
     // Mock addUserMessageToMessages to return messages array
-    mockMessageOperations.addUserMessageToMessages.mockReturnValue([]);
+    mockAddUserMessageToMessages.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -54,7 +47,7 @@ describe("InputBox Image Paste", () => {
 
   it("should display pasted image placeholder", async () => {
     // Mock successful image read
-    mockClipboard.readClipboardImage.mockResolvedValue({
+    mockReadClipboardImage.mockResolvedValue({
       success: true,
       imagePath: "/tmp/test-image.png",
       mimeType: "image/png",
@@ -74,7 +67,7 @@ describe("InputBox Image Paste", () => {
 
   it("should show image placeholder in input when image is pasted", async () => {
     // Mock successful image read
-    mockClipboard.readClipboardImage.mockResolvedValue({
+    mockReadClipboardImage.mockResolvedValue({
       success: true,
       imagePath: "/tmp/test-image.png",
       mimeType: "image/png",
@@ -96,7 +89,7 @@ describe("InputBox Image Paste", () => {
 
   it("should handle multiple pasted images", async () => {
     // Mock successful image reads
-    mockClipboard.readClipboardImage
+    mockReadClipboardImage
       .mockResolvedValueOnce({
         success: true,
         imagePath: "/tmp/test-image1.png",
@@ -125,7 +118,7 @@ describe("InputBox Image Paste", () => {
 
   it("should handle failed image paste gracefully", async () => {
     // Mock failed image read
-    mockClipboard.readClipboardImage.mockResolvedValue({
+    mockReadClipboardImage.mockResolvedValue({
       success: false,
       error: "No image found in clipboard",
     });
@@ -146,7 +139,7 @@ describe("InputBox Image Paste", () => {
 
   it("should clear images after message is sent", async () => {
     // Mock successful image read
-    mockClipboard.readClipboardImage.mockResolvedValue({
+    mockReadClipboardImage.mockResolvedValue({
       success: true,
       imagePath: "/tmp/test-image.png",
       mimeType: "image/png",
@@ -177,7 +170,7 @@ describe("InputBox Image Paste", () => {
 
   it("should allow sending message with only image (no text)", async () => {
     // Mock successful image read
-    mockClipboard.readClipboardImage.mockResolvedValue({
+    mockReadClipboardImage.mockResolvedValue({
       success: true,
       imagePath: "/tmp/test-image.png",
       mimeType: "image/png",

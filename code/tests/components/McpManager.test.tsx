@@ -4,18 +4,22 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { McpManager } from "../../src/components/McpManager.js";
 import { McpConfig, mcpManager } from "wave-agent-sdk";
 
-// Mock the mcpManager
-vi.mock("../../src/services/mcpManager", () => ({
-  mcpManager: {
-    loadConfig: vi.fn(),
-    ensureConfigLoaded: vi.fn(),
-    getConfig: vi.fn(),
-    getAllServers: vi.fn(),
-    connectServer: vi.fn(),
-    disconnectServer: vi.fn(),
-    reconnectServer: vi.fn(),
-  },
-}));
+// Mock the wave-agent-sdk module
+vi.mock("wave-agent-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("wave-agent-sdk")>();
+  return {
+    ...actual,
+    mcpManager: {
+      loadConfig: vi.fn(),
+      ensureConfigLoaded: vi.fn(),
+      getConfig: vi.fn(),
+      getAllServers: vi.fn(),
+      connectServer: vi.fn(),
+      disconnectServer: vi.fn(),
+      reconnectServer: vi.fn(),
+    },
+  };
+});
 
 const mockServers = [
   {

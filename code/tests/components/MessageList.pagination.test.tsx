@@ -21,7 +21,7 @@ vi.mock("../../src/hooks/useLoadingTimer", () => ({
 }));
 
 // Mock the constants module BEFORE any imports - only override MESSAGES_PER_PAGE
-vi.mock("@/utils/constants", async (importOriginal) => {
+vi.mock("wave-agent-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("wave-agent-sdk")>();
   return {
     ...actual,

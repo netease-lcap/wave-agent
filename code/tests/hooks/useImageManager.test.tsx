@@ -7,9 +7,13 @@ import type { ClipboardImageResult } from "wave-agent-sdk";
 
 // Mock the clipboard utils with proper hoisting
 const mockReadClipboardImage = vi.hoisted(() => vi.fn());
-vi.mock("@/utils/clipboard", () => ({
-  readClipboardImage: mockReadClipboardImage,
-}));
+vi.mock("wave-agent-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("wave-agent-sdk")>();
+  return {
+    ...actual,
+    readClipboardImage: mockReadClipboardImage,
+  };
+});
 
 describe("useImageManager Hook", () => {
   const mockInsertTextAtCursor = vi.fn();
