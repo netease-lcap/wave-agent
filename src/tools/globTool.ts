@@ -1,8 +1,8 @@
 import { glob } from "glob";
 import { stat } from "fs/promises";
-import type { ToolPlugin, ToolResult } from "./types";
-import { resolvePath, getDisplayPath } from "../utils/path";
-import { getGlobIgnorePatterns } from "../utils/fileFilter";
+import type { ToolPlugin, ToolResult } from "./types.js";
+import { resolvePath, getDisplayPath } from "../utils/path.js";
+import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
 
 /**
  * Glob 工具插件 - 快速文件模式匹配

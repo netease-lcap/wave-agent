@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { cleanupLogs, getLogFile } from "@/utils/logger";
+import { cleanupLogs, getLogFile } from "@/utils/logger.js";
 
 // Mock the fs module
 vi.mock("fs", async (importOriginal) => {

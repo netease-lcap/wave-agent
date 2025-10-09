@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from "child_process";
-import type { Message } from "../types";
-import { addBashCommandToHistory } from "../utils/bashHistory";
+import type { Message } from "../types.js";
+import { addBashCommandToHistory } from "../utils/bashHistory.js";
 import {
   addCommandOutputMessage,
   updateCommandOutputInMessage,
   completeCommandInMessage,
-} from "../utils/messageOperations";
+} from "../utils/messageOperations.js";
 
 export interface BashManagerOptions {
   onMessagesUpdate: (updater: (prev: Message[]) => Message[]) => void;

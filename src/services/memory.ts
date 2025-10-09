@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { logger } from "../utils/logger";
-import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants";
+import { logger } from "../utils/logger.js";
+import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
 
 // 项目内存相关方法
 export const isMemoryMessage = (message: string): boolean => {

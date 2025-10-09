@@ -20,8 +20,8 @@ import {
   cleanupExpiredSessions,
   sessionExists,
   type SessionData,
-} from "@/services/session";
-import type { Message } from "@/types";
+} from "@/services/session.js";
+import type { Message } from "@/types.js";
 
 // Mock fs and os modules
 vi.mock("fs", () => ({

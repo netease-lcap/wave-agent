@@ -4,8 +4,8 @@
  */
 
 import fs from "fs";
-import { BASH_HISTORY_FILE, DATA_DIRECTORY } from "./constants";
-import { logger } from "./logger";
+import { BASH_HISTORY_FILE, DATA_DIRECTORY } from "./constants.js";
+import { logger } from "./logger.js";
 
 export interface BashHistoryEntry {
   command: string;

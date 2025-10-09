@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { resolvePath, getDisplayPath } from "../../src/utils/path";
+import { resolvePath, getDisplayPath } from "../../src/utils/path.js";
 import { homedir } from "os";
 import { resolve } from "path";
 

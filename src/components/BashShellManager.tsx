@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { backgroundBashManager } from "../tools/bashTool";
+import { backgroundBashManager } from "../tools/bashTool.js";
 
 interface BashShell {
   id: string;

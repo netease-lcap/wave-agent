@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AIManager } from "@/services/aiManager";
-import * as aiService from "@/services/aiService";
-import { saveSession } from "@/services/session";
+import { AIManager } from "@/services/aiManager.js";
+import * as aiService from "@/services/aiService.js";
+import { saveSession } from "@/services/session.js";
 
 // Mock the session service
 vi.mock("@/services/session", () => ({
   saveSession: vi.fn(),
 }));
-import { Message } from "@/types";
-import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
+import { Message } from "@/types.js";
+import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
 
 // Mock AI Service

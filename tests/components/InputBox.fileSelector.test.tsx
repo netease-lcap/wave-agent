@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { render } from "ink-testing-library";
-import { InputBox } from "@/components/InputBox";
+import { InputBox } from "@/components/InputBox.js";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";

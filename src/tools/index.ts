@@ -3,18 +3,18 @@ import type {
   ToolPlugin,
   ToolRegistry,
   ToolResult,
-} from "./types";
-import { bashTool, bashOutputTool, killBashTool } from "./bashTool";
-import { deleteFileTool } from "./deleteFileTool";
-import { editTool } from "./editTool";
-import { multiEditTool } from "./multiEditTool";
-import { writeTool } from "./writeTool";
+} from "./types.js";
+import { bashTool, bashOutputTool, killBashTool } from "./bashTool.js";
+import { deleteFileTool } from "./deleteFileTool.js";
+import { editTool } from "./editTool.js";
+import { multiEditTool } from "./multiEditTool.js";
+import { writeTool } from "./writeTool.js";
 // 新的工具
-import { globTool } from "./globTool";
-import { grepTool } from "./grepTool";
-import { lsTool } from "./lsTool";
-import { readTool } from "./readTool";
-import { mcpManager } from "../services/mcpManager";
+import { globTool } from "./globTool.js";
+import { grepTool } from "./grepTool.js";
+import { lsTool } from "./lsTool.js";
+import { readTool } from "./readTool.js";
+import { mcpManager } from "../services/mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 /**
  * 工具注册中心
@@ -88,4 +88,4 @@ toolRegistry.register(lsTool);
 toolRegistry.register(readTool);
 
 // 导出类型
-export type { ToolPlugin, ToolResult, ToolRegistry } from "./types";
+export type { ToolPlugin, ToolResult, ToolRegistry } from "./types.js";

@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
-import { callAgent, compressMessages } from "./aiService";
-import { saveSession } from "./session";
+import { callAgent, compressMessages } from "./aiService.js";
+import { saveSession } from "./session.js";
 import {
   addAssistantMessageToMessages,
   addAnswerBlockToMessage,
@@ -13,19 +13,19 @@ import {
   getMessagesToCompress,
   addUserMessageToMessages,
   extractUserInputHistory,
-} from "../utils/messageOperations";
-import { toolRegistry } from "../tools";
-import type { ToolContext } from "../tools/types";
-import { convertMessagesForAPI } from "../utils/convertMessagesForAPI";
-import { saveErrorLog } from "../utils/errorLogger";
-import { readMemoryFile } from "../utils/memoryUtils";
-import * as memory from "./memory";
-import { addMemoryBlockToMessage } from "../utils/messageOperations";
-import { mcpManager } from "./mcpManager";
-import { BashManager } from "./bashManager";
-import type { Message } from "../types";
-import { logger } from "../utils/logger";
-import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants";
+} from "../utils/messageOperations.js";
+import { toolRegistry } from "../tools/index.js";
+import type { ToolContext } from "../tools/types.js";
+import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
+import { saveErrorLog } from "../utils/errorLogger.js";
+import { readMemoryFile } from "../utils/memoryUtils.js";
+import * as memory from "./memory.js";
+import { addMemoryBlockToMessage } from "../utils/messageOperations.js";
+import { mcpManager } from "./mcpManager.js";
+import { BashManager } from "./bashManager.js";
+import type { Message } from "../types.js";
+import { logger } from "../utils/logger.js";
+import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 
 export interface AIManagerCallbacks {
   onMessagesChange: (messages: Message[]) => void;

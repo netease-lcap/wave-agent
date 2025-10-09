@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { compressMessages } from "@/services/aiService";
-import { addCompressBlockToMessage } from "@/utils/messageOperations";
-import { convertMessagesForAPI } from "@/utils/convertMessagesForAPI";
-import type { Message } from "@/types";
+import { compressMessages } from "@/services/aiService.js";
+import { addCompressBlockToMessage } from "@/utils/messageOperations.js";
+import { convertMessagesForAPI } from "@/utils/convertMessagesForAPI.js";
+import type { Message } from "@/types.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
 
 // Mock dependencies

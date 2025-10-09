@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { generateCommitMessage } from "../services/aiService";
-import { logger } from "../utils/logger";
-import { getGitDiff } from "../utils/gitUtils";
+import { generateCommitMessage } from "../services/aiService.js";
+import { logger } from "../utils/logger.js";
+import { getGitDiff } from "../utils/gitUtils.js";
 
 export interface Command {
   name: string;

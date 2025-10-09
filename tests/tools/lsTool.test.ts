@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { lsTool } from "@/tools/lsTool";
+import { lsTool } from "@/tools/lsTool.js";
 import { mkdtemp, writeFile, mkdir, symlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";

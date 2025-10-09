@@ -1,8 +1,8 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { HookTester, HookTesterRef } from "../helpers/HookTester";
-import { useLoadingTimer } from "@/hooks/useLoadingTimer";
+import { HookTester, HookTesterRef } from "../helpers/HookTester.js";
+import { useLoadingTimer } from "@/hooks/useLoadingTimer.js";
 
 // Mock timers
 let mockSetInterval: ReturnType<typeof vi.fn>;

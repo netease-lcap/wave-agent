@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
-import { InputBox, INPUT_PLACEHOLDER_TEXT_PREFIX } from "@/components/InputBox";
-import { waitForText } from "../helpers/waitHelpers";
+import {
+  InputBox,
+  INPUT_PLACEHOLDER_TEXT_PREFIX,
+} from "@/components/InputBox.js";
+import { waitForText } from "../helpers/waitHelpers.js";
 
 // 延迟函数
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

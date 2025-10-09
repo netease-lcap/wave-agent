@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { grepTool } from "@/tools/grepTool";
+import { grepTool } from "@/tools/grepTool.js";
 import { mkdtemp, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";

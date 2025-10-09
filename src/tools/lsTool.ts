@@ -1,8 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
 import { minimatch } from "minimatch";
-import type { ToolPlugin, ToolResult } from "./types";
-import { isBinary, getDisplayPath } from "@/utils/path";
+import type { ToolPlugin, ToolResult } from "./types.js";
+import { isBinary, getDisplayPath } from "@/utils/path.js";
 
 /**
  * LS 工具插件 - 列出文件和目录

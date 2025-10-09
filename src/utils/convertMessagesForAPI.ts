@@ -1,8 +1,8 @@
-import type { Message } from "../types";
-import { convertImageToBase64 } from "./messageOperations";
-import { logger } from "./logger";
+import type { Message } from "../types.js";
+import { convertImageToBase64 } from "./messageOperations.js";
+import { logger } from "./logger.js";
 import { ChatCompletionMessageToolCall } from "openai/resources";
-import { stripAnsiColors } from "./stringUtils";
+import { stripAnsiColors } from "./stringUtils.js";
 import {
   ChatCompletionContentPart,
   ChatCompletionMessageParam,

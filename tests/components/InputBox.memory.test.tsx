@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
-import { InputBox } from "@/components/InputBox";
-import { waitForText } from "../helpers/waitHelpers";
+import { InputBox } from "@/components/InputBox.js";
+import { waitForText } from "../helpers/waitHelpers.js";
 
 // 延迟函数
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

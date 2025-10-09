@@ -1,6 +1,6 @@
-import { AIManager, type AIManagerCallbacks } from "@/services/aiManager";
-import { addUserMessageToMessages } from "@/utils/messageOperations";
-import type { Message } from "@/types";
+import { AIManager, type AIManagerCallbacks } from "@/services/aiManager.js";
+import { addUserMessageToMessages } from "@/utils/messageOperations.js";
+import type { Message } from "@/types.js";
 
 function extractLatestAssistantText(messages: Message[]): string | null {
   for (let i = messages.length - 1; i >= 0; i--) {

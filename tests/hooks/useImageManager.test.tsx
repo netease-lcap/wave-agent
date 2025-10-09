@@ -1,9 +1,9 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { HookTester, HookTesterRef } from "../helpers/HookTester";
-import { useImageManager } from "@/hooks/useImageManager";
-import type { ClipboardImageResult } from "@/utils/clipboard";
+import { HookTester, HookTesterRef } from "../helpers/HookTester.js";
+import { useImageManager } from "@/hooks/useImageManager.js";
+import type { ClipboardImageResult } from "@/utils/clipboard.js";
 
 // Mock the clipboard utils with proper hoisting
 const mockReadClipboardImage = vi.hoisted(() => vi.fn());

@@ -4,8 +4,8 @@ import {
   bashOutputTool,
   killBashTool,
   backgroundBashManager,
-} from "../../src/tools/bashTool";
-import type { ToolContext } from "../../src/tools/types";
+} from "../../src/tools/bashTool.js";
+import type { ToolContext } from "../../src/tools/types.js";
 import type { ChildProcess } from "child_process";
 
 // Mock child_process

@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 
 /**
  * 读取LCAP.md记忆文件内容

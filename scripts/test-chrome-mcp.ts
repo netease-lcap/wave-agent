@@ -1,9 +1,12 @@
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import { AIManager, type AIManagerCallbacks } from "../src/services/aiManager";
-import { addUserMessageToMessages } from "../src/utils/messageOperations";
-import type { Message } from "../src/types";
+import {
+  AIManager,
+  type AIManagerCallbacks,
+} from "../src/services/aiManager.js";
+import { addUserMessageToMessages } from "../src/utils/messageOperations.js";
+import type { Message } from "../src/types.js";
 
 async function testChromeScreenshot() {
   console.log("🌐 Testing Chrome MCP screenshot functionality...\n");

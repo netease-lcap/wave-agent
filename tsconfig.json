@@ -5,15 +5,14 @@
     "declaration": true,
     "declarationMap": true,
     "jsx": "react-jsx",
-    "moduleResolution": "bundler",
+    "moduleResolution": "nodenext",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": true,
     "target": "ES2020",
-    "module": "ESNext",
+    "module": "NodeNext",
     "lib": ["ES2020", "DOM"],
-    "types": ["vitest/globals"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]

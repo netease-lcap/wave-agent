@@ -3,7 +3,7 @@ import {
   readClipboardImage,
   hasClipboardImage,
   cleanupTempImage,
-} from "@/utils/clipboard";
+} from "@/utils/clipboard.js";
 
 // Mock all the dependencies - use vi.hoisted for proper hoisting
 const mockExec = vi.hoisted(() => vi.fn());

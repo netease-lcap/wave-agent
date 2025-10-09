@@ -1,8 +1,8 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { McpManager } from "../../src/components/McpManager";
-import { McpConfig, mcpManager } from "../../src/services/mcpManager";
+import { McpManager } from "../../src/components/McpManager.js";
+import { McpConfig, mcpManager } from "../../src/services/mcpManager.js";
 
 // Mock the mcpManager
 vi.mock("../../src/services/mcpManager", () => ({

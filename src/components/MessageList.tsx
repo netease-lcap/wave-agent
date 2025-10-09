@@ -1,14 +1,14 @@
 import React, { useState, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
-import type { Message } from "../types";
-import { DiffViewer } from "./DiffViewer";
-import { CommandOutputDisplay } from "./CommandOutputDisplay";
-import { ToolResultDisplay } from "./ToolResultDisplay";
-import { MemoryDisplay } from "./MemoryDisplay";
-import { usePagination } from "../hooks/usePagination";
-import { processMessageGroups } from "../utils/messageGrouping";
-import { useLoadingTimer } from "../hooks/useLoadingTimer";
-import { useChat } from "../contexts/useChat";
+import type { Message } from "../types.js";
+import { DiffViewer } from "./DiffViewer.js";
+import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
+import { ToolResultDisplay } from "./ToolResultDisplay.js";
+import { MemoryDisplay } from "./MemoryDisplay.js";
+import { usePagination } from "../hooks/usePagination.js";
+import { processMessageGroups } from "../utils/messageGrouping.js";
+import { useLoadingTimer } from "../hooks/useLoadingTimer.js";
+import { useChat } from "../contexts/useChat.js";
 
 // 渲染单个消息的函数
 const renderMessageItem = (

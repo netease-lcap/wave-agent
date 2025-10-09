@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { writeTool } from "@/tools/writeTool";
+import { writeTool } from "@/tools/writeTool.js";
 import { readFile, writeFile, mkdir } from "fs/promises";
-import type { ToolContext } from "@/tools/types";
+import type { ToolContext } from "@/tools/types.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({

@@ -1,12 +1,12 @@
-import { toolRegistry } from "../tools";
-import { logger } from "@/utils/logger";
+import { toolRegistry } from "../tools/index.js";
+import { logger } from "@/utils/logger.js";
 import OpenAI from "openai";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionMessageParam,
 } from "openai/resources.js";
-import { FAST_MODEL_ID, AGENT_MODEL_ID } from "@/utils/constants";
+import { FAST_MODEL_ID, AGENT_MODEL_ID } from "@/utils/constants.js";
 
 /**
  * 模型配置类型，基于 OpenAI 的参数但排除 messages

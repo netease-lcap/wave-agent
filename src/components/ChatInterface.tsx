@@ -1,9 +1,9 @@
 import React from "react";
 import { Box, useStdin } from "ink";
-import { MessageList } from "./MessageList";
-import { InputBox } from "./InputBox";
-import { NonRawInput } from "./NonRawInput";
-import { useChat } from "../contexts/useChat";
+import { MessageList } from "./MessageList.js";
+import { InputBox } from "./InputBox.js";
+import { NonRawInput } from "./NonRawInput.js";
+import { useChat } from "../contexts/useChat.js";
 
 export const ChatInterface: React.FC = () => {
   const {

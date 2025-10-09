@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import path from "path";
-import { logger } from "./logger";
-import { ERROR_LOG_DIRECTORY } from "./constants";
+import { logger } from "./logger.js";
+import { ERROR_LOG_DIRECTORY } from "./constants.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
 
 /**

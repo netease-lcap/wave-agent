@@ -1,8 +1,8 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ToolResultDisplay } from "@/components/ToolResultDisplay";
-import type { ToolBlock } from "@/types";
+import { ToolResultDisplay } from "@/components/ToolResultDisplay.js";
+import type { ToolBlock } from "@/types.js";
 
 // Mock toolRegistry - no longer needed since we removed display fields
 vi.mock("@/tools", () => ({

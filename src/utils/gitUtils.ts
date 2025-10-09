@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { limitGitDiff } from "./diffUtils";
+import { limitGitDiff } from "./diffUtils.js";
 
 /**
  * 获取 git diff (包括未跟踪的文件)

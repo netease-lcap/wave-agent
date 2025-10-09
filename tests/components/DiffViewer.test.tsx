@@ -1,8 +1,8 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect } from "vitest";
-import { DiffViewer } from "@/components/DiffViewer";
-import type { DiffBlock } from "@/types";
+import { DiffViewer } from "@/components/DiffViewer.js";
+import type { DiffBlock } from "@/types.js";
 
 describe("DiffViewer", () => {
   const createLargeDiffBlock = (): DiffBlock => {

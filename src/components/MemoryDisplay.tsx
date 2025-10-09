@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { MemoryBlock } from "../types";
+import type { MemoryBlock } from "../types.js";
 
 interface MemoryDisplayProps {
   block: MemoryBlock;

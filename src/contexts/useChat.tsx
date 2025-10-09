@@ -6,9 +6,9 @@ import React, {
   useEffect,
   useState,
 } from "react";
-import { useAppConfig } from "./useAppConfig";
-import type { Message } from "../types";
-import { AIManager, AIManagerCallbacks } from "../services/aiManager";
+import { useAppConfig } from "./useAppConfig.js";
+import type { Message } from "../types.js";
+import { AIManager, AIManagerCallbacks } from "../services/aiManager.js";
 
 // Main Chat Context
 export interface ChatContextType {

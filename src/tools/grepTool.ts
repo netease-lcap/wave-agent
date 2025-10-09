@@ -1,8 +1,8 @@
-import type { ToolPlugin, ToolResult } from "./types";
+import type { ToolPlugin, ToolResult } from "./types.js";
 import { spawn } from "child_process";
-import { getGlobIgnorePatterns } from "../utils/fileFilter";
+import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
 import { rgPath } from "@vscode/ripgrep";
-import { getDisplayPath } from "../utils/path";
+import { getDisplayPath } from "../utils/path.js";
 
 /**
  * Grep 工具插件 - 基于 ripgrep 的强大搜索工具

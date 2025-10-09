@@ -1,8 +1,8 @@
 import React from "react";
-import { ChatInterface } from "./ChatInterface";
-import { ChatProvider } from "../contexts/useChat";
-import { AppProvider } from "../contexts/useAppConfig";
-import type { SessionData } from "../services/session";
+import { ChatInterface } from "./ChatInterface.js";
+import { ChatProvider } from "../contexts/useChat.js";
+import { AppProvider } from "../contexts/useAppConfig.js";
+import type { SessionData } from "../services/session.js";
 
 interface AppProps {
   sessionToRestore?: SessionData | null;

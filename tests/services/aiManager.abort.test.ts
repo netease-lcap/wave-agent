@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AIManager } from "@/services/aiManager";
-import * as aiService from "@/services/aiService";
-import { saveSession } from "@/services/session";
+import { AIManager } from "@/services/aiManager.js";
+import * as aiService from "@/services/aiService.js";
+import { saveSession } from "@/services/session.js";
 
 // Mock the session service
 vi.mock("@/services/session", () => ({
   saveSession: vi.fn(),
 }));
-import type { Message, ErrorBlock } from "@/types";
+import type { Message, ErrorBlock } from "@/types.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -117,7 +117,7 @@ describe("AIManager - Abort Handling", () => {
 
   it("should show JSON parse error when not aborted but has malformed JSON", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools");
+    const { toolRegistry } = await import("@/tools/index.js");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     // Mock tool execute - should not be called due to JSON parse error
@@ -206,7 +206,7 @@ describe("AIManager - Abort Handling", () => {
 
   it("should abort gracefully without executing tools when interrupted during streaming", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools");
+    const { toolRegistry } = await import("@/tools/index.js");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     // Setup initial messages

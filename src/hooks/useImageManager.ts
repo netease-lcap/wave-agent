@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { readClipboardImage } from "../utils/clipboard";
+import { readClipboardImage } from "../utils/clipboard.js";
 
 export interface AttachedImage {
   id: number;

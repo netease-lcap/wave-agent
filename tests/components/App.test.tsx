@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect } from "vitest";
-import { App } from "@/components/App";
+import { App } from "@/components/App.js";
 
 describe("App Component", () => {
   it("should render the main interface with file count", () => {

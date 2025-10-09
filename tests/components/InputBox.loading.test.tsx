@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect } from "vitest";
-import { InputBox } from "@/components/InputBox";
+import { InputBox } from "@/components/InputBox.js";
 
 describe("InputBox Loading State", () => {
   it("should show normal placeholder when not loading", async () => {

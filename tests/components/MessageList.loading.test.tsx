@@ -1,8 +1,8 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { MessageList } from "@/components/MessageList";
-import type { Message } from "@/types";
+import { MessageList } from "@/components/MessageList.js";
+import type { Message } from "@/types.js";
 
 // Mock useChat hook with factory function
 vi.mock("@/contexts/useChat", () => ({
@@ -34,7 +34,7 @@ describe("MessageList Loading State", () => {
   });
 
   it("should show loading message when AI is thinking", async () => {
-    const { useChat } = await import("@/contexts/useChat");
+    const { useChat } = await import("@/contexts/useChat.js");
     (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
       isLoading: true,
       isCommandRunning: false,
@@ -60,7 +60,7 @@ describe("MessageList Loading State", () => {
   });
 
   it("should show command running message when command is running", async () => {
-    const { useChat } = await import("@/contexts/useChat");
+    const { useChat } = await import("@/contexts/useChat.js");
     (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
       isLoading: false,
       isCommandRunning: true,
@@ -84,7 +84,7 @@ describe("MessageList Loading State", () => {
   });
 
   it("should display messages normally when not loading", async () => {
-    const { useChat } = await import("@/contexts/useChat");
+    const { useChat } = await import("@/contexts/useChat.js");
     (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
       isLoading: false,
       isCommandRunning: false,
@@ -109,7 +109,7 @@ describe("MessageList Loading State", () => {
   });
 
   it("should display welcome message only when no messages and not loading", async () => {
-    const { useChat } = await import("@/contexts/useChat");
+    const { useChat } = await import("@/contexts/useChat.js");
     (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
       isLoading: false,
       isCommandRunning: false,

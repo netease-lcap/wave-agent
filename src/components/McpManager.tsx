@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { mcpManager, McpServerStatus } from "../services/mcpManager";
+import { mcpManager, McpServerStatus } from "../services/mcpManager.js";
 
 export interface McpManagerProps {
   onCancel: () => void;

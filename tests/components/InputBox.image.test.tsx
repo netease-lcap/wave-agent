@@ -1,10 +1,10 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { InputBox } from "@/components/InputBox";
-import * as clipboardModule from "@/utils/clipboard";
-import * as messageOperationsModule from "@/utils/messageOperations";
-import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers";
+import { InputBox } from "@/components/InputBox.js";
+import * as clipboardModule from "@/utils/clipboard.js";
+import * as messageOperationsModule from "@/utils/messageOperations.js";
+import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers.js";
 
 // Mock the clipboard module
 vi.mock("@/utils/clipboard", () => ({
@@ -16,7 +16,7 @@ vi.mock("@/utils/clipboard", () => ({
 // Mock the messageOperations module
 vi.mock("@/utils/messageOperations", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/utils/messageOperations")>();
+    await importOriginal<typeof import("@/utils/messageOperations.js")>();
   return {
     ...actual,
     addUserMessageToMessages: vi.fn(),

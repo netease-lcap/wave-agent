@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
-import * as memory from "@/services/memory";
+import * as memory from "@/services/memory.js";
 
 // Mock the logger
 vi.mock("@/utils/logger", () => ({

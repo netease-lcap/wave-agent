@@ -1,10 +1,10 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { App } from "../src/components/App";
+import { App } from "../src/components/App.js";
 import {
   waitForText,
   waitForTextToDisappear,
-} from "../tests/helpers/waitHelpers";
+} from "../tests/helpers/waitHelpers.js";
 
 // 延迟函数，作为 waitHelper 的补充
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

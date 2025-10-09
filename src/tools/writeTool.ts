@@ -1,8 +1,8 @@
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { dirname } from "path";
-import type { ToolPlugin, ToolResult } from "./types";
-import { logger } from "../utils/logger";
-import { resolvePath, getDisplayPath } from "../utils/path";
+import type { ToolPlugin, ToolResult } from "./types.js";
+import { logger } from "../utils/logger.js";
+import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { diffLines } from "diff";
 
 /**

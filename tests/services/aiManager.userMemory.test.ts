@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { AIManager } from "@/services/aiManager";
-import type { AIManagerCallbacks } from "@/services/aiManager";
+import { AIManager } from "@/services/aiManager.js";
+import type { AIManagerCallbacks } from "@/services/aiManager.js";
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
@@ -63,9 +63,9 @@ describe("AIManager User Memory Integration", () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "aimanager-test-"));
 
     // Get mock references after module imports
-    const { callAgent } = await import("@/services/aiService");
-    const { readMemoryFile } = await import("@/utils/memoryUtils");
-    const memory = await import("@/services/memory");
+    const { callAgent } = await import("@/services/aiService.js");
+    const { readMemoryFile } = await import("@/utils/memoryUtils.js");
+    const memory = await import("@/services/memory.js");
 
     mockCallAgent = vi.mocked(callAgent);
     mockReadMemoryFile = vi.mocked(readMemoryFile);

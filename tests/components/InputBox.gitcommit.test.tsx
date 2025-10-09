@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
-import { InputBox } from "@/components/InputBox";
-import * as gitUtils from "@/utils/gitUtils";
-import * as aiService from "@/services/aiService";
-import { waitForText } from "../helpers/waitHelpers";
+import { InputBox } from "@/components/InputBox.js";
+import * as gitUtils from "@/utils/gitUtils.js";
+import * as aiService from "@/services/aiService.js";
+import { waitForText } from "../helpers/waitHelpers.js";
 
 // Mock git utils and AI service
 vi.mock("@/utils/gitUtils");

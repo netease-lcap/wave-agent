@@ -1,8 +1,8 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { MessageList } from "@/components/MessageList";
-import type { Message } from "@/types";
+import { MessageList } from "@/components/MessageList.js";
+import type { Message } from "@/types.js";
 
 // Mock useChat hook
 vi.mock("@/contexts/useChat", () => ({
@@ -22,7 +22,7 @@ vi.mock("@/hooks/useLoadingTimer", () => ({
 
 // Mock the constants module BEFORE any imports - only override MESSAGES_PER_PAGE
 vi.mock("@/utils/constants", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/utils/constants")>();
+  const actual = await importOriginal<typeof import("@/utils/constants.js")>();
   return {
     ...actual,
     MESSAGES_PER_PAGE: 10, // Override only this value for testing

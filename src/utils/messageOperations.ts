@@ -1,7 +1,7 @@
-import type { Message } from "../types";
+import type { Message } from "../types.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
-import { logger } from "./logger";
+import { logger } from "./logger.js";
 
 /**
  * 从 messages 数组中提取用户消息的文本内容

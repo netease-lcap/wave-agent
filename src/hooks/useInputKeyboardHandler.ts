@@ -1,6 +1,6 @@
 import { useCallback, useRef, useEffect } from "react";
 import { useInput, Key } from "ink";
-import { logger } from "@/utils/logger";
+import { logger } from "@/utils/logger.js";
 
 interface KeyboardHandlerProps {
   inputText: string;

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import type { CommandOutputBlock } from "../types";
-import { useChat } from "../contexts/useChat";
-import { stripAnsiColors } from "../utils/stringUtils";
+import type { CommandOutputBlock } from "../types.js";
+import { useChat } from "../contexts/useChat.js";
+import { stripAnsiColors } from "../utils/stringUtils.js";
 
 interface CommandOutputDisplayProps {
   block: CommandOutputBlock;

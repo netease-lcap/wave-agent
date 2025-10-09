@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "ink-testing-library";
-import { ToolResultDisplay } from "@/components/ToolResultDisplay";
-import type { ToolBlock } from "@/types";
+import { ToolResultDisplay } from "@/components/ToolResultDisplay.js";
+import type { ToolBlock } from "@/types.js";
 
 // Mock toolRegistry
 vi.mock("@/tools", () => ({

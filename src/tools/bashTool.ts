@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from "child_process";
-import type { ToolPlugin, ToolResult, ToolContext } from "./types";
-import { logger } from "../utils/logger";
+import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
+import { logger } from "../utils/logger.js";
 
 // Background bash shell management
 interface BackgroundShell {

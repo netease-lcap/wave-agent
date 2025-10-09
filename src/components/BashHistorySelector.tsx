@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { searchBashHistory, type BashHistoryEntry } from "../utils/bashHistory";
-import { logger } from "../utils/logger";
+import {
+  searchBashHistory,
+  type BashHistoryEntry,
+} from "../utils/bashHistory.js";
+import { logger } from "../utils/logger.js";
 
 export interface BashHistorySelectorProps {
   searchQuery: string;

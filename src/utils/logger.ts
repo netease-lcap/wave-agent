@@ -9,7 +9,7 @@
  */
 
 import * as fs from "fs";
-import { LOG_FILE, DATA_DIRECTORY } from "./constants";
+import { LOG_FILE, DATA_DIRECTORY } from "./constants.js";
 
 const logFile = process.env.LOG_FILE || LOG_FILE;
 

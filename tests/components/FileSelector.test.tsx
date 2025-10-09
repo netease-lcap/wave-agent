@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi } from "vitest";
-import { FileSelector, FileItem } from "../../src/components/FileSelector";
+import { FileSelector, FileItem } from "../../src/components/FileSelector.js";
 
 describe("FileSelector", () => {
   const mockFiles: FileItem[] = Array.from({ length: 20 }, (_, i) => ({

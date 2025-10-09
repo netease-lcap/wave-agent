@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { logger } from "@/utils/logger";
+import { logger } from "@/utils/logger.js";
 import { writeFileSync, unlinkSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -10,8 +10,8 @@ import {
   updateCommandOutputInMessage,
   completeCommandInMessage,
   addUserMessageToMessages,
-} from "@/utils/messageOperations";
-import type { Message } from "@/types";
+} from "@/utils/messageOperations.js";
+import type { Message } from "@/types.js";
 
 describe("addUserMessageToMessages", () => {
   it("should add user message with text content only", () => {

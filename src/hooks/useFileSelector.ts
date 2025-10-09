@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { glob } from "glob";
-import { getGlobIgnorePatterns } from "../utils/fileFilter";
+import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
 import * as fs from "fs";
 import * as path from "path";
-import { FileItem } from "../components/FileSelector";
+import { FileItem } from "../components/FileSelector.js";
 
 export const useFileSelector = () => {
   const [showFileSelector, setShowFileSelector] = useState(false);

@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { Text, Box } from "ink";
 import { diffWords } from "diff";
-import type { DiffBlock } from "../types";
+import type { DiffBlock } from "../types.js";
 
 interface DiffViewerProps {
   block: DiffBlock;

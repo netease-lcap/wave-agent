@@ -1,8 +1,8 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { MessageList } from "@/components/MessageList";
-import type { Message } from "@/types";
+import { MessageList } from "@/components/MessageList.js";
+import type { Message } from "@/types.js";
 
 // Mock useChat hook
 vi.mock("@/contexts/useChat", () => ({

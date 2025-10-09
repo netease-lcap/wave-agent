@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AIManager } from "@/services/aiManager";
-import * as aiService from "@/services/aiService";
-import { saveSession } from "@/services/session";
+import { AIManager } from "@/services/aiManager.js";
+import * as aiService from "@/services/aiService.js";
+import { saveSession } from "@/services/session.js";
 
 // Mock the session service
 vi.mock("@/services/session", () => ({
   saveSession: vi.fn(),
 }));
-import type { Message } from "@/types";
+import type { Message } from "@/types.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -67,7 +67,7 @@ describe("AIManager Diff Integration Tests", () => {
     aiManager.setMessages([initialUserMessage]);
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools");
+    const { toolRegistry } = await import("@/tools/index.js");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
@@ -202,7 +202,7 @@ describe("AIManager Diff Integration Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools");
+    const { toolRegistry } = await import("@/tools/index.js");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
@@ -322,7 +322,7 @@ describe("AIManager Diff Integration Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools");
+    const { toolRegistry } = await import("@/tools/index.js");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
@@ -515,7 +515,7 @@ describe("AIManager Diff Integration Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools");
+    const { toolRegistry } = await import("@/tools/index.js");
     const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {

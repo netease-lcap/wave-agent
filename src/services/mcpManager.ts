@@ -3,9 +3,9 @@ import { join } from "path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
-import { logger } from "@/utils/logger";
-import { createMcpToolPlugin, findToolServer } from "@/utils/mcpUtils";
-import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types";
+import { logger } from "@/utils/logger.js";
+import { createMcpToolPlugin, findToolServer } from "@/utils/mcpUtils.js";
+import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 
 export interface McpServerConfig {
   command: string;

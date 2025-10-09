@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stripAnsiColors } from "@/utils/stringUtils";
+import { stripAnsiColors } from "@/utils/stringUtils.js";
 
 describe("stripAnsiColors", () => {
   it("should remove basic ANSI color codes", () => {

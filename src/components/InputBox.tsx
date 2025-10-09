@@ -1,20 +1,20 @@
 import React, { useState } from "react";
 import { Box, Text } from "ink";
-import { FileSelector } from "./FileSelector";
-import { CommandSelector } from "./CommandSelector";
-import { BashHistorySelector } from "./BashHistorySelector";
-import { MemoryTypeSelector } from "./MemoryTypeSelector";
-import { BashShellManager } from "./BashShellManager";
-import { McpManager } from "./McpManager";
-import { useInputState } from "../hooks/useInputState";
-import { useFileSelector } from "../hooks/useFileSelector";
-import { useCommandSelector } from "../hooks/useCommandSelector";
-import { useBashHistorySelector } from "../hooks/useBashHistorySelector";
-import { useMemoryTypeSelector } from "../hooks/useMemoryTypeSelector";
-import { useInputHistory } from "../hooks/useInputHistory";
-import { useTextInsertion } from "../hooks/useTextInsertion";
-import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler";
-import { useImageManager } from "../hooks/useImageManager";
+import { FileSelector } from "./FileSelector.js";
+import { CommandSelector } from "./CommandSelector.js";
+import { BashHistorySelector } from "./BashHistorySelector.js";
+import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
+import { BashShellManager } from "./BashShellManager.js";
+import { McpManager } from "./McpManager.js";
+import { useInputState } from "../hooks/useInputState.js";
+import { useFileSelector } from "../hooks/useFileSelector.js";
+import { useCommandSelector } from "../hooks/useCommandSelector.js";
+import { useBashHistorySelector } from "../hooks/useBashHistorySelector.js";
+import { useMemoryTypeSelector } from "../hooks/useMemoryTypeSelector.js";
+import { useInputHistory } from "../hooks/useInputHistory.js";
+import { useTextInsertion } from "../hooks/useTextInsertion.js";
+import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler.js";
+import { useImageManager } from "../hooks/useImageManager.js";
 
 export const INPUT_PLACEHOLDER_TEXT =
   "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory)...";

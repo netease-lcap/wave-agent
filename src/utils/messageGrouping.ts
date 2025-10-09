@@ -1,4 +1,4 @@
-import type { Message } from "../types";
+import type { Message } from "../types.js";
 
 /**
  * 预处理消息数组，识别连续的 assistant 消息组并添加分组信息

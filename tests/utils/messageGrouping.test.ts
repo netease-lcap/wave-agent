@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { processMessageGroups } from "@/utils/messageGrouping";
-import type { Message } from "@/types";
+import { processMessageGroups } from "@/utils/messageGrouping.js";
+import type { Message } from "@/types.js";
 
 const createMessage = (
   role: "user" | "assistant",

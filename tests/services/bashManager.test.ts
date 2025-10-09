@@ -12,8 +12,8 @@ vi.mock("@/utils/bashHistory", () => ({
   addBashCommandToHistory: vi.fn(),
 }));
 
-import { BashManager } from "@/services/bashManager";
-import type { Message } from "@/types";
+import { BashManager } from "@/services/bashManager.js";
+import type { Message } from "@/types.js";
 
 const mockSpawn = vi.mocked(spawn);
 

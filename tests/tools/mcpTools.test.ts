@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mcpManager } from "../../src/services/mcpManager";
-import { ToolContext, ToolPlugin } from "../../src/tools/types";
+import { mcpManager } from "../../src/services/mcpManager.js";
+import { ToolContext, ToolPlugin } from "../../src/tools/types.js";
 
 // Mock mcpManager
 vi.mock("../../src/services/mcpManager", async (importOriginal) => {

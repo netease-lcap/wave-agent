@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import type { Message } from "../types";
+import type { Message } from "../types.js";
 
 export interface SessionData {
   id: string;

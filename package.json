@@ -23,9 +23,8 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc --noEmit && vite build",
+    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "type-check": "tsc --noEmit --incremental",
-    "build:watch": "vite build --watch --mode development",
     "dev": "tsx src/index.ts",
     "dev:c": "tsx src/index.ts -c",
     "ai-code": "lcap-code",
@@ -57,7 +56,6 @@
     "@types/node": "^20.0.0",
     "@types/react": "^19.1.8",
     "@types/yargs": "^17.0.0",
-    "@vitejs/plugin-react": "^4.0.0",
     "eslint": "^9.33.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -67,10 +65,10 @@
     "lint-staged": "^16.1.5",
     "prettier": "3.6.2",
     "rimraf": "^6.0.1",
+    "tsc-alias": "^1.8.16",
     "tsx": "^4.20.4",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.39.0",
-    "vite": "^6.2.0",
     "vitest": "^3.2.4"
   },
   "lint-staged": {

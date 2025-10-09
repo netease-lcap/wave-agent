@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
-import { Box, Text, useStdin } from 'ink';
-import { useChat } from '../contexts/useChat';
-import { logger } from '../utils/logger';
+import React, { useEffect } from "react";
+import { Box, Text, useStdin } from "ink";
+import { useChat } from "../contexts/useChat.js";
+import { logger } from "../utils/logger.js";
 
 export const NonRawInput: React.FC = () => {
   const { sendMessage, isLoading, isCommandRunning } = useChat();
@@ -17,17 +17,19 @@ export const NonRawInput: React.FC = () => {
       }
     };
 
-    stdin?.on('data', handleData);
+    stdin?.on("data", handleData);
 
     return () => {
-      stdin?.off('data', handleData);
+      stdin?.off("data", handleData);
     };
   }, [stdin, sendMessage, isLoading, isCommandRunning]);
 
   return (
     <Box marginTop={1}>
       {!isLoading && !isCommandRunning && (
-        <Text color="gray">Type your message and press Enter to send (Ctrl+C to exit)</Text>
+        <Text color="gray">
+          Type your message and press Enter to send (Ctrl+C to exit)
+        </Text>
       )}
     </Box>
   );

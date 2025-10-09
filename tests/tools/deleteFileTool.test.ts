@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { deleteFileTool } from "@/tools/deleteFileTool";
-import type { ToolResult } from "@/tools/types";
+import { deleteFileTool } from "@/tools/deleteFileTool.js";
+import type { ToolResult } from "@/tools/types.js";
 
 // Mock fs/promises module
 vi.mock("fs/promises", async (importOriginal) => {
