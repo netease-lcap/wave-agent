@@ -31,6 +31,8 @@ import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 export interface AIManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
   onLoadingChange?: (isLoading: boolean) => void;
+  // MCP 服务器初始化回调
+  onMcpServersInitialized?: () => void;
   // 新的增量回调
   onUserMessageAdded?: (
     content: string,
@@ -849,9 +851,15 @@ export class AIManager {
       }
 
       logger.info("MCP servers initialization completed");
+
+      // 调用初始化完成回调
+      this.callbacks.onMcpServersInitialized?.();
     } catch (error) {
       logger.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
+
+      // 即使初始化失败也调用回调，让应用继续运行
+      this.callbacks.onMcpServersInitialized?.();
     }
   }
 }

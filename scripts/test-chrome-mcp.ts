@@ -1,18 +1,26 @@
+#!/usr/bin/env tsx
+
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import {
-  AIManager,
-  type AIManagerCallbacks,
-} from "../src/services/aiManager.js";
-import { addUserMessageToMessages } from "../src/utils/messageOperations.js";
+import { AIManager } from "../src/services/aiManager.js";
 import type { Message } from "../src/types.js";
 
-async function testChromeScreenshot() {
-  console.log("🌐 Testing Chrome MCP screenshot functionality...\n");
+console.log("🌐 Testing Chrome MCP screenshot functionality...\n");
 
+let tempDir: string;
+let aiManager: AIManager;
+let mcpInitialized = false;
+let mcpInitializedResolve: (() => void) | null = null;
+
+// 创建一个 Promise 来等待 MCP 初始化完成
+const mcpInitializedPromise = new Promise<void>((resolve) => {
+  mcpInitializedResolve = resolve;
+});
+
+async function setupTest() {
   // 创建临时目录
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "chrome-mcp-test-"));
+  tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "chrome-mcp-test-"));
   console.log(`📁 Created temporary directory: ${tempDir}`);
 
   // Chrome MCP 配置
@@ -30,111 +38,139 @@ async function testChromeScreenshot() {
   await fs.writeFile(configPath, JSON.stringify(mcpConfig, null, 2));
   console.log(`⚙️ Created MCP config: ${configPath}`);
 
-  // 准备回调函数
-  let messages: Message[] = [];
+  // 设置工作目录
+  console.log(`🔧 Setting working directory: ${tempDir}`);
+  process.chdir(tempDir);
 
-  const callbacks: AIManagerCallbacks = {
-    onMessagesChange: (newMessages: Message[]) => {
-      messages = newMessages;
+  // 创建 AI Manager with comprehensive callbacks
+  aiManager = new AIManager({
+    // 基础回调
+    onMessagesChange: (messages: Message[]) => {
+      console.log(`📝 Messages updated: ${messages.length} messages`);
     },
-    onLoadingChange: () => {
-      // Handle loading state changes if needed
+
+    // MCP 服务器初始化回调
+    onMcpServersInitialized: () => {
+      console.log("🔗 MCP servers initialization completed");
+      mcpInitialized = true;
+      mcpInitializedResolve?.();
     },
-  };
 
-  // 创建 AI Manager
-  console.log(`🔧 Initializing aiManager with workdir: ${tempDir}`);
-  process.chdir(tempDir); // Set working directory
-  const aiManager = new AIManager(callbacks);
+    // 增量回调
+    onUserMessageAdded: (content: string) => {
+      console.log(`👤 User message: "${content}"`);
+    },
+    onAssistantMessageAdded: () => {
+      console.log("🤖 Assistant message started");
+    },
+    onAnswerBlockAdded: () => {
+      console.log("💬 Answer block added");
+    },
+    onAnswerBlockUpdated: (content: string) => {
+      const preview = content.slice(0, 150).replace(/\n/g, "\\n");
+      console.log(
+        `📝 Answer: "${preview}${content.length > 150 ? "..." : ""}"`,
+      );
+    },
+    onToolBlockAdded: (tool: { id: string; name: string }) => {
+      console.log(`🔧 Tool started: ${tool.name} (${tool.id})`);
+    },
+    onToolBlockUpdated: (params) => {
+      const status = params.isRunning
+        ? "running"
+        : params.success
+          ? "success"
+          : "failed";
+      console.log(`🔧 Tool ${params.name || params.toolId}: ${status}`);
+      if (params.result && !params.isRunning) {
+        const preview = (params.shortResult || params.result)
+          .slice(0, 200)
+          .replace(/\n/g, "\\n");
+        console.log(
+          `   Result: "${preview}${params.result.length > 200 ? "..." : ""}"`,
+        );
+      }
+      if (params.error) {
+        console.log(`   ❌ Error: ${params.error}`);
+      }
+    },
+    onErrorBlockAdded: (error: string) => {
+      console.log(`❌ Error block: ${error}`);
+    },
+  });
+}
 
-  try {
-    // 等待一点时间让 MCP 服务器初始化
+async function runTest() {
+  // 等待 MCP 服务器初始化完成
+  if (!mcpInitialized) {
     console.log("⏳ Waiting for MCP servers to initialize...");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await mcpInitializedPromise;
+  }
 
-    // 添加用户消息：让 AI 访问 example.com 并总结
-    const userMessage =
-      "请访问 example.com 网站，获取页面内容并总结一下这个页面的信息。不需要截图。";
-    console.log(`💬 Sending message: ${userMessage}`);
+  // 发送消息：让 AI 访问 example.com 并总结
+  const userMessage =
+    "请访问 example.com 网站，获取页面内容并总结一下这个页面的信息。不需要截图。";
+  console.log(`\n💬 Sending message: ${userMessage}\n`);
 
-    messages = addUserMessageToMessages({
-      messages,
-      content: userMessage,
-    });
-    aiManager.setMessages(messages);
+  // 使用 sendMessage 方法，避免手动操作 messages
+  await aiManager.sendMessage(userMessage);
 
-    // 发送 AI 消息
-    console.log("🤖 Sending to AI...");
-    await aiManager.sendAIMessage();
+  // 获取最终状态和结果
+  const state = aiManager.getState();
+  console.log("\n📊 Final state:");
+  console.log(`   Session ID: ${state.sessionId}`);
+  console.log(`   Messages: ${state.messages.length}`);
+  console.log(`   Total tokens: ${state.totalTokens}`);
+  console.log(`   Is loading: ${state.isLoading}`);
+  console.log(`   Input history: ${state.userInputHistory.length} entries`);
+}
 
-    console.log("\n📄 Final conversation:");
-    console.log("=".repeat(50));
-
-    // 打印对话内容
-    messages.forEach((message, index) => {
-      console.log(`\n${message.role.toUpperCase()} MESSAGE ${index + 1}:`);
-      message.blocks.forEach((block, blockIndex) => {
-        console.log(`  Block ${blockIndex + 1} (${block.type}):`);
-        switch (block.type) {
-          case "text":
-            console.log(`    ${block.content}`);
-            break;
-          case "tool":
-            if (block.attributes?.name) {
-              console.log(`    Tool: ${block.attributes.name}`);
-            }
-            if (block.parameters) {
-              console.log(`    Parameters: ${block.parameters}`);
-            }
-            if (block.result) {
-              console.log(`    Result: ${block.result.substring(0, 200)}...`);
-            }
-            if (block.images && block.images.length > 0) {
-              console.log(
-                `    📸 Images: ${block.images.length} screenshot(s) captured`,
-              );
-            }
-            break;
-          case "error":
-            console.log(`    ❌ Error: ${block.content}`);
-            break;
-          case "image":
-            if (block.attributes?.imageUrls) {
-              console.log(
-                `    🖼️ Images: ${block.attributes.imageUrls.length} file(s)`,
-              );
-            }
-            break;
-          default:
-            console.log(
-              `    Content: ${JSON.stringify(block).substring(0, 100)}...`,
-            );
-        }
-      });
-    });
-  } catch (error) {
-    console.error("❌ Error during test:", error);
-  } finally {
-    // 清理
-    console.log("\n🧹 Cleaning up...");
-    try {
-      // 销毁 AI Manager (包含 MCP 清理)
+async function cleanup() {
+  console.log("\n🧹 Cleaning up...");
+  try {
+    // 销毁 AI Manager (包含 MCP 清理)
+    if (aiManager) {
       await aiManager.destroy();
       console.log("✅ AI Manager and MCP connections cleaned up");
+    }
 
-      // 删除临时目录
+    // 删除临时目录
+    if (tempDir) {
       await fs.rm(tempDir, { recursive: true, force: true });
       console.log(`🗑️ Cleaned up temporary directory: ${tempDir}`);
-
-      // 强制退出进程
-      console.log("👋 Exiting process...");
-      process.exit(0);
-    } catch (cleanupError) {
-      console.error("Failed to cleanup:", cleanupError);
-      process.exit(1);
     }
+  } catch (cleanupError) {
+    console.error("❌ Cleanup failed:", cleanupError);
   }
 }
 
-// 运行测试
-testChromeScreenshot().catch(console.error);
+async function main() {
+  try {
+    await setupTest();
+    await runTest();
+  } catch (error) {
+    console.error("❌ Test failed:", error);
+  } finally {
+    await cleanup();
+    console.log("👋 Done!");
+  }
+}
+
+// 处理进程退出
+process.on("SIGINT", async () => {
+  console.log("\n\n🛑 Received SIGINT, cleaning up...");
+  await cleanup();
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  console.log("\n\n🛑 Received SIGTERM, cleaning up...");
+  await cleanup();
+  process.exit(0);
+});
+
+// 运行主函数
+main().catch((error) => {
+  console.error("💥 Unhandled error:", error);
+  process.exit(1);
+});
