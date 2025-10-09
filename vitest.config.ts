@@ -24,6 +24,7 @@ export default defineConfig(() => {
         // 设置较短的防抖时间以加速测试
         FILE_SELECTOR_DEBOUNCE_MS: "50",
       },
+      maxWorkers: 1,
     },
     resolve: {
       alias: {
