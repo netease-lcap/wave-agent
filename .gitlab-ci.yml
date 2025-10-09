@@ -29,9 +29,9 @@ check:
     - npm config set registry https://registry.npmmirror.com
     - npm install -g pnpm@9
     - pnpm install
-    - pnpm lint
-    - pnpm type-check
     - pnpm build
+    - pnpm type-check
+    - pnpm lint
     - pnpm test
   tags:
     - ide-runner
