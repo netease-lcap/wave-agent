@@ -42,9 +42,10 @@ export const useFileSelector = () => {
         let directories: string[] = [];
 
         const globOptions = {
-          ignore: getGlobIgnorePatterns(),
+          ignore: getGlobIgnorePatterns(process.cwd()),
           maxDepth: 10,
           nocase: true, // 不区分大小写
+          dot: true, // 包括隐藏文件和目录
           cwd: process.cwd(), // 指定搜索的根目录
         };
 
