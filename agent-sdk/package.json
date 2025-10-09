@@ -1,0 +1,51 @@
+{
+  "name": "wave-agent-sdk",
+  "version": "0.3.3",
+  "description": "SDK for building AI-powered development tools and agents",
+  "keywords": [
+    "ai",
+    "sdk",
+    "agent",
+    "development-tools",
+    "typescript",
+    "mcp"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "type-check": "tsc --noEmit --incremental",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "lint": "eslint --cache",
+    "format": "prettier --write .",
+    "release:patch": "pnpm version patch && npm publish",
+    "release:minor": "pnpm version minor && npm publish",
+    "release:major": "pnpm version major && npm publish",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.2",
+    "@vscode/ripgrep": "^1.15.14",
+    "diff": "^8.0.2",
+    "glob": "^11.0.3",
+    "minimatch": "^10.0.3",
+    "openai": "^5.12.2"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1",
+    "tsc-alias": "^1.8.16",
+    "tsx": "^4.20.4",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "license": "MIT"
+}

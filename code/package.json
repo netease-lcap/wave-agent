@@ -1,0 +1,67 @@
+{
+  "name": "wave-code",
+  "version": "0.3.3",
+  "description": "CLI-based code assistant powered by AI, built with React and Ink",
+  "keywords": [
+    "ai",
+    "cli",
+    "code-assistant",
+    "react",
+    "ink",
+    "typescript"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "bin": {
+    "wave-code": "./bin/wave-code-cli.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "docs",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "type-check": "tsc --noEmit --incremental",
+    "dev": "tsx src/index.ts",
+    "dev:c": "tsx src/index.ts -c",
+    "ai-code": "wave-code",
+    "test": "vitest run",
+    "test:app": "tsx scripts/test-app.tsx",
+    "lint": "eslint --cache",
+    "format": "prettier --write .",
+    "release:patch": "pnpm version patch && npm publish",
+    "release:minor": "pnpm version minor && npm publish",
+    "release:major": "pnpm version major && npm publish",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "wave-agent-sdk": "workspace:*",
+    "ink": "^6.0.1",
+    "react": "^19.1.0",
+    "yargs": "^17.7.2",
+    "diff": "^8.0.2",
+    "glob": "^11.0.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/yargs": "^17.0.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "ink-testing-library": "^4.0.0",
+    "rimraf": "^6.0.1",
+    "tsc-alias": "^1.8.16",
+    "tsx": "^4.20.4",
+    "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "license": "MIT"
+}

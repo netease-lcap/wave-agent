@@ -1,74 +1,35 @@
 {
-  "name": "wave-code",
+  "name": "wave-workspace",
   "version": "0.3.3",
-  "description": "CLI-based code assistant powered by AI, built with React and Ink",
-  "keywords": [
-    "ai",
-    "cli",
-    "code-assistant",
-    "react",
-    "ink",
-    "typescript"
-  ],
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "private": true,
+  "description": "Monorepo for Wave Code CLI and Agent SDK",
   "type": "module",
-  "bin": {
-    "wave-code": "./bin/wave-code-cli.js"
-  },
-  "files": [
-    "dist",
-    "bin",
-    "docs",
-    "src",
-    "README.md"
+  "workspaces": [
+    "code",
+    "agent-sdk"
   ],
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
-    "type-check": "tsc --noEmit --incremental",
-    "dev": "tsx src/index.ts",
-    "dev:c": "tsx src/index.ts -c",
-    "ai-code": "wave-code",
-    "test": "vitest run",
-    "test:app": "tsx scripts/test-app.tsx",
-    "lint": "eslint --cache",
+    "build": "pnpm -r build",
+    "type-check": "pnpm -r type-check",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
     "format": "prettier --write .",
     "prepare": "husky",
-    "release:patch": "pnpm version patch && npm publish",
-    "release:minor": "pnpm version minor && npm publish",
-    "release:major": "pnpm version major && npm publish",
-    "prepublishOnly": "npm run build"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.18.2",
-    "@vscode/ripgrep": "^1.15.14",
-    "diff": "^8.0.2",
-    "glob": "^11.0.3",
-    "ink": "^6.0.1",
-    "minimatch": "^10.0.3",
-    "openai": "^5.12.2",
-    "react": "^19.1.0",
-    "yargs": "^17.7.2"
+    "dev:code": "pnpm --filter wave-code dev",
+    "dev:agent-sdk": "pnpm --filter wave-agent-sdk dev",
+    "release:code": "pnpm --filter wave-code release",
+    "release:agent-sdk": "pnpm --filter wave-agent-sdk release"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
     "@types/node": "^20.0.0",
-    "@types/react": "^19.1.8",
-    "@types/yargs": "^17.0.0",
     "eslint": "^9.33.0",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^15.0.0",
     "husky": "^9.1.7",
-    "ink-testing-library": "^4.0.0",
     "lint-staged": "^16.1.5",
     "prettier": "3.6.2",
-    "rimraf": "^6.0.1",
-    "tsc-alias": "^1.8.16",
-    "tsx": "^4.20.4",
     "typescript": "^5.9.2",
-    "typescript-eslint": "^8.39.0",
-    "vitest": "^3.2.4"
+    "typescript-eslint": "^8.39.0"
   },
   "lint-staged": {
     "**/*.{js,ts,tsx}": [
@@ -78,9 +39,6 @@
     "**/*.json": [
       "prettier --write"
     ]
-  },
-  "peerDependencies": {
-    "react": ">=18.0.0"
   },
   "engines": {
     "node": ">=16.0.0"
