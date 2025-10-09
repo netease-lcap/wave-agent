@@ -28,8 +28,34 @@ import { logger } from "../utils/logger.js";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 
 export interface AIManagerCallbacks {
-  onMessagesChange: (messages: Message[]) => void;
-  onLoadingChange: (isLoading: boolean) => void;
+  onMessagesChange?: (messages: Message[]) => void;
+  onLoadingChange?: (isLoading: boolean) => void;
+  // 新的增量回调
+  onUserMessageAdded?: (
+    content: string,
+    images?: Array<{ path: string; mimeType: string }>,
+  ) => void;
+  onAssistantMessageAdded?: () => void;
+  onAnswerBlockAdded?: () => void;
+  onAnswerBlockUpdated?: (content: string) => void;
+  onToolBlockAdded?: (tool: { id: string; name: string }) => void;
+  onToolBlockUpdated?: (
+    toolId: string,
+    args?: string,
+    result?: string,
+    success?: boolean,
+    error?: string,
+    isRunning?: boolean,
+    shortResult?: string,
+  ) => void;
+  onDiffBlockAdded?: (filePath: string, diffResult: string) => void;
+  onErrorBlockAdded?: (error: string) => void;
+  onCompressBlockAdded?: (content: string) => void;
+  onMemoryBlockAdded?: (
+    content: string,
+    success: boolean,
+    type: "project" | "user",
+  ) => void;
 }
 
 export interface AIManagerState {
@@ -83,7 +109,7 @@ export class AIManager {
 
   public setMessages(messages: Message[]): void {
     this.state.messages = [...messages];
-    this.callbacks.onMessagesChange([...messages]);
+    this.callbacks.onMessagesChange?.([...messages]);
 
     // 节流保存：只有距离上次保存超过30秒才保存
     const now = Date.now();
@@ -96,9 +122,135 @@ export class AIManager {
     }
   }
 
+  // 封装的消息操作函数
+  private addUserMessage(
+    content: string,
+    images?: Array<{ path: string; mimeType: string }>,
+  ): void {
+    const newMessages = addUserMessageToMessages(
+      this.state.messages,
+      content,
+      images,
+    );
+    this.setMessages(newMessages);
+    this.callbacks.onUserMessageAdded?.(content, images);
+  }
+
+  private addAssistantMessage(): void {
+    const newMessages = addAssistantMessageToMessages(this.state.messages);
+    this.setMessages(newMessages);
+    this.callbacks.onAssistantMessageAdded?.();
+  }
+
+  private addAnswerBlock(): void {
+    const newMessages = addAnswerBlockToMessage(this.state.messages);
+    this.setMessages(newMessages);
+    this.callbacks.onAnswerBlockAdded?.();
+  }
+
+  private updateAnswerBlock(content: string): void {
+    const newMessages = updateAnswerBlockInMessage(
+      this.state.messages,
+      content,
+    );
+    this.setMessages(newMessages);
+    this.callbacks.onAnswerBlockUpdated?.(content);
+  }
+
+  private addToolBlock(tool: { id: string; name: string }): void {
+    const newMessages = addToolBlockToMessage(this.state.messages, tool);
+    this.setMessages(newMessages);
+    this.callbacks.onToolBlockAdded?.(tool);
+  }
+
+  private updateToolBlock(
+    toolId: string,
+    args?: string,
+    result?: string,
+    success?: boolean,
+    error?: string,
+    isStreaming?: boolean,
+    isRunning?: boolean,
+    name?: string,
+    shortResult?: string,
+  ): void {
+    const newMessages = updateToolBlockInMessage(
+      this.state.messages,
+      toolId,
+      args || "",
+      result,
+      success,
+      error,
+      isStreaming,
+      isRunning,
+      name,
+      shortResult,
+    );
+    this.setMessages(newMessages);
+    this.callbacks.onToolBlockUpdated?.(
+      toolId,
+      args,
+      result,
+      success,
+      error,
+      isRunning,
+      shortResult,
+    );
+  }
+
+  private addDiffBlock(
+    filePath: string,
+    diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
+    originalContent: string,
+    newContent: string,
+  ): void {
+    const newMessages = addDiffBlockToMessage(
+      this.state.messages,
+      filePath,
+      diffResult,
+      originalContent,
+      newContent,
+    );
+    this.setMessages(newMessages);
+    this.callbacks.onDiffBlockAdded?.(filePath, JSON.stringify(diffResult));
+  }
+
+  private addErrorBlock(error: string): void {
+    const newMessages = addErrorBlockToMessage(this.state.messages, error);
+    this.setMessages(newMessages);
+    this.callbacks.onErrorBlockAdded?.(error);
+  }
+
+  private addCompressBlock(insertIndex: number, content: string): void {
+    const newMessages = addCompressBlockToMessage(
+      this.state.messages,
+      insertIndex,
+      content,
+    );
+    this.setMessages(newMessages);
+    this.callbacks.onCompressBlockAdded?.(content);
+  }
+
+  private addMemoryBlock(
+    content: string,
+    success: boolean,
+    type: "project" | "user",
+    storagePath: string,
+  ): void {
+    const newMessages = addMemoryBlockToMessage(
+      this.state.messages,
+      content,
+      success,
+      type,
+      storagePath,
+    );
+    this.setMessages(newMessages);
+    this.callbacks.onMemoryBlockAdded?.(content, success, type);
+  }
+
   public setIsLoading(isLoading: boolean): void {
     this.state.isLoading = isLoading;
-    this.callbacks.onLoadingChange(isLoading);
+    this.callbacks.onLoadingChange?.(isLoading);
   }
 
   public abortAIMessage(): void {
@@ -136,7 +288,7 @@ export class AIManager {
   public clearMessages(): void {
     this.state.messages = [];
     this.state.userInputHistory = [];
-    this.callbacks.onMessagesChange([]);
+    this.callbacks.onMessagesChange?.([]);
     this.resetSession();
   }
 
@@ -296,15 +448,12 @@ export class AIManager {
       this.addToInputHistory(content);
 
       // 添加用户消息，会自动同步到 UI
-      this.setMessages(
-        addUserMessageToMessages(
-          this.state.messages,
-          content,
-          images?.map((img) => ({
-            path: img.path,
-            mimeType: img.mimeType,
-          })),
-        ),
+      this.addUserMessage(
+        content,
+        images?.map((img) => ({
+          path: img.path,
+          mimeType: img.mimeType,
+        })),
       );
 
       // 发送AI消息
@@ -335,18 +484,16 @@ export class AIManager {
     }
 
     // 添加助手消息
-    let currentMessages = addAssistantMessageToMessages(this.state.messages);
-    this.setMessages(currentMessages);
+    this.addAssistantMessage();
 
     let hasToolOperations = false;
 
     // 获取近期消息历史
-    const recentMessages = convertMessagesForAPI(currentMessages);
+    const recentMessages = convertMessagesForAPI(this.state.messages);
 
     try {
       // 添加答案块
-      currentMessages = addAnswerBlockToMessage(currentMessages);
-      this.setMessages(currentMessages);
+      this.addAnswerBlock();
 
       // 读取记忆文件内容
       let memoryContent = "";
@@ -387,11 +534,7 @@ export class AIManager {
 
       // 更新答案块中的内容
       if (result.content) {
-        currentMessages = updateAnswerBlockInMessage(
-          currentMessages,
-          result.content,
-        );
-        this.setMessages(currentMessages);
+        this.updateAnswerBlock(result.content);
       }
 
       // 更新 token 统计 - 显示最新一次的token使用量
@@ -410,7 +553,7 @@ export class AIManager {
 
           // 检查是否需要压缩消息
           const { messagesToCompress, insertIndex } = getMessagesToCompress(
-            currentMessages,
+            this.state.messages,
             7,
           );
 
@@ -426,12 +569,7 @@ export class AIManager {
               });
 
               // 在指定位置插入压缩块
-              currentMessages = addCompressBlockToMessage(
-                currentMessages,
-                insertIndex,
-                compressedContent,
-              );
-              this.setMessages(currentMessages);
+              this.addCompressBlock(insertIndex, compressedContent);
 
               logger.info(
                 `Successfully compressed ${messagesToCompress.length} messages`,
@@ -458,11 +596,10 @@ export class AIManager {
           };
 
           // 添加工具块到 UI
-          currentMessages = addToolBlockToMessage(currentMessages, {
+          this.addToolBlock({
             id: toolId,
             name: functionToolCall.function?.name || "",
           });
-          this.setMessages(currentMessages);
 
           // 执行工具
           try {
@@ -493,8 +630,7 @@ export class AIManager {
             }
 
             // 设置工具开始执行状态
-            currentMessages = updateToolBlockInMessage(
-              currentMessages,
+            this.updateToolBlock(
               toolId,
               JSON.stringify(toolArgs, null, 2),
               undefined,
@@ -505,7 +641,6 @@ export class AIManager {
               functionToolCall.function?.name || "",
               undefined,
             );
-            this.setMessages(currentMessages);
 
             try {
               // 创建工具执行上下文
@@ -521,8 +656,7 @@ export class AIManager {
               );
 
               // 更新消息状态 - 工具执行完成
-              currentMessages = updateToolBlockInMessage(
-                currentMessages,
+              this.updateToolBlock(
                 toolId,
                 JSON.stringify(toolArgs, null, 2),
                 toolResult.content ||
@@ -533,9 +667,7 @@ export class AIManager {
                 false, // isRunning: false
                 functionToolCall.function?.name || "",
                 toolResult.shortResult,
-                toolResult.images, // 传递图片数据
               );
-              this.setMessages(currentMessages);
 
               // 如果工具返回了diff信息，添加diff块
               if (
@@ -545,14 +677,12 @@ export class AIManager {
                 toolResult.originalContent !== undefined &&
                 toolResult.newContent !== undefined
               ) {
-                currentMessages = addDiffBlockToMessage(
-                  currentMessages,
-                  toolResult.filePath!,
-                  toolResult.diffResult!,
-                  toolResult.originalContent!,
-                  toolResult.newContent!,
+                this.addDiffBlock(
+                  toolResult.filePath,
+                  toolResult.diffResult,
+                  toolResult.originalContent,
+                  toolResult.newContent,
                 );
-                this.setMessages(currentMessages);
               }
             } catch (toolError) {
               const errorMessage =
@@ -560,8 +690,7 @@ export class AIManager {
                   ? toolError.message
                   : String(toolError);
 
-              currentMessages = updateToolBlockInMessage(
-                currentMessages,
+              this.updateToolBlock(
                 toolId,
                 JSON.stringify(toolArgs, null, 2),
                 `Tool execution failed: ${errorMessage}`,
@@ -572,7 +701,6 @@ export class AIManager {
                 functionToolCall.function?.name || "",
                 undefined,
               );
-              this.setMessages(currentMessages);
             }
           } catch (parseError) {
             // 检查是否是因为中断导致的解析错误
@@ -589,11 +717,9 @@ export class AIManager {
               parseError instanceof Error
                 ? parseError.message
                 : String(parseError);
-            currentMessages = addErrorBlockToMessage(
-              currentMessages,
+            this.addErrorBlock(
               `Failed to parse tool arguments for ${functionToolCall.function?.name}: ${errorMessage}`,
             );
-            this.setMessages(currentMessages);
           }
         }
       }
@@ -634,11 +760,9 @@ export class AIManager {
           (error.name === "AbortError" || error.message.includes("aborted")));
 
       if (!isAborted) {
-        currentMessages = addErrorBlockToMessage(
-          currentMessages,
+        this.addErrorBlock(
           error instanceof Error ? error.message : "Unknown error occurred",
         );
-        this.setMessages(currentMessages);
 
         // 保存错误时发送给AI的参数到文件
         try {
@@ -689,21 +813,18 @@ export class AIManager {
       const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
       const storagePath = type === "project" ? "LCAP.md" : "user-memory.md";
 
-      const newMessages = addMemoryBlockToMessage(
-        this.state.messages,
+      this.addMemoryBlock(
         `${typeLabel}: ${memoryText}`,
         true,
         type,
         storagePath,
       );
-      this.setMessages(newMessages);
     } catch (error) {
       // 添加失败的 MemoryBlock 到最后一个助手消息
       const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
       const storagePath = type === "project" ? "LCAP.md" : "user-memory.md";
 
-      const newMessages = addMemoryBlockToMessage(
-        this.state.messages,
+      this.addMemoryBlock(
         `${typeLabel}添加失败: ${
           error instanceof Error ? error.message : String(error)
         }`,
@@ -711,7 +832,6 @@ export class AIManager {
         type,
         storagePath,
       );
-      this.setMessages(newMessages);
     }
   }
 

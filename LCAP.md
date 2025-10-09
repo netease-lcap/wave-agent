@@ -7,5 +7,5 @@
 - 除非用户明确提及，否则不要创建 Markdown 文档
 - 不要写 any 类型
 - 使用 HookTester 测试 hooks
-- scripts 目录下是难以 mock 的真实测试文件，不会在 CICD 上运行
-- tests 目录下是容易 mock 的测试文件，可以在 CICD 上运行
+- scripts 目录下是难以 mock 的真实测试文件，用 npx tsx 在本地运行
+- tests 目录下是容易 mock 的测试文件，可以在本地和 CICD 上运行
