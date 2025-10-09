@@ -36,7 +36,6 @@ import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 
 export interface AIManagerOptions {
   callbacks: AIManagerCallbacks;
-  initialHistory?: string[];
   restoreSessionId?: string;
   continueLastSession?: boolean;
 }
@@ -86,7 +85,7 @@ export class AIManager {
 
   // 私有构造函数，防止直接实例化
   private constructor(options: AIManagerOptions) {
-    const { callbacks, initialHistory } = options;
+    const { callbacks } = options;
 
     this.callbacks = callbacks;
     this.sessionStartTime = new Date().toISOString();
@@ -95,7 +94,7 @@ export class AIManager {
       isLoading: false,
       messages: [],
       totalTokens: 0,
-      userInputHistory: initialHistory || [],
+      userInputHistory: [],
     };
 
     // Initialize bash manager
