@@ -9,4 +9,3 @@
 - 使用 HookTester 测试 hooks
 - scripts 目录下是难以 mock 的真实测试文件，不会在 CICD 上运行
 - tests 目录下是容易 mock 的测试文件，可以在 CICD 上运行
-- 项目使用TypeScript和React
