@@ -193,7 +193,7 @@ describe("MessageList Pagination", () => {
       const { lastFrame } = render(<MessageList messages={messages} />);
 
       // Should show welcome message when no messages
-      expect(lastFrame()).toContain("Welcome to LCAP Code Assistant!");
+      expect(lastFrame()).toContain("Welcome to WAVE Code Assistant!");
     });
   });
 

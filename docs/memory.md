@@ -4,8 +4,8 @@
 
 ## 功能概述
 
-1. **添加记忆**: 用户输入以 `#` 开头的消息会自动保存到 `LCAP.md` 文件
-2. **自动读取**: AI 在每次调用时会自动读取 `LCAP.md` 文件作为系统提示词的一部分
+1. **添加记忆**: 用户输入以 `#` 开头的消息会自动保存到 `WAVE.md` 文件
+2. **自动读取**: AI 在每次调用时会自动读取 `WAVE.md` 文件作为系统提示词的一部分
 3. **持久化存储**: 记忆内容会持久保存在工作目录下
 
 ## 使用示例
@@ -13,27 +13,27 @@
 ### 1. 添加项目设置记忆
 ```
 用户输入: #这个项目使用 React + TypeScript，主要是一个CLI工具
-系统响应: ✅ 已将记忆添加到 LCAP.md: 这个项目使用 React + TypeScript，主要是一个CLI工具
+系统响应: ✅ 已将记忆添加到 WAVE.md: 这个项目使用 React + TypeScript，主要是一个CLI工具
 ```
 
 ### 2. 添加重要约定记忆
 ```
 用户输入: #代码风格: 使用 ESLint + Prettier，组件采用函数式写法
-系统响应: ✅ 已将记忆添加到 LCAP.md: 代码风格: 使用 ESLint + Prettier，组件采用函数式写法
+系统响应: ✅ 已将记忆添加到 WAVE.md: 代码风格: 使用 ESLint + Prettier，组件采用函数式写法
 ```
 
 ### 3. 添加业务规则记忆
 ```
 用户输入: #重要: 所有文件操作都需要错误处理，用户输入需要验证
-系统响应: ✅ 已将记忆添加到 LCAP.md: 重要: 所有文件操作都需要错误处理，用户输入需要验证
+系统响应: ✅ 已将记忆添加到 WAVE.md: 重要: 所有文件操作都需要错误处理，用户输入需要验证
 ```
 
-## LCAP.md 文件示例
+## WAVE.md 文件示例
 
-添加记忆后，`LCAP.md` 文件内容如下：
+添加记忆后，`WAVE.md` 文件内容如下：
 
 ```markdown
-# LCAP Memory
+# WAVE Memory
 
 这是AI助手的记忆文件，记录重要信息和上下文。
 
@@ -60,7 +60,7 @@ You are a professional web development expert.
 
 The following is important context and memory from previous interactions:
 
-# LCAP Memory
+# WAVE Memory
 
 这是AI助手的记忆文件，记录重要信息和上下文。
 
@@ -73,7 +73,7 @@ The following is important context and memory from previous interactions:
 
 1. **# 开头**: 只有以 `#` 开头的消息才会被识别为记忆
 2. **列表格式**: 系统会将记忆内容以 `-` 开头的列表项格式保存
-3. **文件位置**: 记忆文件固定保存为工作目录下的 `LCAP.md`
+3. **文件位置**: 记忆文件固定保存为工作目录下的 `WAVE.md`
 4. **错误处理**: 如果文件操作失败，会显示错误消息但不影响正常聊天
 5. **追加模式**: 新记忆会追加到文件末尾，不会覆盖已有内容
 

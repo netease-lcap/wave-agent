@@ -15,20 +15,20 @@
 
 ```bash
 # 默认日志文件位置
-~/.lcap-code/app.log
+~/.wave-code/app.log
 ```
 
 ## 查看日志文件
 
 ```bash
 # 实时查看日志
-tail -f ~/.lcap-code/app.log
+tail -f ~/.wave-code/app.log
 
 # 查看完整日志
-cat ~/.lcap-code/app.log
+cat ~/.wave-code/app.log
 
 # 清空日志
-rm ~/.lcap-code/app.log
+rm ~/.wave-code/app.log
 ```
 
 ## 日志级别说明
@@ -44,7 +44,7 @@ rm ~/.lcap-code/app.log
 
 ```bash
 # 只显示包含 "file" 或 "error" 的日志
-LOG_KEYWORDS=file,error lcap-code
+LOG_KEYWORDS=file,error wave-code
 ```
 
 ## 代码中使用日志
@@ -69,7 +69,7 @@ logger.error('[network] 网络请求失败:', error);
 
 ```bash
 # 启用详细日志
-LOG_LEVEL=DEBUG lcap-code
+LOG_LEVEL=DEBUG wave-code
 ```
 
 ### 测试调试
@@ -83,7 +83,7 @@ LOG_LEVEL=DEBUG npm test
 
 ```bash
 # 生产环境建议配置
-LOG_LEVEL=WARN lcap-code
+LOG_LEVEL=WARN wave-code
 ```
 
 ### 调试技巧
@@ -94,13 +94,13 @@ LOG_LEVEL=WARN lcap-code
 
 ```bash
 # 过滤特定关键词的日志
-grep "ERROR" ~/.lcap-code/app.log
+grep "ERROR" ~/.wave-code/app.log
 
 # 查看最近 100 行日志
-tail -n 100 ~/.lcap-code/app.log
+tail -n 100 ~/.wave-code/app.log
 
 # 实时过滤特定内容
-tail -f ~/.lcap-code/app.log | grep "file"
+tail -f ~/.wave-code/app.log | grep "file"
 ```
 
 ## 兼容性说明

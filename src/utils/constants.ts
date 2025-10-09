@@ -9,7 +9,7 @@ import os from "os";
  * 应用数据存储目录
  * 用于存储调试日志、命令历史等数据
  */
-export const DATA_DIRECTORY = path.join(os.homedir(), ".lcap-code");
+export const DATA_DIRECTORY = path.join(os.homedir(), ".wave-code");
 
 /**
  * 应用日志文件路径

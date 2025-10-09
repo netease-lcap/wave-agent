@@ -11,7 +11,7 @@ describe("Memory Display Fixes", () => {
       content: "项目记忆: test memory content",
       isSuccess: true,
       memoryType: "project",
-      storagePath: "LCAP.md",
+      storagePath: "WAVE.md",
     });
 
     expect(result).toHaveLength(1);
@@ -24,7 +24,7 @@ describe("Memory Display Fixes", () => {
       expect(memoryBlock.content).toBe("项目记忆: test memory content");
       expect(memoryBlock.isSuccess).toBe(true);
       expect(memoryBlock.memoryType).toBe("project");
-      expect(memoryBlock.storagePath).toBe("LCAP.md");
+      expect(memoryBlock.storagePath).toBe("WAVE.md");
     }
   });
 

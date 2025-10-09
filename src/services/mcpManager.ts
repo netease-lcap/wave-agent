@@ -193,7 +193,7 @@ export class McpManager {
       // Create client
       const client = new Client(
         {
-          name: "lcap-code",
+          name: "wave-code",
           version: "1.0.0",
         },
         {

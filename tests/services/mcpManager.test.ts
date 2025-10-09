@@ -214,7 +214,7 @@ describe("McpManager", () => {
 
       expect(result).toBe(true);
       expect(Client).toHaveBeenCalledWith(
-        { name: "lcap-code", version: "1.0.0" },
+        { name: "wave-code", version: "1.0.0" },
         { capabilities: { tools: {} } },
       );
       expect(StdioClientTransport).toHaveBeenCalledWith({

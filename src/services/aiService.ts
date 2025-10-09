@@ -48,7 +48,7 @@ export interface CallAgentOptions {
   messages: ChatCompletionMessageParam[];
   sessionId?: string;
   abortSignal?: AbortSignal;
-  memory?: string; // 记忆内容参数，从 LCAP.md 读取的内容
+  memory?: string; // 记忆内容参数，从 WAVE.md 读取的内容
   workdir?: string; // 当前工作目录
 }
 

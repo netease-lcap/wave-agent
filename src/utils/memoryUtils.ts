@@ -3,11 +3,11 @@ import path from "path";
 import { logger } from "./logger.js";
 
 /**
- * 读取LCAP.md记忆文件内容
+ * 读取WAVE.md记忆文件内容
  * @returns 记忆文件内容，如果文件不存在则返回空字符串
  */
 export async function readMemoryFile(): Promise<string> {
-  const memoryFilePath = path.join(process.cwd(), "LCAP.md");
+  const memoryFilePath = path.join(process.cwd(), "WAVE.md");
 
   try {
     const content = await fs.readFile(memoryFilePath, "utf-8");
@@ -27,7 +27,7 @@ export async function readMemoryFile(): Promise<string> {
  * @returns 是否存在记忆文件
  */
 export async function hasMemoryFile(): Promise<boolean> {
-  const memoryFilePath = path.join(process.cwd(), "LCAP.md");
+  const memoryFilePath = path.join(process.cwd(), "WAVE.md");
 
   try {
     await fs.access(memoryFilePath);

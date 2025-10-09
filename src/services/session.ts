@@ -28,7 +28,7 @@ export interface SessionMetadata {
 }
 
 // Constants
-const SESSION_DIR = join(homedir(), ".lcap-code", "sessions");
+const SESSION_DIR = join(homedir(), ".wave-code", "sessions");
 const VERSION = "1.0.0";
 const MAX_SESSION_AGE_DAYS = 30;
 

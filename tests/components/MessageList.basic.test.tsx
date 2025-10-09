@@ -67,7 +67,7 @@ describe("MessageList Component", () => {
     it("should display welcome message when no messages", () => {
       const { lastFrame } = render(<MessageList messages={[]} />);
 
-      expect(lastFrame()).toContain("Welcome to LCAP Code Assistant!");
+      expect(lastFrame()).toContain("Welcome to WAVE Code Assistant!");
     });
   });
 

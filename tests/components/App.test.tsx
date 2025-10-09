@@ -7,7 +7,7 @@ describe("App Component", () => {
   it("should render the main interface with file count", () => {
     const { lastFrame } = render(<App />);
 
-    expect(lastFrame()).toContain("LCAP Code Assistant");
+    expect(lastFrame()).toContain("WAVE Code Assistant");
   });
 
   it("should render the chat interface", () => {

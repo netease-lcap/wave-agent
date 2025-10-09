@@ -1,4 +1,4 @@
-# lcap-code
+# wave-code
 
 一个基于 Ink 和 React 的终端编程代理。
 
@@ -47,7 +47,7 @@ export DISABLE_RAW_MODE="false"
 ```bash
 export AIGW_TOKEN="your_token_here"
 export AIGW_URL="https://your-api-gateway-url.com"
-lcap-code
+wave-code
 ```
 
 #### 方法2：使用.env文件
@@ -67,7 +67,7 @@ AIGW_URL=https://your-api-gateway-url.com
 ### 全局安装
 
 ```bash
-npm install -g lcap-code
+npm install -g wave-code
 ```
 
 ## 使用方法
@@ -76,9 +76,9 @@ npm install -g lcap-code
 
 ```bash
 # 打开当前目录
-lcap-code
+wave-code
 
-lcap-code --help
+wave-code --help
 ```
 
 ## 文档

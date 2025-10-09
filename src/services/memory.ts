@@ -14,7 +14,7 @@ export const addMemory = async (message: string): Promise<void> => {
   }
 
   try {
-    const memoryFilePath = path.join(process.cwd(), "LCAP.md");
+    const memoryFilePath = path.join(process.cwd(), "WAVE.md");
 
     // 格式化记忆条目，使用 - 开头，不添加时间戳
     const memoryEntry = `- ${message.substring(1).trim()}\n`;

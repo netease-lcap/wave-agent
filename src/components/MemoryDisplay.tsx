@@ -27,7 +27,7 @@ export const MemoryDisplay: React.FC<MemoryDisplayProps> = ({ block }) => {
     if (memoryType === "user") {
       return `记忆已保存到 ${storagePath || "user-memory.md"}`;
     } else {
-      return `记忆已保存到 ${storagePath || "LCAP.md"}`;
+      return `记忆已保存到 ${storagePath || "WAVE.md"}`;
     }
   };
 

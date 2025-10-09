@@ -74,7 +74,7 @@ export * from "./services/session.js";
 // Execute main function if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {
-    console.error("Failed to start LCAP Code:", error);
+    console.error("Failed to start WAVE Code:", error);
     process.exit(1);
   });
 }

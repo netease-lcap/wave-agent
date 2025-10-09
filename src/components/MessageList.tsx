@@ -134,7 +134,7 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   if (processedMessages.length === 0) {
     return (
       <Box flexDirection="column" paddingY={1}>
-        <Text color="gray">Welcome to LCAP Code Assistant!</Text>
+        <Text color="gray">Welcome to WAVE Code Assistant!</Text>
       </Box>
     );
   }

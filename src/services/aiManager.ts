@@ -786,7 +786,7 @@ export class AIManager {
       // 添加成功的 MemoryBlock 到最后一个助手消息
       const memoryText = message.substring(1).trim();
       const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
-      const storagePath = type === "project" ? "LCAP.md" : "user-memory.md";
+      const storagePath = type === "project" ? "WAVE.md" : "user-memory.md";
 
       this.addMemoryBlock(
         `${typeLabel}: ${memoryText}`,
@@ -797,7 +797,7 @@ export class AIManager {
     } catch (error) {
       // 添加失败的 MemoryBlock 到最后一个助手消息
       const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
-      const storagePath = type === "project" ? "LCAP.md" : "user-memory.md";
+      const storagePath = type === "project" ? "WAVE.md" : "user-memory.md";
 
       this.addMemoryBlock(
         `${typeLabel}添加失败: ${

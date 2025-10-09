@@ -119,7 +119,7 @@ describe("MessageList Loading State", () => {
     const { lastFrame } = render(<MessageList messages={[]} />);
     const output = lastFrame();
 
-    expect(output).toContain("Welcome to LCAP Code Assistant!");
+    expect(output).toContain("Welcome to WAVE Code Assistant!");
     expect(output).not.toContain("💭 AI is thinking...");
     expect(output).not.toContain("Command is running...");
   });

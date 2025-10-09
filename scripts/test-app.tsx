@@ -19,7 +19,7 @@ async function testApp() {
 
     // 等待初始渲染完成 - 等待欢迎消息出现
     console.log("⏳ 等待初始渲染完成...");
-    await waitForText(lastFrame, "Welcome to LCAP Code Assistant!");
+    await waitForText(lastFrame, "Welcome to WAVE Code Assistant!");
     console.log("✅ 初始渲染完成");
 
     // 显示初始状态

@@ -1,5 +1,5 @@
 {
-  "name": "lcap-code",
+  "name": "wave-code",
   "version": "0.3.3",
   "description": "CLI-based code assistant powered by AI, built with React and Ink",
   "keywords": [
@@ -14,7 +14,7 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "lcap-code": "./bin/lcap-code-cli.js"
+    "wave-code": "./bin/wave-code-cli.js"
   },
   "files": [
     "dist",
@@ -28,7 +28,7 @@
     "type-check": "tsc --noEmit --incremental",
     "dev": "tsx src/index.ts",
     "dev:c": "tsx src/index.ts -c",
-    "ai-code": "lcap-code",
+    "ai-code": "wave-code",
     "test": "vitest run",
     "test:app": "tsx scripts/test-app.tsx",
     "lint": "eslint --cache",

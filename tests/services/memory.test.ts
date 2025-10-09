@@ -69,11 +69,11 @@ describe("Memory Module", () => {
   });
 
   describe("addMemory", () => {
-    it("should add memory to LCAP.md file for messages starting with #", async () => {
+    it("should add memory to WAVE.md file for messages starting with #", async () => {
       const message = "#Test memory message";
       await memory.addMemory(message);
 
-      const memoryFilePath = path.join(tempDir, "LCAP.md");
+      const memoryFilePath = path.join(tempDir, "WAVE.md");
       const content = await fs.readFile(memoryFilePath, "utf-8");
 
       expect(content).toContain("# Memory");
@@ -84,7 +84,7 @@ describe("Memory Module", () => {
       const message = "Regular message";
       await memory.addMemory(message);
 
-      const memoryFilePath = path.join(tempDir, "LCAP.md");
+      const memoryFilePath = path.join(tempDir, "WAVE.md");
 
       // File should not exist
       await expect(fs.access(memoryFilePath)).rejects.toThrow();

@@ -131,7 +131,7 @@ useInput((input, key) => {
 
 ### 空消息状态
 ```
-Welcome to LCAP Code Assistant!
+Welcome to WAVE Code Assistant!
 ```
 
 ### 普通分页界面
