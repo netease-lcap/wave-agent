@@ -40,25 +40,23 @@ const aiManager = new AIManager({
   onToolBlockAdded: (tool: { id: string; name: string }) => {
     console.log(`🔧 Tool started: ${tool.name} (${tool.id})`);
   },
-  onToolBlockUpdated: (
-    toolId: string,
-    args?: string,
-    result?: string,
-    success?: boolean,
-    error?: string,
-    isRunning?: boolean,
-    shortResult?: string,
-  ) => {
-    const status = isRunning ? "running" : success ? "success" : "failed";
-    console.log(`🔧 Tool ${toolId}: ${status}`);
-    if (result && !isRunning) {
-      const preview = (shortResult || result)
+  onToolBlockUpdated: (params) => {
+    const status = params.isRunning
+      ? "running"
+      : params.success
+        ? "success"
+        : "failed";
+    console.log(`🔧 Tool ${params.toolId}: ${status}`);
+    if (params.result && !params.isRunning) {
+      const preview = (params.shortResult || params.result)
         .slice(0, 100)
         .replace(/\n/g, "\\n");
-      console.log(`   Result: "${preview}${result.length > 100 ? "..." : ""}"`);
+      console.log(
+        `   Result: "${preview}${params.result.length > 100 ? "..." : ""}"`,
+      );
     }
-    if (error) {
-      console.log(`   Error: ${error}`);
+    if (params.error) {
+      console.log(`   Error: ${params.error}`);
     }
   },
   onDiffBlockAdded: (filePath: string) => {
@@ -87,11 +85,6 @@ async function main() {
 
     // 发送 "hi" 消息
     await aiManager.sendMessage("hi");
-
-    console.log("\n✅ Message sent successfully!");
-
-    // 等待一段时间让 AI 处理完成
-    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // 获取当前状态
     const state = aiManager.getState();

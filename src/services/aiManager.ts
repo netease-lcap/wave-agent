@@ -13,6 +13,8 @@ import {
   getMessagesToCompress,
   addUserMessageToMessages,
   extractUserInputHistory,
+  addMemoryBlockToMessage,
+  type AIManagerToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
 import { toolRegistry } from "../tools/index.js";
 import type { ToolContext } from "../tools/types.js";
@@ -20,7 +22,6 @@ import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { saveErrorLog } from "../utils/errorLogger.js";
 import { readMemoryFile } from "../utils/memoryUtils.js";
 import * as memory from "./memory.js";
-import { addMemoryBlockToMessage } from "../utils/messageOperations.js";
 import { mcpManager } from "./mcpManager.js";
 import { BashManager } from "./bashManager.js";
 import type { Message } from "../types.js";
@@ -39,15 +40,7 @@ export interface AIManagerCallbacks {
   onAnswerBlockAdded?: () => void;
   onAnswerBlockUpdated?: (content: string) => void;
   onToolBlockAdded?: (tool: { id: string; name: string }) => void;
-  onToolBlockUpdated?: (
-    toolId: string,
-    args?: string,
-    result?: string,
-    success?: boolean,
-    error?: string,
-    isRunning?: boolean,
-    shortResult?: string,
-  ) => void;
+  onToolBlockUpdated?: (params: AIManagerToolBlockUpdateParams) => void;
   onDiffBlockAdded?: (filePath: string, diffResult: string) => void;
   onErrorBlockAdded?: (error: string) => void;
   onCompressBlockAdded?: (content: string) => void;
@@ -127,11 +120,11 @@ export class AIManager {
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
   ): void {
-    const newMessages = addUserMessageToMessages(
-      this.state.messages,
+    const newMessages = addUserMessageToMessages({
+      messages: this.state.messages,
       content,
       images,
-    );
+    });
     this.setMessages(newMessages);
     this.callbacks.onUserMessageAdded?.(content, images);
   }
@@ -149,53 +142,37 @@ export class AIManager {
   }
 
   private updateAnswerBlock(content: string): void {
-    const newMessages = updateAnswerBlockInMessage(
-      this.state.messages,
+    const newMessages = updateAnswerBlockInMessage({
+      messages: this.state.messages,
       content,
-    );
+    });
     this.setMessages(newMessages);
     this.callbacks.onAnswerBlockUpdated?.(content);
   }
 
   private addToolBlock(tool: { id: string; name: string }): void {
-    const newMessages = addToolBlockToMessage(this.state.messages, tool);
+    const newMessages = addToolBlockToMessage({
+      messages: this.state.messages,
+      attributes: tool,
+    });
     this.setMessages(newMessages);
     this.callbacks.onToolBlockAdded?.(tool);
   }
 
-  private updateToolBlock(
-    toolId: string,
-    args?: string,
-    result?: string,
-    success?: boolean,
-    error?: string,
-    isStreaming?: boolean,
-    isRunning?: boolean,
-    name?: string,
-    shortResult?: string,
-  ): void {
-    const newMessages = updateToolBlockInMessage(
-      this.state.messages,
-      toolId,
-      args || "",
-      result,
-      success,
-      error,
-      isStreaming,
-      isRunning,
-      name,
-      shortResult,
-    );
+  private updateToolBlock(params: AIManagerToolBlockUpdateParams): void {
+    const newMessages = updateToolBlockInMessage({
+      messages: this.state.messages,
+      id: params.toolId,
+      parameters: params.args || "",
+      result: params.result,
+      success: params.success,
+      error: params.error,
+      isRunning: params.isRunning,
+      name: params.name,
+      shortResult: params.shortResult,
+    });
     this.setMessages(newMessages);
-    this.callbacks.onToolBlockUpdated?.(
-      toolId,
-      args,
-      result,
-      success,
-      error,
-      isRunning,
-      shortResult,
-    );
+    this.callbacks.onToolBlockUpdated?.(params);
   }
 
   private addDiffBlock(
@@ -204,29 +181,32 @@ export class AIManager {
     originalContent: string,
     newContent: string,
   ): void {
-    const newMessages = addDiffBlockToMessage(
-      this.state.messages,
-      filePath,
+    const newMessages = addDiffBlockToMessage({
+      messages: this.state.messages,
+      path: filePath,
       diffResult,
-      originalContent,
-      newContent,
-    );
+      original: originalContent,
+      modified: newContent,
+    });
     this.setMessages(newMessages);
     this.callbacks.onDiffBlockAdded?.(filePath, JSON.stringify(diffResult));
   }
 
   private addErrorBlock(error: string): void {
-    const newMessages = addErrorBlockToMessage(this.state.messages, error);
+    const newMessages = addErrorBlockToMessage({
+      messages: this.state.messages,
+      error,
+    });
     this.setMessages(newMessages);
     this.callbacks.onErrorBlockAdded?.(error);
   }
 
   private addCompressBlock(insertIndex: number, content: string): void {
-    const newMessages = addCompressBlockToMessage(
-      this.state.messages,
+    const newMessages = addCompressBlockToMessage({
+      messages: this.state.messages,
       insertIndex,
-      content,
-    );
+      compressContent: content,
+    });
     this.setMessages(newMessages);
     this.callbacks.onCompressBlockAdded?.(content);
   }
@@ -237,13 +217,13 @@ export class AIManager {
     type: "project" | "user",
     storagePath: string,
   ): void {
-    const newMessages = addMemoryBlockToMessage(
-      this.state.messages,
+    const newMessages = addMemoryBlockToMessage({
+      messages: this.state.messages,
       content,
-      success,
-      type,
+      isSuccess: success,
+      memoryType: type,
       storagePath,
-    );
+    });
     this.setMessages(newMessages);
     this.callbacks.onMemoryBlockAdded?.(content, success, type);
   }
@@ -630,17 +610,12 @@ export class AIManager {
             }
 
             // 设置工具开始执行状态
-            this.updateToolBlock(
+            this.updateToolBlock({
               toolId,
-              JSON.stringify(toolArgs, null, 2),
-              undefined,
-              undefined,
-              undefined,
-              false, // isStreaming: false (参数已完整)
-              true, // isRunning: true
-              functionToolCall.function?.name || "",
-              undefined,
-            );
+              args: JSON.stringify(toolArgs, null, 2),
+              isRunning: true, // isRunning: true
+              name: functionToolCall.function?.name || "",
+            });
 
             try {
               // 创建工具执行上下文
@@ -656,18 +631,18 @@ export class AIManager {
               );
 
               // 更新消息状态 - 工具执行完成
-              this.updateToolBlock(
+              this.updateToolBlock({
                 toolId,
-                JSON.stringify(toolArgs, null, 2),
-                toolResult.content ||
+                args: JSON.stringify(toolArgs, null, 2),
+                result:
+                  toolResult.content ||
                   (toolResult.error ? `Error: ${toolResult.error}` : ""),
-                toolResult.success,
-                toolResult.error,
-                false, // isStreaming: false
-                false, // isRunning: false
-                functionToolCall.function?.name || "",
-                toolResult.shortResult,
-              );
+                success: toolResult.success,
+                error: toolResult.error,
+                isRunning: false, // isRunning: false
+                name: functionToolCall.function?.name || "",
+                shortResult: toolResult.shortResult,
+              });
 
               // 如果工具返回了diff信息，添加diff块
               if (
@@ -690,17 +665,15 @@ export class AIManager {
                   ? toolError.message
                   : String(toolError);
 
-              this.updateToolBlock(
+              this.updateToolBlock({
                 toolId,
-                JSON.stringify(toolArgs, null, 2),
-                `Tool execution failed: ${errorMessage}`,
-                false,
-                errorMessage,
-                false,
-                false,
-                functionToolCall.function?.name || "",
-                undefined,
-              );
+                args: JSON.stringify(toolArgs, null, 2),
+                result: `Tool execution failed: ${errorMessage}`,
+                success: false,
+                error: errorMessage,
+                isRunning: false,
+                name: functionToolCall.function?.name || "",
+              });
             }
           } catch (parseError) {
             // 检查是否是因为中断导致的解析错误

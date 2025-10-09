@@ -16,7 +16,6 @@ describe("Image Support in Tool Results", () => {
             attributes: {
               id: "tool-123",
               name: "screenshot_tool",
-              isStreaming: false,
               isRunning: false,
             },
           },
@@ -31,19 +30,18 @@ describe("Image Support in Tool Results", () => {
       },
     ];
 
-    const updatedMessages = updateToolBlockInMessage(
+    const updatedMessages = updateToolBlockInMessage({
       messages,
-      "tool-123",
-      '{"action": "screenshot"}',
-      "Screenshot captured successfully",
-      true,
-      undefined,
-      false,
-      false,
-      "screenshot_tool",
-      "Screenshot taken",
-      mockImages,
-    );
+      id: "tool-123",
+      parameters: '{"action": "screenshot"}',
+      result: "Screenshot captured successfully",
+      success: true,
+      error: undefined,
+      isRunning: false,
+      name: "screenshot_tool",
+      shortResult: "Screenshot taken",
+      images: mockImages,
+    });
 
     const toolBlock = updatedMessages[0].blocks[0];
 
@@ -75,7 +73,6 @@ describe("Image Support in Tool Results", () => {
             attributes: {
               id: "tool-123",
               name: "screenshot_tool",
-              isStreaming: false,
               isRunning: false,
             },
           },
@@ -139,7 +136,6 @@ describe("Image Support in Tool Results", () => {
             attributes: {
               id: "tool-456",
               name: "read_file",
-              isStreaming: false,
               isRunning: false,
             },
           },
@@ -184,7 +180,6 @@ describe("Image Support in Tool Results", () => {
             attributes: {
               id: "tool-789",
               name: "multi_screenshot",
-              isStreaming: false,
               isRunning: false,
             },
           },

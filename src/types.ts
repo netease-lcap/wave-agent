@@ -46,7 +46,6 @@ export interface ToolBlock {
   attributes?: {
     id?: string;
     name?: string;
-    isStreaming?: boolean; // 标记工具参数是否在流式传输中
     isRunning?: boolean; // 标记工具是否在实际执行中
     success?: boolean;
     error?: string | Error;

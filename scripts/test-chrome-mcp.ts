@@ -57,7 +57,10 @@ async function testChromeScreenshot() {
       "请访问 example.com 网站，获取页面内容并总结一下这个页面的信息。不需要截图。";
     console.log(`💬 Sending message: ${userMessage}`);
 
-    messages = addUserMessageToMessages(messages, userMessage);
+    messages = addUserMessageToMessages({
+      messages,
+      content: userMessage,
+    });
     aiManager.setMessages(messages);
 
     // 发送 AI 消息

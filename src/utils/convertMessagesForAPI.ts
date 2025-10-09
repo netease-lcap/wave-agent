@@ -76,8 +76,8 @@ export function convertMessagesForAPI(
 
       if (toolBlocks.length > 0) {
         toolBlocks.forEach((toolBlock) => {
-          // 只添加已完成的 tool blocks
-          if (toolBlock.attributes?.id && !toolBlock.attributes.isStreaming) {
+          // 只添加已完成的 tool blocks（即不在运行中的）
+          if (toolBlock.attributes?.id && !toolBlock.attributes.isRunning) {
             completedToolIds.add(toolBlock.attributes.id);
 
             // 检查是否有图片数据

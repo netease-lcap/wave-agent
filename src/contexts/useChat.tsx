@@ -147,6 +147,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const userInputHistory =
     aiManagerRef.current?.getState().userInputHistory ?? [];
 
+  // 发送消息函数 (简化，逻辑移动到 AIManager)
+  const sendMessage = useCallback(
+    async (
+      content: string,
+      images?: Array<{ path: string; mimeType: string }>,
+    ) => {
+      await aiManagerRef.current?.sendMessage(content, images);
+    },
+    [],
+  );
+
   const clearMessages = useCallback(() => {
     aiManagerRef.current?.clearMessages();
   }, []);
@@ -160,17 +171,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const saveMemory = useCallback(
     async (message: string, type: "project" | "user") => {
       await aiManagerRef.current?.saveMemory(message, type);
-    },
-    [],
-  );
-
-  // 发送消息函数 (简化，逻辑移动到 AIManager)
-  const sendMessage = useCallback(
-    async (
-      content: string,
-      images?: Array<{ path: string; mimeType: string }>,
-    ) => {
-      await aiManagerRef.current?.sendMessage(content, images);
     },
     [],
   );

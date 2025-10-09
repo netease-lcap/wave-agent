@@ -17,7 +17,10 @@ describe("addUserMessageToMessages", () => {
   it("should add user message with text content only", () => {
     const initialMessages: Message[] = [];
 
-    const result = addUserMessageToMessages(initialMessages, "Hello world");
+    const result = addUserMessageToMessages({
+      messages: initialMessages,
+      content: "Hello world",
+    });
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
@@ -30,11 +33,11 @@ describe("addUserMessageToMessages", () => {
     const initialMessages: Message[] = [];
     const images = [{ path: "/tmp/test-image.png", mimeType: "image/png" }];
 
-    const result = addUserMessageToMessages(
-      initialMessages,
-      "Check this out",
+    const result = addUserMessageToMessages({
+      messages: initialMessages,
+      content: "Check this out",
       images,
-    );
+    });
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
@@ -58,11 +61,11 @@ describe("addUserMessageToMessages", () => {
       { path: "/tmp/image2.jpg", mimeType: "image/jpeg" },
     ];
 
-    const result = addUserMessageToMessages(
-      initialMessages,
-      "Look at these",
+    const result = addUserMessageToMessages({
+      messages: initialMessages,
+      content: "Look at these",
       images,
-    );
+    });
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
@@ -83,7 +86,11 @@ describe("addUserMessageToMessages", () => {
     const initialMessages: Message[] = [];
     const images = [{ path: "/tmp/test-image.png", mimeType: "image/png" }];
 
-    const result = addUserMessageToMessages(initialMessages, "", images);
+    const result = addUserMessageToMessages({
+      messages: initialMessages,
+      content: "",
+      images,
+    });
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
@@ -109,11 +116,11 @@ describe("addUserMessageToMessages", () => {
     ];
     const images = [{ path: "/tmp/test.png", mimeType: "image/png" }];
 
-    const result = addUserMessageToMessages(
-      initialMessages,
-      "New message",
+    const result = addUserMessageToMessages({
+      messages: initialMessages,
+      content: "New message",
       images,
-    );
+    });
 
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual(initialMessages[0]);
@@ -139,7 +146,10 @@ describe("addUserMessageToMessages", () => {
       },
     ];
 
-    const result = addUserMessageToMessages(initialMessages, "New message");
+    const result = addUserMessageToMessages({
+      messages: initialMessages,
+      content: "New message",
+    });
 
     expect(initialMessages).toHaveLength(1);
     expect(result).toHaveLength(2);
@@ -249,11 +259,11 @@ describe("addMemoryBlockToMessage", () => {
       },
     ];
 
-    const result = addMemoryBlockToMessage(
-      initialMessages,
-      "记住这个重要信息",
-      true,
-    );
+    const result = addMemoryBlockToMessage({
+      messages: initialMessages,
+      content: "记住这个重要信息",
+      isSuccess: true,
+    });
 
     expect(result).toHaveLength(2);
     expect(result[1]).toEqual({
@@ -276,11 +286,11 @@ describe("addMemoryBlockToMessage", () => {
       },
     ];
 
-    const result = addMemoryBlockToMessage(
-      initialMessages,
-      "添加记忆失败: 磁盘空间不足",
-      false,
-    );
+    const result = addMemoryBlockToMessage({
+      messages: initialMessages,
+      content: "添加记忆失败: 磁盘空间不足",
+      isSuccess: false,
+    });
 
     expect(result).toHaveLength(2);
     expect(result[1]).toEqual({
@@ -298,7 +308,11 @@ describe("addMemoryBlockToMessage", () => {
   it("should work with empty message list", () => {
     const initialMessages: Message[] = [];
 
-    const result = addMemoryBlockToMessage(initialMessages, "第一个记忆", true);
+    const result = addMemoryBlockToMessage({
+      messages: initialMessages,
+      content: "第一个记忆",
+      isSuccess: true,
+    });
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
@@ -321,7 +335,11 @@ describe("addMemoryBlockToMessage", () => {
       },
     ];
 
-    const result = addMemoryBlockToMessage(initialMessages, "记忆内容", true);
+    const result = addMemoryBlockToMessage({
+      messages: initialMessages,
+      content: "记忆内容",
+      isSuccess: true,
+    });
 
     expect(initialMessages).toHaveLength(1);
     expect(result).toHaveLength(2);
@@ -339,7 +357,10 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = addCommandOutputMessage(initialMessages, "echo hello");
+      const result = addCommandOutputMessage({
+        messages: initialMessages,
+        command: "echo hello",
+      });
 
       expect(result).toHaveLength(2);
       expect(result[1]).toEqual({
@@ -359,7 +380,10 @@ describe("Command Output Message Operations", () => {
     it("should work with empty message list", () => {
       const initialMessages: Message[] = [];
 
-      const result = addCommandOutputMessage(initialMessages, "ls -la");
+      const result = addCommandOutputMessage({
+        messages: initialMessages,
+        command: "ls -la",
+      });
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
@@ -384,7 +408,10 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = addCommandOutputMessage(initialMessages, "pwd");
+      const result = addCommandOutputMessage({
+        messages: initialMessages,
+        command: "pwd",
+      });
 
       expect(initialMessages).toHaveLength(1);
       expect(result).toHaveLength(2);
@@ -409,11 +436,11 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = updateCommandOutputInMessage(
-        initialMessages,
-        "echo hello",
-        "hello\n",
-      );
+      const result = updateCommandOutputInMessage({
+        messages: initialMessages,
+        command: "echo hello",
+        output: "hello\n",
+      });
 
       expect(result[0].blocks[0]).toMatchObject({
         type: "command_output",
@@ -452,11 +479,11 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = updateCommandOutputInMessage(
-        initialMessages,
-        "echo second",
-        "second\n",
-      );
+      const result = updateCommandOutputInMessage({
+        messages: initialMessages,
+        command: "echo second",
+        output: "second\n",
+      });
 
       // First command should remain unchanged
       expect(result[0].blocks[0]).toMatchObject({
@@ -489,11 +516,11 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = updateCommandOutputInMessage(
-        initialMessages,
-        "echo test",
-        "  test output  \n",
-      );
+      const result = updateCommandOutputInMessage({
+        messages: initialMessages,
+        command: "echo test",
+        output: "  test output  \n",
+      });
 
       expect(result[0].blocks[0]).toMatchObject({
         output: "test output",
@@ -516,11 +543,11 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = updateCommandOutputInMessage(
-        initialMessages,
-        "echo hello",
-        "new output",
-      );
+      const result = updateCommandOutputInMessage({
+        messages: initialMessages,
+        command: "echo hello",
+        output: "new output",
+      });
 
       // Should not update because the command is not running
       expect(result[0].blocks[0]).toMatchObject({
@@ -547,7 +574,11 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = completeCommandInMessage(initialMessages, "echo hello", 0);
+      const result = completeCommandInMessage({
+        messages: initialMessages,
+        command: "echo hello",
+        exitCode: 0,
+      });
 
       expect(result[0].blocks[0]).toMatchObject({
         type: "command_output",
@@ -574,11 +605,11 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = completeCommandInMessage(
-        initialMessages,
-        "ls /nonexistent",
-        1,
-      );
+      const result = completeCommandInMessage({
+        messages: initialMessages,
+        command: "ls /nonexistent",
+        exitCode: 1,
+      });
 
       expect(result[0].blocks[0]).toMatchObject({
         isRunning: false,
@@ -614,11 +645,11 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = completeCommandInMessage(
-        initialMessages,
-        "echo second",
-        0,
-      );
+      const result = completeCommandInMessage({
+        messages: initialMessages,
+        command: "echo second",
+        exitCode: 0,
+      });
 
       // First command should remain unchanged
       expect(result[0].blocks[0]).toMatchObject({
@@ -651,7 +682,11 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = completeCommandInMessage(initialMessages, "echo hello", 1);
+      const result = completeCommandInMessage({
+        messages: initialMessages,
+        command: "echo hello",
+        exitCode: 1,
+      });
 
       // Should not modify because command is not running
       expect(result[0].blocks[0]).toMatchObject({

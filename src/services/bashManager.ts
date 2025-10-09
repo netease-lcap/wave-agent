@@ -40,7 +40,7 @@ export class BashManager {
 
     // Add command output placeholder using message operations utility
     this.onMessagesUpdate((prev: Message[]) =>
-      addCommandOutputMessage(prev, command),
+      addCommandOutputMessage({ messages: prev, command }),
     );
 
     return new Promise<number>((resolve) => {
@@ -59,7 +59,11 @@ export class BashManager {
       const updateOutput = (newData: string) => {
         outputBuffer += newData;
         this.onMessagesUpdate((prev) =>
-          updateCommandOutputInMessage(prev, command, outputBuffer),
+          updateCommandOutputInMessage({
+            messages: prev,
+            command,
+            output: outputBuffer,
+          }),
         );
       };
 
@@ -78,7 +82,7 @@ export class BashManager {
         addBashCommandToHistory(command, this.workdir);
 
         this.onMessagesUpdate((prev) =>
-          completeCommandInMessage(prev, command, exitCode),
+          completeCommandInMessage({ messages: prev, command, exitCode }),
         );
 
         this.isCommandRunning = false;
@@ -89,7 +93,7 @@ export class BashManager {
       child.on("error", (error) => {
         updateOutput(`\nError: ${error.message}\n`);
         this.onMessagesUpdate((prev: Message[]) =>
-          completeCommandInMessage(prev, command, 1),
+          completeCommandInMessage({ messages: prev, command, exitCode: 1 }),
         );
 
         this.isCommandRunning = false;

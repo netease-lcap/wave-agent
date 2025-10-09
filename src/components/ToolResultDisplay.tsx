@@ -40,7 +40,6 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   }, [attributes?.name, parameters]);
 
   const getStatusColor = () => {
-    if (attributes?.isStreaming) return "blue";
     if (attributes?.isRunning) return "yellow";
     if (attributes?.success) return "green";
     if (attributes?.error || attributes?.success === false) return "red";
@@ -48,7 +47,6 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   };
 
   const getStatusText = () => {
-    if (attributes?.isStreaming) return "📡";
     if (attributes?.isRunning) return "🔄";
     if (attributes?.success) return "";
     if (attributes?.error || attributes?.success === false) return "❌ Failed";

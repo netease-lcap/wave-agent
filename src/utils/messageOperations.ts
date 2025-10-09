@@ -3,6 +3,93 @@ import { readFileSync } from "fs";
 import { extname } from "path";
 import { logger } from "./logger.js";
 
+// Parameter interfaces for message operations
+export interface AddUserMessageParams {
+  messages: Message[];
+  content: string;
+  images?: Array<{ path: string; mimeType: string }>;
+}
+
+export interface UpdateAnswerBlockParams {
+  messages: Message[];
+  content: string;
+}
+
+export interface AddToolBlockParams {
+  messages: Message[];
+  attributes: { id: string; name: string };
+}
+
+export interface UpdateToolBlockParams {
+  messages: Message[];
+  id: string;
+  parameters: string;
+  result?: string;
+  success?: boolean;
+  error?: string;
+  isRunning?: boolean;
+  name?: string;
+  shortResult?: string;
+  images?: Array<{ data: string; mediaType?: string }>;
+}
+
+// AIManager specific interfaces (without messages parameter)
+export interface AIManagerToolBlockUpdateParams {
+  toolId: string;
+  args?: string;
+  result?: string;
+  success?: boolean;
+  error?: string;
+  isRunning?: boolean;
+  name?: string;
+  shortResult?: string;
+}
+
+export interface AddDiffBlockParams {
+  messages: Message[];
+  path: string;
+  diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>;
+  original: string;
+  modified: string;
+  warning?: string;
+}
+
+export interface AddErrorBlockParams {
+  messages: Message[];
+  error: string;
+}
+
+export interface AddCompressBlockParams {
+  messages: Message[];
+  insertIndex: number;
+  compressContent: string;
+}
+
+export interface AddMemoryBlockParams {
+  messages: Message[];
+  content: string;
+  isSuccess: boolean;
+  memoryType?: "project" | "user";
+  storagePath?: string;
+}
+
+export interface AddCommandOutputParams {
+  messages: Message[];
+  command: string;
+}
+
+export interface UpdateCommandOutputParams {
+  messages: Message[];
+  command: string;
+  output: string;
+}
+
+export interface CompleteCommandParams {
+  messages: Message[];
+  command: string;
+  exitCode: number;
+}
+
 /**
  * 从 messages 数组中提取用户消息的文本内容
  */
@@ -65,11 +152,11 @@ export const convertImageToBase64 = (imagePath: string): string => {
 };
 
 // 添加用户消息
-export const addUserMessageToMessages = (
-  messages: Message[],
-  content: string,
-  images?: Array<{ path: string; mimeType: string }>,
-): Message[] => {
+export const addUserMessageToMessages = ({
+  messages,
+  content,
+  images,
+}: AddUserMessageParams): Message[] => {
   const blocks: Message["blocks"] = [{ type: "text", content }];
 
   // 如果有图片，添加图片块
@@ -117,10 +204,10 @@ export const addAnswerBlockToMessage = (messages: Message[]): Message[] => {
 };
 
 // 更新最后一个助手消息的 Answer Block 内容
-export const updateAnswerBlockInMessage = (
-  messages: Message[],
-  content: string,
-): Message[] => {
+export const updateAnswerBlockInMessage = ({
+  messages,
+  content,
+}: UpdateAnswerBlockParams): Message[] => {
   const newMessages = [...messages];
   // 找到最后一个助手消息
   for (let i = newMessages.length - 1; i >= 0; i--) {
@@ -146,14 +233,14 @@ export const updateAnswerBlockInMessage = (
 };
 
 // 更新最后一个助手消息的 File Operation Block
-export const addDiffBlockToMessage = (
-  messages: Message[],
-  path: string,
-  diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
-  original: string,
-  modified: string,
-  warning?: string,
-): Message[] => {
+export const addDiffBlockToMessage = ({
+  messages,
+  path,
+  diffResult,
+  original,
+  modified,
+  warning,
+}: AddDiffBlockParams): Message[] => {
   const newMessages = [...messages];
   // 找到最后一个助手消息
   for (let i = newMessages.length - 1; i >= 0; i--) {
@@ -174,10 +261,10 @@ export const addDiffBlockToMessage = (
 };
 
 // 添加 Tool Block 到最后一个助手消息
-export const addToolBlockToMessage = (
-  messages: Message[],
-  attributes: { id: string; name: string },
-): Message[] => {
+export const addToolBlockToMessage = ({
+  messages,
+  attributes,
+}: AddToolBlockParams): Message[] => {
   const newMessages = [...messages];
   // 找到最后一个助手消息
   for (let i = newMessages.length - 1; i >= 0; i--) {
@@ -189,7 +276,6 @@ export const addToolBlockToMessage = (
         attributes: {
           id: attributes.id,
           name: attributes.name,
-          isStreaming: true, // 开始时参数在流式传输
           isRunning: false, // 尚未开始执行
         },
       });
@@ -200,19 +286,18 @@ export const addToolBlockToMessage = (
 };
 
 // 更新最后一个助手消息的 Tool Block
-export const updateToolBlockInMessage = (
-  messages: Message[],
-  id: string,
-  parameters: string,
-  result?: string,
-  success?: boolean,
-  error?: string,
-  isStreaming?: boolean,
-  isRunning?: boolean,
-  name?: string,
-  shortResult?: string, // 添加 shortResult 参数
-  images?: Array<{ data: string; mediaType?: string }>, // 添加图片数据参数
-): Message[] => {
+export const updateToolBlockInMessage = ({
+  messages,
+  id,
+  parameters,
+  result,
+  success,
+  error,
+  isRunning,
+  name,
+  shortResult,
+  images,
+}: UpdateToolBlockParams): Message[] => {
   const newMessages = [...messages];
   // 找到最后一个助手消息
   for (let i = newMessages.length - 1; i >= 0; i--) {
@@ -231,8 +316,6 @@ export const updateToolBlockInMessage = (
           if (toolBlock.attributes) {
             if (success !== undefined) toolBlock.attributes.success = success;
             if (error !== undefined) toolBlock.attributes.error = error;
-            if (isStreaming !== undefined)
-              toolBlock.attributes.isStreaming = isStreaming;
             if (isRunning !== undefined)
               toolBlock.attributes.isRunning = isRunning;
           }
@@ -250,7 +333,6 @@ export const updateToolBlockInMessage = (
             name: name || "unknown",
             success: success,
             error: error,
-            isStreaming: isStreaming ?? false,
             isRunning: isRunning ?? false,
           },
         });
@@ -262,10 +344,10 @@ export const updateToolBlockInMessage = (
 };
 
 // 添加 Error Block 到最后一个助手消息
-export const addErrorBlockToMessage = (
-  messages: Message[],
-  error: string,
-): Message[] => {
+export const addErrorBlockToMessage = ({
+  messages,
+  error,
+}: AddErrorBlockParams): Message[] => {
   const newMessages = [...messages];
   // 找到最后一个助手消息
   for (let i = newMessages.length - 1; i >= 0; i--) {
@@ -284,11 +366,11 @@ export const addErrorBlockToMessage = (
 };
 
 // 添加压缩块到指定位置的消息
-export const addCompressBlockToMessage = (
-  messages: Message[],
-  insertIndex: number,
-  compressContent: string,
-): Message[] => {
+export const addCompressBlockToMessage = ({
+  messages,
+  insertIndex,
+  compressContent,
+}: AddCompressBlockParams): Message[] => {
   const newMessages = [...messages];
 
   // 创建一个新的助手消息来包含压缩块
@@ -308,13 +390,13 @@ export const addCompressBlockToMessage = (
 };
 
 // 添加 Memory Block 作为新的助手消息
-export const addMemoryBlockToMessage = (
-  messages: Message[],
-  content: string,
-  isSuccess: boolean,
-  memoryType?: "project" | "user",
-  storagePath?: string,
-): Message[] => {
+export const addMemoryBlockToMessage = ({
+  messages,
+  content,
+  isSuccess,
+  memoryType,
+  storagePath,
+}: AddMemoryBlockParams): Message[] => {
   const newMessages = [...messages];
 
   // 创建新的助手消息包含 MemoryBlock
@@ -415,10 +497,10 @@ export const getMessagesToCompress = (
 };
 
 // 添加命令输出块到消息列表
-export const addCommandOutputMessage = (
-  messages: Message[],
-  command: string,
-): Message[] => {
+export const addCommandOutputMessage = ({
+  messages,
+  command,
+}: AddCommandOutputParams): Message[] => {
   const outputMessage: Message = {
     role: "assistant",
     blocks: [
@@ -436,11 +518,11 @@ export const addCommandOutputMessage = (
 };
 
 // 更新命令输出块的输出内容
-export const updateCommandOutputInMessage = (
-  messages: Message[],
-  command: string,
-  output: string,
-): Message[] => {
+export const updateCommandOutputInMessage = ({
+  messages,
+  command,
+  output,
+}: UpdateCommandOutputParams): Message[] => {
   const newMessages = [...messages];
   // Find the last assistant message with a command_output block for this command
   for (let i = newMessages.length - 1; i >= 0; i--) {
@@ -462,11 +544,11 @@ export const updateCommandOutputInMessage = (
 };
 
 // 完成命令执行，更新退出状态
-export const completeCommandInMessage = (
-  messages: Message[],
-  command: string,
-  exitCode: number,
-): Message[] => {
+export const completeCommandInMessage = ({
+  messages,
+  command,
+  exitCode,
+}: CompleteCommandParams): Message[] => {
   const newMessages = [...messages];
   // Find the last assistant message with a command_output block for this command
   for (let i = newMessages.length - 1; i >= 0; i--) {

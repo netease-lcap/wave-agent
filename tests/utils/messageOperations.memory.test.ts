@@ -6,13 +6,13 @@ describe("Memory Display Fixes", () => {
   it("should add memory block with correct storage path for project memory", () => {
     const messages: Message[] = [];
 
-    const result = addMemoryBlockToMessage(
+    const result = addMemoryBlockToMessage({
       messages,
-      "项目记忆: test memory content",
-      true,
-      "project",
-      "LCAP.md",
-    );
+      content: "项目记忆: test memory content",
+      isSuccess: true,
+      memoryType: "project",
+      storagePath: "LCAP.md",
+    });
 
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("assistant");
@@ -31,13 +31,13 @@ describe("Memory Display Fixes", () => {
   it("should add memory block with correct storage path for user memory", () => {
     const messages: Message[] = [];
 
-    const result = addMemoryBlockToMessage(
+    const result = addMemoryBlockToMessage({
       messages,
-      "用户记忆: user preference",
-      true,
-      "user",
-      "user-memory.md",
-    );
+      content: "用户记忆: user preference",
+      isSuccess: true,
+      memoryType: "user",
+      storagePath: "user-memory.md",
+    });
 
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("assistant");
@@ -56,13 +56,13 @@ describe("Memory Display Fixes", () => {
   it("should handle failed memory operations with correct type information", () => {
     const messages: Message[] = [];
 
-    const result = addMemoryBlockToMessage(
+    const result = addMemoryBlockToMessage({
       messages,
-      "用户记忆添加失败: Permission denied",
-      false,
-      "user",
-      "user-memory.md",
-    );
+      content: "用户记忆添加失败: Permission denied",
+      isSuccess: false,
+      memoryType: "user",
+      storagePath: "user-memory.md",
+    });
 
     expect(result).toHaveLength(1);
 
