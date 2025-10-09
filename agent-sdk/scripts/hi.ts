@@ -5,77 +5,80 @@ import { AIManager } from "../src/services/aiManager.js";
 console.log("🚀 Starting AIManager hi test...");
 
 // 创建 AIManager 实例，监听所有可用的回调
-const aiManager = new AIManager({
-  // 基础回调
-  onLoadingChange: (isLoading: boolean) => {
-    console.log(`⏳ Loading state: ${isLoading ? "Loading..." : "Idle"}`);
-  },
+const aiManager = await AIManager.create({
+  callbacks: {
+    // 基础回调
+    onLoadingChange: (isLoading: boolean) => {
+      console.log(`⏳ Loading state: ${isLoading ? "Loading..." : "Idle"}`);
+    },
 
-  // 增量回调
-  onUserMessageAdded: (
-    content: string,
-    images?: Array<{ path: string; mimeType: string }>,
-  ) => {
-    console.log(`👤 User message added: "${content}"`);
-    if (images && images.length > 0) {
-      console.log(`🖼️  With ${images.length} images`);
-    }
-  },
-  onAssistantMessageAdded: () => {
-    console.log("🤖 Assistant message started");
-  },
-  onAnswerBlockAdded: () => {
-    console.log("💬 Answer block added");
-  },
-  onAnswerBlockUpdated: (content: string) => {
-    const preview = content.slice(0, 100).replace(/\n/g, "\\n");
-    console.log(
-      `📝 Answer updated: "${preview}${content.length > 100 ? "..." : ""}"`,
-    );
-  },
-  onToolBlockAdded: (tool: { id: string; name: string }) => {
-    console.log(`🔧 Tool started: ${tool.name} (${tool.id})`);
-  },
-  onToolBlockUpdated: (params) => {
-    const status = params.isRunning
-      ? "running"
-      : params.success
-        ? "success"
-        : "failed";
-    console.log(`🔧 Tool ${params.toolId}: ${status}`);
-    if (params.result && !params.isRunning) {
-      const preview = (params.shortResult || params.result)
-        .slice(0, 100)
-        .replace(/\n/g, "\\n");
+    // 增量回调
+    onUserMessageAdded: (
+      content: string,
+      images?: Array<{ path: string; mimeType: string }>,
+    ) => {
+      console.log(`👤 User message added: "${content}"`);
+      if (images && images.length > 0) {
+        console.log(`🖼️  With ${images.length} images`);
+      }
+    },
+    onAssistantMessageAdded: () => {
+      console.log("🤖 Assistant message started");
+    },
+    onAnswerBlockAdded: () => {
+      console.log("💬 Answer block added");
+    },
+    onAnswerBlockUpdated: (content: string) => {
+      const preview = content.slice(0, 100).replace(/\n/g, "\\n");
       console.log(
-        `   Result: "${preview}${params.result.length > 100 ? "..." : ""}"`,
+        `📝 Answer updated: "${preview}${content.length > 100 ? "..." : ""}"`,
       );
-    }
-    if (params.error) {
-      console.log(`   Error: ${params.error}`);
-    }
-  },
-  onDiffBlockAdded: (filePath: string) => {
-    console.log(`📄 Diff block added for: ${filePath}`);
-  },
-  onErrorBlockAdded: (error: string) => {
-    console.log(`❌ Error block added: ${error}`);
-  },
-  onCompressBlockAdded: (content: string) => {
-    console.log(`🗜️  Compress block added (${content.length} chars)`);
-  },
-  onMemoryBlockAdded: (
-    content: string,
-    success: boolean,
-    type: "project" | "user",
-  ) => {
-    console.log(
-      `🧠 Memory ${type} ${success ? "saved" : "failed"}: ${content}`,
-    );
+    },
+    onToolBlockAdded: (tool: { id: string; name: string }) => {
+      console.log(`🔧 Tool started: ${tool.name} (${tool.id})`);
+    },
+    onToolBlockUpdated: (params) => {
+      const status = params.isRunning
+        ? "running"
+        : params.success
+          ? "success"
+          : "failed";
+      console.log(`🔧 Tool ${params.toolId}: ${status}`);
+      if (params.result && !params.isRunning) {
+        const preview = (params.shortResult || params.result)
+          .slice(0, 100)
+          .replace(/\n/g, "\\n");
+        console.log(
+          `   Result: "${preview}${params.result.length > 100 ? "..." : ""}"`,
+        );
+      }
+      if (params.error) {
+        console.log(`   Error: ${params.error}`);
+      }
+    },
+    onDiffBlockAdded: (filePath: string) => {
+      console.log(`📄 Diff block added for: ${filePath}`);
+    },
+    onErrorBlockAdded: (error: string) => {
+      console.log(`❌ Error block added: ${error}`);
+    },
+    onCompressBlockAdded: (content: string) => {
+      console.log(`🗜️  Compress block added (${content.length} chars)`);
+    },
+    onMemoryBlockAdded: (
+      content: string,
+      success: boolean,
+      type: "project" | "user",
+    ) => {
+      console.log(
+        `🧠 Memory ${type} ${success ? "saved" : "failed"}: ${content}`,
+      );
+    },
   },
 });
 
 async function main() {
+  // aiManager 已经在顶层创建
   try {
     console.log("\n💬 Sending 'hi' message to AI...\n");
 
