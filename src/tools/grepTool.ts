@@ -168,10 +168,7 @@ export const grepTool: ToolPlugin = {
 
       // Glob 模式过滤
       if (globPattern) {
-        const patterns = globPattern.split(",").map((p) => p.trim());
-        for (const pat of patterns) {
-          rgArgs.push("--glob", pat);
-        }
+        rgArgs.push("--glob", globPattern);
       }
 
       // 获取通用忽略规则
