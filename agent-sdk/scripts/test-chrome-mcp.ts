@@ -9,13 +9,6 @@ console.log("🌐 Testing Chrome MCP screenshot functionality...\n");
 
 let tempDir: string;
 let aiManager: AIManager;
-let mcpInitialized = false;
-let mcpInitializedResolve: (() => void) | null = null;
-
-// 创建一个 Promise 来等待 MCP 初始化完成
-const mcpInitializedPromise = new Promise<void>((resolve) => {
-  mcpInitializedResolve = resolve;
-});
 
 async function setupTest() {
   // 创建临时目录
@@ -42,65 +35,56 @@ async function setupTest() {
   process.chdir(tempDir);
 
   // 创建 AI Manager with comprehensive callbacks
-  aiManager = new AIManager({
-    // MCP 服务器初始化回调
-    onMcpServersInitialized: () => {
-      console.log("🔗 MCP servers initialization completed");
-      mcpInitialized = true;
-      mcpInitializedResolve?.();
-    },
-
-    // 增量回调
-    onUserMessageAdded: (content: string) => {
-      console.log(`👤 User message: "${content}"`);
-    },
-    onAssistantMessageAdded: () => {
-      console.log("🤖 Assistant message started");
-    },
-    onAnswerBlockAdded: () => {
-      console.log("💬 Answer block added");
-    },
-    onAnswerBlockUpdated: (content: string) => {
-      const preview = content.slice(0, 150).replace(/\n/g, "\\n");
-      console.log(
-        `📝 Answer: "${preview}${content.length > 150 ? "..." : ""}"`,
-      );
-    },
-    onToolBlockAdded: (tool: { id: string; name: string }) => {
-      console.log(`🔧 Tool started: ${tool.name} (${tool.id})`);
-    },
-    onToolBlockUpdated: (params) => {
-      const status = params.isRunning
-        ? "running"
-        : params.success
-          ? "success"
-          : "failed";
-      console.log(`🔧 Tool ${params.name || params.toolId}: ${status}`);
-      if (params.result && !params.isRunning) {
-        const preview = (params.shortResult || params.result)
-          .slice(0, 200)
-          .replace(/\n/g, "\\n");
+  aiManager = await AIManager.create({
+    callbacks: {
+      // 增量回调
+      onUserMessageAdded: (content: string) => {
+        console.log(`👤 User message: "${content}"`);
+      },
+      onAssistantMessageAdded: () => {
+        console.log("🤖 Assistant message started");
+      },
+      onAnswerBlockAdded: () => {
+        console.log("💬 Answer block added");
+      },
+      onAnswerBlockUpdated: (content: string) => {
+        const preview = content.slice(0, 150).replace(/\n/g, "\\n");
         console.log(
-          `   Result: "${preview}${params.result.length > 200 ? "..." : ""}"`,
+          `📝 Answer: "${preview}${content.length > 150 ? "..." : ""}"`,
         );
-      }
-      if (params.error) {
-        console.log(`   ❌ Error: ${params.error}`);
-      }
-    },
-    onErrorBlockAdded: (error: string) => {
-      console.log(`❌ Error block: ${error}`);
+      },
+      onToolBlockAdded: (tool: { id: string; name: string }) => {
+        console.log(`🔧 Tool started: ${tool.name} (${tool.id})`);
+      },
+      onToolBlockUpdated: (params) => {
+        const status = params.isRunning
+          ? "running"
+          : params.success
+            ? "success"
+            : "failed";
+        console.log(`🔧 Tool ${params.name || params.toolId}: ${status}`);
+        if (params.result && !params.isRunning) {
+          const preview = (params.shortResult || params.result)
+            .slice(0, 200)
+            .replace(/\n/g, "\\n");
+          console.log(
+            `   Result: "${preview}${params.result.length > 200 ? "..." : ""}"`,
+          );
+        }
+        if (params.error) {
+          console.log(`   ❌ Error: ${params.error}`);
+        }
+      },
+      onErrorBlockAdded: (error: string) => {
+        console.log(`❌ Error block: ${error}`);
+      },
     },
   });
+
+  console.log("🔗 MCP servers initialization completed");
 }
 
 async function runTest() {
-  // 等待 MCP 服务器初始化完成
-  if (!mcpInitialized) {
-    console.log("⏳ Waiting for MCP servers to initialize...");
-    await mcpInitializedPromise;
-  }
-
   // 发送消息：让 AI 访问 example.com 并总结
   const userMessage =
     "请访问 example.com 网站，获取页面内容并总结一下这个页面的信息。不需要截图。";

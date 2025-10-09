@@ -47,10 +47,49 @@ export class McpManager {
   private configPath: string = "";
 
   /**
-   * Initialize MCP manager with working directory
+   * Initialize MCP manager with working directory and optionally auto-connect
    */
-  initialize(workdir: string): void {
+  async initialize(
+    workdir: string,
+    autoConnect: boolean = false,
+  ): Promise<void> {
     this.configPath = join(workdir, ".mcp.json");
+
+    if (autoConnect) {
+      logger.info("Initializing MCP servers...");
+
+      // Ensure MCP configuration is loaded
+      const config = await this.ensureConfigLoaded();
+
+      if (config && config.mcpServers) {
+        // Connect to all configured servers
+        const connectionPromises = Object.keys(config.mcpServers).map(
+          async (serverName) => {
+            try {
+              logger.info(`Connecting to MCP server: ${serverName}`);
+              const success = await this.connectServer(serverName);
+              if (success) {
+                logger.info(
+                  `Successfully connected to MCP server: ${serverName}`,
+                );
+              } else {
+                logger.warn(`Failed to connect to MCP server: ${serverName}`);
+              }
+            } catch (error) {
+              logger.error(
+                `Error connecting to MCP server ${serverName}:`,
+                error,
+              );
+            }
+          },
+        );
+
+        // Wait for all connection attempts to complete
+        await Promise.all(connectionPromises);
+      }
+
+      logger.info("MCP servers initialization completed");
+    }
   }
 
   async ensureConfigLoaded(): Promise<McpConfig | null> {

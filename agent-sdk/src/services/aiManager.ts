@@ -43,8 +43,6 @@ export interface AIManagerOptions {
 export interface AIManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
   onLoadingChange?: (isLoading: boolean) => void;
-  // MCP 服务器初始化回调
-  onMcpServersInitialized?: () => void;
   // 新的增量回调
   onUserMessageAdded?: (
     content: string,
@@ -104,9 +102,6 @@ export class AIManager {
       },
     });
 
-    // Set up auto-save
-    this.startAutoSave();
-
     // Note: Process termination handling is now done at the CLI level
     // Note: MCP servers and session restoration are handled in initialize()
   }
@@ -130,8 +125,13 @@ export class AIManager {
     restoreSessionId?: string,
     continueLastSession?: boolean,
   ): Promise<void> {
-    // Initialize MCP servers first
-    await this.initializeMcpServers();
+    // Initialize MCP servers with auto-connect
+    try {
+      await mcpManager.initialize(process.cwd(), true);
+    } catch (error) {
+      logger.error("Failed to initialize MCP servers:", error);
+      // Don't throw error to prevent app startup failure
+    }
 
     // Then handle session restoration
     await this.handleSessionRestoration(restoreSessionId, continueLastSession);
@@ -406,32 +406,6 @@ export class AIManager {
       logger.error("Failed to save session:", error);
     }
   }
-
-  /**
-   * 启动自动保存
-   */
-  private startAutoSave(): void {
-    // 每5分钟自动保存一次
-    this.autoSaveTimer = setInterval(
-      () => {
-        this.saveSession().catch((error) => {
-          logger.error("Auto-save failed:", error);
-        });
-      },
-      5 * 60 * 1000,
-    );
-  }
-
-  /**
-   * 停止自动保存
-   */
-  private stopAutoSave(): void {
-    if (this.autoSaveTimer) {
-      clearInterval(this.autoSaveTimer);
-      this.autoSaveTimer = null;
-    }
-  }
-
   /**
    * 添加到输入历史记录
    */
@@ -475,7 +449,6 @@ export class AIManager {
    * 销毁管理器，清理资源
    */
   public async destroy(): Promise<void> {
-    this.stopAutoSave();
     this.abortAIMessage();
     this.abortBashCommand();
     // Cleanup MCP connections
@@ -899,59 +872,6 @@ export class AIManager {
         type,
         storagePath,
       );
-    }
-  }
-
-  /**
-   * Initialize MCP servers
-   */
-  private async initializeMcpServers(): Promise<void> {
-    try {
-      logger.info("Initializing MCP servers...");
-
-      // Initialize MCP manager with current working directory
-      mcpManager.initialize(process.cwd());
-
-      // Ensure MCP configuration is loaded
-      const config = await mcpManager.ensureConfigLoaded();
-
-      if (config && config.mcpServers) {
-        // Connect to all configured servers
-        const connectionPromises = Object.keys(config.mcpServers).map(
-          async (serverName) => {
-            try {
-              logger.info(`Connecting to MCP server: ${serverName}`);
-              const success = await mcpManager.connectServer(serverName);
-              if (success) {
-                logger.info(
-                  `Successfully connected to MCP server: ${serverName}`,
-                );
-              } else {
-                logger.warn(`Failed to connect to MCP server: ${serverName}`);
-              }
-            } catch (error) {
-              logger.error(
-                `Error connecting to MCP server ${serverName}:`,
-                error,
-              );
-            }
-          },
-        );
-
-        // Wait for all connection attempts to complete
-        await Promise.all(connectionPromises);
-      }
-
-      logger.info("MCP servers initialization completed");
-
-      // 调用初始化完成回调
-      this.callbacks.onMcpServersInitialized?.();
-    } catch (error) {
-      logger.error("Failed to initialize MCP servers:", error);
-      // Don't throw error to prevent app startup failure
-
-      // 即使初始化失败也调用回调，让应用继续运行
-      this.callbacks.onMcpServersInitialized?.();
     }
   }
 }
