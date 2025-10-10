@@ -65,6 +65,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [totalTokens, setTotalTokens] = useState(0);
   const [sessionId, setSessionId] = useState("");
+  const [isCommandRunning, setIsCommandRunning] = useState(false);
+  const [userInputHistory, setUserInputHistory] = useState<string[]>([]);
 
   // MCP State
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
@@ -102,6 +104,26 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             setMcpServers([...servers]);
           }
         },
+        onSessionIdChange: (sessionId) => {
+          if (isMounted) {
+            setSessionId(sessionId);
+          }
+        },
+        onTotalTokensChange: (tokens) => {
+          if (isMounted) {
+            setTotalTokens(tokens);
+          }
+        },
+        onCommandRunningChange: (running) => {
+          if (isMounted) {
+            setIsCommandRunning(running);
+          }
+        },
+        onUserInputHistoryChange: (history) => {
+          if (isMounted) {
+            setUserInputHistory([...history]);
+          }
+        },
       };
 
       try {
@@ -120,6 +142,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           setMessages(aiManager.messages);
           setIsLoading(aiManager.isLoading);
           setTotalTokens(aiManager.totalTokens);
+          setIsCommandRunning(aiManager.isCommandRunning);
+          setUserInputHistory(aiManager.userInputHistory);
 
           // Get initial MCP servers state
           const mcpServers = aiManager.getMcpServers?.() || [];
@@ -153,12 +177,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       }
     };
   }, []);
-
-  // Get command running state from AI manager
-  const isCommandRunning = aiManagerRef.current?.getIsCommandRunning() ?? false;
-
-  // Get user input history from AI manager
-  const userInputHistory = aiManagerRef.current?.userInputHistory ?? [];
 
   // 发送消息函数 (简化，逻辑移动到 AIManager)
   const sendMessage = useCallback(

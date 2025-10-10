@@ -78,7 +78,7 @@ describe("BashManager", () => {
   describe("constructor and factory", () => {
     it("should create BashManager instance with correct options", () => {
       expect(bashManager).toBeInstanceOf(BashManager);
-      expect(bashManager.getIsCommandRunning()).toBe(false);
+      expect(bashManager.isCommandRunning).toBe(false);
     });
 
     it("should create BashManager using factory function", () => {
@@ -99,7 +99,7 @@ describe("BashManager", () => {
       const executePromise = bashManager.executeCommand(command);
 
       // Verify initial state
-      expect(bashManager.getIsCommandRunning()).toBe(true);
+      expect(bashManager.isCommandRunning).toBe(true);
 
       // Verify spawn was called with correct arguments
       expect(mockSpawn).toHaveBeenCalledWith(command, {
@@ -127,7 +127,7 @@ describe("BashManager", () => {
 
       // Verify final state
       expect(exitCode).toBe(0);
-      expect(bashManager.getIsCommandRunning()).toBe(false);
+      expect(bashManager.isCommandRunning).toBe(false);
       expect(mockOnCompleteCommandMessage).toHaveBeenCalledWith(command, 0);
     });
 
@@ -200,7 +200,7 @@ describe("BashManager", () => {
 
       // Start first command
       bashManager.executeCommand(command1);
-      expect(bashManager.getIsCommandRunning()).toBe(true);
+      expect(bashManager.isCommandRunning).toBe(true);
 
       // Trying to start second command should throw
       await expect(bashManager.executeCommand(command2)).rejects.toThrow(
@@ -240,37 +240,37 @@ describe("BashManager", () => {
       const command = "long_command";
 
       bashManager.executeCommand(command);
-      expect(bashManager.getIsCommandRunning()).toBe(true);
+      expect(bashManager.isCommandRunning).toBe(true);
 
       // Abort the command
       bashManager.abortCommand();
 
       // Verify kill was called
       expect(mockChildProcess.kill).toHaveBeenCalledWith("SIGKILL");
-      expect(bashManager.getIsCommandRunning()).toBe(false);
+      expect(bashManager.isCommandRunning).toBe(false);
     });
 
     it("should do nothing when no command is running", () => {
-      expect(bashManager.getIsCommandRunning()).toBe(false);
+      expect(bashManager.isCommandRunning).toBe(false);
 
       // Should not throw or cause issues
       bashManager.abortCommand();
 
-      expect(bashManager.getIsCommandRunning()).toBe(false);
+      expect(bashManager.isCommandRunning).toBe(false);
     });
   });
 
-  describe("getIsCommandRunning", () => {
+  describe("isCommandRunning", () => {
     it("should return correct running state", async () => {
-      expect(bashManager.getIsCommandRunning()).toBe(false);
+      expect(bashManager.isCommandRunning).toBe(false);
 
       const executePromise = bashManager.executeCommand("test_command");
-      expect(bashManager.getIsCommandRunning()).toBe(true);
+      expect(bashManager.isCommandRunning).toBe(true);
 
       mockChildProcess.simulateExit(0);
       await executePromise;
 
-      expect(bashManager.getIsCommandRunning()).toBe(false);
+      expect(bashManager.isCommandRunning).toBe(false);
     });
   });
 });

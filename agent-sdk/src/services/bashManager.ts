@@ -5,6 +5,7 @@ export interface BashManagerOptions {
   onAddCommandOutputMessage: (command: string) => void;
   onUpdateCommandOutputMessage: (command: string, output: string) => void;
   onCompleteCommandMessage: (command: string, exitCode: number) => void;
+  onCommandRunningChange?: (isRunning: boolean) => void;
 }
 
 export interface CommandExecutionResult {
@@ -20,7 +21,8 @@ export class BashManager {
     output: string,
   ) => void;
   private onCompleteCommandMessage: (command: string, exitCode: number) => void;
-  private isCommandRunning = false;
+  private onCommandRunningChange?: (isRunning: boolean) => void;
+  public isCommandRunning = false;
   private currentProcess: ChildProcess | null = null;
 
   constructor(options: BashManagerOptions) {
@@ -28,10 +30,12 @@ export class BashManager {
     this.onAddCommandOutputMessage = options.onAddCommandOutputMessage;
     this.onUpdateCommandOutputMessage = options.onUpdateCommandOutputMessage;
     this.onCompleteCommandMessage = options.onCompleteCommandMessage;
+    this.onCommandRunningChange = options.onCommandRunningChange;
   }
 
-  public getIsCommandRunning(): boolean {
-    return this.isCommandRunning;
+  private setCommandRunning(isRunning: boolean): void {
+    this.isCommandRunning = isRunning;
+    this.onCommandRunningChange?.(isRunning);
   }
 
   public async executeCommand(command: string): Promise<number> {
@@ -39,7 +43,7 @@ export class BashManager {
       throw new Error("Command already running");
     }
 
-    this.isCommandRunning = true;
+    this.setCommandRunning(true);
 
     // Add command output placeholder
     this.onAddCommandOutputMessage(command);
@@ -78,7 +82,7 @@ export class BashManager {
 
         this.onCompleteCommandMessage(command, exitCode);
 
-        this.isCommandRunning = false;
+        this.setCommandRunning(false);
         this.currentProcess = null;
         resolve(exitCode);
       });
@@ -87,7 +91,7 @@ export class BashManager {
         updateOutput(`\nError: ${error.message}\n`);
         this.onCompleteCommandMessage(command, 1);
 
-        this.isCommandRunning = false;
+        this.setCommandRunning(false);
         this.currentProcess = null;
         resolve(1);
       });

@@ -29,6 +29,7 @@ export interface MessageManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
   onSessionIdChange?: (sessionId: string) => void;
   onTotalTokensChange?: (totalTokens: number) => void;
+  onUserInputHistoryChange?: (history: string[]) => void;
   // 增量回调
   onUserMessageAdded?: (
     content: string,
@@ -195,6 +196,7 @@ export class MessageManager {
 
   public setUserInputHistory(userInputHistory: string[]): void {
     this.userInputHistory = [...userInputHistory];
+    this.callbacks.onUserInputHistoryChange?.(this.userInputHistory);
   }
 
   /**

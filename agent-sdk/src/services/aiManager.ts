@@ -26,6 +26,10 @@ export interface AIManagerCallbacks extends MessageManagerCallbacks {
   onLoadingChange?: (isLoading: boolean) => void;
   // MCP 服务器状态回调
   onMcpServersChange?: (servers: McpServerStatus[]) => void;
+  // 命令运行状态回调
+  onCommandRunningChange?: (isRunning: boolean) => void;
+  // 用户输入历史回调
+  onUserInputHistoryChange?: (history: string[]) => void;
 }
 
 export class AIManager {
@@ -56,6 +60,7 @@ export class AIManager {
         onMessagesChange: callbacks.onMessagesChange,
         onSessionIdChange: callbacks.onSessionIdChange,
         onTotalTokensChange: callbacks.onTotalTokensChange,
+        onUserInputHistoryChange: callbacks.onUserInputHistoryChange,
         onUserMessageAdded: callbacks.onUserMessageAdded,
         onAssistantMessageAdded: callbacks.onAssistantMessageAdded,
         onAnswerBlockAdded: callbacks.onAnswerBlockAdded,
@@ -84,6 +89,9 @@ export class AIManager {
       onCompleteCommandMessage: (command: string, exitCode: number) => {
         this.messageManager.completeCommandMessage(command, exitCode);
       },
+      onCommandRunningChange: (isRunning: boolean) => {
+        this.callbacks.onCommandRunningChange?.(isRunning);
+      },
     });
 
     // Note: Process termination handling is now done at the CLI level
@@ -105,6 +113,13 @@ export class AIManager {
 
   public get userInputHistory(): string[] {
     return this.messageManager.getUserInputHistory();
+  }
+
+  /**
+   * 获取bash命令执行状态
+   */
+  public get isCommandRunning(): boolean {
+    return this.bashManager?.isCommandRunning ?? false;
   }
 
   /**
@@ -214,13 +229,6 @@ export class AIManager {
       this.logger?.warn("Failed to generate compactParams", error);
     }
     return undefined;
-  }
-
-  /**
-   * 获取bash命令执行状态
-   */
-  public getIsCommandRunning(): boolean {
-    return this.bashManager?.getIsCommandRunning() ?? false;
   }
 
   /**
