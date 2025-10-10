@@ -1,17 +1,13 @@
-import { callAgent, compressMessages } from "./services/aiService.js";
-import { getMessagesToCompress } from "./utils/messageOperations.js";
 import {
   MessageManager,
   type MessageManagerCallbacks,
 } from "./managers/messageManager.js";
+import { AIManager } from "./managers/aiManager.js";
 import { ToolRegistryImpl } from "./tools/index.js";
-import type { ToolContext } from "./tools/types.js";
-import { convertMessagesForAPI } from "./utils/convertMessagesForAPI.js";
 import * as memory from "./services/memory.js";
 import { McpManager, McpServerStatus } from "./managers/mcpManager.js";
 import { BashManager } from "./managers/bashManager.js";
 import type { Message, Logger } from "./types.js";
-import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 
 export interface AgentOptions {
   callbacks?: AgentCallbacks;
@@ -35,10 +31,8 @@ export interface AgentCallbacks extends MessageManagerCallbacks {
 
 export class Agent {
   private messageManager: MessageManager;
-  public isLoading: boolean;
+  private aiManager: AIManager;
   private callbacks: AgentCallbacks;
-  private abortController: AbortController | null = null;
-  private toolAbortController: AbortController | null = null;
 
   private bashManager: BashManager | null = null;
   private logger?: Logger; // 添加可选的 logger 属性
@@ -53,7 +47,6 @@ export class Agent {
     this.logger = logger; // 保存传入的 logger
     this.mcpManager = new McpManager(this.logger); // 初始化 MCP 管理器
     this.toolRegistry = new ToolRegistryImpl(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
-    this.isLoading = false;
 
     // 初始化 MessageManager
     this.messageManager = new MessageManager(
@@ -79,20 +72,18 @@ export class Agent {
       this.logger,
     );
 
+    // Initialize AI manager
+    this.aiManager = new AIManager({
+      onLoadingChange: callbacks.onLoadingChange,
+      messageManager: this.messageManager,
+      toolRegistry: this.toolRegistry,
+      logger: this.logger,
+    });
+
     // Initialize bash manager
     this.bashManager = new BashManager({
-      onAddCommandOutputMessage: (command: string) => {
-        this.messageManager.addCommandOutputMessage(command);
-      },
-      onUpdateCommandOutputMessage: (command: string, output: string) => {
-        this.messageManager.updateCommandOutputMessage(command, output);
-      },
-      onCompleteCommandMessage: (command: string, exitCode: number) => {
-        this.messageManager.completeCommandMessage(command, exitCode);
-      },
-      onCommandRunningChange: (isRunning: boolean) => {
-        this.callbacks.onCommandRunningChange?.(isRunning);
-      },
+      onCommandRunningChange: callbacks.onCommandRunningChange,
+      messageManager: this.messageManager,
     });
 
     // Note: Process termination handling is now done at the CLI level
@@ -114,6 +105,11 @@ export class Agent {
 
   public get userInputHistory(): string[] {
     return this.messageManager.getUserInputHistory();
+  }
+
+  /** 获取AI加载状态 */
+  public get isLoading(): boolean {
+    return this.aiManager.isLoading;
   }
 
   /** 获取bash命令执行状态 */
@@ -162,25 +158,7 @@ export class Agent {
   }
 
   public abortAIMessage(): void {
-    // 中断AI服务
-    if (this.abortController) {
-      try {
-        this.abortController.abort();
-      } catch (error) {
-        this.logger?.error("Failed to abort AI service:", error);
-      }
-    }
-
-    // 中断工具执行
-    if (this.toolAbortController) {
-      try {
-        this.toolAbortController.abort();
-      } catch (error) {
-        this.logger?.error("Failed to abort tool execution:", error);
-      }
-    }
-
-    this.setIsLoading(false);
+    this.aiManager.abortAIMessage();
   }
 
   /** 清空消息和输入历史 */
@@ -197,30 +175,6 @@ export class Agent {
   /** 添加到输入历史记录 */
   public addToInputHistory(input: string): void {
     this.messageManager.addToInputHistory(input);
-  }
-
-  // 私有的 setIsLoading 方法
-  private setIsLoading(isLoading: boolean): void {
-    this.isLoading = isLoading;
-    this.callbacks.onLoadingChange?.(isLoading);
-  }
-
-  // 生成 compactParams 的辅助方法
-  private generateCompactParams(
-    toolName: string,
-    toolArgs: Record<string, unknown>,
-  ): string | undefined {
-    try {
-      const toolPlugin = this.toolRegistry
-        .list()
-        .find((plugin) => plugin.name === toolName);
-      if (toolPlugin?.formatCompactParams) {
-        return toolPlugin.formatCompactParams(toolArgs);
-      }
-    } catch (error) {
-      this.logger?.warn("Failed to generate compactParams", error);
-    }
-    return undefined;
   }
 
   /** 中断bash命令执行 */
@@ -286,297 +240,10 @@ export class Agent {
       );
 
       // 发送AI消息
-      await this.sendAIMessage();
+      await this.aiManager.sendAIMessage();
     } catch (error) {
       console.error("Failed to add user message:", error);
       // Loading state will be automatically updated by the useEffect that watches messages
-    }
-  }
-
-  private async sendAIMessage(recursionDepth: number = 0): Promise<void> {
-    // Only check isLoading for the initial call (recursionDepth === 0)
-    if (recursionDepth === 0 && this.isLoading) {
-      return;
-    }
-
-    // 创建新的AbortController
-    const abortController = new AbortController();
-    this.abortController = abortController;
-
-    // 为工具执行创建单独的AbortController
-    const toolAbortController = new AbortController();
-    this.toolAbortController = toolAbortController;
-
-    // Only set loading state for the initial call
-    if (recursionDepth === 0) {
-      this.setIsLoading(true);
-    }
-
-    // 添加助手消息
-    this.messageManager.addAssistantMessage();
-
-    let hasToolOperations = false;
-
-    // 获取近期消息历史
-    const recentMessages = convertMessagesForAPI(this.messages);
-
-    try {
-      // 添加答案块
-      this.messageManager.addAnswerBlock();
-
-      // 获取合并的记忆内容
-      const combinedMemory = await memory.getCombinedMemoryContent();
-
-      // 调用 AI 服务（非流式）
-      const result = await callAgent({
-        messages: recentMessages,
-        sessionId: this.sessionId,
-        abortSignal: abortController.signal,
-        memory: combinedMemory, // 传递合并后的记忆内容
-        workdir: process.cwd(), // 传递当前工作目录
-        tools: this.toolRegistry.getToolsConfig(), // 传递工具配置
-      });
-
-      // 更新答案块中的内容
-      if (result.content) {
-        this.messageManager.updateAnswerBlock(result.content);
-      }
-
-      // 更新 token 统计 - 显示最新一次的token使用量
-      if (result.usage) {
-        this.messageManager.setlatestTotalTokens(result.usage.total_tokens);
-
-        // 检查是否超过token限制
-        const tokenLimit = parseInt(
-          process.env.TOKEN_LIMIT || `${DEFAULT_TOKEN_LIMIT}`,
-          10,
-        );
-        if (result.usage.total_tokens > tokenLimit) {
-          this.logger?.info(
-            `Token usage exceeded ${tokenLimit}, compressing messages...`,
-          );
-
-          // 检查是否需要压缩消息
-          const { messagesToCompress, insertIndex } = getMessagesToCompress(
-            this.messages,
-            7,
-          );
-
-          // 如果有需要压缩的消息，则进行压缩
-          if (messagesToCompress.length > 0) {
-            const recentChatMessages =
-              convertMessagesForAPI(messagesToCompress);
-
-            try {
-              const compressedContent = await compressMessages({
-                messages: recentChatMessages,
-                abortSignal: abortController.signal,
-              });
-
-              // 在指定位置插入压缩块
-              this.messageManager.addCompressBlock(
-                insertIndex,
-                compressedContent,
-              );
-
-              this.logger?.info(
-                `Successfully compressed ${messagesToCompress.length} messages`,
-              );
-            } catch (compressError) {
-              this.logger?.error("Failed to compress messages:", compressError);
-            }
-          }
-        }
-      }
-
-      // 处理返回的工具调用（执行阶段）
-      if (result.tool_calls) {
-        for (const toolCall of result.tool_calls) {
-          if (toolCall.type !== "function") continue; // 跳过没有 function 的工具调用
-
-          hasToolOperations = true;
-
-          const toolId = toolCall.id || "";
-          const functionToolCall = toolCall as {
-            id: string;
-            type: "function";
-            function: { name: string; arguments: string };
-          };
-
-          // 添加工具块到 UI
-          this.messageManager.addToolBlock({
-            id: toolId,
-            name: functionToolCall.function?.name || "",
-          });
-
-          // 执行工具
-          try {
-            // 检查是否已被中断，如果是则跳过工具执行
-            if (
-              abortController.signal.aborted ||
-              toolAbortController.signal.aborted
-            ) {
-              return;
-            }
-
-            // 安全解析工具参数，处理无参数工具的情况
-            let toolArgs: Record<string, unknown> = {};
-            const argsString = functionToolCall.function?.arguments?.trim();
-
-            if (!argsString || argsString === "") {
-              // 无参数工具，使用空对象
-              toolArgs = {};
-            } else {
-              try {
-                toolArgs = JSON.parse(argsString);
-              } catch (parseError) {
-                // 对于非空但格式错误的JSON，仍然抛出异常
-                const errorMessage = `Failed to parse tool arguments: ${argsString}`;
-                this.logger?.error(errorMessage, parseError);
-                throw new Error(errorMessage);
-              }
-            }
-
-            // 设置工具开始执行状态
-            const toolName = functionToolCall.function?.name || "";
-            const compactParams = this.generateCompactParams(
-              toolName,
-              toolArgs,
-            );
-
-            this.messageManager.updateToolBlock({
-              toolId,
-              args: JSON.stringify(toolArgs, null, 2),
-              isRunning: true, // isRunning: true
-              name: toolName,
-              compactParams,
-            });
-
-            try {
-              // 创建工具执行上下文
-              const context: ToolContext = {
-                abortSignal: toolAbortController.signal,
-              };
-
-              // 执行工具
-              const toolResult = await this.toolRegistry.execute(
-                functionToolCall.function?.name || "",
-                toolArgs,
-                context,
-              );
-
-              // 更新消息状态 - 工具执行完成
-              this.messageManager.updateToolBlock({
-                toolId,
-                args: JSON.stringify(toolArgs, null, 2),
-                result:
-                  toolResult.content ||
-                  (toolResult.error ? `Error: ${toolResult.error}` : ""),
-                success: toolResult.success,
-                error: toolResult.error,
-                isRunning: false, // isRunning: false
-                name: toolName,
-                shortResult: toolResult.shortResult,
-                compactParams,
-              });
-
-              // 如果工具返回了diff信息，添加diff块
-              if (
-                toolResult.success &&
-                toolResult.diffResult &&
-                toolResult.filePath &&
-                toolResult.originalContent !== undefined &&
-                toolResult.newContent !== undefined
-              ) {
-                this.messageManager.addDiffBlock(
-                  toolResult.filePath,
-                  toolResult.diffResult,
-                  toolResult.originalContent,
-                  toolResult.newContent,
-                );
-              }
-            } catch (toolError) {
-              const errorMessage =
-                toolError instanceof Error
-                  ? toolError.message
-                  : String(toolError);
-
-              this.messageManager.updateToolBlock({
-                toolId,
-                args: JSON.stringify(toolArgs, null, 2),
-                result: `Tool execution failed: ${errorMessage}`,
-                success: false,
-                error: errorMessage,
-                isRunning: false,
-                name: toolName,
-                compactParams,
-              });
-            }
-          } catch (parseError) {
-            // 检查是否是因为中断导致的解析错误
-            const isAborted =
-              abortController.signal.aborted ||
-              toolAbortController.signal.aborted;
-
-            if (isAborted) {
-              // 如果是中断导致的，直接返回，不显示错误
-              return;
-            }
-
-            const errorMessage =
-              parseError instanceof Error
-                ? parseError.message
-                : String(parseError);
-            this.messageManager.addErrorBlock(
-              `Failed to parse tool arguments for ${functionToolCall.function?.name}: ${errorMessage}`,
-            );
-          }
-        }
-      }
-
-      // 检查是否有工具操作，如果有则自动发起下一次 AI 服务调用
-      if (hasToolOperations) {
-        // 检查中断状态
-        const isCurrentlyAborted =
-          abortController.signal.aborted || toolAbortController.signal.aborted;
-
-        // AI 服务调用结束，清除 abort controller
-        this.abortController = null;
-
-        // 工具执行完成后清理工具的AbortController
-        this.toolAbortController = null;
-
-        if (!isCurrentlyAborted) {
-          // 递归调用 AI 服务，递增的递归深度
-          await this.sendAIMessage(recursionDepth + 1);
-        }
-      } else {
-        // 没有工具操作时也要清除 abort controller
-        this.abortController = null;
-        this.toolAbortController = null;
-      }
-    } catch (error) {
-      // 检查是否是由于用户中断操作导致的错误
-      const isAborted =
-        abortController.signal.aborted ||
-        toolAbortController.signal.aborted ||
-        (error instanceof Error &&
-          (error.name === "AbortError" || error.message.includes("aborted")));
-
-      if (!isAborted) {
-        this.messageManager.addErrorBlock(
-          error instanceof Error ? error.message : "Unknown error occurred",
-        );
-      }
-
-      // 出错时也要重置 abort controller
-      this.abortController = null;
-      this.toolAbortController = null;
-    } finally {
-      // Only clear loading state for the initial call
-      if (recursionDepth === 0) {
-        this.setIsLoading(false);
-      }
     }
   }
 
