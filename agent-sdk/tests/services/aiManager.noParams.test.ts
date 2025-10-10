@@ -136,7 +136,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
     );
 
     // Verify no error blocks were added
-    const messages = aiManager.getState().messages;
+    const messages = aiManager.messages;
     const errorBlocks = messages.flatMap((msg) =>
       msg.blocks.filter((block) => block.type === "error"),
     );
@@ -222,7 +222,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
     );
 
     // Verify no error blocks were added
-    const messages = aiManager.getState().messages;
+    const messages = aiManager.messages;
     const errorBlocks = messages.flatMap((msg) =>
       msg.blocks.filter((block) => block.type === "error"),
     );
@@ -302,7 +302,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
     await aiManager.sendAIMessage();
 
     // Check that error message is added to the conversation
-    const messages = aiManager.getState().messages;
+    const messages = aiManager.messages;
     const errorBlocks = messages.flatMap((msg) =>
       msg.blocks.filter((block) => block.type === "error"),
     );

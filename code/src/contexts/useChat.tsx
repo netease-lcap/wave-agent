@@ -28,7 +28,6 @@ export interface ChatContextType {
     images?: Array<{ path: string; mimeType: string }>,
   ) => Promise<void>;
   abortMessage: () => void;
-  resetSession: () => void;
   totalTokens: number;
   // Memory functionality
   saveMemory: (message: string, type: "project" | "user") => Promise<void>;
@@ -117,11 +116,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           aiManagerRef.current = aiManager;
 
           // Get initial state
-          const state = aiManager.getState();
-          setSessionId(state.sessionId);
-          setMessages(state.messages);
-          setIsLoading(state.isLoading);
-          setTotalTokens(state.totalTokens);
+          setSessionId(aiManager.sessionId);
+          setMessages(aiManager.messages);
+          setIsLoading(aiManager.isLoading);
+          setTotalTokens(aiManager.totalTokens);
 
           // Get initial MCP servers state
           const mcpServers = aiManager.getMcpServers?.() || [];
@@ -142,20 +140,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // Update totalTokens and sessionId when messages change
   useEffect(() => {
     if (aiManagerRef.current) {
-      const state = aiManagerRef.current.getState();
-      setTotalTokens(state.totalTokens);
-      setSessionId(state.sessionId);
+      setTotalTokens(aiManagerRef.current.totalTokens);
+      setSessionId(aiManagerRef.current.sessionId);
     }
   }, [messages]);
-
-  const resetSession = useCallback(() => {
-    if (aiManagerRef.current) {
-      aiManagerRef.current.resetSession();
-      const state = aiManagerRef.current.getState();
-      setSessionId(state.sessionId);
-      setTotalTokens(state.totalTokens);
-    }
-  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -174,8 +162,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const isCommandRunning = aiManagerRef.current?.getIsCommandRunning() ?? false;
 
   // Get user input history from AI manager
-  const userInputHistory =
-    aiManagerRef.current?.getState().userInputHistory ?? [];
+  const userInputHistory = aiManagerRef.current?.userInputHistory ?? [];
 
   // 发送消息函数 (简化，逻辑移动到 AIManager)
   const sendMessage = useCallback(
@@ -234,7 +221,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     sessionId,
     sendMessage,
     abortMessage,
-    resetSession,
     totalTokens,
     saveMemory,
     mcpServers,

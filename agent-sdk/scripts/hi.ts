@@ -86,13 +86,14 @@ async function main() {
     await aiManager.sendMessage("hi");
 
     // 获取当前状态
-    const state = aiManager.getState();
     console.log("\n📊 Final state:");
-    console.log(`   Session ID: ${state.sessionId}`);
-    console.log(`   Messages: ${state.messages.length}`);
-    console.log(`   Total tokens: ${state.totalTokens}`);
-    console.log(`   Is loading: ${state.isLoading}`);
-    console.log(`   Input history: ${state.userInputHistory.length} entries`);
+    console.log(`   Session ID: ${aiManager.sessionId}`);
+    console.log(`   Messages: ${aiManager.messages.length}`);
+    console.log(`   Total tokens: ${aiManager.totalTokens}`);
+    console.log(`   Is loading: ${aiManager.isLoading}`);
+    console.log(
+      `   Input history: ${aiManager.userInputHistory.length} entries`,
+    );
   } catch (error) {
     console.error("❌ Error occurred:", error);
   } finally {

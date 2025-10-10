@@ -17,9 +17,6 @@ import { ChatCompletionMessageParam } from "openai/resources.js";
 // Mock AI Service
 vi.mock("@/services/aiService");
 
-// Mock Session Manager
-vi.mock("@/services/sessionManager");
-
 // Mock memory utils to prevent file reading
 vi.mock("@/utils/memoryUtils", () => ({
   readMemoryFile: vi.fn(() => Promise.resolve("")),
@@ -439,7 +436,7 @@ describe("AIManager Message Compression Tests", () => {
     expect(callAgentCallCount).toBe(1);
 
     // 获取压缩后的消息列表
-    const messagesAfterCompression = aiManager.getState().messages;
+    const messagesAfterCompression = aiManager.messages;
 
     // 验证倒数第八个消息变成了压缩消息
     const eighthLastMessage =

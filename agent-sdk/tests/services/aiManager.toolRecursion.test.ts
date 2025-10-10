@@ -15,9 +15,6 @@ import type { Message } from "@/types.js";
 // Mock AI Service
 vi.mock("@/services/aiService");
 
-// Mock Session Manager
-vi.mock("@/services/sessionManager");
-
 // Mock memory utils to prevent file reading
 vi.mock("@/utils/memoryUtils", () => ({
   readMemoryFile: vi.fn(() => Promise.resolve("")),

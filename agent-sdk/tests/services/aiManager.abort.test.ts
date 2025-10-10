@@ -15,9 +15,6 @@ import type { Message, ErrorBlock } from "@/types.js";
 // Mock AI Service
 vi.mock("@/services/aiService");
 
-// Mock Session Manager
-vi.mock("@/services/sessionManager");
-
 // Mock memory utils to prevent file reading
 vi.mock("@/utils/memoryUtils", () => ({
   readMemoryFile: vi.fn(() => Promise.resolve("")),
@@ -113,7 +110,7 @@ describe("AIManager - Abort Handling", () => {
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
 
     // Check that no error message is added to the conversation when aborted
-    const messages = aiManager.getState().messages;
+    const messages = aiManager.messages;
     const errorBlocks = messages.flatMap((msg) =>
       msg.blocks.filter((block) => block.type === "error"),
     );
@@ -192,7 +189,7 @@ describe("AIManager - Abort Handling", () => {
     await aiManager.sendAIMessage();
 
     // Check that error message is added to the conversation when not aborted
-    const messages = aiManager.getState().messages;
+    const messages = aiManager.messages;
     const errorBlocks = messages.flatMap((msg) =>
       msg.blocks.filter((block) => block.type === "error"),
     );

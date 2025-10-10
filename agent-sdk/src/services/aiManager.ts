@@ -72,16 +72,14 @@ export interface AIManagerCallbacks {
   onCompleteCommandMessage?: (command: string, exitCode: number) => void;
 }
 
-export interface AIManagerState {
-  sessionId: string;
-  isLoading: boolean;
-  messages: Message[];
-  totalTokens: number;
-  userInputHistory: string[];
-}
-
 export class AIManager {
-  private state: AIManagerState;
+  // 公开的状态属性
+  public sessionId: string;
+  public isLoading: boolean;
+  public messages: Message[];
+  public totalTokens: number;
+  public userInputHistory: string[];
+
   private callbacks: AIManagerCallbacks;
   private abortController: AbortController | null = null;
   private toolAbortController: AbortController | null = null;
@@ -102,19 +100,19 @@ export class AIManager {
     this.mcpManager = new McpManager(this.logger); // 初始化 MCP 管理器
     this.toolRegistry = new ToolRegistryImpl(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
     this.sessionStartTime = new Date().toISOString();
-    this.state = {
-      sessionId: randomUUID(),
-      isLoading: false,
-      messages: [],
-      totalTokens: 0,
-      userInputHistory: [],
-    };
+
+    // 初始化公开状态属性
+    this.sessionId = randomUUID();
+    this.isLoading = false;
+    this.messages = [];
+    this.totalTokens = 0;
+    this.userInputHistory = [];
 
     // Initialize bash manager
     this.bashManager = new BashManager({
       onAddCommandOutputMessage: (command: string) => {
         const updatedMessages = addCommandOutputMessage({
-          messages: this.state.messages,
+          messages: this.messages,
           command,
         });
         this.setMessages(updatedMessages);
@@ -123,7 +121,7 @@ export class AIManager {
       },
       onUpdateCommandOutputMessage: (command: string, output: string) => {
         const updatedMessages = updateCommandOutputInMessage({
-          messages: this.state.messages,
+          messages: this.messages,
           command,
           output,
         });
@@ -133,7 +131,7 @@ export class AIManager {
       },
       onCompleteCommandMessage: (command: string, exitCode: number) => {
         const updatedMessages = completeCommandInMessage({
-          messages: this.state.messages,
+          messages: this.messages,
           command,
           exitCode,
         });
@@ -233,12 +231,8 @@ export class AIManager {
     }
   }
 
-  public getState(): AIManagerState {
-    return { ...this.state };
-  }
-
   public setMessages(messages: Message[]): void {
-    this.state.messages = [...messages];
+    this.messages = [...messages];
     this.callbacks.onMessagesChange?.([...messages]);
 
     // 节流保存：只有距离上次保存超过30秒才保存
@@ -261,7 +255,7 @@ export class AIManager {
     images?: Array<{ path: string; mimeType: string }>,
   ): void {
     const newMessages = addUserMessageToMessages({
-      messages: this.state.messages,
+      messages: this.messages,
       content,
       images,
     });
@@ -270,20 +264,20 @@ export class AIManager {
   }
 
   private addAssistantMessage(): void {
-    const newMessages = addAssistantMessageToMessages(this.state.messages);
+    const newMessages = addAssistantMessageToMessages(this.messages);
     this.setMessages(newMessages);
     this.callbacks.onAssistantMessageAdded?.();
   }
 
   private addAnswerBlock(): void {
-    const newMessages = addAnswerBlockToMessage(this.state.messages);
+    const newMessages = addAnswerBlockToMessage(this.messages);
     this.setMessages(newMessages);
     this.callbacks.onAnswerBlockAdded?.();
   }
 
   private updateAnswerBlock(content: string): void {
     const newMessages = updateAnswerBlockInMessage({
-      messages: this.state.messages,
+      messages: this.messages,
       content,
     });
     this.setMessages(newMessages);
@@ -292,7 +286,7 @@ export class AIManager {
 
   private addToolBlock(tool: { id: string; name: string }): void {
     const newMessages = addToolBlockToMessage({
-      messages: this.state.messages,
+      messages: this.messages,
       attributes: tool,
     });
     this.setMessages(newMessages);
@@ -301,7 +295,7 @@ export class AIManager {
 
   private updateToolBlock(params: AIManagerToolBlockUpdateParams): void {
     const newMessages = updateToolBlockInMessage({
-      messages: this.state.messages,
+      messages: this.messages,
       id: params.toolId,
       parameters: params.args || "",
       result: params.result,
@@ -341,7 +335,7 @@ export class AIManager {
     newContent: string,
   ): void {
     const newMessages = addDiffBlockToMessage({
-      messages: this.state.messages,
+      messages: this.messages,
       path: filePath,
       diffResult,
       original: originalContent,
@@ -353,7 +347,7 @@ export class AIManager {
 
   private addErrorBlock(error: string): void {
     const newMessages = addErrorBlockToMessage({
-      messages: this.state.messages,
+      messages: this.messages,
       error,
     });
     this.setMessages(newMessages);
@@ -362,7 +356,7 @@ export class AIManager {
 
   private addCompressBlock(insertIndex: number, content: string): void {
     const newMessages = addCompressBlockToMessage({
-      messages: this.state.messages,
+      messages: this.messages,
       insertIndex,
       compressContent: content,
     });
@@ -377,7 +371,7 @@ export class AIManager {
     storagePath: string,
   ): void {
     const newMessages = addMemoryBlockToMessage({
-      messages: this.state.messages,
+      messages: this.messages,
       content,
       isSuccess: success,
       memoryType: type,
@@ -388,7 +382,7 @@ export class AIManager {
   }
 
   public setIsLoading(isLoading: boolean): void {
-    this.state.isLoading = isLoading;
+    this.isLoading = isLoading;
     this.callbacks.onLoadingChange?.(isLoading);
   }
 
@@ -414,21 +408,17 @@ export class AIManager {
     this.setIsLoading(false);
   }
 
-  public resetSession(): void {
-    this.state.sessionId = randomUUID();
-    this.state.totalTokens = 0;
-    this.sessionStartTime = new Date().toISOString();
-    this.state.userInputHistory = [];
-  }
-
   /**
    * 清空消息和输入历史
    */
   public clearMessages(): void {
-    this.state.messages = [];
-    this.state.userInputHistory = [];
+    this.messages = [];
+    this.userInputHistory = [];
     this.callbacks.onMessagesChange?.([]);
-    this.resetSession();
+    this.sessionId = randomUUID();
+    this.totalTokens = 0;
+    this.sessionStartTime = new Date().toISOString();
+    this.userInputHistory = [];
   }
 
   /**
@@ -447,13 +437,13 @@ export class AIManager {
     messages: Message[],
     totalTokens: number,
   ): void {
-    this.state.sessionId = sessionId;
-    this.state.messages = [...messages];
-    this.state.totalTokens = totalTokens;
-    this.state.isLoading = false;
+    this.sessionId = sessionId;
+    this.messages = [...messages];
+    this.totalTokens = totalTokens;
+    this.isLoading = false;
 
     // Extract user input history from session messages
-    this.state.userInputHistory = extractUserInputHistory(messages);
+    this.userInputHistory = extractUserInputHistory(messages);
   }
 
   /**
@@ -462,9 +452,9 @@ export class AIManager {
   public async saveSession(): Promise<void> {
     try {
       await saveSession(
-        this.state.sessionId,
-        this.state.messages,
-        this.state.totalTokens,
+        this.sessionId,
+        this.messages,
+        this.totalTokens,
         this.sessionStartTime,
       );
     } catch (error) {
@@ -477,23 +467,20 @@ export class AIManager {
   public addToInputHistory(input: string): void {
     // 避免重复添加相同的输入
     if (
-      this.state.userInputHistory.length > 0 &&
-      this.state.userInputHistory[this.state.userInputHistory.length - 1] ===
-        input
+      this.userInputHistory.length > 0 &&
+      this.userInputHistory[this.userInputHistory.length - 1] === input
     ) {
       return;
     }
     // 限制历史记录数量，保留最近的100条
-    this.state.userInputHistory = [...this.state.userInputHistory, input].slice(
-      -100,
-    );
+    this.userInputHistory = [...this.userInputHistory, input].slice(-100);
   }
 
   /**
    * 清空输入历史记录
    */
   public clearInputHistory(): void {
-    this.state.userInputHistory = [];
+    this.userInputHistory = [];
   }
 
   /**
@@ -578,7 +565,7 @@ export class AIManager {
 
   public async sendAIMessage(recursionDepth: number = 0): Promise<void> {
     // Only check isLoading for the initial call (recursionDepth === 0)
-    if (recursionDepth === 0 && this.state.isLoading) {
+    if (recursionDepth === 0 && this.isLoading) {
       return;
     }
 
@@ -601,7 +588,7 @@ export class AIManager {
     let hasToolOperations = false;
 
     // 获取近期消息历史
-    const recentMessages = convertMessagesForAPI(this.state.messages);
+    const recentMessages = convertMessagesForAPI(this.messages);
 
     try {
       // 添加答案块
@@ -638,7 +625,7 @@ export class AIManager {
       // 调用 AI 服务（非流式）
       const result = await callAgent({
         messages: recentMessages,
-        sessionId: this.state.sessionId,
+        sessionId: this.sessionId,
         abortSignal: abortController.signal,
         memory: combinedMemory, // 传递合并后的记忆内容
         workdir: process.cwd(), // 传递当前工作目录
@@ -652,7 +639,7 @@ export class AIManager {
 
       // 更新 token 统计 - 显示最新一次的token使用量
       if (result.usage) {
-        this.state.totalTokens = result.usage.total_tokens;
+        this.totalTokens = result.usage.total_tokens;
 
         // 检查是否超过token限制
         const tokenLimit = parseInt(
@@ -666,7 +653,7 @@ export class AIManager {
 
           // 检查是否需要压缩消息
           const { messagesToCompress, insertIndex } = getMessagesToCompress(
-            this.state.messages,
+            this.messages,
             7,
           );
 
@@ -883,7 +870,7 @@ export class AIManager {
         try {
           await saveErrorLog(
             error,
-            this.state.sessionId,
+            this.sessionId,
             process.cwd(),
             recentMessages,
             recursionDepth,

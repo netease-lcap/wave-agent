@@ -15,9 +15,6 @@ import type { Message } from "@/types.js";
 // Mock AI Service
 vi.mock("@/services/aiService");
 
-// Mock Session Manager
-vi.mock("@/services/sessionManager");
-
 // Mock memory utils to prevent file reading
 vi.mock("@/utils/memoryUtils", () => ({
   readMemoryFile: vi.fn(() => Promise.resolve("")),
@@ -168,8 +165,7 @@ describe("AIManager Diff Integration Tests", () => {
     expect(toolMessage?.content).toContain("Rewrote file test.js");
 
     // 验证获取到了当前 AIManager 状态中的消息
-    const currentState = aiManager.getState();
-    const messages = currentState.messages;
+    const messages = aiManager.messages;
 
     // 应该包含用户消息、助手消息（带工具调用）、工具结果消息、以及最终的助手回复
     expect(messages.length).toBeGreaterThanOrEqual(3);
@@ -290,8 +286,7 @@ describe("AIManager Diff Integration Tests", () => {
     expect(toolMessage?.content).toContain("Successfully replaced text");
 
     // 验证当前状态中包含 diff 信息
-    const currentState = aiManager.getState();
-    const messages = currentState.messages;
+    const messages = aiManager.messages;
 
     // 检查是否有文件操作的 diff 块
     const hasDiffBlock = messages.some((message) =>
@@ -456,8 +451,7 @@ describe("AIManager Diff Integration Tests", () => {
     expect(file2ToolMessage?.content).toContain("Created file2.js");
 
     // 验证当前状态中包含两个文件的 diff 信息
-    const currentState = aiManager.getState();
-    const messages = currentState.messages;
+    const messages = aiManager.messages;
 
     // 检查是否有两个文件操作的 diff 块
     const diffBlocks = messages.flatMap(
@@ -579,8 +573,7 @@ describe("AIManager Diff Integration Tests", () => {
     );
 
     // 验证当前状态中没有 diff 相关的块（因为工具执行失败）
-    const currentState = aiManager.getState();
-    const messages = currentState.messages;
+    const messages = aiManager.messages;
 
     const diffBlocks = messages.flatMap(
       (message) =>
