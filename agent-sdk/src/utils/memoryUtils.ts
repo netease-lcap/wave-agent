@@ -1,6 +1,5 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { logger } from "./logger.js";
 
 /**
  * 读取WAVE.md记忆文件内容
@@ -17,7 +16,7 @@ export async function readMemoryFile(): Promise<string> {
       // 文件不存在，返回空字符串
       return "";
     }
-    logger.error("Failed to read memory file:", error);
+    // logger.error("Failed to read memory file:", error);
     return "";
   }
 }

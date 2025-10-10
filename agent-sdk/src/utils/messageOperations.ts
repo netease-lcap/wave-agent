@@ -1,7 +1,6 @@
 import type { Message } from "../types.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
-import { logger } from "./logger.js";
 
 // Parameter interfaces for message operations
 export interface AddUserMessageParams {
@@ -144,8 +143,8 @@ export const convertImageToBase64 = (imagePath: string): string => {
 
     const base64String = imageBuffer.toString("base64");
     return `data:${mimeType};base64,${base64String}`;
-  } catch (error) {
-    logger.error(`Failed to convert image to base64: ${imagePath}`, error);
+  } catch {
+    // logger.error(`Failed to convert image to base64: ${imagePath}`, error);
     // 返回一个错误占位符或抛出错误
     return `data:image/png;base64,`; // 空的base64，避免程序崩溃
   }

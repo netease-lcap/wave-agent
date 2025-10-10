@@ -12,11 +12,6 @@ import os from "os";
 export const DATA_DIRECTORY = path.join(os.homedir(), ".wave-code");
 
 /**
- * 应用日志文件路径
- */
-export const LOG_FILE = path.join(DATA_DIRECTORY, "app.log");
-
-/**
  * Bash命令历史文件路径
  */
 export const BASH_HISTORY_FILE = path.join(DATA_DIRECTORY, "bash-history.json");
@@ -30,11 +25,6 @@ export const ERROR_LOG_DIRECTORY = path.join(DATA_DIRECTORY, "error-logs");
  * 用户级记忆文件路径
  */
 export const USER_MEMORY_FILE = path.join(DATA_DIRECTORY, "user-memory.md");
-
-/**
- * 分页相关常量
- */
-export const MESSAGES_PER_PAGE = 20; // 每页显示的消息数量
 
 /**
  * AI 相关常量

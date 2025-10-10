@@ -1,6 +1,5 @@
 import { readFile, writeFile } from "fs/promises";
 import type { ToolPlugin, ToolResult } from "./types.js";
-import { logger } from "../utils/logger.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { diffLines } from "diff";
 
@@ -156,7 +155,7 @@ export const editTool: ToolPlugin = {
         ? `Replaced ${replacementCount} instances`
         : "Text replaced successfully";
 
-      logger.info(`Edit tool: ${shortResult}`);
+      // logger.info(`Edit tool: ${shortResult}`);
 
       return {
         success: true,
@@ -170,7 +169,7 @@ export const editTool: ToolPlugin = {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      logger.error(`Edit tool error: ${errorMessage}`);
+      // logger.error(`Edit tool error: ${errorMessage}`);
       return {
         success: false,
         content: "",

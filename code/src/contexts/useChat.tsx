@@ -9,6 +9,7 @@ import React, {
 import { useAppConfig } from "./useAppConfig.js";
 import type { Message } from "wave-agent-sdk";
 import { AIManager, AIManagerCallbacks } from "wave-agent-sdk";
+import { logger } from "../utils/logger.js";
 
 // Main Chat Context
 export interface ChatContextType {
@@ -96,6 +97,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           callbacks,
           restoreSessionId,
           continueLastSession,
+          logger,
         });
 
         if (isMounted) {

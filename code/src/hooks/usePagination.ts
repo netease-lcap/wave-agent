@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useInput } from "ink";
 import type { Message } from "wave-agent-sdk";
-import { MESSAGES_PER_PAGE } from "wave-agent-sdk";
+import { MESSAGES_PER_PAGE } from "../utils/constants.js";
 
 interface PaginationInfo {
   currentPage: number;

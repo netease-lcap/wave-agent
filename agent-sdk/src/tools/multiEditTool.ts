@@ -1,6 +1,5 @@
 import { readFile, writeFile } from "fs/promises";
 import type { ToolPlugin, ToolResult } from "./types.js";
-import { logger } from "../utils/logger.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { diffLines } from "diff";
 
@@ -146,7 +145,7 @@ export const multiEditTool: ToolPlugin = {
         if (edits[0] && edits[0].old_string === "") {
           originalContent = "";
           isNewFile = true;
-          logger.info(`Creating new file: ${resolvedPath}`);
+          // logger.info(`Creating new file: ${resolvedPath}`);
         } else {
           return {
             success: false,
@@ -233,7 +232,7 @@ export const multiEditTool: ToolPlugin = {
 
       const detailedContent = `${shortResult}\n\nOperations performed:\n${appliedEdits.map((edit, i) => `${i + 1}. ${edit}`).join("\n")}`;
 
-      logger.info(`MultiEdit tool: ${shortResult}`);
+      // logger.info(`MultiEdit tool: ${shortResult}`);
 
       return {
         success: true,
@@ -247,7 +246,7 @@ export const multiEditTool: ToolPlugin = {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      logger.error(`MultiEdit tool error: ${errorMessage}`);
+      // logger.error(`MultiEdit tool error: ${errorMessage}`);
       return {
         success: false,
         content: "",

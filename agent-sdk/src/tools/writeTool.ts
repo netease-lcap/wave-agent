@@ -1,7 +1,6 @@
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { dirname } from "path";
 import type { ToolPlugin, ToolResult } from "./types.js";
-import { logger } from "../utils/logger.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { diffLines } from "diff";
 
@@ -94,9 +93,9 @@ export const writeTool: ToolPlugin = {
           mkdirError instanceof Error &&
           !mkdirError.message.includes("EEXIST")
         ) {
-          logger.warn(
-            `Failed to create directory ${fileDir}: ${mkdirError.message}`,
-          );
+          // logger.warn(
+          //   `Failed to create directory ${fileDir}: ${mkdirError.message}`,
+          // );
         }
       }
 
@@ -120,7 +119,7 @@ export const writeTool: ToolPlugin = {
       const chars = content.length;
       const detailedContent = `${shortResult} (${lines} lines, ${chars} characters)`;
 
-      logger.info(`Write tool: ${shortResult}`);
+      // logger.info(`Write tool: ${shortResult}`);
 
       return {
         success: true,
@@ -134,7 +133,7 @@ export const writeTool: ToolPlugin = {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      logger.error(`Write tool error: ${errorMessage}`);
+      // logger.error(`Write tool error: ${errorMessage}`);
       return {
         success: false,
         content: "",

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import { generateCommitMessage } from "wave-agent-sdk";
-import { logger } from "wave-agent-sdk";
+import { logger } from "../utils/logger.js";
 import { getGitDiff } from "wave-agent-sdk";
 
 export interface Command {

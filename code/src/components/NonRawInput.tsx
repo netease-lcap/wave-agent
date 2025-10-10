@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { Box, Text, useStdin } from "ink";
 import { useChat } from "../contexts/useChat.js";
-import { logger } from "wave-agent-sdk";
+import { logger } from "../utils/logger.js";
 
 export const NonRawInput: React.FC = () => {
   const { sendMessage, isLoading, isCommandRunning } = useChat();

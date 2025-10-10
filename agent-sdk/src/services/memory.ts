@@ -1,6 +1,5 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { logger } from "../utils/logger.js";
 import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
 
 // 项目内存相关方法
@@ -39,9 +38,9 @@ export const addMemory = async (message: string): Promise<void> => {
     // 写入文件
     await fs.writeFile(memoryFilePath, updatedContent, "utf-8");
 
-    logger.info(`Memory added to ${memoryFilePath}:`, message);
+    // logger.info(`Memory added to ${memoryFilePath}:`, message);
   } catch (error) {
-    logger.error("Failed to add memory:", error);
+    // logger.error("Failed to add memory:", error);
     throw new Error(`Failed to add memory: ${(error as Error).message}`);
   }
 };
@@ -61,13 +60,13 @@ export const ensureUserMemoryFile = async (): Promise<void> => {
         const initialContent =
           "# User Memory\n\n这是用户级记忆文件，记录跨项目的重要信息和上下文。\n\n";
         await fs.writeFile(USER_MEMORY_FILE, initialContent, "utf-8");
-        logger.info(`Created user memory file: ${USER_MEMORY_FILE}`);
+        // logger.info(`Created user memory file: ${USER_MEMORY_FILE}`);
       } else {
         throw error;
       }
     }
   } catch (error) {
-    logger.error("Failed to ensure user memory file:", error);
+    // logger.error("Failed to ensure user memory file:", error);
     throw new Error(
       `Failed to ensure user memory file: ${(error as Error).message}`,
     );
@@ -91,9 +90,9 @@ export const addUserMemory = async (message: string): Promise<void> => {
     // 写入文件
     await fs.writeFile(USER_MEMORY_FILE, updatedContent, "utf-8");
 
-    logger.info(`User memory added to ${USER_MEMORY_FILE}:`, message);
+    // logger.info(`User memory added to ${USER_MEMORY_FILE}:`, message);
   } catch (error) {
-    logger.error("Failed to add user memory:", error);
+    // logger.error("Failed to add user memory:", error);
     throw new Error(`Failed to add user memory: ${(error as Error).message}`);
   }
 };
@@ -102,8 +101,8 @@ export const getUserMemoryContent = async (): Promise<string> => {
   try {
     await ensureUserMemoryFile();
     return await fs.readFile(USER_MEMORY_FILE, "utf-8");
-  } catch (error) {
-    logger.error("Failed to read user memory:", error);
+  } catch {
+    // logger.error("Failed to read user memory:", error);
     return "";
   }
 };

@@ -1,6 +1,5 @@
 import { readFile } from "fs/promises";
 import type { ToolPlugin, ToolResult } from "./types.js";
-import { logger } from "../utils/logger.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 
 /**
@@ -61,7 +60,7 @@ export const readTool: ToolPlugin = {
 
       // 检查文件是否为空
       if (fileContent.length === 0) {
-        logger.warn(`File ${filePath} exists but has empty contents`);
+        // logger.warn(`File ${filePath} exists but has empty contents`);
         return {
           success: true,
           content:

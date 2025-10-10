@@ -1,5 +1,4 @@
 import { toolRegistry } from "../tools/index.js";
-import { logger } from "@/utils/logger.js";
 import OpenAI from "openai";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import {
@@ -103,7 +102,7 @@ export async function generateCommitMessage(
     if ((error as Error).name === "AbortError") {
       throw new Error("Request was aborted");
     }
-    logger.error("Failed to generate commit message:", error);
+    // // logger.error("Failed to generate commit message:", error);
     return "Update files";
   }
 }
@@ -188,7 +187,7 @@ ${workdir || process.cwd()}
     if ((error as Error).name === "AbortError") {
       throw new Error("Request was aborted");
     }
-    logger.error("Failed to call OpenAI:", error);
+    // // logger.error("Failed to call OpenAI:", error);
     throw error;
   }
 }
@@ -280,7 +279,7 @@ For technical conversations, structure as:
     if ((error as Error).name === "AbortError") {
       throw new Error("Compression request was aborted");
     }
-    logger.error("Failed to compress messages:", error);
+    // // logger.error("Failed to compress messages:", error);
     return "Failed to compress conversation history";
   }
 }

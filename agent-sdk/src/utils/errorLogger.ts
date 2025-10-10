@@ -1,6 +1,5 @@
 import * as fs from "fs";
 import path from "path";
-import { logger } from "./logger.js";
 import { ERROR_LOG_DIRECTORY } from "./constants.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
 
@@ -80,8 +79,8 @@ export async function saveErrorLog(
       "utf-8",
     );
 
-    logger.info(`Error log saved to: ${errorLogPath}`);
-  } catch (saveError) {
-    logger.error("Failed to save error log:", saveError);
+    // logger.info(`Error log saved to: ${errorLogPath}`);
+  } catch {
+    // logger.error("Failed to save error log:", saveError);
   }
 }

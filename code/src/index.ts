@@ -70,6 +70,9 @@ export async function main() {
 // Export CLI function
 export { startCli } from "./cli.js";
 
+// Export logger
+export { logger } from "./utils/logger.js";
+
 // Execute main function if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {

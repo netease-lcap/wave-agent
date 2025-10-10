@@ -1,6 +1,5 @@
 import { unlink } from "fs/promises";
 import type { ToolPlugin, ToolResult } from "./types.js";
-import { logger } from "../utils/logger.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 
 /**
@@ -47,7 +46,7 @@ export const deleteFileTool: ToolPlugin = {
       // 删除文件
       await unlink(filePath);
 
-      logger.info(`Successfully deleted file: ${filePath}`);
+      // logger.info(`Successfully deleted file: ${filePath}`);
 
       return {
         success: true,

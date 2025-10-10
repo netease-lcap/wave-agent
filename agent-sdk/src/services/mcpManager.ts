@@ -3,7 +3,6 @@ import { join } from "path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
-import { logger } from "@/utils/logger.js";
 import { createMcpToolPlugin, findToolServer } from "@/utils/mcpUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 
@@ -56,7 +55,7 @@ export class McpManager {
     this.configPath = join(workdir, ".mcp.json");
 
     if (autoConnect) {
-      logger.info("Initializing MCP servers...");
+      // logger.info("Initializing MCP servers...");
 
       // Ensure MCP configuration is loaded
       const config = await this.ensureConfigLoaded();
@@ -66,20 +65,15 @@ export class McpManager {
         const connectionPromises = Object.keys(config.mcpServers).map(
           async (serverName) => {
             try {
-              logger.info(`Connecting to MCP server: ${serverName}`);
+              // logger.info(`Connecting to MCP server: ${serverName}`);
               const success = await this.connectServer(serverName);
               if (success) {
-                logger.info(
-                  `Successfully connected to MCP server: ${serverName}`,
-                );
+                // logger.info(`Successfully connected to MCP server: ${serverName}`);
               } else {
-                logger.warn(`Failed to connect to MCP server: ${serverName}`);
+                // logger.warn(`Failed to connect to MCP server: ${serverName}`);
               }
-            } catch (error) {
-              logger.error(
-                `Error connecting to MCP server ${serverName}:`,
-                error,
-              );
+            } catch {
+              // logger.error(`Error connecting to MCP server ${serverName}:`, error);
             }
           },
         );
@@ -88,7 +82,7 @@ export class McpManager {
         await Promise.all(connectionPromises);
       }
 
-      logger.info("MCP servers initialization completed");
+      // logger.info("MCP servers initialization completed");
     }
   }
 
@@ -101,7 +95,7 @@ export class McpManager {
 
   async loadConfig(): Promise<McpConfig | null> {
     if (!this.configPath) {
-      logger.warn("MCP config path not set. Call initialize() first.");
+      // logger.warn("MCP config path not set. Call initialize() first.");
       return null;
     }
 
@@ -135,7 +129,7 @@ export class McpManager {
     } catch (error) {
       // Only log error if it's not a "file not found" error
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        logger.error("Failed to load .mcp.json:", error);
+        // logger.error("Failed to load .mcp.json:", error);
       }
       return null;
     }
@@ -146,8 +140,8 @@ export class McpManager {
       await fs.writeFile(this.configPath, JSON.stringify(config, null, 2));
       this.config = config;
       return true;
-    } catch (error) {
-      logger.error("Failed to save .mcp.json:", error);
+    } catch {
+      // logger.error("Failed to save .mcp.json:", error);
       return false;
     }
   }
@@ -244,7 +238,7 @@ export class McpManager {
 
       // Handle transport errors
       transport.onerror = (error: Error) => {
-        logger.error(`MCP Server ${name} transport error:`, error);
+        // logger.error(`MCP Server ${name} transport error:`, error);
         this.updateServerStatus(name, {
           status: "error",
           error: error.message,
@@ -252,7 +246,7 @@ export class McpManager {
       };
 
       transport.onclose = () => {
-        logger.info(`MCP Server ${name} transport closed`);
+        // logger.info(`MCP Server ${name} transport closed`);
         this.updateServerStatus(name, {
           status: "disconnected",
           tools: [],
@@ -293,7 +287,7 @@ export class McpManager {
 
       return true;
     } catch (error) {
-      logger.error(`Failed to connect to MCP server ${name}:`, error);
+      // logger.error(`Failed to connect to MCP server ${name}:`, error);
       this.updateServerStatus(name, {
         status: "error",
         error: error instanceof Error ? error.message : String(error),
@@ -321,8 +315,8 @@ export class McpManager {
       });
 
       return true;
-    } catch (error) {
-      logger.error(`Error disconnecting from MCP server ${name}:`, error);
+    } catch {
+      // logger.error(`Error disconnecting from MCP server ${name}:`, error);
       return false;
     }
   }

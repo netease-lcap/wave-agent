@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink";
 import { App } from "./components/App.js";
-import { cleanupLogs } from "wave-agent-sdk";
+import { cleanupLogs } from "./utils/logger.js";
 
 export interface CliOptions {
   restoreSessionId?: string;
@@ -36,7 +36,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       }
 
       process.exit(0);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error during cleanup:", error);
       process.exit(1);
     }

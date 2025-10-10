@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { logger } from "@/utils/logger.js";
 import { writeFileSync, unlinkSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -182,7 +181,7 @@ describe("convertImageToBase64", () => {
       try {
         unlinkSync(tempImagePath);
       } catch {
-        logger.warn("Failed to cleanup temp file:", tempImagePath);
+        // Failed to cleanup temp file - ignore error in tests
       }
     }
   });

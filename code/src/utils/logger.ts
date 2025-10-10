@@ -299,20 +299,3 @@ export const cleanupLogs = async (
 
   logger.info("Log cleanup completed");
 };
-
-/**
- * 清空日志文件
- */
-export const clearLog = (): void => {
-  // 如果禁用了 logger I/O 操作，直接返回以节约性能
-  if (process.env.DISABLE_LOGGER_IO === "true") {
-    return;
-  }
-
-  try {
-    fs.writeFileSync(logFile, "");
-    logger.info("Log file cleared");
-  } catch (error) {
-    process.stderr.write(`[LOG] Failed to clear log file: ${error}\n`);
-  }
-};

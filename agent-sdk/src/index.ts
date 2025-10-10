@@ -22,13 +22,11 @@ export * from "./tools/types.js";
 // Export all utilities
 export * from "./utils/bashHistory.js";
 export * from "./utils/clipboard.js";
-export * from "./utils/constants.js";
 export * from "./utils/convertMessagesForAPI.js";
 export * from "./utils/diffUtils.js";
 export * from "./utils/errorLogger.js";
 export * from "./utils/fileFilter.js";
 export * from "./utils/gitUtils.js";
-export * from "./utils/logger.js";
 export * from "./utils/mcpUtils.js";
 export * from "./utils/memoryUtils.js";
 export * from "./utils/messageGrouping.js";

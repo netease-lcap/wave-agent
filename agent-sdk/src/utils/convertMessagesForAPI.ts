@@ -1,6 +1,5 @@
 import type { Message } from "../types.js";
 import { convertImageToBase64 } from "./messageOperations.js";
-import { logger } from "./logger.js";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import { stripAnsiColors } from "./stringUtils.js";
 import {
@@ -23,7 +22,7 @@ function safeToolArguments(args: string): string {
     JSON.parse(args);
     return args;
   } catch {
-    logger.error(`Invalid tool arguments: ${args}`);
+    // logger.error(`Invalid tool arguments: ${args}`);
     // 如果不是合法的 JSON，返回兜底的空对象
     return "{}";
   }

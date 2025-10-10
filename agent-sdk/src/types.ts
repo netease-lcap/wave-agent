@@ -1,5 +1,16 @@
 import { ChatCompletionChunk } from "openai/resources.js";
 
+/**
+ * Logger 接口定义
+ * 与 OpenAI 包的 Logger 接口兼容
+ */
+export interface Logger {
+  error: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  info: (...args: unknown[]) => void;
+  debug: (...args: unknown[]) => void;
+}
+
 export interface MessageGroupInfo {
   isGroupStart: boolean; // 是否是连续组的开始
   isGroupMember: boolean; // 是否是连续组的成员

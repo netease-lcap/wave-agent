@@ -30,14 +30,14 @@ import { readMemoryFile } from "../utils/memoryUtils.js";
 import * as memory from "./memory.js";
 import { mcpManager } from "./mcpManager.js";
 import { BashManager } from "./bashManager.js";
-import type { Message } from "../types.js";
-import { logger } from "../utils/logger.js";
+import type { Message, Logger } from "../types.js";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 
 export interface AIManagerOptions {
   callbacks: AIManagerCallbacks;
   restoreSessionId?: string;
   continueLastSession?: boolean;
+  logger?: Logger; // 添加可选的 logger 参数
 }
 
 export interface AIManagerCallbacks {
@@ -80,12 +80,14 @@ export class AIManager {
   private autoSaveTimer: NodeJS.Timeout | null = null;
   private lastSaveTime: number = 0;
   private bashManagerRef: BashManager | null = null;
+  private logger?: Logger; // 添加可选的 logger 属性
 
   // 私有构造函数，防止直接实例化
   private constructor(options: AIManagerOptions) {
-    const { callbacks } = options;
+    const { callbacks, logger } = options;
 
     this.callbacks = callbacks;
+    this.logger = logger; // 保存传入的 logger
     this.sessionStartTime = new Date().toISOString();
     this.state = {
       sessionId: randomUUID(),
@@ -129,7 +131,7 @@ export class AIManager {
     try {
       await mcpManager.initialize(process.cwd(), true);
     } catch (error) {
-      logger.error("Failed to initialize MCP servers:", error);
+      this.logger?.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
     }
 
@@ -204,7 +206,10 @@ export class AIManager {
       this.lastSaveTime = now;
       // 异步保存会话（不阻塞UI）
       this.saveSession().catch((error) => {
-        logger.error("Failed to save session after message update:", error);
+        this.logger?.error(
+          "Failed to save session after message update:",
+          error,
+        );
       });
     }
   }
@@ -333,7 +338,7 @@ export class AIManager {
       try {
         this.abortController.abort();
       } catch (error) {
-        logger.error("Failed to abort AI service:", error);
+        this.logger?.error("Failed to abort AI service:", error);
       }
     }
 
@@ -342,7 +347,7 @@ export class AIManager {
       try {
         this.toolAbortController.abort();
       } catch (error) {
-        logger.error("Failed to abort tool execution:", error);
+        this.logger?.error("Failed to abort tool execution:", error);
       }
     }
 
@@ -403,7 +408,7 @@ export class AIManager {
         this.sessionStartTime,
       );
     } catch (error) {
-      logger.error("Failed to save session:", error);
+      this.logger?.error("Failed to save session:", error);
     }
   }
   /**
@@ -547,7 +552,7 @@ export class AIManager {
       try {
         memoryContent = await readMemoryFile();
       } catch (error) {
-        logger.warn("Failed to read memory file:", error);
+        this.logger?.warn("Failed to read memory file:", error);
       }
 
       // 读取用户级记忆内容
@@ -555,7 +560,7 @@ export class AIManager {
       try {
         userMemoryContent = await memory.getUserMemoryContent();
       } catch (error) {
-        logger.warn("Failed to read user memory file:", error);
+        this.logger?.warn("Failed to read user memory file:", error);
       }
 
       // 合并项目记忆和用户记忆
@@ -594,7 +599,7 @@ export class AIManager {
           10,
         );
         if (result.usage.total_tokens > tokenLimit) {
-          logger.info(
+          this.logger?.info(
             `Token usage exceeded ${tokenLimit}, compressing messages...`,
           );
 
@@ -618,11 +623,11 @@ export class AIManager {
               // 在指定位置插入压缩块
               this.addCompressBlock(insertIndex, compressedContent);
 
-              logger.info(
+              this.logger?.info(
                 `Successfully compressed ${messagesToCompress.length} messages`,
               );
             } catch (compressError) {
-              logger.error("Failed to compress messages:", compressError);
+              this.logger?.error("Failed to compress messages:", compressError);
             }
           }
         }
@@ -671,7 +676,7 @@ export class AIManager {
               } catch (parseError) {
                 // 对于非空但格式错误的JSON，仍然抛出异常
                 const errorMessage = `Failed to parse tool arguments: ${argsString}`;
-                logger.error(errorMessage, parseError);
+                this.logger?.error(errorMessage, parseError);
                 throw new Error(errorMessage);
               }
             }
@@ -814,7 +819,7 @@ export class AIManager {
             recursionDepth,
           );
         } catch (saveError) {
-          logger.error("Failed to save error log:", saveError);
+          this.logger?.error("Failed to save error log:", saveError);
         }
       }
 

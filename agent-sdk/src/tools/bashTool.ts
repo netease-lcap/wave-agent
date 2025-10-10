@@ -1,6 +1,5 @@
 import { spawn, ChildProcess } from "child_process";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
-import { logger } from "../utils/logger.js";
 
 // Background bash shell management
 interface BackgroundShell {
@@ -116,8 +115,8 @@ class BackgroundBashManager {
           .split("\n")
           .filter((line) => regex.test(line))
           .join("\n");
-      } catch (error) {
-        logger.warn(`Invalid filter regex: ${filter}`, error);
+      } catch {
+        // logger.warn(`Invalid filter regex: ${filter}`, error);
       }
     }
 
@@ -148,8 +147,8 @@ class BackgroundBashManager {
           ) {
             try {
               process.kill(-shell.process.pid, "SIGKILL");
-            } catch (error) {
-              logger.error("Failed to force kill process:", error);
+            } catch {
+              // logger.error("Failed to force kill process:", error);
             }
           }
         }, 1000);
@@ -170,8 +169,8 @@ class BackgroundBashManager {
         shell.status = "killed";
         shell.runtime = Date.now() - shell.startTime;
         return true;
-      } catch (directKillError) {
-        logger.error("Failed to kill child process:", directKillError);
+      } catch {
+        // logger.error("Failed to kill child process:", directKillError);
         return false;
       }
     }
@@ -328,8 +327,8 @@ export const bashTool: ToolPlugin = {
                 if (child.pid && !child.killed) {
                   try {
                     process.kill(-child.pid, "SIGKILL");
-                  } catch (killError) {
-                    logger.error("Failed to force kill process:", killError);
+                  } catch {
+                    // logger.error("Failed to force kill process:", killError);
                   }
                 }
               }, 1000);
@@ -342,8 +341,8 @@ export const bashTool: ToolPlugin = {
                     child.kill("SIGKILL");
                   }
                 }, 1000);
-              } catch (directKillError) {
-                logger.error("Failed to kill child process:", directKillError);
+              } catch {
+                // logger.error("Failed to kill child process:", directKillError);
               }
             }
           }
