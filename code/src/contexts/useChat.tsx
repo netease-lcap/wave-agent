@@ -109,7 +109,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             setSessionId(sessionId);
           }
         },
-        onlatestTotalTokensChange: (tokens) => {
+        onLatestTotalTokensChange: (tokens) => {
           if (isMounted) {
             setlatestTotalTokens(tokens);
           }
