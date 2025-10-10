@@ -7,7 +7,6 @@ import {
 import { ToolRegistryImpl } from "../tools/index.js";
 import type { ToolContext } from "../tools/types.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
-import { saveErrorLog } from "../utils/errorLogger.js";
 import * as memory from "../services/memory.js";
 import { McpManager, McpServerStatus } from "./mcpManager.js";
 import { BashManager } from "./bashManager.js";
@@ -549,12 +548,10 @@ export class AIManager {
           this.toolAbortController = null;
         }
 
-        if (isCurrentlyAborted) {
-          return;
+        if (!isCurrentlyAborted) {
+          // 递归调用 AI 服务，递增的递归深度
+          await this.sendAIMessage(recursionDepth + 1);
         }
-
-        // 递归调用 AI 服务，递增的递归深度
-        await this.sendAIMessage(recursionDepth + 1);
       } else {
         // 没有工具操作时也要清除 abort controller
         this.abortController = null;
@@ -574,29 +571,11 @@ export class AIManager {
         this.messageManager.addErrorBlock(
           error instanceof Error ? error.message : "Unknown error occurred",
         );
-
-        // 保存错误时发送给AI的参数到文件
-        try {
-          await saveErrorLog(
-            error,
-            this.sessionId,
-            process.cwd(),
-            recentMessages,
-            recursionDepth,
-          );
-        } catch (saveError) {
-          this.logger?.error("Failed to save error log:", saveError);
-        }
       }
 
       // 出错时也要重置 abort controller
       this.abortController = null;
       this.toolAbortController = null;
-
-      // 如果是用户主动中断，直接返回，不继续递归
-      if (isAborted) {
-        return;
-      }
     } finally {
       // Only clear loading state for the initial call
       if (recursionDepth === 0) {

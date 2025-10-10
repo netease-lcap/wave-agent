@@ -26,7 +26,6 @@ export * from "./utils/bashHistory.js";
 export * from "./utils/clipboard.js";
 export * from "./utils/convertMessagesForAPI.js";
 export * from "./utils/diffUtils.js";
-export * from "./utils/errorLogger.js";
 export * from "./utils/fileFilter.js";
 export * from "./utils/gitUtils.js";
 export * from "./utils/mcpUtils.js";
