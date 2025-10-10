@@ -269,9 +269,28 @@ export class AIManager {
       isRunning: params.isRunning,
       name: params.name,
       shortResult: params.shortResult,
+      compactParams: params.compactParams,
     });
     this.setMessages(newMessages);
     this.callbacks.onToolBlockUpdated?.(params);
+  }
+
+  // 生成 compactParams 的辅助方法
+  private generateCompactParams(
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+  ): string | undefined {
+    try {
+      const toolPlugin = toolRegistry
+        .list()
+        .find((plugin) => plugin.name === toolName);
+      if (toolPlugin?.formatCompactParams) {
+        return toolPlugin.formatCompactParams(toolArgs);
+      }
+    } catch (error) {
+      this.logger?.warn("Failed to generate compactParams", error);
+    }
+    return undefined;
   }
 
   private addDiffBlock(
@@ -682,11 +701,18 @@ export class AIManager {
             }
 
             // 设置工具开始执行状态
+            const toolName = functionToolCall.function?.name || "";
+            const compactParams = this.generateCompactParams(
+              toolName,
+              toolArgs,
+            );
+
             this.updateToolBlock({
               toolId,
               args: JSON.stringify(toolArgs, null, 2),
               isRunning: true, // isRunning: true
-              name: functionToolCall.function?.name || "",
+              name: toolName,
+              compactParams,
             });
 
             try {
@@ -712,8 +738,9 @@ export class AIManager {
                 success: toolResult.success,
                 error: toolResult.error,
                 isRunning: false, // isRunning: false
-                name: functionToolCall.function?.name || "",
+                name: toolName,
                 shortResult: toolResult.shortResult,
+                compactParams,
               });
 
               // 如果工具返回了diff信息，添加diff块
@@ -744,7 +771,8 @@ export class AIManager {
                 success: false,
                 error: errorMessage,
                 isRunning: false,
-                name: functionToolCall.function?.name || "",
+                name: toolName,
+                compactParams,
               });
             }
           } catch (parseError) {

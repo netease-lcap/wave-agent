@@ -60,6 +60,7 @@ export interface ToolBlock {
     isRunning?: boolean; // 标记工具是否在实际执行中
     success?: boolean;
     error?: string | Error;
+    compactParams?: string; // 紧凑参数显示
   };
 }
 

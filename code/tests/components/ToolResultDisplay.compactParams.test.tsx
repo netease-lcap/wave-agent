@@ -1,33 +1,17 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
 import { ToolResultDisplay } from "../../src/components/ToolResultDisplay.js";
 import type { ToolBlock } from "wave-agent-sdk";
 
-// Mock toolRegistry
-vi.mock("wave-agent-sdk", () => ({
-  toolRegistry: {
-    list: () => [
-      {
-        name: "test_tool",
-        formatCompactParams: (params: Record<string, unknown>) => {
-          if (params.target_file && params.query) {
-            return `${params.target_file}: "${params.query}"`;
-          }
-          return "test params";
-        },
-      },
-    ],
-  },
-}));
-
-describe("ToolResultDisplay - Dynamic CompactParams", () => {
-  it("should dynamically generate compactParams when parameters are available", () => {
+describe("ToolResultDisplay - CompactParams from Attributes", () => {
+  it("should display compactParams from attributes when available", () => {
     const block: ToolBlock = {
       type: "tool",
       parameters: '{"target_file": "example.ts", "query": "useState"}',
       attributes: {
         name: "test_tool",
         success: true,
+        compactParams: 'example.ts: "useState"',
       },
     };
 
@@ -36,16 +20,16 @@ describe("ToolResultDisplay - Dynamic CompactParams", () => {
     );
 
     const output = lastFrame();
-    // 应该动态生成 compactParams
+    // 应该显示从 attributes 获取的 compactParams
     expect(output).toContain('(example.ts: "useState")');
   });
 
-  it("should not show compactParams when tool plugin not found", () => {
+  it("should not show compactParams when not provided in attributes", () => {
     const block: ToolBlock = {
       type: "tool",
       parameters: '{"some": "params"}',
       attributes: {
-        name: "unknown_tool",
+        name: "test_tool",
         success: true,
       },
     };
@@ -60,13 +44,14 @@ describe("ToolResultDisplay - Dynamic CompactParams", () => {
     expect(output).not.toContain(")");
   });
 
-  it("should handle invalid JSON parameters gracefully", () => {
+  it("should handle empty compactParams gracefully", () => {
     const block: ToolBlock = {
       type: "tool",
-      parameters: "invalid json",
+      parameters: '{"some": "params"}',
       attributes: {
         name: "test_tool",
         success: true,
+        compactParams: "",
       },
     };
 
@@ -87,6 +72,7 @@ describe("ToolResultDisplay - Dynamic CompactParams", () => {
       attributes: {
         name: "test_tool",
         success: true,
+        compactParams: 'test.ts: "function"',
       },
     };
 
@@ -99,25 +85,14 @@ describe("ToolResultDisplay - Dynamic CompactParams", () => {
     expect(output).not.toContain('(test.ts: "function")');
   });
 
-  it("should handle missing formatCompactParams method", () => {
-    // Mock toolRegistry with a tool that doesn't have formatCompactParams
-    vi.doMock("wave-agent-sdk", () => ({
-      toolRegistry: {
-        list: () => [
-          {
-            name: "simple_tool",
-            // 没有 formatCompactParams 方法
-          },
-        ],
-      },
-    }));
-
+  it("should handle undefined compactParams", () => {
     const block: ToolBlock = {
       type: "tool",
       parameters: '{"some": "params"}',
       attributes: {
-        name: "simple_tool",
+        name: "test_tool",
         success: true,
+        compactParams: undefined,
       },
     };
 
@@ -127,7 +102,7 @@ describe("ToolResultDisplay - Dynamic CompactParams", () => {
 
     const output = lastFrame();
     // 应该正常渲染，不显示 compactParams
-    expect(output).toContain("simple_tool");
+    expect(output).toContain("test_tool");
     expect(output).not.toContain("(");
   });
 });

@@ -1,7 +1,6 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { Box, Text } from "ink";
 import type { ToolBlock } from "wave-agent-sdk";
-import { toolRegistry } from "wave-agent-sdk";
 
 interface ToolResultDisplayProps {
   block: ToolBlock;
@@ -14,30 +13,8 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
 }) => {
   const { parameters, result, attributes } = block;
 
-  // 动态计算 compactParams
-  const compactParams = useMemo(() => {
-    // 如果有工具名称和参数，尝试动态生成
-    if (attributes?.name && parameters) {
-      try {
-        const toolName = String(attributes.name);
-        const toolArgs = JSON.parse(parameters);
-
-        // 查找对应的工具插件
-        const toolPlugin = toolRegistry
-          .list()
-          .find((plugin) => plugin.name === toolName);
-
-        // 如果找到了工具插件且有 formatCompactParams 方法，使用它
-        if (toolPlugin?.formatCompactParams) {
-          return toolPlugin.formatCompactParams(toolArgs);
-        }
-      } catch {
-        // 解析参数失败，忽略错误
-      }
-    }
-
-    return undefined;
-  }, [attributes?.name, parameters]);
+  // 直接从 attributes 获取 compactParams
+  const compactParams = attributes?.compactParams;
 
   const getStatusColor = () => {
     if (attributes?.isRunning) return "yellow";

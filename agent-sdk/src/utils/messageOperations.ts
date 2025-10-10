@@ -30,6 +30,7 @@ export interface UpdateToolBlockParams {
   name?: string;
   shortResult?: string;
   images?: Array<{ data: string; mediaType?: string }>;
+  compactParams?: string;
 }
 
 // AIManager specific interfaces (without messages parameter)
@@ -42,6 +43,7 @@ export interface AIManagerToolBlockUpdateParams {
   isRunning?: boolean;
   name?: string;
   shortResult?: string;
+  compactParams?: string;
 }
 
 export interface AddDiffBlockParams {
@@ -296,6 +298,7 @@ export const updateToolBlockInMessage = ({
   name,
   shortResult,
   images,
+  compactParams,
 }: UpdateToolBlockParams): Message[] => {
   const newMessages = [...messages];
   // 找到最后一个助手消息
@@ -317,6 +320,8 @@ export const updateToolBlockInMessage = ({
             if (error !== undefined) toolBlock.attributes.error = error;
             if (isRunning !== undefined)
               toolBlock.attributes.isRunning = isRunning;
+            if (compactParams !== undefined)
+              toolBlock.attributes.compactParams = compactParams;
           }
         }
       } else if (result !== undefined) {
@@ -333,6 +338,7 @@ export const updateToolBlockInMessage = ({
             success: success,
             error: error,
             isRunning: isRunning ?? false,
+            compactParams: compactParams,
           },
         });
       }
