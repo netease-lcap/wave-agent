@@ -1,9 +1,9 @@
-import { toolRegistry } from "../tools/index.js";
 import OpenAI from "openai";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import {
   ChatCompletionCreateParamsNonStreaming,
   ChatCompletionMessageParam,
+  ChatCompletionFunctionTool,
 } from "openai/resources.js";
 import { FAST_MODEL_ID, AGENT_MODEL_ID } from "@/utils/constants.js";
 
@@ -49,6 +49,7 @@ export interface CallAgentOptions {
   abortSignal?: AbortSignal;
   memory?: string; // 记忆内容参数，从 WAVE.md 读取的内容
   workdir?: string; // 当前工作目录
+  tools?: ChatCompletionFunctionTool[]; // 工具配置
 }
 
 export interface CallAgentResult {
@@ -110,7 +111,7 @@ export async function generateCommitMessage(
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
-  const { messages, abortSignal, memory, workdir } = options;
+  const { messages, abortSignal, memory, workdir, tools } = options;
 
   try {
     // 构建系统提示词内容
@@ -135,26 +136,27 @@ ${workdir || process.cwd()}
     const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
       [systemMessage, ...messages];
 
-    // 获取工具配置
-    const tools = toolRegistry.getToolsConfig();
-
     // 获取模型配置
     const modelConfig = getModelConfig(AGENT_MODEL_ID, {
       temperature: 0,
       max_completion_tokens: 32768,
     });
 
+    // 准备 API 调用参数
+    const createParams: ChatCompletionCreateParamsNonStreaming = {
+      ...modelConfig,
+      messages: openaiMessages,
+    };
+
+    // 只有当 tools 存在时才添加到参数中
+    if (tools && tools.length > 0) {
+      createParams.tools = tools;
+    }
+
     // 调用 OpenAI API（非流式）
-    const response = await openai.chat.completions.create(
-      {
-        ...modelConfig,
-        messages: openaiMessages,
-        tools,
-      },
-      {
-        signal: abortSignal,
-      },
-    );
+    const response = await openai.chat.completions.create(createParams, {
+      signal: abortSignal,
+    });
 
     const finalMessage = response.choices[0]?.message;
     const totalUsage = response.usage

@@ -15,11 +15,13 @@ vi.mock("@/services/session", () => ({
 vi.mock("@/services/aiService");
 
 // Mock the toolRegistry
+let mockToolExecute: ReturnType<typeof vi.fn>;
 vi.mock("@/tools", () => ({
-  toolRegistry: {
-    execute: vi.fn(),
+  ToolRegistryImpl: vi.fn().mockImplementation(() => ({
+    execute: (mockToolExecute = vi.fn()),
+    list: vi.fn(() => []),
     getToolsConfig: vi.fn(() => []),
-  },
+  })),
 }));
 
 // Mock logger
@@ -63,8 +65,6 @@ describe("AIManager - No Parameters Tool Handling", () => {
 
   it("should handle tools with no parameters (empty string)", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     // Mock tool execution success
     mockToolExecute.mockResolvedValue({
@@ -151,8 +151,6 @@ describe("AIManager - No Parameters Tool Handling", () => {
 
   it("should handle tools with no parameters (empty object)", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     // Mock tool execution success
     mockToolExecute.mockResolvedValue({
@@ -239,8 +237,6 @@ describe("AIManager - No Parameters Tool Handling", () => {
 
   it("should still throw error for malformed JSON parameters", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     // Mock tool execution (should not be called)
     mockToolExecute.mockResolvedValue({

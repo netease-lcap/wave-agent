@@ -25,10 +25,13 @@ vi.mock("@/utils/memoryUtils", () => ({
 }));
 
 // Mock tool registry to control tool execution
+let mockToolExecute: ReturnType<typeof vi.fn>;
 vi.mock("@/tools", () => ({
-  toolRegistry: {
-    execute: vi.fn(),
-  },
+  ToolRegistryImpl: vi.fn().mockImplementation(() => ({
+    execute: (mockToolExecute = vi.fn()),
+    list: vi.fn(() => []),
+    getToolsConfig: vi.fn(() => []),
+  })),
 }));
 
 describe("AIManager Diff Integration Tests", () => {
@@ -72,8 +75,6 @@ describe("AIManager Diff Integration Tests", () => {
     aiManager.setMessages([initialUserMessage]);
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
       aiServiceCallCount++;
@@ -207,8 +208,6 @@ describe("AIManager Diff Integration Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
       aiServiceCallCount++;
@@ -327,8 +326,6 @@ describe("AIManager Diff Integration Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
       aiServiceCallCount++;
@@ -376,42 +373,44 @@ describe("AIManager Diff Integration Tests", () => {
     });
 
     // Mock 工具执行 - 根据文件名返回不同结果
-    mockToolExecute.mockImplementation(async (toolName, args) => {
-      if (args.target_file === "file1.js") {
-        return {
-          success: true,
-          content: "Created file1.js with logging",
-          shortResult: "Created file1.js",
-          filePath: "file1.js",
-          originalContent: "",
-          newContent: "console.log('Starting application');",
-          diffResult: [
-            { value: "console.log('Starting application');", added: true },
-          ],
-        };
-      } else if (args.target_file === "file2.js") {
-        return {
-          success: true,
-          content: "Created file2.js with error handling",
-          shortResult: "Created file2.js",
-          filePath: "file2.js",
-          originalContent: "",
-          newContent: "try { main(); } catch(e) { console.error(e); }",
-          diffResult: [
-            {
-              value: "try { main(); } catch(e) { console.error(e); }",
-              added: true,
-            },
-          ],
-        };
-      }
+    mockToolExecute.mockImplementation(
+      async (toolName: string, args: Record<string, unknown>) => {
+        if (args.target_file === "file1.js") {
+          return {
+            success: true,
+            content: "Created file1.js with logging",
+            shortResult: "Created file1.js",
+            filePath: "file1.js",
+            originalContent: "",
+            newContent: "console.log('Starting application');",
+            diffResult: [
+              { value: "console.log('Starting application');", added: true },
+            ],
+          };
+        } else if (args.target_file === "file2.js") {
+          return {
+            success: true,
+            content: "Created file2.js with error handling",
+            shortResult: "Created file2.js",
+            filePath: "file2.js",
+            originalContent: "",
+            newContent: "try { main(); } catch(e) { console.error(e); }",
+            diffResult: [
+              {
+                value: "try { main(); } catch(e) { console.error(e); }",
+                added: true,
+              },
+            ],
+          };
+        }
 
-      return {
-        success: false,
-        content: "Unknown file",
-        error: "File not recognized",
-      };
-    });
+        return {
+          success: false,
+          content: "Unknown file",
+          error: "File not recognized",
+        };
+      },
+    );
 
     // 调用 sendAIMessage 触发工具执行和递归
     await aiManager.sendAIMessage();
@@ -520,8 +519,6 @@ describe("AIManager Diff Integration Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
       aiServiceCallCount++;

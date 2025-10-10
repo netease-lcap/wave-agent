@@ -16,15 +16,24 @@ import { lsTool } from "./lsTool.js";
 import { readTool } from "./readTool.js";
 import { mcpManager } from "../services/mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
+
 /**
  * 工具注册中心
  */
 class ToolRegistryImpl implements ToolRegistry {
-  private tools = new Map<string, ToolPlugin>();
-
-  register(plugin: ToolPlugin): void {
-    this.tools.set(plugin.name, plugin);
-  }
+  private tools = new Map<string, ToolPlugin>([
+    [bashTool.name, bashTool],
+    [bashOutputTool.name, bashOutputTool],
+    [killBashTool.name, killBashTool],
+    [deleteFileTool.name, deleteFileTool],
+    [editTool.name, editTool],
+    [multiEditTool.name, multiEditTool],
+    [writeTool.name, writeTool],
+    [globTool.name, globTool],
+    [grepTool.name, grepTool],
+    [lsTool.name, lsTool],
+    [readTool.name, readTool],
+  ]);
 
   async execute(
     name: string,
@@ -72,20 +81,6 @@ class ToolRegistryImpl implements ToolRegistry {
   }
 }
 
-// 创建全局工具注册中心实例
-export const toolRegistry = new ToolRegistryImpl();
-toolRegistry.register(bashTool);
-toolRegistry.register(bashOutputTool);
-toolRegistry.register(killBashTool);
-toolRegistry.register(deleteFileTool);
-toolRegistry.register(editTool);
-toolRegistry.register(multiEditTool);
-toolRegistry.register(writeTool);
-// 注册新工具
-toolRegistry.register(globTool);
-toolRegistry.register(grepTool);
-toolRegistry.register(lsTool);
-toolRegistry.register(readTool);
-
-// 导出类型
+// 导出工具注册中心类和类型
+export { ToolRegistryImpl };
 export type { ToolPlugin, ToolResult, ToolRegistry } from "./types.js";

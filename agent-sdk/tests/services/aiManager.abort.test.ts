@@ -25,10 +25,13 @@ vi.mock("@/utils/memoryUtils", () => ({
 }));
 
 // Mock tool registry to control tool execution
+let mockToolExecute: ReturnType<typeof vi.fn>;
 vi.mock("@/tools", () => ({
-  toolRegistry: {
-    execute: vi.fn(),
-  },
+  ToolRegistryImpl: vi.fn().mockImplementation(() => ({
+    execute: (mockToolExecute = vi.fn()),
+    list: vi.fn(() => []),
+    getToolsConfig: vi.fn(() => []),
+  })),
 }));
 
 describe("AIManager - Abort Handling", () => {
@@ -122,8 +125,6 @@ describe("AIManager - Abort Handling", () => {
 
   it("should show JSON parse error when not aborted but has malformed JSON", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     // Mock tool execute - should not be called due to JSON parse error
     mockToolExecute.mockResolvedValue({
@@ -211,8 +212,12 @@ describe("AIManager - Abort Handling", () => {
 
   it("should abort gracefully without executing tools when interrupted during streaming", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
+
+    // Mock tool execute to verify it's never called
+    mockToolExecute.mockResolvedValue({
+      success: true,
+      content: "Should never execute",
+    });
 
     // Setup initial messages
     const initialUserMessage: Message = {

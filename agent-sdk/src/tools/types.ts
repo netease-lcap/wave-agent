@@ -39,7 +39,6 @@ export interface ToolResult {
 }
 
 export interface ToolRegistry {
-  register: (plugin: ToolPlugin) => void;
   execute: (
     name: string,
     args: Record<string, unknown>,

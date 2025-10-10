@@ -22,7 +22,7 @@ import {
   addMemoryBlockToMessage,
   type AIManagerToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import { toolRegistry } from "../tools/index.js";
+import { ToolRegistryImpl } from "../tools/index.js";
 import type { ToolContext } from "../tools/types.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { saveErrorLog } from "../utils/errorLogger.js";
@@ -81,6 +81,7 @@ export class AIManager {
   private lastSaveTime: number = 0;
   private bashManagerRef: BashManager | null = null;
   private logger?: Logger; // 添加可选的 logger 属性
+  private toolRegistry: ToolRegistryImpl; // 添加工具注册表实例
 
   // 私有构造函数，防止直接实例化
   private constructor(options: AIManagerOptions) {
@@ -88,6 +89,7 @@ export class AIManager {
 
     this.callbacks = callbacks;
     this.logger = logger; // 保存传入的 logger
+    this.toolRegistry = new ToolRegistryImpl(); // 初始化工具注册表
     this.sessionStartTime = new Date().toISOString();
     this.state = {
       sessionId: randomUUID(),
@@ -281,7 +283,7 @@ export class AIManager {
     toolArgs: Record<string, unknown>,
   ): string | undefined {
     try {
-      const toolPlugin = toolRegistry
+      const toolPlugin = this.toolRegistry
         .list()
         .find((plugin) => plugin.name === toolName);
       if (toolPlugin?.formatCompactParams) {
@@ -601,6 +603,7 @@ export class AIManager {
         abortSignal: abortController.signal,
         memory: combinedMemory, // 传递合并后的记忆内容
         workdir: process.cwd(), // 传递当前工作目录
+        tools: this.toolRegistry.getToolsConfig(), // 传递工具配置
       });
 
       // 更新答案块中的内容
@@ -722,7 +725,7 @@ export class AIManager {
               };
 
               // 执行工具
-              const toolResult = await toolRegistry.execute(
+              const toolResult = await this.toolRegistry.execute(
                 functionToolCall.function?.name || "",
                 toolArgs,
                 context,

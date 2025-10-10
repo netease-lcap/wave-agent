@@ -25,10 +25,13 @@ vi.mock("@/utils/memoryUtils", () => ({
 }));
 
 // Mock tool registry to control tool execution
+let mockToolExecute: ReturnType<typeof vi.fn>;
 vi.mock("@/tools", () => ({
-  toolRegistry: {
-    execute: vi.fn(),
-  },
+  ToolRegistryImpl: vi.fn().mockImplementation(() => ({
+    execute: (mockToolExecute = vi.fn()),
+    list: vi.fn(() => []),
+    getToolsConfig: vi.fn(() => []),
+  })),
 }));
 
 describe("AIManager Tool Recursion Tests", () => {
@@ -73,8 +76,6 @@ describe("AIManager Tool Recursion Tests", () => {
 
     // Mock AI service 返回工具调用，然后在第二次调用时返回简单响应
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
       aiServiceCallCount++;
@@ -174,8 +175,6 @@ describe("AIManager Tool Recursion Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
       aiServiceCallCount++;
@@ -221,26 +220,28 @@ describe("AIManager Tool Recursion Tests", () => {
     });
 
     // Mock 工具执行 - 根据工具名称返回不同结果
-    mockToolExecute.mockImplementation(async (toolName, args) => {
-      if (args.command === "pwd") {
+    mockToolExecute.mockImplementation(
+      async (toolName: string, args: Record<string, unknown>) => {
+        if (args.command === "pwd") {
+          return {
+            success: true,
+            content: "/test/workdir",
+            shortResult: "Current directory: /test/workdir",
+          };
+        } else if (args.command === "date") {
+          return {
+            success: true,
+            content: "Mon Jan  1 12:00:00 UTC 2024",
+            shortResult: "Current date and time",
+          };
+        }
         return {
-          success: true,
-          content: "/test/workdir",
-          shortResult: "Current directory: /test/workdir",
+          success: false,
+          content: "Unknown command",
+          error: "Command not recognized",
         };
-      } else if (args.command === "date") {
-        return {
-          success: true,
-          content: "Mon Jan  1 12:00:00 UTC 2024",
-          shortResult: "Current date and time",
-        };
-      }
-      return {
-        success: false,
-        content: "Unknown command",
-        error: "Command not recognized",
-      };
-    });
+      },
+    );
 
     // 调用 sendAIMessage 触发工具递归
     await aiManager.sendAIMessage();
@@ -308,8 +309,6 @@ describe("AIManager Tool Recursion Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
       aiServiceCallCount++;
@@ -382,8 +381,6 @@ describe("AIManager Tool Recursion Tests", () => {
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
-    const { toolRegistry } = await import("@/tools/index.js");
-    const mockToolExecute = vi.mocked(toolRegistry.execute);
 
     mockCallAgent.mockImplementation(async () => {
       aiServiceCallCount++;
