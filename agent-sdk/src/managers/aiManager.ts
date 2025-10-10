@@ -544,9 +544,7 @@ export class AIManager {
         this.abortController = null;
 
         // 工具执行完成后清理工具的AbortController
-        if (this.toolAbortController) {
-          this.toolAbortController = null;
-        }
+        this.toolAbortController = null;
 
         if (!isCurrentlyAborted) {
           // 递归调用 AI 服务，递增的递归深度
@@ -555,9 +553,7 @@ export class AIManager {
       } else {
         // 没有工具操作时也要清除 abort controller
         this.abortController = null;
-        if (this.toolAbortController) {
-          this.toolAbortController = null;
-        }
+        this.toolAbortController = null;
       }
     } catch (error) {
       // 检查是否是由于用户中断操作导致的错误
