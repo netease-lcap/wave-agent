@@ -28,7 +28,6 @@ export * from "./utils/errorLogger.js";
 export * from "./utils/fileFilter.js";
 export * from "./utils/gitUtils.js";
 export * from "./utils/mcpUtils.js";
-export * from "./utils/memoryUtils.js";
 export * from "./utils/messageGrouping.js";
 export * from "./utils/messageOperations.js";
 export * from "./utils/path.js";

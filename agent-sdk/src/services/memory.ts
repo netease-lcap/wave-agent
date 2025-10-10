@@ -106,3 +106,39 @@ export const getUserMemoryContent = async (): Promise<string> => {
     return "";
   }
 };
+
+// 读取项目记忆文件内容
+export const readMemoryFile = async (): Promise<string> => {
+  try {
+    const memoryFilePath = path.join(process.cwd(), "WAVE.md");
+    return await fs.readFile(memoryFilePath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    throw error;
+  }
+};
+
+// 获取合并的记忆内容（项目记忆 + 用户记忆）
+export const getCombinedMemoryContent = async (): Promise<string> => {
+  // 读取记忆文件内容
+  const memoryContent = await readMemoryFile();
+
+  // 读取用户级记忆内容
+  const userMemoryContent = await getUserMemoryContent();
+
+  // 合并项目记忆和用户记忆
+  let combinedMemory = "";
+  if (memoryContent.trim()) {
+    combinedMemory += memoryContent;
+  }
+  if (userMemoryContent.trim()) {
+    if (combinedMemory) {
+      combinedMemory += "\n\n";
+    }
+    combinedMemory += userMemoryContent;
+  }
+
+  return combinedMemory;
+};

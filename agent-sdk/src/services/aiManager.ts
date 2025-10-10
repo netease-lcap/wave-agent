@@ -8,7 +8,6 @@ import { ToolRegistryImpl } from "../tools/index.js";
 import type { ToolContext } from "../tools/types.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { saveErrorLog } from "../utils/errorLogger.js";
-import { readMemoryFile } from "../utils/memoryUtils.js";
 import * as memory from "./memory.js";
 import { McpManager, McpServerStatus } from "./mcpManager.js";
 import { BashManager } from "./bashManager.js";
@@ -329,33 +328,8 @@ export class AIManager {
       // 添加答案块
       this.messageManager.addAnswerBlock();
 
-      // 读取记忆文件内容
-      let memoryContent = "";
-      try {
-        memoryContent = await readMemoryFile();
-      } catch (error) {
-        this.logger?.warn("Failed to read memory file:", error);
-      }
-
-      // 读取用户级记忆内容
-      let userMemoryContent = "";
-      try {
-        userMemoryContent = await memory.getUserMemoryContent();
-      } catch (error) {
-        this.logger?.warn("Failed to read user memory file:", error);
-      }
-
-      // 合并项目记忆和用户记忆
-      let combinedMemory = "";
-      if (memoryContent.trim()) {
-        combinedMemory += memoryContent;
-      }
-      if (userMemoryContent.trim()) {
-        if (combinedMemory) {
-          combinedMemory += "\n\n";
-        }
-        combinedMemory += userMemoryContent;
-      }
+      // 获取合并的记忆内容
+      const combinedMemory = await memory.getCombinedMemoryContent();
 
       // 调用 AI 服务（非流式）
       const result = await callAgent({
