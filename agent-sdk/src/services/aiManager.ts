@@ -8,23 +8,13 @@ import {
   type SessionData,
 } from "./session.js";
 import {
-  addAssistantMessageToMessages,
-  addAnswerBlockToMessage,
-  updateAnswerBlockInMessage,
-  addToolBlockToMessage,
-  updateToolBlockInMessage,
-  addErrorBlockToMessage,
-  addCompressBlockToMessage,
-  addDiffBlockToMessage,
   getMessagesToCompress,
-  addUserMessageToMessages,
   extractUserInputHistory,
-  addMemoryBlockToMessage,
-  addCommandOutputMessage,
-  updateCommandOutputInMessage,
-  completeCommandInMessage,
-  type AIManagerToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
+import {
+  MessageManager,
+  type MessageManagerCallbacks,
+} from "./messageManager.js";
 import { ToolRegistryImpl } from "../tools/index.js";
 import type { ToolContext } from "../tools/types.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
@@ -43,43 +33,16 @@ export interface AIManagerOptions {
   logger?: Logger; // 添加可选的 logger 参数
 }
 
-export interface AIManagerCallbacks {
-  onMessagesChange?: (messages: Message[]) => void;
+export interface AIManagerCallbacks extends MessageManagerCallbacks {
+  // AIManager 自身的回调
   onLoadingChange?: (isLoading: boolean) => void;
-  // 新的增量回调
-  onUserMessageAdded?: (
-    content: string,
-    images?: Array<{ path: string; mimeType: string }>,
-  ) => void;
-  onAssistantMessageAdded?: () => void;
-  onAnswerBlockAdded?: () => void;
-  onAnswerBlockUpdated?: (content: string) => void;
-  onToolBlockAdded?: (tool: { id: string; name: string }) => void;
-  onToolBlockUpdated?: (params: AIManagerToolBlockUpdateParams) => void;
-  onDiffBlockAdded?: (filePath: string, diffResult: string) => void;
-  onErrorBlockAdded?: (error: string) => void;
-  onCompressBlockAdded?: (content: string) => void;
-  onMemoryBlockAdded?: (
-    content: string,
-    success: boolean,
-    type: "project" | "user",
-  ) => void;
   // MCP 服务器状态回调
   onMcpServersChange?: (servers: McpServerStatus[]) => void;
-  // Bash 命令回调
-  onAddCommandOutputMessage?: (command: string) => void;
-  onUpdateCommandOutputMessage?: (command: string, output: string) => void;
-  onCompleteCommandMessage?: (command: string, exitCode: number) => void;
 }
 
 export class AIManager {
-  // 公开的状态属性
-  public sessionId: string;
+  private messageManager: MessageManager;
   public isLoading: boolean;
-  public messages: Message[];
-  public totalTokens: number;
-  public userInputHistory: string[];
-
   private callbacks: AIManagerCallbacks;
   private abortController: AbortController | null = null;
   private toolAbortController: AbortController | null = null;
@@ -100,49 +63,60 @@ export class AIManager {
     this.mcpManager = new McpManager(this.logger); // 初始化 MCP 管理器
     this.toolRegistry = new ToolRegistryImpl(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
     this.sessionStartTime = new Date().toISOString();
-
-    // 初始化公开状态属性
-    this.sessionId = randomUUID();
     this.isLoading = false;
-    this.messages = [];
-    this.totalTokens = 0;
-    this.userInputHistory = [];
+
+    // 初始化 MessageManager
+    this.messageManager = new MessageManager({
+      onMessagesChange: callbacks.onMessagesChange,
+      onSessionIdChange: callbacks.onSessionIdChange,
+      onTotalTokensChange: callbacks.onTotalTokensChange,
+      onUserMessageAdded: callbacks.onUserMessageAdded,
+      onAssistantMessageAdded: callbacks.onAssistantMessageAdded,
+      onAnswerBlockAdded: callbacks.onAnswerBlockAdded,
+      onAnswerBlockUpdated: callbacks.onAnswerBlockUpdated,
+      onToolBlockAdded: callbacks.onToolBlockAdded,
+      onToolBlockUpdated: callbacks.onToolBlockUpdated,
+      onDiffBlockAdded: callbacks.onDiffBlockAdded,
+      onErrorBlockAdded: callbacks.onErrorBlockAdded,
+      onCompressBlockAdded: callbacks.onCompressBlockAdded,
+      onMemoryBlockAdded: callbacks.onMemoryBlockAdded,
+      onAddCommandOutputMessage: callbacks.onAddCommandOutputMessage,
+      onUpdateCommandOutputMessage: callbacks.onUpdateCommandOutputMessage,
+      onCompleteCommandMessage: callbacks.onCompleteCommandMessage,
+    });
 
     // Initialize bash manager
     this.bashManager = new BashManager({
       onAddCommandOutputMessage: (command: string) => {
-        const updatedMessages = addCommandOutputMessage({
-          messages: this.messages,
-          command,
-        });
-        this.setMessages(updatedMessages);
-        // 调用增量回调
-        this.callbacks.onAddCommandOutputMessage?.(command);
+        this.messageManager.addCommandOutputMessage(command);
       },
       onUpdateCommandOutputMessage: (command: string, output: string) => {
-        const updatedMessages = updateCommandOutputInMessage({
-          messages: this.messages,
-          command,
-          output,
-        });
-        this.setMessages(updatedMessages);
-        // 调用增量回调
-        this.callbacks.onUpdateCommandOutputMessage?.(command, output);
+        this.messageManager.updateCommandOutputMessage(command, output);
       },
       onCompleteCommandMessage: (command: string, exitCode: number) => {
-        const updatedMessages = completeCommandInMessage({
-          messages: this.messages,
-          command,
-          exitCode,
-        });
-        this.setMessages(updatedMessages);
-        // 调用增量回调
-        this.callbacks.onCompleteCommandMessage?.(command, exitCode);
+        this.messageManager.completeCommandMessage(command, exitCode);
       },
     });
 
     // Note: Process termination handling is now done at the CLI level
     // Note: MCP servers and session restoration are handled in initialize()
+  }
+
+  // 公开的 getter 方法
+  public get sessionId(): string {
+    return this.messageManager.getSessionId();
+  }
+
+  public get messages(): Message[] {
+    return this.messageManager.getMessages();
+  }
+
+  public get totalTokens(): number {
+    return this.messageManager.getTotalTokens();
+  }
+
+  public get userInputHistory(): string[] {
+    return this.messageManager.getUserInputHistory();
   }
 
   /**
@@ -231,9 +205,9 @@ export class AIManager {
     }
   }
 
+  // 设置消息并触发回调
   public setMessages(messages: Message[]): void {
-    this.messages = [...messages];
-    this.callbacks.onMessagesChange?.([...messages]);
+    this.messageManager.setMessages(messages);
 
     // 节流保存：只有距离上次保存超过30秒才保存
     const now = Date.now();
@@ -247,143 +221,6 @@ export class AIManager {
         );
       });
     }
-  }
-
-  // 封装的消息操作函数
-  private addUserMessage(
-    content: string,
-    images?: Array<{ path: string; mimeType: string }>,
-  ): void {
-    const newMessages = addUserMessageToMessages({
-      messages: this.messages,
-      content,
-      images,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onUserMessageAdded?.(content, images);
-  }
-
-  private addAssistantMessage(): void {
-    const newMessages = addAssistantMessageToMessages(this.messages);
-    this.setMessages(newMessages);
-    this.callbacks.onAssistantMessageAdded?.();
-  }
-
-  private addAnswerBlock(): void {
-    const newMessages = addAnswerBlockToMessage(this.messages);
-    this.setMessages(newMessages);
-    this.callbacks.onAnswerBlockAdded?.();
-  }
-
-  private updateAnswerBlock(content: string): void {
-    const newMessages = updateAnswerBlockInMessage({
-      messages: this.messages,
-      content,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onAnswerBlockUpdated?.(content);
-  }
-
-  private addToolBlock(tool: { id: string; name: string }): void {
-    const newMessages = addToolBlockToMessage({
-      messages: this.messages,
-      attributes: tool,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onToolBlockAdded?.(tool);
-  }
-
-  private updateToolBlock(params: AIManagerToolBlockUpdateParams): void {
-    const newMessages = updateToolBlockInMessage({
-      messages: this.messages,
-      id: params.toolId,
-      parameters: params.args || "",
-      result: params.result,
-      success: params.success,
-      error: params.error,
-      isRunning: params.isRunning,
-      name: params.name,
-      shortResult: params.shortResult,
-      compactParams: params.compactParams,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onToolBlockUpdated?.(params);
-  }
-
-  // 生成 compactParams 的辅助方法
-  private generateCompactParams(
-    toolName: string,
-    toolArgs: Record<string, unknown>,
-  ): string | undefined {
-    try {
-      const toolPlugin = this.toolRegistry
-        .list()
-        .find((plugin) => plugin.name === toolName);
-      if (toolPlugin?.formatCompactParams) {
-        return toolPlugin.formatCompactParams(toolArgs);
-      }
-    } catch (error) {
-      this.logger?.warn("Failed to generate compactParams", error);
-    }
-    return undefined;
-  }
-
-  private addDiffBlock(
-    filePath: string,
-    diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
-    originalContent: string,
-    newContent: string,
-  ): void {
-    const newMessages = addDiffBlockToMessage({
-      messages: this.messages,
-      path: filePath,
-      diffResult,
-      original: originalContent,
-      modified: newContent,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onDiffBlockAdded?.(filePath, JSON.stringify(diffResult));
-  }
-
-  private addErrorBlock(error: string): void {
-    const newMessages = addErrorBlockToMessage({
-      messages: this.messages,
-      error,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onErrorBlockAdded?.(error);
-  }
-
-  private addCompressBlock(insertIndex: number, content: string): void {
-    const newMessages = addCompressBlockToMessage({
-      messages: this.messages,
-      insertIndex,
-      compressContent: content,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onCompressBlockAdded?.(content);
-  }
-
-  private addMemoryBlock(
-    content: string,
-    success: boolean,
-    type: "project" | "user",
-    storagePath: string,
-  ): void {
-    const newMessages = addMemoryBlockToMessage({
-      messages: this.messages,
-      content,
-      isSuccess: success,
-      memoryType: type,
-      storagePath,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onMemoryBlockAdded?.(content, success, type);
-  }
-
-  public setIsLoading(isLoading: boolean): void {
-    this.isLoading = isLoading;
-    this.callbacks.onLoadingChange?.(isLoading);
   }
 
   public abortAIMessage(): void {
@@ -412,13 +249,11 @@ export class AIManager {
    * 清空消息和输入历史
    */
   public clearMessages(): void {
-    this.messages = [];
-    this.userInputHistory = [];
-    this.callbacks.onMessagesChange?.([]);
-    this.sessionId = randomUUID();
-    this.totalTokens = 0;
+    this.messageManager.setMessages([]);
+    this.messageManager.setUserInputHistory([]);
+    this.messageManager.setSessionId(randomUUID());
+    this.messageManager.setTotalTokens(0);
     this.sessionStartTime = new Date().toISOString();
-    this.userInputHistory = [];
   }
 
   /**
@@ -437,13 +272,14 @@ export class AIManager {
     messages: Message[],
     totalTokens: number,
   ): void {
-    this.sessionId = sessionId;
-    this.messages = [...messages];
-    this.totalTokens = totalTokens;
+    this.messageManager.setSessionId(sessionId);
+    this.messageManager.setMessages([...messages]);
+    this.messageManager.setTotalTokens(totalTokens);
     this.isLoading = false;
 
     // Extract user input history from session messages
-    this.userInputHistory = extractUserInputHistory(messages);
+    const extractedHistory = extractUserInputHistory(messages);
+    this.messageManager.setUserInputHistory(extractedHistory);
   }
 
   /**
@@ -465,22 +301,31 @@ export class AIManager {
    * 添加到输入历史记录
    */
   public addToInputHistory(input: string): void {
-    // 避免重复添加相同的输入
-    if (
-      this.userInputHistory.length > 0 &&
-      this.userInputHistory[this.userInputHistory.length - 1] === input
-    ) {
-      return;
-    }
-    // 限制历史记录数量，保留最近的100条
-    this.userInputHistory = [...this.userInputHistory, input].slice(-100);
+    this.messageManager.addToInputHistory(input);
   }
 
-  /**
-   * 清空输入历史记录
-   */
-  public clearInputHistory(): void {
-    this.userInputHistory = [];
+  // 私有的 setIsLoading 方法
+  private setIsLoading(isLoading: boolean): void {
+    this.isLoading = isLoading;
+    this.callbacks.onLoadingChange?.(isLoading);
+  }
+
+  // 生成 compactParams 的辅助方法
+  private generateCompactParams(
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+  ): string | undefined {
+    try {
+      const toolPlugin = this.toolRegistry
+        .list()
+        .find((plugin) => plugin.name === toolName);
+      if (toolPlugin?.formatCompactParams) {
+        return toolPlugin.formatCompactParams(toolArgs);
+      }
+    } catch (error) {
+      this.logger?.warn("Failed to generate compactParams", error);
+    }
+    return undefined;
   }
 
   /**
@@ -547,7 +392,7 @@ export class AIManager {
       this.addToInputHistory(content);
 
       // 添加用户消息，会自动同步到 UI
-      this.addUserMessage(
+      this.messageManager.addUserMessage(
         content,
         images?.map((img) => ({
           path: img.path,
@@ -583,7 +428,7 @@ export class AIManager {
     }
 
     // 添加助手消息
-    this.addAssistantMessage();
+    this.messageManager.addAssistantMessage();
 
     let hasToolOperations = false;
 
@@ -592,7 +437,7 @@ export class AIManager {
 
     try {
       // 添加答案块
-      this.addAnswerBlock();
+      this.messageManager.addAnswerBlock();
 
       // 读取记忆文件内容
       let memoryContent = "";
@@ -634,12 +479,12 @@ export class AIManager {
 
       // 更新答案块中的内容
       if (result.content) {
-        this.updateAnswerBlock(result.content);
+        this.messageManager.updateAnswerBlock(result.content);
       }
 
       // 更新 token 统计 - 显示最新一次的token使用量
       if (result.usage) {
-        this.totalTokens = result.usage.total_tokens;
+        this.messageManager.setTotalTokens(result.usage.total_tokens);
 
         // 检查是否超过token限制
         const tokenLimit = parseInt(
@@ -669,7 +514,10 @@ export class AIManager {
               });
 
               // 在指定位置插入压缩块
-              this.addCompressBlock(insertIndex, compressedContent);
+              this.messageManager.addCompressBlock(
+                insertIndex,
+                compressedContent,
+              );
 
               this.logger?.info(
                 `Successfully compressed ${messagesToCompress.length} messages`,
@@ -696,7 +544,7 @@ export class AIManager {
           };
 
           // 添加工具块到 UI
-          this.addToolBlock({
+          this.messageManager.addToolBlock({
             id: toolId,
             name: functionToolCall.function?.name || "",
           });
@@ -736,7 +584,7 @@ export class AIManager {
               toolArgs,
             );
 
-            this.updateToolBlock({
+            this.messageManager.updateToolBlock({
               toolId,
               args: JSON.stringify(toolArgs, null, 2),
               isRunning: true, // isRunning: true
@@ -758,7 +606,7 @@ export class AIManager {
               );
 
               // 更新消息状态 - 工具执行完成
-              this.updateToolBlock({
+              this.messageManager.updateToolBlock({
                 toolId,
                 args: JSON.stringify(toolArgs, null, 2),
                 result:
@@ -780,7 +628,7 @@ export class AIManager {
                 toolResult.originalContent !== undefined &&
                 toolResult.newContent !== undefined
               ) {
-                this.addDiffBlock(
+                this.messageManager.addDiffBlock(
                   toolResult.filePath,
                   toolResult.diffResult,
                   toolResult.originalContent,
@@ -793,7 +641,7 @@ export class AIManager {
                   ? toolError.message
                   : String(toolError);
 
-              this.updateToolBlock({
+              this.messageManager.updateToolBlock({
                 toolId,
                 args: JSON.stringify(toolArgs, null, 2),
                 result: `Tool execution failed: ${errorMessage}`,
@@ -819,7 +667,7 @@ export class AIManager {
               parseError instanceof Error
                 ? parseError.message
                 : String(parseError);
-            this.addErrorBlock(
+            this.messageManager.addErrorBlock(
               `Failed to parse tool arguments for ${functionToolCall.function?.name}: ${errorMessage}`,
             );
           }
@@ -862,7 +710,7 @@ export class AIManager {
           (error.name === "AbortError" || error.message.includes("aborted")));
 
       if (!isAborted) {
-        this.addErrorBlock(
+        this.messageManager.addErrorBlock(
           error instanceof Error ? error.message : "Unknown error occurred",
         );
 
@@ -915,7 +763,7 @@ export class AIManager {
       const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
       const storagePath = type === "project" ? "WAVE.md" : "user-memory.md";
 
-      this.addMemoryBlock(
+      this.messageManager.addMemoryBlock(
         `${typeLabel}: ${memoryText}`,
         true,
         type,
@@ -926,7 +774,7 @@ export class AIManager {
       const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
       const storagePath = type === "project" ? "WAVE.md" : "user-memory.md";
 
-      this.addMemoryBlock(
+      this.messageManager.addMemoryBlock(
         `${typeLabel}添加失败: ${
           error instanceof Error ? error.message : String(error)
         }`,
