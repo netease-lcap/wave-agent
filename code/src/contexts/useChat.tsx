@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useState,
 } from "react";
+import { useInput } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
 import type { Message, McpServerStatus } from "wave-agent-sdk";
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
@@ -21,6 +22,8 @@ export interface ChatContextType {
   insertToInput: (text: string) => void;
   inputInsertHandler: ((text: string) => void) | null;
   setInputInsertHandler: (handler: (text: string) => void) => void;
+  // Message display state
+  isExpanded: boolean;
   // AI functionality
   sessionId: string;
   sendMessage: (
@@ -60,6 +63,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     ((text: string) => void) | null
   >(null);
 
+  // Message Display State
+  const [isExpanded, setIsExpanded] = useState(false);
+
   // AI State
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -72,6 +78,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
 
   const agentRef = useRef<Agent | null>(null);
+
+  // 监听 Ctrl+R 快捷键切换折叠/展开状态
+  useInput((input, key) => {
+    if (key.ctrl && input === "r") {
+      setIsExpanded((prev) => !prev);
+    }
+  });
 
   // Input Insert Functions
   const insertToInput = useCallback(
@@ -228,6 +241,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     insertToInput,
     inputInsertHandler,
     setInputInsertHandler,
+    isExpanded,
     sessionId,
     sendMessage,
     abortMessage,

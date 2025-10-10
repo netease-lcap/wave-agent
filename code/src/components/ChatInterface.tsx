@@ -19,6 +19,7 @@ export const ChatInterface: React.FC = () => {
     connectMcpServer,
     disconnectMcpServer,
     reconnectMcpServer,
+    isExpanded,
   } = useChat();
 
   return (
@@ -27,20 +28,22 @@ export const ChatInterface: React.FC = () => {
         <MessageList messages={messages} isLoading={isLoading} />
       </Box>
 
-      <InputBox
-        isLoading={isLoading}
-        isCommandRunning={isCommandRunning}
-        userInputHistory={userInputHistory}
-        clearMessages={clearMessages}
-        sendMessage={sendMessage}
-        abortMessage={abortMessage}
-        saveMemory={saveMemory}
-        setInputInsertHandler={setInputInsertHandler}
-        mcpServers={mcpServers}
-        connectMcpServer={connectMcpServer}
-        disconnectMcpServer={disconnectMcpServer}
-        reconnectMcpServer={reconnectMcpServer}
-      />
+      {!isExpanded && (
+        <InputBox
+          isLoading={isLoading}
+          isCommandRunning={isCommandRunning}
+          userInputHistory={userInputHistory}
+          clearMessages={clearMessages}
+          sendMessage={sendMessage}
+          abortMessage={abortMessage}
+          saveMemory={saveMemory}
+          setInputInsertHandler={setInputInsertHandler}
+          mcpServers={mcpServers}
+          connectMcpServer={connectMcpServer}
+          disconnectMcpServer={disconnectMcpServer}
+          reconnectMcpServer={reconnectMcpServer}
+        />
+      )}
     </Box>
   );
 };

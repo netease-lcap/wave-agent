@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from "react";
-import { Box, Text, useInput } from "ink";
+import React, { useMemo } from "react";
+import { Box, Text } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { DiffViewer } from "./DiffViewer.js";
 import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
@@ -99,7 +99,8 @@ export interface MessageListProps {
 }
 
 export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
-  const { isLoading, isCommandRunning, latestTotalTokens } = useChat();
+  const { isLoading, isCommandRunning, latestTotalTokens, isExpanded } =
+    useChat();
   const { formattedTime } = useLoadingTimer(isLoading);
 
   // 预处理消息，添加分组信息（仅用于显示）
@@ -110,7 +111,6 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
 
   // 使用原始消息进行分页计算
   const { displayInfo } = usePagination(messages);
-  const [isExpanded, setIsExpanded] = useState(false);
 
   // 获取当前页的消息，同时保留原始索引信息
   const currentMessagesWithIndex = useMemo(() => {
@@ -122,13 +122,6 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         pageIndex: index,
       }));
   }, [processedMessages, displayInfo.startIndex, displayInfo.endIndex]);
-
-  // 监听 Ctrl+R 快捷键切换折叠/展开状态
-  useInput((input, key) => {
-    if (key.ctrl && input === "r") {
-      setIsExpanded((prev) => !prev);
-    }
-  });
 
   // 空消息状态
   if (processedMessages.length === 0) {
