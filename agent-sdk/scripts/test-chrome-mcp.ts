@@ -3,7 +3,7 @@
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import { AIManager } from "../src/services/aiManager.js";
+import { AIManager } from "../src/managers/aiManager.js";
 
 console.log("🌐 Testing Chrome MCP screenshot functionality...\n");
 

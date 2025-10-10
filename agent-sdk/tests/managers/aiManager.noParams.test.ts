@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { AIManager } from "@/services/aiManager.js";
+import { AIManager } from "@/managers/aiManager.js";
 import * as aiService from "@/services/aiService.js";
 
 // Mock the session service

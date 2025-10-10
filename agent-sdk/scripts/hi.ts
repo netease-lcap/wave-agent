@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { AIManager } from "../src/services/aiManager.js";
+import { AIManager } from "../src/managers/aiManager.js";
 
 console.log("🚀 Starting AIManager hi test...");
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AIManager } from "@/services/aiManager.js";
+import { AIManager } from "@/managers/aiManager.js";
 import * as aiService from "@/services/aiService.js";
 import { saveSession } from "@/services/session.js";
 

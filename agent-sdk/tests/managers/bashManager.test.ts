@@ -12,7 +12,7 @@ vi.mock("@/utils/bashHistory", () => ({
   addBashCommandToHistory: vi.fn(),
 }));
 
-import { BashManager } from "@/services/bashManager.js";
+import { BashManager } from "@/managers/bashManager.js";
 
 const mockSpawn = vi.mocked(spawn);
 

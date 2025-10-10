@@ -1,10 +1,12 @@
 // Export all services
-export * from "./services/aiManager.js";
 export * from "./services/aiService.js";
-export * from "./services/bashManager.js";
-export * from "./services/mcpManager.js";
 export * from "./services/memory.js";
 export * from "./services/session.js";
+
+// Export all managers
+export * from "./managers/aiManager.js";
+export * from "./managers/bashManager.js";
+export * from "./managers/mcpManager.js";
 
 // Export all tools
 export * from "./tools/index.js";

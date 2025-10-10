@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { AIManager } from "@/services/aiManager.js";
-import type { AIManagerCallbacks } from "@/services/aiManager.js";
+import { AIManager } from "@/managers/aiManager.js";
+import type { AIManagerCallbacks } from "@/managers/aiManager.js";
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";

@@ -14,7 +14,7 @@ import { globTool } from "./globTool.js";
 import { grepTool } from "./grepTool.js";
 import { lsTool } from "./lsTool.js";
 import { readTool } from "./readTool.js";
-import { McpManager } from "../services/mcpManager.js";
+import { McpManager } from "../managers/mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 
 /**

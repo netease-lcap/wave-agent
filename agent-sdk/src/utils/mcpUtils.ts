@@ -1,6 +1,6 @@
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
-import type { McpTool, McpServerStatus } from "../services/mcpManager.js";
+import type { McpTool, McpServerStatus } from "../managers/mcpManager.js";
 
 /**
  * Convert MCP tool to OpenAI function tool format

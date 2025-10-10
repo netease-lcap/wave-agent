@@ -1,4 +1,4 @@
-import { callAgent, compressMessages } from "./aiService.js";
+import { callAgent, compressMessages } from "../services/aiService.js";
 import { getMessagesToCompress } from "../utils/messageOperations.js";
 import {
   MessageManager,
@@ -8,7 +8,7 @@ import { ToolRegistryImpl } from "../tools/index.js";
 import type { ToolContext } from "../tools/types.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { saveErrorLog } from "../utils/errorLogger.js";
-import * as memory from "./memory.js";
+import * as memory from "../services/memory.js";
 import { McpManager, McpServerStatus } from "./mcpManager.js";
 import { BashManager } from "./bashManager.js";
 import type { Message, Logger } from "../types.js";

@@ -23,7 +23,7 @@ import {
   loadSession,
   saveSession,
   SessionData,
-} from "./session.js";
+} from "../services/session.js";
 
 export interface MessageManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
