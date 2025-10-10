@@ -28,7 +28,7 @@ import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { saveErrorLog } from "../utils/errorLogger.js";
 import { readMemoryFile } from "../utils/memoryUtils.js";
 import * as memory from "./memory.js";
-import { mcpManager } from "./mcpManager.js";
+import { McpManager } from "./mcpManager.js";
 import { BashManager } from "./bashManager.js";
 import type { Message, Logger } from "../types.js";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
@@ -82,6 +82,7 @@ export class AIManager {
   private bashManagerRef: BashManager | null = null;
   private logger?: Logger; // 添加可选的 logger 属性
   private toolRegistry: ToolRegistryImpl; // 添加工具注册表实例
+  private mcpManager: McpManager; // 添加 MCP 管理器实例
 
   // 私有构造函数，防止直接实例化
   private constructor(options: AIManagerOptions) {
@@ -89,7 +90,8 @@ export class AIManager {
 
     this.callbacks = callbacks;
     this.logger = logger; // 保存传入的 logger
-    this.toolRegistry = new ToolRegistryImpl(); // 初始化工具注册表
+    this.mcpManager = new McpManager(); // 初始化 MCP 管理器
+    this.toolRegistry = new ToolRegistryImpl(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
     this.sessionStartTime = new Date().toISOString();
     this.state = {
       sessionId: randomUUID(),
@@ -131,7 +133,7 @@ export class AIManager {
   ): Promise<void> {
     // Initialize MCP servers with auto-connect
     try {
-      await mcpManager.initialize(process.cwd(), true);
+      await this.mcpManager.initialize(process.cwd(), true);
     } catch (error) {
       this.logger?.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
@@ -478,7 +480,7 @@ export class AIManager {
     this.abortAIMessage();
     this.abortBashCommand();
     // Cleanup MCP connections
-    await mcpManager.cleanup();
+    await this.mcpManager.cleanup();
   }
 
   public async sendMessage(

@@ -1,23 +1,21 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { mcpManager } from "../../src/services/mcpManager.js";
 import { ToolContext, ToolPlugin } from "../../src/tools/types.js";
+import { ChatCompletionFunctionTool } from "openai/resources.js";
 
 // Mock mcpManager
-vi.mock("../../src/services/mcpManager", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return {
-    ...actual,
-    mcpManager: {
-      getAllServers: vi.fn(),
-      getAllConnectedTools: vi.fn(),
-      executeMcpTool: vi.fn(),
-      getMcpToolPlugins: vi.fn(),
-      getMcpToolsConfig: vi.fn(),
-      executeMcpToolByRegistry: vi.fn(),
-      isMcpTool: vi.fn(),
-    },
-  };
-});
+const mcpManager = {
+  getAllServers: vi.fn(),
+  getAllConnectedTools: vi.fn(),
+  executeMcpTool: vi.fn(),
+  getMcpToolPlugins: vi.fn(),
+  getMcpToolsConfig: vi.fn(),
+  executeMcpToolByRegistry: vi.fn(),
+  isMcpTool: vi.fn(),
+};
+
+vi.mock("../../src/services/mcpManager", () => ({
+  McpManager: vi.fn().mockImplementation(() => mcpManager),
+}));
 
 describe("McpManager - Tools Registry", () => {
   const mockMcpTools = [
@@ -103,11 +101,15 @@ describe("McpManager - Tools Registry", () => {
 
       expect(plugins).toHaveLength(2);
 
-      const plugin1 = plugins.find((p) => p.name === "server1_tool1");
+      const plugin1 = plugins.find(
+        (p: ToolPlugin) => p.name === "server1_tool1",
+      );
       expect(plugin1).toBeDefined();
       expect(plugin1?.description).toBe("Tool 1 from server 1");
 
-      const plugin2 = plugins.find((p) => p.name === "server2_tool2");
+      const plugin2 = plugins.find(
+        (p: ToolPlugin) => p.name === "server2_tool2",
+      );
       expect(plugin2).toBeDefined();
       expect(plugin2?.description).toBe("Tool 2 from server 2");
     });
@@ -148,7 +150,9 @@ describe("McpManager - Tools Registry", () => {
 
       expect(configs).toHaveLength(2);
 
-      const config1 = configs.find((c) => c.function.name === "server1_tool1");
+      const config1 = configs.find(
+        (c: ChatCompletionFunctionTool) => c.function.name === "server1_tool1",
+      );
       expect(config1).toMatchObject({
         type: "function",
         function: {
@@ -267,7 +271,9 @@ describe("McpManager - Tools Registry", () => {
       vi.mocked(mcpManager.getMcpToolPlugins).mockReturnValue([mockPlugin]);
 
       const plugins = mcpManager.getMcpToolPlugins();
-      const plugin = plugins.find((p) => p.name === "server1_tool1");
+      const plugin = plugins.find(
+        (p: ToolPlugin) => p.name === "server1_tool1",
+      );
 
       expect(plugin).toBeDefined();
 
@@ -301,7 +307,9 @@ describe("McpManager - Tools Registry", () => {
       vi.mocked(mcpManager.getMcpToolPlugins).mockReturnValue([mockPlugin]);
 
       const plugins = mcpManager.getMcpToolPlugins();
-      const plugin = plugins.find((p) => p.name === "server1_tool1");
+      const plugin = plugins.find(
+        (p: ToolPlugin) => p.name === "server1_tool1",
+      );
 
       const result = await plugin!.execute({ param: "test" });
 

@@ -14,7 +14,7 @@ import { globTool } from "./globTool.js";
 import { grepTool } from "./grepTool.js";
 import { lsTool } from "./lsTool.js";
 import { readTool } from "./readTool.js";
-import { mcpManager } from "../services/mcpManager.js";
+import { McpManager } from "../services/mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 
 /**
@@ -35,14 +35,16 @@ class ToolRegistryImpl implements ToolRegistry {
     [readTool.name, readTool],
   ]);
 
+  constructor(private mcpManager: McpManager) {}
+
   async execute(
     name: string,
     args: Record<string, unknown>,
     context?: ToolContext,
   ): Promise<ToolResult> {
     // Check if it's an MCP tool first
-    if (mcpManager.isMcpTool(name)) {
-      return mcpManager.executeMcpToolByRegistry(name, args, context);
+    if (this.mcpManager.isMcpTool(name)) {
+      return this.mcpManager.executeMcpToolByRegistry(name, args, context);
     }
 
     // Check built-in tools
@@ -68,7 +70,7 @@ class ToolRegistryImpl implements ToolRegistry {
 
   list(): ToolPlugin[] {
     const builtInTools = Array.from(this.tools.values());
-    const mcpTools = mcpManager.getMcpToolPlugins();
+    const mcpTools = this.mcpManager.getMcpToolPlugins();
     return [...builtInTools, ...mcpTools];
   }
 
@@ -76,7 +78,7 @@ class ToolRegistryImpl implements ToolRegistry {
     const builtInToolsConfig = Array.from(this.tools.values()).map(
       (tool) => tool.config,
     );
-    const mcpToolsConfig = mcpManager.getMcpToolsConfig();
+    const mcpToolsConfig = this.mcpManager.getMcpToolsConfig();
     return [...builtInToolsConfig, ...mcpToolsConfig];
   }
 }

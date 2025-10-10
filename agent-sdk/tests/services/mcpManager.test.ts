@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mcpManager, McpServerConfig } from "../../src/services/mcpManager.js";
+import { McpManager, McpServerConfig } from "../../src/services/mcpManager.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -34,6 +34,8 @@ vi.mock("fs", () => ({
 }));
 
 describe("McpManager", () => {
+  let mcpManager: McpManager;
+
   const mockConfig = {
     mcpServers: {
       "test-server": {
@@ -49,6 +51,7 @@ describe("McpManager", () => {
     // Mock console.error to prevent stderr output in tests
     vi.spyOn(console, "error").mockImplementation(() => {});
     // Initialize mcpManager with test directory
+    mcpManager = new McpManager();
     mcpManager.initialize("/test/workdir");
   });
 

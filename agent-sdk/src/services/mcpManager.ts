@@ -485,5 +485,3 @@ export class McpManager {
     return connectedTools.some((tool) => tool.name === name);
   }
 }
-
-export const mcpManager = new McpManager();
