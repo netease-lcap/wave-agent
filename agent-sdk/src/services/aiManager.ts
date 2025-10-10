@@ -20,6 +20,9 @@ import {
   addUserMessageToMessages,
   extractUserInputHistory,
   addMemoryBlockToMessage,
+  addCommandOutputMessage,
+  updateCommandOutputInMessage,
+  completeCommandInMessage,
   type AIManagerToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
 import { ToolRegistryImpl } from "../tools/index.js";
@@ -63,6 +66,10 @@ export interface AIManagerCallbacks {
   ) => void;
   // MCP 服务器状态回调
   onMcpServersChange?: (servers: McpServerStatus[]) => void;
+  // Bash 命令回调
+  onAddCommandOutputMessage?: (command: string) => void;
+  onUpdateCommandOutputMessage?: (command: string, output: string) => void;
+  onCompleteCommandMessage?: (command: string, exitCode: number) => void;
 }
 
 export interface AIManagerState {
@@ -105,8 +112,34 @@ export class AIManager {
 
     // Initialize bash manager
     this.bashManagerRef = new BashManager({
-      onMessagesUpdate: (updater) => {
-        this.setMessages(updater(this.state.messages));
+      onAddCommandOutputMessage: (command: string) => {
+        const updatedMessages = addCommandOutputMessage({
+          messages: this.state.messages,
+          command,
+        });
+        this.setMessages(updatedMessages);
+        // 调用增量回调
+        this.callbacks.onAddCommandOutputMessage?.(command);
+      },
+      onUpdateCommandOutputMessage: (command: string, output: string) => {
+        const updatedMessages = updateCommandOutputInMessage({
+          messages: this.state.messages,
+          command,
+          output,
+        });
+        this.setMessages(updatedMessages);
+        // 调用增量回调
+        this.callbacks.onUpdateCommandOutputMessage?.(command, output);
+      },
+      onCompleteCommandMessage: (command: string, exitCode: number) => {
+        const updatedMessages = completeCommandInMessage({
+          messages: this.state.messages,
+          command,
+          exitCode,
+        });
+        this.setMessages(updatedMessages);
+        // 调用增量回调
+        this.callbacks.onCompleteCommandMessage?.(command, exitCode);
       },
     });
 

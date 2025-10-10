@@ -1,14 +1,10 @@
 import { spawn, type ChildProcess } from "child_process";
-import type { Message } from "../types.js";
 import { addBashCommandToHistory } from "../utils/bashHistory.js";
-import {
-  addCommandOutputMessage,
-  updateCommandOutputInMessage,
-  completeCommandInMessage,
-} from "../utils/messageOperations.js";
 
 export interface BashManagerOptions {
-  onMessagesUpdate: (updater: (prev: Message[]) => Message[]) => void;
+  onAddCommandOutputMessage: (command: string) => void;
+  onUpdateCommandOutputMessage: (command: string, output: string) => void;
+  onCompleteCommandMessage: (command: string, exitCode: number) => void;
 }
 
 export interface CommandExecutionResult {
@@ -18,13 +14,20 @@ export interface CommandExecutionResult {
 
 export class BashManager {
   private workdir: string;
-  private onMessagesUpdate: (updater: (prev: Message[]) => Message[]) => void;
+  private onAddCommandOutputMessage: (command: string) => void;
+  private onUpdateCommandOutputMessage: (
+    command: string,
+    output: string,
+  ) => void;
+  private onCompleteCommandMessage: (command: string, exitCode: number) => void;
   private isCommandRunning = false;
   private currentProcess: ChildProcess | null = null;
 
   constructor(options: BashManagerOptions) {
     this.workdir = process.cwd();
-    this.onMessagesUpdate = options.onMessagesUpdate;
+    this.onAddCommandOutputMessage = options.onAddCommandOutputMessage;
+    this.onUpdateCommandOutputMessage = options.onUpdateCommandOutputMessage;
+    this.onCompleteCommandMessage = options.onCompleteCommandMessage;
   }
 
   public getIsCommandRunning(): boolean {
@@ -38,10 +41,8 @@ export class BashManager {
 
     this.isCommandRunning = true;
 
-    // Add command output placeholder using message operations utility
-    this.onMessagesUpdate((prev: Message[]) =>
-      addCommandOutputMessage({ messages: prev, command }),
-    );
+    // Add command output placeholder
+    this.onAddCommandOutputMessage(command);
 
     return new Promise<number>((resolve) => {
       const child = spawn(command, {
@@ -58,13 +59,7 @@ export class BashManager {
 
       const updateOutput = (newData: string) => {
         outputBuffer += newData;
-        this.onMessagesUpdate((prev) =>
-          updateCommandOutputInMessage({
-            messages: prev,
-            command,
-            output: outputBuffer,
-          }),
-        );
+        this.onUpdateCommandOutputMessage(command, outputBuffer);
       };
 
       child.stdout?.on("data", (data) => {
@@ -81,9 +76,7 @@ export class BashManager {
         // 添加命令到bash历史记录
         addBashCommandToHistory(command, this.workdir);
 
-        this.onMessagesUpdate((prev) =>
-          completeCommandInMessage({ messages: prev, command, exitCode }),
-        );
+        this.onCompleteCommandMessage(command, exitCode);
 
         this.isCommandRunning = false;
         this.currentProcess = null;
@@ -92,9 +85,7 @@ export class BashManager {
 
       child.on("error", (error) => {
         updateOutput(`\nError: ${error.message}\n`);
-        this.onMessagesUpdate((prev: Message[]) =>
-          completeCommandInMessage({ messages: prev, command, exitCode: 1 }),
-        );
+        this.onCompleteCommandMessage(command, 1);
 
         this.isCommandRunning = false;
         this.currentProcess = null;
