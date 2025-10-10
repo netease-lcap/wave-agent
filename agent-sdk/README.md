@@ -22,20 +22,20 @@ npm install wave-agent-sdk
 ## Usage
 
 ```typescript
-import { AIManager, bashTool } from 'wave-agent-sdk';
+import { AIManager, bashTool } from "wave-agent-sdk";
 
 // Initialize AI manager (toolRegistry is managed internally)
 const aiManager = await AIManager.create({
   callbacks: {
-    onMessagesChange: (messages) => console.log('Messages updated'),
-    onLoadingChange: (isLoading) => console.log('Loading:', isLoading),
+    onMessagesChange: (messages) => console.log("Messages updated"),
+    onLoadingChange: (isLoading) => console.log("Loading:", isLoading),
   },
 });
 
 // Use individual tools directly
 const result = await bashTool.execute({
-  command: 'ls -la',
-  description: 'List files'
+  command: "ls -la",
+  description: "List files",
 });
 ```
 

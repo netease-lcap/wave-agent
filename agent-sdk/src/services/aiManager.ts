@@ -88,7 +88,7 @@ export class AIManager {
   private sessionStartTime: string;
   private autoSaveTimer: NodeJS.Timeout | null = null;
   private lastSaveTime: number = 0;
-  private bashManagerRef: BashManager | null = null;
+  private bashManager: BashManager | null = null;
   private logger?: Logger; // 添加可选的 logger 属性
   private toolRegistry: ToolRegistryImpl; // 添加工具注册表实例
   private mcpManager: McpManager; // 添加 MCP 管理器实例
@@ -99,7 +99,7 @@ export class AIManager {
 
     this.callbacks = callbacks;
     this.logger = logger; // 保存传入的 logger
-    this.mcpManager = new McpManager(); // 初始化 MCP 管理器
+    this.mcpManager = new McpManager(this.logger); // 初始化 MCP 管理器
     this.toolRegistry = new ToolRegistryImpl(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
     this.sessionStartTime = new Date().toISOString();
     this.state = {
@@ -111,7 +111,7 @@ export class AIManager {
     };
 
     // Initialize bash manager
-    this.bashManagerRef = new BashManager({
+    this.bashManager = new BashManager({
       onAddCommandOutputMessage: (command: string) => {
         const updatedMessages = addCommandOutputMessage({
           messages: this.state.messages,
@@ -500,14 +500,14 @@ export class AIManager {
    * 获取bash命令执行状态
    */
   public getIsCommandRunning(): boolean {
-    return this.bashManagerRef?.getIsCommandRunning() ?? false;
+    return this.bashManager?.getIsCommandRunning() ?? false;
   }
 
   /**
    * 中断bash命令执行
    */
   public abortBashCommand(): void {
-    this.bashManagerRef?.abortCommand();
+    this.bashManager?.abortCommand();
   }
 
   /**
@@ -551,7 +551,7 @@ export class AIManager {
 
         // 在bash模式下，不添加用户消息到UI，直接执行命令
         // 执行bash命令会自动添加助手消息
-        await this.bashManagerRef?.executeCommand(command);
+        await this.bashManager?.executeCommand(command);
         return;
       }
 

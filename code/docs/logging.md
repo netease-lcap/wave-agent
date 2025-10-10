@@ -4,12 +4,12 @@
 
 ## 环境变量配置
 
-| 环境变量 | 默认值 | 说明 |
-|---------|--------|------|
-| `LOG_LEVEL` | `INFO` | 日志级别，可选：DEBUG、INFO、WARN、ERROR |
-| `LOG_KEYWORDS` | - | 关键词过滤，用逗号分隔，只输出包含关键词的日志 |
+| 环境变量            | 默认值     | 说明                                                 |
+| ------------------- | ---------- | ---------------------------------------------------- |
+| `LOG_LEVEL`         | `INFO`     | 日志级别，可选：DEBUG、INFO、WARN、ERROR             |
+| `LOG_KEYWORDS`      | -          | 关键词过滤，用逗号分隔，只输出包含关键词的日志       |
 | `LOG_MAX_FILE_SIZE` | `10485760` | 当前日志文件最大大小（字节），默认10MB，超过将被截断 |
-| `LOG_KEEP_LINES` | `1000` | 截断日志文件时保留的行数 |
+| `LOG_KEEP_LINES`    | `1000`     | 截断日志文件时保留的行数                             |
 
 ## 日志文件位置
 
@@ -50,17 +50,17 @@ LOG_KEYWORDS=file,error wave-code
 ## 代码中使用日志
 
 ```typescript
-import { logger } from '../utils/logger';
+import { logger } from "../utils/logger";
 
 // 不同级别的日志
-logger.debug('详细调试信息', { data: someObject });
-logger.info('一般信息');
-logger.warn('警告信息', error);
-logger.error('错误信息', error);
+logger.debug("详细调试信息", { data: someObject });
+logger.info("一般信息");
+logger.warn("警告信息", error);
+logger.error("错误信息", error);
 
 // 带关键词的日志（便于过滤）
-logger.info('[file] 文件加载完成:', filePath);
-logger.error('[network] 网络请求失败:', error);
+logger.info("[file] 文件加载完成:", filePath);
+logger.error("[network] 网络请求失败:", error);
 ```
 
 ## 调试方法

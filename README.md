@@ -44,6 +44,7 @@ export DISABLE_RAW_MODE="false"
 ### 环境变量设置方式
 
 #### 方法1：直接在命令行设置
+
 ```bash
 export AIGW_TOKEN="your_token_here"
 export AIGW_URL="https://your-api-gateway-url.com"
@@ -51,13 +52,16 @@ wave-code
 ```
 
 #### 方法2：使用.env文件
+
 创建 `.env` 文件并添加：
+
 ```
 AIGW_TOKEN=your_token_here
 AIGW_URL=https://your-api-gateway-url.com
 ```
 
 #### 方法3：在shell配置文件中设置
+
 将环境变量添加到 `~/.bashrc`、`~/.zshrc` 或相应的shell配置文件中。
 
 ⚠️ **重要提示**：不设置 `AIGW_TOKEN` 和 `AIGW_URL` 环境变量，模型将无法进行鉴权，应用无法正常工作。

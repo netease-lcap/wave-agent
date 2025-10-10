@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { McpManager, McpServerConfig } from "../../src/services/mcpManager.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import type { Logger } from "../../src/types.js";
 
 // Mock interfaces
 interface MockClient {
@@ -58,6 +59,25 @@ describe("McpManager", () => {
   afterEach(async () => {
     await mcpManager.cleanup();
     vi.restoreAllMocks();
+  });
+
+  describe("constructor", () => {
+    it("should accept logger parameter", () => {
+      const mockLogger: Logger = {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      };
+
+      const manager = new McpManager(mockLogger);
+      expect(manager).toBeInstanceOf(McpManager);
+    });
+
+    it("should work without logger parameter", () => {
+      const manager = new McpManager();
+      expect(manager).toBeInstanceOf(McpManager);
+    });
   });
 
   describe("loadConfig", () => {

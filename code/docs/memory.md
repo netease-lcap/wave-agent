@@ -11,18 +11,21 @@
 ## 使用示例
 
 ### 1. 添加项目设置记忆
+
 ```
 用户输入: #这个项目使用 React + TypeScript，主要是一个CLI工具
 系统响应: ✅ 已将记忆添加到 WAVE.md: 这个项目使用 React + TypeScript，主要是一个CLI工具
 ```
 
 ### 2. 添加重要约定记忆
+
 ```
 用户输入: #代码风格: 使用 ESLint + Prettier，组件采用函数式写法
 系统响应: ✅ 已将记忆添加到 WAVE.md: 代码风格: 使用 ESLint + Prettier，组件采用函数式写法
 ```
 
 ### 3. 添加业务规则记忆
+
 ```
 用户输入: #重要: 所有文件操作都需要错误处理，用户输入需要验证
 系统响应: ✅ 已将记忆添加到 WAVE.md: 重要: 所有文件操作都需要错误处理，用户输入需要验证
@@ -88,6 +91,7 @@ The following is important context and memory from previous interactions:
 ## 格式说明
 
 记忆内容采用简洁的列表格式：
+
 - 每条记忆以 `-` 开头作为列表项
 - 保持内容简洁明了，便于AI理解和使用
 - 新记忆会自动追加到文件末尾
