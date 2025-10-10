@@ -28,7 +28,7 @@ import {
 export interface MessageManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
   onSessionIdChange?: (sessionId: string) => void;
-  onlatestTotalTokensChange?: (latestTotalTokens: number) => void;
+  onLatestTotalTokensChange?: (latestTotalTokens: number) => void;
   onUserInputHistoryChange?: (history: string[]) => void;
   // 增量回调
   onUserMessageAdded?: (
@@ -190,7 +190,7 @@ export class MessageManager {
   public setlatestTotalTokens(latestTotalTokens: number): void {
     if (this.latestTotalTokens !== latestTotalTokens) {
       this.latestTotalTokens = latestTotalTokens;
-      this.callbacks.onlatestTotalTokensChange?.(latestTotalTokens);
+      this.callbacks.onLatestTotalTokensChange?.(latestTotalTokens);
     }
   }
 

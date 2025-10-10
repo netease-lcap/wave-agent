@@ -53,7 +53,7 @@ export class Agent {
       {
         onMessagesChange: callbacks.onMessagesChange,
         onSessionIdChange: callbacks.onSessionIdChange,
-        onlatestTotalTokensChange: callbacks.onlatestTotalTokensChange,
+        onLatestTotalTokensChange: callbacks.onLatestTotalTokensChange,
         onUserInputHistoryChange: callbacks.onUserInputHistoryChange,
         onUserMessageAdded: callbacks.onUserMessageAdded,
         onAssistantMessageAdded: callbacks.onAssistantMessageAdded,
