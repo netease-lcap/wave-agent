@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { AIManager } from "@/services/aiManager.js";
-import type { Message } from "@/types.js";
 import * as aiService from "@/services/aiService.js";
 
 // Mock the session service
@@ -72,19 +71,6 @@ describe("AIManager - No Parameters Tool Handling", () => {
       content: "Tool executed successfully",
     });
 
-    // Setup initial messages
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "Test no params tool",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
     let callCount = 0;
 
     // Mock callAgent to return a tool call with empty arguments
@@ -126,7 +112,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
     });
 
     // Execute the test
-    await aiManager.sendAIMessage();
+    await aiManager.sendMessage("Test message");
 
     // Verify tool was executed with empty parameters
     expect(mockToolExecute).toHaveBeenCalledWith(
@@ -157,19 +143,6 @@ describe("AIManager - No Parameters Tool Handling", () => {
       success: true,
       content: "Tool executed successfully",
     });
-
-    // Setup initial messages
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "Test no params tool with empty object",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
 
     let callCount = 0;
 
@@ -212,7 +185,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
     });
 
     // Execute the test
-    await aiManager.sendAIMessage();
+    await aiManager.sendMessage("Test message");
 
     // Verify tool was executed with empty parameters
     expect(mockToolExecute).toHaveBeenCalledWith(
@@ -244,19 +217,6 @@ describe("AIManager - No Parameters Tool Handling", () => {
       content: "Should not execute",
       error: "Should not reach here",
     });
-
-    // Setup initial messages
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "Test malformed JSON",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
 
     let callCount = 0;
 
@@ -299,7 +259,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
     });
 
     // Execute the test
-    await aiManager.sendAIMessage();
+    await aiManager.sendMessage("Test message");
 
     // Check that error message is added to the conversation
     const messages = aiManager.messages;

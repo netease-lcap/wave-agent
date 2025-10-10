@@ -102,23 +102,8 @@ describe("AIManager User Memory Integration", () => {
       callbacks: mockCallbacks,
     });
 
-    // Add a user message first with correct structure
-    const initialMessages = [
-      {
-        role: "user" as const,
-        blocks: [
-          {
-            type: "text" as const,
-            content: "Test question",
-          },
-        ],
-        originalDeltas: [],
-      },
-    ];
-    aiManager.setMessages(initialMessages);
-
-    // Send AI message
-    await aiManager.sendAIMessage();
+    // Send a message to trigger AI response with memory
+    await aiManager.sendMessage("Test question");
 
     // Verify that callAgent was called with combined memory
     expect(mockCallAgent).toHaveBeenCalledWith(
@@ -144,23 +129,8 @@ describe("AIManager User Memory Integration", () => {
       callbacks: mockCallbacks,
     });
 
-    // Add a user message first with correct structure
-    const initialMessages = [
-      {
-        role: "user" as const,
-        blocks: [
-          {
-            type: "text" as const,
-            content: "Test question",
-          },
-        ],
-        originalDeltas: [],
-      },
-    ];
-    aiManager.setMessages(initialMessages);
-
-    // Send AI message
-    await aiManager.sendAIMessage();
+    // Send a message to trigger AI response with memory
+    await aiManager.sendMessage("Test question");
 
     // Verify that callAgent was called with project memory only
     expect(mockCallAgent).toHaveBeenCalledWith(
@@ -185,23 +155,8 @@ describe("AIManager User Memory Integration", () => {
       callbacks: mockCallbacks,
     });
 
-    // Add a user message first with correct structure
-    const initialMessages = [
-      {
-        role: "user" as const,
-        blocks: [
-          {
-            type: "text" as const,
-            content: "Test question",
-          },
-        ],
-        originalDeltas: [],
-      },
-    ];
-    aiManager.setMessages(initialMessages);
-
-    // Send AI message
-    await aiManager.sendAIMessage();
+    // Send a message to trigger AI response with memory
+    await aiManager.sendMessage("Test question");
 
     // Verify that callAgent was called with user memory only
     expect(mockCallAgent).toHaveBeenCalledWith(
@@ -226,23 +181,8 @@ describe("AIManager User Memory Integration", () => {
       callbacks: mockCallbacks,
     });
 
-    // Add a user message first with correct structure
-    const initialMessages = [
-      {
-        role: "user" as const,
-        blocks: [
-          {
-            type: "text" as const,
-            content: "Test question",
-          },
-        ],
-        originalDeltas: [],
-      },
-    ];
-    aiManager.setMessages(initialMessages);
-
-    // Send AI message
-    await aiManager.sendAIMessage();
+    // Send a message to trigger AI response with memory
+    await aiManager.sendMessage("Test question");
 
     // Verify that callAgent was called with empty memory
     expect(mockCallAgent).toHaveBeenCalledWith(
@@ -265,10 +205,6 @@ describe("AIManager User Memory Integration", () => {
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = await AIManager.create({
-      callbacks: mockCallbacks,
-    });
-
     // Add a user message first with correct structure
     const initialMessages = [
       {
@@ -282,10 +218,13 @@ describe("AIManager User Memory Integration", () => {
         originalDeltas: [],
       },
     ];
-    aiManager.setMessages(initialMessages);
 
-    // Send AI message - should handle errors gracefully by adding error block
-    await aiManager.sendAIMessage();
+    aiManager = await AIManager.create({
+      messages: initialMessages,
+    });
+
+    // Send message - should handle errors gracefully by adding error block
+    await aiManager.sendMessage("Test question");
 
     // Verify that callAgent was not called due to the error
     expect(mockCallAgent).not.toHaveBeenCalled();

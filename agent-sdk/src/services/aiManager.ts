@@ -15,20 +15,22 @@ import type { Message, Logger } from "../types.js";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 
 export interface AIManagerOptions {
-  callbacks: AIManagerCallbacks;
+  callbacks?: AIManagerCallbacks;
   restoreSessionId?: string;
   continueLastSession?: boolean;
-  logger?: Logger; // 添加可选的 logger 参数
+  logger?: Logger;
+  /**添加可选的初始消息参数，方便测试 */
+  messages?: Message[];
 }
 
 export interface AIManagerCallbacks extends MessageManagerCallbacks {
-  // AIManager 自身的回调
+  /** AIManager 自身的回调 */
   onLoadingChange?: (isLoading: boolean) => void;
-  // MCP 服务器状态回调
+  /** MCP 服务器状态回调 */
   onMcpServersChange?: (servers: McpServerStatus[]) => void;
-  // 命令运行状态回调
+  /** 命令运行状态回调 */
   onCommandRunningChange?: (isRunning: boolean) => void;
-  // 用户输入历史回调
+  /** 用户输入历史回调 */
   onUserInputHistoryChange?: (history: string[]) => void;
 }
 
@@ -46,7 +48,7 @@ export class AIManager {
 
   // 私有构造函数，防止直接实例化
   private constructor(options: AIManagerOptions) {
-    const { callbacks, logger } = options;
+    const { callbacks = {}, logger } = options;
 
     this.callbacks = callbacks;
     this.logger = logger; // 保存传入的 logger
@@ -115,32 +117,28 @@ export class AIManager {
     return this.messageManager.getUserInputHistory();
   }
 
-  /**
-   * 获取bash命令执行状态
-   */
+  /** 获取bash命令执行状态 */
   public get isCommandRunning(): boolean {
     return this.bashManager?.isCommandRunning ?? false;
   }
 
-  /**
-   * 静态异步工厂方法
-   */
+  /** 静态异步工厂方法 */
   static async create(options: AIManagerOptions): Promise<AIManager> {
     const instance = new AIManager(options);
-    await instance.initialize(
-      options.restoreSessionId,
-      options.continueLastSession,
-    );
+    await instance.initialize({
+      restoreSessionId: options.restoreSessionId,
+      continueLastSession: options.continueLastSession,
+      messages: options.messages,
+    });
     return instance;
   }
 
-  /**
-   * 私有初始化方法，处理异步初始化逻辑
-   */
-  private async initialize(
-    restoreSessionId?: string,
-    continueLastSession?: boolean,
-  ): Promise<void> {
+  /** 私有初始化方法，处理异步初始化逻辑 */
+  private async initialize(options?: {
+    restoreSessionId?: string;
+    continueLastSession?: boolean;
+    messages?: Message[];
+  }): Promise<void> {
     // Initialize MCP servers with auto-connect
     try {
       await this.mcpManager.initialize(process.cwd(), true);
@@ -151,16 +149,17 @@ export class AIManager {
       // Don't throw error to prevent app startup failure
     }
 
-    // Then handle session restoration
-    await this.messageManager.handleSessionRestoration(
-      restoreSessionId,
-      continueLastSession,
-    );
-  }
-
-  // 设置消息并触发回调
-  public setMessages(messages: Message[]): void {
-    this.messageManager.setMessages(messages);
+    // Handle session restoration or set provided messages
+    if (options?.messages) {
+      // If messages are provided, use them directly (useful for testing)
+      this.messageManager.setMessages(options.messages);
+    } else {
+      // Otherwise, handle session restoration
+      await this.messageManager.handleSessionRestoration(
+        options?.restoreSessionId,
+        options?.continueLastSession,
+      );
+    }
   }
 
   public abortAIMessage(): void {
@@ -185,24 +184,18 @@ export class AIManager {
     this.setIsLoading(false);
   }
 
-  /**
-   * 清空消息和输入历史
-   */
+  /** 清空消息和输入历史 */
   public clearMessages(): void {
     this.messageManager.clearMessages();
   }
 
-  /**
-   * 统一的中断方法，同时中断AI消息和命令执行
-   */
+  /** 统一的中断方法，同时中断AI消息和命令执行 */
   public abortMessage(): void {
     this.abortAIMessage();
     this.abortBashCommand();
   }
 
-  /**
-   * 添加到输入历史记录
-   */
+  /** 添加到输入历史记录 */
   public addToInputHistory(input: string): void {
     this.messageManager.addToInputHistory(input);
   }
@@ -231,16 +224,12 @@ export class AIManager {
     return undefined;
   }
 
-  /**
-   * 中断bash命令执行
-   */
+  /** 中断bash命令执行 */
   public abortBashCommand(): void {
     this.bashManager?.abortCommand();
   }
 
-  /**
-   * 销毁管理器，清理资源
-   */
+  /** 销毁管理器，清理资源 */
   public async destroy(): Promise<void> {
     this.messageManager.saveSession();
     this.abortAIMessage();
@@ -305,7 +294,7 @@ export class AIManager {
     }
   }
 
-  public async sendAIMessage(recursionDepth: number = 0): Promise<void> {
+  private async sendAIMessage(recursionDepth: number = 0): Promise<void> {
     // Only check isLoading for the initial call (recursionDepth === 0)
     if (recursionDepth === 0 && this.isLoading) {
       return;
@@ -616,9 +605,7 @@ export class AIManager {
     }
   }
 
-  /**
-   * 保存记忆到项目或用户记忆文件
-   */
+  /** 保存记忆到项目或用户记忆文件 */
   public async saveMemory(
     message: string,
     type: "project" | "user",
@@ -659,16 +646,12 @@ export class AIManager {
 
   // ========== MCP 管理方法 ==========
 
-  /**
-   * 获取所有 MCP 服务器状态
-   */
+  /** 获取所有 MCP 服务器状态 */
   public getMcpServers(): McpServerStatus[] {
     return this.mcpManager.getAllServers();
   }
 
-  /**
-   * 连接 MCP 服务器
-   */
+  /** 连接 MCP 服务器 */
   public async connectMcpServer(serverName: string): Promise<boolean> {
     const result = await this.mcpManager.connectServer(serverName);
     // 触发状态变化回调
@@ -676,9 +659,7 @@ export class AIManager {
     return result;
   }
 
-  /**
-   * 断开 MCP 服务器连接
-   */
+  /** 断开 MCP 服务器连接 */
   public async disconnectMcpServer(serverName: string): Promise<boolean> {
     const result = await this.mcpManager.disconnectServer(serverName);
     // 触发状态变化回调
@@ -686,9 +667,7 @@ export class AIManager {
     return result;
   }
 
-  /**
-   * 重连 MCP 服务器
-   */
+  /** 重连 MCP 服务器 */
   public async reconnectMcpServer(serverName: string): Promise<boolean> {
     const result = await this.mcpManager.reconnectServer(serverName);
     // 触发状态变化回调

@@ -10,7 +10,6 @@ vi.mock("@/services/session", () => ({
   getLatestSession: vi.fn(() => Promise.resolve(null)),
   cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
 }));
-import type { Message } from "@/types.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -58,19 +57,6 @@ describe("AIManager Diff Integration Tests", () => {
   });
 
   it("should show diff after edit_file tool execution", async () => {
-    // 添加初始用户消息
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "请添加错误处理",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
     const mockCallAgent = vi.mocked(aiService.callAgent);
 
     mockCallAgent.mockImplementation(async () => {
@@ -136,8 +122,8 @@ describe("AIManager Diff Integration Tests", () => {
       ],
     });
 
-    // 调用 sendAIMessage 触发工具执行和递归
-    await aiManager.sendAIMessage();
+    // 调用 sendMessage 触发工具执行和递归
+    await aiManager.sendMessage("Test message");
 
     // 验证 AI service 被调用了两次
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -187,19 +173,6 @@ describe("AIManager Diff Integration Tests", () => {
   });
 
   it("should show diff after search_replace tool execution", async () => {
-    // 添加初始用户消息
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "请使用模板字符串",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
     // 重置计数器
     aiServiceCallCount = 0;
 
@@ -257,8 +230,8 @@ describe("AIManager Diff Integration Tests", () => {
       ],
     });
 
-    // 调用 sendAIMessage 触发工具执行和递归
-    await aiManager.sendAIMessage();
+    // 调用 sendMessage 触发工具执行和递归
+    await aiManager.sendMessage("Test message");
 
     // 验证调用次数
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -305,19 +278,6 @@ describe("AIManager Diff Integration Tests", () => {
   });
 
   it("should handle multiple file operations with diffs", async () => {
-    // 添加初始用户消息
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "请修改多个文件",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
@@ -407,8 +367,8 @@ describe("AIManager Diff Integration Tests", () => {
       },
     );
 
-    // 调用 sendAIMessage 触发工具执行和递归
-    await aiManager.sendAIMessage();
+    // 调用 sendMessage 触发工具执行和递归
+    await aiManager.sendMessage("Test message");
 
     // 验证 AI service 被调用了两次
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -497,21 +457,6 @@ describe("AIManager Diff Integration Tests", () => {
   });
 
   it("should handle tool execution failure without diff", async () => {
-    // 添加初始用户消息
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "请修改不存在的文件",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
-    aiServiceCallCount = 0;
-
     const mockCallAgent = vi.mocked(aiService.callAgent);
 
     mockCallAgent.mockImplementation(async () => {
@@ -554,8 +499,8 @@ describe("AIManager Diff Integration Tests", () => {
       shortResult: "File operation failed",
     });
 
-    // 调用 sendAIMessage 触发工具执行和递归
-    await aiManager.sendAIMessage();
+    // 调用 sendMessage 触发工具执行和递归
+    await aiManager.sendMessage("Test message");
 
     // 验证 AI service 被调用了两次（即使工具失败也会触发递归）
     expect(mockCallAgent).toHaveBeenCalledTimes(2);

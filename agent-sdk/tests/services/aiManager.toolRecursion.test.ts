@@ -10,7 +10,6 @@ vi.mock("@/services/session", () => ({
   getLatestSession: vi.fn(() => Promise.resolve(null)),
   cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
 }));
-import type { Message } from "@/types.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -58,19 +57,6 @@ describe("AIManager Tool Recursion Tests", () => {
   });
 
   it("should trigger recursive AI call after tool execution and verify message structure", async () => {
-    // 添加初始用户消息
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "请查看当前目录的内容",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
     // Mock AI service 返回工具调用，然后在第二次调用时返回简单响应
     const mockCallAgent = vi.mocked(aiService.callAgent);
 
@@ -111,8 +97,8 @@ describe("AIManager Tool Recursion Tests", () => {
       shortResult: "Listed directory contents",
     });
 
-    // 调用 sendAIMessage 触发工具递归
-    await aiManager.sendAIMessage();
+    // 调用 sendMessage 触发工具递归
+    await aiManager.sendMessage("Test message");
 
     // 验证 AI service 被调用了两次（工具调用 + 递归调用）
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -155,19 +141,6 @@ describe("AIManager Tool Recursion Tests", () => {
   });
 
   it("should handle multiple tool calls in sequence", async () => {
-    // 添加初始用户消息
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "请执行几个命令来获取系统信息",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
     // 重新初始化计数器，确保测试间隔离
     aiServiceCallCount = 0;
 
@@ -240,8 +213,8 @@ describe("AIManager Tool Recursion Tests", () => {
       },
     );
 
-    // 调用 sendAIMessage 触发工具递归
-    await aiManager.sendAIMessage();
+    // 调用 sendMessage 触发工具递归
+    await aiManager.sendMessage("Test message");
 
     // 验证 AI service 被调用了3次
     expect(mockCallAgent).toHaveBeenCalledTimes(3);
@@ -290,19 +263,6 @@ describe("AIManager Tool Recursion Tests", () => {
   });
 
   it("should handle tool execution errors gracefully", async () => {
-    // 添加初始用户消息
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "请执行一个会失败的命令",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
@@ -343,8 +303,8 @@ describe("AIManager Tool Recursion Tests", () => {
       shortResult: "Command failed",
     });
 
-    // 调用 sendAIMessage 触发工具递归
-    await aiManager.sendAIMessage();
+    // 调用 sendMessage 触发工具递归
+    await aiManager.sendMessage("Test message");
 
     // 验证 AI service 被调用了两次（即使工具失败也会触发递归）
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -362,19 +322,6 @@ describe("AIManager Tool Recursion Tests", () => {
   });
 
   it("should stop recursion when no more tool calls are returned", async () => {
-    // 添加初始用户消息
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "请帮我做一些任务",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
@@ -417,8 +364,8 @@ describe("AIManager Tool Recursion Tests", () => {
       shortResult: "Echo command executed",
     });
 
-    // 调用 sendAIMessage 触发工具递归
-    await aiManager.sendAIMessage();
+    // 调用 sendMessage 触发工具递归
+    await aiManager.sendMessage("Test message");
 
     // 验证 AI service 只被调用了两次（递归在没有更多工具调用时停止）
     expect(mockCallAgent).toHaveBeenCalledTimes(2);

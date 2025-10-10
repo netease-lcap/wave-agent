@@ -10,7 +10,7 @@ vi.mock("@/services/session", () => ({
   getLatestSession: vi.fn(() => Promise.resolve(null)),
   cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
 }));
-import type { Message, ErrorBlock } from "@/types.js";
+import type { ErrorBlock } from "@/types.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -56,55 +56,8 @@ describe("AIManager - Abort Handling", () => {
   it("should handle JSON parse error gracefully when aborted during tool argument streaming", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
 
-    // Setup initial messages
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "Test message",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
-    mockCallAgent.mockImplementation(async ({ abortSignal }) => {
-      // Simulate user pressing ESC - abort the operation
-      if (abortSignal) {
-        // Create a new AbortController to simulate the abort
-        const controller = new AbortController();
-        controller.abort();
-        // Mock the aborted signal
-        Object.defineProperty(abortSignal, "aborted", {
-          value: true,
-          writable: true,
-        });
-      }
-
-      // Return tool call with incomplete arguments
-      return {
-        content: "",
-        tool_calls: [
-          {
-            id: "tool_123",
-            type: "function" as const,
-            function: {
-              name: "search_replace",
-              arguments: '{"file_path": "test.ts", "old_string": "incomplete', // incomplete JSON that will cause parse error
-            },
-          },
-        ],
-        usage: {
-          prompt_tokens: 10,
-          completion_tokens: 20,
-          total_tokens: 30,
-        },
-      };
-    });
-
     // Execute the test - should not throw error even with incomplete JSON and abort
-    await expect(aiManager.sendAIMessage()).resolves.not.toThrow();
+    await expect(aiManager.sendMessage("Test message")).resolves.not.toThrow();
 
     // Verify that the manager doesn't crash and handles the situation gracefully
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
@@ -129,19 +82,6 @@ describe("AIManager - Abort Handling", () => {
       content: "Should not execute",
       error: "Should not reach here",
     });
-
-    // Setup initial messages
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "Test message",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
 
     // Use a call counter to prevent infinite recursion
     let callCount = 0;
@@ -186,7 +126,7 @@ describe("AIManager - Abort Handling", () => {
     });
 
     // Execute the test
-    await aiManager.sendAIMessage();
+    await aiManager.sendMessage("Test message");
 
     // Check that error message is added to the conversation when not aborted
     const messages = aiManager.messages;
@@ -217,18 +157,6 @@ describe("AIManager - Abort Handling", () => {
     });
 
     // Setup initial messages
-    const initialUserMessage: Message = {
-      role: "user",
-      blocks: [
-        {
-          type: "text",
-          content: "Test message",
-        },
-      ],
-    };
-
-    aiManager.setMessages([initialUserMessage]);
-
     mockCallAgent.mockImplementation(async ({ abortSignal }) => {
       // Simulate abort during processing
       if (abortSignal) {
@@ -269,7 +197,7 @@ describe("AIManager - Abort Handling", () => {
       content: "Tool should not execute",
     });
 
-    await aiManager.sendAIMessage();
+    await aiManager.sendMessage("Test message");
 
     // Verify no tools were actually executed due to abort
     expect(mockToolExecute).not.toHaveBeenCalled();
