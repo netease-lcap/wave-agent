@@ -15,15 +15,9 @@ import type { ErrorBlock } from "@/types.js";
 // Mock AI Service
 vi.mock("@/services/aiService");
 
-// Mock memory utils to prevent file reading
-vi.mock("@/utils/memoryUtils", () => ({
-  readMemoryFile: vi.fn(() => Promise.resolve("")),
-  writeMemoryFile: vi.fn(() => Promise.resolve()),
-}));
-
 // Mock tool registry to control tool execution
 let mockToolExecute: ReturnType<typeof vi.fn>;
-vi.mock("@/tools", () => ({
+vi.mock("@/managers/toolManager", () => ({
   ToolManager: vi.fn().mockImplementation(() => ({
     execute: (mockToolExecute = vi.fn()),
     list: vi.fn(() => []),

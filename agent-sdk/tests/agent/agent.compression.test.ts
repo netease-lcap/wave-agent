@@ -17,12 +17,6 @@ import { ChatCompletionMessageParam } from "openai/resources.js";
 // Mock AI Service
 vi.mock("@/services/aiService");
 
-// Mock memory utils to prevent file reading
-vi.mock("@/utils/memoryUtils", () => ({
-  readMemoryFile: vi.fn(() => Promise.resolve("")),
-  writeMemoryFile: vi.fn(() => Promise.resolve()),
-}));
-
 describe("Agent Message Compression Tests", () => {
   let agent: Agent;
 

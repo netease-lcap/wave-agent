@@ -15,7 +15,7 @@ vi.mock("@/services/aiService");
 
 // Mock the toolManager
 let mockToolExecute: ReturnType<typeof vi.fn>;
-vi.mock("@/tools", () => ({
+vi.mock("@/managers/toolManager", () => ({
   ToolManager: vi.fn().mockImplementation(() => ({
     execute: (mockToolExecute = vi.fn()),
     list: vi.fn(() => []),
@@ -30,11 +30,6 @@ vi.mock("@/utils/logger", () => ({
     warn: vi.fn(),
     error: vi.fn(),
   },
-}));
-
-// Mock memory utilities
-vi.mock("@/utils/memoryUtils", () => ({
-  readMemoryFile: vi.fn().mockResolvedValue(""),
 }));
 
 // Mock memory manager
