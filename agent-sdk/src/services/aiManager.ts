@@ -28,7 +28,7 @@ import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { saveErrorLog } from "../utils/errorLogger.js";
 import { readMemoryFile } from "../utils/memoryUtils.js";
 import * as memory from "./memory.js";
-import { McpManager } from "./mcpManager.js";
+import { McpManager, McpServerStatus } from "./mcpManager.js";
 import { BashManager } from "./bashManager.js";
 import type { Message, Logger } from "../types.js";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
@@ -61,6 +61,8 @@ export interface AIManagerCallbacks {
     success: boolean,
     type: "project" | "user",
   ) => void;
+  // MCP 服务器状态回调
+  onMcpServersChange?: (servers: McpServerStatus[]) => void;
 }
 
 export interface AIManagerState {
@@ -134,6 +136,8 @@ export class AIManager {
     // Initialize MCP servers with auto-connect
     try {
       await this.mcpManager.initialize(process.cwd(), true);
+      // 触发初始 MCP 服务器状态回调
+      this.callbacks.onMcpServersChange?.(this.mcpManager.getAllServers());
     } catch (error) {
       this.logger?.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
@@ -911,5 +915,44 @@ export class AIManager {
         storagePath,
       );
     }
+  }
+
+  // ========== MCP 管理方法 ==========
+
+  /**
+   * 获取所有 MCP 服务器状态
+   */
+  public getMcpServers(): McpServerStatus[] {
+    return this.mcpManager.getAllServers();
+  }
+
+  /**
+   * 连接 MCP 服务器
+   */
+  public async connectMcpServer(serverName: string): Promise<boolean> {
+    const result = await this.mcpManager.connectServer(serverName);
+    // 触发状态变化回调
+    this.callbacks.onMcpServersChange?.(this.mcpManager.getAllServers());
+    return result;
+  }
+
+  /**
+   * 断开 MCP 服务器连接
+   */
+  public async disconnectMcpServer(serverName: string): Promise<boolean> {
+    const result = await this.mcpManager.disconnectServer(serverName);
+    // 触发状态变化回调
+    this.callbacks.onMcpServersChange?.(this.mcpManager.getAllServers());
+    return result;
+  }
+
+  /**
+   * 重连 MCP 服务器
+   */
+  public async reconnectMcpServer(serverName: string): Promise<boolean> {
+    const result = await this.mcpManager.reconnectServer(serverName);
+    // 触发状态变化回调
+    this.callbacks.onMcpServersChange?.(this.mcpManager.getAllServers());
+    return result;
   }
 }

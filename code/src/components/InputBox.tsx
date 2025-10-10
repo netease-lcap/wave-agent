@@ -15,6 +15,7 @@ import { useInputHistory } from "../hooks/useInputHistory.js";
 import { useTextInsertion } from "../hooks/useTextInsertion.js";
 import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler.js";
 import { useImageManager } from "../hooks/useImageManager.js";
+import type { McpServerStatus } from "wave-agent-sdk";
 
 export const INPUT_PLACEHOLDER_TEXT =
   "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory)...";
@@ -36,6 +37,11 @@ export interface InputBoxProps {
   abortMessage?: () => void;
   saveMemory?: (message: string, type: "project" | "user") => Promise<void>;
   setInputInsertHandler?: (handler: (text: string) => void) => void;
+  // MCP 相关属性
+  mcpServers?: McpServerStatus[];
+  connectMcpServer?: (serverName: string) => Promise<boolean>;
+  disconnectMcpServer?: (serverName: string) => Promise<boolean>;
+  reconnectMcpServer?: (serverName: string) => Promise<boolean>;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
@@ -47,6 +53,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
   abortMessage = () => {},
   saveMemory = async () => {},
   setInputInsertHandler = () => {},
+  mcpServers = [],
+  connectMcpServer = async () => false,
+  disconnectMcpServer = async () => false,
+  reconnectMcpServer = async () => false,
 }) => {
   // Bash shell manager state
   const [showBashManager, setShowBashManager] = useState(false);
@@ -244,7 +254,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
       )}
 
       {showMcpManager && (
-        <McpManager onCancel={() => setShowMcpManager(false)} />
+        <McpManager
+          onCancel={() => setShowMcpManager(false)}
+          servers={mcpServers}
+          onConnectServer={connectMcpServer}
+          onDisconnectServer={disconnectMcpServer}
+          onReconnectServer={reconnectMcpServer}
+        />
       )}
       {showBashManager || showMcpManager || (
         <Box borderStyle="single" borderColor="gray" paddingX={1}>

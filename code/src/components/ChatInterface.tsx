@@ -16,6 +16,10 @@ export const ChatInterface: React.FC = () => {
     abortMessage,
     saveMemory,
     setInputInsertHandler,
+    mcpServers,
+    connectMcpServer,
+    disconnectMcpServer,
+    reconnectMcpServer,
   } = useChat();
   const { isRawModeSupported } = useStdin();
 
@@ -42,6 +46,10 @@ export const ChatInterface: React.FC = () => {
           abortMessage={abortMessage}
           saveMemory={saveMemory}
           setInputInsertHandler={setInputInsertHandler}
+          mcpServers={mcpServers}
+          connectMcpServer={connectMcpServer}
+          disconnectMcpServer={disconnectMcpServer}
+          reconnectMcpServer={reconnectMcpServer}
         />
       ) : (
         <NonRawInput />

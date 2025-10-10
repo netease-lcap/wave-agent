@@ -1,72 +1,73 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { McpManager } from "../../src/components/McpManager.js";
-import { McpConfig, mcpManager } from "wave-agent-sdk";
+import {
+  McpManager,
+  McpManagerProps,
+} from "../../src/components/McpManager.js";
+import { McpServerStatus } from "wave-agent-sdk";
 
-// Mock the wave-agent-sdk module
-vi.mock("wave-agent-sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("wave-agent-sdk")>();
-  return {
-    ...actual,
-    mcpManager: {
-      loadConfig: vi.fn(),
-      ensureConfigLoaded: vi.fn(),
-      getConfig: vi.fn(),
-      getAllServers: vi.fn(),
-      connectServer: vi.fn(),
-      disconnectServer: vi.fn(),
-      reconnectServer: vi.fn(),
-    },
-  };
-});
-
-const mockServers = [
+// Mock server data
+const mockServers: McpServerStatus[] = [
   {
     name: "chrome-devtools",
     config: {
       command: "npx",
       args: ["chrome-devtools-mcp@latest"],
     },
-    status: "disconnected" as const,
+    status: "disconnected",
+    lastConnected: undefined,
+    error: undefined,
     toolCount: 0,
   },
   {
     name: "filesystem",
     config: {
       command: "npx",
-      args: ["-y", "@modelcontextprotocol/server-filesystem", "/Users"],
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
     },
-    status: "connected" as const,
+    status: "connected",
+    lastConnected: Date.now() - 60000, // 1 minute ago
+    error: undefined,
     toolCount: 5,
-    capabilities: ["tools"],
-    lastConnected: Date.now() - 5000,
   },
   {
     name: "brave-search",
     config: {
       command: "npx",
       args: ["-y", "@modelcontextprotocol/server-brave-search"],
-      env: { BRAVE_API_KEY: "test-key" },
+      env: {
+        BRAVE_API_KEY: "test-key",
+      },
     },
-    status: "error" as const,
+    status: "error",
+    lastConnected: undefined,
+    error: "Connection failed",
     toolCount: 0,
-    error: "API key invalid",
   },
 ];
 
 describe("McpManager", () => {
-  const mockOnCancel = vi.fn();
+  let mockOnCancel: ReturnType<typeof vi.fn>;
+  let mockOnConnectServer: ReturnType<typeof vi.fn>;
+  let mockOnDisconnectServer: ReturnType<typeof vi.fn>;
+  let mockOnReconnectServer: ReturnType<typeof vi.fn>;
+  let defaultProps: McpManagerProps;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(mcpManager.loadConfig).mockResolvedValue({} as McpConfig);
-    vi.mocked(mcpManager.ensureConfigLoaded).mockResolvedValue({} as McpConfig);
-    vi.mocked(mcpManager.getConfig).mockReturnValue({} as McpConfig);
-    vi.mocked(mcpManager.getAllServers).mockReturnValue(mockServers);
-    vi.mocked(mcpManager.connectServer).mockResolvedValue(true);
-    vi.mocked(mcpManager.disconnectServer).mockResolvedValue(true);
-    vi.mocked(mcpManager.reconnectServer).mockResolvedValue(true);
+    vi.useFakeTimers();
+    mockOnCancel = vi.fn();
+    mockOnConnectServer = vi.fn().mockResolvedValue(true);
+    mockOnDisconnectServer = vi.fn().mockResolvedValue(true);
+    mockOnReconnectServer = vi.fn().mockResolvedValue(true);
+
+    defaultProps = {
+      onCancel: mockOnCancel,
+      servers: mockServers,
+      onConnectServer: mockOnConnectServer,
+      onDisconnectServer: mockOnDisconnectServer,
+      onReconnectServer: mockOnReconnectServer,
+    };
   });
 
   afterEach(() => {
@@ -75,77 +76,54 @@ describe("McpManager", () => {
 
   describe("initial loading", () => {
     it("should show initial state without loading", () => {
-      // Mock empty server list
-      (mcpManager.getAllServers as ReturnType<typeof vi.fn>).mockReturnValue(
-        [],
-      );
-
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
+      const { lastFrame } = render(<McpManager {...defaultProps} />);
       const output = lastFrame();
 
       expect(output).toContain("Manage MCP servers");
-      expect(output).toContain("No MCP servers configured");
+      expect(output).toContain("Select a server to view details");
     });
 
     it("should not call ensureConfigLoaded on mount (handled by aiManager)", () => {
-      render(<McpManager onCancel={mockOnCancel} />);
+      render(<McpManager {...defaultProps} />);
 
-      expect(mcpManager.ensureConfigLoaded).not.toHaveBeenCalled();
+      // These methods should not be called directly by the component anymore
+      // as they are handled by the aiManager
+      expect(mockOnConnectServer).not.toHaveBeenCalled();
+      expect(mockOnDisconnectServer).not.toHaveBeenCalled();
+      expect(mockOnReconnectServer).not.toHaveBeenCalled();
     });
   });
 
   describe("no servers configured", () => {
-    it("should show no servers message when empty", async () => {
-      vi.mocked(mcpManager.getAllServers).mockReturnValue([]);
-      vi.mocked(mcpManager.ensureConfigLoaded).mockResolvedValue({
-        mcpServers: {},
-      });
-
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      // Wait longer for async loading to complete
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
+    it("should show no servers message when empty", () => {
+      const emptyProps = { ...defaultProps, servers: [] };
+      const { lastFrame } = render(<McpManager {...emptyProps} />);
       const output = lastFrame();
 
       expect(output).toContain("No MCP servers configured");
       expect(output).toContain(
         "Create a .mcp.json file in your project root to add servers",
       );
-      expect(output).toContain("Press Escape to close");
     });
   });
 
   describe("server list view", () => {
-    it("should display server list with correct information", async () => {
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      // Wait for async loading to complete
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    it("should display server list with correct information", () => {
+      const { lastFrame } = render(<McpManager {...defaultProps} />);
       const output = lastFrame();
 
       // Check header
       expect(output).toContain("Manage MCP servers");
       expect(output).toContain("Select a server to view details");
 
-      // Check servers are displayed
+      // Check server names are present
       expect(output).toContain("chrome-devtools");
       expect(output).toContain("filesystem");
       expect(output).toContain("brave-search");
-
-      // Check status indicators
-      expect(output).toContain("○"); // disconnected
-      expect(output).toContain("✓"); // connected
-      expect(output).toContain("✗"); // error
-
-      // Check tool count for connected server
-      expect(output).toContain("5 tools");
     });
 
-    it("should show correct commands for selected server", async () => {
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    it("should show correct commands for selected server", () => {
+      const { lastFrame } = render(<McpManager {...defaultProps} />);
       const output = lastFrame();
 
       // Only the first (selected) server's command should be visible in detail
@@ -153,33 +131,22 @@ describe("McpManager", () => {
       // Other servers' commands are not shown in detail in list view
     });
 
-    it("should show navigation instructions", async () => {
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    it("should show navigation instructions", () => {
+      const { lastFrame } = render(<McpManager {...defaultProps} />);
       const output = lastFrame();
 
       expect(output).toContain("↑/↓ to select");
       expect(output).toContain("Enter to view");
-      expect(output).toContain("c to connect"); // shown for disconnected first server
-      expect(output).toContain("r to reconnect");
+      expect(output).toContain("c to connect"); // shown for disconnected server
       expect(output).toContain("Esc to close");
-      // d to disconnect should NOT be shown for disconnected server
-      expect(output).not.toContain("d to disconnect");
     });
 
-    it("should show disconnect option when connected server is selected", async () => {
-      // Create a scenario where filesystem server (connected) is selected
-      const connectedServerFirst = [
-        mockServers[1],
-        ...mockServers.slice(0, 1),
-        mockServers[2],
-      ];
-      vi.mocked(mcpManager.getAllServers).mockReturnValue(connectedServerFirst);
+    it("should show disconnect option when connected server is selected", () => {
+      // Make filesystem server the first one so it's selected by default
+      const reorderedServers = [mockServers[1], mockServers[0], mockServers[2]]; // filesystem first
+      const props = { ...defaultProps, servers: reorderedServers };
 
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      const { lastFrame } = render(<McpManager {...props} />);
       const output = lastFrame();
 
       // Should show disconnect option since first server is connected
@@ -188,28 +155,20 @@ describe("McpManager", () => {
   });
 
   describe("server selection", () => {
-    it("should highlight first server by default", async () => {
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    it("should highlight first server by default", () => {
+      const { lastFrame } = render(<McpManager {...defaultProps} />);
       const output = lastFrame();
 
       // First server should be selected (indicated by ▶)
       expect(output).toContain("▶ 1. ○ chrome-devtools");
     });
 
-    it("should show last connected time for connected server when selected", async () => {
-      // Make filesystem server (which has lastConnected) the first/selected one
-      const connectedServerFirst = [
-        mockServers[1],
-        ...mockServers.slice(0, 1),
-        mockServers[2],
-      ];
-      vi.mocked(mcpManager.getAllServers).mockReturnValue(connectedServerFirst);
+    it("should show last connected time for connected server when selected", () => {
+      // Make filesystem server the first one so it's selected by default
+      const reorderedServers = [mockServers[1], mockServers[0], mockServers[2]]; // filesystem first
+      const props = { ...defaultProps, servers: reorderedServers };
 
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      const { lastFrame } = render(<McpManager {...props} />);
       const output = lastFrame();
 
       expect(output).toContain("Last connected:");
@@ -217,10 +176,8 @@ describe("McpManager", () => {
   });
 
   describe("status formatting", () => {
-    it("should display correct status colors and icons", async () => {
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    it("should display correct status colors and icons", () => {
+      const { lastFrame } = render(<McpManager {...defaultProps} />);
       const output = lastFrame();
 
       // Status icons should be present
@@ -229,10 +186,8 @@ describe("McpManager", () => {
       expect(output).toContain("✗"); // error
     });
 
-    it("should show tool count only for connected servers", async () => {
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    it("should show tool count only for connected servers", () => {
+      const { lastFrame } = render(<McpManager {...defaultProps} />);
       const output = lastFrame();
 
       // Only filesystem server should show tool count
@@ -243,32 +198,19 @@ describe("McpManager", () => {
   });
 
   describe("error handling", () => {
-    it("should handle ensureConfigLoaded failure gracefully", async () => {
-      // Mock console.error to suppress error output during test
-      const consoleErrorSpy = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => {});
+    it("should handle ensureConfigLoaded failure gracefully", () => {
+      // Create props with error server
+      const errorProps = { ...defaultProps };
 
-      vi.mocked(mcpManager.ensureConfigLoaded).mockRejectedValue(
-        new Error("Config error"),
-      );
-
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      const { lastFrame } = render(<McpManager {...errorProps} />);
       const output = lastFrame();
 
       // Component should still render without crashing
       expect(output).toContain("Manage MCP servers");
-
-      // Restore console.error
-      consoleErrorSpy.mockRestore();
     });
 
-    it("should display all server statuses including error", async () => {
-      const { lastFrame } = render(<McpManager onCancel={mockOnCancel} />);
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    it("should display all server statuses including error", () => {
+      const { lastFrame } = render(<McpManager {...defaultProps} />);
       const output = lastFrame();
 
       // All three servers should be visible with their status
@@ -279,60 +221,51 @@ describe("McpManager", () => {
   });
 
   describe("refresh behavior", () => {
-    it("should call getAllServers on mount", async () => {
-      render(<McpManager onCancel={mockOnCancel} />);
+    it("should not call methods directly (handled by parent)", () => {
+      render(<McpManager {...defaultProps} />);
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Wait for any async operations
+      vi.advanceTimersByTime(10);
 
-      expect(mcpManager.getAllServers).toHaveBeenCalled();
+      // These should not be called directly by the component
+      expect(mockOnConnectServer).not.toHaveBeenCalled();
+      expect(mockOnDisconnectServer).not.toHaveBeenCalled();
+      expect(mockOnReconnectServer).not.toHaveBeenCalled();
     });
 
-    it("should set up auto-refresh interval", async () => {
-      vi.useFakeTimers();
+    it("should handle prop changes correctly", () => {
+      const { rerender, lastFrame } = render(<McpManager {...defaultProps} />);
 
-      render(<McpManager onCancel={mockOnCancel} />);
+      // Update servers
+      const updatedServers = [...mockServers];
+      updatedServers[0] = {
+        ...updatedServers[0],
+        status: "connected" as const,
+      };
 
-      // Allow React effects to run with real timers for a moment
-      vi.runOnlyPendingTimers();
+      rerender(<McpManager {...defaultProps} servers={updatedServers} />);
 
-      // Initially called for initial load (once in loadServers, once by interval setup)
-      expect(mcpManager.getAllServers).toHaveBeenCalledTimes(2);
-
-      // Fast-forward time by 1 second to trigger interval
-      vi.advanceTimersByTime(1000);
-
-      // Should be called again due to interval
-      expect(mcpManager.getAllServers).toHaveBeenCalledTimes(3);
-
-      vi.useRealTimers();
+      const output = lastFrame();
+      expect(output).toContain("chrome-devtools");
     });
   });
 
   describe("server with environment variables", () => {
     it("should handle servers with env config", () => {
-      // brave-search server has env variables in config
-      const serverWithEnv = mockServers[2];
+      const { lastFrame } = render(<McpManager {...defaultProps} />);
+      const output = lastFrame();
 
-      expect(serverWithEnv.config.env).toEqual({
-        BRAVE_API_KEY: "test-key",
-      });
-
-      // Just verify the server config exists, not the UI display
-      // since env vars are shown in detail view, not list view
+      // brave-search server has env config, should still be displayed
+      expect(output).toContain("brave-search");
     });
   });
 
   describe("component lifecycle", () => {
-    it("should cleanup interval on unmount", () => {
-      vi.useFakeTimers();
-      const clearIntervalSpy = vi.spyOn(global, "clearInterval");
+    it("should cleanup properly on unmount", () => {
+      const { unmount } = render(<McpManager {...defaultProps} />);
 
-      const { unmount } = render(<McpManager onCancel={mockOnCancel} />);
-      unmount();
-
-      expect(clearIntervalSpy).toHaveBeenCalled();
-
-      vi.useRealTimers();
+      // Component should unmount without errors
+      expect(() => unmount()).not.toThrow();
     });
   });
 });

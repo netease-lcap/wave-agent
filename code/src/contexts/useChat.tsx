@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 import { useAppConfig } from "./useAppConfig.js";
-import type { Message } from "wave-agent-sdk";
+import type { Message, McpServerStatus } from "wave-agent-sdk";
 import { AIManager, AIManagerCallbacks } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 
@@ -32,6 +32,11 @@ export interface ChatContextType {
   totalTokens: number;
   // Memory functionality
   saveMemory: (message: string, type: "project" | "user") => Promise<void>;
+  // MCP functionality
+  mcpServers: McpServerStatus[];
+  connectMcpServer: (serverName: string) => Promise<boolean>;
+  disconnectMcpServer: (serverName: string) => Promise<boolean>;
+  reconnectMcpServer: (serverName: string) => Promise<boolean>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -62,6 +67,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [totalTokens, setTotalTokens] = useState(0);
   const [sessionId, setSessionId] = useState("");
 
+  // MCP State
+  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+
   const aiManagerRef = useRef<AIManager | null>(null);
 
   // Input Insert Functions
@@ -90,6 +98,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             setIsLoading(loading);
           }
         },
+        onMcpServersChange: (servers) => {
+          if (isMounted) {
+            setMcpServers([...servers]);
+          }
+        },
       };
 
       try {
@@ -109,6 +122,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           setMessages(state.messages);
           setIsLoading(state.isLoading);
           setTotalTokens(state.totalTokens);
+
+          // Get initial MCP servers state
+          const mcpServers = aiManager.getMcpServers?.() || [];
+          setMcpServers(mcpServers);
         }
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
@@ -188,6 +205,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     [],
   );
 
+  // MCP 管理方法 - 委托给 AIManager
+  const connectMcpServer = useCallback(async (serverName: string) => {
+    return (await aiManagerRef.current?.connectMcpServer(serverName)) ?? false;
+  }, []);
+
+  const disconnectMcpServer = useCallback(async (serverName: string) => {
+    return (
+      (await aiManagerRef.current?.disconnectMcpServer(serverName)) ?? false
+    );
+  }, []);
+
+  const reconnectMcpServer = useCallback(async (serverName: string) => {
+    return (
+      (await aiManagerRef.current?.reconnectMcpServer(serverName)) ?? false
+    );
+  }, []);
+
   const contextValue: ChatContextType = {
     messages,
     isLoading,
@@ -203,6 +237,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     resetSession,
     totalTokens,
     saveMemory,
+    mcpServers,
+    connectMcpServer,
+    disconnectMcpServer,
+    reconnectMcpServer,
   };
 
   return (

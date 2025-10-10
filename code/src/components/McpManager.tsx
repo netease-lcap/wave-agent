@@ -1,28 +1,27 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import { mcpManager, McpServerStatus } from "wave-agent-sdk";
+import { McpServerStatus } from "wave-agent-sdk";
 
 export interface McpManagerProps {
   onCancel: () => void;
+  servers: McpServerStatus[];
+  onConnectServer: (serverName: string) => Promise<boolean>;
+  onDisconnectServer: (serverName: string) => Promise<boolean>;
+  onReconnectServer: (serverName: string) => Promise<boolean>;
 }
 
-export const McpManager: React.FC<McpManagerProps> = ({ onCancel }) => {
-  const [servers, setServers] = useState<McpServerStatus[]>([]);
+export const McpManager: React.FC<McpManagerProps> = ({
+  onCancel,
+  servers,
+  onConnectServer,
+  onDisconnectServer,
+  onReconnectServer,
+}) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
   const [selectedServer, setSelectedServer] = useState<McpServerStatus | null>(
     null,
   );
-
-  // Load MCP servers data
-  useEffect(() => {
-    setServers(mcpManager.getAllServers());
-    const interval = setInterval(() => {
-      setServers(mcpManager.getAllServers());
-    }, 1000); // Refresh every second
-
-    return () => clearInterval(interval);
-  }, []);
 
   const formatTime = (timestamp: number): string => {
     return new Date(timestamp).toLocaleTimeString();
@@ -55,15 +54,15 @@ export const McpManager: React.FC<McpManagerProps> = ({ onCancel }) => {
   };
 
   const handleConnect = async (serverName: string) => {
-    await mcpManager.connectServer(serverName);
+    await onConnectServer(serverName);
   };
 
   const handleDisconnect = async (serverName: string) => {
-    await mcpManager.disconnectServer(serverName);
+    await onDisconnectServer(serverName);
   };
 
   const handleReconnect = async (serverName: string) => {
-    await mcpManager.reconnectServer(serverName);
+    await onReconnectServer(serverName);
   };
 
   useInput((input, key) => {
