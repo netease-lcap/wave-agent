@@ -28,7 +28,7 @@ import {
 export interface MessageManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
   onSessionIdChange?: (sessionId: string) => void;
-  onTotalTokensChange?: (totalTokens: number) => void;
+  onlatestTotalTokensChange?: (latestTotalTokens: number) => void;
   onUserInputHistoryChange?: (history: string[]) => void;
   // 增量回调
   onUserMessageAdded?: (
@@ -58,7 +58,7 @@ export class MessageManager {
   // 私有状态属性
   private sessionId: string;
   private messages: Message[];
-  private totalTokens: number;
+  private latestTotalTokens: number;
   private userInputHistory: string[];
   private sessionStartTime: string;
   private lastSaveTime: number = 0;
@@ -68,7 +68,7 @@ export class MessageManager {
   constructor(callbacks: MessageManagerCallbacks, logger?: Logger) {
     this.sessionId = randomUUID();
     this.messages = [];
-    this.totalTokens = 0;
+    this.latestTotalTokens = 0;
     this.userInputHistory = [];
     this.sessionStartTime = new Date().toISOString();
     this.callbacks = callbacks;
@@ -84,8 +84,8 @@ export class MessageManager {
     return [...this.messages];
   }
 
-  public getTotalTokens(): number {
-    return this.totalTokens;
+  public getlatestTotalTokens(): number {
+    return this.latestTotalTokens;
   }
 
   public getUserInputHistory(): string[] {
@@ -126,7 +126,7 @@ export class MessageManager {
       await saveSession(
         this.sessionId,
         this.messages,
-        this.totalTokens,
+        this.latestTotalTokens,
         this.sessionStartTime,
       );
     } catch (error) {
@@ -178,7 +178,7 @@ export class MessageManager {
         this.initializeFromSession(
           sessionToRestore.id,
           sessionToRestore.state.messages,
-          sessionToRestore.metadata.totalTokens,
+          sessionToRestore.metadata.latestTotalTokens,
         );
       }
     } catch (error) {
@@ -187,10 +187,10 @@ export class MessageManager {
     }
   }
 
-  public setTotalTokens(totalTokens: number): void {
-    if (this.totalTokens !== totalTokens) {
-      this.totalTokens = totalTokens;
-      this.callbacks.onTotalTokensChange?.(totalTokens);
+  public setlatestTotalTokens(latestTotalTokens: number): void {
+    if (this.latestTotalTokens !== latestTotalTokens) {
+      this.latestTotalTokens = latestTotalTokens;
+      this.callbacks.onlatestTotalTokensChange?.(latestTotalTokens);
     }
   }
 
@@ -206,7 +206,7 @@ export class MessageManager {
     this.setMessages([]);
     this.setUserInputHistory([]);
     this.setSessionId(randomUUID());
-    this.setTotalTokens(0);
+    this.setlatestTotalTokens(0);
     this.sessionStartTime = new Date().toISOString();
   }
 
@@ -214,11 +214,11 @@ export class MessageManager {
   public initializeFromSession(
     sessionId: string,
     messages: Message[],
-    totalTokens: number,
+    latestTotalTokens: number,
   ): void {
     this.setSessionId(sessionId);
     this.setMessages([...messages]);
-    this.setTotalTokens(totalTokens);
+    this.setlatestTotalTokens(latestTotalTokens);
 
     // Extract user input history from session messages
     this.setUserInputHistory(extractUserInputHistory(messages));

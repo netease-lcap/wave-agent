@@ -28,7 +28,7 @@ export interface ChatContextType {
     images?: Array<{ path: string; mimeType: string }>,
   ) => Promise<void>;
   abortMessage: () => void;
-  totalTokens: number;
+  latestTotalTokens: number;
   // Memory functionality
   saveMemory: (message: string, type: "project" | "user") => Promise<void>;
   // MCP functionality
@@ -63,7 +63,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // AI State
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [totalTokens, setTotalTokens] = useState(0);
+  const [latestTotalTokens, setlatestTotalTokens] = useState(0);
   const [sessionId, setSessionId] = useState("");
   const [isCommandRunning, setIsCommandRunning] = useState(false);
   const [userInputHistory, setUserInputHistory] = useState<string[]>([]);
@@ -109,9 +109,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             setSessionId(sessionId);
           }
         },
-        onTotalTokensChange: (tokens) => {
+        onlatestTotalTokensChange: (tokens) => {
           if (isMounted) {
-            setTotalTokens(tokens);
+            setlatestTotalTokens(tokens);
           }
         },
         onCommandRunningChange: (running) => {
@@ -141,7 +141,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           setSessionId(aiManager.sessionId);
           setMessages(aiManager.messages);
           setIsLoading(aiManager.isLoading);
-          setTotalTokens(aiManager.totalTokens);
+          setlatestTotalTokens(aiManager.latestTotalTokens);
           setIsCommandRunning(aiManager.isCommandRunning);
           setUserInputHistory(aiManager.userInputHistory);
 
@@ -161,10 +161,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     };
   }, [restoreSessionId, continueLastSession]);
 
-  // Update totalTokens and sessionId when messages change
+  // Update latestTotalTokens and sessionId when messages change
   useEffect(() => {
     if (aiManagerRef.current) {
-      setTotalTokens(aiManagerRef.current.totalTokens);
+      setlatestTotalTokens(aiManagerRef.current.latestTotalTokens);
       setSessionId(aiManagerRef.current.sessionId);
     }
   }, [messages]);
@@ -235,7 +235,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     sessionId,
     sendMessage,
     abortMessage,
-    totalTokens,
+    latestTotalTokens,
     saveMemory,
     mcpServers,
     connectMcpServer,

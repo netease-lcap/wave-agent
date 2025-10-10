@@ -11,7 +11,7 @@ export interface SessionData {
     workdir: string;
     startedAt: string;
     lastActiveAt: string;
-    totalTokens: number;
+    latestTotalTokens: number;
   };
   state: {
     messages: Message[];
@@ -24,7 +24,7 @@ export interface SessionMetadata {
   workdir: string;
   startedAt: string;
   lastActiveAt: string;
-  totalTokens: number;
+  latestTotalTokens: number;
 }
 
 // Constants
@@ -57,7 +57,7 @@ function getSessionFilePath(sessionId: string): string {
 export async function saveSession(
   sessionId: string,
   messages: Message[],
-  totalTokens: number = 0,
+  latestTotalTokens: number = 0,
   startedAt?: string,
 ): Promise<void> {
   // 在测试环境下不保存session文件
@@ -76,7 +76,7 @@ export async function saveSession(
       workdir: process.cwd(),
       startedAt: startedAt || now,
       lastActiveAt: now,
-      totalTokens,
+      latestTotalTokens,
     },
     state: {
       messages,
@@ -166,7 +166,7 @@ export async function listSessions(): Promise<SessionMetadata[]> {
           workdir: sessionData.metadata.workdir,
           startedAt: sessionData.metadata.startedAt,
           lastActiveAt: sessionData.metadata.lastActiveAt,
-          totalTokens: sessionData.metadata.totalTokens,
+          latestTotalTokens: sessionData.metadata.latestTotalTokens,
         });
       } catch {
         // 忽略损坏的会话文件

@@ -61,7 +61,7 @@ export class AIManager {
       {
         onMessagesChange: callbacks.onMessagesChange,
         onSessionIdChange: callbacks.onSessionIdChange,
-        onTotalTokensChange: callbacks.onTotalTokensChange,
+        onlatestTotalTokensChange: callbacks.onlatestTotalTokensChange,
         onUserInputHistoryChange: callbacks.onUserInputHistoryChange,
         onUserMessageAdded: callbacks.onUserMessageAdded,
         onAssistantMessageAdded: callbacks.onAssistantMessageAdded,
@@ -109,8 +109,8 @@ export class AIManager {
     return this.messageManager.getMessages();
   }
 
-  public get totalTokens(): number {
-    return this.messageManager.getTotalTokens();
+  public get latestTotalTokens(): number {
+    return this.messageManager.getlatestTotalTokens();
   }
 
   public get userInputHistory(): string[] {
@@ -345,7 +345,7 @@ export class AIManager {
 
       // 更新 token 统计 - 显示最新一次的token使用量
       if (result.usage) {
-        this.messageManager.setTotalTokens(result.usage.total_tokens);
+        this.messageManager.setlatestTotalTokens(result.usage.total_tokens);
 
         // 检查是否超过token限制
         const tokenLimit = parseInt(

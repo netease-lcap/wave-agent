@@ -9,7 +9,7 @@ vi.mock("../../src/contexts/useChat", () => ({
   useChat: vi.fn(() => ({
     isLoading: false,
     isCommandRunning: false,
-    totalTokens: 1000,
+    latestTotalTokens: 1000,
   })),
 }));
 

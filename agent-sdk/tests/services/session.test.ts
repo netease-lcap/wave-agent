@@ -73,7 +73,7 @@ describe("Session Service", () => {
       workdir: mockWorkdir,
       startedAt: "2024-01-01T00:00:00.000Z",
       lastActiveAt: "2024-01-01T00:00:00.000Z",
-      totalTokens: 100,
+      latestTotalTokens: 100,
     },
     state: {
       messages: mockMessages,

@@ -50,7 +50,7 @@ export async function main() {
         console.log(`  Workdir: ${session.workdir}`);
         console.log(`  Started: ${startedAt}`);
         console.log(`  Last Active: ${lastActiveAt}`);
-        console.log(`  Last Message Tokens: ${session.totalTokens}`);
+        console.log(`  Last Message Tokens: ${session.latestTotalTokens}`);
         console.log("");
       }
 

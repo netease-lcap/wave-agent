@@ -89,7 +89,7 @@ async function main() {
     console.log("\n📊 Final state:");
     console.log(`   Session ID: ${aiManager.sessionId}`);
     console.log(`   Messages: ${aiManager.messages.length}`);
-    console.log(`   Total tokens: ${aiManager.totalTokens}`);
+    console.log(`   Total tokens: ${aiManager.latestTotalTokens}`);
     console.log(`   Is loading: ${aiManager.isLoading}`);
     console.log(
       `   Input history: ${aiManager.userInputHistory.length} entries`,

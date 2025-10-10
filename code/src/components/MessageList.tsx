@@ -99,7 +99,7 @@ export interface MessageListProps {
 }
 
 export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
-  const { isLoading, isCommandRunning, totalTokens } = useChat();
+  const { isLoading, isCommandRunning, latestTotalTokens } = useChat();
   const { formattedTime } = useLoadingTimer(isLoading);
 
   // 预处理消息，添加分组信息（仅用于显示）
@@ -162,7 +162,7 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
                 |{" "}
               </Text>
               <Text color="blue" bold>
-                {totalTokens.toLocaleString()}
+                {latestTotalTokens.toLocaleString()}
               </Text>
               <Text color="gray" dimColor>
                 {" "}

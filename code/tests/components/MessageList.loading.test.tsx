@@ -9,7 +9,7 @@ vi.mock("../../src/contexts/useChat", () => ({
   useChat: vi.fn(() => ({
     isLoading: false,
     isCommandRunning: false,
-    totalTokens: 1000,
+    latestTotalTokens: 1000,
   })),
 }));
 
@@ -38,7 +38,7 @@ describe("MessageList Loading State", () => {
     (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
       isLoading: true,
       isCommandRunning: false,
-      totalTokens: 1000,
+      latestTotalTokens: 1000,
     });
 
     const messages = [
@@ -64,7 +64,7 @@ describe("MessageList Loading State", () => {
     (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
       isLoading: false,
       isCommandRunning: true,
-      totalTokens: 1000,
+      latestTotalTokens: 1000,
     });
 
     const messages = [
@@ -88,7 +88,7 @@ describe("MessageList Loading State", () => {
     (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
       isLoading: false,
       isCommandRunning: false,
-      totalTokens: 1000,
+      latestTotalTokens: 1000,
     });
 
     const messages = [
@@ -113,7 +113,7 @@ describe("MessageList Loading State", () => {
     (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
       isLoading: false,
       isCommandRunning: false,
-      totalTokens: 1000,
+      latestTotalTokens: 1000,
     });
 
     const { lastFrame } = render(<MessageList messages={[]} />);
