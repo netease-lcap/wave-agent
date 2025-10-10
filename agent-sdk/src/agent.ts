@@ -3,7 +3,7 @@ import {
   type MessageManagerCallbacks,
 } from "./managers/messageManager.js";
 import { AIManager } from "./managers/aiManager.js";
-import { ToolRegistryImpl } from "./tools/index.js";
+import { ToolManager } from "./managers/toolManager.js";
 import * as memory from "./services/memory.js";
 import { McpManager, McpServerStatus } from "./managers/mcpManager.js";
 import { BashManager } from "./managers/bashManager.js";
@@ -36,7 +36,7 @@ export class Agent {
 
   private bashManager: BashManager | null = null;
   private logger?: Logger; // 添加可选的 logger 属性
-  private toolRegistry: ToolRegistryImpl; // 添加工具注册表实例
+  private toolManager: ToolManager; // 添加工具注册表实例
   private mcpManager: McpManager; // 添加 MCP 管理器实例
 
   // 私有构造函数，防止直接实例化
@@ -46,7 +46,7 @@ export class Agent {
     this.callbacks = callbacks;
     this.logger = logger; // 保存传入的 logger
     this.mcpManager = new McpManager(this.logger); // 初始化 MCP 管理器
-    this.toolRegistry = new ToolRegistryImpl(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
+    this.toolManager = new ToolManager(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
 
     // 初始化 MessageManager
     this.messageManager = new MessageManager(
@@ -76,7 +76,7 @@ export class Agent {
     this.aiManager = new AIManager({
       onLoadingChange: callbacks.onLoadingChange,
       messageManager: this.messageManager,
-      toolRegistry: this.toolRegistry,
+      toolManager: this.toolManager,
       logger: this.logger,
     });
 

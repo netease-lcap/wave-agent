@@ -23,7 +23,7 @@ vi.mock("@/utils/memoryUtils", () => ({
 // Mock tool registry to control tool execution
 let mockToolExecute: ReturnType<typeof vi.fn>;
 vi.mock("@/tools", () => ({
-  ToolRegistryImpl: vi.fn().mockImplementation(() => ({
+  ToolManager: vi.fn().mockImplementation(() => ({
     execute: (mockToolExecute = vi.fn()),
     list: vi.fn(() => []),
     getToolsConfig: vi.fn(() => []),

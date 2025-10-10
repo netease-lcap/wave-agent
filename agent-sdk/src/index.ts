@@ -7,9 +7,10 @@ export * from "./services/session.js";
 export * from "./agent.js";
 export * from "./managers/bashManager.js";
 export * from "./managers/mcpManager.js";
+export * from "./managers/toolManager.js";
 
 // Export all tools
-export * from "./tools/index.js";
+
 export * from "./tools/bashTool.js";
 export * from "./tools/deleteFileTool.js";
 export * from "./tools/editTool.js";

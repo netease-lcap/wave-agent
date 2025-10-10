@@ -24,7 +24,7 @@ npm install wave-agent-sdk
 ```typescript
 import { Agent, bashTool } from "wave-agent-sdk";
 
-// Initialize AI manager (toolRegistry is managed internally)
+// Initialize AI manager (toolManager is managed internally)
 const agent = await Agent.create({
   callbacks: {
     onMessagesChange: (messages) => console.log("Messages updated"),

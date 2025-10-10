@@ -15,16 +15,16 @@ const AVAILABLE_COMMANDS: Command[] = [
     description: "Generate git commit message and create commit command",
   },
   {
+    name: "clean",
+    description: "Clear the chat session",
+  },
+  {
     name: "bashes",
     description: "View and manage background bash shells",
   },
   {
     name: "mcp",
     description: "View and manage MCP servers",
-  },
-  {
-    name: "clean",
-    description: "Clear the chat session",
   },
 ];
 

@@ -4,9 +4,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ToolResultDisplay } from "../../src/components/ToolResultDisplay.js";
 import type { ToolBlock } from "wave-agent-sdk";
 
-// Mock toolRegistry - no longer needed since we removed display fields
+// Mock toolManager - no longer needed since we removed display fields
 vi.mock("wave-agent-sdk", () => ({
-  toolRegistry: {},
+  toolManager: {},
 }));
 
 describe("ToolResultDisplay Component", () => {

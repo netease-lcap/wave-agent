@@ -3,7 +3,7 @@ import { getMessagesToCompress } from "../utils/messageOperations.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import * as memory from "../services/memory.js";
 import type { Logger } from "../types.js";
-import type { ToolRegistryImpl } from "../tools/index.js";
+import type { ToolManager } from "./toolManager.js";
 import type { ToolContext } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
@@ -11,7 +11,7 @@ import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
 export interface AIManagerOptions {
   onLoadingChange?: (isLoading: boolean) => void;
   messageManager: MessageManager;
-  toolRegistry: ToolRegistryImpl;
+  toolManager: ToolManager;
   logger?: Logger;
 }
 
@@ -20,14 +20,14 @@ export class AIManager {
   private abortController: AbortController | null = null;
   private toolAbortController: AbortController | null = null;
   private logger?: Logger;
-  private toolRegistry: ToolRegistryImpl;
+  private toolManager: ToolManager;
   private messageManager: MessageManager;
   private onLoadingChange?: (isLoading: boolean) => void;
 
   constructor(options: AIManagerOptions) {
     this.onLoadingChange = options.onLoadingChange;
     this.messageManager = options.messageManager;
-    this.toolRegistry = options.toolRegistry;
+    this.toolManager = options.toolManager;
     this.logger = options.logger;
   }
 
@@ -64,7 +64,7 @@ export class AIManager {
     toolArgs: Record<string, unknown>,
   ): string | undefined {
     try {
-      const toolPlugin = this.toolRegistry
+      const toolPlugin = this.toolManager
         .list()
         .find((plugin) => plugin.name === toolName);
       if (toolPlugin?.formatCompactParams) {
@@ -119,7 +119,7 @@ export class AIManager {
         abortSignal: abortController.signal,
         memory: combinedMemory, // 传递合并后的记忆内容
         workdir: process.cwd(), // 传递当前工作目录
-        tools: this.toolRegistry.getToolsConfig(), // 传递工具配置
+        tools: this.toolManager.getToolsConfig(), // 传递工具配置
       });
 
       // 更新答案块中的内容
@@ -244,7 +244,7 @@ export class AIManager {
               };
 
               // 执行工具
-              const toolResult = await this.toolRegistry.execute(
+              const toolResult = await this.toolManager.execute(
                 functionToolCall.function?.name || "",
                 toolArgs,
                 context,

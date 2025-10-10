@@ -1,26 +1,21 @@
-import type {
-  ToolContext,
-  ToolPlugin,
-  ToolRegistry,
-  ToolResult,
-} from "./types.js";
-import { bashTool, bashOutputTool, killBashTool } from "./bashTool.js";
-import { deleteFileTool } from "./deleteFileTool.js";
-import { editTool } from "./editTool.js";
-import { multiEditTool } from "./multiEditTool.js";
-import { writeTool } from "./writeTool.js";
+import type { ToolContext, ToolPlugin, ToolResult } from "../tools/types.js";
+import { bashTool, bashOutputTool, killBashTool } from "../tools/bashTool.js";
+import { deleteFileTool } from "../tools/deleteFileTool.js";
+import { editTool } from "../tools/editTool.js";
+import { multiEditTool } from "../tools/multiEditTool.js";
+import { writeTool } from "../tools/writeTool.js";
 // 新的工具
-import { globTool } from "./globTool.js";
-import { grepTool } from "./grepTool.js";
-import { lsTool } from "./lsTool.js";
-import { readTool } from "./readTool.js";
-import { McpManager } from "../managers/mcpManager.js";
+import { globTool } from "../tools/globTool.js";
+import { grepTool } from "../tools/grepTool.js";
+import { lsTool } from "../tools/lsTool.js";
+import { readTool } from "../tools/readTool.js";
+import { McpManager } from "./mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 
 /**
- * 工具注册中心
+ * 工具管理器
  */
-class ToolRegistryImpl implements ToolRegistry {
+class ToolManager {
   private tools = new Map<string, ToolPlugin>([
     [bashTool.name, bashTool],
     [bashOutputTool.name, bashOutputTool],
@@ -84,5 +79,4 @@ class ToolRegistryImpl implements ToolRegistry {
 }
 
 // 导出工具注册中心类和类型
-export { ToolRegistryImpl };
-export type { ToolPlugin, ToolResult, ToolRegistry } from "./types.js";
+export { ToolManager };

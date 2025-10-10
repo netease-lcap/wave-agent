@@ -38,16 +38,6 @@ export interface ToolResult {
   }>;
 }
 
-export interface ToolRegistry {
-  execute: (
-    name: string,
-    args: Record<string, unknown>,
-    context?: ToolContext,
-  ) => Promise<ToolResult>;
-  list: () => ToolPlugin[];
-  getToolsConfig: () => ChatCompletionFunctionTool[];
-}
-
 export interface ToolContext {
   abortSignal?: AbortSignal;
 }
