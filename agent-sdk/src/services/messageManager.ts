@@ -16,7 +16,14 @@ import {
   completeCommandInMessage,
   type AIManagerToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import type { Message } from "../types.js";
+import type { Logger, Message } from "../types.js";
+import {
+  cleanupExpiredSessions,
+  getLatestSession,
+  loadSession,
+  saveSession,
+  SessionData,
+} from "./session.js";
 
 export interface MessageManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
@@ -52,14 +59,19 @@ export class MessageManager {
   private messages: Message[];
   private totalTokens: number;
   private userInputHistory: string[];
+  private sessionStartTime: string;
+  private lastSaveTime: number = 0;
+  private logger?: Logger; // 添加可选的 logger 属性
   private callbacks: MessageManagerCallbacks;
 
-  constructor(callbacks: MessageManagerCallbacks) {
+  constructor(callbacks: MessageManagerCallbacks, logger?: Logger) {
     this.sessionId = randomUUID();
     this.messages = [];
     this.totalTokens = 0;
     this.userInputHistory = [];
+    this.sessionStartTime = new Date().toISOString();
     this.callbacks = callbacks;
+    this.logger = logger;
   }
 
   // Getter 方法
@@ -90,6 +102,88 @@ export class MessageManager {
   public setMessages(messages: Message[]): void {
     this.messages = [...messages];
     this.callbacks.onMessagesChange?.([...messages]);
+
+    // 节流保存：只有距离上次保存超过30秒才保存
+    const now = Date.now();
+    if (now - this.lastSaveTime > 30000) {
+      this.lastSaveTime = now;
+      // 异步保存会话（不阻塞UI）
+      this.saveSession().catch((error) => {
+        this.logger?.error(
+          "Failed to save session after message update:",
+          error,
+        );
+      });
+    }
+  }
+
+  /**
+   * 保存当前会话
+   */
+  public async saveSession(): Promise<void> {
+    try {
+      await saveSession(
+        this.sessionId,
+        this.messages,
+        this.totalTokens,
+        this.sessionStartTime,
+      );
+    } catch (error) {
+      this.logger?.error("Failed to save session:", error);
+    }
+  }
+
+  /**
+   * Handle session restoration logic
+   */
+  public async handleSessionRestoration(
+    restoreSessionId?: string,
+    continueLastSession?: boolean,
+  ): Promise<void> {
+    // Clean up expired sessions first
+    try {
+      await cleanupExpiredSessions();
+    } catch (error) {
+      console.warn("Failed to cleanup expired sessions:", error);
+    }
+
+    if (!restoreSessionId && !continueLastSession) {
+      return;
+    }
+
+    try {
+      let sessionToRestore: SessionData | null = null;
+
+      if (restoreSessionId) {
+        sessionToRestore = await loadSession(restoreSessionId);
+        if (!sessionToRestore) {
+          console.error(`Session not found: ${restoreSessionId}`);
+          process.exit(1);
+        }
+      } else if (continueLastSession) {
+        sessionToRestore = await getLatestSession();
+        if (!sessionToRestore) {
+          console.error(
+            `No previous session found for workdir: ${process.cwd()}`,
+          );
+          process.exit(1);
+        }
+      }
+
+      if (sessionToRestore) {
+        console.log(`Restoring session: ${sessionToRestore.id}`);
+
+        // Initialize from session data
+        this.initializeFromSession(
+          sessionToRestore.id,
+          sessionToRestore.state.messages,
+          sessionToRestore.metadata.totalTokens,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to restore session:", error);
+      process.exit(1);
+    }
   }
 
   public setTotalTokens(totalTokens: number): void {
@@ -103,18 +197,15 @@ export class MessageManager {
     this.userInputHistory = [...userInputHistory];
   }
 
-  // 重置会话
-  public resetSession(): void {
-    this.setSessionId(randomUUID());
-    this.setTotalTokens(0);
-    this.setUserInputHistory([]);
-  }
-
-  // 清空消息和输入历史
+  /**
+   * 清空消息和输入历史
+   */
   public clearMessages(): void {
     this.setMessages([]);
     this.setUserInputHistory([]);
-    this.resetSession();
+    this.setSessionId(randomUUID());
+    this.setTotalTokens(0);
+    this.sessionStartTime = new Date().toISOString();
   }
 
   // 从会话数据初始化状态

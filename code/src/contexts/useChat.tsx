@@ -149,10 +149,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   useEffect(() => {
     return () => {
       if (aiManagerRef.current) {
-        // Save session before cleanup
-        aiManagerRef.current.saveSession().catch((error) => {
-          console.error("Failed to save session during cleanup:", error);
-        });
         aiManagerRef.current.destroy();
       }
     };

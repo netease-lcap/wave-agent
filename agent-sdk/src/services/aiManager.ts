@@ -1,16 +1,5 @@
-import { randomUUID } from "crypto";
 import { callAgent, compressMessages } from "./aiService.js";
-import {
-  saveSession,
-  loadSession,
-  getLatestSession,
-  cleanupExpiredSessions,
-  type SessionData,
-} from "./session.js";
-import {
-  getMessagesToCompress,
-  extractUserInputHistory,
-} from "../utils/messageOperations.js";
+import { getMessagesToCompress } from "../utils/messageOperations.js";
 import {
   MessageManager,
   type MessageManagerCallbacks,
@@ -46,9 +35,7 @@ export class AIManager {
   private callbacks: AIManagerCallbacks;
   private abortController: AbortController | null = null;
   private toolAbortController: AbortController | null = null;
-  private sessionStartTime: string;
-  private autoSaveTimer: NodeJS.Timeout | null = null;
-  private lastSaveTime: number = 0;
+
   private bashManager: BashManager | null = null;
   private logger?: Logger; // 添加可选的 logger 属性
   private toolRegistry: ToolRegistryImpl; // 添加工具注册表实例
@@ -62,28 +49,30 @@ export class AIManager {
     this.logger = logger; // 保存传入的 logger
     this.mcpManager = new McpManager(this.logger); // 初始化 MCP 管理器
     this.toolRegistry = new ToolRegistryImpl(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
-    this.sessionStartTime = new Date().toISOString();
     this.isLoading = false;
 
     // 初始化 MessageManager
-    this.messageManager = new MessageManager({
-      onMessagesChange: callbacks.onMessagesChange,
-      onSessionIdChange: callbacks.onSessionIdChange,
-      onTotalTokensChange: callbacks.onTotalTokensChange,
-      onUserMessageAdded: callbacks.onUserMessageAdded,
-      onAssistantMessageAdded: callbacks.onAssistantMessageAdded,
-      onAnswerBlockAdded: callbacks.onAnswerBlockAdded,
-      onAnswerBlockUpdated: callbacks.onAnswerBlockUpdated,
-      onToolBlockAdded: callbacks.onToolBlockAdded,
-      onToolBlockUpdated: callbacks.onToolBlockUpdated,
-      onDiffBlockAdded: callbacks.onDiffBlockAdded,
-      onErrorBlockAdded: callbacks.onErrorBlockAdded,
-      onCompressBlockAdded: callbacks.onCompressBlockAdded,
-      onMemoryBlockAdded: callbacks.onMemoryBlockAdded,
-      onAddCommandOutputMessage: callbacks.onAddCommandOutputMessage,
-      onUpdateCommandOutputMessage: callbacks.onUpdateCommandOutputMessage,
-      onCompleteCommandMessage: callbacks.onCompleteCommandMessage,
-    });
+    this.messageManager = new MessageManager(
+      {
+        onMessagesChange: callbacks.onMessagesChange,
+        onSessionIdChange: callbacks.onSessionIdChange,
+        onTotalTokensChange: callbacks.onTotalTokensChange,
+        onUserMessageAdded: callbacks.onUserMessageAdded,
+        onAssistantMessageAdded: callbacks.onAssistantMessageAdded,
+        onAnswerBlockAdded: callbacks.onAnswerBlockAdded,
+        onAnswerBlockUpdated: callbacks.onAnswerBlockUpdated,
+        onToolBlockAdded: callbacks.onToolBlockAdded,
+        onToolBlockUpdated: callbacks.onToolBlockUpdated,
+        onDiffBlockAdded: callbacks.onDiffBlockAdded,
+        onErrorBlockAdded: callbacks.onErrorBlockAdded,
+        onCompressBlockAdded: callbacks.onCompressBlockAdded,
+        onMemoryBlockAdded: callbacks.onMemoryBlockAdded,
+        onAddCommandOutputMessage: callbacks.onAddCommandOutputMessage,
+        onUpdateCommandOutputMessage: callbacks.onUpdateCommandOutputMessage,
+        onCompleteCommandMessage: callbacks.onCompleteCommandMessage,
+      },
+      this.logger,
+    );
 
     // Initialize bash manager
     this.bashManager = new BashManager({
@@ -149,78 +138,15 @@ export class AIManager {
     }
 
     // Then handle session restoration
-    await this.handleSessionRestoration(restoreSessionId, continueLastSession);
-  }
-
-  /**
-   * Handle session restoration logic
-   */
-  private async handleSessionRestoration(
-    restoreSessionId?: string,
-    continueLastSession?: boolean,
-  ): Promise<void> {
-    // Clean up expired sessions first
-    try {
-      await cleanupExpiredSessions();
-    } catch (error) {
-      console.warn("Failed to cleanup expired sessions:", error);
-    }
-
-    if (!restoreSessionId && !continueLastSession) {
-      return;
-    }
-
-    try {
-      let sessionToRestore: SessionData | null = null;
-
-      if (restoreSessionId) {
-        sessionToRestore = await loadSession(restoreSessionId);
-        if (!sessionToRestore) {
-          console.error(`Session not found: ${restoreSessionId}`);
-          process.exit(1);
-        }
-      } else if (continueLastSession) {
-        sessionToRestore = await getLatestSession();
-        if (!sessionToRestore) {
-          console.error(
-            `No previous session found for workdir: ${process.cwd()}`,
-          );
-          process.exit(1);
-        }
-      }
-
-      if (sessionToRestore) {
-        console.log(`Restoring session: ${sessionToRestore.id}`);
-
-        // Initialize from session data
-        this.initializeFromSession(
-          sessionToRestore.id,
-          sessionToRestore.state.messages,
-          sessionToRestore.metadata.totalTokens,
-        );
-      }
-    } catch (error) {
-      console.error("Failed to restore session:", error);
-      process.exit(1);
-    }
+    await this.messageManager.handleSessionRestoration(
+      restoreSessionId,
+      continueLastSession,
+    );
   }
 
   // 设置消息并触发回调
   public setMessages(messages: Message[]): void {
     this.messageManager.setMessages(messages);
-
-    // 节流保存：只有距离上次保存超过30秒才保存
-    const now = Date.now();
-    if (now - this.lastSaveTime > 30000) {
-      this.lastSaveTime = now;
-      // 异步保存会话（不阻塞UI）
-      this.saveSession().catch((error) => {
-        this.logger?.error(
-          "Failed to save session after message update:",
-          error,
-        );
-      });
-    }
   }
 
   public abortAIMessage(): void {
@@ -249,11 +175,7 @@ export class AIManager {
    * 清空消息和输入历史
    */
   public clearMessages(): void {
-    this.messageManager.setMessages([]);
-    this.messageManager.setUserInputHistory([]);
-    this.messageManager.setSessionId(randomUUID());
-    this.messageManager.setTotalTokens(0);
-    this.sessionStartTime = new Date().toISOString();
+    this.messageManager.clearMessages();
   }
 
   /**
@@ -264,39 +186,6 @@ export class AIManager {
     this.abortBashCommand();
   }
 
-  /**
-   * 从会话数据初始化管理器状态
-   */
-  public initializeFromSession(
-    sessionId: string,
-    messages: Message[],
-    totalTokens: number,
-  ): void {
-    this.messageManager.setSessionId(sessionId);
-    this.messageManager.setMessages([...messages]);
-    this.messageManager.setTotalTokens(totalTokens);
-    this.isLoading = false;
-
-    // Extract user input history from session messages
-    const extractedHistory = extractUserInputHistory(messages);
-    this.messageManager.setUserInputHistory(extractedHistory);
-  }
-
-  /**
-   * 保存当前会话
-   */
-  public async saveSession(): Promise<void> {
-    try {
-      await saveSession(
-        this.sessionId,
-        this.messages,
-        this.totalTokens,
-        this.sessionStartTime,
-      );
-    } catch (error) {
-      this.logger?.error("Failed to save session:", error);
-    }
-  }
   /**
    * 添加到输入历史记录
    */
@@ -346,6 +235,7 @@ export class AIManager {
    * 销毁管理器，清理资源
    */
   public async destroy(): Promise<void> {
+    this.messageManager.saveSession();
     this.abortAIMessage();
     this.abortBashCommand();
     // Cleanup MCP connections
