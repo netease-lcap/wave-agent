@@ -13,13 +13,6 @@ vi.mock("../../src/contexts/useChat", () => ({
   })),
 }));
 
-// Mock useLoadingTimer hook
-vi.mock("../../src/hooks/useLoadingTimer", () => ({
-  useLoadingTimer: vi.fn(() => ({
-    formattedTime: "5s",
-  })),
-}));
-
 // Mock the constants module BEFORE any imports - override MESSAGES_PER_PAGE
 vi.mock("../../src/utils/constants", () => ({
   MESSAGES_PER_PAGE: 10, // Override for testing

@@ -7,7 +7,6 @@ import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
 import { usePagination } from "../hooks/usePagination.js";
 import { processMessageGroups } from "wave-agent-sdk";
-import { useLoadingTimer } from "../hooks/useLoadingTimer.js";
 import { useChat } from "../contexts/useChat.js";
 
 // 渲染单个消息的函数
@@ -101,7 +100,6 @@ export interface MessageListProps {
 export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
   const { isLoading, isCommandRunning, latestTotalTokens, isExpanded } =
     useChat();
-  const { formattedTime } = useLoadingTimer(isLoading);
 
   // 预处理消息，添加分组信息（仅用于显示）
   const processedMessages = useMemo(
@@ -141,15 +139,12 @@ export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         )}
       </Box>
 
-      {/* Loading 状态显示 */}
-      {(isLoading || isCommandRunning) && (
+      {/* Loading 状态显示 - 仅在非展开状态下显示 */}
+      {!isExpanded && (isLoading || isCommandRunning) && (
         <Box marginTop={1}>
           {isLoading && (
             <Box>
               <Text color="yellow">💭 AI is thinking... </Text>
-              <Text color="cyan" bold>
-                {formattedTime}
-              </Text>
               <Text color="gray" dimColor>
                 {" "}
                 |{" "}

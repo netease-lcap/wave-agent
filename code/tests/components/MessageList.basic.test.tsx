@@ -13,13 +13,6 @@ vi.mock("../../src/contexts/useChat", () => ({
   })),
 }));
 
-// Mock useLoadingTimer hook
-vi.mock("../../src/hooks/useLoadingTimer", () => ({
-  useLoadingTimer: vi.fn(() => ({
-    formattedTime: "5s",
-  })),
-}));
-
 // Mock usePagination hook using vi.hoisted
 const mockUsePagination = vi.hoisted(() => vi.fn());
 

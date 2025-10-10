@@ -13,13 +13,6 @@ vi.mock("../../src/contexts/useChat", () => ({
   })),
 }));
 
-// Mock useLoadingTimer hook
-vi.mock("../../src/hooks/useLoadingTimer", () => ({
-  useLoadingTimer: vi.fn(() => ({
-    formattedTime: "5s",
-  })),
-}));
-
 const createMessage = (
   role: "user" | "assistant",
   content: string,

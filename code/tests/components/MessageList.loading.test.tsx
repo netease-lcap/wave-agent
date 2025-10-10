@@ -13,13 +13,6 @@ vi.mock("../../src/contexts/useChat", () => ({
   })),
 }));
 
-// Mock useLoadingTimer hook
-vi.mock("../../src/hooks/useLoadingTimer", () => ({
-  useLoadingTimer: vi.fn(() => ({
-    formattedTime: "5s",
-  })),
-}));
-
 const createMessage = (
   role: "user" | "assistant",
   content: string,
@@ -51,7 +44,7 @@ describe("MessageList Loading State", () => {
 
     // Should show the loading message with simplified format
     expect(output).toContain(
-      "💭 AI is thinking... 5s | 1,000 tokens | Esc to abort",
+      "💭 AI is thinking...  | 1,000 tokens | Esc to abort",
     );
 
     // Should still show the actual messages
@@ -122,5 +115,31 @@ describe("MessageList Loading State", () => {
     expect(output).toContain("Welcome to WAVE Code Assistant!");
     expect(output).not.toContain("💭 AI is thinking...");
     expect(output).not.toContain("Command is running...");
+  });
+
+  it("should not show loading UI when isExpanded is true", async () => {
+    const { useChat } = await import("../../src/contexts/useChat.js");
+    (useChat as ReturnType<typeof vi.fn>).mockReturnValue({
+      isLoading: true,
+      isCommandRunning: true,
+      latestTotalTokens: 1000,
+      isExpanded: true, // 展开状态
+    });
+
+    const messages = [
+      createMessage("user", "Hello"),
+      createMessage("assistant", "Hi there!"),
+    ];
+
+    const { lastFrame } = render(<MessageList messages={messages} />);
+    const output = lastFrame();
+
+    // 在展开状态时，不应该显示 loading 相关的 UI
+    expect(output).not.toContain("💭 AI is thinking...");
+    expect(output).not.toContain("Command is running...");
+
+    // 但应该显示消息内容
+    expect(output).toContain("Hello");
+    expect(output).toContain("Hi there!");
   });
 });

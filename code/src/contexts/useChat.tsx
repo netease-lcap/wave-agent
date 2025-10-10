@@ -65,6 +65,18 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Message Display State
   const [isExpanded, setIsExpanded] = useState(false);
+  const isExpandedRef = useRef(isExpanded);
+
+  // 记录在展开状态时被阻止的状态更新
+  const pendingUpdatesRef = useRef<{
+    messages?: Message[];
+    isLoading?: boolean;
+    latestTotalTokens?: number;
+    isCommandRunning?: boolean;
+    mcpServers?: McpServerStatus[];
+    sessionId?: string;
+    userInputHistory?: string[];
+  }>({});
 
   // AI State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -82,7 +94,40 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // 监听 Ctrl+R 快捷键切换折叠/展开状态
   useInput((input, key) => {
     if (key.ctrl && input === "r") {
-      setIsExpanded((prev) => !prev);
+      setIsExpanded((prev) => {
+        const newValue = !prev;
+        isExpandedRef.current = newValue;
+
+        // 如果从展开状态切换到收起状态，应用pending的更新
+        if (prev && !newValue) {
+          const pending = pendingUpdatesRef.current;
+          if (pending.messages !== undefined) {
+            setMessages([...pending.messages]);
+          }
+          if (pending.isLoading !== undefined) {
+            setIsLoading(pending.isLoading);
+          }
+          if (pending.latestTotalTokens !== undefined) {
+            setlatestTotalTokens(pending.latestTotalTokens);
+          }
+          if (pending.isCommandRunning !== undefined) {
+            setIsCommandRunning(pending.isCommandRunning);
+          }
+          if (pending.mcpServers !== undefined) {
+            setMcpServers([...pending.mcpServers]);
+          }
+          if (pending.sessionId !== undefined) {
+            setSessionId(pending.sessionId);
+          }
+          if (pending.userInputHistory !== undefined) {
+            setUserInputHistory([...pending.userInputHistory]);
+          }
+          // 清空pending更新
+          pendingUpdatesRef.current = {};
+        }
+
+        return newValue;
+      });
     }
   });
 
@@ -104,37 +149,72 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       const callbacks: AgentCallbacks = {
         onMessagesChange: (newMessages) => {
           if (isMounted) {
-            setMessages([...newMessages]);
+            if (!isExpandedRef.current) {
+              setMessages([...newMessages]);
+            } else {
+              // 记录pending更新
+              pendingUpdatesRef.current.messages = newMessages;
+            }
           }
         },
         onLoadingChange: (loading) => {
           if (isMounted) {
-            setIsLoading(loading);
+            if (!isExpandedRef.current) {
+              setIsLoading(loading);
+            } else {
+              // 记录pending更新
+              pendingUpdatesRef.current.isLoading = loading;
+            }
           }
         },
         onMcpServersChange: (servers) => {
           if (isMounted) {
-            setMcpServers([...servers]);
+            if (!isExpandedRef.current) {
+              setMcpServers([...servers]);
+            } else {
+              // 记录pending更新
+              pendingUpdatesRef.current.mcpServers = servers;
+            }
           }
         },
         onSessionIdChange: (sessionId) => {
           if (isMounted) {
-            setSessionId(sessionId);
+            if (!isExpandedRef.current) {
+              setSessionId(sessionId);
+            } else {
+              // 记录pending更新
+              pendingUpdatesRef.current.sessionId = sessionId;
+            }
           }
         },
         onLatestTotalTokensChange: (tokens) => {
           if (isMounted) {
-            setlatestTotalTokens(tokens);
+            if (!isExpandedRef.current) {
+              setlatestTotalTokens(tokens);
+            } else {
+              // 记录pending更新
+              pendingUpdatesRef.current.latestTotalTokens = tokens;
+            }
           }
         },
         onCommandRunningChange: (running) => {
           if (isMounted) {
-            setIsCommandRunning(running);
+            if (!isExpandedRef.current) {
+              setIsCommandRunning(running);
+            } else {
+              // 记录pending更新
+              pendingUpdatesRef.current.isCommandRunning = running;
+            }
           }
         },
         onUserInputHistoryChange: (history) => {
           if (isMounted) {
-            setUserInputHistory([...history]);
+            if (!isExpandedRef.current) {
+              setUserInputHistory([...history]);
+            } else {
+              // 记录pending更新
+              pendingUpdatesRef.current.userInputHistory = history;
+            }
           }
         },
       };
@@ -173,14 +253,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       isMounted = false;
     };
   }, [restoreSessionId, continueLastSession]);
-
-  // Update latestTotalTokens and sessionId when messages change
-  useEffect(() => {
-    if (agentRef.current) {
-      setlatestTotalTokens(agentRef.current.latestTotalTokens);
-      setSessionId(agentRef.current.sessionId);
-    }
-  }, [messages]);
 
   // Cleanup on unmount
   useEffect(() => {
