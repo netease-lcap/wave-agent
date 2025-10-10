@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AIManager } from "@/managers/aiManager.js";
+import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { saveSession } from "@/services/session.js";
 
@@ -23,16 +23,16 @@ vi.mock("@/utils/memoryUtils", () => ({
   writeMemoryFile: vi.fn(() => Promise.resolve()),
 }));
 
-describe("AIManager Message Compression Tests", () => {
-  let aiManager: AIManager;
+describe("Agent Message Compression Tests", () => {
+  let agent: Agent;
 
   beforeEach(async () => {
     // Mock session service
     const mockSaveSession = vi.mocked(saveSession);
     mockSaveSession.mockImplementation(vi.fn());
 
-    // Create AIManager instance with required parameters
-    aiManager = await AIManager.create({});
+    // Create Agent instance with required parameters
+    agent = await Agent.create({});
 
     vi.clearAllMocks();
   });
@@ -78,9 +78,9 @@ describe("AIManager Message Compression Tests", () => {
       ],
     };
 
-    // 重新创建 AIManager 并传入消息历史
-    await aiManager.destroy();
-    aiManager = await AIManager.create({
+    // 重新创建 Agent 并传入消息历史
+    await agent.destroy();
+    agent = await Agent.create({
       messages: [...messages, newUserMessage],
     });
 
@@ -108,7 +108,7 @@ describe("AIManager Message Compression Tests", () => {
     });
 
     // 调用 sendMessage 来触发 AI 调用（这会触发压缩）
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证 AI 服务被调用
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
@@ -160,9 +160,9 @@ describe("AIManager Message Compression Tests", () => {
       ],
     };
 
-    // 重新创建 AIManager 并传入消息历史
-    await aiManager.destroy();
-    aiManager = await AIManager.create({
+    // 重新创建 Agent 并传入消息历史
+    await agent.destroy();
+    agent = await Agent.create({
       messages: [...messages, newUserMessage],
     });
 
@@ -189,7 +189,7 @@ describe("AIManager Message Compression Tests", () => {
     });
 
     // 调用 sendMessage
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证 AI 服务被调用但压缩函数未被调用
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
@@ -212,9 +212,9 @@ describe("AIManager Message Compression Tests", () => {
       ],
     };
 
-    // 重新创建 AIManager 并传入消息历史
-    await aiManager.destroy();
-    aiManager = await AIManager.create({
+    // 重新创建 Agent 并传入消息历史
+    await agent.destroy();
+    agent = await Agent.create({
       messages: [...messages, newUserMessage],
     });
 
@@ -237,7 +237,7 @@ describe("AIManager Message Compression Tests", () => {
     mockCompressMessages.mockRejectedValue(new Error("Compression failed"));
 
     // 调用 sendMessage 触发压缩
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证调用情况
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
@@ -279,9 +279,9 @@ describe("AIManager Message Compression Tests", () => {
       ],
     };
 
-    // 重新创建 AIManager 并传入消息历史
-    await aiManager.destroy();
-    aiManager = await AIManager.create({
+    // 重新创建 Agent 并传入消息历史
+    await agent.destroy();
+    agent = await Agent.create({
       callbacks: {
         onMessagesChange: vi.fn(),
         onLoadingChange: vi.fn(),
@@ -309,7 +309,7 @@ describe("AIManager Message Compression Tests", () => {
     });
 
     // 调用 sendMessage 触发压缩
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证压缩函数被调用
     expect(mockCompressMessages).toHaveBeenCalledTimes(1);
@@ -395,9 +395,9 @@ describe("AIManager Message Compression Tests", () => {
       ],
     };
 
-    // 重新创建 AIManager 并传入消息历史
-    await aiManager.destroy();
-    aiManager = await AIManager.create({
+    // 重新创建 Agent 并传入消息历史
+    await agent.destroy();
+    agent = await Agent.create({
       messages: [...messages, firstUserMessage],
     });
 
@@ -440,14 +440,14 @@ describe("AIManager Message Compression Tests", () => {
     });
 
     // 第一次调用 sendMessage 触发压缩
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证压缩被触发
     expect(mockCompressMessages).toHaveBeenCalledTimes(1);
     expect(callAgentCallCount).toBe(1);
 
     // 获取压缩后的消息列表
-    const messagesAfterCompression = aiManager.messages;
+    const messagesAfterCompression = agent.messages;
 
     // 验证倒数第八个消息变成了压缩消息
     const eighthLastMessage =
@@ -467,7 +467,7 @@ describe("AIManager Message Compression Tests", () => {
     messagesPassedToCallAgent = [];
 
     // 第二次调用 sendMessage
-    await aiManager.sendMessage("Second message after compression");
+    await agent.sendMessage("Second message after compression");
 
     // 验证第二次调用的参数
     expect(callAgentCallCount).toBe(2);

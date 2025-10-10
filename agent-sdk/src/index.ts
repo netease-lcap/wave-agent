@@ -4,7 +4,7 @@ export * from "./services/memory.js";
 export * from "./services/session.js";
 
 // Export all managers
-export * from "./managers/aiManager.js";
+export * from "./agent.js";
 export * from "./managers/bashManager.js";
 export * from "./managers/mcpManager.js";
 

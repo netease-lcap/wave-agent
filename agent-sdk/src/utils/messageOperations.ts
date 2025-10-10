@@ -33,8 +33,8 @@ export interface UpdateToolBlockParams {
   compactParams?: string;
 }
 
-// AIManager specific interfaces (without messages parameter)
-export interface AIManagerToolBlockUpdateParams {
+// Agent specific interfaces (without messages parameter)
+export interface AgentToolBlockUpdateParams {
   toolId: string;
   args?: string;
   result?: string;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AIManager } from "@/managers/aiManager.js";
+import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { saveSession } from "@/services/session.js";
 
@@ -31,8 +31,8 @@ vi.mock("@/tools", () => ({
   })),
 }));
 
-describe("AIManager - Abort Handling", () => {
-  let aiManager: AIManager;
+describe("Agent - Abort Handling", () => {
+  let agent: Agent;
 
   beforeEach(async () => {
     // Mock session service
@@ -45,8 +45,8 @@ describe("AIManager - Abort Handling", () => {
       onLoadingChange: vi.fn(),
     };
 
-    // Create AIManager instance with required parameters
-    aiManager = await AIManager.create({
+    // Create Agent instance with required parameters
+    agent = await Agent.create({
       callbacks: mockCallbacks,
     });
 
@@ -57,13 +57,13 @@ describe("AIManager - Abort Handling", () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
 
     // Execute the test - should not throw error even with incomplete JSON and abort
-    await expect(aiManager.sendMessage("Test message")).resolves.not.toThrow();
+    await expect(agent.sendMessage("Test message")).resolves.not.toThrow();
 
     // Verify that the manager doesn't crash and handles the situation gracefully
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
 
     // Check that no error message is added to the conversation when aborted
-    const messages = aiManager.messages;
+    const messages = agent.messages;
     const errorBlocks = messages.flatMap((msg) =>
       msg.blocks.filter((block) => block.type === "error"),
     );
@@ -126,10 +126,10 @@ describe("AIManager - Abort Handling", () => {
     });
 
     // Execute the test
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // Check that error message is added to the conversation when not aborted
-    const messages = aiManager.messages;
+    const messages = agent.messages;
     const errorBlocks = messages.flatMap((msg) =>
       msg.blocks.filter((block) => block.type === "error"),
     );
@@ -197,7 +197,7 @@ describe("AIManager - Abort Handling", () => {
       content: "Tool should not execute",
     });
 
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // Verify no tools were actually executed due to abort
     expect(mockToolExecute).not.toHaveBeenCalled();

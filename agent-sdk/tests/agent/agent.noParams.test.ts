@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { AIManager } from "@/managers/aiManager.js";
+import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 
 // Mock the session service
@@ -44,8 +44,8 @@ vi.mock("@/services/memoryManager", () => ({
   })),
 }));
 
-describe("AIManager - No Parameters Tool Handling", () => {
-  let aiManager: AIManager;
+describe("Agent - No Parameters Tool Handling", () => {
+  let agent: Agent;
   const mockCallbacks = {
     onMessagesChange: vi.fn(),
     onLoadingChange: vi.fn(),
@@ -53,13 +53,13 @@ describe("AIManager - No Parameters Tool Handling", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    aiManager = await AIManager.create({
+    agent = await Agent.create({
       callbacks: mockCallbacks,
     });
   });
 
   afterEach(async () => {
-    await aiManager.destroy();
+    await agent.destroy();
   });
 
   it("should handle tools with no parameters (empty string)", async () => {
@@ -112,7 +112,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
     });
 
     // Execute the test
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // Verify tool was executed with empty parameters
     expect(mockToolExecute).toHaveBeenCalledWith(
@@ -122,7 +122,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
     );
 
     // Verify no error blocks were added
-    const messages = aiManager.messages;
+    const messages = agent.messages;
     const errorBlocks = messages.flatMap((msg) =>
       msg.blocks.filter((block) => block.type === "error"),
     );
@@ -185,7 +185,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
     });
 
     // Execute the test
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // Verify tool was executed with empty parameters
     expect(mockToolExecute).toHaveBeenCalledWith(
@@ -195,7 +195,7 @@ describe("AIManager - No Parameters Tool Handling", () => {
     );
 
     // Verify no error blocks were added
-    const messages = aiManager.messages;
+    const messages = agent.messages;
     const errorBlocks = messages.flatMap((msg) =>
       msg.blocks.filter((block) => block.type === "error"),
     );
@@ -259,10 +259,10 @@ describe("AIManager - No Parameters Tool Handling", () => {
     });
 
     // Execute the test
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // Check that error message is added to the conversation
-    const messages = aiManager.messages;
+    const messages = agent.messages;
     const errorBlocks = messages.flatMap((msg) =>
       msg.blocks.filter((block) => block.type === "error"),
     );

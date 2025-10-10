@@ -3,12 +3,12 @@
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import { AIManager } from "../src/managers/aiManager.js";
+import { Agent } from "../src/agent.js";
 
 console.log("🌐 Testing Chrome MCP screenshot functionality...\n");
 
 let tempDir: string;
-let aiManager: AIManager;
+let agent: Agent;
 
 async function setupTest() {
   // 创建临时目录
@@ -35,7 +35,7 @@ async function setupTest() {
   process.chdir(tempDir);
 
   // 创建 AI Manager with comprehensive callbacks
-  aiManager = await AIManager.create({
+  agent = await Agent.create({
     callbacks: {
       // 增量回调
       onUserMessageAdded: (content: string) => {
@@ -91,23 +91,23 @@ async function runTest() {
   console.log(`\n💬 Sending message: ${userMessage}\n`);
 
   // 使用 sendMessage 方法，避免手动操作 messages
-  await aiManager.sendMessage(userMessage);
+  await agent.sendMessage(userMessage);
 
   // 获取最终状态和结果
   console.log("\n📊 Final state:");
-  console.log(`   Session ID: ${aiManager.sessionId}`);
-  console.log(`   Messages: ${aiManager.messages.length}`);
-  console.log(`   Total tokens: ${aiManager.latestTotalTokens}`);
-  console.log(`   Is loading: ${aiManager.isLoading}`);
-  console.log(`   Input history: ${aiManager.userInputHistory.length} entries`);
+  console.log(`   Session ID: ${agent.sessionId}`);
+  console.log(`   Messages: ${agent.messages.length}`);
+  console.log(`   Total tokens: ${agent.latestTotalTokens}`);
+  console.log(`   Is loading: ${agent.isLoading}`);
+  console.log(`   Input history: ${agent.userInputHistory.length} entries`);
 }
 
 async function cleanup() {
   console.log("\n🧹 Cleaning up...");
   try {
     // 销毁 AI Manager (包含 MCP 清理)
-    if (aiManager) {
-      await aiManager.destroy();
+    if (agent) {
+      await agent.destroy();
       console.log("✅ AI Manager and MCP connections cleaned up");
     }
 

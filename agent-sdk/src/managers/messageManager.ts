@@ -14,7 +14,7 @@ import {
   addCommandOutputMessage,
   updateCommandOutputInMessage,
   completeCommandInMessage,
-  type AIManagerToolBlockUpdateParams,
+  type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
 import type { Logger, Message } from "../types.js";
 import {
@@ -39,7 +39,7 @@ export interface MessageManagerCallbacks {
   onAnswerBlockAdded?: () => void;
   onAnswerBlockUpdated?: (content: string) => void;
   onToolBlockAdded?: (tool: { id: string; name: string }) => void;
-  onToolBlockUpdated?: (params: AIManagerToolBlockUpdateParams) => void;
+  onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
   onDiffBlockAdded?: (filePath: string, diffResult: string) => void;
   onErrorBlockAdded?: (error: string) => void;
   onCompressBlockAdded?: (content: string) => void;
@@ -286,7 +286,7 @@ export class MessageManager {
     this.callbacks.onToolBlockAdded?.(tool);
   }
 
-  public updateToolBlock(params: AIManagerToolBlockUpdateParams): void {
+  public updateToolBlock(params: AgentToolBlockUpdateParams): void {
     const newMessages = updateToolBlockInMessage({
       messages: this.messages,
       id: params.toolId,

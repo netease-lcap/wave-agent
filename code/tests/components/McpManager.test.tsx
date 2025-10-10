@@ -83,11 +83,11 @@ describe("McpManager", () => {
       expect(output).toContain("Select a server to view details");
     });
 
-    it("should not call ensureConfigLoaded on mount (handled by aiManager)", () => {
+    it("should not call ensureConfigLoaded on mount (handled by agent)", () => {
       render(<McpManager {...defaultProps} />);
 
       // These methods should not be called directly by the component anymore
-      // as they are handled by the aiManager
+      // as they are handled by the agent
       expect(mockOnConnectServer).not.toHaveBeenCalled();
       expect(mockOnDisconnectServer).not.toHaveBeenCalled();
       expect(mockOnReconnectServer).not.toHaveBeenCalled();

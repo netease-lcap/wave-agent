@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AIManager } from "@/managers/aiManager.js";
+import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { saveSession } from "@/services/session.js";
 
@@ -30,8 +30,8 @@ vi.mock("@/tools", () => ({
   })),
 }));
 
-describe("AIManager Diff Integration Tests", () => {
-  let aiManager: AIManager;
+describe("Agent Diff Integration Tests", () => {
+  let agent: Agent;
   let aiServiceCallCount: number;
 
   beforeEach(async () => {
@@ -45,8 +45,8 @@ describe("AIManager Diff Integration Tests", () => {
       onLoadingChange: vi.fn(),
     };
 
-    // Create AIManager instance with required parameters
-    aiManager = await AIManager.create({
+    // Create Agent instance with required parameters
+    agent = await Agent.create({
       callbacks: mockCallbacks,
     });
 
@@ -123,7 +123,7 @@ describe("AIManager Diff Integration Tests", () => {
     });
 
     // 调用 sendMessage 触发工具执行和递归
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证 AI service 被调用了两次
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -150,8 +150,8 @@ describe("AIManager Diff Integration Tests", () => {
     expect(toolMessage?.tool_call_id).toBe("call_edit_123");
     expect(toolMessage?.content).toContain("Rewrote file test.js");
 
-    // 验证获取到了当前 AIManager 状态中的消息
-    const messages = aiManager.messages;
+    // 验证获取到了当前 Agent 状态中的消息
+    const messages = agent.messages;
 
     // 应该包含用户消息、助手消息（带工具调用）、工具结果消息、以及最终的助手回复
     expect(messages.length).toBeGreaterThanOrEqual(3);
@@ -231,7 +231,7 @@ describe("AIManager Diff Integration Tests", () => {
     });
 
     // 调用 sendMessage 触发工具执行和递归
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证调用次数
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -259,7 +259,7 @@ describe("AIManager Diff Integration Tests", () => {
     expect(toolMessage?.content).toContain("Successfully replaced text");
 
     // 验证当前状态中包含 diff 信息
-    const messages = aiManager.messages;
+    const messages = agent.messages;
 
     // 检查是否有文件操作的 diff 块
     const hasDiffBlock = messages.some((message) =>
@@ -368,7 +368,7 @@ describe("AIManager Diff Integration Tests", () => {
     );
 
     // 调用 sendMessage 触发工具执行和递归
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证 AI service 被调用了两次
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -411,7 +411,7 @@ describe("AIManager Diff Integration Tests", () => {
     expect(file2ToolMessage?.content).toContain("Created file2.js");
 
     // 验证当前状态中包含两个文件的 diff 信息
-    const messages = aiManager.messages;
+    const messages = agent.messages;
 
     // 检查是否有两个文件操作的 diff 块
     const diffBlocks = messages.flatMap(
@@ -500,7 +500,7 @@ describe("AIManager Diff Integration Tests", () => {
     });
 
     // 调用 sendMessage 触发工具执行和递归
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证 AI service 被调用了两次（即使工具失败也会触发递归）
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -518,7 +518,7 @@ describe("AIManager Diff Integration Tests", () => {
     );
 
     // 验证当前状态中没有 diff 相关的块（因为工具执行失败）
-    const messages = aiManager.messages;
+    const messages = agent.messages;
 
     const diffBlocks = messages.flatMap(
       (message) =>

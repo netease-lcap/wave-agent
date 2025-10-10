@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { useAppConfig } from "./useAppConfig.js";
 import type { Message, McpServerStatus } from "wave-agent-sdk";
-import { AIManager, AIManagerCallbacks } from "wave-agent-sdk";
+import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 
 // Main Chat Context
@@ -71,7 +71,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // MCP State
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
 
-  const aiManagerRef = useRef<AIManager | null>(null);
+  const agentRef = useRef<Agent | null>(null);
 
   // Input Insert Functions
   const insertToInput = useCallback(
@@ -87,8 +87,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   useEffect(() => {
     let isMounted = true;
 
-    const initializeAIManager = async () => {
-      const callbacks: AIManagerCallbacks = {
+    const initializeAgent = async () => {
+      const callbacks: AgentCallbacks = {
         onMessagesChange: (newMessages) => {
           if (isMounted) {
             setMessages([...newMessages]);
@@ -127,7 +127,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       };
 
       try {
-        const aiManager = await AIManager.create({
+        const agent = await Agent.create({
           callbacks,
           restoreSessionId,
           continueLastSession,
@@ -135,18 +135,18 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         });
 
         if (isMounted) {
-          aiManagerRef.current = aiManager;
+          agentRef.current = agent;
 
           // Get initial state
-          setSessionId(aiManager.sessionId);
-          setMessages(aiManager.messages);
-          setIsLoading(aiManager.isLoading);
-          setlatestTotalTokens(aiManager.latestTotalTokens);
-          setIsCommandRunning(aiManager.isCommandRunning);
-          setUserInputHistory(aiManager.userInputHistory);
+          setSessionId(agent.sessionId);
+          setMessages(agent.messages);
+          setIsLoading(agent.isLoading);
+          setlatestTotalTokens(agent.latestTotalTokens);
+          setIsCommandRunning(agent.isCommandRunning);
+          setUserInputHistory(agent.userInputHistory);
 
           // Get initial MCP servers state
-          const mcpServers = aiManager.getMcpServers?.() || [];
+          const mcpServers = agent.getMcpServers?.() || [];
           setMcpServers(mcpServers);
         }
       } catch (error) {
@@ -154,7 +154,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       }
     };
 
-    initializeAIManager();
+    initializeAgent();
 
     return () => {
       isMounted = false;
@@ -163,64 +163,60 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Update latestTotalTokens and sessionId when messages change
   useEffect(() => {
-    if (aiManagerRef.current) {
-      setlatestTotalTokens(aiManagerRef.current.latestTotalTokens);
-      setSessionId(aiManagerRef.current.sessionId);
+    if (agentRef.current) {
+      setlatestTotalTokens(agentRef.current.latestTotalTokens);
+      setSessionId(agentRef.current.sessionId);
     }
   }, [messages]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (aiManagerRef.current) {
-        aiManagerRef.current.destroy();
+      if (agentRef.current) {
+        agentRef.current.destroy();
       }
     };
   }, []);
 
-  // 发送消息函数 (简化，逻辑移动到 AIManager)
+  // 发送消息函数 (简化，逻辑移动到 Agent)
   const sendMessage = useCallback(
     async (
       content: string,
       images?: Array<{ path: string; mimeType: string }>,
     ) => {
-      await aiManagerRef.current?.sendMessage(content, images);
+      await agentRef.current?.sendMessage(content, images);
     },
     [],
   );
 
   const clearMessages = useCallback(() => {
-    aiManagerRef.current?.clearMessages();
+    agentRef.current?.clearMessages();
   }, []);
 
   // 统一的中断方法，同时中断AI消息和命令执行
   const abortMessage = useCallback(() => {
-    aiManagerRef.current?.abortMessage();
+    agentRef.current?.abortMessage();
   }, []);
 
-  // 记忆保存函数 - 委托给 AIManager
+  // 记忆保存函数 - 委托给 Agent
   const saveMemory = useCallback(
     async (message: string, type: "project" | "user") => {
-      await aiManagerRef.current?.saveMemory(message, type);
+      await agentRef.current?.saveMemory(message, type);
     },
     [],
   );
 
-  // MCP 管理方法 - 委托给 AIManager
+  // MCP 管理方法 - 委托给 Agent
   const connectMcpServer = useCallback(async (serverName: string) => {
-    return (await aiManagerRef.current?.connectMcpServer(serverName)) ?? false;
+    return (await agentRef.current?.connectMcpServer(serverName)) ?? false;
   }, []);
 
   const disconnectMcpServer = useCallback(async (serverName: string) => {
-    return (
-      (await aiManagerRef.current?.disconnectMcpServer(serverName)) ?? false
-    );
+    return (await agentRef.current?.disconnectMcpServer(serverName)) ?? false;
   }, []);
 
   const reconnectMcpServer = useCallback(async (serverName: string) => {
-    return (
-      (await aiManagerRef.current?.reconnectMcpServer(serverName)) ?? false
-    );
+    return (await agentRef.current?.reconnectMcpServer(serverName)) ?? false;
   }, []);
 
   const contextValue: ChatContextType = {

@@ -1,11 +1,11 @@
 #!/usr/bin/env tsx
 
-import { AIManager } from "../src/managers/aiManager.js";
+import { Agent } from "../src/agent.js";
 
-console.log("🚀 Starting AIManager hi test...");
+console.log("🚀 Starting Agent hi test...");
 
-// 创建 AIManager 实例，监听所有可用的回调
-const aiManager = await AIManager.create({
+// 创建 Agent 实例，监听所有可用的回调
+const agent = await Agent.create({
   callbacks: {
     // 基础回调
     onLoadingChange: (isLoading: boolean) => {
@@ -78,28 +78,26 @@ const aiManager = await AIManager.create({
 });
 
 async function main() {
-  // aiManager 已经在顶层创建
+  // agent 已经在顶层创建
   try {
     console.log("\n💬 Sending 'hi' message to AI...\n");
 
     // 发送 "hi" 消息
-    await aiManager.sendMessage("hi");
+    await agent.sendMessage("hi");
 
     // 获取当前状态
     console.log("\n📊 Final state:");
-    console.log(`   Session ID: ${aiManager.sessionId}`);
-    console.log(`   Messages: ${aiManager.messages.length}`);
-    console.log(`   Total tokens: ${aiManager.latestTotalTokens}`);
-    console.log(`   Is loading: ${aiManager.isLoading}`);
-    console.log(
-      `   Input history: ${aiManager.userInputHistory.length} entries`,
-    );
+    console.log(`   Session ID: ${agent.sessionId}`);
+    console.log(`   Messages: ${agent.messages.length}`);
+    console.log(`   Total tokens: ${agent.latestTotalTokens}`);
+    console.log(`   Is loading: ${agent.isLoading}`);
+    console.log(`   Input history: ${agent.userInputHistory.length} entries`);
   } catch (error) {
     console.error("❌ Error occurred:", error);
   } finally {
     // 清理资源
     console.log("\n🧹 Cleaning up...");
-    await aiManager.destroy();
+    await agent.destroy();
     console.log("👋 Done!");
   }
 }
@@ -107,13 +105,13 @@ async function main() {
 // 处理进程退出
 process.on("SIGINT", async () => {
   console.log("\n\n🛑 Received SIGINT, cleaning up...");
-  await aiManager.destroy();
+  await agent.destroy();
   process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
   console.log("\n\n🛑 Received SIGTERM, cleaning up...");
-  await aiManager.destroy();
+  await agent.destroy();
   process.exit(0);
 });
 

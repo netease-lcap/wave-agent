@@ -22,10 +22,10 @@ npm install wave-agent-sdk
 ## Usage
 
 ```typescript
-import { AIManager, bashTool } from "wave-agent-sdk";
+import { Agent, bashTool } from "wave-agent-sdk";
 
 // Initialize AI manager (toolRegistry is managed internally)
-const aiManager = await AIManager.create({
+const agent = await Agent.create({
   callbacks: {
     onMessagesChange: (messages) => console.log("Messages updated"),
     onLoadingChange: (isLoading) => console.log("Loading:", isLoading),
@@ -43,7 +43,7 @@ const result = await bashTool.execute({
 
 ### Services
 
-- `AIManager` - Main AI service coordinator
+- `Agent` - Main AI service coordinator
 - `AIService` - Direct AI API integration
 - `BashManager` - Bash command management
 - `McpManager` - Model Context Protocol integration

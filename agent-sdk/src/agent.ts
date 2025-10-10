@@ -1,20 +1,20 @@
-import { callAgent, compressMessages } from "../services/aiService.js";
-import { getMessagesToCompress } from "../utils/messageOperations.js";
+import { callAgent, compressMessages } from "./services/aiService.js";
+import { getMessagesToCompress } from "./utils/messageOperations.js";
 import {
   MessageManager,
   type MessageManagerCallbacks,
-} from "./messageManager.js";
-import { ToolRegistryImpl } from "../tools/index.js";
-import type { ToolContext } from "../tools/types.js";
-import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
-import * as memory from "../services/memory.js";
-import { McpManager, McpServerStatus } from "./mcpManager.js";
-import { BashManager } from "./bashManager.js";
-import type { Message, Logger } from "../types.js";
+} from "./managers/messageManager.js";
+import { ToolRegistryImpl } from "./tools/index.js";
+import type { ToolContext } from "./tools/types.js";
+import { convertMessagesForAPI } from "./utils/convertMessagesForAPI.js";
+import * as memory from "./services/memory.js";
+import { McpManager, McpServerStatus } from "./managers/mcpManager.js";
+import { BashManager } from "./managers/bashManager.js";
+import type { Message, Logger } from "./types.js";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 
-export interface AIManagerOptions {
-  callbacks?: AIManagerCallbacks;
+export interface AgentOptions {
+  callbacks?: AgentCallbacks;
   restoreSessionId?: string;
   continueLastSession?: boolean;
   logger?: Logger;
@@ -22,8 +22,8 @@ export interface AIManagerOptions {
   messages?: Message[];
 }
 
-export interface AIManagerCallbacks extends MessageManagerCallbacks {
-  /** AIManager 自身的回调 */
+export interface AgentCallbacks extends MessageManagerCallbacks {
+  /** Agent 自身的回调 */
   onLoadingChange?: (isLoading: boolean) => void;
   /** MCP 服务器状态回调 */
   onMcpServersChange?: (servers: McpServerStatus[]) => void;
@@ -33,10 +33,10 @@ export interface AIManagerCallbacks extends MessageManagerCallbacks {
   onUserInputHistoryChange?: (history: string[]) => void;
 }
 
-export class AIManager {
+export class Agent {
   private messageManager: MessageManager;
   public isLoading: boolean;
-  private callbacks: AIManagerCallbacks;
+  private callbacks: AgentCallbacks;
   private abortController: AbortController | null = null;
   private toolAbortController: AbortController | null = null;
 
@@ -46,7 +46,7 @@ export class AIManager {
   private mcpManager: McpManager; // 添加 MCP 管理器实例
 
   // 私有构造函数，防止直接实例化
-  private constructor(options: AIManagerOptions) {
+  private constructor(options: AgentOptions) {
     const { callbacks = {}, logger } = options;
 
     this.callbacks = callbacks;
@@ -122,8 +122,8 @@ export class AIManager {
   }
 
   /** 静态异步工厂方法 */
-  static async create(options: AIManagerOptions): Promise<AIManager> {
-    const instance = new AIManager(options);
+  static async create(options: AgentOptions): Promise<Agent> {
+    const instance = new Agent(options);
     await instance.initialize({
       restoreSessionId: options.restoreSessionId,
       continueLastSession: options.continueLastSession,

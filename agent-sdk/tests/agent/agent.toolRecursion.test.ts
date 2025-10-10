@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AIManager } from "@/managers/aiManager.js";
+import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { saveSession } from "@/services/session.js";
 
@@ -30,8 +30,8 @@ vi.mock("@/tools", () => ({
   })),
 }));
 
-describe("AIManager Tool Recursion Tests", () => {
-  let aiManager: AIManager;
+describe("Agent Tool Recursion Tests", () => {
+  let agent: Agent;
   let aiServiceCallCount: number;
 
   beforeEach(async () => {
@@ -45,8 +45,8 @@ describe("AIManager Tool Recursion Tests", () => {
       onLoadingChange: vi.fn(),
     };
 
-    // Create AIManager instance with required parameters
-    aiManager = await AIManager.create({
+    // Create Agent instance with required parameters
+    agent = await Agent.create({
       callbacks: mockCallbacks,
     });
 
@@ -98,7 +98,7 @@ describe("AIManager Tool Recursion Tests", () => {
     });
 
     // 调用 sendMessage 触发工具递归
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证 AI service 被调用了两次（工具调用 + 递归调用）
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -214,7 +214,7 @@ describe("AIManager Tool Recursion Tests", () => {
     );
 
     // 调用 sendMessage 触发工具递归
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证 AI service 被调用了3次
     expect(mockCallAgent).toHaveBeenCalledTimes(3);
@@ -304,7 +304,7 @@ describe("AIManager Tool Recursion Tests", () => {
     });
 
     // 调用 sendMessage 触发工具递归
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证 AI service 被调用了两次（即使工具失败也会触发递归）
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
@@ -365,7 +365,7 @@ describe("AIManager Tool Recursion Tests", () => {
     });
 
     // 调用 sendMessage 触发工具递归
-    await aiManager.sendMessage("Test message");
+    await agent.sendMessage("Test message");
 
     // 验证 AI service 只被调用了两次（递归在没有更多工具调用时停止）
     expect(mockCallAgent).toHaveBeenCalledTimes(2);

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { AIManager } from "@/managers/aiManager.js";
-import type { AIManagerCallbacks } from "@/managers/aiManager.js";
+import { Agent } from "@/agent.js";
+import type { AgentCallbacks } from "@/agent.js";
 import { promises as fs } from "fs";
 import path from "path";
 import os from "os";
@@ -12,13 +12,6 @@ vi.mock("@/services/aiService", () => ({
     usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
   }),
   compressMessages: vi.fn().mockResolvedValue("Compressed content"),
-}));
-
-// Mock the fileManager
-vi.mock("@/services/fileManager", () => ({
-  FileManager: vi.fn().mockImplementation(() => ({
-    getFlatFiles: vi.fn().mockReturnValue([]),
-  })),
 }));
 
 // Mock the session service
@@ -42,9 +35,9 @@ vi.mock("@/services/memory", () => ({
     .mockResolvedValue("Combined memory content"),
 }));
 
-describe("AIManager User Memory Integration", () => {
-  let aiManager: AIManager;
-  let mockCallbacks: AIManagerCallbacks;
+describe("Agent User Memory Integration", () => {
+  let agent: Agent;
+  let mockCallbacks: AgentCallbacks;
   let tempDir: string;
 
   let mockCallAgent: ReturnType<typeof vi.fn>;
@@ -72,15 +65,15 @@ describe("AIManager User Memory Integration", () => {
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = await AIManager.create({
+    agent = await Agent.create({
       callbacks: mockCallbacks,
     });
   });
 
   afterEach(async () => {
     // Clean up
-    if (aiManager) {
-      await aiManager.destroy();
+    if (agent) {
+      await agent.destroy();
     }
     await fs.rm(tempDir, { recursive: true, force: true });
   });
@@ -91,19 +84,19 @@ describe("AIManager User Memory Integration", () => {
       "Project memory: important context\n\nUser memory: user preferences",
     );
 
-    // Create a new AIManager to pick up the new mocks
-    if (aiManager) {
-      await aiManager.destroy();
+    // Create a new Agent to pick up the new mocks
+    if (agent) {
+      await agent.destroy();
     }
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = await AIManager.create({
+    agent = await Agent.create({
       callbacks: mockCallbacks,
     });
 
     // Send a message to trigger AI response with memory
-    await aiManager.sendMessage("Test question");
+    await agent.sendMessage("Test question");
 
     // Verify that callAgent was called with combined memory
     expect(mockCallAgent).toHaveBeenCalledWith(
@@ -118,19 +111,19 @@ describe("AIManager User Memory Integration", () => {
     // Set up mock return values
     mockGetCombinedMemoryContent.mockResolvedValue("Project memory only");
 
-    // Create a new AIManager to pick up the new mocks
-    if (aiManager) {
-      await aiManager.destroy();
+    // Create a new Agent to pick up the new mocks
+    if (agent) {
+      await agent.destroy();
     }
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = await AIManager.create({
+    agent = await Agent.create({
       callbacks: mockCallbacks,
     });
 
     // Send a message to trigger AI response with memory
-    await aiManager.sendMessage("Test question");
+    await agent.sendMessage("Test question");
 
     // Verify that callAgent was called with project memory only
     expect(mockCallAgent).toHaveBeenCalledWith(
@@ -144,19 +137,19 @@ describe("AIManager User Memory Integration", () => {
     // Set up mock return values
     mockGetCombinedMemoryContent.mockResolvedValue("User memory only");
 
-    // Create a new AIManager to pick up the new mocks
-    if (aiManager) {
-      await aiManager.destroy();
+    // Create a new Agent to pick up the new mocks
+    if (agent) {
+      await agent.destroy();
     }
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = await AIManager.create({
+    agent = await Agent.create({
       callbacks: mockCallbacks,
     });
 
     // Send a message to trigger AI response with memory
-    await aiManager.sendMessage("Test question");
+    await agent.sendMessage("Test question");
 
     // Verify that callAgent was called with user memory only
     expect(mockCallAgent).toHaveBeenCalledWith(
@@ -170,19 +163,19 @@ describe("AIManager User Memory Integration", () => {
     // Set up mock return values for empty memory
     mockGetCombinedMemoryContent.mockResolvedValue("");
 
-    // Create a new AIManager to pick up the new mocks
-    if (aiManager) {
-      await aiManager.destroy();
+    // Create a new Agent to pick up the new mocks
+    if (agent) {
+      await agent.destroy();
     }
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
-    aiManager = await AIManager.create({
+    agent = await Agent.create({
       callbacks: mockCallbacks,
     });
 
     // Send a message to trigger AI response with memory
-    await aiManager.sendMessage("Test question");
+    await agent.sendMessage("Test question");
 
     // Verify that callAgent was called with empty memory
     expect(mockCallAgent).toHaveBeenCalledWith(
@@ -198,9 +191,9 @@ describe("AIManager User Memory Integration", () => {
       new Error("Failed to read memory"),
     );
 
-    // Create a new AIManager to pick up the new mocks
-    if (aiManager) {
-      await aiManager.destroy();
+    // Create a new Agent to pick up the new mocks
+    if (agent) {
+      await agent.destroy();
     }
     // Mock process.cwd() to return temp directory
     vi.spyOn(process, "cwd").mockReturnValue(tempDir);
@@ -219,18 +212,18 @@ describe("AIManager User Memory Integration", () => {
       },
     ];
 
-    aiManager = await AIManager.create({
+    agent = await Agent.create({
       messages: initialMessages,
     });
 
     // Send message - should handle errors gracefully by adding error block
-    await aiManager.sendMessage("Test question");
+    await agent.sendMessage("Test question");
 
     // Verify that callAgent was not called due to the error
     expect(mockCallAgent).not.toHaveBeenCalled();
 
     // Verify that an error block was added to handle the memory read error
-    const messages = aiManager.messages;
+    const messages = agent.messages;
     const lastMessage = messages[messages.length - 1];
     expect(lastMessage.blocks.some((block) => block.type === "error")).toBe(
       true,
@@ -244,23 +237,23 @@ describe("AIManager User Memory Integration", () => {
 
     // Mock process.cwd for first manager
     vi.spyOn(process, "cwd").mockReturnValue(tempDir1);
-    const aiManager1 = await AIManager.create({
+    const agent1 = await Agent.create({
       callbacks: mockCallbacks,
     });
 
     // Mock process.cwd for second manager
     vi.spyOn(process, "cwd").mockReturnValue(tempDir2);
-    const aiManager2 = await AIManager.create({
+    const agent2 = await Agent.create({
       callbacks: mockCallbacks,
     });
 
     // Both managers should work independently
-    expect(aiManager1).toBeInstanceOf(AIManager);
-    expect(aiManager2).toBeInstanceOf(AIManager);
+    expect(agent1).toBeInstanceOf(Agent);
+    expect(agent2).toBeInstanceOf(Agent);
 
     // Clean up
-    await aiManager1.destroy();
-    await aiManager2.destroy();
+    await agent1.destroy();
+    await agent2.destroy();
     await fs.rm(tempDir1, { recursive: true, force: true });
     await fs.rm(tempDir2, { recursive: true, force: true });
   });
