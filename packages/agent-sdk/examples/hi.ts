@@ -33,23 +33,7 @@ const agent = await Agent.create({
       console.log(`🔧 Tool started: ${tool.name} (${tool.id})`);
     },
     onToolBlockUpdated: (params) => {
-      const status = params.isRunning
-        ? "running"
-        : params.success
-          ? "success"
-          : "failed";
-      console.log(`🔧 Tool ${params.toolId}: ${status}`);
-      if (params.result && !params.isRunning) {
-        const preview = (params.shortResult || params.result)
-          .slice(0, 100)
-          .replace(/\n/g, "\\n");
-        console.log(
-          `   Result: "${preview}${params.result.length > 100 ? "..." : ""}"`,
-        );
-      }
-      if (params.error) {
-        console.log(`   Error: ${params.error}`);
-      }
+      console.log(`🔧 Tool updated: ${JSON.stringify(params, null, 2)}`);
     },
     onDiffBlockAdded: (filePath: string) => {
       console.log(`📄 Diff block added for: ${filePath}`);
@@ -68,6 +52,13 @@ const agent = await Agent.create({
       console.log(
         `🧠 Memory ${type} ${success ? "saved" : "failed"}: ${content}`,
       );
+    },
+
+    // Messages 变化回调 - 当消息列表发生变化时触发
+    // 这个回调可以用于在前端框架中实时更新 UI
+    // 例如：React: setMessages(messages)
+    onMessagesChange: (messages) => {
+      console.log(`📋 Messages updated: ${messages.length} total messages`);
     },
   },
 });
