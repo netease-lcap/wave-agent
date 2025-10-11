@@ -14,7 +14,8 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "wave-code": "./bin/wave-code-cli.js"
+    "wave-code": "./bin/wave-code.js",
+    "wave": "./bin/wave-code.js"
   },
   "files": [
     "dist",
