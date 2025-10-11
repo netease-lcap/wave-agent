@@ -8,12 +8,7 @@ import React, {
 } from "react";
 import { useInput } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
-import type {
-  Message,
-  McpServerStatus,
-  BackgroundShell,
-  BackgroundBashManager,
-} from "wave-agent-sdk";
+import type { Message, McpServerStatus, BackgroundShell } from "wave-agent-sdk";
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 
@@ -85,9 +80,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     [],
   );
 
-  // Background bash manager ref
-  const backgroundBashManagerRef = useRef<BackgroundBashManager | null>(null);
-
   const agentRef = useRef<Agent | null>(null);
 
   // 监听 Ctrl+O 快捷键切换折叠/展开状态
@@ -142,9 +134,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         // Get initial MCP servers state
         const mcpServers = agent.getMcpServers?.() || [];
         setMcpServers(mcpServers);
-
-        // Get background bash manager
-        backgroundBashManagerRef.current = agent.getBackgroundBashManager();
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
       }
@@ -258,17 +247,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     return (await agentRef.current?.reconnectMcpServer(serverName)) ?? false;
   }, []);
 
-  // Background bash 管理方法 - 委托给 Agent 的 BackgroundBashManager
+  // Background bash 管理方法 - 委托给 Agent
   const getBackgroundShellOutput = useCallback((shellId: string) => {
-    const manager = backgroundBashManagerRef.current;
-    if (!manager) return null;
-    return manager.getOutput(shellId);
+    if (!agentRef.current) return null;
+    return agentRef.current.getBackgroundShellOutput(shellId);
   }, []);
 
   const killBackgroundShell = useCallback((shellId: string) => {
-    const manager = backgroundBashManagerRef.current;
-    if (!manager) return false;
-    return manager.killShell(shellId);
+    if (!agentRef.current) return false;
+    return agentRef.current.killBackgroundShell(shellId);
   }, []);
 
   const contextValue: ChatContextType = {

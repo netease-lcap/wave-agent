@@ -1,17 +1,5 @@
-import { spawn, ChildProcess } from "child_process";
-
-// Background bash shell management
-export interface BackgroundShell {
-  id: string;
-  process: ChildProcess;
-  command: string;
-  startTime: number;
-  status: "running" | "completed" | "killed";
-  stdout: string;
-  stderr: string;
-  exitCode?: number;
-  runtime?: number;
-}
+import { spawn } from "child_process";
+import type { BackgroundShell } from "../types.js";
 
 export interface BackgroundBashManagerCallbacks {
   onShellsChange?: (shells: BackgroundShell[]) => void;

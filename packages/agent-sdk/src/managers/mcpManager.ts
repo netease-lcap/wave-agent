@@ -5,34 +5,13 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import { createMcpToolPlugin, findToolServer } from "@/utils/mcpUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
-import type { Logger } from "../types.js";
-
-export interface McpServerConfig {
-  command: string;
-  args?: string[];
-  env?: Record<string, string>;
-}
-
-export interface McpConfig {
-  mcpServers: Record<string, McpServerConfig>;
-}
-
-export interface McpTool {
-  name: string;
-  description?: string;
-  inputSchema: Record<string, unknown>;
-}
-
-export interface McpServerStatus {
-  name: string;
-  config: McpServerConfig;
-  status: "disconnected" | "connected" | "connecting" | "error";
-  tools?: McpTool[];
-  toolCount?: number;
-  capabilities?: string[];
-  lastConnected?: number;
-  error?: string;
-}
+import type {
+  Logger,
+  McpServerConfig,
+  McpConfig,
+  McpTool,
+  McpServerStatus,
+} from "../types.js";
 
 interface McpConnection {
   client: Client;

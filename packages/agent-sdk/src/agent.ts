@@ -5,13 +5,15 @@ import {
 import { AIManager } from "./managers/aiManager.js";
 import { ToolManager } from "./managers/toolManager.js";
 import * as memory from "./services/memory.js";
-import { McpManager, McpServerStatus } from "./managers/mcpManager.js";
+import { McpManager } from "./managers/mcpManager.js";
 import { BashManager } from "./managers/bashManager.js";
-import {
-  BackgroundBashManager,
-  type BackgroundShell,
-} from "./managers/backgroundBashManager.js";
-import type { Message, Logger } from "./types.js";
+import { BackgroundBashManager } from "./managers/backgroundBashManager.js";
+import type {
+  Message,
+  Logger,
+  McpServerStatus,
+  BackgroundShell,
+} from "./types.js";
 
 export interface AgentOptions {
   callbacks?: AgentCallbacks;
@@ -134,9 +136,17 @@ export class Agent {
     return this.bashManager?.isCommandRunning ?? false;
   }
 
-  /** 获取后台 bash shell 管理器 */
-  public getBackgroundBashManager(): BackgroundBashManager {
-    return this.backgroundBashManager;
+  /** 获取后台 bash shell 输出 */
+  public getBackgroundShellOutput(
+    id: string,
+    filter?: string,
+  ): { stdout: string; stderr: string; status: string } | null {
+    return this.backgroundBashManager.getOutput(id, filter);
+  }
+
+  /** 杀死后台 bash shell */
+  public killBackgroundShell(id: string): boolean {
+    return this.backgroundBashManager.killShell(id);
   }
 
   /** 静态异步工厂方法 */
