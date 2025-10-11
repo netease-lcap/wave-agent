@@ -14,7 +14,6 @@ export const ChatInterface: React.FC = () => {
     sendMessage,
     abortMessage,
     saveMemory,
-    setInputInsertHandler,
     mcpServers,
     connectMcpServer,
     disconnectMcpServer,
@@ -37,7 +36,6 @@ export const ChatInterface: React.FC = () => {
           sendMessage={sendMessage}
           abortMessage={abortMessage}
           saveMemory={saveMemory}
-          setInputInsertHandler={setInputInsertHandler}
           mcpServers={mcpServers}
           connectMcpServer={connectMcpServer}
           disconnectMcpServer={disconnectMcpServer}

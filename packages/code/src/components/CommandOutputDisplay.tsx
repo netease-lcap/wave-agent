@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text } from "ink";
 import type { CommandOutputBlock } from "wave-agent-sdk";
-import { useChat } from "../contexts/useChat.js";
-import { stripAnsiColors } from "wave-agent-sdk";
 
 interface CommandOutputDisplayProps {
   block: CommandOutputBlock;
@@ -14,8 +12,6 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
   isExpanded = false,
 }) => {
   const { command, output, isRunning, exitCode } = block;
-  const { insertToInput } = useChat();
-  const [isFocused, setIsFocused] = React.useState(false);
   const [isOverflowing, setIsOverflowing] = useState(false);
   const MAX_LINES = 10; // 设置最大显示行数
 
@@ -42,30 +38,6 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
     return ""; // 未知状态时不显示文本
   };
 
-  useInput((input, key) => {
-    // 处理全局 Ctrl+O 快捷键
-    if (key.ctrl && input === "o" && output && !isRunning) {
-      const cleanedOutput = stripAnsiColors(output);
-      const outputText = `Command: ${command}\nOutput:\n\n${cleanedOutput}`;
-      insertToInput(outputText);
-      return;
-    }
-
-    if (!isFocused) return;
-
-    if (key.return && output && !isRunning) {
-      // 将命令输出插入到输入框，移除颜色代码
-      const cleanedOutput = stripAnsiColors(output);
-      const outputText = `Command: ${command}\nOutput:\n\n${cleanedOutput}`;
-      insertToInput(outputText);
-      setIsFocused(false);
-    }
-
-    if (key.escape) {
-      setIsFocused(false);
-    }
-  });
-
   return (
     <Box flexDirection="column">
       <Box>
@@ -79,7 +51,7 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
           <Box
             paddingLeft={2}
             borderLeft
-            borderColor={isFocused ? "yellow" : "gray"}
+            borderColor="gray"
             flexDirection="column"
             height={
               isExpanded
@@ -102,21 +74,6 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
               </Text>
             </Box>
           )}
-          {!isRunning && (
-            <Box paddingLeft={2} marginTop={1}>
-              <Text color="yellow" dimColor>
-                [Ctrl+O to send output to input]
-              </Text>
-            </Box>
-          )}
-        </Box>
-      )}
-
-      {isFocused && (
-        <Box marginTop={1}>
-          <Text color="yellow">
-            Press Enter to send output to input box, Escape to cancel
-          </Text>
         </Box>
       )}
     </Box>

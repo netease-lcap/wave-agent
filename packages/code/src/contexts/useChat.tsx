@@ -24,9 +24,6 @@ export interface ChatContextType {
   clearMessages: () => void;
   isCommandRunning: boolean;
   userInputHistory: string[];
-  insertToInput: (text: string) => void;
-  inputInsertHandler: ((text: string) => void) | null;
-  setInputInsertHandler: (handler: (text: string) => void) => void;
   // Message display state
   isExpanded: boolean;
   // AI functionality
@@ -68,11 +65,6 @@ export interface ChatProviderProps {
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const { restoreSessionId, continueLastSession } = useAppConfig();
-
-  // Input Insert State
-  const [inputInsertHandler, setInputInsertHandler] = useState<
-    ((text: string) => void) | null
-  >(null);
 
   // Message Display State
   const [isExpanded, setIsExpanded] = useState(false);
@@ -153,16 +145,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       });
     }
   });
-
-  // Input Insert Functions
-  const insertToInput = useCallback(
-    (text: string) => {
-      if (inputInsertHandler) {
-        inputInsertHandler(text);
-      }
-    },
-    [inputInsertHandler],
-  );
 
   // Initialize AI manager
   useEffect(() => {
@@ -359,9 +341,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     clearMessages,
     isCommandRunning,
     userInputHistory,
-    insertToInput,
-    inputInsertHandler,
-    setInputInsertHandler,
     isExpanded,
     sessionId,
     sendMessage,

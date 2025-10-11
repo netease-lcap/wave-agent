@@ -12,7 +12,6 @@ import { useCommandSelector } from "../hooks/useCommandSelector.js";
 import { useBashHistorySelector } from "../hooks/useBashHistorySelector.js";
 import { useMemoryTypeSelector } from "../hooks/useMemoryTypeSelector.js";
 import { useInputHistory } from "../hooks/useInputHistory.js";
-import { useTextInsertion } from "../hooks/useTextInsertion.js";
 import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler.js";
 import { useImageManager } from "../hooks/useImageManager.js";
 import type { McpServerStatus } from "wave-agent-sdk";
@@ -36,7 +35,6 @@ export interface InputBoxProps {
   ) => void;
   abortMessage?: () => void;
   saveMemory?: (message: string, type: "project" | "user") => Promise<void>;
-  setInputInsertHandler?: (handler: (text: string) => void) => void;
   // MCP 相关属性
   mcpServers?: McpServerStatus[];
   connectMcpServer?: (serverName: string) => Promise<boolean>;
@@ -52,7 +50,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   sendMessage = () => {},
   abortMessage = () => {},
   saveMemory = async () => {},
-  setInputInsertHandler = () => {},
   mcpServers = [],
   connectMcpServer = async () => false,
   disconnectMcpServer = async () => false,
@@ -136,11 +133,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   // 图片管理功能（包含剪贴板粘贴）
   const { attachedImages, clearImages, handlePasteImage } =
     useImageManager(insertTextAtCursor);
-
-  // 文本插入功能
-  useTextInsertion(setInputText, setCursorPosition, resetHistoryNavigation, {
-    setInputInsertHandler,
-  });
 
   // 键盘处理
   const {
