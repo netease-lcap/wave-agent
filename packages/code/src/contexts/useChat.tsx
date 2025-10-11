@@ -99,39 +99,25 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Initialize AI manager
   useEffect(() => {
-    let isMounted = true;
-
     const initializeAgent = async () => {
       const callbacks: AgentCallbacks = {
         onMessagesChange: (newMessages) => {
-          if (isMounted) {
-            setMessages([...newMessages]);
-          }
+          setMessages([...newMessages]);
         },
         onMcpServersChange: (servers) => {
-          if (isMounted) {
-            setMcpServers([...servers]);
-          }
+          setMcpServers([...servers]);
         },
         onSessionIdChange: (sessionId) => {
-          if (isMounted) {
-            setSessionId(sessionId);
-          }
+          setSessionId(sessionId);
         },
         onLatestTotalTokensChange: (tokens) => {
-          if (isMounted) {
-            setlatestTotalTokens(tokens);
-          }
+          setlatestTotalTokens(tokens);
         },
         onUserInputHistoryChange: (history) => {
-          if (isMounted) {
-            setUserInputHistory([...history]);
-          }
+          setUserInputHistory([...history]);
         },
         onBackgroundShellsChange: (shells) => {
-          if (isMounted) {
-            setBackgroundShells([...shells]);
-          }
+          setBackgroundShells([...shells]);
         },
       };
 
@@ -143,34 +129,28 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           logger,
         });
 
-        if (isMounted) {
-          agentRef.current = agent;
+        agentRef.current = agent;
 
-          // Get initial state
-          setSessionId(agent.sessionId);
-          setMessages(agent.messages);
-          setIsLoading(agent.isLoading);
-          setlatestTotalTokens(agent.latestTotalTokens);
-          setIsCommandRunning(agent.isCommandRunning);
-          setUserInputHistory(agent.userInputHistory);
+        // Get initial state
+        setSessionId(agent.sessionId);
+        setMessages(agent.messages);
+        setIsLoading(agent.isLoading);
+        setlatestTotalTokens(agent.latestTotalTokens);
+        setIsCommandRunning(agent.isCommandRunning);
+        setUserInputHistory(agent.userInputHistory);
 
-          // Get initial MCP servers state
-          const mcpServers = agent.getMcpServers?.() || [];
-          setMcpServers(mcpServers);
+        // Get initial MCP servers state
+        const mcpServers = agent.getMcpServers?.() || [];
+        setMcpServers(mcpServers);
 
-          // Get background bash manager
-          backgroundBashManagerRef.current = agent.getBackgroundBashManager();
-        }
+        // Get background bash manager
+        backgroundBashManagerRef.current = agent.getBackgroundBashManager();
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
       }
     };
 
     initializeAgent();
-
-    return () => {
-      isMounted = false;
-    };
   }, [restoreSessionId, continueLastSession]);
 
   // Cleanup on unmount
