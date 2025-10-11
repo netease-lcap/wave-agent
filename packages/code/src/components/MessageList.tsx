@@ -84,6 +84,19 @@ const renderMessageItem = (
             )}
 
             {block.type === "memory" && <MemoryDisplay block={block} />}
+
+            {block.type === "compress" && (
+              <Box>
+                <Text color="yellow" bold>
+                  📦 Compressed Messages
+                </Text>
+                <Box marginTop={1} marginLeft={2}>
+                  <Text color="gray" dimColor>
+                    {block.content}
+                  </Text>
+                </Box>
+              </Box>
+            )}
           </Box>
         ))}
       </Box>
