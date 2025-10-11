@@ -59,7 +59,6 @@ describe("Agent User Memory Integration", () => {
 
     mockCallbacks = {
       onMessagesChange: vi.fn(),
-      onLoadingChange: vi.fn(),
     };
 
     // Mock process.cwd() to return temp directory

@@ -23,12 +23,8 @@ export interface AgentOptions {
 }
 
 export interface AgentCallbacks extends MessageManagerCallbacks {
-  /** Agent 自身的回调 */
-  onLoadingChange?: (isLoading: boolean) => void;
   /** MCP 服务器状态回调 */
   onMcpServersChange?: (servers: McpServerStatus[]) => void;
-  /** 命令运行状态回调 */
-  onCommandRunningChange?: (isRunning: boolean) => void;
   /** 用户输入历史回调 */
   onUserInputHistoryChange?: (history: string[]) => void;
   /** 后台 bash shells 状态变化 */
@@ -84,7 +80,6 @@ export class Agent {
 
     // Initialize AI manager
     this.aiManager = new AIManager({
-      onLoadingChange: callbacks.onLoadingChange,
       messageManager: this.messageManager,
       toolManager: this.toolManager,
       logger: this.logger,
@@ -93,7 +88,6 @@ export class Agent {
 
     // Initialize bash manager
     this.bashManager = new BashManager({
-      onCommandRunningChange: callbacks.onCommandRunningChange,
       messageManager: this.messageManager,
     });
 

@@ -7,11 +7,6 @@ console.log("🚀 Starting Agent hi test...");
 // 创建 Agent 实例，监听所有可用的回调
 const agent = await Agent.create({
   callbacks: {
-    // 基础回调
-    onLoadingChange: (isLoading: boolean) => {
-      console.log(`⏳ Loading state: ${isLoading ? "Loading..." : "Idle"}`);
-    },
-
     // 增量回调
     onUserMessageAdded: (
       content: string,

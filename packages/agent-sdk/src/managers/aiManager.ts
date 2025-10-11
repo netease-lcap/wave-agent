@@ -10,7 +10,6 @@ import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
 
 export interface AIManagerOptions {
-  onLoadingChange?: (isLoading: boolean) => void;
   messageManager: MessageManager;
   toolManager: ToolManager;
   logger?: Logger;
@@ -25,10 +24,8 @@ export class AIManager {
   private toolManager: ToolManager;
   private messageManager: MessageManager;
   private backgroundBashManager?: BackgroundBashManager;
-  private onLoadingChange?: (isLoading: boolean) => void;
 
   constructor(options: AIManagerOptions) {
-    this.onLoadingChange = options.onLoadingChange;
     this.messageManager = options.messageManager;
     this.toolManager = options.toolManager;
     this.backgroundBashManager = options.backgroundBashManager;
@@ -37,7 +34,6 @@ export class AIManager {
 
   public setIsLoading(isLoading: boolean): void {
     this.isLoading = isLoading;
-    this.onLoadingChange?.(isLoading);
   }
 
   public abortAIMessage(): void {

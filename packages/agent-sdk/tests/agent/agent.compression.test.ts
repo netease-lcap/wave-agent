@@ -278,7 +278,6 @@ describe("Agent Message Compression Tests", () => {
     agent = await Agent.create({
       callbacks: {
         onMessagesChange: vi.fn(),
-        onLoadingChange: vi.fn(),
       },
       messages: [...messagesWithCompression, newUserMessage],
     });

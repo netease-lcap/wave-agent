@@ -3,7 +3,6 @@ import { addBashCommandToHistory } from "../utils/bashHistory.js";
 import type { MessageManager } from "./messageManager.js";
 
 export interface BashManagerOptions {
-  onCommandRunningChange?: (isRunning: boolean) => void;
   messageManager: MessageManager;
 }
 
@@ -15,19 +14,16 @@ export interface CommandExecutionResult {
 export class BashManager {
   private workdir: string;
   private messageManager: MessageManager;
-  private onCommandRunningChange?: (isRunning: boolean) => void;
   public isCommandRunning = false;
   private currentProcess: ChildProcess | null = null;
 
   constructor(options: BashManagerOptions) {
     this.workdir = process.cwd();
     this.messageManager = options.messageManager;
-    this.onCommandRunningChange = options.onCommandRunningChange;
   }
 
   private setCommandRunning(isRunning: boolean): void {
     this.isCommandRunning = isRunning;
-    this.onCommandRunningChange?.(isRunning);
   }
 
   public async executeCommand(command: string): Promise<number> {

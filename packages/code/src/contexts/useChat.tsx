@@ -73,9 +73,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // 记录在展开状态时被阻止的状态更新
   const pendingUpdatesRef = useRef<{
     messages?: Message[];
-    isLoading?: boolean;
     latestTotalTokens?: number;
-    isCommandRunning?: boolean;
     mcpServers?: McpServerStatus[];
     sessionId?: string;
     userInputHistory?: string[];
@@ -116,14 +114,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           if (pending.messages !== undefined) {
             setMessages([...pending.messages]);
           }
-          if (pending.isLoading !== undefined) {
-            setIsLoading(pending.isLoading);
-          }
           if (pending.latestTotalTokens !== undefined) {
             setlatestTotalTokens(pending.latestTotalTokens);
-          }
-          if (pending.isCommandRunning !== undefined) {
-            setIsCommandRunning(pending.isCommandRunning);
           }
           if (pending.mcpServers !== undefined) {
             setMcpServers([...pending.mcpServers]);
@@ -162,16 +154,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             }
           }
         },
-        onLoadingChange: (loading) => {
-          if (isMounted) {
-            if (!isExpandedRef.current) {
-              setIsLoading(loading);
-            } else {
-              // 记录pending更新
-              pendingUpdatesRef.current.isLoading = loading;
-            }
-          }
-        },
         onMcpServersChange: (servers) => {
           if (isMounted) {
             if (!isExpandedRef.current) {
@@ -199,16 +181,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             } else {
               // 记录pending更新
               pendingUpdatesRef.current.latestTotalTokens = tokens;
-            }
-          }
-        },
-        onCommandRunningChange: (running) => {
-          if (isMounted) {
-            if (!isExpandedRef.current) {
-              setIsCommandRunning(running);
-            } else {
-              // 记录pending更新
-              pendingUpdatesRef.current.isCommandRunning = running;
             }
           }
         },
@@ -314,12 +286,31 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
           // 在bash模式下，不添加用户消息到UI，直接执行命令
           // 执行bash命令会自动添加助手消息
-          await agentRef.current?.executeBashCommand(command);
+
+          // 设置 command running 状态
+          setIsCommandRunning(true);
+
+          try {
+            await agentRef.current?.executeBashCommand(command);
+          } finally {
+            // 清除 command running 状态
+            setIsCommandRunning(false);
+          }
+
           return;
         }
 
         // Handle normal AI message
-        await agentRef.current?.sendMessage(content, images);
+
+        // 设置 loading 状态
+        setIsLoading(true);
+
+        try {
+          await agentRef.current?.sendMessage(content, images);
+        } finally {
+          // 清除 loading 状态
+          setIsLoading(false);
+        }
       } catch (error) {
         console.error("Failed to send message:", error);
         // Loading state will be automatically updated by the useEffect that watches messages

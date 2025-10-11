@@ -57,14 +57,12 @@ class MockChildProcess extends EventEmitter {
 describe("BashManager", () => {
   let bashManager: BashManager;
   let mockMessageManager: MessageManager;
-  let mockOnCommandRunningChange: ReturnType<typeof vi.fn>;
   let mockChildProcess: MockChildProcess;
   const testWorkdir = "/test/workdir";
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockMessageManager = createMockMessageManager();
-    mockOnCommandRunningChange = vi.fn();
     mockChildProcess = new MockChildProcess();
 
     // Setup spawn mock to return our mock child process
@@ -75,7 +73,6 @@ describe("BashManager", () => {
 
     bashManager = new BashManager({
       messageManager: mockMessageManager,
-      onCommandRunningChange: mockOnCommandRunningChange,
     });
   });
 
@@ -92,7 +89,6 @@ describe("BashManager", () => {
     it("should create BashManager using factory function", () => {
       const manager = new BashManager({
         messageManager: createMockMessageManager(),
-        onCommandRunningChange: vi.fn(),
       });
       expect(manager).toBeInstanceOf(BashManager);
     });
@@ -292,13 +288,11 @@ describe("BashManager", () => {
 
       const executePromise = bashManager.executeCommand("test_command");
       expect(bashManager.isCommandRunning).toBe(true);
-      expect(mockOnCommandRunningChange).toHaveBeenCalledWith(true);
 
       mockChildProcess.simulateExit(0);
       await executePromise;
 
       expect(bashManager.isCommandRunning).toBe(false);
-      expect(mockOnCommandRunningChange).toHaveBeenCalledWith(false);
     });
   });
 });
