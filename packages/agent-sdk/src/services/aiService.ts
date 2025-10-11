@@ -205,9 +205,9 @@ export async function compressMessages(
   const { messages, abortSignal } = options;
 
   // 获取模型配置
-  const modelConfig = getModelConfig(AGENT_MODEL_ID, {
+  const modelConfig = getModelConfig(FAST_MODEL_ID, {
     temperature: 0.1,
-    max_tokens: 8192,
+    max_tokens: 1500,
   });
 
   try {
