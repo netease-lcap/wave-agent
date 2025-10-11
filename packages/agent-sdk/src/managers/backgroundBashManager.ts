@@ -13,9 +13,22 @@ export interface BackgroundShell {
   runtime?: number;
 }
 
+export interface BackgroundBashManagerCallbacks {
+  onShellsChange?: (shells: BackgroundShell[]) => void;
+}
+
 export class BackgroundBashManager {
   private shells = new Map<string, BackgroundShell>();
   private nextId = 1;
+  private callbacks: BackgroundBashManagerCallbacks;
+
+  constructor(callbacks: BackgroundBashManagerCallbacks = {}) {
+    this.callbacks = callbacks;
+  }
+
+  private notifyShellsChange(): void {
+    this.callbacks.onShellsChange?.(Array.from(this.shells.values()));
+  }
 
   public startShell(command: string, timeout?: number): string {
     const id = `bash_${this.nextId++}`;
@@ -41,6 +54,7 @@ export class BackgroundBashManager {
     };
 
     this.shells.set(id, shell);
+    this.notifyShellsChange();
 
     // Set up timeout if specified
     let timeoutHandle: NodeJS.Timeout | undefined;
@@ -54,10 +68,12 @@ export class BackgroundBashManager {
 
     child.stdout?.on("data", (data) => {
       shell.stdout += data.toString();
+      this.notifyShellsChange();
     });
 
     child.stderr?.on("data", (data) => {
       shell.stderr += data.toString();
+      this.notifyShellsChange();
     });
 
     child.on("exit", (code) => {
@@ -67,6 +83,7 @@ export class BackgroundBashManager {
       shell.status = "completed";
       shell.exitCode = code ?? 0;
       shell.runtime = Date.now() - startTime;
+      this.notifyShellsChange();
     });
 
     child.on("error", (error) => {
@@ -77,6 +94,7 @@ export class BackgroundBashManager {
       shell.stderr += `\nProcess error: ${error.message}`;
       shell.exitCode = 1;
       shell.runtime = Date.now() - startTime;
+      this.notifyShellsChange();
     });
 
     return id;
@@ -155,6 +173,7 @@ export class BackgroundBashManager {
 
       shell.status = "killed";
       shell.runtime = Date.now() - shell.startTime;
+      this.notifyShellsChange();
       return true;
     } catch {
       // Fallback to direct process kill
@@ -167,6 +186,7 @@ export class BackgroundBashManager {
         }, 1000);
         shell.status = "killed";
         shell.runtime = Date.now() - shell.startTime;
+        this.notifyShellsChange();
         return true;
       } catch {
         // logger.error("Failed to kill child process:", directKillError);
@@ -183,5 +203,6 @@ export class BackgroundBashManager {
       }
     }
     this.shells.clear();
+    this.notifyShellsChange();
   }
 }

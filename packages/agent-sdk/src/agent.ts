@@ -7,7 +7,10 @@ import { ToolManager } from "./managers/toolManager.js";
 import * as memory from "./services/memory.js";
 import { McpManager, McpServerStatus } from "./managers/mcpManager.js";
 import { BashManager } from "./managers/bashManager.js";
-import { BackgroundBashManager } from "./managers/backgroundBashManager.js";
+import {
+  BackgroundBashManager,
+  type BackgroundShell,
+} from "./managers/backgroundBashManager.js";
 import type { Message, Logger } from "./types.js";
 
 export interface AgentOptions {
@@ -28,6 +31,8 @@ export interface AgentCallbacks extends MessageManagerCallbacks {
   onCommandRunningChange?: (isRunning: boolean) => void;
   /** 用户输入历史回调 */
   onUserInputHistoryChange?: (history: string[]) => void;
+  /** 后台 bash shells 状态变化 */
+  onBackgroundShellsChange?: (shells: BackgroundShell[]) => void;
 }
 
 export class Agent {
@@ -47,7 +52,9 @@ export class Agent {
 
     this.callbacks = callbacks;
     this.logger = logger; // 保存传入的 logger
-    this.backgroundBashManager = new BackgroundBashManager();
+    this.backgroundBashManager = new BackgroundBashManager({
+      onShellsChange: callbacks.onBackgroundShellsChange,
+    });
     this.mcpManager = new McpManager(this.logger); // 初始化 MCP 管理器
     this.toolManager = new ToolManager(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
 

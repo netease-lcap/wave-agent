@@ -8,8 +8,12 @@ import React, {
 } from "react";
 import { useInput } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
-import type { Message, McpServerStatus } from "wave-agent-sdk";
-import type { BackgroundBashManager } from "wave-agent-sdk";
+import type {
+  Message,
+  McpServerStatus,
+  BackgroundShell,
+  BackgroundBashManager,
+} from "wave-agent-sdk";
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 
@@ -40,8 +44,12 @@ export interface ChatContextType {
   connectMcpServer: (serverName: string) => Promise<boolean>;
   disconnectMcpServer: (serverName: string) => Promise<boolean>;
   reconnectMcpServer: (serverName: string) => Promise<boolean>;
-  // Background bash manager
-  backgroundBashManager: BackgroundBashManager | null;
+  // Background bash shells
+  backgroundShells: BackgroundShell[];
+  getBackgroundShellOutput: (
+    shellId: string,
+  ) => { stdout: string; stderr: string; status: string } | null;
+  killBackgroundShell: (shellId: string) => boolean;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -79,6 +87,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     mcpServers?: McpServerStatus[];
     sessionId?: string;
     userInputHistory?: string[];
+    backgroundShells?: BackgroundShell[];
   }>({});
 
   // AI State
@@ -91,6 +100,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // MCP State
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+
+  // Background bash shells state
+  const [backgroundShells, setBackgroundShells] = useState<BackgroundShell[]>(
+    [],
+  );
 
   // Background bash manager ref
   const backgroundBashManagerRef = useRef<BackgroundBashManager | null>(null);
@@ -127,6 +141,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           }
           if (pending.userInputHistory !== undefined) {
             setUserInputHistory([...pending.userInputHistory]);
+          }
+          if (pending.backgroundShells !== undefined) {
+            setBackgroundShells([...pending.backgroundShells]);
           }
           // 清空pending更新
           pendingUpdatesRef.current = {};
@@ -223,6 +240,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
             }
           }
         },
+        onBackgroundShellsChange: (shells) => {
+          if (isMounted) {
+            if (!isExpandedRef.current) {
+              setBackgroundShells([...shells]);
+            } else {
+              // 记录pending更新
+              pendingUpdatesRef.current.backgroundShells = shells;
+            }
+          }
+        },
       };
 
       try {
@@ -313,6 +340,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     return (await agentRef.current?.reconnectMcpServer(serverName)) ?? false;
   }, []);
 
+  // Background bash 管理方法 - 委托给 Agent 的 BackgroundBashManager
+  const getBackgroundShellOutput = useCallback((shellId: string) => {
+    const manager = backgroundBashManagerRef.current;
+    if (!manager) return null;
+    return manager.getOutput(shellId);
+  }, []);
+
+  const killBackgroundShell = useCallback((shellId: string) => {
+    const manager = backgroundBashManagerRef.current;
+    if (!manager) return false;
+    return manager.killShell(shellId);
+  }, []);
+
   const contextValue: ChatContextType = {
     messages,
     isLoading,
@@ -332,7 +372,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     connectMcpServer,
     disconnectMcpServer,
     reconnectMcpServer,
-    backgroundBashManager: backgroundBashManagerRef.current,
+    backgroundShells,
+    getBackgroundShellOutput,
+    killBackgroundShell,
   };
 
   return (

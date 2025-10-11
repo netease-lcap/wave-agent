@@ -18,7 +18,8 @@ export interface BashShellManagerProps {
 export const BashShellManager: React.FC<BashShellManagerProps> = ({
   onCancel,
 }) => {
-  const { backgroundBashManager } = useChat();
+  const { backgroundShells, getBackgroundShellOutput, killBackgroundShell } =
+    useChat();
   const [shells, setShells] = useState<BashShell[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
@@ -29,38 +30,27 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
     status: string;
   } | null>(null);
 
-  // Load shells data
+  // Convert backgroundShells to local BashShell format
   useEffect(() => {
-    if (!backgroundBashManager) return;
-
-    const loadShells = () => {
-      const allShells = backgroundBashManager.getAllShells();
-      setShells(
-        allShells.map((shell) => ({
-          id: shell.id,
-          command: shell.command,
-          status: shell.status,
-          startTime: shell.startTime,
-          exitCode: shell.exitCode,
-          runtime: shell.runtime,
-        })),
-      );
-    };
-
-    loadShells();
-    const interval = setInterval(loadShells, 1000); // Refresh every second
-    return () => clearInterval(interval);
-  }, [backgroundBashManager]);
+    setShells(
+      backgroundShells.map((shell) => ({
+        id: shell.id,
+        command: shell.command,
+        status: shell.status,
+        startTime: shell.startTime,
+        exitCode: shell.exitCode,
+        runtime: shell.runtime,
+      })),
+    );
+  }, [backgroundShells]);
 
   // Load detail output for selected shell
   useEffect(() => {
-    if (!backgroundBashManager) return;
-
     if (viewMode === "detail" && detailShellId) {
-      const output = backgroundBashManager.getOutput(detailShellId);
+      const output = getBackgroundShellOutput(detailShellId);
       setDetailOutput(output);
     }
-  }, [viewMode, detailShellId, backgroundBashManager]);
+  }, [viewMode, detailShellId, getBackgroundShellOutput]);
 
   const formatDuration = (ms: number): string => {
     if (ms < 1000) return `${ms}ms`;
@@ -75,9 +65,7 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
   };
 
   const killShell = (shellId: string) => {
-    if (backgroundBashManager) {
-      backgroundBashManager.killShell(shellId);
-    }
+    killBackgroundShell(shellId);
   };
 
   useInput((input, key) => {
@@ -217,7 +205,7 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
     );
   }
 
-  if (!backgroundBashManager) {
+  if (!backgroundShells) {
     return (
       <Box
         flexDirection="column"
@@ -229,7 +217,7 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
         <Text color="cyan" bold>
           Background Bash Shells
         </Text>
-        <Text>Background bash manager not available</Text>
+        <Text>Background bash shells not available</Text>
         <Text dimColor>Press Escape to close</Text>
       </Box>
     );
