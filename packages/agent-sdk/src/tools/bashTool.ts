@@ -1,210 +1,6 @@
 import { spawn, ChildProcess } from "child_process";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 
-// Background bash shell management
-interface BackgroundShell {
-  id: string;
-  process: ChildProcess;
-  command: string;
-  startTime: number;
-  status: "running" | "completed" | "killed";
-  stdout: string;
-  stderr: string;
-  exitCode?: number;
-  runtime?: number;
-}
-
-class BackgroundBashManager {
-  private shells = new Map<string, BackgroundShell>();
-  private nextId = 1;
-
-  public startShell(command: string, timeout?: number): string {
-    const id = `bash_${this.nextId++}`;
-    const startTime = Date.now();
-
-    const child = spawn(command, {
-      shell: true,
-      stdio: "pipe",
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-      },
-    });
-
-    const shell: BackgroundShell = {
-      id,
-      process: child,
-      command,
-      startTime,
-      status: "running",
-      stdout: "",
-      stderr: "",
-    };
-
-    this.shells.set(id, shell);
-
-    // Set up timeout if specified
-    let timeoutHandle: NodeJS.Timeout | undefined;
-    if (timeout && timeout > 0) {
-      timeoutHandle = setTimeout(() => {
-        if (shell.status === "running") {
-          this.killShell(id);
-        }
-      }, timeout);
-    }
-
-    child.stdout?.on("data", (data) => {
-      shell.stdout += data.toString();
-    });
-
-    child.stderr?.on("data", (data) => {
-      shell.stderr += data.toString();
-    });
-
-    child.on("exit", (code) => {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-      shell.status = "completed";
-      shell.exitCode = code ?? 0;
-      shell.runtime = Date.now() - startTime;
-    });
-
-    child.on("error", (error) => {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
-      shell.status = "completed";
-      shell.stderr += `\nProcess error: ${error.message}`;
-      shell.exitCode = 1;
-      shell.runtime = Date.now() - startTime;
-    });
-
-    return id;
-  }
-
-  public getShell(id: string): BackgroundShell | undefined {
-    return this.shells.get(id);
-  }
-
-  public getAllShells(): BackgroundShell[] {
-    return Array.from(this.shells.values());
-  }
-
-  public getOutput(
-    id: string,
-    filter?: string,
-  ): { stdout: string; stderr: string; status: string } | null {
-    const shell = this.shells.get(id);
-    if (!shell) {
-      return null;
-    }
-
-    let stdout = shell.stdout;
-    let stderr = shell.stderr;
-
-    // Apply regex filter if provided
-    if (filter) {
-      try {
-        const regex = new RegExp(filter);
-        stdout = stdout
-          .split("\n")
-          .filter((line) => regex.test(line))
-          .join("\n");
-        stderr = stderr
-          .split("\n")
-          .filter((line) => regex.test(line))
-          .join("\n");
-      } catch {
-        // logger.warn(`Invalid filter regex: ${filter}`, error);
-      }
-    }
-
-    return {
-      stdout,
-      stderr,
-      status: shell.status,
-    };
-  }
-
-  public killShell(id: string): boolean {
-    const shell = this.shells.get(id);
-    if (!shell || shell.status !== "running") {
-      return false;
-    }
-
-    try {
-      // Try to kill process group first
-      if (shell.process.pid) {
-        process.kill(-shell.process.pid, "SIGTERM");
-
-        // Force kill after timeout
-        setTimeout(() => {
-          if (
-            shell.status === "running" &&
-            shell.process.pid &&
-            !shell.process.killed
-          ) {
-            try {
-              process.kill(-shell.process.pid, "SIGKILL");
-            } catch {
-              // logger.error("Failed to force kill process:", error);
-            }
-          }
-        }, 1000);
-      }
-
-      shell.status = "killed";
-      shell.runtime = Date.now() - shell.startTime;
-      return true;
-    } catch {
-      // Fallback to direct process kill
-      try {
-        shell.process.kill("SIGTERM");
-        setTimeout(() => {
-          if (!shell.process.killed) {
-            shell.process.kill("SIGKILL");
-          }
-        }, 1000);
-        shell.status = "killed";
-        shell.runtime = Date.now() - shell.startTime;
-        return true;
-      } catch {
-        // logger.error("Failed to kill child process:", directKillError);
-        return false;
-      }
-    }
-  }
-
-  public cleanup(): void {
-    // Kill all running shells
-    for (const [id, shell] of this.shells) {
-      if (shell.status === "running") {
-        this.killShell(id);
-      }
-    }
-    this.shells.clear();
-  }
-}
-
-// Global background bash manager instance
-const backgroundBashManager = new BackgroundBashManager();
-
-// Cleanup on process exit
-process.on("exit", () => {
-  backgroundBashManager.cleanup();
-});
-
-process.on("SIGINT", () => {
-  backgroundBashManager.cleanup();
-  process.exit(0);
-});
-
-process.on("SIGTERM", () => {
-  backgroundBashManager.cleanup();
-  process.exit(0);
-});
-
 /**
  * Bash command execution tool - supports both foreground and background execution
  */
@@ -274,6 +70,15 @@ export const bashTool: ToolPlugin = {
 
     if (runInBackground) {
       // Background execution
+      const backgroundBashManager = context?.backgroundBashManager;
+      if (!backgroundBashManager) {
+        return {
+          success: false,
+          content: "",
+          error: "Background bash manager not available",
+        };
+      }
+
       const shellId = backgroundBashManager.startShell(command, timeout);
       return {
         success: true,
@@ -450,7 +255,10 @@ export const bashOutputTool: ToolPlugin = {
       },
     },
   },
-  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (
+    args: Record<string, unknown>,
+    context?: ToolContext,
+  ): Promise<ToolResult> => {
     const bashId = args.bash_id as string;
     const filter = args.filter as string | undefined;
 
@@ -459,6 +267,15 @@ export const bashOutputTool: ToolPlugin = {
         success: false,
         content: "",
         error: "bash_id parameter is required and must be a string",
+      };
+    }
+
+    const backgroundBashManager = context?.backgroundBashManager;
+    if (!backgroundBashManager) {
+      return {
+        success: false,
+        content: "",
+        error: "Background bash manager not available",
       };
     }
 
@@ -525,7 +342,10 @@ export const killBashTool: ToolPlugin = {
       },
     },
   },
-  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (
+    args: Record<string, unknown>,
+    context?: ToolContext,
+  ): Promise<ToolResult> => {
     const shellId = args.shell_id as string;
 
     if (!shellId || typeof shellId !== "string") {
@@ -533,6 +353,15 @@ export const killBashTool: ToolPlugin = {
         success: false,
         content: "",
         error: "shell_id parameter is required and must be a string",
+      };
+    }
+
+    const backgroundBashManager = context?.backgroundBashManager;
+    if (!backgroundBashManager) {
+      return {
+        success: false,
+        content: "",
+        error: "Background bash manager not available",
       };
     }
 
@@ -573,6 +402,3 @@ export const killBashTool: ToolPlugin = {
     return shellId;
   },
 };
-
-// Export the background bash manager for use in other parts of the application
-export { backgroundBashManager };

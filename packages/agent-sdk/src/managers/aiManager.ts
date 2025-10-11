@@ -6,6 +6,7 @@ import type { Logger } from "../types.js";
 import type { ToolManager } from "./toolManager.js";
 import type { ToolContext } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
+import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
 
 export interface AIManagerOptions {
@@ -13,6 +14,7 @@ export interface AIManagerOptions {
   messageManager: MessageManager;
   toolManager: ToolManager;
   logger?: Logger;
+  backgroundBashManager?: BackgroundBashManager;
 }
 
 export class AIManager {
@@ -22,12 +24,14 @@ export class AIManager {
   private logger?: Logger;
   private toolManager: ToolManager;
   private messageManager: MessageManager;
+  private backgroundBashManager?: BackgroundBashManager;
   private onLoadingChange?: (isLoading: boolean) => void;
 
   constructor(options: AIManagerOptions) {
     this.onLoadingChange = options.onLoadingChange;
     this.messageManager = options.messageManager;
     this.toolManager = options.toolManager;
+    this.backgroundBashManager = options.backgroundBashManager;
     this.logger = options.logger;
   }
 
@@ -241,6 +245,7 @@ export class AIManager {
               // 创建工具执行上下文
               const context: ToolContext = {
                 abortSignal: toolAbortController.signal,
+                backgroundBashManager: this.backgroundBashManager,
               };
 
               // 执行工具

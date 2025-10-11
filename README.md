@@ -9,6 +9,7 @@ This is a monorepo that contains multiple packages working together to provide A
 ### 📦 Packages
 
 #### [`packages/code`](./packages/code)
+
 CLI-based code assistant with interactive terminal interface. Provides real-time chat with AI, file browsing, and session management.
 
 - **Main Command**: `wave-code` or `wave` (short alias)
@@ -16,6 +17,7 @@ CLI-based code assistant with interactive terminal interface. Provides real-time
 - **Features**: Interactive CLI, file browser, AI chat, session restoration
 
 #### [`packages/agent-sdk`](./packages/agent-sdk)
+
 Core SDK providing AI services, tools, and utilities used by the CLI frontend.
 
 - **Technology**: TypeScript, Node.js
@@ -24,21 +26,25 @@ Core SDK providing AI services, tools, and utilities used by the CLI frontend.
 ### 🚀 Quick Start
 
 1. **Install dependencies**:
+
    ```bash
    pnpm install
    ```
 
 2. **Build all packages**:
+
    ```bash
    pnpm build
    ```
 
 3. **Install the CLI globally**:
+
    ```bash
    cd packages/code && npm link
    ```
 
 4. **Set up environment variables**:
+
    ```bash
    export AIGW_TOKEN="your_token_here"
    export AIGW_URL="https://your-api-gateway-url.com"

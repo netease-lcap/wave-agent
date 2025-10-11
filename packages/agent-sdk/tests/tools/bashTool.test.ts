@@ -3,8 +3,8 @@ import {
   bashTool,
   bashOutputTool,
   killBashTool,
-  backgroundBashManager,
 } from "../../src/tools/bashTool.js";
+import { BackgroundBashManager } from "../../src/managers/backgroundBashManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import type { ChildProcess } from "child_process";
 
@@ -26,8 +26,15 @@ import { spawn } from "child_process";
 const mockSpawn = vi.mocked(spawn);
 
 describe("bashTool", () => {
+  let backgroundBashManager: BackgroundBashManager;
+  let context: ToolContext;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    backgroundBashManager = new BackgroundBashManager();
+    context = {
+      backgroundBashManager,
+    };
   });
 
   afterEach(() => {
@@ -60,9 +67,12 @@ describe("bashTool", () => {
 
       mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
 
-      const result = await bashTool.execute({
-        command: "echo hello",
-      });
+      const result = await bashTool.execute(
+        {
+          command: "echo hello",
+        },
+        context,
+      );
 
       expect(result.success).toBe(true);
       expect(result.content).toBe("test output");
@@ -90,10 +100,13 @@ describe("bashTool", () => {
 
       mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
 
-      const result = await bashTool.execute({
-        command: "long-running-command",
-        run_in_background: true,
-      });
+      const result = await bashTool.execute(
+        {
+          command: "long-running-command",
+          run_in_background: true,
+        },
+        context,
+      );
 
       expect(result.success).toBe(true);
       expect(result.content).toMatch(
@@ -103,7 +116,7 @@ describe("bashTool", () => {
     });
 
     it("should validate command parameter", async () => {
-      const result = await bashTool.execute({});
+      const result = await bashTool.execute({}, context);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
@@ -112,10 +125,13 @@ describe("bashTool", () => {
     });
 
     it("should validate timeout parameter", async () => {
-      const result = await bashTool.execute({
-        command: "echo hello",
-        timeout: 700000, // Exceeds max timeout
-      });
+      const result = await bashTool.execute(
+        {
+          command: "echo hello",
+          timeout: 700000, // Exceeds max timeout
+        },
+        context,
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
@@ -147,9 +163,12 @@ describe("bashTool", () => {
 
       mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
 
-      const result = await bashTool.execute({
-        command: "false",
-      });
+      const result = await bashTool.execute(
+        {
+          command: "false",
+        },
+        context,
+      );
 
       expect(result.success).toBe(false);
       expect(result.content).toBe("\nerror message");
@@ -173,8 +192,9 @@ describe("bashTool", () => {
       mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
 
       const abortController = new AbortController();
-      const context: ToolContext = {
+      const testContext: ToolContext = {
         abortSignal: abortController.signal,
+        backgroundBashManager,
       };
 
       // Start the command execution
@@ -182,7 +202,7 @@ describe("bashTool", () => {
         {
           command: "sleep 10",
         },
-        context,
+        testContext,
       );
 
       // Abort immediately
@@ -234,10 +254,13 @@ describe("bashTool", () => {
       mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
 
       // Start background process
-      const bashResult = await bashTool.execute({
-        command: "echo hello",
-        run_in_background: true,
-      });
+      const bashResult = await bashTool.execute(
+        {
+          command: "echo hello",
+          run_in_background: true,
+        },
+        context,
+      );
 
       expect(bashResult.success).toBe(true);
       const bashId = bashResult.content.match(/bash_(\d+)/)?.[0];
@@ -247,25 +270,31 @@ describe("bashTool", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Get output
-      const outputResult = await bashOutputTool.execute({
-        bash_id: bashId!,
-      });
+      const outputResult = await bashOutputTool.execute(
+        {
+          bash_id: bashId!,
+        },
+        context,
+      );
 
       expect(outputResult.success).toBe(true);
       expect(outputResult.content).toBe("output from bg process");
     });
 
     it("should handle non-existent shell ID", async () => {
-      const result = await bashOutputTool.execute({
-        bash_id: "bash_999",
-      });
+      const result = await bashOutputTool.execute(
+        {
+          bash_id: "bash_999",
+        },
+        context,
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Background shell with ID bash_999 not found");
     });
 
     it("should validate bash_id parameter", async () => {
-      const result = await bashOutputTool.execute({});
+      const result = await bashOutputTool.execute({}, context);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
@@ -302,18 +331,24 @@ describe("bashTool", () => {
       mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
 
       // Start background process
-      const bashResult = await bashTool.execute({
-        command: "sleep 100",
-        run_in_background: true,
-      });
+      const bashResult = await bashTool.execute(
+        {
+          command: "sleep 100",
+          run_in_background: true,
+        },
+        context,
+      );
 
       const bashId = bashResult.content.match(/bash_(\d+)/)?.[0];
       expect(bashId).toBeDefined();
 
       // Kill the process
-      const killResult = await killBashTool.execute({
-        shell_id: bashId!,
-      });
+      const killResult = await killBashTool.execute(
+        {
+          shell_id: bashId!,
+        },
+        context,
+      );
 
       expect(killResult.success).toBe(true);
       expect(killResult.content).toBe(
@@ -322,9 +357,12 @@ describe("bashTool", () => {
     });
 
     it("should handle non-existent shell ID", async () => {
-      const result = await killBashTool.execute({
-        shell_id: "bash_999",
-      });
+      const result = await killBashTool.execute(
+        {
+          shell_id: "bash_999",
+        },
+        context,
+      );
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Background shell with ID bash_999 not found");
@@ -351,10 +389,13 @@ describe("bashTool", () => {
       mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
 
       // Start background process that completes quickly
-      const bashResult = await bashTool.execute({
-        command: "echo hello",
-        run_in_background: true,
-      });
+      const bashResult = await bashTool.execute(
+        {
+          command: "echo hello",
+          run_in_background: true,
+        },
+        context,
+      );
 
       const bashId = bashResult.content.match(/bash_(\d+)/)?.[0];
       expect(bashId).toBeDefined();
@@ -363,16 +404,19 @@ describe("bashTool", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Try to kill completed process
-      const killResult = await killBashTool.execute({
-        shell_id: bashId!,
-      });
+      const killResult = await killBashTool.execute(
+        {
+          shell_id: bashId!,
+        },
+        context,
+      );
 
       expect(killResult.success).toBe(false);
       expect(killResult.error).toContain("is not running");
     });
 
     it("should validate shell_id parameter", async () => {
-      const result = await killBashTool.execute({});
+      const result = await killBashTool.execute({}, context);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(

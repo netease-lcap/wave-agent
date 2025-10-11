@@ -6,6 +6,7 @@ export * from "./services/session.js";
 // Export all managers
 export * from "./agent.js";
 export * from "./managers/bashManager.js";
+export * from "./managers/backgroundBashManager.js";
 export * from "./managers/mcpManager.js";
 export * from "./managers/toolManager.js";
 

@@ -7,6 +7,7 @@ import { ToolManager } from "./managers/toolManager.js";
 import * as memory from "./services/memory.js";
 import { McpManager, McpServerStatus } from "./managers/mcpManager.js";
 import { BashManager } from "./managers/bashManager.js";
+import { BackgroundBashManager } from "./managers/backgroundBashManager.js";
 import type { Message, Logger } from "./types.js";
 
 export interface AgentOptions {
@@ -35,6 +36,7 @@ export class Agent {
   private callbacks: AgentCallbacks;
 
   private bashManager: BashManager | null = null;
+  private backgroundBashManager: BackgroundBashManager;
   private logger?: Logger; // 添加可选的 logger 属性
   private toolManager: ToolManager; // 添加工具注册表实例
   private mcpManager: McpManager; // 添加 MCP 管理器实例
@@ -45,6 +47,7 @@ export class Agent {
 
     this.callbacks = callbacks;
     this.logger = logger; // 保存传入的 logger
+    this.backgroundBashManager = new BackgroundBashManager();
     this.mcpManager = new McpManager(this.logger); // 初始化 MCP 管理器
     this.toolManager = new ToolManager(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
 
@@ -78,6 +81,7 @@ export class Agent {
       messageManager: this.messageManager,
       toolManager: this.toolManager,
       logger: this.logger,
+      backgroundBashManager: this.backgroundBashManager,
     });
 
     // Initialize bash manager
@@ -86,8 +90,20 @@ export class Agent {
       messageManager: this.messageManager,
     });
 
-    // Note: Process termination handling is now done at the CLI level
-    // Note: MCP servers and session restoration are handled in initialize()
+    // Set up process cleanup handlers for background bash manager
+    const cleanup = () => {
+      this.backgroundBashManager.cleanup();
+    };
+
+    process.on("exit", cleanup);
+    process.on("SIGINT", () => {
+      cleanup();
+      process.exit(0);
+    });
+    process.on("SIGTERM", () => {
+      cleanup();
+      process.exit(0);
+    });
   }
 
   // 公开的 getter 方法
@@ -115,6 +131,11 @@ export class Agent {
   /** 获取bash命令执行状态 */
   public get isCommandRunning(): boolean {
     return this.bashManager?.isCommandRunning ?? false;
+  }
+
+  /** 获取后台 bash shell 管理器 */
+  public getBackgroundBashManager(): BackgroundBashManager {
+    return this.backgroundBashManager;
   }
 
   /** 静态异步工厂方法 */
@@ -187,6 +208,8 @@ export class Agent {
     this.messageManager.saveSession();
     this.abortAIMessage();
     this.abortBashCommand();
+    // Cleanup background bash manager
+    this.backgroundBashManager.cleanup();
     // Cleanup MCP connections
     await this.mcpManager.cleanup();
   }

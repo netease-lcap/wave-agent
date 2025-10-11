@@ -9,6 +9,7 @@ import React, {
 import { useInput } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
 import type { Message, McpServerStatus } from "wave-agent-sdk";
+import type { BackgroundBashManager } from "wave-agent-sdk";
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 
@@ -39,6 +40,8 @@ export interface ChatContextType {
   connectMcpServer: (serverName: string) => Promise<boolean>;
   disconnectMcpServer: (serverName: string) => Promise<boolean>;
   reconnectMcpServer: (serverName: string) => Promise<boolean>;
+  // Background bash manager
+  backgroundBashManager: BackgroundBashManager | null;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -88,6 +91,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // MCP State
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+
+  // Background bash manager ref
+  const backgroundBashManagerRef = useRef<BackgroundBashManager | null>(null);
 
   const agentRef = useRef<Agent | null>(null);
 
@@ -241,6 +247,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           // Get initial MCP servers state
           const mcpServers = agent.getMcpServers?.() || [];
           setMcpServers(mcpServers);
+
+          // Get background bash manager
+          backgroundBashManagerRef.current = agent.getBackgroundBashManager();
         }
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
@@ -323,6 +332,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     connectMcpServer,
     disconnectMcpServer,
     reconnectMcpServer,
+    backgroundBashManager: backgroundBashManagerRef.current,
   };
 
   return (

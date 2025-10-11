@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { backgroundBashManager } from "wave-agent-sdk";
+import { useChat } from "../contexts/useChat.js";
 
 interface BashShell {
   id: string;
@@ -18,6 +18,7 @@ export interface BashShellManagerProps {
 export const BashShellManager: React.FC<BashShellManagerProps> = ({
   onCancel,
 }) => {
+  const { backgroundBashManager } = useChat();
   const [shells, setShells] = useState<BashShell[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
@@ -30,6 +31,8 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
 
   // Load shells data
   useEffect(() => {
+    if (!backgroundBashManager) return;
+
     const loadShells = () => {
       const allShells = backgroundBashManager.getAllShells();
       setShells(
@@ -47,15 +50,17 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
     loadShells();
     const interval = setInterval(loadShells, 1000); // Refresh every second
     return () => clearInterval(interval);
-  }, []);
+  }, [backgroundBashManager]);
 
   // Load detail output for selected shell
   useEffect(() => {
+    if (!backgroundBashManager) return;
+
     if (viewMode === "detail" && detailShellId) {
       const output = backgroundBashManager.getOutput(detailShellId);
       setDetailOutput(output);
     }
-  }, [viewMode, detailShellId]);
+  }, [viewMode, detailShellId, backgroundBashManager]);
 
   const formatDuration = (ms: number): string => {
     if (ms < 1000) return `${ms}ms`;
@@ -70,7 +75,9 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
   };
 
   const killShell = (shellId: string) => {
-    backgroundBashManager.killShell(shellId);
+    if (backgroundBashManager) {
+      backgroundBashManager.killShell(shellId);
+    }
   };
 
   useInput((input, key) => {
@@ -206,6 +213,24 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
             {shell.status === "running" ? "k to kill · " : ""}Esc to go back
           </Text>
         </Box>
+      </Box>
+    );
+  }
+
+  if (!backgroundBashManager) {
+    return (
+      <Box
+        flexDirection="column"
+        borderStyle="single"
+        borderColor="cyan"
+        padding={1}
+        marginBottom={1}
+      >
+        <Text color="cyan" bold>
+          Background Bash Shells
+        </Text>
+        <Text>Background bash manager not available</Text>
+        <Text dimColor>Press Escape to close</Text>
       </Box>
     );
   }
