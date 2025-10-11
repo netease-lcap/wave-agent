@@ -5,8 +5,7 @@
   "description": "Monorepo for Wave Code CLI and Agent SDK",
   "type": "module",
   "workspaces": [
-    "code",
-    "agent-sdk"
+    "packages/*"
   ],
   "scripts": {
     "build": "pnpm -r build",
@@ -20,6 +19,8 @@
     "@eslint/js": "^9.33.0",
     "@types/node": "^20.0.0",
     "eslint": "^9.33.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^15.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.5",
@@ -29,7 +30,7 @@
   },
   "lint-staged": {
     "**/*.{js,ts,tsx}": [
-      "eslint --fix",
+      "pnpm lint --fix",
       "prettier --write"
     ],
     "**/*.json": [
