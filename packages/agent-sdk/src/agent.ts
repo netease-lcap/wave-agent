@@ -92,21 +92,6 @@ export class Agent {
     this.bashManager = new BashManager({
       messageManager: this.messageManager,
     });
-
-    // Set up process cleanup handlers for background bash manager
-    const cleanup = () => {
-      this.backgroundBashManager.cleanup();
-    };
-
-    process.on("exit", cleanup);
-    process.on("SIGINT", () => {
-      cleanup();
-      process.exit(0);
-    });
-    process.on("SIGTERM", () => {
-      cleanup();
-      process.exit(0);
-    });
   }
 
   // 公开的 getter 方法
