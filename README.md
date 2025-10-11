@@ -1,96 +1,201 @@
-# wave-code
+# Wave Agent
 
-一个基于 Ink 和 React 的终端编程代理。
+A monorepo containing AI-powered development tools built with React and modern web technologies.
 
-## 环境配置
+## Project Structure
+
+This is a monorepo that contains multiple packages working together to provide AI-assisted development tools:
+
+### 📦 Packages
+
+#### [`packages/code`](./packages/code)
+CLI-based code assistant with interactive terminal interface. Provides real-time chat with AI, file browsing, and session management.
+
+- **Main Command**: `wave-code` or `wave` (short alias)
+- **Technology**: React, Ink, Node.js
+- **Features**: Interactive CLI, file browser, AI chat, session restoration
+
+#### [`packages/agent-sdk`](./packages/agent-sdk)
+Core SDK providing AI services, tools, and utilities used by the CLI frontend.
+
+- **Technology**: TypeScript, Node.js
+- **Features**: AI model integration, tool system, memory management
+
+### 🚀 Quick Start
+
+1. **Install dependencies**:
+   ```bash
+   pnpm install
+   ```
+
+2. **Build all packages**:
+   ```bash
+   pnpm build
+   ```
+
+3. **Install the CLI globally**:
+   ```bash
+   cd packages/code && npm link
+   ```
+
+4. **Set up environment variables**:
+   ```bash
+   export AIGW_TOKEN="your_token_here"
+   export AIGW_URL="https://your-api-gateway-url.com"
+   ```
+
+5. **Start using**:
+   ```bash
+   wave  # or wave-code
+   ```
+
+## Development
+
+### Prerequisites
+
+- Node.js 18+
+- pnpm (preferred package manager)
+
+### Setup
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd wave-agent
+
+# Install dependencies for all packages
+pnpm install
+
+# Build all packages
+pnpm build
+```
+
+### Working with Packages
+
+```bash
+# Work on a specific package
+cd packages/code
+pnpm dev
+
+# Run tests for all packages
+pnpm test
+
+# Build specific package
+cd packages/agent-sdk
+pnpm build
+```
+
+### Package Dependencies
+
+- `packages/code` depends on `packages/agent-sdk`
+- After modifying `agent-sdk`, run `pnpm build` in that package before testing changes in `code`
+
+## Environment Configuration
 
 在使用前，需要配置以下环境变量用于AI模型鉴权：
 
-### 必需环境变量
+### Required Environment Variables
 
 ```bash
-# AI网关访问令牌（必需）
+# AI Gateway access token (required)
 export AIGW_TOKEN="your_token_here"
 
-# AI网关API地址（必需）
+# AI Gateway API URL (required)
 export AIGW_URL="https://your-api-gateway-url.com"
 ```
 
-### 可选环境变量
+### Optional Environment Variables
 
 ```bash
-# 指定使用的AI模型（可选，默认使用系统配置的模型）
+# Specify AI model (optional, defaults to system configured model)
 export AIGW_MODEL="gemini-2.5-flash"
 
-# 指定快速AI模型（可选，用于快速响应场景）
+# Specify fast AI model (optional, for quick response scenarios)
 export AIGW_FAST_MODEL="gemini-1.5-flash"
 
-# 日志级别（可选，默认为info）
+# Log level (optional, defaults to info)
 export LOG_LEVEL="debug"
 
-# 日志文件路径（可选）
+# Log file path (optional)
 export LOG_FILE="/path/to/your/logfile.log"
 
-# 最大日志文件大小（可选，默认10MB）
+# Maximum log file size (optional, defaults to 10MB)
 export LOG_MAX_FILE_SIZE="10485760"
 
-# Token限制（可选，默认64000）
+# Token limit (optional, defaults to 64000)
 export TOKEN_LIMIT="64000"
 
-# 禁用原始模式（可选，用于测试）
+# Disable raw mode (optional, for testing)
 export DISABLE_RAW_MODE="false"
 ```
 
-### 环境变量设置方式
+### Setting Environment Variables
 
-#### 方法1：直接在命令行设置
+#### Method 1: Set in command line
 
 ```bash
 export AIGW_TOKEN="your_token_here"
 export AIGW_URL="https://your-api-gateway-url.com"
-wave-code
+wave  # or wave-code
 ```
 
-#### 方法2：使用.env文件
+#### Method 2: Use .env file
 
-创建 `.env` 文件并添加：
+Create a `.env` file and add:
 
 ```
 AIGW_TOKEN=your_token_here
 AIGW_URL=https://your-api-gateway-url.com
 ```
 
-#### 方法3：在shell配置文件中设置
+#### Method 3: Set in shell configuration
 
-将环境变量添加到 `~/.bashrc`、`~/.zshrc` 或相应的shell配置文件中。
+Add environment variables to `~/.bashrc`, `~/.zshrc`, or your corresponding shell configuration file.
 
-⚠️ **重要提示**：不设置 `AIGW_TOKEN` 和 `AIGW_URL` 环境变量，模型将无法进行鉴权，应用无法正常工作。
+⚠️ **Important**: Without setting `AIGW_TOKEN` and `AIGW_URL` environment variables, the model cannot authenticate and the application will not work properly.
 
-## 安装
+## Installation
 
-### 全局安装
+### Global Installation
 
 ```bash
 npm install -g wave-code
 ```
 
-## 使用方法
+## Usage
 
-### 命令行使用
+### Command Line Usage
 
 ```bash
-# 打开当前目录
-wave-code
+# Open current directory
+wave  # or wave-code
 
-wave-code --help
+# Show help
+wave --help  # or wave-code --help
 ```
 
-## 文档
+Both `wave` and `wave-code` commands are available and provide identical functionality.
 
-- [日志系统](docs/logging.md) - 日志配置和调试方法
-- [图片粘贴功能](docs/image-paste.md) - 图片粘贴和处理功能
-- [分页功能](docs/PAGINATION.md) - 文件列表分页实现
+## Documentation
 
-## 兼容性说明
+- [Logging System](docs/logging.md) - Log configuration and debugging methods
+- [Image Paste Feature](docs/image-paste.md) - Image paste and processing functionality
+- [Pagination Feature](docs/PAGINATION.md) - File list pagination implementation
 
-- 所有日志都写入到文件中，不输出到控制台
+## Compatibility
+
+- All logs are written to files, not output to console
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests (`pnpm test`)
+5. Commit your changes (`git commit -m 'Add some amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+## License
+
+MIT

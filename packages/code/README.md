@@ -21,6 +21,8 @@ npm install wave-code
 
 ## Usage
 
+### Full Command
+
 ```bash
 # Start the CLI
 wave-code
@@ -34,6 +36,29 @@ wave-code --restore session_id
 # List available sessions
 wave-code --list-sessions
 ```
+
+### Short Command (wave)
+
+For convenience, you can also use the shorter `wave` command:
+
+```bash
+# Start the CLI (equivalent to wave-code)
+wave
+
+# Continue from last session
+wave --continue
+
+# Restore specific session
+wave --restore session_id
+
+# List available sessions
+wave --list-sessions
+
+# Show help
+wave --help
+```
+
+The `wave` command is an alias for `wave-code` and supports all the same options and functionality.
 
 ## Development
 
