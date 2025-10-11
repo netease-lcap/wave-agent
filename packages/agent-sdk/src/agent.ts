@@ -189,6 +189,11 @@ export class Agent {
     this.aiManager.abortAIMessage();
   }
 
+  /** 执行 bash 命令 */
+  public async executeBashCommand(command: string): Promise<void> {
+    await this.bashManager?.executeCommand(command);
+  }
+
   /** 清空消息和输入历史 */
   public clearMessages(): void {
     this.messageManager.clearMessages();
@@ -225,37 +230,7 @@ export class Agent {
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
   ): Promise<void> {
-    // 检查是否有内容可以发送（文本内容或图片附件）
-    const hasTextContent = content.trim();
-    const hasImageAttachments = images && images.length > 0;
-
-    if (!hasTextContent && !hasImageAttachments) return;
-
     try {
-      // Handle memory mode - 检查是否是记忆消息（以#开头且只有一行）
-      if (content.startsWith("#") && !content.includes("\n")) {
-        const memoryText = content.substring(1).trim();
-        if (!memoryText) return;
-
-        // 在记忆模式下，不添加用户消息，只等待用户选择记忆类型后添加助手消息
-        // 不自动保存，等待用户选择记忆类型
-        return;
-      }
-
-      // Handle bash mode - 检查是否是bash命令（以!开头且只有一行）
-      if (content.startsWith("!") && !content.includes("\n")) {
-        const command = content.substring(1).trim();
-        if (!command) return;
-
-        // 添加用户消息到历史记录（但不显示在UI中）
-        this.addToInputHistory(content);
-
-        // 在bash模式下，不添加用户消息到UI，直接执行命令
-        // 执行bash命令会自动添加助手消息
-        await this.bashManager?.executeCommand(command);
-        return;
-      }
-
       // Handle normal AI message
       // 添加用户消息到历史记录
       this.addToInputHistory(content);

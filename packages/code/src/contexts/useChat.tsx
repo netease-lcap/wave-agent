@@ -281,13 +281,49 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     };
   }, []);
 
-  // 发送消息函数 (简化，逻辑移动到 Agent)
+  // 发送消息函数 (包含判断逻辑)
   const sendMessage = useCallback(
     async (
       content: string,
       images?: Array<{ path: string; mimeType: string }>,
     ) => {
-      await agentRef.current?.sendMessage(content, images);
+      // 检查是否有内容可以发送（文本内容或图片附件）
+      const hasTextContent = content.trim();
+      const hasImageAttachments = images && images.length > 0;
+
+      if (!hasTextContent && !hasImageAttachments) return;
+
+      try {
+        // Handle memory mode - 检查是否是记忆消息（以#开头且只有一行）
+        if (content.startsWith("#") && !content.includes("\n")) {
+          const memoryText = content.substring(1).trim();
+          if (!memoryText) return;
+
+          // 在记忆模式下，不添加用户消息，只等待用户选择记忆类型后添加助手消息
+          // 不自动保存，等待用户选择记忆类型
+          return;
+        }
+
+        // Handle bash mode - 检查是否是bash命令（以!开头且只有一行）
+        if (content.startsWith("!") && !content.includes("\n")) {
+          const command = content.substring(1).trim();
+          if (!command) return;
+
+          // 添加用户消息到历史记录（但不显示在UI中）
+          agentRef.current?.addToInputHistory(content);
+
+          // 在bash模式下，不添加用户消息到UI，直接执行命令
+          // 执行bash命令会自动添加助手消息
+          await agentRef.current?.executeBashCommand(command);
+          return;
+        }
+
+        // Handle normal AI message
+        await agentRef.current?.sendMessage(content, images);
+      } catch (error) {
+        console.error("Failed to send message:", error);
+        // Loading state will be automatically updated by the useEffect that watches messages
+      }
     },
     [],
   );
