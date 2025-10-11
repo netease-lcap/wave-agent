@@ -206,7 +206,7 @@ describe("MessageList Pagination", () => {
       // Should show total messages, current page info, and navigation hints
       expect(lastFrame()).toContain("Messages 30 Page");
       expect(lastFrame()).toMatch(/Page \d+\/\d+/);
-      expect(lastFrame()).toContain("Ctrl+B/F");
+      expect(lastFrame()).toContain("Ctrl+U/D");
       expect(lastFrame()).toContain("Navigate");
     });
 
@@ -218,7 +218,7 @@ describe("MessageList Pagination", () => {
       const { lastFrame } = render(<MessageList messages={messages} />);
 
       // Navigation hints are always shown when there are messages
-      expect(lastFrame()).toContain("Ctrl+B/F");
+      expect(lastFrame()).toContain("Ctrl+U/D");
       expect(lastFrame()).toContain("Navigate");
       expect(lastFrame()).toContain("Messages 3 Page 1/1");
     });

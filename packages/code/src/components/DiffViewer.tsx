@@ -252,7 +252,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
       if (lines.length > MAX_DISPLAY_LINES) {
         const truncatedLines = lines.slice(0, MAX_DISPLAY_LINES);
         truncatedLines.push({
-          content: `... (${lines.length - MAX_DISPLAY_LINES} more lines truncated, press Ctrl+R to expand)`,
+          content: `... (${lines.length - MAX_DISPLAY_LINES} more lines truncated, press Ctrl+O to expand)`,
           type: "separator",
         });
         return truncatedLines;

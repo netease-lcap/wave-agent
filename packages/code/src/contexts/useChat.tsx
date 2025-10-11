@@ -103,9 +103,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   const agentRef = useRef<Agent | null>(null);
 
-  // 监听 Ctrl+R 快捷键切换折叠/展开状态
+  // 监听 Ctrl+O 快捷键切换折叠/展开状态
   useInput((input, key) => {
-    if (key.ctrl && input === "r") {
+    if (key.ctrl && input === "o") {
       setIsExpanded((prev) => {
         const newValue = !prev;
         isExpandedRef.current = newValue;

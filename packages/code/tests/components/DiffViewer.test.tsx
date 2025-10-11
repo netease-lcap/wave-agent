@@ -50,7 +50,7 @@ describe("DiffViewer", () => {
 
       // Should show truncation message
       expect(lastFrame()).toContain("more lines truncated");
-      expect(lastFrame()).toContain("press Ctrl+R to expand");
+      expect(lastFrame()).toContain("press Ctrl+O to expand");
     });
 
     it("should not truncate content when expanded", () => {
@@ -61,7 +61,7 @@ describe("DiffViewer", () => {
 
       // Should not show truncation message
       expect(lastFrame()).not.toContain("more lines truncated");
-      expect(lastFrame()).not.toContain("press Ctrl+R to expand");
+      expect(lastFrame()).not.toContain("press Ctrl+O to expand");
     });
 
     it("should handle small diffs without truncation regardless of expand state", () => {
