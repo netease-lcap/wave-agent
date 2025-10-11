@@ -4,15 +4,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
 import type { Message } from "wave-agent-sdk";
 
-// Mock useChat hook
-vi.mock("../../src/contexts/useChat", () => ({
-  useChat: vi.fn(() => ({
-    isLoading: false,
-    isCommandRunning: false,
-    latestTotalTokens: 1000,
-  })),
-}));
-
 // Mock the constants module BEFORE any imports - override MESSAGES_PER_PAGE
 vi.mock("../../src/utils/constants", () => ({
   MESSAGES_PER_PAGE: 10, // Override for testing
@@ -46,7 +37,7 @@ describe("MessageList Pagination", () => {
   });
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Clear any potential state
   });
 
   describe("Pagination scenarios", () => {
@@ -55,7 +46,15 @@ describe("MessageList Pagination", () => {
         createMessage("user", `Message ${i + 1}`, i + 1),
       );
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // With 10 per page: 23 messages = Page 1 (3 msgs), Page 2 (10 msgs), Page 3 (10 msgs)
       // Default shows last page (page 3) with messages 14-23
@@ -79,7 +78,15 @@ describe("MessageList Pagination", () => {
         createMessage("user", `Msg ${i + 1}`, i + 1),
       );
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // With 10 per page: 15 messages = Page 1 (5 msgs), Page 2 (10 msgs)
       // Default shows last page (page 2) with messages 6-15
@@ -103,7 +110,15 @@ describe("MessageList Pagination", () => {
         createMessage("user", `Test ${i + 1}`, i + 1),
       );
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // With 10 per page: 20 messages = Page 1 (10 msgs), Page 2 (10 msgs)
       // Default shows last page (page 2) with messages 11-20
@@ -130,7 +145,15 @@ describe("MessageList Pagination", () => {
         createMessage("user", `Bulk ${i + 1}`, i + 1),
       );
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // With 10 per page: 47 messages = Page 1 (7 msgs), Page 2-5 (10 msgs each)
       // Default shows last page (page 5) with messages 38-47
@@ -149,7 +172,15 @@ describe("MessageList Pagination", () => {
         createMessage("user", `Short ${i + 1}`, i + 1),
       );
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // Should show all messages on page 1 with correct numbering
       expect(lastFrame()).toContain("Short 1 - Message 1");
@@ -165,7 +196,15 @@ describe("MessageList Pagination", () => {
         createMessage("user", `Full ${i + 1}`, i + 1),
       );
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // Should show all messages on page 1
       expect(lastFrame()).toContain("Full 1 - Message 1");
@@ -179,7 +218,15 @@ describe("MessageList Pagination", () => {
 
     it("should handle single message", () => {
       const messages = [createMessage("user", "Only", 1)];
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       expect(lastFrame()).toContain("Only - Message 1");
       expect(lastFrame()).toContain("Messages 1 Page 1/1");
@@ -188,7 +235,15 @@ describe("MessageList Pagination", () => {
 
     it("should handle empty message list", () => {
       const messages: Message[] = [];
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // Should show welcome message when no messages
       expect(lastFrame()).toContain("Welcome to WAVE Code Assistant!");
@@ -201,7 +256,15 @@ describe("MessageList Pagination", () => {
         createMessage("user", "Test", i + 1),
       );
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // Should show total messages, current page info, and navigation hints
       expect(lastFrame()).toContain("Messages 30 Page");
@@ -215,7 +278,15 @@ describe("MessageList Pagination", () => {
         createMessage("user", "Test", i + 1),
       );
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // Navigation hints are always shown when there are messages
       expect(lastFrame()).toContain("Ctrl+U/D");
@@ -230,7 +301,15 @@ describe("MessageList Pagination", () => {
         createMessage("user", `Unique content ${i}`, i + 1),
       );
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // With 10 per page: 22 messages = Page 1 (2 msgs), Page 2 (10 msgs), Page 3 (10 msgs)
       // Default shows last page (Page 3) with messages 13-22
@@ -250,7 +329,15 @@ describe("MessageList Pagination", () => {
         return createMessage(role, `Test ${i + 1}`, i + 1);
       });
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // With 12 messages: Page 1 (2 msgs), Page 2 (10 msgs)
       // Default shows page 2 with messages 3-12
@@ -279,7 +366,15 @@ describe("MessageList Pagination", () => {
       const messages = Array.from({ length: 20 }, (_, i) =>
         createComplexMessage(i + 1),
       );
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       // Should show pagination and complex content on current page
       expect(lastFrame()).toContain("Messages 20 Page");

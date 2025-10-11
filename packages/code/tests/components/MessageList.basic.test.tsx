@@ -4,15 +4,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
 import type { Message } from "wave-agent-sdk";
 
-// Mock useChat hook
-vi.mock("../../src/contexts/useChat", () => ({
-  useChat: vi.fn(() => ({
-    isLoading: false,
-    isCommandRunning: false,
-    latestTotalTokens: 1000,
-  })),
-}));
-
 // Mock usePagination hook using vi.hoisted
 const mockUsePagination = vi.hoisted(() => vi.fn());
 
@@ -58,7 +49,15 @@ describe("MessageList Component", () => {
 
   describe("Empty state", () => {
     it("should display welcome message when no messages", () => {
-      const { lastFrame } = render(<MessageList messages={[]} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={[]}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       expect(lastFrame()).toContain("Welcome to WAVE Code Assistant!");
     });
@@ -67,7 +66,15 @@ describe("MessageList Component", () => {
   describe("Basic message rendering", () => {
     it("should render a single message", () => {
       const messages = [createMessage("user", "Hello", 1)];
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       expect(lastFrame()).toContain("👤 You");
       expect(lastFrame()).toContain("Hello - Message 1");
@@ -96,7 +103,15 @@ describe("MessageList Component", () => {
         createMessage("user", "Hello", 1),
         createMessage("assistant", "Hi there", 2),
       ];
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       expect(lastFrame()).toContain("👤 You");
       expect(lastFrame()).toContain("🤖 Assistant");
@@ -111,7 +126,15 @@ describe("MessageList Component", () => {
           blocks: [{ type: "error", content: "Something went wrong" }],
         },
       ];
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       expect(lastFrame()).toContain("❌ Error: Something went wrong");
     });
@@ -138,7 +161,15 @@ describe("MessageList Component", () => {
         createMessage("user", "First", 1),
         createMessage("assistant", "Second", 2),
       ];
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
 
       expect(lastFrame()).toContain("👤 You #1");
       expect(lastFrame()).toContain("🤖 Assistant #2");
@@ -166,7 +197,13 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={messagesWithImage} isLoading={false} />,
+        <MessageList
+          messages={messagesWithImage}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
       );
 
       const output = lastFrame();
@@ -193,7 +230,13 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={messagesWithImages} isLoading={false} />,
+        <MessageList
+          messages={messagesWithImages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
       );
 
       const output = lastFrame();
@@ -217,7 +260,13 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={messagesWithEmptyImage} isLoading={false} />,
+        <MessageList
+          messages={messagesWithEmptyImage}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
       );
 
       const output = lastFrame();
@@ -244,7 +293,13 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={imageOnlyMessage} isLoading={false} />,
+        <MessageList
+          messages={imageOnlyMessage}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
       );
 
       const output = lastFrame();

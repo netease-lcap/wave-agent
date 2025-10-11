@@ -68,17 +68,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Message Display State
   const [isExpanded, setIsExpanded] = useState(false);
-  const isExpandedRef = useRef(isExpanded);
-
-  // 记录在展开状态时被阻止的状态更新
-  const pendingUpdatesRef = useRef<{
-    messages?: Message[];
-    latestTotalTokens?: number;
-    mcpServers?: McpServerStatus[];
-    sessionId?: string;
-    userInputHistory?: string[];
-    backgroundShells?: BackgroundShell[];
-  }>({});
 
   // AI State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -104,37 +93,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // 监听 Ctrl+O 快捷键切换折叠/展开状态
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
-      setIsExpanded((prev) => {
-        const newValue = !prev;
-        isExpandedRef.current = newValue;
-
-        // 如果从展开状态切换到收起状态，应用pending的更新
-        if (prev && !newValue) {
-          const pending = pendingUpdatesRef.current;
-          if (pending.messages !== undefined) {
-            setMessages([...pending.messages]);
-          }
-          if (pending.latestTotalTokens !== undefined) {
-            setlatestTotalTokens(pending.latestTotalTokens);
-          }
-          if (pending.mcpServers !== undefined) {
-            setMcpServers([...pending.mcpServers]);
-          }
-          if (pending.sessionId !== undefined) {
-            setSessionId(pending.sessionId);
-          }
-          if (pending.userInputHistory !== undefined) {
-            setUserInputHistory([...pending.userInputHistory]);
-          }
-          if (pending.backgroundShells !== undefined) {
-            setBackgroundShells([...pending.backgroundShells]);
-          }
-          // 清空pending更新
-          pendingUpdatesRef.current = {};
-        }
-
-        return newValue;
-      });
+      setIsExpanded((prev) => !prev);
     }
   });
 
@@ -146,62 +105,32 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       const callbacks: AgentCallbacks = {
         onMessagesChange: (newMessages) => {
           if (isMounted) {
-            if (!isExpandedRef.current) {
-              setMessages([...newMessages]);
-            } else {
-              // 记录pending更新
-              pendingUpdatesRef.current.messages = newMessages;
-            }
+            setMessages([...newMessages]);
           }
         },
         onMcpServersChange: (servers) => {
           if (isMounted) {
-            if (!isExpandedRef.current) {
-              setMcpServers([...servers]);
-            } else {
-              // 记录pending更新
-              pendingUpdatesRef.current.mcpServers = servers;
-            }
+            setMcpServers([...servers]);
           }
         },
         onSessionIdChange: (sessionId) => {
           if (isMounted) {
-            if (!isExpandedRef.current) {
-              setSessionId(sessionId);
-            } else {
-              // 记录pending更新
-              pendingUpdatesRef.current.sessionId = sessionId;
-            }
+            setSessionId(sessionId);
           }
         },
         onLatestTotalTokensChange: (tokens) => {
           if (isMounted) {
-            if (!isExpandedRef.current) {
-              setlatestTotalTokens(tokens);
-            } else {
-              // 记录pending更新
-              pendingUpdatesRef.current.latestTotalTokens = tokens;
-            }
+            setlatestTotalTokens(tokens);
           }
         },
         onUserInputHistoryChange: (history) => {
           if (isMounted) {
-            if (!isExpandedRef.current) {
-              setUserInputHistory([...history]);
-            } else {
-              // 记录pending更新
-              pendingUpdatesRef.current.userInputHistory = history;
-            }
+            setUserInputHistory([...history]);
           }
         },
         onBackgroundShellsChange: (shells) => {
           if (isMounted) {
-            if (!isExpandedRef.current) {
-              setBackgroundShells([...shells]);
-            } else {
-              // 记录pending更新
-              pendingUpdatesRef.current.backgroundShells = shells;
-            }
+            setBackgroundShells([...shells]);
           }
         },
       };

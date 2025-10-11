@@ -7,7 +7,6 @@ import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
 import { usePagination } from "../hooks/usePagination.js";
 import { processMessageGroups } from "wave-agent-sdk";
-import { useChat } from "../contexts/useChat.js";
 
 // 渲染单个消息的函数
 const renderMessageItem = (
@@ -95,12 +94,18 @@ const renderMessageItem = (
 export interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
+  isCommandRunning?: boolean;
+  latestTotalTokens?: number;
+  isExpanded?: boolean;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages }) => {
-  const { isLoading, isCommandRunning, latestTotalTokens, isExpanded } =
-    useChat();
-
+export const MessageList: React.FC<MessageListProps> = ({
+  messages,
+  isLoading = false,
+  isCommandRunning = false,
+  latestTotalTokens = 0,
+  isExpanded = false,
+}) => {
   // 预处理消息，添加分组信息（仅用于显示）
   const processedMessages = useMemo(
     () => processMessageGroups(messages),

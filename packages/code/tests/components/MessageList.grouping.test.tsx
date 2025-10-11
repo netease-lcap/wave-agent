@@ -1,17 +1,8 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
 import type { Message } from "wave-agent-sdk";
-
-// Mock useChat hook
-vi.mock("../../src/contexts/useChat", () => ({
-  useChat: vi.fn(() => ({
-    isLoading: false,
-    isCommandRunning: false,
-    latestTotalTokens: 1000,
-  })),
-}));
 
 const createMessage = (
   role: "user" | "assistant",
@@ -31,7 +22,13 @@ describe("MessageList Grouping and Display", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isLoading={false} />,
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
       );
       const output = lastFrame();
 
@@ -51,7 +48,13 @@ describe("MessageList Grouping and Display", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isLoading={false} />,
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
       );
       const output = lastFrame();
 
@@ -76,7 +79,13 @@ describe("MessageList Grouping and Display", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isLoading={false} />,
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
       );
       const output = lastFrame();
 
@@ -94,7 +103,13 @@ describe("MessageList Grouping and Display", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isLoading={false} />,
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
       );
       const output = lastFrame();
 
@@ -113,7 +128,13 @@ describe("MessageList Grouping and Display", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isLoading={false} />,
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
       );
       const output = lastFrame();
 
@@ -162,7 +183,13 @@ describe("MessageList Grouping and Display", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isLoading={false} />,
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
       );
       const output = lastFrame();
 
