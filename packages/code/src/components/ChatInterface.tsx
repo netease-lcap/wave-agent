@@ -29,7 +29,16 @@ export const ChatInterface: React.FC = () => {
   useEffect(() => {
     // 仅仅在折叠时同步
     if (!isExpanded) {
-      expandedMessagesRef.current = [...messages];
+      expandedMessagesRef.current = messages.map((message, index) => {
+        // 如果是最后一个消息，深拷贝其 blocks
+        if (index === messages.length - 1) {
+          return {
+            ...message,
+            blocks: message.blocks.map((block) => ({ ...block })),
+          };
+        }
+        return message;
+      });
     }
   }, [isExpanded, messages]);
 
