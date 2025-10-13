@@ -123,6 +123,7 @@ export class SubAgentManager {
         backgroundBashManager: this.backgroundBashManager,
         logger: this.logger,
         callbacks: {},
+        model: config?.model, // 传递自定义模型
       });
 
       // 在子对话中添加自定义命令块显示

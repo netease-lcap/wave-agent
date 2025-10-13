@@ -50,6 +50,7 @@ export interface CallAgentOptions {
   memory?: string; // 记忆内容参数，从 WAVE.md 读取的内容
   workdir?: string; // 当前工作目录
   tools?: ChatCompletionFunctionTool[]; // 工具配置
+  model?: string; // 自定义模型
 }
 
 export interface CallAgentResult {
@@ -65,7 +66,7 @@ export interface CallAgentResult {
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
-  const { messages, abortSignal, memory, workdir, tools } = options;
+  const { messages, abortSignal, memory, workdir, tools, model } = options;
 
   try {
     // 构建系统提示词内容
@@ -91,7 +92,7 @@ ${workdir || process.cwd()}
       [systemMessage, ...messages];
 
     // 获取模型配置
-    const modelConfig = getModelConfig(AGENT_MODEL_ID, {
+    const modelConfig = getModelConfig(model || AGENT_MODEL_ID, {
       temperature: 0,
       max_completion_tokens: 32768,
     });

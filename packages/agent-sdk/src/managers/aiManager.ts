@@ -19,6 +19,7 @@ export interface AIManagerOptions {
   logger?: Logger;
   backgroundBashManager?: BackgroundBashManager;
   callbacks?: AIManagerCallbacks;
+  model?: string;
 }
 
 export class AIManager {
@@ -29,12 +30,14 @@ export class AIManager {
   private toolManager: ToolManager;
   private messageManager: MessageManager;
   private backgroundBashManager?: BackgroundBashManager;
+  private model?: string;
 
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
     this.toolManager = options.toolManager;
     this.backgroundBashManager = options.backgroundBashManager;
     this.logger = options.logger;
+    this.model = options.model;
     this.callbacks = options.callbacks ?? {};
   }
 
@@ -140,6 +143,7 @@ export class AIManager {
         memory: combinedMemory, // 传递合并后的记忆内容
         workdir: process.cwd(), // 传递当前工作目录
         tools: this.toolManager.getToolsConfig(), // 传递工具配置
+        model: this.model, // 传递自定义模型
       });
 
       // 更新答案块中的内容
