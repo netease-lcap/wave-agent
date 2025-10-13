@@ -43,30 +43,6 @@ const renderMessageItem = (
         </Box>
       )}
 
-      {/* 子对话 - 使用递归的 MessageList */}
-      {message.messages && message.messages.length > 0 && (
-        <Box
-          paddingLeft={2}
-          flexDirection="column"
-          borderLeft={true}
-          borderRight={false}
-          borderBottom={false}
-          borderTop={false}
-          borderStyle="classic"
-          borderColor="magenta"
-        >
-          <Box flexDirection="column">
-            {message.messages.map((subMessage, index) =>
-              renderMessageItem(
-                subMessage,
-                index,
-                isExpanded,
-                message.messages?.[index - 1],
-              ),
-            )}
-          </Box>
-        </Box>
-      )}
       <Box
         marginLeft={2}
         flexDirection="column"
@@ -141,6 +117,31 @@ const renderMessageItem = (
           </Box>
         ))}
       </Box>
+
+      {/* 子对话 - 使用递归的 MessageList */}
+      {message.messages && message.messages.length > 0 && (
+        <Box
+          paddingLeft={2}
+          flexDirection="column"
+          borderLeft={true}
+          borderRight={false}
+          borderBottom={false}
+          borderTop={false}
+          borderStyle="classic"
+          borderColor="magenta"
+        >
+          <Box flexDirection="column">
+            {message.messages.map((subMessage, index) =>
+              renderMessageItem(
+                subMessage,
+                index,
+                isExpanded,
+                message.messages?.[index - 1],
+              ),
+            )}
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 };
