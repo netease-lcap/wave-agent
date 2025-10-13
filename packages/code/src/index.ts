@@ -81,9 +81,6 @@ export {
   type ClipboardImageResult,
 } from "./utils/clipboard.js";
 
-// Export message utilities
-export { processMessageGroups } from "./utils/messageGrouping.js";
-
 // Execute main function if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {

@@ -6,7 +6,6 @@ import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
 import { usePagination } from "../hooks/usePagination.js";
-import { processMessageGroups } from "../utils/messageGrouping.js";
 
 // 渲染单个消息的函数
 const renderMessageItem = (
@@ -14,13 +13,14 @@ const renderMessageItem = (
   originalIndex: number,
   pageIndex: number,
   isExpanded: boolean,
+  previousMessage?: Message,
 ) => {
   const isPageStart = pageIndex === 0;
   const shouldShowHeader =
     message.role === "user" ||
-    !message.groupInfo ||
-    message.groupInfo.isGroupStart ||
-    isPageStart;
+    isPageStart ||
+    !previousMessage ||
+    previousMessage.role !== message.role;
 
   return (
     <Box key={`message-${originalIndex}`} flexDirection="column" marginTop={1}>
@@ -30,7 +30,7 @@ const renderMessageItem = (
             {message.role === "user" ? "👤 You" : "🤖 Assistant"}
             <Text color="gray" dimColor>
               {" "}
-              #{message.groupInfo?.groupRange || originalIndex + 1}
+              #{originalIndex + 1}
             </Text>
           </Text>
         </Box>
@@ -121,28 +121,22 @@ export const MessageList: React.FC<MessageListProps> = ({
   latestTotalTokens = 0,
   isExpanded = false,
 }) => {
-  // 预处理消息，添加分组信息（仅用于显示）
-  const processedMessages = useMemo(
-    () => processMessageGroups(messages),
-    [messages],
-  );
-
   // 使用原始消息进行分页计算
   const { displayInfo } = usePagination(messages);
 
   // 获取当前页的消息，同时保留原始索引信息
   const currentMessagesWithIndex = useMemo(() => {
-    return processedMessages
+    return messages
       .slice(displayInfo.startIndex, displayInfo.endIndex)
       .map((message, index) => ({
         message,
         originalIndex: displayInfo.startIndex + index,
         pageIndex: index,
       }));
-  }, [processedMessages, displayInfo.startIndex, displayInfo.endIndex]);
+  }, [messages, displayInfo.startIndex, displayInfo.endIndex]);
 
   // 空消息状态
-  if (processedMessages.length === 0) {
+  if (messages.length === 0) {
     return (
       <Box flexDirection="column" paddingY={1}>
         <Text color="gray">Welcome to WAVE Code Assistant!</Text>
@@ -154,8 +148,19 @@ export const MessageList: React.FC<MessageListProps> = ({
     <Box flexDirection="column">
       {/* 消息列表 */}
       <Box flexDirection="column">
-        {currentMessagesWithIndex.map(({ message, originalIndex, pageIndex }) =>
-          renderMessageItem(message, originalIndex, pageIndex, isExpanded),
+        {currentMessagesWithIndex.map(
+          ({ message, originalIndex, pageIndex }) => {
+            // 获取前一个消息
+            const previousMessage =
+              originalIndex > 0 ? messages[originalIndex - 1] : undefined;
+            return renderMessageItem(
+              message,
+              originalIndex,
+              pageIndex,
+              isExpanded,
+              previousMessage,
+            );
+          },
         )}
       </Box>
 
