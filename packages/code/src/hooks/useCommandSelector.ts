@@ -50,18 +50,6 @@ export const useCommandSelector = ({
     [slashPosition, clearMessages, onShowBashManager, onShowMcpManager],
   );
 
-  const handleCommandGenerated = useCallback((generatedCommand: string) => {
-    // 将生成的命令放入输入框
-    setShowCommandSelector(false);
-    setSlashPosition(-1);
-    setCommandSearchQuery("");
-
-    return {
-      newInput: generatedCommand,
-      newCursorPosition: generatedCommand.length,
-    };
-  }, []);
-
   const handleCancelCommandSelect = useCallback(() => {
     setShowCommandSelector(false);
     setSlashPosition(-1);
@@ -88,7 +76,6 @@ export const useCommandSelector = ({
     commandSearchQuery,
     activateCommandSelector,
     handleCommandSelect,
-    handleCommandGenerated,
     handleCancelCommandSelect,
     updateCommandSearchQuery,
     checkForSlashDeletion,

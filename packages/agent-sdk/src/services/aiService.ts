@@ -62,52 +62,6 @@ export interface CallAgentResult {
   };
 }
 
-export interface GenerateCommitMessageOptions {
-  diff: string;
-  abortSignal?: AbortSignal;
-}
-
-export async function generateCommitMessage(
-  options: GenerateCommitMessageOptions,
-): Promise<string> {
-  const { diff, abortSignal } = options;
-
-  try {
-    // 使用固定的模型，不使用环境变量
-    const modelConfig = getModelConfig(FAST_MODEL_ID, {
-      temperature: 0.3,
-      max_tokens: 100,
-    });
-
-    const response = await openai.chat.completions.create(
-      {
-        ...modelConfig,
-        messages: [
-          {
-            role: "system",
-            content: `Generate a single, concise commit message for the following git diff. Return only the commit message without any explanations. Keep it under 50 characters and use conventional commit format.`,
-          },
-          {
-            role: "user",
-            content: diff,
-          },
-        ],
-      },
-      {
-        signal: abortSignal,
-      },
-    );
-
-    return response.choices[0]?.message?.content?.trim() || "Update files";
-  } catch (error) {
-    if ((error as Error).name === "AbortError") {
-      throw new Error("Request was aborted");
-    }
-    // // logger.error("Failed to generate commit message:", error);
-    return "Update files";
-  }
-}
-
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {

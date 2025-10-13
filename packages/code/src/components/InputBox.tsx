@@ -93,7 +93,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     commandSearchQuery,
     activateCommandSelector,
     handleCommandSelect: handleCommandSelectorSelect,
-    handleCommandGenerated: handleCommandSelectorGenerated,
     handleCancelCommandSelect,
     updateCommandSearchQuery,
     checkForSlashDeletion,
@@ -138,7 +137,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const {
     handleFileSelect,
     handleCommandSelect,
-    handleCommandGenerated,
     handleBashHistorySelect,
     handleMemoryTypeSelect,
   } = useInputKeyboardHandler({
@@ -168,7 +166,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showCommandSelector,
     activateCommandSelector,
     handleCommandSelect: handleCommandSelectorSelect,
-    handleCommandGenerated: handleCommandSelectorGenerated,
     handleCancelCommandSelect,
     updateCommandSearchQuery,
     checkForSlashDeletion,
@@ -221,7 +218,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
           searchQuery={commandSearchQuery}
           onSelect={handleCommandSelect}
           onCancel={handleCancelCommandSelect}
-          onCommandGenerated={handleCommandGenerated}
         />
       )}
 

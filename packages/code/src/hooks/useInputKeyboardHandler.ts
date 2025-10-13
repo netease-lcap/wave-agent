@@ -45,13 +45,6 @@ interface KeyboardHandlerProps {
     inputText: string,
     cursorPosition: number,
   ) => { newInput: string; newCursorPosition: number };
-  handleCommandGenerated: (
-    generatedCommand: string,
-    activateBashMode?: () => void,
-  ) => {
-    newInput: string;
-    newCursorPosition: number;
-  };
   handleCancelCommandSelect: () => void;
   updateCommandSearchQuery: (query: string) => void;
   checkForSlashDeletion: (cursorPosition: number) => boolean;
@@ -120,7 +113,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     showCommandSelector,
     activateCommandSelector,
     handleCommandSelect,
-    handleCommandGenerated,
     handleCancelCommandSelect,
     updateCommandSearchQuery,
     checkForSlashDeletion,
@@ -692,16 +684,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         setInputText,
         setCursorPosition,
       ],
-    ),
-
-    handleCommandGenerated: useCallback(
-      (generatedCommand: string) => {
-        const { newInput, newCursorPosition } =
-          handleCommandGenerated(generatedCommand);
-        setInputText(newInput);
-        setCursorPosition(newCursorPosition);
-      },
-      [handleCommandGenerated, setInputText, setCursorPosition],
     ),
 
     handleBashHistorySelect: useCallback(
