@@ -61,7 +61,7 @@ describe("MessageList CustomCommandBlock", () => {
     const output = lastFrame();
 
     // Should display command name with icon
-    expect(output).toContain("🔧 refactor");
+    expect(output).toContain("⚡ refactor");
     expect(output).toContain("(Custom Command)");
 
     // Should NOT display the full content
@@ -121,7 +121,7 @@ describe("MessageList CustomCommandBlock", () => {
     const output = lastFrame();
 
     // Should display custom command
-    expect(output).toContain("🔧 analyze");
+    expect(output).toContain("⚡ analyze");
     expect(output).toContain("(Custom Command)");
 
     // Should display regular text message
