@@ -169,6 +169,8 @@ export class Agent {
 
   /** 执行 bash 命令 */
   public async executeBashCommand(command: string): Promise<void> {
+    // 添加用户消息到历史记录（但不显示在UI中）
+    this.addToInputHistory(`!${command}`);
     await this.bashManager?.executeCommand(command);
   }
 
@@ -184,7 +186,7 @@ export class Agent {
   }
 
   /** 添加到输入历史记录 */
-  public addToInputHistory(input: string): void {
+  private addToInputHistory(input: string): void {
     this.messageManager.addToInputHistory(input);
   }
 

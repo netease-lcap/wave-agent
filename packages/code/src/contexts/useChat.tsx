@@ -200,9 +200,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           const command = content.substring(1).trim();
           if (!command) return;
 
-          // 添加用户消息到历史记录（但不显示在UI中）
-          agentRef.current?.addToInputHistory(content);
-
           // 在bash模式下，不添加用户消息到UI，直接执行命令
           // 执行bash命令会自动添加助手消息
 

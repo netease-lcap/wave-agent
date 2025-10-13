@@ -33,7 +33,7 @@ const renderMessageItem = (
             {message.role === "user"
               ? "👤 You"
               : message.role === "subAgent"
-                ? "🎯 Sub-Agent"
+                ? "⚡ Sub-Agent"
                 : "🤖 Assistant"}
             <Text color="gray" dimColor>
               {" "}
@@ -132,7 +132,7 @@ const renderMessageItem = (
             {block.type === "custom_command" && (
               <Box>
                 <Text color="cyan" bold>
-                  ⚡ {block.commandName}
+                  /{block.commandName}
                 </Text>
                 <Text color="gray" dimColor>
                   {" "}
