@@ -48,7 +48,7 @@ const mockHomedir = vi.mocked(homedir);
 const mockJoin = vi.mocked(join);
 
 describe("Session Service", () => {
-  const mockSessionDir = "/.wave-code/sessions";
+  const mockSessionDir = "/.wave/sessions";
   const mockSessionId = "test_session_12345678";
   const mockShortId = "12345678";
   const mockSessionFilePath = `${mockSessionDir}/session_${mockShortId}.json`;

@@ -15,20 +15,20 @@
 
 ```bash
 # 默认日志文件位置
-~/.wave-code/app.log
+~/.wave/app.log
 ```
 
 ## 查看日志文件
 
 ```bash
 # 实时查看日志
-tail -f ~/.wave-code/app.log
+tail -f ~/.wave/app.log
 
 # 查看完整日志
-cat ~/.wave-code/app.log
+cat ~/.wave/app.log
 
 # 清空日志
-rm ~/.wave-code/app.log
+rm ~/.wave/app.log
 ```
 
 ## 日志级别说明
@@ -94,13 +94,13 @@ LOG_LEVEL=WARN wave-code
 
 ```bash
 # 过滤特定关键词的日志
-grep "ERROR" ~/.wave-code/app.log
+grep "ERROR" ~/.wave/app.log
 
 # 查看最近 100 行日志
-tail -n 100 ~/.wave-code/app.log
+tail -n 100 ~/.wave/app.log
 
 # 实时过滤特定内容
-tail -f ~/.wave-code/app.log | grep "file"
+tail -f ~/.wave/app.log | grep "file"
 ```
 
 ## 兼容性说明
