@@ -185,7 +185,6 @@ export const addAssistantMessageToMessages = (
   const initialAssistantMessage: Message = {
     role: "assistant",
     blocks: [],
-    originalDeltas: [], // 初始化原始delta数组
   };
 
   return [...messages, initialAssistantMessage];

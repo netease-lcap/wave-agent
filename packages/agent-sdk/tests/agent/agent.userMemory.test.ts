@@ -207,7 +207,6 @@ describe("Agent User Memory Integration", () => {
             content: "Test question",
           },
         ],
-        originalDeltas: [],
       },
     ];
 

@@ -1,4 +1,3 @@
-import { ChatCompletionChunk } from "openai/resources.js";
 import type { ChildProcess } from "child_process";
 
 /**
@@ -21,7 +20,6 @@ export interface MessageGroupInfo {
 export interface Message {
   role: "user" | "assistant";
   blocks: MessageBlock[];
-  originalDeltas?: ChatCompletionChunk.Choice.Delta[]; // 添加原始 delta 数组
   groupInfo?: MessageGroupInfo; // 添加分组信息
 }
 
