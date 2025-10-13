@@ -1,23 +1,19 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
+import type { SlashCommand } from "wave-agent-sdk";
 
-export interface Command {
-  name: string;
-  description: string;
-}
-
-const AVAILABLE_COMMANDS: Command[] = [
+const AVAILABLE_COMMANDS: SlashCommand[] = [
   {
-    name: "clean",
-    description: "Clear the chat session",
-  },
-  {
+    id: "bashes",
     name: "bashes",
     description: "View and manage background bash shells",
+    handler: () => {}, // 这里的handler不会被使用，实际处理在hook中
   },
   {
+    id: "mcp",
     name: "mcp",
     description: "View and manage MCP servers",
+    handler: () => {}, // 这里的handler不会被使用，实际处理在hook中
   },
 ];
 
@@ -25,17 +21,22 @@ export interface CommandSelectorProps {
   searchQuery: string;
   onSelect: (command: string) => void;
   onCancel: () => void;
+  commands?: SlashCommand[]; // 新增可选的命令列表参数
 }
 
 export const CommandSelector: React.FC<CommandSelectorProps> = ({
   searchQuery,
   onSelect,
   onCancel,
+  commands = [], // 默认为空数组
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  // 合并agent命令和本地命令
+  const allCommands = [...commands, ...AVAILABLE_COMMANDS];
+
   // 过滤命令列表
-  const filteredCommands = AVAILABLE_COMMANDS.filter(
+  const filteredCommands = allCommands.filter(
     (command) =>
       !searchQuery ||
       command.name.toLowerCase().includes(searchQuery.toLowerCase()),
