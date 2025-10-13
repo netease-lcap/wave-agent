@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Box, Text } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { DiffViewer } from "./DiffViewer.js";
@@ -12,17 +12,6 @@ const SubAgentMessageRenderer: React.FC<{
   message: Message;
   isExpanded: boolean;
 }> = ({ message, isExpanded }) => {
-  const [isSubConversationExpanded] = useState(false);
-
-  // 获取命令名称
-  const commandText = message.blocks
-    .filter((block) => block.type === "text")
-    .map((block) => block.content)
-    .join(" ");
-
-  const commandMatch = commandText.match(/\/(\w+)/);
-  const commandName = commandMatch ? commandMatch[1] : "unknown";
-
   // 获取子对话消息
   const subMessages = message.messages || [];
 
@@ -36,31 +25,15 @@ const SubAgentMessageRenderer: React.FC<{
     <Box flexDirection="column">
       {/* 主标题行 */}
       <Box>
-        <Text color="magenta" bold>
-          ⚡ Sub-Agent:
-        </Text>
-        <Text color="white" bold>
-          /{commandName}
-        </Text>
-        <Text color="gray" dimColor>
-          {" "}
-          ({userMessages} user, {assistantMessages} assistant messages)
+        <Text>
+          {userMessages} user, {assistantMessages} assistant messages
         </Text>
       </Box>
 
-      {/* 子对话摘要（折叠状态） */}
-      {!isSubConversationExpanded && subMessages.length > 0 && (
-        <Box marginLeft={2} marginTop={1}>
-          <Text color="gray" dimColor>
-            💬 Sub-conversation completed with {subMessages.length} messages
-          </Text>
-        </Box>
-      )}
-
       {/* 展开的子对话 - 使用递归的 MessageList */}
-      {isSubConversationExpanded && isExpanded && subMessages.length > 0 && (
+      {isExpanded && subMessages.length > 0 && (
         <Box
-          marginLeft={2}
+          marginLeft={1}
           marginTop={1}
           flexDirection="column"
           borderStyle="single"
