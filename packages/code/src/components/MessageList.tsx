@@ -122,6 +122,7 @@ const renderMessageItem = (
       {message.messages && message.messages.length > 0 && (
         <Box
           paddingLeft={2}
+          paddingBottom={1}
           flexDirection="column"
           borderLeft={true}
           borderRight={false}
