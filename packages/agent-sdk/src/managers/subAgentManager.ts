@@ -83,6 +83,12 @@ export class SubAgentManager {
           ? replaceBashCommandsWithOutput(processedContent, bashResults)
           : processedContent;
 
+      // 立即在主对话中添加自定义命令块显示
+      this.mainMessageManager.addCustomCommandMessage(
+        commandName,
+        finalContent,
+      );
+
       // 立即创建空的 subAgent 消息，这样 UI 可以立即显示
       this.mainMessageManager.addSubAgentMessage(commandName, []);
 

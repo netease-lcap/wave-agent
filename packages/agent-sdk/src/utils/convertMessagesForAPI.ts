@@ -182,6 +182,14 @@ export function convertMessagesForAPI(
           });
         }
 
+        // 处理自定义命令块 - 将完整内容作为文本传给 AI
+        if (block.type === "custom_command" && block.content) {
+          contentParts.push({
+            type: "text",
+            text: block.content,
+          });
+        }
+
         // 如果有图片，添加图片内容
         if (
           block.type === "image" &&

@@ -268,6 +268,20 @@ export class MessageManager {
     this.callbacks.onUserMessageAdded?.(content, images);
   }
 
+  public addCustomCommandMessage(commandName: string, content: string): void {
+    const newMessages = addUserMessageToMessages({
+      messages: this.messages,
+      content: "", // 空内容，因为我们会用 CustomCommandBlock
+      customCommandBlock: {
+        type: "custom_command",
+        commandName,
+        content,
+      },
+    });
+    this.setMessages(newMessages);
+    this.callbacks.onUserMessageAdded?.(content);
+  }
+
   public addAssistantMessage(): void {
     const newMessages = addAssistantMessageToMessages(this.messages);
     this.setMessages(newMessages);

@@ -76,6 +76,46 @@ describe("convertMessagesForAPI with subAgent", () => {
     ).toBe(false);
   });
 
+  it("should convert custom command blocks to full content for API", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        blocks: [
+          {
+            type: "custom_command",
+            commandName: "refactor",
+            content:
+              "Please refactor this function to be more efficient:\n\nfunction oldFunction() {\n  // some code\n}",
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        blocks: [
+          { type: "text", content: "I'll help you refactor that function." },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(2);
+
+    // Check that custom command content is expanded for API
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[0].content).toEqual([
+      {
+        type: "text",
+        text: "Please refactor this function to be more efficient:\n\nfunction oldFunction() {\n  // some code\n}",
+      },
+    ]);
+
+    expect(apiMessages[1].role).toBe("assistant");
+    expect(apiMessages[1].content).toBe(
+      "I'll help you refactor that function.",
+    );
+  });
+
   it("should handle messages with only subAgent messages", () => {
     const messages: Message[] = [
       {

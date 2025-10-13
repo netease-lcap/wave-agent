@@ -25,7 +25,8 @@ export type MessageBlock =
   | DiffBlock
   | CommandOutputBlock
   | CompressBlock
-  | MemoryBlock;
+  | MemoryBlock
+  | CustomCommandBlock;
 
 export interface TextBlock {
   type: "text";
@@ -98,6 +99,12 @@ export interface MemoryBlock {
   isSuccess: boolean;
   memoryType?: "project" | "user"; // 记忆类型
   storagePath?: string; // 存储路径文案
+}
+
+export interface CustomCommandBlock {
+  type: "custom_command";
+  commandName: string;
+  content: string; // 完整的命令内容，传给AI时使用
 }
 
 export interface AIRequest {

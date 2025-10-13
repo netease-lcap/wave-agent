@@ -7,6 +7,11 @@ export interface AddUserMessageParams {
   messages: Message[];
   content: string;
   images?: Array<{ path: string; mimeType: string }>;
+  customCommandBlock?: {
+    type: "custom_command";
+    commandName: string;
+    content: string;
+  };
 }
 
 export interface UpdateAnswerBlockParams {
@@ -163,8 +168,16 @@ export const addUserMessageToMessages = ({
   messages,
   content,
   images,
+  customCommandBlock,
 }: AddUserMessageParams): Message[] => {
-  const blocks: Message["blocks"] = [{ type: "text", content }];
+  const blocks: Message["blocks"] = [];
+
+  // 如果有自定义命令块，使用它而不是文本内容
+  if (customCommandBlock) {
+    blocks.push(customCommandBlock);
+  } else {
+    blocks.push({ type: "text", content });
+  }
 
   // 如果有图片，添加图片块
   if (images && images.length > 0) {
