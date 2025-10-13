@@ -7,76 +7,14 @@ import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
 import { usePagination } from "../hooks/usePagination.js";
 
-// SubAgent 消息渲染组件
-const SubAgentMessageRenderer: React.FC<{
-  message: Message;
-  isExpanded: boolean;
-}> = ({ message, isExpanded }) => {
-  // 获取子对话消息
-  const subMessages = message.messages || [];
-
-  // 统计子对话信息
-  const userMessages = subMessages.filter((msg) => msg.role === "user").length;
-  const assistantMessages = subMessages.filter(
-    (msg) => msg.role === "assistant",
-  ).length;
-
-  return (
-    <Box flexDirection="column">
-      {/* 主标题行 */}
-      <Box>
-        <Text>
-          {userMessages} user, {assistantMessages} assistant messages
-        </Text>
-      </Box>
-
-      {/* 展开的子对话 - 使用递归的 MessageList */}
-      {isExpanded && subMessages.length > 0 && (
-        <Box
-          marginLeft={1}
-          marginTop={1}
-          flexDirection="column"
-          borderStyle="single"
-          borderColor="gray"
-          paddingX={1}
-          paddingY={1}
-        >
-          <Box marginBottom={1}>
-            <Text color="gray" bold>
-              📋 Sub-Agent Conversation:
-            </Text>
-          </Box>
-
-          {/* 递归渲染子消息 */}
-          <MessageList
-            messages={subMessages}
-            isExpanded={true}
-            // 子对话中不显示加载状态
-            isLoading={false}
-            isCommandRunning={false}
-            isCompressing={false}
-          />
-        </Box>
-      )}
-    </Box>
-  );
-};
-
 // 渲染单个消息的函数
 const renderMessageItem = (
   message: Message,
   originalIndex: number,
-  pageIndex: number,
   isExpanded: boolean,
   previousMessage?: Message,
 ) => {
-  const isPageStart = pageIndex === 0;
-  const shouldShowHeader =
-    message.role === "user" ||
-    message.role === "subAgent" ||
-    isPageStart ||
-    !previousMessage ||
-    previousMessage.role !== message.role;
+  const shouldShowHeader = previousMessage?.role !== message.role;
 
   return (
     <Box key={`message-${originalIndex}`} flexDirection="column" marginTop={1}>
@@ -105,77 +43,94 @@ const renderMessageItem = (
         </Box>
       )}
 
-      {/* Special handling for subAgent messages */}
-      {message.role === "subAgent" ? (
-        <Box marginLeft={2} marginTop={shouldShowHeader ? 1 : 0}>
-          <SubAgentMessageRenderer message={message} isExpanded={isExpanded} />
-        </Box>
-      ) : (
+      {/* 子对话 - 使用递归的 MessageList */}
+      {message.messages && message.messages.length > 0 && (
         <Box
-          marginLeft={2}
+          paddingLeft={2}
           flexDirection="column"
-          gap={1}
-          marginTop={shouldShowHeader ? 1 : 0}
+          borderLeft={true}
+          borderRight={false}
+          borderBottom={false}
+          borderTop={false}
+          borderStyle="classic"
+          borderColor="magenta"
         >
-          {message.blocks.map((block, blockIndex) => (
-            <Box key={blockIndex}>
-              {block.type === "text" && block.content.trim() && (
-                <Box>
-                  <Text>{block.content}</Text>
-                </Box>
-              )}
-
-              {block.type === "error" && (
-                <Box>
-                  <Text color="red">❌ Error: {block.content}</Text>
-                </Box>
-              )}
-
-              {block.type === "diff" && (
-                <DiffViewer block={block} isExpanded={isExpanded} />
-              )}
-
-              {block.type === "command_output" && (
-                <CommandOutputDisplay block={block} isExpanded={isExpanded} />
-              )}
-
-              {block.type === "tool" && (
-                <ToolResultDisplay block={block} isExpanded={isExpanded} />
-              )}
-
-              {block.type === "image" && (
-                <Box>
-                  <Text color="magenta" bold>
-                    📷 Image
-                  </Text>
-                  {block.attributes?.imageUrls &&
-                    block.attributes.imageUrls.length > 0 && (
-                      <Text color="gray" dimColor>
-                        {" "}
-                        ({block.attributes.imageUrls.length})
-                      </Text>
-                    )}
-                </Box>
-              )}
-
-              {block.type === "memory" && <MemoryDisplay block={block} />}
-
-              {block.type === "compress" && (
-                <Box>
-                  <Text color="yellow" bold>
-                    📦 Compressed Messages
-                  </Text>
-                  <Box marginTop={1} marginLeft={2}>
-                    <Text color="gray" dimColor>
-                      {block.content}
-                    </Text>
-                  </Box>
-                </Box>
-              )}
-            </Box>
-          ))}
+          <Box flexDirection="column">
+            {message.messages.map((subMessage, index) =>
+              renderMessageItem(
+                subMessage,
+                index,
+                isExpanded,
+                message.messages?.[index - 1],
+              ),
+            )}
+          </Box>
         </Box>
       )}
+      <Box
+        marginLeft={2}
+        flexDirection="column"
+        gap={1}
+        marginTop={shouldShowHeader ? 1 : 0}
+      >
+        {message.blocks.map((block, blockIndex) => (
+          <Box key={blockIndex}>
+            {block.type === "text" && block.content.trim() && (
+              <Box>
+                <Text>{block.content}</Text>
+              </Box>
+            )}
+
+            {block.type === "error" && (
+              <Box>
+                <Text color="red">❌ Error: {block.content}</Text>
+              </Box>
+            )}
+
+            {block.type === "diff" && (
+              <DiffViewer block={block} isExpanded={isExpanded} />
+            )}
+
+            {block.type === "command_output" && (
+              <CommandOutputDisplay block={block} isExpanded={isExpanded} />
+            )}
+
+            {block.type === "tool" && (
+              <ToolResultDisplay block={block} isExpanded={isExpanded} />
+            )}
+
+            {block.type === "image" && (
+              <Box>
+                <Text color="magenta" bold>
+                  📷 Image
+                </Text>
+                {block.attributes?.imageUrls &&
+                  block.attributes.imageUrls.length > 0 && (
+                    <Text color="gray" dimColor>
+                      {" "}
+                      ({block.attributes.imageUrls.length})
+                    </Text>
+                  )}
+              </Box>
+            )}
+
+            {block.type === "memory" && <MemoryDisplay block={block} />}
+
+            {block.type === "compress" && (
+              <Box>
+                <Text color="yellow" bold>
+                  📦 Compressed Messages
+                </Text>
+                <Box marginTop={1} marginLeft={2}>
+                  <Text color="gray" dimColor>
+                    {block.content}
+                  </Text>
+                </Box>
+              </Box>
+            )}
+          </Box>
+        ))}
+      </Box>
     </Box>
   );
 };
@@ -207,7 +162,6 @@ export const MessageList: React.FC<MessageListProps> = ({
       .map((message, index) => ({
         message,
         originalIndex: displayInfo.startIndex + index,
-        pageIndex: index,
       }));
   }, [messages, displayInfo.startIndex, displayInfo.endIndex]);
 
@@ -224,20 +178,17 @@ export const MessageList: React.FC<MessageListProps> = ({
     <Box flexDirection="column">
       {/* 消息列表 */}
       <Box flexDirection="column">
-        {currentMessagesWithIndex.map(
-          ({ message, originalIndex, pageIndex }) => {
-            // 获取前一个消息
-            const previousMessage =
-              originalIndex > 0 ? messages[originalIndex - 1] : undefined;
-            return renderMessageItem(
-              message,
-              originalIndex,
-              pageIndex,
-              isExpanded,
-              previousMessage,
-            );
-          },
-        )}
+        {currentMessagesWithIndex.map(({ message, originalIndex }) => {
+          // 获取前一个消息
+          const previousMessage =
+            originalIndex > 0 ? messages[originalIndex - 1] : undefined;
+          return renderMessageItem(
+            message,
+            originalIndex,
+            isExpanded,
+            previousMessage,
+          );
+        })}
       </Box>
 
       {/* Loading 状态显示 - 仅在非展开状态下显示 */}
