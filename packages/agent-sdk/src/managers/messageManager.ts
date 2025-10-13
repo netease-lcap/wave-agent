@@ -43,6 +43,7 @@ export interface MessageManagerCallbacks {
   onDiffBlockAdded?: (filePath: string, diffResult: string) => void;
   onErrorBlockAdded?: (error: string) => void;
   onCompressBlockAdded?: (content: string) => void;
+  onCompressionStateChange?: (isCompressing: boolean) => void;
   onMemoryBlockAdded?: (
     content: string,
     success: boolean,
@@ -67,6 +68,7 @@ export class MessageManager {
   private userInputHistory: string[];
   private sessionStartTime: string;
   private lastSaveTime: number = 0;
+  private isCompressing: boolean = false;
   private logger?: Logger; // 添加可选的 logger 属性
   private callbacks: MessageManagerCallbacks;
 
@@ -95,6 +97,17 @@ export class MessageManager {
 
   public getUserInputHistory(): string[] {
     return [...this.userInputHistory];
+  }
+
+  public getIsCompressing(): boolean {
+    return this.isCompressing;
+  }
+
+  public setIsCompressing(isCompressing: boolean): void {
+    if (this.isCompressing !== isCompressing) {
+      this.isCompressing = isCompressing;
+      this.callbacks.onCompressionStateChange?.(isCompressing);
+    }
   }
 
   // Setter 方法，会触发回调
@@ -213,6 +226,7 @@ export class MessageManager {
     this.setSessionId(randomUUID());
     this.setlatestTotalTokens(0);
     this.sessionStartTime = new Date().toISOString();
+    this.setIsCompressing(false);
   }
 
   // 从会话数据初始化状态

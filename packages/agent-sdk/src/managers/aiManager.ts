@@ -152,6 +152,7 @@ export class AIManager {
             const recentChatMessages =
               convertMessagesForAPI(messagesToCompress);
 
+            this.messageManager.setIsCompressing(true);
             try {
               const compressedContent = await compressMessages({
                 messages: recentChatMessages,
@@ -169,6 +170,8 @@ export class AIManager {
               );
             } catch (compressError) {
               this.logger?.error("Failed to compress messages:", compressError);
+            } finally {
+              this.messageManager.setIsCompressing(false);
             }
           }
         }

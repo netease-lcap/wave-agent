@@ -11,6 +11,7 @@ export const ChatInterface: React.FC = () => {
     isLoading,
     isCommandRunning,
     userInputHistory,
+    isCompressing,
     sendMessage,
     abortMessage,
     saveMemory,
@@ -62,6 +63,7 @@ export const ChatInterface: React.FC = () => {
             messages={messages}
             isLoading={isLoading}
             isCommandRunning={isCommandRunning}
+            isCompressing={isCompressing}
             latestTotalTokens={latestTotalTokens}
             isExpanded={false}
           />

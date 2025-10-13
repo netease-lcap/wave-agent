@@ -98,6 +98,11 @@ export class Agent {
     return this.aiManager.isLoading;
   }
 
+  /** 获取消息压缩状态 */
+  public get isCompressing(): boolean {
+    return this.messageManager.getIsCompressing();
+  }
+
   /** 获取bash命令执行状态 */
   public get isCommandRunning(): boolean {
     return this.bashManager?.isCommandRunning ?? false;

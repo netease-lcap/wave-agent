@@ -108,6 +108,7 @@ export interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
   isCommandRunning?: boolean;
+  isCompressing?: boolean;
   latestTotalTokens?: number;
   isExpanded?: boolean;
 }
@@ -116,6 +117,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   messages,
   isLoading = false,
   isCommandRunning = false,
+  isCompressing = false,
   latestTotalTokens = 0,
   isExpanded = false,
 }) => {
@@ -158,8 +160,8 @@ export const MessageList: React.FC<MessageListProps> = ({
       </Box>
 
       {/* Loading 状态显示 - 仅在非展开状态下显示 */}
-      {!isExpanded && (isLoading || isCommandRunning) && (
-        <Box marginTop={1}>
+      {!isExpanded && (isLoading || isCommandRunning || isCompressing) && (
+        <Box marginTop={1} flexDirection="column" gap={1}>
           {isLoading && (
             <Box>
               <Text color="yellow">💭 AI is thinking... </Text>
@@ -185,6 +187,9 @@ export const MessageList: React.FC<MessageListProps> = ({
           )}
           {isCommandRunning && (
             <Text color="blue">🚀 Command is running...</Text>
+          )}
+          {isCompressing && (
+            <Text color="magenta">🗜️ Compressing message history...</Text>
           )}
         </Box>
       )}
