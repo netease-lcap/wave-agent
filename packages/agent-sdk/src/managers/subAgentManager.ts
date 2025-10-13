@@ -131,13 +131,6 @@ export class SubAgentManager {
 
       // Execute the AI conversation in the isolated context
       await subAIManager.sendAIMessage();
-
-      // Final update - ensure we have the complete conversation
-      const finalMessages = subMessageManager.getMessages();
-      this.mainMessageManager.updateSubAgentMessages(
-        commandName,
-        finalMessages,
-      );
     } catch (error) {
       this.logger?.error(
         `Failed to execute custom command '${commandName}':`,

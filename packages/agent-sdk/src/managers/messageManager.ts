@@ -59,6 +59,10 @@ export interface MessageManagerCallbacks {
     commandName: string,
     subMessages: Message[],
   ) => void;
+  onSubAgentMessageUpdated?: (
+    commandName: string,
+    subMessages: Message[],
+  ) => void;
 }
 
 export interface MessageManagerOptions {
@@ -446,6 +450,8 @@ export class MessageManager {
 
       // 触发消息变更回调
       this.callbacks.onMessagesChange?.([...this.messages]);
+      // 触发 SubAgent 消息更新回调
+      this.callbacks.onSubAgentMessageUpdated?.(commandName, messages);
     }
   }
 }

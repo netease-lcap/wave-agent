@@ -41,21 +41,21 @@ Analyze the codebase for security vulnerabilities including:
 
   await writeFile(join(commandsDir, "security-check.md"), securityCommand);
 
-  // Create git-status.md command with bash execution (safer than git commit)
-  const gitStatusCommand = `---
+  // Create list-files.md command with bash execution for file system analysis
+  const lsCommand = `---
 allowed-tools: Bash
 ---
 
 ## Context
 
-- Current status: !\`git status --porcelain || echo "Not a git repository"\`
-- Current branch: !\`git branch --show-current 2>/dev/null || echo "No git repository"\`
+- Current directory: !\`pwd\`
 
 ## Task
 
-Analyze the current git status and provide recommendations.`;
+- list files in current directory
+`;
 
-  await writeFile(join(commandsDir, "git-status.md"), gitStatusCommand);
+  await writeFile(join(commandsDir, "list-files.md"), lsCommand);
 
   console.log(`✅ Created example custom commands in ${commandsDir}`);
   return commandsDir;
@@ -84,7 +84,16 @@ async function demonstrateCustomCommands() {
       callbacks: {
         onSubAgentMessageAdded: (commandName, subMessages) => {
           console.log(
-            `\n🤖 Sub-agent '${commandName}' completed with ${subMessages.length} messages`,
+            `\n🤖 Sub-agent '${commandName}' added with ${subMessages.length} messages`,
+          );
+        },
+        onSubAgentMessageUpdated: (commandName, subMessages) => {
+          console.log(
+            `\n🔄 Sub-agent '${commandName}' updated - now has ${subMessages.length} messages`,
+          );
+          console.log(
+            "LastMessage: \n",
+            JSON.stringify(subMessages[subMessages.length - 1], null, 2),
           );
         },
       },
@@ -116,8 +125,8 @@ async function demonstrateCustomCommands() {
     });
 
     // Execute a custom command
-    console.log("\n🚀 Executing /git-status command...");
-    const success = await agent.executeSlashCommand("git-status");
+    console.log("\n🚀 Executing /list-files command...");
+    const success = await agent.executeSlashCommand("list-files");
 
     if (success) {
       console.log("✅ Custom command executed successfully");
