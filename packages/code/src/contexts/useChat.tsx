@@ -96,7 +96,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         onMessagesChange: (newMessages) => {
           setMessages([...newMessages]);
         },
-        onMcpServersChange: (servers) => {
+        onServersChange: (servers) => {
           setMcpServers([...servers]);
         },
         onSessionIdChange: (sessionId) => {
@@ -108,7 +108,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         onUserInputHistoryChange: (history) => {
           setUserInputHistory([...history]);
         },
-        onBackgroundShellsChange: (shells) => {
+        onShellsChange: (shells) => {
           setBackgroundShells([...shells]);
         },
       };

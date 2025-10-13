@@ -19,14 +19,20 @@ interface McpConnection {
   process: null; // StdioClientTransport manages process internally
 }
 
+export interface McpManagerCallbacks {
+  onServersChange?: (servers: McpServerStatus[]) => void;
+}
+
 export class McpManager {
   private config: McpConfig | null = null;
   private servers: Map<string, McpServerStatus> = new Map();
   private connections: Map<string, McpConnection> = new Map();
   private configPath: string = "";
+  private callbacks: McpManagerCallbacks;
   private logger?: Logger;
 
-  constructor(logger?: Logger) {
+  constructor(callbacks: McpManagerCallbacks = {}, logger?: Logger) {
+    this.callbacks = callbacks;
     this.logger = logger;
   }
 
@@ -74,6 +80,8 @@ export class McpManager {
       }
 
       this.logger?.info("MCP servers initialization completed");
+      // 初始化完成后触发状态变化回调
+      this.callbacks.onServersChange?.(this.getAllServers());
     }
   }
 
@@ -153,6 +161,8 @@ export class McpManager {
     const server = this.servers.get(name);
     if (server) {
       this.servers.set(name, { ...server, ...updates });
+      // 触发状态变化回调
+      this.callbacks.onServersChange?.(this.getAllServers());
     }
   }
 
@@ -238,12 +248,12 @@ export class McpManager {
 
       transport.onclose = () => {
         this.logger?.info(`MCP Server ${name} transport closed`);
+        this.connections.delete(name);
         this.updateServerStatus(name, {
           status: "disconnected",
           tools: [],
           toolCount: 0,
         });
-        this.connections.delete(name);
       };
 
       // Connect to transport
@@ -279,6 +289,7 @@ export class McpManager {
       return true;
     } catch (error) {
       this.logger?.error(`Failed to connect to MCP server ${name}:`, error);
+      // updateServerStatus will trigger the callback
       this.updateServerStatus(name, {
         status: "error",
         error: error instanceof Error ? error.message : String(error),
@@ -299,6 +310,7 @@ export class McpManager {
       // Remove connection
       this.connections.delete(name);
 
+      // updateServerStatus will trigger the callback
       this.updateServerStatus(name, {
         status: "disconnected",
         tools: [],

@@ -5,15 +5,13 @@ import {
 import { AIManager } from "./managers/aiManager.js";
 import { ToolManager } from "./managers/toolManager.js";
 import * as memory from "./services/memory.js";
-import { McpManager } from "./managers/mcpManager.js";
+import { McpManager, type McpManagerCallbacks } from "./managers/mcpManager.js";
 import { BashManager } from "./managers/bashManager.js";
-import { BackgroundBashManager } from "./managers/backgroundBashManager.js";
-import type {
-  Message,
-  Logger,
-  McpServerStatus,
-  BackgroundShell,
-} from "./types.js";
+import {
+  BackgroundBashManager,
+  type BackgroundBashManagerCallbacks,
+} from "./managers/backgroundBashManager.js";
+import type { Message, Logger, McpServerStatus } from "./types.js";
 
 export interface AgentOptions {
   callbacks?: AgentCallbacks;
@@ -24,13 +22,12 @@ export interface AgentOptions {
   messages?: Message[];
 }
 
-export interface AgentCallbacks extends MessageManagerCallbacks {
-  /** MCP 服务器状态回调 */
-  onMcpServersChange?: (servers: McpServerStatus[]) => void;
+export interface AgentCallbacks
+  extends MessageManagerCallbacks,
+    BackgroundBashManagerCallbacks,
+    McpManagerCallbacks {
   /** 用户输入历史回调 */
   onUserInputHistoryChange?: (history: string[]) => void;
-  /** 后台 bash shells 状态变化 */
-  onBackgroundShellsChange?: (shells: BackgroundShell[]) => void;
 }
 
 export class Agent {
@@ -50,10 +47,8 @@ export class Agent {
 
     this.callbacks = callbacks;
     this.logger = logger; // 保存传入的 logger
-    this.backgroundBashManager = new BackgroundBashManager({
-      onShellsChange: callbacks.onBackgroundShellsChange,
-    });
-    this.mcpManager = new McpManager(this.logger); // 初始化 MCP 管理器
+    this.backgroundBashManager = new BackgroundBashManager(callbacks);
+    this.mcpManager = new McpManager(callbacks, this.logger); // 初始化 MCP 管理器
     this.toolManager = new ToolManager(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
 
     // 初始化 MessageManager
@@ -154,8 +149,6 @@ export class Agent {
     // Initialize MCP servers with auto-connect
     try {
       await this.mcpManager.initialize(process.cwd(), true);
-      // 触发初始 MCP 服务器状态回调
-      this.callbacks.onMcpServersChange?.(this.mcpManager.getAllServers());
     } catch (error) {
       this.logger?.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
@@ -289,25 +282,16 @@ export class Agent {
 
   /** 连接 MCP 服务器 */
   public async connectMcpServer(serverName: string): Promise<boolean> {
-    const result = await this.mcpManager.connectServer(serverName);
-    // 触发状态变化回调
-    this.callbacks.onMcpServersChange?.(this.mcpManager.getAllServers());
-    return result;
+    return await this.mcpManager.connectServer(serverName);
   }
 
   /** 断开 MCP 服务器连接 */
   public async disconnectMcpServer(serverName: string): Promise<boolean> {
-    const result = await this.mcpManager.disconnectServer(serverName);
-    // 触发状态变化回调
-    this.callbacks.onMcpServersChange?.(this.mcpManager.getAllServers());
-    return result;
+    return await this.mcpManager.disconnectServer(serverName);
   }
 
   /** 重连 MCP 服务器 */
   public async reconnectMcpServer(serverName: string): Promise<boolean> {
-    const result = await this.mcpManager.reconnectServer(serverName);
-    // 触发状态变化回调
-    this.callbacks.onMcpServersChange?.(this.mcpManager.getAllServers());
-    return result;
+    return await this.mcpManager.reconnectServer(serverName);
   }
 }
