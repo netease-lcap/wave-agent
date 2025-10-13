@@ -68,6 +68,7 @@ export class Agent {
       toolManager: this.toolManager,
       logger: this.logger,
       backgroundBashManager: this.backgroundBashManager,
+      callbacks,
     });
 
     // Initialize bash manager
@@ -100,7 +101,7 @@ export class Agent {
 
   /** 获取消息压缩状态 */
   public get isCompressing(): boolean {
-    return this.messageManager.getIsCompressing();
+    return this.aiManager.getIsCompressing();
   }
 
   /** 获取bash命令执行状态 */

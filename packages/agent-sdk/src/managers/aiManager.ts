@@ -9,11 +9,16 @@ import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
 
+export interface AIManagerCallbacks {
+  onCompressionStateChange?: (isCompressing: boolean) => void;
+}
+
 export interface AIManagerOptions {
   messageManager: MessageManager;
   toolManager: ToolManager;
   logger?: Logger;
   backgroundBashManager?: BackgroundBashManager;
+  callbacks?: AIManagerCallbacks;
 }
 
 export class AIManager {
@@ -30,7 +35,11 @@ export class AIManager {
     this.toolManager = options.toolManager;
     this.backgroundBashManager = options.backgroundBashManager;
     this.logger = options.logger;
+    this.callbacks = options.callbacks ?? {};
   }
+
+  private isCompressing: boolean = false;
+  private callbacks: AIManagerCallbacks;
 
   public setIsLoading(isLoading: boolean): void {
     this.isLoading = isLoading;
@@ -74,6 +83,17 @@ export class AIManager {
       this.logger?.warn("Failed to generate compactParams", error);
     }
     return undefined;
+  }
+
+  public getIsCompressing(): boolean {
+    return this.isCompressing;
+  }
+
+  public setIsCompressing(isCompressing: boolean): void {
+    if (this.isCompressing !== isCompressing) {
+      this.isCompressing = isCompressing;
+      this.callbacks.onCompressionStateChange?.(isCompressing);
+    }
   }
 
   public async sendAIMessage(recursionDepth: number = 0): Promise<void> {
@@ -152,7 +172,7 @@ export class AIManager {
             const recentChatMessages =
               convertMessagesForAPI(messagesToCompress);
 
-            this.messageManager.setIsCompressing(true);
+            this.setIsCompressing(true);
             try {
               const compressedContent = await compressMessages({
                 messages: recentChatMessages,
@@ -171,7 +191,7 @@ export class AIManager {
             } catch (compressError) {
               this.logger?.error("Failed to compress messages:", compressError);
             } finally {
-              this.messageManager.setIsCompressing(false);
+              this.setIsCompressing(false);
             }
           }
         }
