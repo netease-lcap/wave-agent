@@ -11,7 +11,6 @@ export const ChatInterface: React.FC = () => {
     isLoading,
     isCommandRunning,
     userInputHistory,
-    clearMessages,
     sendMessage,
     abortMessage,
     saveMemory,
@@ -21,6 +20,9 @@ export const ChatInterface: React.FC = () => {
     reconnectMcpServer,
     isExpanded,
     latestTotalTokens,
+    slashCommands,
+    executeSlashCommand,
+    hasSlashCommand,
   } = useChat();
 
   // 创建一个 ref 来存储 expanded 模式下的消息
@@ -71,7 +73,6 @@ export const ChatInterface: React.FC = () => {
           isLoading={isLoading}
           isCommandRunning={isCommandRunning}
           userInputHistory={userInputHistory}
-          clearMessages={clearMessages}
           sendMessage={sendMessage}
           abortMessage={abortMessage}
           saveMemory={saveMemory}
@@ -79,6 +80,9 @@ export const ChatInterface: React.FC = () => {
           connectMcpServer={connectMcpServer}
           disconnectMcpServer={disconnectMcpServer}
           reconnectMcpServer={reconnectMcpServer}
+          slashCommands={slashCommands}
+          executeSlashCommand={executeSlashCommand}
+          hasSlashCommand={hasSlashCommand}
         />
       )}
     </Box>

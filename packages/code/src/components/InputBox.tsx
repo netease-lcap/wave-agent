@@ -14,7 +14,7 @@ import { useMemoryTypeSelector } from "../hooks/useMemoryTypeSelector.js";
 import { useInputHistory } from "../hooks/useInputHistory.js";
 import { useInputKeyboardHandler } from "../hooks/useInputKeyboardHandler.js";
 import { useImageManager } from "../hooks/useImageManager.js";
-import type { McpServerStatus } from "wave-agent-sdk";
+import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
 
 export const INPUT_PLACEHOLDER_TEXT =
   "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory)...";
@@ -28,7 +28,6 @@ export interface InputBoxProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
   userInputHistory?: string[];
-  clearMessages?: () => void;
   sendMessage?: (
     message: string,
     images?: Array<{ path: string; mimeType: string }>,
@@ -40,13 +39,16 @@ export interface InputBoxProps {
   connectMcpServer?: (serverName: string) => Promise<boolean>;
   disconnectMcpServer?: (serverName: string) => Promise<boolean>;
   reconnectMcpServer?: (serverName: string) => Promise<boolean>;
+  // Slash Command 相关属性
+  slashCommands?: SlashCommand[];
+  executeSlashCommand?: (commandId: string) => Promise<boolean>;
+  hasSlashCommand?: (commandId: string) => boolean;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
   isLoading = false,
   isCommandRunning = false,
   userInputHistory = [],
-  clearMessages = () => {},
   sendMessage = () => {},
   abortMessage = () => {},
   saveMemory = async () => {},
@@ -54,6 +56,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   connectMcpServer = async () => false,
   disconnectMcpServer = async () => false,
   reconnectMcpServer = async () => false,
+  slashCommands = [],
+  executeSlashCommand = async () => false,
+  hasSlashCommand = () => false,
 }) => {
   // Bash shell manager state
   const [showBashManager, setShowBashManager] = useState(false);
@@ -98,9 +103,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
     checkForSlashDeletion,
     slashPosition,
   } = useCommandSelector({
-    clearMessages,
     onShowBashManager: () => setShowBashManager(true),
     onShowMcpManager: () => setShowMcpManager(true),
+    executeSlashCommand,
+    hasSlashCommand,
   });
 
   // Bash历史选择器功能
@@ -218,6 +224,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           searchQuery={commandSearchQuery}
           onSelect={handleCommandSelect}
           onCancel={handleCancelCommandSelect}
+          commands={slashCommands}
         />
       )}
 

@@ -1,15 +1,17 @@
 import { useState, useCallback } from "react";
 
 export interface UseCommandSelectorParams {
-  clearMessages: () => void;
   onShowBashManager?: () => void;
   onShowMcpManager?: () => void;
+  executeSlashCommand?: (commandId: string) => Promise<boolean>; // 执行命令函数
+  hasSlashCommand?: (commandId: string) => boolean; // 检查命令是否存在函数
 }
 
 export const useCommandSelector = ({
-  clearMessages,
   onShowBashManager,
   onShowMcpManager,
+  executeSlashCommand,
+  hasSlashCommand,
 }: UseCommandSelectorParams) => {
   const [showCommandSelector, setShowCommandSelector] = useState(false);
   const [slashPosition, setSlashPosition] = useState(-1);
@@ -30,14 +32,29 @@ export const useCommandSelector = ({
         const newInput = beforeSlash + afterQuery;
         const newCursorPosition = beforeSlash.length;
 
-        // 执行命令
-        if (command === "clean") {
-          clearMessages();
-        } else if (command === "bashes" && onShowBashManager) {
-          onShowBashManager();
-        } else if (command === "mcp" && onShowMcpManager) {
-          onShowMcpManager();
-        }
+        // 异步执行命令，但不等待结果
+        (async () => {
+          // 先检查是否是agent命令
+          let commandExecuted = false;
+          if (
+            executeSlashCommand &&
+            hasSlashCommand &&
+            hasSlashCommand(command)
+          ) {
+            commandExecuted = await executeSlashCommand(command);
+          }
+
+          // 如果不是agent命令或执行失败，检查本地命令
+          if (!commandExecuted) {
+            if (command === "bashes" && onShowBashManager) {
+              onShowBashManager();
+              commandExecuted = true;
+            } else if (command === "mcp" && onShowMcpManager) {
+              onShowMcpManager();
+              commandExecuted = true;
+            }
+          }
+        })();
 
         setShowCommandSelector(false);
         setSlashPosition(-1);
@@ -47,7 +64,13 @@ export const useCommandSelector = ({
       }
       return { newInput: inputText, newCursorPosition: cursorPosition };
     },
-    [slashPosition, clearMessages, onShowBashManager, onShowMcpManager],
+    [
+      slashPosition,
+      onShowBashManager,
+      onShowMcpManager,
+      executeSlashCommand,
+      hasSlashCommand,
+    ],
   );
 
   const handleCancelCommandSelect = useCallback(() => {

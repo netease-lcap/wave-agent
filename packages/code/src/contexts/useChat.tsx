@@ -8,7 +8,12 @@ import React, {
 } from "react";
 import { useInput } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
-import type { Message, McpServerStatus, BackgroundShell } from "wave-agent-sdk";
+import type {
+  Message,
+  McpServerStatus,
+  BackgroundShell,
+  SlashCommand,
+} from "wave-agent-sdk";
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 
@@ -16,7 +21,6 @@ import { logger } from "../utils/logger.js";
 export interface ChatContextType {
   messages: Message[];
   isLoading: boolean;
-  clearMessages: () => void;
   isCommandRunning: boolean;
   userInputHistory: string[];
   // Message display state
@@ -42,6 +46,10 @@ export interface ChatContextType {
     shellId: string,
   ) => { stdout: string; stderr: string; status: string } | null;
   killBackgroundShell: (shellId: string) => boolean;
+  // Slash Command functionality
+  slashCommands: SlashCommand[];
+  executeSlashCommand: (commandId: string) => Promise<boolean>;
+  hasSlashCommand: (commandId: string) => boolean;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -79,6 +87,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   const [backgroundShells, setBackgroundShells] = useState<BackgroundShell[]>(
     [],
   );
+
+  // Command state
+  const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
 
   const agentRef = useRef<Agent | null>(null);
 
@@ -134,6 +145,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         // Get initial MCP servers state
         const mcpServers = agent.getMcpServers?.() || [];
         setMcpServers(mcpServers);
+
+        // Get initial commands
+        const agentSlashCommands = agent.getSlashCommands?.() || [];
+        setSlashCommands(agentSlashCommands);
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
       }
@@ -217,10 +232,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     [],
   );
 
-  const clearMessages = useCallback(() => {
-    agentRef.current?.clearMessages();
-  }, []);
-
   // 统一的中断方法，同时中断AI消息和命令执行
   const abortMessage = useCallback(() => {
     agentRef.current?.abortMessage();
@@ -258,10 +269,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     return agentRef.current.killBackgroundShell(shellId);
   }, []);
 
+  // Slash Command 管理方法 - 委托给 Agent
+  const executeSlashCommand = useCallback(async (commandId: string) => {
+    if (!agentRef.current) return false;
+    return agentRef.current.executeSlashCommand(commandId);
+  }, []);
+
+  const hasSlashCommand = useCallback((commandId: string) => {
+    if (!agentRef.current) return false;
+    return agentRef.current.hasSlashCommand(commandId);
+  }, []);
+
   const contextValue: ChatContextType = {
     messages,
     isLoading,
-    clearMessages,
     isCommandRunning,
     userInputHistory,
     isExpanded,
@@ -277,6 +298,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     backgroundShells,
     getBackgroundShellOutput,
     killBackgroundShell,
+    slashCommands,
+    executeSlashCommand,
+    hasSlashCommand,
   };
 
   return (
