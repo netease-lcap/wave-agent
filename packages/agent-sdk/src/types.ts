@@ -159,3 +159,11 @@ export interface BackgroundShell {
   exitCode?: number;
   runtime?: number;
 }
+
+// Slash Command related types
+export interface SlashCommand {
+  id: string;
+  name: string;
+  description: string;
+  handler: () => Promise<void> | void;
+}

@@ -11,6 +11,8 @@ import {
   BackgroundBashManager,
   type BackgroundBashManagerCallbacks,
 } from "./managers/backgroundBashManager.js";
+import { SlashCommandManager } from "./managers/slashCommandManager.js";
+import type { SlashCommand } from "./types.js";
 import type { Message, Logger, McpServerStatus } from "./types.js";
 
 export interface AgentOptions {
@@ -37,6 +39,7 @@ export class Agent {
   private logger?: Logger; // 添加可选的 logger 属性
   private toolManager: ToolManager; // 添加工具注册表实例
   private mcpManager: McpManager; // 添加 MCP 管理器实例
+  private slashCommandManager: SlashCommandManager; // 添加斜杠命令管理器实例
 
   // 私有构造函数，防止直接实例化
   private constructor(options: AgentOptions) {
@@ -52,6 +55,11 @@ export class Agent {
     this.messageManager = new MessageManager({
       callbacks,
       logger: this.logger,
+    });
+
+    // Initialize command manager
+    this.slashCommandManager = new SlashCommandManager({
+      messageManager: this.messageManager,
     });
 
     // Initialize AI manager
@@ -272,5 +280,22 @@ export class Agent {
   /** 重连 MCP 服务器 */
   public async reconnectMcpServer(serverName: string): Promise<boolean> {
     return await this.mcpManager.reconnectServer(serverName);
+  }
+
+  // ========== 斜杠命令管理方法 ==========
+
+  /** 获取所有可用斜杠命令 */
+  public getSlashCommands(): SlashCommand[] {
+    return this.slashCommandManager.getCommands();
+  }
+
+  /** 执行斜杠命令 */
+  public async executeSlashCommand(commandId: string): Promise<boolean> {
+    return await this.slashCommandManager.executeCommand(commandId);
+  }
+
+  /** 检查斜杠命令是否存在 */
+  public hasSlashCommand(commandId: string): boolean {
+    return this.slashCommandManager.hasCommand(commandId);
   }
 }
