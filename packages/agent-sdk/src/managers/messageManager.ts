@@ -288,13 +288,13 @@ export class MessageManager {
 
   public addAssistantMessage(): void {
     const newMessages = addAssistantMessageToMessages(this.messages);
-    this.setMessages(newMessages);
+    this.messages = newMessages;
     this.callbacks.onAssistantMessageAdded?.();
   }
 
   public addAnswerBlock(): void {
     const newMessages = addAnswerBlockToMessage(this.messages);
-    this.setMessages(newMessages);
+    this.messages = newMessages;
     this.callbacks.onAnswerBlockAdded?.();
   }
 
