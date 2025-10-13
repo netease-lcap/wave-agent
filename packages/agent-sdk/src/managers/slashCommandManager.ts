@@ -61,7 +61,7 @@ export class SlashCommandManager {
         this.registerCommand({
           id: command.id,
           name: command.name,
-          description: `Custom command: ${command.content.substring(0, 100)}...`,
+          description: `Custom command: ${command.name}`,
           handler: async () => {
             await this.subAgentManager.executeCustomCommand(
               command.name,
