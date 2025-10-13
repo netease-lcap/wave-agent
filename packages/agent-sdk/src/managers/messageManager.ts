@@ -54,6 +54,11 @@ export interface MessageManagerCallbacks {
   onCompleteCommandMessage?: (command: string, exitCode: number) => void;
 }
 
+export interface MessageManagerOptions {
+  callbacks: MessageManagerCallbacks;
+  logger?: Logger;
+}
+
 export class MessageManager {
   // 私有状态属性
   private sessionId: string;
@@ -65,14 +70,14 @@ export class MessageManager {
   private logger?: Logger; // 添加可选的 logger 属性
   private callbacks: MessageManagerCallbacks;
 
-  constructor(callbacks: MessageManagerCallbacks, logger?: Logger) {
+  constructor(options: MessageManagerOptions) {
     this.sessionId = randomUUID();
     this.messages = [];
     this.latestTotalTokens = 0;
     this.userInputHistory = [];
     this.sessionStartTime = new Date().toISOString();
-    this.callbacks = callbacks;
-    this.logger = logger;
+    this.callbacks = options.callbacks;
+    this.logger = options.logger;
   }
 
   // Getter 方法

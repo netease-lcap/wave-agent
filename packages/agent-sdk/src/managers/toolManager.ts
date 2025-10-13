@@ -12,6 +12,10 @@ import { readTool } from "../tools/readTool.js";
 import { McpManager } from "./mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 
+export interface ToolManagerOptions {
+  mcpManager: McpManager;
+}
+
 /**
  * 工具管理器
  */
@@ -30,7 +34,11 @@ class ToolManager {
     [readTool.name, readTool],
   ]);
 
-  constructor(private mcpManager: McpManager) {}
+  private mcpManager: McpManager;
+
+  constructor(options: ToolManagerOptions) {
+    this.mcpManager = options.mcpManager;
+  }
 
   async execute(
     name: string,

@@ -23,6 +23,11 @@ export interface McpManagerCallbacks {
   onServersChange?: (servers: McpServerStatus[]) => void;
 }
 
+export interface McpManagerOptions {
+  callbacks?: McpManagerCallbacks;
+  logger?: Logger;
+}
+
 export class McpManager {
   private config: McpConfig | null = null;
   private servers: Map<string, McpServerStatus> = new Map();
@@ -31,9 +36,9 @@ export class McpManager {
   private callbacks: McpManagerCallbacks;
   private logger?: Logger;
 
-  constructor(callbacks: McpManagerCallbacks = {}, logger?: Logger) {
-    this.callbacks = callbacks;
-    this.logger = logger;
+  constructor(options: McpManagerOptions = {}) {
+    this.callbacks = options.callbacks || {};
+    this.logger = options.logger;
   }
 
   /**

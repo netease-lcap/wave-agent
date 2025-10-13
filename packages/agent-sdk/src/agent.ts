@@ -25,10 +25,7 @@ export interface AgentOptions {
 export interface AgentCallbacks
   extends MessageManagerCallbacks,
     BackgroundBashManagerCallbacks,
-    McpManagerCallbacks {
-  /** 用户输入历史回调 */
-  onUserInputHistoryChange?: (history: string[]) => void;
-}
+    McpManagerCallbacks {}
 
 export class Agent {
   private messageManager: MessageManager;
@@ -47,33 +44,15 @@ export class Agent {
 
     this.callbacks = callbacks;
     this.logger = logger; // 保存传入的 logger
-    this.backgroundBashManager = new BackgroundBashManager(callbacks);
-    this.mcpManager = new McpManager(callbacks, this.logger); // 初始化 MCP 管理器
-    this.toolManager = new ToolManager(this.mcpManager); // 初始化工具注册表，传入 MCP 管理器
+    this.backgroundBashManager = new BackgroundBashManager({ callbacks });
+    this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // 初始化 MCP 管理器
+    this.toolManager = new ToolManager({ mcpManager: this.mcpManager }); // 初始化工具注册表，传入 MCP 管理器
 
     // 初始化 MessageManager
-    this.messageManager = new MessageManager(
-      {
-        onMessagesChange: callbacks.onMessagesChange,
-        onSessionIdChange: callbacks.onSessionIdChange,
-        onLatestTotalTokensChange: callbacks.onLatestTotalTokensChange,
-        onUserInputHistoryChange: callbacks.onUserInputHistoryChange,
-        onUserMessageAdded: callbacks.onUserMessageAdded,
-        onAssistantMessageAdded: callbacks.onAssistantMessageAdded,
-        onAnswerBlockAdded: callbacks.onAnswerBlockAdded,
-        onAnswerBlockUpdated: callbacks.onAnswerBlockUpdated,
-        onToolBlockAdded: callbacks.onToolBlockAdded,
-        onToolBlockUpdated: callbacks.onToolBlockUpdated,
-        onDiffBlockAdded: callbacks.onDiffBlockAdded,
-        onErrorBlockAdded: callbacks.onErrorBlockAdded,
-        onCompressBlockAdded: callbacks.onCompressBlockAdded,
-        onMemoryBlockAdded: callbacks.onMemoryBlockAdded,
-        onAddCommandOutputMessage: callbacks.onAddCommandOutputMessage,
-        onUpdateCommandOutputMessage: callbacks.onUpdateCommandOutputMessage,
-        onCompleteCommandMessage: callbacks.onCompleteCommandMessage,
-      },
-      this.logger,
-    );
+    this.messageManager = new MessageManager({
+      callbacks,
+      logger: this.logger,
+    });
 
     // Initialize AI manager
     this.aiManager = new AIManager({

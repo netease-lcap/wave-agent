@@ -5,13 +5,17 @@ export interface BackgroundBashManagerCallbacks {
   onShellsChange?: (shells: BackgroundShell[]) => void;
 }
 
+export interface BackgroundBashManagerOptions {
+  callbacks?: BackgroundBashManagerCallbacks;
+}
+
 export class BackgroundBashManager {
   private shells = new Map<string, BackgroundShell>();
   private nextId = 1;
   private callbacks: BackgroundBashManagerCallbacks;
 
-  constructor(callbacks: BackgroundBashManagerCallbacks = {}) {
-    this.callbacks = callbacks;
+  constructor(options: BackgroundBashManagerOptions = {}) {
+    this.callbacks = options.callbacks || {};
   }
 
   private notifyShellsChange(): void {

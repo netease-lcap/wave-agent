@@ -70,7 +70,7 @@ describe("McpManager", () => {
         debug: vi.fn(),
       };
 
-      const manager = new McpManager({}, mockLogger);
+      const manager = new McpManager({ logger: mockLogger });
       expect(manager).toBeInstanceOf(McpManager);
     });
 
@@ -81,7 +81,9 @@ describe("McpManager", () => {
 
     it("should accept callbacks parameter", () => {
       const mockCallback = vi.fn();
-      const manager = new McpManager({ onServersChange: mockCallback });
+      const manager = new McpManager({
+        callbacks: { onServersChange: mockCallback },
+      });
       expect(manager).toBeInstanceOf(McpManager);
     });
   });
