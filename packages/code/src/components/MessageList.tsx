@@ -33,7 +33,7 @@ const renderMessageItem = (
             {message.role === "user"
               ? "👤 You"
               : message.role === "subAgent"
-                ? "⚡ Sub-Agent"
+                ? "Sub-Agent"
                 : "🤖 Assistant"}
             <Text color="gray" dimColor>
               {" "}
