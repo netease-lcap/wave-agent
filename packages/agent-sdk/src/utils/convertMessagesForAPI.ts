@@ -224,58 +224,9 @@ export function convertMessagesForAPI(
         });
       }
     }
+    // Skip subAgent messages - they don't participate in the next AI request
+    // Sub-agent messages are isolated conversations and should not influence the main conversation
   }
 
   return recentMessages;
-}
-
-/**
- * 将最近的消息转换为 markdown 字符串
- * @param messages ChatCompletionMessageParam 数组
- * @returns markdown 格式的字符串
- */
-export function convertMessagesToMarkdown(
-  messages: ChatCompletionMessageParam[],
-): string {
-  if (!messages || messages.length === 0) {
-    return "暂无消息记录";
-  }
-
-  let markdown = "";
-
-  messages.forEach((message) => {
-    markdown += `## ${message.role}\n\n`;
-
-    if (message.role === "user") {
-      // 用户消息：直接展示content内容
-      if (Array.isArray(message.content)) {
-        message.content.forEach((part) => {
-          if (part.type === "text") {
-            markdown += `${part.text}\n\n`;
-          } else if (part.type === "image_url") {
-            markdown += `![图片](${part.image_url.url})\n\n`;
-          }
-        });
-      } else if (typeof message.content === "string") {
-        markdown += `${message.content}\n\n`;
-      }
-    } else if (message.role === "assistant") {
-      // 助手消息：content用xml语法，tool_calls用json语法
-      if (message.content) {
-        markdown += `### Content\n\n\`\`\`xml\n${message.content}\n\`\`\`\n\n`;
-      }
-
-      if (message.tool_calls && message.tool_calls.length > 0) {
-        markdown += `### Tool Calls\n\n\`\`\`json\n${JSON.stringify(message.tool_calls, null, 2)}\n\`\`\`\n\n`;
-      }
-    } else if (message.role === "tool") {
-      // 工具消息：用json语法显示工具调用结果
-      markdown += `**Tool Call ID:** ${message.tool_call_id}\n\n`;
-      markdown += `**Result:**\n\n\`\`\`json\n${message.content}\n\`\`\`\n\n`;
-    }
-
-    markdown += "---\n\n";
-  });
-
-  return markdown;
 }

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Box, Text } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { DiffViewer } from "./DiffViewer.js";
@@ -6,6 +6,88 @@ import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
 import { usePagination } from "../hooks/usePagination.js";
+
+// SubAgent 消息渲染组件
+const SubAgentMessageRenderer: React.FC<{
+  message: Message;
+  isExpanded: boolean;
+}> = ({ message, isExpanded }) => {
+  const [isSubConversationExpanded] = useState(false);
+
+  // 获取命令名称
+  const commandText = message.blocks
+    .filter((block) => block.type === "text")
+    .map((block) => block.content)
+    .join(" ");
+
+  const commandMatch = commandText.match(/\/(\w+)/);
+  const commandName = commandMatch ? commandMatch[1] : "unknown";
+
+  // 获取子对话消息
+  const subMessages = message.messages || [];
+
+  // 统计子对话信息
+  const userMessages = subMessages.filter((msg) => msg.role === "user").length;
+  const assistantMessages = subMessages.filter(
+    (msg) => msg.role === "assistant",
+  ).length;
+
+  return (
+    <Box flexDirection="column">
+      {/* 主标题行 */}
+      <Box>
+        <Text color="magenta" bold>
+          ⚡ Sub-Agent:
+        </Text>
+        <Text color="white" bold>
+          /{commandName}
+        </Text>
+        <Text color="gray" dimColor>
+          {" "}
+          ({userMessages} user, {assistantMessages} assistant messages)
+        </Text>
+      </Box>
+
+      {/* 子对话摘要（折叠状态） */}
+      {!isSubConversationExpanded && subMessages.length > 0 && (
+        <Box marginLeft={2} marginTop={1}>
+          <Text color="gray" dimColor>
+            💬 Sub-conversation completed with {subMessages.length} messages
+          </Text>
+        </Box>
+      )}
+
+      {/* 展开的子对话 - 使用递归的 MessageList */}
+      {isSubConversationExpanded && isExpanded && subMessages.length > 0 && (
+        <Box
+          marginLeft={2}
+          marginTop={1}
+          flexDirection="column"
+          borderStyle="single"
+          borderColor="gray"
+          paddingX={1}
+          paddingY={1}
+        >
+          <Box marginBottom={1}>
+            <Text color="gray" bold>
+              📋 Sub-Agent Conversation:
+            </Text>
+          </Box>
+
+          {/* 递归渲染子消息 */}
+          <MessageList
+            messages={subMessages}
+            isExpanded={true}
+            // 子对话中不显示加载状态
+            isLoading={false}
+            isCommandRunning={false}
+            isCompressing={false}
+          />
+        </Box>
+      )}
+    </Box>
+  );
+};
 
 // 渲染单个消息的函数
 const renderMessageItem = (
@@ -18,6 +100,7 @@ const renderMessageItem = (
   const isPageStart = pageIndex === 0;
   const shouldShowHeader =
     message.role === "user" ||
+    message.role === "subAgent" ||
     isPageStart ||
     !previousMessage ||
     previousMessage.role !== message.role;
@@ -26,8 +109,21 @@ const renderMessageItem = (
     <Box key={`message-${originalIndex}`} flexDirection="column" marginTop={1}>
       {shouldShowHeader && (
         <Box>
-          <Text color={message.role === "user" ? "cyan" : "green"} bold>
-            {message.role === "user" ? "👤 You" : "🤖 Assistant"}
+          <Text
+            color={
+              message.role === "user"
+                ? "cyan"
+                : message.role === "subAgent"
+                  ? "magenta"
+                  : "green"
+            }
+            bold
+          >
+            {message.role === "user"
+              ? "👤 You"
+              : message.role === "subAgent"
+                ? "⚡ Sub-Agent"
+                : "🤖 Assistant"}
             <Text color="gray" dimColor>
               {" "}
               #{originalIndex + 1}
@@ -36,70 +132,77 @@ const renderMessageItem = (
         </Box>
       )}
 
-      <Box
-        marginLeft={2}
-        flexDirection="column"
-        gap={1}
-        marginTop={shouldShowHeader ? 1 : 0}
-      >
-        {message.blocks.map((block, blockIndex) => (
-          <Box key={blockIndex}>
-            {block.type === "text" && block.content.trim() && (
-              <Box>
-                <Text>{block.content}</Text>
-              </Box>
-            )}
-
-            {block.type === "error" && (
-              <Box>
-                <Text color="red">❌ Error: {block.content}</Text>
-              </Box>
-            )}
-
-            {block.type === "diff" && (
-              <DiffViewer block={block} isExpanded={isExpanded} />
-            )}
-
-            {block.type === "command_output" && (
-              <CommandOutputDisplay block={block} isExpanded={isExpanded} />
-            )}
-
-            {block.type === "tool" && (
-              <ToolResultDisplay block={block} isExpanded={isExpanded} />
-            )}
-
-            {block.type === "image" && (
-              <Box>
-                <Text color="magenta" bold>
-                  📷 Image
-                </Text>
-                {block.attributes?.imageUrls &&
-                  block.attributes.imageUrls.length > 0 && (
-                    <Text color="gray" dimColor>
-                      {" "}
-                      ({block.attributes.imageUrls.length})
-                    </Text>
-                  )}
-              </Box>
-            )}
-
-            {block.type === "memory" && <MemoryDisplay block={block} />}
-
-            {block.type === "compress" && (
-              <Box>
-                <Text color="yellow" bold>
-                  📦 Compressed Messages
-                </Text>
-                <Box marginTop={1} marginLeft={2}>
-                  <Text color="gray" dimColor>
-                    {block.content}
-                  </Text>
+      {/* Special handling for subAgent messages */}
+      {message.role === "subAgent" ? (
+        <Box marginLeft={2} marginTop={shouldShowHeader ? 1 : 0}>
+          <SubAgentMessageRenderer message={message} isExpanded={isExpanded} />
+        </Box>
+      ) : (
+        <Box
+          marginLeft={2}
+          flexDirection="column"
+          gap={1}
+          marginTop={shouldShowHeader ? 1 : 0}
+        >
+          {message.blocks.map((block, blockIndex) => (
+            <Box key={blockIndex}>
+              {block.type === "text" && block.content.trim() && (
+                <Box>
+                  <Text>{block.content}</Text>
                 </Box>
-              </Box>
-            )}
-          </Box>
-        ))}
-      </Box>
+              )}
+
+              {block.type === "error" && (
+                <Box>
+                  <Text color="red">❌ Error: {block.content}</Text>
+                </Box>
+              )}
+
+              {block.type === "diff" && (
+                <DiffViewer block={block} isExpanded={isExpanded} />
+              )}
+
+              {block.type === "command_output" && (
+                <CommandOutputDisplay block={block} isExpanded={isExpanded} />
+              )}
+
+              {block.type === "tool" && (
+                <ToolResultDisplay block={block} isExpanded={isExpanded} />
+              )}
+
+              {block.type === "image" && (
+                <Box>
+                  <Text color="magenta" bold>
+                    📷 Image
+                  </Text>
+                  {block.attributes?.imageUrls &&
+                    block.attributes.imageUrls.length > 0 && (
+                      <Text color="gray" dimColor>
+                        {" "}
+                        ({block.attributes.imageUrls.length})
+                      </Text>
+                    )}
+                </Box>
+              )}
+
+              {block.type === "memory" && <MemoryDisplay block={block} />}
+
+              {block.type === "compress" && (
+                <Box>
+                  <Text color="yellow" bold>
+                    📦 Compressed Messages
+                  </Text>
+                  <Box marginTop={1} marginLeft={2}>
+                    <Text color="gray" dimColor>
+                      {block.content}
+                    </Text>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          ))}
+        </Box>
+      )}
     </Box>
   );
 };

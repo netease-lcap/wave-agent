@@ -14,6 +14,8 @@ export * from "./utils/mcpUtils.js";
 export * from "./utils/messageOperations.js";
 export * from "./utils/path.js";
 export * from "./utils/stringUtils.js";
+export * from "./utils/markdownParser.js";
+export * from "./utils/customCommands.js";
 
 // Export types
 export * from "./types.js";

@@ -14,6 +14,7 @@ import {
   addCommandOutputMessage,
   updateCommandOutputInMessage,
   completeCommandInMessage,
+  addSubAgentMessage,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
 import type { Logger, Message } from "../types.js";
@@ -53,6 +54,11 @@ export interface MessageManagerCallbacks {
   onAddCommandOutputMessage?: (command: string) => void;
   onUpdateCommandOutputMessage?: (command: string, output: string) => void;
   onCompleteCommandMessage?: (command: string, exitCode: number) => void;
+  // Sub-agent 回调
+  onSubAgentMessageAdded?: (
+    commandName: string,
+    subMessages: Message[],
+  ) => void;
 }
 
 export interface MessageManagerOptions {
@@ -390,5 +396,19 @@ export class MessageManager {
     });
     this.setMessages(updatedMessages);
     this.callbacks.onCompleteCommandMessage?.(command, exitCode);
+  }
+
+  // Sub-agent 相关的消息操作
+  public addSubAgentMessage(
+    commandName: string,
+    subAgentMessages: Message[],
+  ): void {
+    const updatedMessages = addSubAgentMessage({
+      messages: this.messages,
+      commandName,
+      subAgentMessages,
+    });
+    this.setMessages(updatedMessages);
+    this.callbacks.onSubAgentMessageAdded?.(commandName, subAgentMessages);
   }
 }

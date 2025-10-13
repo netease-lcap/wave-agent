@@ -74,6 +74,12 @@ export interface AddMemoryBlockParams {
   storagePath?: string;
 }
 
+export interface AddSubAgentMessageParams {
+  messages: Message[];
+  commandName: string;
+  subAgentMessages: Message[];
+}
+
 export interface AddCommandOutputParams {
   messages: Message[];
   command: string;
@@ -571,5 +577,31 @@ export const completeCommandInMessage = ({
       }
     }
   }
+  return newMessages;
+};
+
+/**
+ * Add a sub-agent message to the messages array
+ */
+export const addSubAgentMessage = ({
+  messages,
+  commandName,
+  subAgentMessages,
+}: AddSubAgentMessageParams): Message[] => {
+  const newMessages = [...messages];
+
+  // Add a new sub-agent message
+  const subAgentMessage: Message = {
+    role: "subAgent",
+    blocks: [
+      {
+        type: "text",
+        content: `Executed custom command: /${commandName}`,
+      },
+    ],
+    messages: subAgentMessages,
+  };
+
+  newMessages.push(subAgentMessage);
   return newMessages;
 };

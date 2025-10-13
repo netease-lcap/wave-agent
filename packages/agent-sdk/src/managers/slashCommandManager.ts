@@ -1,17 +1,38 @@
 import type { MessageManager } from "./messageManager.js";
-import type { SlashCommand } from "../types.js";
+import type { SlashCommand, CustomSlashCommand, Logger } from "../types.js";
+import { loadCustomSlashCommands } from "../utils/customCommands.js";
+import { SubAgentManager } from "./subAgentManager.js";
+import type { ToolManager } from "./toolManager.js";
+import type { BackgroundBashManager } from "./backgroundBashManager.js";
 
 export interface SlashCommandManagerOptions {
   messageManager: MessageManager;
+  toolManager: ToolManager;
+  backgroundBashManager?: BackgroundBashManager;
+  logger?: Logger;
 }
 
 export class SlashCommandManager {
   private commands = new Map<string, SlashCommand>();
+  private customCommands = new Map<string, CustomSlashCommand>();
   private messageManager: MessageManager;
+  private subAgentManager: SubAgentManager;
+  private logger?: Logger;
 
   constructor(options: SlashCommandManagerOptions) {
     this.messageManager = options.messageManager;
+    this.logger = options.logger;
+
+    // Initialize sub-agent manager for custom commands
+    this.subAgentManager = new SubAgentManager({
+      mainMessageManager: options.messageManager,
+      toolManager: options.toolManager,
+      backgroundBashManager: options.backgroundBashManager,
+      logger: options.logger,
+    });
+
     this.initializeBuiltinCommands();
+    this.loadCustomCommands();
   }
 
   private initializeBuiltinCommands(): void {
@@ -24,6 +45,51 @@ export class SlashCommandManager {
         this.messageManager.clearMessages();
       },
     });
+  }
+
+  /**
+   * Load custom commands from filesystem
+   */
+  private loadCustomCommands(): void {
+    try {
+      const customCommands = loadCustomSlashCommands();
+
+      for (const command of customCommands) {
+        this.customCommands.set(command.id, command);
+
+        // Register as a regular command with a handler that executes the custom command
+        this.registerCommand({
+          id: command.id,
+          name: command.name,
+          description: `Custom command: ${command.content.substring(0, 100)}...`,
+          handler: async () => {
+            await this.subAgentManager.executeCustomCommand(
+              command.name,
+              command.content,
+              command.config,
+            );
+          },
+        });
+      }
+
+      this.logger?.info(`Loaded ${customCommands.length} custom commands`);
+    } catch (error) {
+      this.logger?.warn("Failed to load custom commands:", error);
+    }
+  }
+
+  /**
+   * Reload custom commands (useful for development)
+   */
+  public reloadCustomCommands(): void {
+    // Clear existing custom commands
+    for (const commandId of this.customCommands.keys()) {
+      this.unregisterCommand(commandId);
+    }
+    this.customCommands.clear();
+
+    // Reload
+    this.loadCustomCommands();
   }
 
   /**
@@ -77,5 +143,19 @@ export class SlashCommandManager {
    */
   public hasCommand(commandId: string): boolean {
     return this.commands.has(commandId);
+  }
+
+  /**
+   * Get custom command details
+   */
+  public getCustomCommand(commandId: string): CustomSlashCommand | undefined {
+    return this.customCommands.get(commandId);
+  }
+
+  /**
+   * Get all custom commands
+   */
+  public getCustomCommands(): CustomSlashCommand[] {
+    return Array.from(this.customCommands.values());
   }
 }

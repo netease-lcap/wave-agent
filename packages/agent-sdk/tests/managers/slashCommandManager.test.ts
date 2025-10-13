@@ -1,18 +1,34 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
+import { ToolManager } from "../../src/managers/toolManager.js";
+import { McpManager } from "../../src/managers/mcpManager.js";
 
 describe("SlashCommandManager", () => {
   let slashCommandManager: SlashCommandManager;
   let messageManager: MessageManager;
+  let toolManager: ToolManager;
+  let mcpManager: McpManager;
 
   beforeEach(() => {
     // 创建带有必要回调的 MessageManager
     messageManager = new MessageManager({
       callbacks: {},
     });
+
+    // 创建模拟的 McpManager
+    mcpManager = new McpManager({
+      callbacks: {},
+    });
+
+    // 创建模拟的 ToolManager
+    toolManager = new ToolManager({
+      mcpManager,
+    });
+
     slashCommandManager = new SlashCommandManager({
       messageManager,
+      toolManager,
     });
   });
 

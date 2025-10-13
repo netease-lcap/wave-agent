@@ -12,8 +12,9 @@ export interface Logger {
 }
 
 export interface Message {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "subAgent";
   blocks: MessageBlock[];
+  messages?: Message[]; // For subAgent role, contains the sub-conversation
 }
 
 export type MessageBlock =
@@ -157,4 +158,17 @@ export interface SlashCommand {
   name: string;
   description: string;
   handler: () => Promise<void> | void;
+}
+
+export interface CustomSlashCommandConfig {
+  allowedTools?: string[];
+  model?: string;
+}
+
+export interface CustomSlashCommand {
+  id: string;
+  name: string;
+  filePath: string;
+  content: string;
+  config?: CustomSlashCommandConfig;
 }

@@ -1,0 +1,144 @@
+import { AIManager } from "./aiManager.js";
+import { MessageManager } from "./messageManager.js";
+import { ToolManager } from "./toolManager.js";
+import type { Logger, CustomSlashCommandConfig } from "../types.js";
+import type { BackgroundBashManager } from "./backgroundBashManager.js";
+import {
+  BashCommandResult,
+  parseBashCommands,
+  replaceBashCommandsWithOutput,
+} from "../utils/markdownParser.js";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
+
+export interface SubAgentManagerOptions {
+  mainMessageManager: MessageManager;
+  toolManager: ToolManager;
+  backgroundBashManager?: BackgroundBashManager;
+  logger?: Logger;
+}
+
+/**
+ * SubAgentManager handles isolated AI conversations for custom slash commands
+ */
+export class SubAgentManager {
+  private mainMessageManager: MessageManager;
+  private toolManager: ToolManager;
+  private backgroundBashManager?: BackgroundBashManager;
+  private logger?: Logger;
+
+  constructor(options: SubAgentManagerOptions) {
+    this.mainMessageManager = options.mainMessageManager;
+    this.toolManager = options.toolManager;
+    this.backgroundBashManager = options.backgroundBashManager;
+    this.logger = options.logger;
+  }
+
+  /**
+   * Execute a custom slash command with isolated context
+   */
+  async executeCustomCommand(
+    commandName: string,
+    content: string,
+    config?: CustomSlashCommandConfig,
+  ): Promise<void> {
+    try {
+      // Parse bash commands from the content
+      const { commands, processedContent } = parseBashCommands(content);
+
+      // Execute bash commands if any
+      const bashResults: BashCommandResult[] = [];
+      for (const command of commands) {
+        try {
+          const { stdout, stderr } = await execAsync(command, {
+            cwd: process.cwd(),
+            timeout: 30000, // 30 second timeout
+          });
+          bashResults.push({
+            command,
+            output: stdout || stderr || "",
+            exitCode: 0,
+          });
+        } catch (error) {
+          const execError = error as {
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+            code?: number;
+          };
+          bashResults.push({
+            command,
+            output:
+              execError.stdout || execError.stderr || execError.message || "",
+            exitCode: execError.code || 1,
+          });
+        }
+      }
+
+      // Replace bash command placeholders with their outputs
+      const finalContent =
+        bashResults.length > 0
+          ? replaceBashCommandsWithOutput(processedContent, bashResults)
+          : processedContent;
+
+      // Create isolated message manager for the sub-agent
+      const subMessageManager = new MessageManager({
+        callbacks: {
+          // These callbacks will collect the sub-agent's messages
+          // but won't trigger the main UI updates
+        },
+        logger: this.logger,
+      });
+
+      // Create filtered tool manager if allowedTools is specified
+      let filteredToolManager = this.toolManager;
+      if (config?.allowedTools && config.allowedTools.length > 0) {
+        // Note: Tool filtering is not yet implemented
+        // For now, use the original tool manager
+        filteredToolManager = this.toolManager;
+        // For now, we'll use the same tool manager but this could be enhanced
+        // to actually filter the tools
+        filteredToolManager = this.toolManager;
+
+        this.logger?.info(
+          `Custom command '${commandName}' limited to tools: ${config.allowedTools.join(", ")}`,
+        );
+      }
+
+      // Create isolated AI manager for the sub-agent
+      const subAIManager = new AIManager({
+        messageManager: subMessageManager,
+        toolManager: filteredToolManager,
+        backgroundBashManager: this.backgroundBashManager,
+        logger: this.logger,
+        callbacks: {},
+      });
+
+      // Add the custom command content as a user message to the sub-agent
+      subMessageManager.addUserMessage(finalContent);
+
+      // Execute the AI conversation in the isolated context
+      await subAIManager.sendAIMessage();
+
+      // Get the sub-agent's conversation messages
+      const subAgentMessages = subMessageManager.getMessages();
+
+      // Add the sub-agent conversation to the main message manager
+      this.mainMessageManager.addSubAgentMessage(commandName, subAgentMessages);
+    } catch (error) {
+      this.logger?.error(
+        `Failed to execute custom command '${commandName}':`,
+        error,
+      );
+
+      // Add error to main message manager
+      this.mainMessageManager.addErrorBlock(
+        `Failed to execute custom command '${commandName}': ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+}

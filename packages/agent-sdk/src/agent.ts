@@ -12,7 +12,7 @@ import {
   type BackgroundBashManagerCallbacks,
 } from "./managers/backgroundBashManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
-import type { SlashCommand } from "./types.js";
+import type { SlashCommand, CustomSlashCommand } from "./types.js";
 import type { Message, Logger, McpServerStatus } from "./types.js";
 
 export interface AgentOptions {
@@ -60,6 +60,9 @@ export class Agent {
     // Initialize command manager
     this.slashCommandManager = new SlashCommandManager({
       messageManager: this.messageManager,
+      toolManager: this.toolManager,
+      backgroundBashManager: this.backgroundBashManager,
+      logger: this.logger,
     });
 
     // Initialize AI manager
@@ -303,5 +306,20 @@ export class Agent {
   /** 检查斜杠命令是否存在 */
   public hasSlashCommand(commandId: string): boolean {
     return this.slashCommandManager.hasCommand(commandId);
+  }
+
+  /** 重新加载自定义命令 */
+  public reloadCustomCommands(): void {
+    this.slashCommandManager.reloadCustomCommands();
+  }
+
+  /** 获取自定义命令详情 */
+  public getCustomCommand(commandId: string): CustomSlashCommand | undefined {
+    return this.slashCommandManager.getCustomCommand(commandId);
+  }
+
+  /** 获取所有自定义命令 */
+  public getCustomCommands(): CustomSlashCommand[] {
+    return this.slashCommandManager.getCustomCommands();
   }
 }
