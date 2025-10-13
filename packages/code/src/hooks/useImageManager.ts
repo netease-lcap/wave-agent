@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { readClipboardImage } from "wave-agent-sdk";
+import { readClipboardImage } from "../utils/clipboard.js";
 
 export interface AttachedImage {
   id: number;

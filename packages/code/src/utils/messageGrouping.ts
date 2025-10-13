@@ -1,9 +1,9 @@
-import type { Message } from "../types.js";
+import type { Message as SDKMessage } from "wave-agent-sdk";
 
 /**
  * 预处理消息数组，识别连续的 assistant 消息组并添加分组信息
  */
-export function processMessageGroups(messages: Message[]): Message[] {
+export function processMessageGroups(messages: SDKMessage[]): SDKMessage[] {
   if (messages.length === 0) {
     return messages;
   }

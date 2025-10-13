@@ -4,25 +4,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { InputBox } from "../../src/components/InputBox.js";
 import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers.js";
 
-// Mock the wave-agent-sdk module
+// Mock the clipboard utils
+vi.mock("../../src/utils/clipboard.js", () => ({
+  readClipboardImage: vi.fn(),
+  hasClipboardImage: vi.fn(),
+  cleanupTempImage: vi.fn(),
+}));
+
+// Mock the wave-agent-sdk module for other functions
 vi.mock("wave-agent-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("wave-agent-sdk")>();
   return {
     ...actual,
-    readClipboardImage: vi.fn(),
-    hasClipboardImage: vi.fn(),
-    cleanupTempImage: vi.fn(),
     addUserMessageToMessages: vi.fn(),
     convertImageToBase64: vi.fn(),
   };
 });
 
 // Import the mocked module functions
-import {
-  readClipboardImage,
-  convertImageToBase64,
-  addUserMessageToMessages,
-} from "wave-agent-sdk";
+import { readClipboardImage } from "../../src/utils/clipboard.js";
+
+import { convertImageToBase64, addUserMessageToMessages } from "wave-agent-sdk";
 
 const mockReadClipboardImage = vi.mocked(readClipboardImage);
 const mockConvertImageToBase64 = vi.mocked(convertImageToBase64);

@@ -6,7 +6,7 @@ import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
 import { usePagination } from "../hooks/usePagination.js";
-import { processMessageGroups } from "wave-agent-sdk";
+import { processMessageGroups } from "../utils/messageGrouping.js";
 
 // 渲染单个消息的函数
 const renderMessageItem = (

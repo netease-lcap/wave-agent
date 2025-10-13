@@ -3,17 +3,13 @@ import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { HookTester, HookTesterRef } from "../helpers/HookTester.js";
 import { useImageManager } from "../../src/hooks/useImageManager.js";
-import type { ClipboardImageResult } from "wave-agent-sdk";
+import type { ClipboardImageResult } from "../../src/utils/clipboard.js";
 
 // Mock the clipboard utils with proper hoisting
 const mockReadClipboardImage = vi.hoisted(() => vi.fn());
-vi.mock("wave-agent-sdk", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("wave-agent-sdk")>();
-  return {
-    ...actual,
-    readClipboardImage: mockReadClipboardImage,
-  };
-});
+vi.mock("../../src/utils/clipboard.js", () => ({
+  readClipboardImage: mockReadClipboardImage,
+}));
 
 describe("useImageManager Hook", () => {
   const mockInsertTextAtCursor = vi.fn();

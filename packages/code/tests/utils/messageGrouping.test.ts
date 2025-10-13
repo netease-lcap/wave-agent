@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { processMessageGroups } from "@/utils/messageGrouping.js";
-import type { Message } from "@/types.js";
+import { processMessageGroups } from "../../src/utils/messageGrouping.js";
+import type { Message } from "wave-agent-sdk";
 
 const createMessage = (
   role: "user" | "assistant",

@@ -73,6 +73,17 @@ export { startCli } from "./cli.js";
 // Export logger
 export { logger } from "./utils/logger.js";
 
+// Export clipboard utilities
+export {
+  readClipboardImage,
+  cleanupTempImage,
+  hasClipboardImage,
+  type ClipboardImageResult,
+} from "./utils/clipboard.js";
+
+// Export message utilities
+export { processMessageGroups } from "./utils/messageGrouping.js";
+
 // Execute main function if this file is run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {
