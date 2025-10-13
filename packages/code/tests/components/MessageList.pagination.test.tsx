@@ -65,9 +65,11 @@ describe("MessageList Pagination", () => {
 
       // Should show correct page info and message numbers
       expect(lastFrame()).toContain("Messages 23 Page 3/3");
-      expect(lastFrame()).toContain("#14");
-      expect(lastFrame()).toContain("#20");
-      expect(lastFrame()).toContain("#23");
+      // For same-role consecutive messages, only the very first message (index 0) shows numbering
+      // Messages 14-23 are all 'user' role and consecutive, so no numbering should be visible
+      expect(lastFrame()).not.toContain("#14");
+      expect(lastFrame()).not.toContain("#20");
+      expect(lastFrame()).not.toContain("#23");
       expect(lastFrame()).not.toContain("#3"); // Not from page 1
       expect(lastFrame()).not.toContain("#13"); // Not from page 2
       expect(lastFrame()).not.toContain("#24"); // Doesn't exist
@@ -97,9 +99,11 @@ describe("MessageList Pagination", () => {
 
       // Should show correct page info and numbering
       expect(lastFrame()).toContain("Messages 15 Page 2/2");
-      expect(lastFrame()).toContain("#6");
-      expect(lastFrame()).toContain("#10");
-      expect(lastFrame()).toContain("#15");
+      // For same-role consecutive messages, only the very first message (index 0) shows numbering
+      // Messages 6-15 are all 'user' role and consecutive, so no numbering should be visible
+      expect(lastFrame()).not.toContain("#6");
+      expect(lastFrame()).not.toContain("#10");
+      expect(lastFrame()).not.toContain("#15");
       expect(lastFrame()).not.toMatch(/#1\b/); // Not from page 1
       expect(lastFrame()).not.toMatch(/#5\b/); // Not from page 1
       expect(lastFrame()).not.toContain("#16"); // Doesn't exist
@@ -187,8 +191,9 @@ describe("MessageList Pagination", () => {
       expect(lastFrame()).toContain("Short 3 - Message 3");
       expect(lastFrame()).toContain("Messages 3 Page 1/1");
       expect(lastFrame()).toContain("#1");
-      expect(lastFrame()).toContain("#2");
-      expect(lastFrame()).toContain("#3");
+      // For same-role consecutive messages, only the first one shows numbering
+      expect(lastFrame()).not.toContain("#2");
+      expect(lastFrame()).not.toContain("#3");
     });
 
     it("should handle exactly one page worth of messages (10 messages)", () => {
@@ -213,7 +218,8 @@ describe("MessageList Pagination", () => {
       );
       expect(lastFrame()).toContain(`Messages ${MESSAGES_PER_PAGE} Page 1/1`);
       expect(lastFrame()).toContain("#1");
-      expect(lastFrame()).toContain(`#${MESSAGES_PER_PAGE}`);
+      // For same-role consecutive messages, only the first one shows numbering
+      expect(lastFrame()).not.toContain(`#${MESSAGES_PER_PAGE}`);
     });
 
     it("should handle single message", () => {
