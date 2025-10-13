@@ -288,11 +288,6 @@ export class Agent {
     return await this.mcpManager.disconnectServer(serverName);
   }
 
-  /** 重连 MCP 服务器 */
-  public async reconnectMcpServer(serverName: string): Promise<boolean> {
-    return await this.mcpManager.reconnectServer(serverName);
-  }
-
   // ========== 斜杠命令管理方法 ==========
 
   /** 获取所有可用斜杠命令 */

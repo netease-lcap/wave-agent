@@ -38,7 +38,6 @@ export interface InputBoxProps {
   mcpServers?: McpServerStatus[];
   connectMcpServer?: (serverName: string) => Promise<boolean>;
   disconnectMcpServer?: (serverName: string) => Promise<boolean>;
-  reconnectMcpServer?: (serverName: string) => Promise<boolean>;
   // Slash Command 相关属性
   slashCommands?: SlashCommand[];
   executeSlashCommand?: (commandId: string) => Promise<boolean>;
@@ -55,7 +54,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   mcpServers = [],
   connectMcpServer = async () => false,
   disconnectMcpServer = async () => false,
-  reconnectMcpServer = async () => false,
   slashCommands = [],
   executeSlashCommand = async () => false,
   hasSlashCommand = () => false,
@@ -254,7 +252,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
           servers={mcpServers}
           onConnectServer={connectMcpServer}
           onDisconnectServer={disconnectMcpServer}
-          onReconnectServer={reconnectMcpServer}
         />
       )}
       {showBashManager || showMcpManager || (

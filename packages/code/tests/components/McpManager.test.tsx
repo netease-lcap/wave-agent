@@ -51,7 +51,6 @@ describe("McpManager", () => {
   let mockOnCancel: ReturnType<typeof vi.fn>;
   let mockOnConnectServer: ReturnType<typeof vi.fn>;
   let mockOnDisconnectServer: ReturnType<typeof vi.fn>;
-  let mockOnReconnectServer: ReturnType<typeof vi.fn>;
   let defaultProps: McpManagerProps;
 
   beforeEach(() => {
@@ -59,14 +58,12 @@ describe("McpManager", () => {
     mockOnCancel = vi.fn();
     mockOnConnectServer = vi.fn().mockResolvedValue(true);
     mockOnDisconnectServer = vi.fn().mockResolvedValue(true);
-    mockOnReconnectServer = vi.fn().mockResolvedValue(true);
 
     defaultProps = {
       onCancel: mockOnCancel,
       servers: mockServers,
       onConnectServer: mockOnConnectServer,
       onDisconnectServer: mockOnDisconnectServer,
-      onReconnectServer: mockOnReconnectServer,
     };
   });
 
@@ -90,7 +87,6 @@ describe("McpManager", () => {
       // as they are handled by the agent
       expect(mockOnConnectServer).not.toHaveBeenCalled();
       expect(mockOnDisconnectServer).not.toHaveBeenCalled();
-      expect(mockOnReconnectServer).not.toHaveBeenCalled();
     });
   });
 
@@ -230,7 +226,6 @@ describe("McpManager", () => {
       // These should not be called directly by the component
       expect(mockOnConnectServer).not.toHaveBeenCalled();
       expect(mockOnDisconnectServer).not.toHaveBeenCalled();
-      expect(mockOnReconnectServer).not.toHaveBeenCalled();
     });
 
     it("should handle prop changes correctly", () => {

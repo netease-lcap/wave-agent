@@ -329,11 +329,6 @@ export class McpManager {
     }
   }
 
-  async reconnectServer(name: string): Promise<boolean> {
-    await this.disconnectServer(name);
-    return this.connectServer(name);
-  }
-
   // Get all tools from connected servers
   getAllConnectedTools(): McpTool[] {
     const allTools: McpTool[] = [];

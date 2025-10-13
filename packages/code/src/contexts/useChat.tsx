@@ -40,7 +40,6 @@ export interface ChatContextType {
   mcpServers: McpServerStatus[];
   connectMcpServer: (serverName: string) => Promise<boolean>;
   disconnectMcpServer: (serverName: string) => Promise<boolean>;
-  reconnectMcpServer: (serverName: string) => Promise<boolean>;
   // Background bash shells
   backgroundShells: BackgroundShell[];
   getBackgroundShellOutput: (
@@ -257,10 +256,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     return (await agentRef.current?.disconnectMcpServer(serverName)) ?? false;
   }, []);
 
-  const reconnectMcpServer = useCallback(async (serverName: string) => {
-    return (await agentRef.current?.reconnectMcpServer(serverName)) ?? false;
-  }, []);
-
   // Background bash 管理方法 - 委托给 Agent
   const getBackgroundShellOutput = useCallback((shellId: string) => {
     if (!agentRef.current) return null;
@@ -307,7 +302,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     mcpServers,
     connectMcpServer,
     disconnectMcpServer,
-    reconnectMcpServer,
     backgroundShells,
     getBackgroundShellOutput,
     killBackgroundShell,

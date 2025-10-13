@@ -7,7 +7,6 @@ export interface McpManagerProps {
   servers: McpServerStatus[];
   onConnectServer: (serverName: string) => Promise<boolean>;
   onDisconnectServer: (serverName: string) => Promise<boolean>;
-  onReconnectServer: (serverName: string) => Promise<boolean>;
 }
 
 export const McpManager: React.FC<McpManagerProps> = ({
@@ -15,7 +14,6 @@ export const McpManager: React.FC<McpManagerProps> = ({
   servers,
   onConnectServer,
   onDisconnectServer,
-  onReconnectServer,
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
@@ -59,10 +57,6 @@ export const McpManager: React.FC<McpManagerProps> = ({
 
   const handleDisconnect = async (serverName: string) => {
     await onDisconnectServer(serverName);
-  };
-
-  const handleReconnect = async (serverName: string) => {
-    await onReconnectServer(serverName);
   };
 
   useInput((input, key) => {
@@ -115,16 +109,6 @@ export const McpManager: React.FC<McpManagerProps> = ({
         }
         return;
       }
-
-      if (
-        input === "r" &&
-        servers.length > 0 &&
-        selectedIndex < servers.length
-      ) {
-        const server = servers[selectedIndex];
-        handleReconnect(server.name);
-        return;
-      }
     } else if (viewMode === "detail") {
       // Detail mode navigation
       if (key.escape) {
@@ -145,11 +129,6 @@ export const McpManager: React.FC<McpManagerProps> = ({
 
         if (input === "d" && selectedServer.status === "connected") {
           handleDisconnect(selectedServer.name);
-          return;
-        }
-
-        if (input === "r") {
-          handleReconnect(selectedServer.name);
           return;
         }
       }
@@ -251,8 +230,8 @@ export const McpManager: React.FC<McpManagerProps> = ({
             selectedServer.status === "error"
               ? "c to connect · "
               : ""}
-            {selectedServer.status === "connected" ? "d to disconnect · " : ""}r
-            to reconnect · Esc to go back
+            {selectedServer.status === "connected" ? "d to disconnect · " : ""}
+            Esc to go back
           </Text>
         </Box>
       </Box>
@@ -338,7 +317,7 @@ export const McpManager: React.FC<McpManagerProps> = ({
           {servers[selectedIndex]?.status === "connected"
             ? "d to disconnect · "
             : ""}
-          r to reconnect · Esc to close
+          Esc to close
         </Text>
       </Box>
     </Box>
