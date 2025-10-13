@@ -411,4 +411,27 @@ export class MessageManager {
     this.setMessages(updatedMessages);
     this.callbacks.onSubAgentMessageAdded?.(commandName, subAgentMessages);
   }
+
+  /**
+   * 更新最后一个 subAgent 消息的子消息
+   * 用于在子对话进行过程中实时更新
+   */
+  public updateSubAgentMessages(
+    commandName: string,
+    messages: Message[],
+  ): void {
+    // 找到最后一个 subAgent 消息并更新其内容
+    const lastSubAgentIndex = this.messages.length - 1;
+
+    if (
+      lastSubAgentIndex >= 0 &&
+      this.messages[lastSubAgentIndex].role === "subAgent"
+    ) {
+      // 直接更新最后一个 subAgent 消息的 messages 字段
+      this.messages[lastSubAgentIndex].messages = [...messages];
+
+      // 触发消息变更回调
+      this.callbacks.onMessagesChange?.([...this.messages]);
+    }
+  }
 }

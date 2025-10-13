@@ -83,11 +83,20 @@ export class SubAgentManager {
           ? replaceBashCommandsWithOutput(processedContent, bashResults)
           : processedContent;
 
+      // 立即创建空的 subAgent 消息，这样 UI 可以立即显示
+      this.mainMessageManager.addSubAgentMessage(commandName, []);
+
       // Create isolated message manager for the sub-agent
       const subMessageManager = new MessageManager({
         callbacks: {
-          // These callbacks will collect the sub-agent's messages
-          // but won't trigger the main UI updates
+          // 当子对话有新消息时，更新主消息管理器中的 subAgent 消息
+          onMessagesChange: (messages) => {
+            // 更新主消息管理器中最后一个 subAgent 消息
+            this.mainMessageManager.updateSubAgentMessages(
+              commandName,
+              messages,
+            );
+          },
         },
         logger: this.logger,
       });
@@ -122,11 +131,12 @@ export class SubAgentManager {
       // Execute the AI conversation in the isolated context
       await subAIManager.sendAIMessage();
 
-      // Get the sub-agent's conversation messages
-      const subAgentMessages = subMessageManager.getMessages();
-
-      // Add the sub-agent conversation to the main message manager
-      this.mainMessageManager.addSubAgentMessage(commandName, subAgentMessages);
+      // Final update - ensure we have the complete conversation
+      const finalMessages = subMessageManager.getMessages();
+      this.mainMessageManager.updateSubAgentMessages(
+        commandName,
+        finalMessages,
+      );
     } catch (error) {
       this.logger?.error(
         `Failed to execute custom command '${commandName}':`,
