@@ -83,12 +83,6 @@ export class SubAgentManager {
           ? replaceBashCommandsWithOutput(processedContent, bashResults)
           : processedContent;
 
-      // 立即在主对话中添加自定义命令块显示
-      this.mainMessageManager.addCustomCommandMessage(
-        commandName,
-        finalContent,
-      );
-
       // 立即创建空的 subAgent 消息，这样 UI 可以立即显示
       this.mainMessageManager.addSubAgentMessage(commandName, []);
 
@@ -131,8 +125,8 @@ export class SubAgentManager {
         callbacks: {},
       });
 
-      // Add the custom command content as a user message to the sub-agent
-      subMessageManager.addUserMessage(finalContent);
+      // 在子对话中添加自定义命令块显示
+      subMessageManager.addCustomCommandMessage(commandName, finalContent);
 
       // Execute the AI conversation in the isolated context
       await subAIManager.sendAIMessage();
