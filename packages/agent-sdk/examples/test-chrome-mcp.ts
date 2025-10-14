@@ -10,6 +10,8 @@ console.log("🌐 Testing Chrome MCP screenshot functionality...\n");
 let tempDir: string;
 let agent: Agent;
 
+process.env.AIGW_MODEL = "gemini-2.5-flash";
+
 async function setupTest() {
   // 创建临时目录
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "chrome-mcp-test-"));
@@ -118,6 +120,7 @@ async function main() {
   } finally {
     await cleanup();
     console.log("👋 Done!");
+    process.exit(0);
   }
 }
 

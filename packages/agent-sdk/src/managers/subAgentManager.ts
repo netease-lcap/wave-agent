@@ -101,29 +101,15 @@ export class SubAgentManager {
         logger: this.logger,
       });
 
-      // Create filtered tool manager if allowedTools is specified
-      let filteredToolManager = this.toolManager;
-      if (config?.allowedTools && config.allowedTools.length > 0) {
-        // Note: Tool filtering is not yet implemented
-        // For now, use the original tool manager
-        filteredToolManager = this.toolManager;
-        // For now, we'll use the same tool manager but this could be enhanced
-        // to actually filter the tools
-        filteredToolManager = this.toolManager;
-
-        this.logger?.info(
-          `Custom command '${commandName}' limited to tools: ${config.allowedTools.join(", ")}`,
-        );
-      }
-
       // Create isolated AI manager for the sub-agent
       const subAIManager = new AIManager({
         messageManager: subMessageManager,
-        toolManager: filteredToolManager,
+        toolManager: this.toolManager,
         backgroundBashManager: this.backgroundBashManager,
         logger: this.logger,
         callbacks: {},
         model: config?.model, // 传递自定义模型
+        allowedTools: config?.allowedTools, // 传递允许的工具列表
       });
 
       // 在子对话中添加自定义命令块显示

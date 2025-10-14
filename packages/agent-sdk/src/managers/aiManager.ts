@@ -21,6 +21,7 @@ export interface AIManagerOptions {
   backgroundBashManager?: BackgroundBashManager;
   callbacks?: AIManagerCallbacks;
   model?: string;
+  allowedTools?: string[];
 }
 
 export class AIManager {
@@ -32,6 +33,7 @@ export class AIManager {
   private messageManager: MessageManager;
   private backgroundBashManager?: BackgroundBashManager;
   private model?: string;
+  private allowedTools?: string[];
 
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
@@ -39,11 +41,29 @@ export class AIManager {
     this.backgroundBashManager = options.backgroundBashManager;
     this.logger = options.logger;
     this.model = options.model;
+    this.allowedTools = options.allowedTools;
     this.callbacks = options.callbacks ?? {};
   }
 
   private isCompressing: boolean = false;
   private callbacks: AIManagerCallbacks;
+
+  /**
+   * 获取过滤后的工具配置
+   */
+  private getFilteredToolsConfig() {
+    const allTools = this.toolManager.getToolsConfig();
+
+    // 如果没有指定 allowedTools，返回所有工具
+    if (!this.allowedTools || this.allowedTools.length === 0) {
+      return allTools;
+    }
+
+    // 过滤出允许的工具
+    return allTools.filter((tool) =>
+      this.allowedTools!.includes(tool.function.name),
+    );
+  }
 
   public setIsLoading(isLoading: boolean): void {
     this.isLoading = isLoading;
@@ -188,7 +208,7 @@ export class AIManager {
         abortSignal: abortController.signal,
         memory: combinedMemory, // 传递合并后的记忆内容
         workdir: process.cwd(), // 传递当前工作目录
-        tools: this.toolManager.getToolsConfig(), // 传递工具配置
+        tools: this.getFilteredToolsConfig(), // 传递过滤后的工具配置
         model: this.model, // 传递自定义模型
       });
 
