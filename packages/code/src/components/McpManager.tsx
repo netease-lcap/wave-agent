@@ -17,9 +17,14 @@ export const McpManager: React.FC<McpManagerProps> = ({
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
-  const [selectedServer, setSelectedServer] = useState<McpServerStatus | null>(
-    null,
-  );
+
+  // Dynamically calculate selectedServer based on selectedIndex and servers
+  const selectedServer =
+    viewMode === "detail" &&
+    servers.length > 0 &&
+    selectedIndex < servers.length
+      ? servers[selectedIndex]
+      : null;
 
   const formatTime = (timestamp: number): string => {
     return new Date(timestamp).toLocaleTimeString();
@@ -64,7 +69,6 @@ export const McpManager: React.FC<McpManagerProps> = ({
       // List mode navigation
       if (key.return) {
         if (servers.length > 0 && selectedIndex < servers.length) {
-          setSelectedServer(servers[selectedIndex]);
           setViewMode("detail");
         }
         return;
@@ -113,7 +117,6 @@ export const McpManager: React.FC<McpManagerProps> = ({
       // Detail mode navigation
       if (key.escape) {
         setViewMode("list");
-        setSelectedServer(null);
         return;
       }
 
