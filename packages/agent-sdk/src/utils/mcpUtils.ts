@@ -9,12 +9,16 @@ export function mcpToolToOpenAITool(
   mcpTool: McpTool,
   serverName: string,
 ): ChatCompletionFunctionTool {
+  // Remove $schema field if it exists, as OpenAI API doesn't accept it
+  const cleanInputSchema = { ...mcpTool.inputSchema };
+  delete cleanInputSchema.$schema;
+
   return {
     type: "function",
     function: {
       name: mcpTool.name,
       description: `${mcpTool.description || `Tool from MCP server ${serverName}`} (MCP: ${serverName})`,
-      parameters: mcpTool.inputSchema,
+      parameters: cleanInputSchema,
     },
   };
 }
