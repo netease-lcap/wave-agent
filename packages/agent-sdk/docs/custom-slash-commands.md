@@ -12,6 +12,7 @@ Custom slash commands are stored in designated directories based on their scope:
 ## File Format
 
 Each custom command is a markdown file where:
+
 - The filename (without `.md` extension) becomes the command name
 - The file content defines what the command does
 - Optional YAML frontmatter provides configuration
@@ -38,6 +39,7 @@ model: claude-3-5-sonnet-20241022
 ---
 
 Analyze the codebase for security vulnerabilities including:
+
 - SQL injection risks
 - XSS vulnerabilities
 - Exposed credentials
@@ -85,14 +87,16 @@ Bash commands are written using the `!`backtick`` syntax. They will be executed 
 ## Usage Examples
 
 ```typescript
-import { Agent } from 'wave-agent-sdk';
+import { Agent } from "wave-agent-sdk";
 
 const agent = await Agent.create({
   callbacks: {
     onSubAgentMessageAdded: (commandName, subMessages) => {
-      console.log(`Sub-agent '${commandName}' completed with ${subMessages.length} messages`);
-    }
-  }
+      console.log(
+        `Sub-agent '${commandName}' completed with ${subMessages.length} messages`,
+      );
+    },
+  },
 });
 
 // List available commands
@@ -102,7 +106,7 @@ const commands = agent.getSlashCommands();
 const customCommands = agent.getCustomCommands();
 
 // Execute a custom command
-await agent.executeSlashCommand('refactor');
+await agent.executeSlashCommand("refactor");
 
 // Reload custom commands (useful during development)
 agent.reloadCustomCommands();
@@ -128,7 +132,7 @@ When a custom command is executed, it creates a message with `role: "subAgent"`:
       blocks: [{ type: "text", content: "Refactor the selected code..." }]
     },
     {
-      role: "assistant", 
+      role: "assistant",
       blocks: [{ type: "text", content: "Here's the refactored code..." }]
     }
   ]

@@ -48,23 +48,17 @@ export interface ToolBlock {
     data: string; // base64 编码的图片数据
     mediaType?: string; // 图片的媒体类型
   }>;
-  attributes?: {
-    id?: string;
-    name?: string;
-    isRunning?: boolean; // 标记工具是否在实际执行中
-    success?: boolean;
-    error?: string | Error;
-    compactParams?: string; // 紧凑参数显示
-  };
+  id?: string;
+  name?: string;
+  isRunning?: boolean; // 标记工具是否在实际执行中
+  success?: boolean;
+  error?: string | Error;
+  compactParams?: string; // 紧凑参数显示
 }
 
 export interface ImageBlock {
   type: "image";
-  content?: string;
-  attributes?: {
-    imageUrls?: string[];
-    [key: string]: unknown;
-  };
+  imageUrls?: string[];
 }
 
 export interface DiffBlock {

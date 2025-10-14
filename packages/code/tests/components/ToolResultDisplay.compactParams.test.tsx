@@ -8,11 +8,11 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     const block: ToolBlock = {
       type: "tool",
       parameters: '{"target_file": "example.ts", "query": "useState"}',
-      attributes: {
-        name: "test_tool",
-        success: true,
-        compactParams: 'example.ts: "useState"',
-      },
+      name: "test_tool",
+
+      success: true,
+
+      compactParams: 'example.ts: "useState"',
     };
 
     const { lastFrame } = render(
@@ -28,10 +28,9 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     const block: ToolBlock = {
       type: "tool",
       parameters: '{"some": "params"}',
-      attributes: {
-        name: "test_tool",
-        success: true,
-      },
+      name: "test_tool",
+
+      success: true,
     };
 
     const { lastFrame } = render(
@@ -48,11 +47,11 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     const block: ToolBlock = {
       type: "tool",
       parameters: '{"some": "params"}',
-      attributes: {
-        name: "test_tool",
-        success: true,
-        compactParams: "",
-      },
+      name: "test_tool",
+
+      success: true,
+
+      compactParams: "",
     };
 
     const { lastFrame } = render(
@@ -69,11 +68,11 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     const block: ToolBlock = {
       type: "tool",
       parameters: '{"target_file": "test.ts", "query": "function"}',
-      attributes: {
-        name: "test_tool",
-        success: true,
-        compactParams: 'test.ts: "function"',
-      },
+      name: "test_tool",
+
+      success: true,
+
+      compactParams: 'test.ts: "function"',
     };
 
     const { lastFrame } = render(
@@ -89,11 +88,11 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     const block: ToolBlock = {
       type: "tool",
       parameters: '{"some": "params"}',
-      attributes: {
-        name: "test_tool",
-        success: true,
-        compactParams: undefined,
-      },
+      name: "test_tool",
+
+      success: true,
+
+      compactParams: undefined,
     };
 
     const { lastFrame } = render(

@@ -45,9 +45,7 @@ describe("addUserMessageToMessages", () => {
         { type: "text", content: "Check this out" },
         {
           type: "image",
-          attributes: {
-            imageUrls: ["/tmp/test-image.png"],
-          },
+          imageUrls: ["/tmp/test-image.png"],
         },
       ],
     });
@@ -73,9 +71,7 @@ describe("addUserMessageToMessages", () => {
         { type: "text", content: "Look at these" },
         {
           type: "image",
-          attributes: {
-            imageUrls: ["/tmp/image1.png", "/tmp/image2.jpg"],
-          },
+          imageUrls: ["/tmp/image1.png", "/tmp/image2.jpg"],
         },
       ],
     });
@@ -98,9 +94,7 @@ describe("addUserMessageToMessages", () => {
         { type: "text", content: "" },
         {
           type: "image",
-          attributes: {
-            imageUrls: ["/tmp/test-image.png"],
-          },
+          imageUrls: ["/tmp/test-image.png"],
         },
       ],
     });
@@ -129,9 +123,7 @@ describe("addUserMessageToMessages", () => {
         { type: "text", content: "New message" },
         {
           type: "image",
-          attributes: {
-            imageUrls: ["/tmp/test.png"],
-          },
+          imageUrls: ["/tmp/test.png"],
         },
       ],
     });

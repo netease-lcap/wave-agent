@@ -80,13 +80,12 @@ const renderMessageItem = (
                 <Text color="magenta" bold>
                   📷 Image
                 </Text>
-                {block.attributes?.imageUrls &&
-                  block.attributes.imageUrls.length > 0 && (
-                    <Text color="gray" dimColor>
-                      {" "}
-                      ({block.attributes.imageUrls.length})
-                    </Text>
-                  )}
+                {block.imageUrls && block.imageUrls.length > 0 && (
+                  <Text color="gray" dimColor>
+                    {" "}
+                    ({block.imageUrls.length})
+                  </Text>
+                )}
               </Box>
             )}
 

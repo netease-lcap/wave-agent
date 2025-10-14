@@ -188,9 +188,7 @@ describe("MessageList Component", () => {
             { type: "text", content: "Look at this image" },
             {
               type: "image",
-              attributes: {
-                imageUrls: ["/tmp/test-image.png"],
-              },
+              imageUrls: ["/tmp/test-image.png"],
             },
           ],
         },
@@ -221,9 +219,7 @@ describe("MessageList Component", () => {
           blocks: [
             {
               type: "image",
-              attributes: {
-                imageUrls: ["/tmp/test-image1.png", "/tmp/test-image2.jpg"],
-              },
+              imageUrls: ["/tmp/test-image1.png", "/tmp/test-image2.jpg"],
             },
           ],
         },
@@ -253,7 +249,6 @@ describe("MessageList Component", () => {
           blocks: [
             {
               type: "image",
-              attributes: {},
             },
           ],
         },
@@ -284,9 +279,7 @@ describe("MessageList Component", () => {
           blocks: [
             {
               type: "image",
-              attributes: {
-                imageUrls: ["/tmp/test-image.png"],
-              },
+              imageUrls: ["/tmp/test-image.png"],
             },
           ],
         },

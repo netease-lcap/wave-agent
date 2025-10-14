@@ -76,8 +76,8 @@ export function convertMessagesForAPI(
       if (toolBlocks.length > 0) {
         toolBlocks.forEach((toolBlock) => {
           // 只添加已完成的 tool blocks（即不在运行中的）
-          if (toolBlock.attributes?.id && !toolBlock.attributes.isRunning) {
-            completedToolIds.add(toolBlock.attributes.id);
+          if (toolBlock.id && !toolBlock.isRunning) {
+            completedToolIds.add(toolBlock.id);
 
             // 检查是否有图片数据
             if (toolBlock.images && toolBlock.images.length > 0) {
@@ -85,7 +85,7 @@ export function convertMessagesForAPI(
               const contentParts: ChatCompletionContentPart[] = [];
 
               // 添加工具结果作为文本
-              const toolResultText = `Tool result for ${toolBlock.attributes.name || "unknown tool"}:\n${stripAnsiColors(toolBlock.result || "")}`;
+              const toolResultText = `Tool result for ${toolBlock.name || "unknown tool"}:\n${stripAnsiColors(toolBlock.result || "")}`;
               contentParts.push({
                 type: "text",
                 text: toolResultText,
@@ -114,7 +114,7 @@ export function convertMessagesForAPI(
             } else {
               // 正常的 tool 消息
               recentMessages.unshift({
-                tool_call_id: toolBlock.attributes.id,
+                tool_call_id: toolBlock.id,
                 role: "tool",
                 content: stripAnsiColors(toolBlock.result || ""),
               });
@@ -139,15 +139,13 @@ export function convertMessagesForAPI(
       if (toolBlocks.length > 0) {
         tool_calls = toolBlocks
           .filter(
-            (toolBlock) =>
-              toolBlock.attributes?.id &&
-              completedToolIds.has(toolBlock.attributes.id),
+            (toolBlock) => toolBlock.id && completedToolIds.has(toolBlock.id),
           )
           .map((toolBlock) => ({
-            id: toolBlock.attributes!.id!,
+            id: toolBlock.id!,
             type: "function",
             function: {
-              name: toolBlock.attributes!.name || "",
+              name: toolBlock.name || "",
               arguments: safeToolArguments(
                 String(toolBlock.parameters || "{}"),
               ),
@@ -193,10 +191,10 @@ export function convertMessagesForAPI(
         // 如果有图片，添加图片内容
         if (
           block.type === "image" &&
-          block.attributes?.imageUrls &&
-          block.attributes.imageUrls.length > 0
+          block.imageUrls &&
+          block.imageUrls.length > 0
         ) {
-          block.attributes.imageUrls.forEach((imageUrl: string) => {
+          block.imageUrls.forEach((imageUrl: string) => {
             // 检查是否已经是base64格式，如果不是则转换
             let finalImageUrl = imageUrl;
             if (!imageUrl.startsWith("data:image/")) {

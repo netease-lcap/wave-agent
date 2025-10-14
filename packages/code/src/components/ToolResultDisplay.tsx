@@ -11,22 +11,23 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   block,
   isExpanded = false,
 }) => {
-  const { parameters, result, attributes } = block;
+  const { parameters, result, compactParams, isRunning, success, error, name } =
+    block;
 
-  // 直接从 attributes 获取 compactParams
-  const compactParams = attributes?.compactParams;
+  // 直接使用 compactParams
+  // (no change needed as we destructured it above)
 
   const getStatusColor = () => {
-    if (attributes?.isRunning) return "yellow";
-    if (attributes?.success) return "green";
-    if (attributes?.error || attributes?.success === false) return "red";
+    if (isRunning) return "yellow";
+    if (success) return "green";
+    if (error || success === false) return "red";
     return "gray"; // 未知状态或无状态信息
   };
 
   const getStatusText = () => {
-    if (attributes?.isRunning) return "🔄";
-    if (attributes?.success) return "";
-    if (attributes?.error || attributes?.success === false) return "❌ Failed";
+    if (isRunning) return "🔄";
+    if (success) return "";
+    if (error || success === false) return "❌ Failed";
     return ""; // 未知状态时不显示文本
   };
 
@@ -40,7 +41,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
     return imageCount === 1 ? "🖼️" : `🖼️×${imageCount}`;
   };
 
-  const toolName = attributes?.name ? String(attributes.name) : "Tool";
+  const toolName = name ? String(name) : "Tool";
 
   // 获取shortResult，如果没有则显示result的后5行
   const getShortResult = () => {
@@ -125,13 +126,10 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
       )}
 
       {/* 错误信息始终显示 */}
-      {attributes?.error && (
+      {error && (
         <Box>
           <Text color="red">
-            Error:{" "}
-            {typeof attributes.error === "string"
-              ? attributes.error
-              : String(attributes.error)}
+            Error: {typeof error === "string" ? error : String(error)}
           </Text>
         </Box>
       )}

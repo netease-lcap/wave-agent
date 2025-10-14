@@ -18,10 +18,9 @@ describe("ToolResultDisplay Component", () => {
     it("should display shortResult when available", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "read_file",
-          success: true,
-        },
+        name: "read_file",
+
+        success: true,
         parameters: JSON.stringify({
           target_file: "src/test.ts",
           explanation: "Testing file reading",
@@ -50,10 +49,9 @@ describe("ToolResultDisplay Component", () => {
     it("should display fallback shortResult when shortResult is not available", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "read_file",
-          success: true,
-        },
+        name: "read_file",
+
+        success: true,
         parameters: JSON.stringify({
           target_file: "src/test.ts",
           explanation: "Testing file reading",
@@ -80,10 +78,9 @@ describe("ToolResultDisplay Component", () => {
     it("should not show result indicator when both shortResult and result are not available", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "read_file",
-          success: true,
-        },
+        name: "read_file",
+
+        success: true,
         parameters: JSON.stringify({
           target_file: "src/test.ts",
           explanation: "Testing file reading",
@@ -104,10 +101,9 @@ describe("ToolResultDisplay Component", () => {
     it("should show shortResult when available in collapsed view", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "some_tool",
-          success: true,
-        },
+        name: "some_tool",
+
+        success: true,
         parameters: JSON.stringify({
           param1: "value1",
         }),
@@ -130,11 +126,11 @@ describe("ToolResultDisplay Component", () => {
     it("should show error status with message", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "test_tool",
-          success: false,
-          error: "File not found",
-        },
+        name: "test_tool",
+
+        success: false,
+
+        error: "File not found",
         parameters: "{}",
       };
 
@@ -147,10 +143,9 @@ describe("ToolResultDisplay Component", () => {
     it("should show running status", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "test_tool",
-          isRunning: true,
-        },
+        name: "test_tool",
+
+        isRunning: true,
         parameters: "{}",
       };
 
@@ -164,10 +159,9 @@ describe("ToolResultDisplay Component", () => {
     it("should show single image indicator when tool result has one image", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "screenshot_tool",
-          success: true,
-        },
+        name: "screenshot_tool",
+
+        success: true,
         parameters: JSON.stringify({ action: "capture" }),
         result: "Screenshot captured successfully",
         images: [
@@ -189,10 +183,9 @@ describe("ToolResultDisplay Component", () => {
     it("should show multiple image indicator when tool result has multiple images", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "multi_screenshot_tool",
-          success: true,
-        },
+        name: "multi_screenshot_tool",
+
+        success: true,
         parameters: JSON.stringify({ count: 3 }),
         result: "Multiple screenshots captured",
         images: [
@@ -212,10 +205,9 @@ describe("ToolResultDisplay Component", () => {
     it("should not show image indicator when tool result has no images", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "text_tool",
-          success: true,
-        },
+        name: "text_tool",
+
+        success: true,
         parameters: JSON.stringify({ action: "process" }),
         result: "Text processing completed",
       };
@@ -230,10 +222,9 @@ describe("ToolResultDisplay Component", () => {
     it("should not show image indicator when images array is empty", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "empty_images_tool",
-          success: true,
-        },
+        name: "empty_images_tool",
+
+        success: true,
         parameters: JSON.stringify({ action: "test" }),
         result: "Tool executed",
         images: [],
@@ -249,10 +240,9 @@ describe("ToolResultDisplay Component", () => {
     it("should show image indicator combined with status text", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
-        attributes: {
-          name: "screenshot_tool",
-          isRunning: true,
-        },
+        name: "screenshot_tool",
+
+        isRunning: true,
         parameters: JSON.stringify({ action: "capture" }),
         images: [{ data: "image_data", mediaType: "image/png" }],
       };

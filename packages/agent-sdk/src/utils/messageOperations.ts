@@ -175,9 +175,7 @@ export const addUserMessageToMessages = ({
     const imageUrls = images.map((img) => img.path);
     blocks.push({
       type: "image",
-      attributes: {
-        imageUrls,
-      },
+      imageUrls,
     });
   }
 
@@ -206,13 +204,11 @@ export const addAssistantMessageToMessages = (
     toolCalls.forEach((toolCall) => {
       blocks.push({
         type: "tool",
-        parameters: "",
+        parameters: toolCall.function.arguments || "",
         result: "",
-        attributes: {
-          id: toolCall.id || "",
-          name: toolCall.function?.name || "",
-          isRunning: false,
-        },
+        id: toolCall.id || "",
+        name: toolCall.function?.name || "",
+        isRunning: false,
       });
     });
   }
@@ -272,7 +268,7 @@ export const updateToolBlockInMessage = ({
   for (let i = newMessages.length - 1; i >= 0; i--) {
     if (newMessages[i].role === "assistant") {
       const toolBlockIndex = newMessages[i].blocks.findIndex(
-        (block) => block.type === "tool" && block.attributes?.id === id,
+        (block) => block.type === "tool" && block.id === id,
       );
 
       if (toolBlockIndex !== -1) {
@@ -282,14 +278,11 @@ export const updateToolBlockInMessage = ({
           if (result !== undefined) toolBlock.result = result;
           if (shortResult !== undefined) toolBlock.shortResult = shortResult;
           if (images !== undefined) toolBlock.images = images; // 添加图片数据更新
-          if (toolBlock.attributes) {
-            if (success !== undefined) toolBlock.attributes.success = success;
-            if (error !== undefined) toolBlock.attributes.error = error;
-            if (isRunning !== undefined)
-              toolBlock.attributes.isRunning = isRunning;
-            if (compactParams !== undefined)
-              toolBlock.attributes.compactParams = compactParams;
-          }
+          if (success !== undefined) toolBlock.success = success;
+          if (error !== undefined) toolBlock.error = error;
+          if (isRunning !== undefined) toolBlock.isRunning = isRunning;
+          if (compactParams !== undefined)
+            toolBlock.compactParams = compactParams;
         }
       } else if (result !== undefined) {
         // 如果找不到现有block，创建新的
@@ -299,14 +292,12 @@ export const updateToolBlockInMessage = ({
           result: result,
           shortResult: shortResult,
           images: images, // 添加图片数据
-          attributes: {
-            id: id,
-            name: name || "unknown",
-            success: success,
-            error: error,
-            isRunning: isRunning ?? false,
-            compactParams: compactParams,
-          },
+          id: id,
+          name: name || "unknown",
+          success: success,
+          error: error,
+          isRunning: isRunning ?? false,
+          compactParams: compactParams,
         });
       }
       break;

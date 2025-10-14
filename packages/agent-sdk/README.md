@@ -14,7 +14,6 @@ npm install wave-agent-sdk
 
 See [examples](./examples) for usage examples.
 
-
 ## Development
 
 ```bash
