@@ -322,6 +322,7 @@ export const addErrorBlockToMessage = ({
 }: AddErrorBlockParams): Message[] => {
   const newMessages = [...messages];
   // 找到最后一个助手消息
+  let assistantMessageFound = false;
   for (let i = newMessages.length - 1; i >= 0; i--) {
     if (newMessages[i].role === "assistant") {
       newMessages[i].blocks = [
@@ -331,9 +332,24 @@ export const addErrorBlockToMessage = ({
           content: error,
         },
       ];
+      assistantMessageFound = true;
       break;
     }
   }
+
+  // 如果没有找到助手消息，创建一个新的助手消息只包含错误块
+  if (!assistantMessageFound) {
+    newMessages.push({
+      role: "assistant",
+      blocks: [
+        {
+          type: "error",
+          content: error,
+        },
+      ],
+    });
+  }
+
   return newMessages;
 };
 
