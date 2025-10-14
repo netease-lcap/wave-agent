@@ -356,12 +356,6 @@ export class AIManager {
           await this.sendAIMessage(recursionDepth + 1);
         }
       } else {
-        // 没有工具操作时处理 token 统计和压缩
-        await this.handleTokenUsageAndCompression(
-          result.usage,
-          abortController,
-        );
-
         // 没有工具操作时也要清除 abort controller
         this.abortController = null;
         this.toolAbortController = null;
