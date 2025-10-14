@@ -20,18 +20,6 @@ const agent = await Agent.create({
     onAssistantMessageAdded: () => {
       console.log("🤖 Assistant message started");
     },
-    onAnswerBlockAdded: () => {
-      console.log("💬 Answer block added");
-    },
-    onAnswerBlockUpdated: (content: string) => {
-      const preview = content.slice(0, 100).replace(/\n/g, "\\n");
-      console.log(
-        `📝 Answer updated: "${preview}${content.length > 100 ? "..." : ""}"`,
-      );
-    },
-    onToolBlockAdded: (tool: { id: string; name: string }) => {
-      console.log(`🔧 Tool started: ${tool.name} (${tool.id})`);
-    },
     onToolBlockUpdated: (params) => {
       console.log(`🔧 Tool updated: ${JSON.stringify(params, null, 2)}`);
     },

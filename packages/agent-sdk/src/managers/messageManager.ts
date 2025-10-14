@@ -1,9 +1,6 @@
 import { randomUUID } from "crypto";
 import {
   addAssistantMessageToMessages,
-  addAnswerBlockToMessage,
-  updateAnswerBlockInMessage,
-  addToolBlockToMessage,
   updateToolBlockInMessage,
   addErrorBlockToMessage,
   addCompressBlockToMessage,
@@ -25,6 +22,7 @@ import {
   saveSession,
   SessionData,
 } from "../services/session.js";
+import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 
 export interface MessageManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
@@ -37,9 +35,6 @@ export interface MessageManagerCallbacks {
     images?: Array<{ path: string; mimeType: string }>,
   ) => void;
   onAssistantMessageAdded?: () => void;
-  onAnswerBlockAdded?: () => void;
-  onAnswerBlockUpdated?: (content: string) => void;
-  onToolBlockAdded?: (tool: { id: string; name: string }) => void;
   onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
   onDiffBlockAdded?: (filePath: string, diffResult: string) => void;
   onErrorBlockAdded?: (error: string) => void;
@@ -286,34 +281,17 @@ export class MessageManager {
     this.callbacks.onUserMessageAdded?.(content);
   }
 
-  public addAssistantMessage(): void {
-    const newMessages = addAssistantMessageToMessages(this.messages);
-    this.messages = newMessages;
-    this.callbacks.onAssistantMessageAdded?.();
-  }
-
-  public addAnswerBlock(): void {
-    const newMessages = addAnswerBlockToMessage(this.messages);
-    this.messages = newMessages;
-    this.callbacks.onAnswerBlockAdded?.();
-  }
-
-  public updateAnswerBlock(content: string): void {
-    const newMessages = updateAnswerBlockInMessage({
-      messages: this.messages,
+  public addAssistantMessage(
+    content?: string,
+    toolCalls?: ChatCompletionMessageFunctionToolCall[],
+  ): void {
+    const newMessages = addAssistantMessageToMessages(
+      this.messages,
       content,
-    });
+      toolCalls,
+    );
     this.setMessages(newMessages);
-    this.callbacks.onAnswerBlockUpdated?.(content);
-  }
-
-  public addToolBlock(tool: { id: string; name: string }): void {
-    const newMessages = addToolBlockToMessage({
-      messages: this.messages,
-      attributes: tool,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onToolBlockAdded?.(tool);
+    this.callbacks.onAssistantMessageAdded?.();
   }
 
   public updateToolBlock(params: AgentToolBlockUpdateParams): void {

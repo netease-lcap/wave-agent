@@ -8,6 +8,7 @@ import type { ToolContext } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
+import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -88,6 +89,59 @@ export class AIManager {
     return undefined;
   }
 
+  // 处理 token 统计和消息压缩的私有方法
+  private async handleTokenUsageAndCompression(
+    usage: { total_tokens: number } | undefined,
+    abortController: AbortController,
+  ): Promise<void> {
+    if (!usage) return;
+
+    // 更新 token 统计 - 显示最新一次的token使用量
+    this.messageManager.setlatestTotalTokens(usage.total_tokens);
+
+    // 检查是否超过token限制
+    const tokenLimit = parseInt(
+      process.env.TOKEN_LIMIT || `${DEFAULT_TOKEN_LIMIT}`,
+      10,
+    );
+
+    if (usage.total_tokens > tokenLimit) {
+      this.logger?.info(
+        `Token usage exceeded ${tokenLimit}, compressing messages...`,
+      );
+
+      // 检查是否需要压缩消息
+      const { messagesToCompress, insertIndex } = getMessagesToCompress(
+        this.messageManager.getMessages(),
+        7,
+      );
+
+      // 如果有需要压缩的消息，则进行压缩
+      if (messagesToCompress.length > 0) {
+        const recentChatMessages = convertMessagesForAPI(messagesToCompress);
+
+        this.setIsCompressing(true);
+        try {
+          const compressedContent = await compressMessages({
+            messages: recentChatMessages,
+            abortSignal: abortController.signal,
+          });
+
+          // 在指定位置插入压缩块
+          this.messageManager.addCompressBlock(insertIndex, compressedContent);
+
+          this.logger?.info(
+            `Successfully compressed ${messagesToCompress.length} messages`,
+          );
+        } catch (compressError) {
+          this.logger?.error("Failed to compress messages:", compressError);
+        } finally {
+          this.setIsCompressing(false);
+        }
+      }
+    }
+  }
+
   public getIsCompressing(): boolean {
     return this.isCompressing;
   }
@@ -118,20 +172,12 @@ export class AIManager {
       this.setIsLoading(true);
     }
 
-    // 添加助手消息
-    this.messageManager.addAssistantMessage();
-
-    let hasToolOperations = false;
-
     // 获取近期消息历史
     const recentMessages = convertMessagesForAPI(
       this.messageManager.getMessages(),
     );
 
     try {
-      // 添加答案块
-      this.messageManager.addAnswerBlock();
-
       // 获取合并的记忆内容
       const combinedMemory = await memory.getCombinedMemoryContent();
 
@@ -146,81 +192,24 @@ export class AIManager {
         model: this.model, // 传递自定义模型
       });
 
-      // 更新答案块中的内容
-      if (result.content) {
-        this.messageManager.updateAnswerBlock(result.content);
-      }
+      // 收集内容和工具调用
+      const content = result.content || "";
+      const toolCalls: ChatCompletionMessageFunctionToolCall[] = [];
 
-      // 更新 token 统计 - 显示最新一次的token使用量
-      if (result.usage) {
-        this.messageManager.setlatestTotalTokens(result.usage.total_tokens);
-
-        // 检查是否超过token限制
-        const tokenLimit = parseInt(
-          process.env.TOKEN_LIMIT || `${DEFAULT_TOKEN_LIMIT}`,
-          10,
-        );
-        if (result.usage.total_tokens > tokenLimit) {
-          this.logger?.info(
-            `Token usage exceeded ${tokenLimit}, compressing messages...`,
-          );
-
-          // 检查是否需要压缩消息
-          const { messagesToCompress, insertIndex } = getMessagesToCompress(
-            this.messageManager.getMessages(),
-            7,
-          );
-
-          // 如果有需要压缩的消息，则进行压缩
-          if (messagesToCompress.length > 0) {
-            const recentChatMessages =
-              convertMessagesForAPI(messagesToCompress);
-
-            this.setIsCompressing(true);
-            try {
-              const compressedContent = await compressMessages({
-                messages: recentChatMessages,
-                abortSignal: abortController.signal,
-              });
-
-              // 在指定位置插入压缩块
-              this.messageManager.addCompressBlock(
-                insertIndex,
-                compressedContent,
-              );
-
-              this.logger?.info(
-                `Successfully compressed ${messagesToCompress.length} messages`,
-              );
-            } catch (compressError) {
-              this.logger?.error("Failed to compress messages:", compressError);
-            } finally {
-              this.setIsCompressing(false);
-            }
+      if (result.tool_calls) {
+        for (const toolCall of result.tool_calls) {
+          if (toolCall.type === "function") {
+            toolCalls.push(toolCall);
           }
         }
       }
 
-      // 处理返回的工具调用（执行阶段）
-      if (result.tool_calls) {
-        for (const toolCall of result.tool_calls) {
-          if (toolCall.type !== "function") continue; // 跳过没有 function 的工具调用
+      // 一次性添加助手消息（包含内容和工具调用）
+      this.messageManager.addAssistantMessage(content, toolCalls);
 
-          hasToolOperations = true;
-
-          const toolId = toolCall.id || "";
-          const functionToolCall = toolCall as {
-            id: string;
-            type: "function";
-            function: { name: string; arguments: string };
-          };
-
-          // 添加工具块到 UI
-          this.messageManager.addToolBlock({
-            id: toolId,
-            name: functionToolCall.function?.name || "",
-          });
-
+      if (toolCalls.length > 0) {
+        for (const functionToolCall of toolCalls) {
+          const toolId = functionToolCall.id || "";
           // 执行工具
           try {
             // 检查是否已被中断，如果是则跳过工具执行
@@ -347,8 +336,11 @@ export class AIManager {
         }
       }
 
+      // 处理 token 统计和消息压缩
+      await this.handleTokenUsageAndCompression(result.usage, abortController);
+
       // 检查是否有工具操作，如果有则自动发起下一次 AI 服务调用
-      if (hasToolOperations) {
+      if (toolCalls.length > 0) {
         // 检查中断状态
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
@@ -364,6 +356,12 @@ export class AIManager {
           await this.sendAIMessage(recursionDepth + 1);
         }
       } else {
+        // 没有工具操作时处理 token 统计和压缩
+        await this.handleTokenUsageAndCompression(
+          result.usage,
+          abortController,
+        );
+
         // 没有工具操作时也要清除 abort controller
         this.abortController = null;
         this.toolAbortController = null;

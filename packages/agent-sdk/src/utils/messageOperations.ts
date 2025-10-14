@@ -1,6 +1,7 @@
 import type { Message } from "../types.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
+import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 
 // Parameter interfaces for message operations
 export interface AddUserMessageParams {
@@ -12,16 +13,6 @@ export interface AddUserMessageParams {
     commandName: string;
     content: string;
   };
-}
-
-export interface UpdateAnswerBlockParams {
-  messages: Message[];
-  content: string;
-}
-
-export interface AddToolBlockParams {
-  messages: Message[];
-  attributes: { id: string; name: string };
 }
 
 export interface UpdateToolBlockParams {
@@ -197,58 +188,41 @@ export const addUserMessageToMessages = ({
   return [...messages, userMessage];
 };
 
-// 添加助手消息
+// 添加助手消息（支持一次性添加答案和工具调用）
 export const addAssistantMessageToMessages = (
   messages: Message[],
+  content?: string,
+  toolCalls?: ChatCompletionMessageFunctionToolCall[],
 ): Message[] => {
+  const blocks: Message["blocks"] = [];
+
+  // 如果有答案内容，添加文本块
+  if (content) {
+    blocks.push({ type: "text", content: content });
+  }
+
+  // 如果有工具调用，添加工具块
+  if (toolCalls && toolCalls.length > 0) {
+    toolCalls.forEach((toolCall) => {
+      blocks.push({
+        type: "tool",
+        parameters: "",
+        result: "",
+        attributes: {
+          id: toolCall.id || "",
+          name: toolCall.function?.name || "",
+          isRunning: false,
+        },
+      });
+    });
+  }
+
   const initialAssistantMessage: Message = {
     role: "assistant",
-    blocks: [],
+    blocks,
   };
 
   return [...messages, initialAssistantMessage];
-};
-
-// 添加 Answer Block 到最后一个助手消息
-export const addAnswerBlockToMessage = (messages: Message[]): Message[] => {
-  const newMessages = [...messages];
-  // 找到最后一个助手消息
-  for (let i = newMessages.length - 1; i >= 0; i--) {
-    if (newMessages[i].role === "assistant") {
-      newMessages[i].blocks.push({ type: "text", content: "" });
-      break;
-    }
-  }
-  return newMessages;
-};
-
-// 更新最后一个助手消息的 Answer Block 内容
-export const updateAnswerBlockInMessage = ({
-  messages,
-  content,
-}: UpdateAnswerBlockParams): Message[] => {
-  const newMessages = [...messages];
-  // 找到最后一个助手消息
-  for (let i = newMessages.length - 1; i >= 0; i--) {
-    if (newMessages[i].role === "assistant") {
-      const textBlocks = newMessages[i].blocks.filter(
-        (block) => block.type === "text",
-      );
-      if (textBlocks.length > 0) {
-        const lastTextBlockIndex = newMessages[i].blocks.lastIndexOf(
-          textBlocks[textBlocks.length - 1],
-        );
-        if (lastTextBlockIndex >= 0) {
-          newMessages[i].blocks[lastTextBlockIndex] = {
-            type: "text",
-            content: content,
-          };
-        }
-      }
-      break;
-    }
-  }
-  return newMessages;
 };
 
 // 更新最后一个助手消息的 File Operation Block
@@ -272,31 +246,6 @@ export const addDiffBlockToMessage = ({
         modified: modified,
         diffResult: diffResult,
         warning: warning,
-      });
-      break;
-    }
-  }
-  return newMessages;
-};
-
-// 添加 Tool Block 到最后一个助手消息
-export const addToolBlockToMessage = ({
-  messages,
-  attributes,
-}: AddToolBlockParams): Message[] => {
-  const newMessages = [...messages];
-  // 找到最后一个助手消息
-  for (let i = newMessages.length - 1; i >= 0; i--) {
-    if (newMessages[i].role === "assistant") {
-      newMessages[i].blocks.push({
-        type: "tool",
-        parameters: "",
-        result: "",
-        attributes: {
-          id: attributes.id,
-          name: attributes.name,
-          isRunning: false, // 尚未开始执行
-        },
       });
       break;
     }

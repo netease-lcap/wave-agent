@@ -44,18 +44,6 @@ async function setupTest() {
       onAssistantMessageAdded: () => {
         console.log("🤖 Assistant message started");
       },
-      onAnswerBlockAdded: () => {
-        console.log("💬 Answer block added");
-      },
-      onAnswerBlockUpdated: (content: string) => {
-        const preview = content.slice(0, 150).replace(/\n/g, "\\n");
-        console.log(
-          `📝 Answer: "${preview}${content.length > 150 ? "..." : ""}"`,
-        );
-      },
-      onToolBlockAdded: (tool: { id: string; name: string }) => {
-        console.log(`🔧 Tool started: ${tool.name} (${tool.id})`);
-      },
       onToolBlockUpdated: (params) => {
         const status = params.isRunning
           ? "running"
