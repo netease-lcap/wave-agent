@@ -272,13 +272,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     if (!agentRef.current) return false;
 
     // 设置 command running 状态
-    setIsCommandRunning(true);
+    setIsLoading(true);
 
     try {
       return await agentRef.current.executeSlashCommandInput(commandInput);
     } finally {
       // 清除 command running 状态
-      setIsCommandRunning(false);
+      setIsLoading(false);
     }
   }, []);
 
