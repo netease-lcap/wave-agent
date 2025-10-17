@@ -83,6 +83,13 @@ export function parseMarkdownFile(filePath: string): ParsedMarkdownFile {
       if (frontmatter.model && typeof frontmatter.model === "string") {
         config.model = frontmatter.model;
       }
+
+      if (
+        frontmatter.description &&
+        typeof frontmatter.description === "string"
+      ) {
+        config.description = frontmatter.description;
+      }
     }
 
     return {

@@ -163,11 +163,13 @@ export interface SlashCommand {
 export interface CustomSlashCommandConfig {
   allowedTools?: string[];
   model?: string;
+  description?: string;
 }
 
 export interface CustomSlashCommand {
   id: string;
   name: string;
+  description?: string; // 添加描述字段
   filePath: string;
   content: string;
   config?: CustomSlashCommandConfig;

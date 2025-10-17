@@ -34,6 +34,7 @@ Create `.wave/commands/security-check.md`:
 
 ```markdown
 ---
+description: Analyze codebase for security vulnerabilities and potential risks
 allowed-tools: Read, Grep, Glob
 model: claude-3-5-sonnet-20241022
 ---
@@ -73,6 +74,7 @@ Bash commands are written using the `!`backtick`` syntax. They will be executed 
 
 ### Frontmatter Options
 
+- `description`: Custom description for the command that appears in the command selector
 - `allowed-tools`: Array of tool names that the agent can use for this command (e.g., `Read, Grep, Glob`)
 - `model`: Specific AI model to use for this command (e.g., `claude-3-5-sonnet-20241022`)
 

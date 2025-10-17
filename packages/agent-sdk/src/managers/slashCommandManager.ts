@@ -62,11 +62,16 @@ export class SlashCommandManager {
       for (const command of customCommands) {
         this.customCommands.set(command.id, command);
 
+        // 生成描述：优先使用自定义描述，否则使用默认描述
+        const description =
+          command.description ||
+          `Custom command: ${command.name}${hasParameterPlaceholders(command.content) ? " (supports parameters)" : ""}`;
+
         // Register as a regular command with a handler that executes the custom command
         this.registerCommand({
           id: command.id,
           name: command.name,
-          description: `Custom command: ${command.name}${hasParameterPlaceholders(command.content) ? " (supports parameters)" : ""}`,
+          description,
           handler: async (args?: string) => {
             // Substitute parameters in the command content
             const processedContent =
