@@ -131,14 +131,32 @@ const renderMessageItem = (
           borderColor="magenta"
         >
           <Box flexDirection="column">
-            {message.messages.map((subMessage, index) =>
-              renderMessageItem(
-                subMessage,
-                index,
-                isExpanded,
-                message.messages?.[index - 1],
-              ),
+            {/* 显示省略信息（如果有超过10条消息） */}
+            {message.messages.length > 10 && (
+              <Box marginBottom={1}>
+                <Text color="gray" dimColor>
+                  ... {message.messages.length - 10} earlier messages
+                </Text>
+              </Box>
             )}
+            {/* 只显示最后10条子消息 */}
+            {message.messages.slice(-10).map((subMessage, index) => {
+              const originalIndex =
+                Math.max(0, message.messages!.length - 10) + index;
+              const previousSubMessage =
+                index > 0
+                  ? message.messages!.slice(-10)[index - 1]
+                  : message.messages!.length > 10
+                    ? message.messages![message.messages!.length - 11]
+                    : undefined;
+
+              return renderMessageItem(
+                subMessage,
+                originalIndex,
+                isExpanded,
+                previousSubMessage,
+              );
+            })}
           </Box>
         </Box>
       )}
