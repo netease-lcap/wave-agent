@@ -243,9 +243,6 @@ export class SlashCommandManager {
       // Add custom command block to show the command being executed
       this.messageManager.addCustomCommandMessage(commandName, finalContent);
 
-      // Add user message with the processed content
-      this.messageManager.addUserMessage(finalContent);
-
       // Create a temporary AI manager with custom configuration if provided
       const { AIManager } = await import("./aiManager.js");
       const tempAIManager = new AIManager({
