@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { Box, Text } from "ink";
 import { FileSelector } from "./FileSelector.js";
 import { CommandSelector } from "./CommandSelector.js";
@@ -40,7 +40,7 @@ export interface InputBoxProps {
   disconnectMcpServer?: (serverName: string) => Promise<boolean>;
   // Slash Command 相关属性
   slashCommands?: SlashCommand[];
-  executeSlashCommand?: (commandId: string) => Promise<boolean>;
+  executeSlashCommand?: (commandInput: string) => Promise<boolean>;
   hasSlashCommand?: (commandId: string) => boolean;
 }
 
@@ -96,6 +96,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     commandSearchQuery,
     activateCommandSelector,
     handleCommandSelect: handleCommandSelectorSelect,
+    handleCommandInsert: handleCommandSelectorInsert,
     handleCancelCommandSelect,
     updateCommandSearchQuery,
     checkForSlashDeletion,
@@ -170,6 +171,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showCommandSelector,
     activateCommandSelector,
     handleCommandSelect: handleCommandSelectorSelect,
+    handleCommandInsert: handleCommandSelectorInsert,
     handleCancelCommandSelect,
     updateCommandSearchQuery,
     checkForSlashDeletion,
@@ -191,10 +193,31 @@ export const InputBox: React.FC<InputBoxProps> = ({
     sendMessage,
     abortMessage,
     saveMemory,
+    executeSlashCommand,
   });
 
   const isPlaceholder = !inputText;
   const placeholderText = INPUT_PLACEHOLDER_TEXT;
+
+  // 为 CommandSelector 创建适配器函数
+  const handleCommandInsert = useCallback(
+    (command: string) => {
+      const result = handleCommandSelectorInsert(
+        command,
+        inputText,
+        cursorPosition,
+      );
+      setInputText(result.newInput);
+      setCursorPosition(result.newCursorPosition);
+    },
+    [
+      handleCommandSelectorInsert,
+      inputText,
+      cursorPosition,
+      setInputText,
+      setCursorPosition,
+    ],
+  );
 
   // 将文本拆分为光标前、光标位置、光标后三部分
   const displayText = isPlaceholder ? placeholderText : inputText;
@@ -221,6 +244,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         <CommandSelector
           searchQuery={commandSearchQuery}
           onSelect={handleCommandSelect}
+          onInsert={handleCommandInsert}
           onCancel={handleCancelCommandSelect}
           commands={slashCommands}
         />

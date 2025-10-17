@@ -48,7 +48,7 @@ export interface ChatContextType {
   killBackgroundShell: (shellId: string) => boolean;
   // Slash Command functionality
   slashCommands: SlashCommand[];
-  executeSlashCommand: (commandId: string) => Promise<boolean>;
+  executeSlashCommand: (commandInput: string) => Promise<boolean>;
   hasSlashCommand: (commandId: string) => boolean;
 }
 
@@ -268,14 +268,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   }, []);
 
   // Slash Command 管理方法 - 委托给 Agent
-  const executeSlashCommand = useCallback(async (commandId: string) => {
+  const executeSlashCommand = useCallback(async (commandInput: string) => {
     if (!agentRef.current) return false;
 
     // 设置 command running 状态
     setIsCommandRunning(true);
 
     try {
-      return await agentRef.current.executeSlashCommand(commandId);
+      return await agentRef.current.executeSlashCommandInput(commandInput);
     } finally {
       // 清除 command running 状态
       setIsCommandRunning(false);

@@ -158,7 +158,7 @@ export interface SlashCommand {
   id: string;
   name: string;
   description: string;
-  handler: () => Promise<void> | void;
+  handler: (args?: string) => Promise<void> | void;
 }
 
 export interface CustomSlashCommandConfig {

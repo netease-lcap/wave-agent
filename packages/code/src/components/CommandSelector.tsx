@@ -20,6 +20,7 @@ const AVAILABLE_COMMANDS: SlashCommand[] = [
 export interface CommandSelectorProps {
   searchQuery: string;
   onSelect: (command: string) => void;
+  onInsert?: (command: string) => void; // 新增：Tab键插入命令到输入框
   onCancel: () => void;
   commands?: SlashCommand[]; // 新增可选的命令列表参数
 }
@@ -27,6 +28,7 @@ export interface CommandSelectorProps {
 export const CommandSelector: React.FC<CommandSelectorProps> = ({
   searchQuery,
   onSelect,
+  onInsert,
   onCancel,
   commands = [], // 默认为空数组
 }) => {
@@ -50,6 +52,17 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       ) {
         const selectedCommand = filteredCommands[selectedIndex].name;
         onSelect(selectedCommand);
+      }
+      return;
+    }
+
+    if (key.tab && onInsert) {
+      if (
+        filteredCommands.length > 0 &&
+        selectedIndex < filteredCommands.length
+      ) {
+        const selectedCommand = filteredCommands[selectedIndex].name;
+        onInsert(selectedCommand);
       }
       return;
     }
@@ -122,7 +135,8 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
 
       <Box>
         <Text dimColor>
-          Use ↑↓ to navigate, Enter to select, Escape to cancel
+          ↑↓ navigate • Enter execute • {onInsert ? "Tab insert • " : ""}Esc
+          cancel
         </Text>
       </Box>
     </Box>

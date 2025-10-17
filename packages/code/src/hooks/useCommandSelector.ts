@@ -3,7 +3,7 @@ import { useState, useCallback } from "react";
 export interface UseCommandSelectorParams {
   onShowBashManager?: () => void;
   onShowMcpManager?: () => void;
-  executeSlashCommand?: (commandId: string) => Promise<boolean>; // 执行命令函数
+  executeSlashCommand?: (commandInput: string) => Promise<boolean>; // 执行命令函数（包含参数）
   hasSlashCommand?: (commandId: string) => boolean; // 检查命令是否存在函数
 }
 
@@ -23,10 +23,36 @@ export const useCommandSelector = ({
     setCommandSearchQuery("");
   }, []);
 
+  const handleCommandInsert = useCallback(
+    (command: string, inputText: string, cursorPosition: number) => {
+      if (slashPosition >= 0) {
+        // 替换从 / 开始到当前光标位置的内容为 /命令名 + 空格
+        const beforeSlash = inputText.substring(0, slashPosition);
+        const afterQuery = inputText.substring(cursorPosition);
+        const newInput = beforeSlash + `/${command} ` + afterQuery;
+        const newCursorPosition = beforeSlash.length + command.length + 2; // +2 for "/" and " "
+
+        setShowCommandSelector(false);
+        setSlashPosition(-1);
+        setCommandSearchQuery("");
+
+        return { newInput, newCursorPosition };
+      }
+      return { newInput: inputText, newCursorPosition: cursorPosition };
+    },
+    [slashPosition],
+  );
+
   const handleCommandSelect = useCallback(
     (command: string, inputText: string, cursorPosition: number) => {
       if (slashPosition >= 0) {
-        // 替换 / 和搜索查询为选中的命令并执行
+        // 提取完整的命令输入（从 / 开始到光标位置）
+        const fullCommandInput = inputText.substring(
+          slashPosition,
+          cursorPosition,
+        );
+
+        // 替换命令部分，保留其他内容
         const beforeSlash = inputText.substring(0, slashPosition);
         const afterQuery = inputText.substring(cursorPosition);
         const newInput = beforeSlash + afterQuery;
@@ -41,7 +67,8 @@ export const useCommandSelector = ({
             hasSlashCommand &&
             hasSlashCommand(command)
           ) {
-            commandExecuted = await executeSlashCommand(command);
+            // 执行完整的命令输入（包含参数）
+            commandExecuted = await executeSlashCommand(fullCommandInput);
           }
 
           // 如果不是agent命令或执行失败，检查本地命令
@@ -99,6 +126,7 @@ export const useCommandSelector = ({
     commandSearchQuery,
     activateCommandSelector,
     handleCommandSelect,
+    handleCommandInsert,
     handleCancelCommandSelect,
     updateCommandSearchQuery,
     checkForSlashDeletion,

@@ -300,6 +300,11 @@ export class Agent {
     return await this.slashCommandManager.executeCommand(commandId);
   }
 
+  /** 解析并执行完整的斜杠命令输入 */
+  public async executeSlashCommandInput(input: string): Promise<boolean> {
+    return await this.slashCommandManager.executeSlashCommandInput(input);
+  }
+
   /** 检查斜杠命令是否存在 */
   public hasSlashCommand(commandId: string): boolean {
     return this.slashCommandManager.hasCommand(commandId);

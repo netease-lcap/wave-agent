@@ -45,6 +45,11 @@ interface KeyboardHandlerProps {
     inputText: string,
     cursorPosition: number,
   ) => { newInput: string; newCursorPosition: number };
+  handleCommandInsert: (
+    command: string,
+    inputText: string,
+    cursorPosition: number,
+  ) => { newInput: string; newCursorPosition: number };
   handleCancelCommandSelect: () => void;
   updateCommandSearchQuery: (query: string) => void;
   checkForSlashDeletion: (cursorPosition: number) => boolean;
@@ -83,6 +88,7 @@ interface KeyboardHandlerProps {
   ) => void;
   abortMessage: () => void;
   saveMemory: (message: string, type: "project" | "user") => Promise<void>;
+  executeSlashCommand?: (commandInput: string) => Promise<boolean>;
 }
 
 export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
@@ -113,6 +119,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     showCommandSelector,
     activateCommandSelector,
     handleCommandSelect,
+    handleCommandInsert,
     handleCancelCommandSelect,
     updateCommandSearchQuery,
     checkForSlashDeletion,
@@ -134,6 +141,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     sendMessage,
     abortMessage,
     saveMemory,
+    executeSlashCommand,
   } = props;
 
   // Debounce for paste operations
@@ -296,7 +304,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
   );
 
   const handleNormalInput = useCallback(
-    (input: string, key: Key) => {
+    async (input: string, key: Key) => {
       if (key.return) {
         // 在 loading 或命令运行期间阻止提交
         if (isLoading || isCommandRunning) {
@@ -304,8 +312,25 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         }
 
         if (inputText.trim()) {
-          // 检查是否是记忆消息（以#开头且只有一行）
           const trimmedInput = inputText.trim();
+
+          // 检查是否是斜杠命令（以/开头且只有一行）
+          if (trimmedInput.startsWith("/") && !trimmedInput.includes("\n")) {
+            // 尝试执行斜杠命令
+            if (executeSlashCommand) {
+              const commandExecuted = await executeSlashCommand(trimmedInput);
+              if (commandExecuted) {
+                clearInput();
+                clearImages();
+                resetHistoryNavigation();
+                longTextMapRef.current.clear();
+                return;
+              }
+            }
+            // 如果命令执行失败，继续作为普通消息处理
+          }
+
+          // 检查是否是记忆消息（以#开头且只有一行）
           if (trimmedInput.startsWith("#") && !trimmedInput.includes("\n")) {
             // 激活记忆类型选择器
             activateMemoryTypeSelector(trimmedInput);
@@ -613,6 +638,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       activateMemoryTypeSelector,
       isLoading,
       isCommandRunning,
+      executeSlashCommand,
     ],
   );
 
@@ -679,6 +705,25 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       },
       [
         handleCommandSelect,
+        inputText,
+        cursorPosition,
+        setInputText,
+        setCursorPosition,
+      ],
+    ),
+
+    handleCommandInsert: useCallback(
+      (command: string) => {
+        const { newInput, newCursorPosition } = handleCommandInsert(
+          command,
+          inputText,
+          cursorPosition,
+        );
+        setInputText(newInput);
+        setCursorPosition(newCursorPosition);
+      },
+      [
+        handleCommandInsert,
         inputText,
         cursorPosition,
         setInputText,

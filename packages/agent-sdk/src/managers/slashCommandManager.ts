@@ -4,6 +4,11 @@ import { loadCustomSlashCommands } from "../utils/customCommands.js";
 import { SubAgentManager } from "./subAgentManager.js";
 import type { ToolManager } from "./toolManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
+import {
+  substituteCommandParameters,
+  parseSlashCommandInput,
+  hasParameterPlaceholders,
+} from "../utils/commandArgumentParser.js";
 
 export interface SlashCommandManagerOptions {
   messageManager: MessageManager;
@@ -61,11 +66,17 @@ export class SlashCommandManager {
         this.registerCommand({
           id: command.id,
           name: command.name,
-          description: `Custom command: ${command.name}`,
-          handler: async () => {
+          description: `Custom command: ${command.name}${hasParameterPlaceholders(command.content) ? " (supports parameters)" : ""}`,
+          handler: async (args?: string) => {
+            // Substitute parameters in the command content
+            const processedContent =
+              hasParameterPlaceholders(command.content) && args
+                ? substituteCommandParameters(command.content, args)
+                : command.content;
+
             await this.subAgentManager.executeCustomCommand(
               command.name,
-              command.content,
+              processedContent,
               command.config,
             );
           },
@@ -123,17 +134,33 @@ export class SlashCommandManager {
   /**
    * 执行命令
    */
-  public async executeCommand(commandId: string): Promise<boolean> {
+  public async executeCommand(
+    commandId: string,
+    args?: string,
+  ): Promise<boolean> {
     const command = this.commands.get(commandId);
     if (!command) {
       return false;
     }
 
     try {
-      await command.handler();
+      await command.handler(args);
       return true;
     } catch (error) {
       console.error(`Failed to execute slash command ${commandId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Parse and execute a full slash command input (e.g., "/fix-issue 123 high")
+   */
+  public async executeSlashCommandInput(input: string): Promise<boolean> {
+    try {
+      const { command: commandId, args } = parseSlashCommandInput(input);
+      return await this.executeCommand(commandId, args);
+    } catch (error) {
+      console.error(`Failed to parse slash command input "${input}":`, error);
       return false;
     }
   }
