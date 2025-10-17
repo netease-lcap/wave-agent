@@ -20,21 +20,8 @@ const renderMessageItem = (
     <Box key={`message-${originalIndex}`} flexDirection="column" marginTop={1}>
       {shouldShowHeader && (
         <Box>
-          <Text
-            color={
-              message.role === "user"
-                ? "cyan"
-                : message.role === "subAgent"
-                  ? "magenta"
-                  : "green"
-            }
-            bold
-          >
-            {message.role === "user"
-              ? "👤 You"
-              : message.role === "subAgent"
-                ? "⚡ Sub-Agent"
-                : "🤖 Assistant"}
+          <Text color={message.role === "user" ? "cyan" : "green"} bold>
+            {message.role === "user" ? "👤 You" : "🤖 Assistant"}
             <Text color="gray" dimColor>
               {" "}
               #{originalIndex + 1}
@@ -116,50 +103,6 @@ const renderMessageItem = (
           </Box>
         ))}
       </Box>
-
-      {/* 子对话 - 使用递归的 MessageList */}
-      {message.messages && message.messages.length > 0 && (
-        <Box
-          paddingLeft={2}
-          paddingBottom={1}
-          flexDirection="column"
-          borderLeft={true}
-          borderRight={false}
-          borderBottom={false}
-          borderTop={false}
-          borderStyle="classic"
-          borderColor="magenta"
-        >
-          <Box flexDirection="column">
-            {/* 显示省略信息（如果有超过10条消息） */}
-            {message.messages.length > 10 && (
-              <Box marginBottom={1}>
-                <Text color="gray" dimColor>
-                  ... {message.messages.length - 10} earlier messages
-                </Text>
-              </Box>
-            )}
-            {/* 只显示最后10条子消息 */}
-            {message.messages.slice(-10).map((subMessage, index) => {
-              const originalIndex =
-                Math.max(0, message.messages!.length - 10) + index;
-              const previousSubMessage =
-                index > 0
-                  ? message.messages!.slice(-10)[index - 1]
-                  : message.messages!.length > 10
-                    ? message.messages![message.messages!.length - 11]
-                    : undefined;
-
-              return renderMessageItem(
-                subMessage,
-                originalIndex,
-                isExpanded,
-                previousSubMessage,
-              );
-            })}
-          </Box>
-        </Box>
-      )}
     </Box>
   );
 };

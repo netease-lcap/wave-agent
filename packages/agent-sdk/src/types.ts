@@ -12,9 +12,8 @@ export interface Logger {
 }
 
 export interface Message {
-  role: "user" | "assistant" | "subAgent";
+  role: "user" | "assistant";
   blocks: MessageBlock[];
-  messages?: Message[]; // For subAgent role, contains the sub-conversation
 }
 
 export type MessageBlock =

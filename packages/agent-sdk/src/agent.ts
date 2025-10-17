@@ -57,14 +57,6 @@ export class Agent {
       logger: this.logger,
     });
 
-    // Initialize command manager
-    this.slashCommandManager = new SlashCommandManager({
-      messageManager: this.messageManager,
-      toolManager: this.toolManager,
-      backgroundBashManager: this.backgroundBashManager,
-      logger: this.logger,
-    });
-
     // Initialize AI manager
     this.aiManager = new AIManager({
       messageManager: this.messageManager,
@@ -72,6 +64,15 @@ export class Agent {
       logger: this.logger,
       backgroundBashManager: this.backgroundBashManager,
       callbacks,
+    });
+
+    // Initialize command manager
+    this.slashCommandManager = new SlashCommandManager({
+      messageManager: this.messageManager,
+      aiManager: this.aiManager,
+      toolManager: this.toolManager,
+      backgroundBashManager: this.backgroundBashManager,
+      logger: this.logger,
     });
 
     // Initialize bash manager

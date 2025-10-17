@@ -4,6 +4,7 @@
 
 - 使用 pnpm 而非 npm
 - 测试框架是 vitest
+- 测试文件路径要和源文件保持一致（如 `src/utils/foo.ts` 对应 `tests/utils/foo.test.ts`）
 - 除非用户明确提及，否则不要创建 Markdown 文档
 - 不要写 any 类型
 - 使用 HookTester 测试 hooks

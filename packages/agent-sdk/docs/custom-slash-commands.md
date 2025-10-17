@@ -73,16 +73,16 @@ Bash commands are written using the `!`backtick`` syntax. They will be executed 
 
 ### Frontmatter Options
 
-- `allowed-tools`: Array of tool names that the sub-agent can use (e.g., `Read, Grep, Glob`)
+- `allowed-tools`: Array of tool names that the agent can use for this command (e.g., `Read, Grep, Glob`)
 - `model`: Specific AI model to use for this command (e.g., `claude-3-5-sonnet-20241022`)
 
 ## Technical Implementation
 
-- **Isolated Context**: Each custom command runs in its own isolated AI conversation context
-- **Sub-Agent Messages**: The conversation is stored as a `subAgent` message in the main conversation
-- **No Cross-Contamination**: Sub-agent conversations don't affect the main conversation context
+- **Main Agent Context**: Custom commands execute directly within the main agent conversation
+- **Tool Filtering**: If `allowed-tools` is specified, only those tools are available during command execution
+- **Model Override**: Commands can specify a different model to use temporarily
 - **Bash Execution**: Commands marked with `!`backtick`` are executed before sending to AI
-- **Tool Filtering**: If `allowed-tools` is specified, only those tools are available to the sub-agent
+- **Seamless Integration**: Command responses are added directly to the main conversation
 
 ## Usage Examples
 
@@ -91,10 +91,9 @@ import { Agent } from "wave-agent-sdk";
 
 const agent = await Agent.create({
   callbacks: {
-    onSubAgentMessageAdded: (commandName, subMessages) => {
-      console.log(
-        `Sub-agent '${commandName}' completed with ${subMessages.length} messages`,
-      );
+    // Custom commands now execute directly in main agent
+    onMessageAdded: (message) => {
+      console.log(`New message added:`, message);
     },
   },
 });
@@ -114,35 +113,27 @@ agent.reloadCustomCommands();
 
 ## Message Structure
 
-When a custom command is executed, it creates a message with `role: "subAgent"`:
+When a custom command is executed, it creates a `CustomCommandBlock` in the main conversation:
 
 ```typescript
 {
-  role: "subAgent",
+  role: "user",
   blocks: [
     {
-      type: "text",
-      content: "Executed custom command: /refactor"
-    }
-  ],
-  messages: [
-    // Array of messages from the sub-agent conversation
-    {
-      role: "user",
-      blocks: [{ type: "text", content: "Refactor the selected code..." }]
-    },
-    {
-      role: "assistant",
-      blocks: [{ type: "text", content: "Here's the refactored code..." }]
+      type: "custom_command",
+      commandName: "refactor",
+      content: "Refactor the selected code to improve readability..."
     }
   ]
 }
 ```
 
+The AI's response is then added as a normal assistant message to the main conversation.
+
 ## Security Considerations
 
 - Bash commands are executed with the same permissions as the Wave agent process
-- Use `allowed-tools` to limit what tools sub-agents can access
+- Use `allowed-tools` to limit what tools can be used during command execution
 - Project commands take precedence over user commands with the same name
 - Commands are loaded at startup and when explicitly reloaded
 

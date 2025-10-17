@@ -230,8 +230,6 @@ export function convertMessagesForAPI(
         });
       }
     }
-    // Skip subAgent messages - they don't participate in the next AI request
-    // Sub-agent messages are isolated conversations and should not influence the main conversation
   }
 
   return recentMessages;

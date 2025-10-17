@@ -1,14 +1,18 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { McpManager } from "../../src/managers/mcpManager.js";
+import { AIManager } from "../../src/managers/aiManager.js";
+import { BackgroundBashManager } from "../../src/managers/backgroundBashManager.js";
 
 describe("SlashCommandManager", () => {
   let slashCommandManager: SlashCommandManager;
   let messageManager: MessageManager;
   let toolManager: ToolManager;
   let mcpManager: McpManager;
+  let aiManager: AIManager;
+  let backgroundBashManager: BackgroundBashManager;
 
   beforeEach(() => {
     // 创建带有必要回调的 MessageManager
@@ -26,9 +30,22 @@ describe("SlashCommandManager", () => {
       mcpManager,
     });
 
+    // 创建模拟的 BackgroundBashManager
+    backgroundBashManager = new BackgroundBashManager({
+      callbacks: {},
+    });
+
+    // 创建模拟的 AIManager
+    aiManager = {
+      sendAIMessage: vi.fn(),
+      abortAIMessage: vi.fn(),
+    } as unknown as AIManager;
+
     slashCommandManager = new SlashCommandManager({
       messageManager,
       toolManager,
+      aiManager,
+      backgroundBashManager,
     });
   });
 

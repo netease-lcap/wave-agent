@@ -1,7 +1,7 @@
 import type { MessageManager } from "./messageManager.js";
+import type { AIManager } from "./aiManager.js";
 import type { SlashCommand, CustomSlashCommand, Logger } from "../types.js";
 import { loadCustomSlashCommands } from "../utils/customCommands.js";
-import { SubAgentManager } from "./subAgentManager.js";
 import type { ToolManager } from "./toolManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import {
@@ -9,9 +9,19 @@ import {
   parseSlashCommandInput,
   hasParameterPlaceholders,
 } from "../utils/commandArgumentParser.js";
+import {
+  BashCommandResult,
+  parseBashCommands,
+  replaceBashCommandsWithOutput,
+} from "../utils/markdownParser.js";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 
 export interface SlashCommandManagerOptions {
   messageManager: MessageManager;
+  aiManager: AIManager;
   toolManager: ToolManager;
   backgroundBashManager?: BackgroundBashManager;
   logger?: Logger;
@@ -21,20 +31,17 @@ export class SlashCommandManager {
   private commands = new Map<string, SlashCommand>();
   private customCommands = new Map<string, CustomSlashCommand>();
   private messageManager: MessageManager;
-  private subAgentManager: SubAgentManager;
+  private aiManager: AIManager;
+  private toolManager: ToolManager;
+  private backgroundBashManager?: BackgroundBashManager;
   private logger?: Logger;
 
   constructor(options: SlashCommandManagerOptions) {
     this.messageManager = options.messageManager;
+    this.aiManager = options.aiManager;
+    this.toolManager = options.toolManager;
+    this.backgroundBashManager = options.backgroundBashManager;
     this.logger = options.logger;
-
-    // Initialize sub-agent manager for custom commands
-    this.subAgentManager = new SubAgentManager({
-      mainMessageManager: options.messageManager,
-      toolManager: options.toolManager,
-      backgroundBashManager: options.backgroundBashManager,
-      logger: options.logger,
-    });
 
     this.initializeBuiltinCommands();
     this.loadCustomCommands();
@@ -74,7 +81,7 @@ export class SlashCommandManager {
                 ? substituteCommandParameters(command.content, args)
                 : command.content;
 
-            await this.subAgentManager.executeCustomCommand(
+            await this.executeCustomCommandInMainAgent(
               command.name,
               processedContent,
               command.config,
@@ -187,9 +194,92 @@ export class SlashCommandManager {
   }
 
   /**
+   * Execute custom command in main agent instead of sub-agent
+   */
+  private async executeCustomCommandInMainAgent(
+    commandName: string,
+    content: string,
+    config?: { model?: string; allowedTools?: string[] },
+  ): Promise<void> {
+    try {
+      // Parse bash commands from the content
+      const { commands, processedContent } = parseBashCommands(content);
+
+      // Execute bash commands if any
+      const bashResults: BashCommandResult[] = [];
+      for (const command of commands) {
+        try {
+          const { stdout, stderr } = await execAsync(command, {
+            cwd: process.cwd(),
+            timeout: 30000, // 30 second timeout
+          });
+          bashResults.push({
+            command,
+            output: stdout || stderr || "",
+            exitCode: 0,
+          });
+        } catch (error) {
+          const execError = error as {
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+            code?: number;
+          };
+          bashResults.push({
+            command,
+            output:
+              execError.stdout || execError.stderr || execError.message || "",
+            exitCode: execError.code || 1,
+          });
+        }
+      }
+
+      // Replace bash command placeholders with their outputs
+      const finalContent =
+        bashResults.length > 0
+          ? replaceBashCommandsWithOutput(processedContent, bashResults)
+          : processedContent;
+
+      // Add custom command block to show the command being executed
+      this.messageManager.addCustomCommandMessage(commandName, finalContent);
+
+      // Add user message with the processed content
+      this.messageManager.addUserMessage(finalContent);
+
+      // Create a temporary AI manager with custom configuration if provided
+      const { AIManager } = await import("./aiManager.js");
+      const tempAIManager = new AIManager({
+        messageManager: this.messageManager,
+        toolManager: this.toolManager,
+        logger: this.logger,
+        backgroundBashManager: this.backgroundBashManager,
+        callbacks: {},
+        model: config?.model, // Use custom model if specified
+        allowedTools: config?.allowedTools, // Use filtered tools if specified
+      });
+
+      // Execute the AI conversation with custom configuration
+      await tempAIManager.sendAIMessage();
+    } catch (error) {
+      this.logger?.error(
+        `Failed to execute custom command '${commandName}':`,
+        error,
+      );
+
+      // Add error to message manager
+      this.messageManager.addErrorBlock(
+        `Failed to execute custom command '${commandName}': ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /**
    * 中断当前正在执行的斜杠命令
    */
   public abortCurrentCommand(): void {
-    this.subAgentManager.abortCurrentTask();
+    // Abort the AI manager if it's running
+    this.aiManager.abortAIMessage();
   }
 }
