@@ -70,8 +70,6 @@ export class Agent {
     this.slashCommandManager = new SlashCommandManager({
       messageManager: this.messageManager,
       aiManager: this.aiManager,
-      toolManager: this.toolManager,
-      backgroundBashManager: this.backgroundBashManager,
       logger: this.logger,
     });
 

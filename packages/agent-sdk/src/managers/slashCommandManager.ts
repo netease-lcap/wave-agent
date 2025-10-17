@@ -2,8 +2,7 @@ import type { MessageManager } from "./messageManager.js";
 import type { AIManager } from "./aiManager.js";
 import type { SlashCommand, CustomSlashCommand, Logger } from "../types.js";
 import { loadCustomSlashCommands } from "../utils/customCommands.js";
-import type { ToolManager } from "./toolManager.js";
-import type { BackgroundBashManager } from "./backgroundBashManager.js";
+
 import {
   substituteCommandParameters,
   parseSlashCommandInput,
@@ -22,8 +21,6 @@ const execAsync = promisify(exec);
 export interface SlashCommandManagerOptions {
   messageManager: MessageManager;
   aiManager: AIManager;
-  toolManager: ToolManager;
-  backgroundBashManager?: BackgroundBashManager;
   logger?: Logger;
 }
 
@@ -32,15 +29,11 @@ export class SlashCommandManager {
   private customCommands = new Map<string, CustomSlashCommand>();
   private messageManager: MessageManager;
   private aiManager: AIManager;
-  private toolManager: ToolManager;
-  private backgroundBashManager?: BackgroundBashManager;
   private logger?: Logger;
 
   constructor(options: SlashCommandManagerOptions) {
     this.messageManager = options.messageManager;
     this.aiManager = options.aiManager;
-    this.toolManager = options.toolManager;
-    this.backgroundBashManager = options.backgroundBashManager;
     this.logger = options.logger;
 
     this.initializeBuiltinCommands();
