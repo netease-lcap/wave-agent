@@ -116,39 +116,56 @@ describe("InputBox Bash Functionality", () => {
     expect(images).toBeUndefined();
   });
 
-  it("should execute bash command when typing ! and single line text", async () => {
+  it("should execute bash command directly when pressing Enter in bash history selector", async () => {
     const { stdin, lastFrame } = render(
       <InputBox sendMessage={mockSendMessage} />,
     );
 
-    stdin.write("!ls");
+    // Type ! to trigger bash history selector
+    stdin.write("!");
+    await waitForText(lastFrame, "No bash history found");
 
-    await waitForText(lastFrame, "!ls");
+    // Type some search text
+    stdin.write("ls");
+    await waitForText(lastFrame, "Press Enter to execute: ls");
 
-    // 发送命令
-    stdin.write("\r"); // Enter key
-    await waitForTextToDisappear(lastFrame, "!ls");
+    // Press Enter to execute directly
+    stdin.write("\r");
+    await waitForTextToDisappear(lastFrame, "ls");
 
-    // 应该被检测为 bash 命令
+    // Should execute the command directly with ! prefix
+    expect(mockSendMessage).toHaveBeenCalledWith("!ls");
+  });
+
+  it("should insert bash command with Tab in bash history selector", async () => {
+    const { stdin, lastFrame } = render(
+      <InputBox sendMessage={mockSendMessage} />,
+    );
+
+    // Type ! to trigger bash history selector
+    stdin.write("!");
+    await waitForText(lastFrame, "No bash history found");
+
+    // Type some search text
+    stdin.write("ls");
+    await waitForText(lastFrame, "Press Tab to insert: ls");
+
+    // Press Tab to insert
+    stdin.write("\t");
+    await waitForTextToDisappear(lastFrame, "No bash history found");
+
+    // Should insert the command into input
+    const output = lastFrame();
+    expect(output).toContain("!ls");
+
+    // Now press Enter to send as normal message
+    stdin.write("\r");
+
     expect(mockSendMessage).toHaveBeenCalled();
-
     const sendMessageCalls = mockSendMessage.mock.calls;
     expect(sendMessageCalls).toHaveLength(1);
-
     const [content, images] = sendMessageCalls[0];
     expect(content).toBe("!ls");
     expect(images).toBeUndefined();
-  });
-
-  it("should clear input after sending bash command", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
-
-    stdin.write("!pwd");
-
-    await waitForText(lastFrame, "!pwd");
-
-    // Send command
-    stdin.write("\r"); // Enter key
-    await waitForTextToDisappear(lastFrame, "!pwd");
   });
 });

@@ -63,6 +63,7 @@ interface KeyboardHandlerProps {
     inputText: string,
     cursorPosition: number,
   ) => { newInput: string; newCursorPosition: number };
+  handleBashHistoryExecute: (command: string) => string;
   handleCancelBashHistorySelect: () => void;
   updateBashHistorySearchQuery: (query: string) => void;
   checkForExclamationDeletion: (cursorPosition: number) => boolean;
@@ -127,6 +128,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     showBashHistorySelector,
     activateBashHistorySelector,
     handleBashHistorySelect,
+    handleBashHistoryExecute,
     handleCancelBashHistorySelect,
     updateBashHistorySearchQuery,
     checkForExclamationDeletion,
@@ -755,6 +757,20 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         setInputText,
         setCursorPosition,
       ],
+    ),
+
+    handleBashHistoryExecute: useCallback(
+      (command: string) => {
+        const commandToExecute = handleBashHistoryExecute(command);
+        // 清空输入框并执行命令，确保命令以!开头
+        const bashCommand = commandToExecute.startsWith("!")
+          ? commandToExecute
+          : `!${commandToExecute}`;
+        setInputText("");
+        setCursorPosition(0);
+        sendMessage(bashCommand);
+      },
+      [handleBashHistoryExecute, setInputText, setCursorPosition, sendMessage],
     ),
 
     handleMemoryTypeSelect: useCallback(

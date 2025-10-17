@@ -37,6 +37,13 @@ export const useBashHistorySelector = () => {
     setBashHistorySearchQuery("");
   }, []);
 
+  const handleBashHistoryExecute = useCallback((command: string) => {
+    setShowBashHistorySelector(false);
+    setExclamationPosition(-1);
+    setBashHistorySearchQuery("");
+    return command; // 返回要执行的命令
+  }, []);
+
   const updateBashHistorySearchQuery = useCallback((query: string) => {
     setBashHistorySearchQuery(query);
   }, []);
@@ -61,6 +68,7 @@ export const useBashHistorySelector = () => {
     bashHistorySearchQuery,
     activateBashHistorySelector,
     handleBashHistorySelect,
+    handleBashHistoryExecute,
     handleCancelBashHistorySelect,
     updateBashHistorySearchQuery,
     checkForExclamationDeletion,

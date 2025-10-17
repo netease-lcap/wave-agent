@@ -6,12 +6,14 @@ import { logger } from "../utils/logger.js";
 export interface BashHistorySelectorProps {
   searchQuery: string;
   onSelect: (command: string) => void;
+  onExecute: (command: string) => void;
   onCancel: () => void;
 }
 
 export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
   searchQuery,
   onSelect,
+  onExecute,
   onCancel,
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -39,9 +41,20 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
     if (key.return) {
       if (commands.length > 0 && selectedIndex < commands.length) {
         const selectedCommand = commands[selectedIndex];
-        onSelect(selectedCommand.command);
+        onExecute(selectedCommand.command);
       } else if (commands.length === 0 && searchQuery.trim()) {
         // 当没有历史记录匹配时，将搜索查询作为新命令执行
+        onExecute(searchQuery.trim());
+      }
+      return;
+    }
+
+    if (key.tab) {
+      if (commands.length > 0 && selectedIndex < commands.length) {
+        const selectedCommand = commands[selectedIndex];
+        onSelect(selectedCommand.command);
+      } else if (commands.length === 0 && searchQuery.trim()) {
+        // 当没有历史记录匹配时，将搜索查询插入
         onSelect(searchQuery.trim());
       }
       return;
@@ -77,6 +90,9 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
         </Text>
         {searchQuery.trim() && (
           <Text color="green">Press Enter to execute: {searchQuery}</Text>
+        )}
+        {searchQuery.trim() && (
+          <Text color="blue">Press Tab to insert: {searchQuery}</Text>
         )}
         <Text dimColor>Press Escape to cancel</Text>
       </Box>
@@ -136,7 +152,7 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
 
       <Box>
         <Text dimColor>
-          Use ↑↓ to navigate, Enter to select, Escape to cancel
+          Use ↑↓ to navigate, Enter to execute, Tab to insert, Escape to cancel
         </Text>
       </Box>
     </Box>

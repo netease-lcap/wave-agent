@@ -114,6 +114,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     bashHistorySearchQuery,
     activateBashHistorySelector,
     handleBashHistorySelect: handleBashHistorySelectorSelect,
+    handleBashHistoryExecute,
     handleCancelBashHistorySelect,
     updateBashHistorySearchQuery,
     checkForExclamationDeletion,
@@ -143,6 +144,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     handleFileSelect,
     handleCommandSelect,
     handleBashHistorySelect,
+    handleBashHistoryExecute: keyboardHandleBashHistoryExecute,
     handleMemoryTypeSelect,
   } = useInputKeyboardHandler({
     inputText,
@@ -179,6 +181,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showBashHistorySelector,
     activateBashHistorySelector,
     handleBashHistorySelect: handleBashHistorySelectorSelect,
+    handleBashHistoryExecute,
     handleCancelBashHistorySelect,
     updateBashHistorySearchQuery,
     checkForExclamationDeletion,
@@ -254,6 +257,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         <BashHistorySelector
           searchQuery={bashHistorySearchQuery}
           onSelect={handleBashHistorySelect}
+          onExecute={keyboardHandleBashHistoryExecute}
           onCancel={handleCancelBashHistorySelect}
         />
       )}
