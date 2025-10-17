@@ -28,6 +28,7 @@ export class SubAgentManager {
   private toolManager: ToolManager;
   private backgroundBashManager?: BackgroundBashManager;
   private logger?: Logger;
+  private currentAIManager?: AIManager; // 追踪当前执行的 AI 管理器
 
   constructor(options: SubAgentManagerOptions) {
     this.mainMessageManager = options.mainMessageManager;
@@ -112,12 +113,20 @@ export class SubAgentManager {
         allowedTools: config?.allowedTools, // 传递允许的工具列表
       });
 
+      // 设置当前 AI 管理器以便中断
+      this.currentAIManager = subAIManager;
+
       // 在子对话中添加自定义命令块显示
       subMessageManager.addCustomCommandMessage(commandName, finalContent);
 
       // Execute the AI conversation in the isolated context
       await subAIManager.sendAIMessage();
+
+      // 清除当前 AI 管理器引用
+      this.currentAIManager = undefined;
     } catch (error) {
+      // 清除当前 AI 管理器引用
+      this.currentAIManager = undefined;
       this.logger?.error(
         `Failed to execute custom command '${commandName}':`,
         error,
@@ -129,6 +138,16 @@ export class SubAgentManager {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+    }
+  }
+
+  /**
+   * 中断当前正在执行的子代理 AI 任务
+   */
+  public abortCurrentTask(): void {
+    if (this.currentAIManager) {
+      this.currentAIManager.abortAIMessage();
+      this.currentAIManager = undefined;
     }
   }
 }

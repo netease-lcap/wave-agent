@@ -183,6 +183,7 @@ export class Agent {
   public abortMessage(): void {
     this.abortAIMessage();
     this.abortBashCommand();
+    this.abortSlashCommand();
   }
 
   /** 添加到输入历史记录 */
@@ -195,11 +196,17 @@ export class Agent {
     this.bashManager?.abortCommand();
   }
 
+  /** 中断斜杠命令执行 */
+  public abortSlashCommand(): void {
+    this.slashCommandManager.abortCurrentCommand();
+  }
+
   /** 销毁管理器，清理资源 */
   public async destroy(): Promise<void> {
     this.messageManager.saveSession();
     this.abortAIMessage();
     this.abortBashCommand();
+    this.abortSlashCommand();
     // Cleanup background bash manager
     this.backgroundBashManager.cleanup();
     // Cleanup MCP connections

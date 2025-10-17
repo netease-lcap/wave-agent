@@ -185,4 +185,11 @@ export class SlashCommandManager {
   public getCustomCommands(): CustomSlashCommand[] {
     return Array.from(this.customCommands.values());
   }
+
+  /**
+   * 中断当前正在执行的斜杠命令
+   */
+  public abortCurrentCommand(): void {
+    this.subAgentManager.abortCurrentTask();
+  }
 }
