@@ -46,19 +46,13 @@ export const useCommandSelector = ({
   const handleCommandSelect = useCallback(
     (command: string, inputText: string, cursorPosition: number) => {
       if (slashPosition >= 0) {
-        // 提取完整的命令输入（从 / 开始到光标位置）
-        const fullCommandInput = inputText.substring(
-          slashPosition,
-          cursorPosition,
-        );
-
         // 替换命令部分，保留其他内容
         const beforeSlash = inputText.substring(0, slashPosition);
         const afterQuery = inputText.substring(cursorPosition);
         const newInput = beforeSlash + afterQuery;
         const newCursorPosition = beforeSlash.length;
 
-        // 异步执行命令，但不等待结果
+        // 异步执行命令
         (async () => {
           // 先检查是否是agent命令
           let commandExecuted = false;
@@ -67,8 +61,9 @@ export const useCommandSelector = ({
             hasSlashCommand &&
             hasSlashCommand(command)
           ) {
-            // 执行完整的命令输入（包含参数）
-            commandExecuted = await executeSlashCommand(fullCommandInput);
+            // 执行完整的命令（将部分输入替换为完整命令名）
+            const fullCommand = `/${command}`;
+            commandExecuted = await executeSlashCommand(fullCommand);
           }
 
           // 如果不是agent命令或执行失败，检查本地命令

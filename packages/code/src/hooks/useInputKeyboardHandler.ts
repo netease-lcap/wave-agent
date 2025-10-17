@@ -563,6 +563,13 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
             char = "!";
           }
 
+          // 先更新输入文本和光标位置
+          const newInputText =
+            inputText.substring(0, cursorPosition) +
+            char +
+            inputText.substring(cursorPosition);
+          const newCursorPosition = cursorPosition + char.length;
+
           insertTextAtCursor(char);
           resetHistoryNavigation();
 
@@ -580,20 +587,20 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           } else if (showFileSelector && atPosition >= 0) {
             // 更新搜索查询
             const queryStart = atPosition + 1;
-            const queryEnd = cursorPosition + char.length;
-            const newQuery = inputText.substring(queryStart, queryEnd);
+            const queryEnd = newCursorPosition;
+            const newQuery = newInputText.substring(queryStart, queryEnd);
             updateSearchQuery(newQuery);
           } else if (showCommandSelector && slashPosition >= 0) {
             // 更新命令搜索查询
             const queryStart = slashPosition + 1;
-            const queryEnd = cursorPosition + char.length;
-            const newQuery = inputText.substring(queryStart, queryEnd);
+            const queryEnd = newCursorPosition;
+            const newQuery = newInputText.substring(queryStart, queryEnd);
             updateCommandSearchQuery(newQuery);
           } else if (showBashHistorySelector && exclamationPosition >= 0) {
             // 更新bash历史搜索查询
             const queryStart = exclamationPosition + 1;
-            const queryEnd = cursorPosition + char.length;
-            const newQuery = inputText.substring(queryStart, queryEnd);
+            const queryEnd = newCursorPosition;
+            const newQuery = newInputText.substring(queryStart, queryEnd);
             updateBashHistorySearchQuery(newQuery);
           }
         }

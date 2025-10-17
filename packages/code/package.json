@@ -27,7 +27,7 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "type-check": "tsc --noEmit --incremental",
-    "dev": "tsc --watch & tsc-alias --watch",
+    "dev": "tsc -p tsconfig.build.json --watch & tsc-alias -p tsconfig.build.json --watch",
     "test": "vitest run",
     "lint": "eslint --cache",
     "format": "prettier --write .",
