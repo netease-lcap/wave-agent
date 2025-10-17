@@ -20,8 +20,6 @@ export interface AIManagerOptions {
   logger?: Logger;
   backgroundBashManager?: BackgroundBashManager;
   callbacks?: AIManagerCallbacks;
-  model?: string;
-  allowedTools?: string[];
 }
 
 export class AIManager {
@@ -32,16 +30,12 @@ export class AIManager {
   private toolManager: ToolManager;
   private messageManager: MessageManager;
   private backgroundBashManager?: BackgroundBashManager;
-  private model?: string;
-  private allowedTools?: string[];
 
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
     this.toolManager = options.toolManager;
     this.backgroundBashManager = options.backgroundBashManager;
     this.logger = options.logger;
-    this.model = options.model;
-    this.allowedTools = options.allowedTools;
     this.callbacks = options.callbacks ?? {};
   }
 
@@ -51,18 +45,16 @@ export class AIManager {
   /**
    * 获取过滤后的工具配置
    */
-  private getFilteredToolsConfig() {
+  private getFilteredToolsConfig(allowedTools?: string[]) {
     const allTools = this.toolManager.getToolsConfig();
 
     // 如果没有指定 allowedTools，返回所有工具
-    if (!this.allowedTools || this.allowedTools.length === 0) {
+    if (!allowedTools || allowedTools.length === 0) {
       return allTools;
     }
 
     // 过滤出允许的工具
-    return allTools.filter((tool) =>
-      this.allowedTools!.includes(tool.function.name),
-    );
+    return allTools.filter((tool) => allowedTools.includes(tool.function.name));
   }
 
   public setIsLoading(isLoading: boolean): void {
@@ -173,7 +165,14 @@ export class AIManager {
     }
   }
 
-  public async sendAIMessage(recursionDepth: number = 0): Promise<void> {
+  public async sendAIMessage(
+    options: {
+      recursionDepth?: number;
+      model?: string;
+      allowedTools?: string[];
+    } = {},
+  ): Promise<void> {
+    const { recursionDepth = 0, model, allowedTools } = options;
     // Only check isLoading for the initial call (recursionDepth === 0)
     if (recursionDepth === 0 && this.isLoading) {
       return;
@@ -208,8 +207,8 @@ export class AIManager {
         abortSignal: abortController.signal,
         memory: combinedMemory, // 传递合并后的记忆内容
         workdir: process.cwd(), // 传递当前工作目录
-        tools: this.getFilteredToolsConfig(), // 传递过滤后的工具配置
-        model: this.model, // 传递自定义模型
+        tools: this.getFilteredToolsConfig(allowedTools), // 传递过滤后的工具配置
+        model: model, // 使用传入的模型
       });
 
       // 收集内容和工具调用
@@ -372,8 +371,12 @@ export class AIManager {
         this.toolAbortController = null;
 
         if (!isCurrentlyAborted) {
-          // 递归调用 AI 服务，递增的递归深度
-          await this.sendAIMessage(recursionDepth + 1);
+          // 递归调用 AI 服务，递增的递归深度，并传递相同的配置
+          await this.sendAIMessage({
+            recursionDepth: recursionDepth + 1,
+            model,
+            allowedTools,
+          });
         }
       } else {
         // 没有工具操作时也要清除 abort controller

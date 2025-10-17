@@ -243,20 +243,11 @@ export class SlashCommandManager {
       // Add custom command block to show the command being executed
       this.messageManager.addCustomCommandMessage(commandName, finalContent);
 
-      // Create a temporary AI manager with custom configuration if provided
-      const { AIManager } = await import("./aiManager.js");
-      const tempAIManager = new AIManager({
-        messageManager: this.messageManager,
-        toolManager: this.toolManager,
-        logger: this.logger,
-        backgroundBashManager: this.backgroundBashManager,
-        callbacks: {},
-        model: config?.model, // Use custom model if specified
-        allowedTools: config?.allowedTools, // Use filtered tools if specified
-      });
-
       // Execute the AI conversation with custom configuration
-      await tempAIManager.sendAIMessage();
+      await this.aiManager.sendAIMessage({
+        model: config?.model,
+        allowedTools: config?.allowedTools,
+      });
     } catch (error) {
       this.logger?.error(
         `Failed to execute custom command '${commandName}':`,
