@@ -83,7 +83,7 @@ describe("InputBox Complete Slash Command Flow", () => {
     expect(finalFrame).not.toContain("/git");
   });
 
-  it("should work with direct command typing and execution", async () => {
+  it("should send slash command as message when typed directly", async () => {
     mockHasSlashCommand.mockReturnValue(true);
     mockExecuteSlashCommand.mockResolvedValue(true);
 
@@ -102,15 +102,18 @@ describe("InputBox Complete Slash Command Flow", () => {
 
     expect(lastFrame()).toContain("/git-commit some arguments");
 
-    // 按回车执行
+    // 按回车 - 这会作为普通消息发送，而不是执行斜杠命令
     stdin.write("\r");
     await delay(100);
 
-    // 验证命令执行
-    expect(mockExecuteSlashCommand).toHaveBeenCalledWith(
+    // 验证斜杠命令执行函数没有被调用（因为没有通过选择器选择）
+    expect(mockExecuteSlashCommand).not.toHaveBeenCalled();
+
+    // 验证作为普通消息发送
+    expect(mockSendMessage).toHaveBeenCalledWith(
       "/git-commit some arguments",
+      undefined,
     );
-    expect(mockSendMessage).not.toHaveBeenCalled();
 
     // 验证输入框被清空
     expect(lastFrame()).toContain("Type your message");
