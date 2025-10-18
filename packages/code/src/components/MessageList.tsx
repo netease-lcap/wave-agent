@@ -83,7 +83,7 @@ const renderMessageItem = (
                 <Text color="yellow" bold>
                   📦 Compressed Messages
                 </Text>
-                <Box marginTop={1} marginLeft={2}>
+                <Box marginTop={1}>
                   <Text color="gray" dimColor>
                     {block.content}
                   </Text>
@@ -93,7 +93,10 @@ const renderMessageItem = (
 
             {block.type === "custom_command" && (
               <Box>
-                <Text>{block.originalInput || `/${block.commandName}`}</Text>
+                <Text color="cyan" bold>
+                  ⚡ Custom Command:{" "}
+                  {block.originalInput || `/${block.commandName}`}
+                </Text>
               </Box>
             )}
           </Box>
