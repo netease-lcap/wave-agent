@@ -94,9 +94,9 @@ const renderMessageItem = (
             {block.type === "custom_command" && (
               <Box>
                 <Text color="cyan" bold>
-                  ⚡ Custom Command:{" "}
-                  {block.originalInput || `/${block.commandName}`}
+                  ⚡{" "}
                 </Text>
+                <Text>{block.originalInput || `/${block.commandName}`}</Text>
               </Box>
             )}
           </Box>
