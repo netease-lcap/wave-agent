@@ -80,9 +80,11 @@ const renderMessageItem = (
 
             {block.type === "compress" && (
               <Box>
-                <Text color="yellow" bold>
-                  📦 Compressed Messages
-                </Text>
+                <Box>
+                  <Text color="yellow" bold>
+                    📦 Compressed Messages
+                  </Text>
+                </Box>
                 <Box marginTop={1}>
                   <Text color="gray" dimColor>
                     {block.content}
