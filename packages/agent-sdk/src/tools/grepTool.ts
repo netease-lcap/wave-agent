@@ -177,8 +177,8 @@ export const grepTool: ToolPlugin = {
         rgArgs.push("--glob", `!${exclude}`);
       }
 
-      // 添加搜索模式
-      rgArgs.push(pattern);
+      // 添加搜索模式 - 使用 -e 参数避免以 - 开头的模式被误认为是命令行选项
+      rgArgs.push("-e", pattern);
 
       // 添加搜索路径
       if (searchPath) {

@@ -335,4 +335,50 @@ It contains various files with different content.`,
     expect(result.content).toContain("src/index.ts");
     expect(result.content).toContain("src/utils.ts");
   });
+
+  it("should handle patterns starting with dash", async () => {
+    // 创建一个包含以 - 开头内容的文件来测试
+    await writeFile(
+      join(tempDir, "tasks.md"),
+      `# Tasks
+- [ ] Implement user authentication
+- [x] Setup database connection
+- [ ] Create API endpoints
+--verbose mode enabled
+`,
+    );
+
+    const result = await grepTool.execute({
+      pattern: "- \\[ \\]",
+      output_mode: "content",
+      "-n": true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("tasks.md");
+    expect(result.content).toContain("- [ ] Implement user authentication");
+    expect(result.content).toContain("- [ ] Create API endpoints");
+    expect(result.content).not.toContain("- [x] Setup database connection");
+  });
+
+  it("should handle patterns starting with double dash", async () => {
+    // 确保 tasks.md 文件存在（如果前面的测试没有创建）
+    await writeFile(
+      join(tempDir, "tasks.md"),
+      `# Tasks
+- [ ] Implement user authentication
+- [x] Setup database connection
+- [ ] Create API endpoints
+--verbose mode enabled
+`,
+    );
+
+    const result = await grepTool.execute({
+      pattern: "--verbose",
+      output_mode: "files_with_matches",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("tasks.md");
+  });
 });
