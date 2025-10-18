@@ -121,7 +121,7 @@ describe("InputBox Slash Command Functionality", () => {
     expect(mockSendMessage).not.toHaveBeenCalled();
   });
 
-  it("should not send as message after successful slash command execution", async () => {
+  it("should send slash command as message when entered directly and pressed enter", async () => {
     mockHasSlashCommand.mockReturnValue(true);
     mockExecuteSlashCommand.mockResolvedValue(true);
 
@@ -138,26 +138,27 @@ describe("InputBox Slash Command Functionality", () => {
     stdin.write("/test-command with args");
     await delay(50);
 
-    // 直接按回车执行命令
+    // 直接按回车 - 这会当作普通消息发送，而不是执行斜杠命令
     stdin.write("\r");
     await delay(100);
 
-    // 验证命令被执行
-    expect(mockExecuteSlashCommand).toHaveBeenCalledWith(
-      "/test-command with args",
-    );
+    // 验证斜杠命令执行函数没有被调用（因为没有通过选择器选择）
+    expect(mockExecuteSlashCommand).not.toHaveBeenCalled();
 
     // 验证输入框被清空
     const output = lastFrame();
     expect(output).toContain("Type your message");
 
-    // 验证没有发送普通消息
-    expect(mockSendMessage).not.toHaveBeenCalled();
+    // 验证作为普通消息发送
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      "/test-command with args",
+      undefined,
+    );
   });
 
-  it("should send as message if command execution fails", async () => {
+  it("should send slash command as message when entered directly (no command selector)", async () => {
     mockHasSlashCommand.mockReturnValue(true);
-    mockExecuteSlashCommand.mockResolvedValue(false); // 命令执行失败
+    mockExecuteSlashCommand.mockResolvedValue(false); // 这个不会被调用
 
     const { stdin } = render(
       <InputBox
@@ -172,14 +173,14 @@ describe("InputBox Slash Command Functionality", () => {
     stdin.write("/test-command");
     await delay(50);
 
-    // 按回车
+    // 按回车 - 直接当作普通消息发送
     stdin.write("\r");
     await delay(100);
 
-    // 验证命令被尝试执行
-    expect(mockExecuteSlashCommand).toHaveBeenCalledWith("/test-command");
+    // 验证命令执行函数没有被调用（因为没有通过选择器选择）
+    expect(mockExecuteSlashCommand).not.toHaveBeenCalled();
 
-    // 由于命令执行失败，应该作为普通消息发送
+    // 验证作为普通消息发送
     expect(mockSendMessage).toHaveBeenCalledWith("/test-command", undefined);
   });
 
