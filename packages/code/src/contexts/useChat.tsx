@@ -215,8 +215,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           return;
         }
 
-        // Handle slash command - 检查是否是斜杠命令（以/开头且只有一行）
-        if (content.startsWith("/") && !content.includes("\n")) {
+        // Handle slash command - 检查是否是斜杠命令（以/开头）
+        if (content.startsWith("/")) {
           const command = content.trim();
           if (!command || command === "/") return;
 
