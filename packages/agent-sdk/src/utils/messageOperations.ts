@@ -12,6 +12,7 @@ export interface AddUserMessageParams {
     type: "custom_command";
     commandName: string;
     content: string;
+    originalInput?: string;
   };
 }
 

@@ -83,6 +83,7 @@ export class SlashCommandManager {
               command.name,
               processedContent,
               command.config,
+              args,
             );
           },
         });
@@ -198,6 +199,7 @@ export class SlashCommandManager {
     commandName: string,
     content: string,
     config?: { model?: string; allowedTools?: string[] },
+    args?: string,
   ): Promise<void> {
     try {
       // Parse bash commands from the content
@@ -239,7 +241,14 @@ export class SlashCommandManager {
           : processedContent;
 
       // Add custom command block to show the command being executed
-      this.messageManager.addCustomCommandMessage(commandName, finalContent);
+      const originalInput = args
+        ? `/${commandName} ${args}`
+        : `/${commandName}`;
+      this.messageManager.addCustomCommandMessage(
+        commandName,
+        finalContent,
+        originalInput,
+      );
 
       // Execute the AI conversation with custom configuration
       await this.aiManager.sendAIMessage({

@@ -62,7 +62,6 @@ describe("MessageList CustomCommandBlock", () => {
 
     // Should display command name with slash
     expect(output).toContain("/refactor");
-    expect(output).toContain("(Custom Command)");
 
     // Should NOT display the full content
     expect(output).not.toContain("Please refactor this very long function");
@@ -122,7 +121,6 @@ describe("MessageList CustomCommandBlock", () => {
 
     // Should display custom command
     expect(output).toContain("/analyze");
-    expect(output).toContain("(Custom Command)");
 
     // Should display regular text message
     expect(output).toContain("Also, can you explain this concept?");

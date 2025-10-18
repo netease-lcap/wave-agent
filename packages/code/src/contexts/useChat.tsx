@@ -215,6 +215,27 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           return;
         }
 
+        // Handle slash command - 检查是否是斜杠命令（以/开头且只有一行）
+        if (content.startsWith("/") && !content.includes("\n")) {
+          const command = content.trim();
+          if (!command || command === "/") return;
+
+          // 在斜杠命令模式下，不添加用户消息到UI，直接执行命令
+          // 执行斜杠命令会自动添加相应的消息
+
+          // 设置 loading 状态
+          setIsLoading(true);
+
+          try {
+            await agentRef.current?.executeSlashCommandInput(command);
+          } finally {
+            // 清除 loading 状态
+            setIsLoading(false);
+          }
+
+          return;
+        }
+
         // Handle normal AI message
 
         // 设置 loading 状态

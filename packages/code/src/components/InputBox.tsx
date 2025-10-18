@@ -196,7 +196,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     sendMessage,
     abortMessage,
     saveMemory,
-    executeSlashCommand,
   });
 
   const isPlaceholder = !inputText;

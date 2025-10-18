@@ -89,7 +89,6 @@ interface KeyboardHandlerProps {
   ) => void;
   abortMessage: () => void;
   saveMemory: (message: string, type: "project" | "user") => Promise<void>;
-  executeSlashCommand?: (commandInput: string) => Promise<boolean>;
 }
 
 export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
@@ -143,7 +142,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     sendMessage,
     abortMessage,
     saveMemory,
-    executeSlashCommand,
   } = props;
 
   // Debounce for paste operations
@@ -315,22 +313,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
 
         if (inputText.trim()) {
           const trimmedInput = inputText.trim();
-
-          // 检查是否是斜杠命令（以/开头且只有一行）
-          if (trimmedInput.startsWith("/") && !trimmedInput.includes("\n")) {
-            // 尝试执行斜杠命令
-            if (executeSlashCommand) {
-              const commandExecuted = await executeSlashCommand(trimmedInput);
-              if (commandExecuted) {
-                clearInput();
-                clearImages();
-                resetHistoryNavigation();
-                longTextMapRef.current.clear();
-                return;
-              }
-            }
-            // 如果命令执行失败，继续作为普通消息处理
-          }
 
           // 检查是否是记忆消息（以#开头且只有一行）
           if (trimmedInput.startsWith("#") && !trimmedInput.includes("\n")) {
@@ -647,7 +629,6 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       activateMemoryTypeSelector,
       isLoading,
       isCommandRunning,
-      executeSlashCommand,
     ],
   );
 

@@ -98,6 +98,7 @@ export interface CustomCommandBlock {
   type: "custom_command";
   commandName: string;
   content: string; // 完整的命令内容，传给AI时使用
+  originalInput?: string; // 原始的用户输入，用于UI显示（如 "/fix-issue 123 high"）
 }
 
 export interface AIRequest {
