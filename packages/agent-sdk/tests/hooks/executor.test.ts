@@ -10,6 +10,7 @@ import {
   it,
   expect,
   beforeEach,
+  afterEach,
   vi,
   type MockedFunction,
 } from "vitest";
@@ -51,6 +52,9 @@ describe("HookExecutor", () => {
   let mockContext: HookExecutionContext;
 
   beforeEach(() => {
+    // Enable hooks execution testing in this test suite
+    process.env.WAVE_TEST_HOOKS_EXECUTION = "true";
+
     executor = new HookExecutor();
     mockContext = {
       event: "PostToolUse",
@@ -60,6 +64,11 @@ describe("HookExecutor", () => {
     };
 
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Clean up environment variable
+    delete process.env.WAVE_TEST_HOOKS_EXECUTION;
   });
 
   describe("command execution", () => {

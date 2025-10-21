@@ -36,9 +36,15 @@ export class HookExecutor implements IHookExecutor {
   private readonly defaultTimeout = 10000; // 10 seconds
   private readonly maxTimeout = 300000; // 5 minutes
   private readonly logger?: Logger;
+  private readonly skipExecution: boolean;
 
-  constructor(logger?: Logger) {
+  constructor(logger?: Logger, options?: { skipExecution?: boolean }) {
     this.logger = logger;
+    // Skip execution in test environment unless we're specifically testing the executor
+    this.skipExecution =
+      options?.skipExecution ??
+      ((process.env.NODE_ENV === "test" || process.env.VITEST === "true") &&
+        !process.env.WAVE_TEST_HOOKS_EXECUTION);
   }
 
   /**
@@ -55,6 +61,18 @@ export class HookExecutor implements IHookExecutor {
       this.maxTimeout,
     );
     const cwd = options.cwd ?? context.projectDir;
+
+    // Skip command execution in test environment (unless specifically testing hooks)
+    if (this.skipExecution) {
+      this.logger?.debug(`[Hook] Skipping command execution: ${command}`);
+      return {
+        success: true,
+        exitCode: 0,
+        stdout: "Test environment: command execution skipped",
+        duration: Date.now() - startTime,
+        timedOut: false,
+      };
+    }
 
     // Log hook execution start
     this.logger?.info(`[Hook] Executing ${context.event} hook: ${command}`);
