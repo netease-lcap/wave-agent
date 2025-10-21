@@ -11,7 +11,7 @@ export const deleteFileTool: ToolPlugin = {
   config: {
     type: "function",
     function: {
-      name: "delete_file",
+      name: "Delete",
       description: `Deletes a file at the specified path. The operation will fail gracefully if:
     - The file doesn't exist
     - The operation is rejected for security reasons
