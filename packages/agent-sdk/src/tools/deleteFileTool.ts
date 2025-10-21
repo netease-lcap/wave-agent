@@ -6,7 +6,7 @@ import { resolvePath, getDisplayPath } from "../utils/path.js";
  * 删除文件工具插件
  */
 export const deleteFileTool: ToolPlugin = {
-  name: "delete_file",
+  name: "Delete",
   description: "Deletes a file at the specified path.",
   config: {
     type: "function",

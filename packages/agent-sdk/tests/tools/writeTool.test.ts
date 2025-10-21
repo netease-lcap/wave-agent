@@ -24,7 +24,7 @@ describe("writeTool", () => {
   });
 
   it("should have correct tool configuration", () => {
-    expect(writeTool.name).toBe("write_file");
+    expect(writeTool.name).toBe("Write");
     expect(writeTool.description).toBe("Writes a file to the local filesystem");
     expect(writeTool.config.type).toBe("function");
 

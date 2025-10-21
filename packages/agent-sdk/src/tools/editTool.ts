@@ -15,7 +15,7 @@ function formatCompactParams(args: Record<string, unknown>): string {
  * 单文件编辑工具插件
  */
 export const editTool: ToolPlugin = {
-  name: "edit_file",
+  name: "Edit",
   description: "Performs exact string replacements in files",
   formatCompactParams,
   config: {

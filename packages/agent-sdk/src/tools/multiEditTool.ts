@@ -24,7 +24,7 @@ function formatCompactParams(args: Record<string, unknown>): string {
  * 多重编辑工具插件
  */
 export const multiEditTool: ToolPlugin = {
-  name: "multi_edit",
+  name: "MultiEdit",
   description:
     "This is a tool for making multiple edits to a single file in one operation",
   formatCompactParams,

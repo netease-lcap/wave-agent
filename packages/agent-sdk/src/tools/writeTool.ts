@@ -8,7 +8,7 @@ import { diffLines } from "diff";
  * 文件写入工具插件
  */
 export const writeTool: ToolPlugin = {
-  name: "write_file",
+  name: "Write",
   description: "Writes a file to the local filesystem",
   config: {
     type: "function",

@@ -23,7 +23,7 @@ describe("editTool", () => {
   });
 
   it("should have correct tool configuration", () => {
-    expect(editTool.name).toBe("edit_file");
+    expect(editTool.name).toBe("Edit");
     expect(editTool.description).toBe(
       "Performs exact string replacements in files",
     );

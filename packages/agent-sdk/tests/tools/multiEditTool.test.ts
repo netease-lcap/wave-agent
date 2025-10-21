@@ -23,7 +23,7 @@ describe("multiEditTool", () => {
   });
 
   it("should have correct tool configuration", () => {
-    expect(multiEditTool.name).toBe("multi_edit");
+    expect(multiEditTool.name).toBe("MultiEdit");
     expect(multiEditTool.description).toBe(
       "This is a tool for making multiple edits to a single file in one operation",
     );
