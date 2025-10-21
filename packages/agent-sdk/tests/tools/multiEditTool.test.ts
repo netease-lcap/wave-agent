@@ -31,7 +31,7 @@ describe("multiEditTool", () => {
 
     // Type guard to access function properties
     if (multiEditTool.config.type === "function") {
-      expect(multiEditTool.config.function.name).toBe("multi_edit");
+      expect(multiEditTool.config.function.name).toBe("MultiEdit");
       if (multiEditTool.config.function.parameters) {
         expect(multiEditTool.config.function.parameters.required).toEqual([
           "file_path",

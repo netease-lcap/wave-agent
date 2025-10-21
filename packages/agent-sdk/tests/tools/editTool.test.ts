@@ -31,7 +31,7 @@ describe("editTool", () => {
 
     // Type guard to access function properties
     if (editTool.config.type === "function") {
-      expect(editTool.config.function.name).toBe("edit_file");
+      expect(editTool.config.function.name).toBe("Edit");
       if (editTool.config.function.parameters) {
         expect(editTool.config.function.parameters.required).toEqual([
           "file_path",

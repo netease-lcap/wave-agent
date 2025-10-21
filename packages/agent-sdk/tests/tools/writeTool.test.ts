@@ -30,7 +30,7 @@ describe("writeTool", () => {
 
     // Type guard to access function properties
     if (writeTool.config.type === "function") {
-      expect(writeTool.config.function.name).toBe("write_file");
+      expect(writeTool.config.function.name).toBe("Write");
       if (writeTool.config.function.parameters) {
         expect(writeTool.config.function.parameters.required).toEqual([
           "file_path",
