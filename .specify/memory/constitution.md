@@ -1,50 +1,71 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report:
+- Version change: Initial → 1.0.0
+- Added principles: Package-First Architecture, TypeScript Excellence, Test Alignment, Build Dependencies, Monorepo Standards
+- Added sections: Quality Standards, Development Workflow
+- Templates requiring updates: ✅ plan-template.md, spec-template.md, tasks-template.md all aligned
+- Follow-up TODOs: None - all placeholders filled
+-->
+
+# Wave Agent Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Package-First Architecture
+Every feature MUST be organized into packages with clear boundaries. Packages MUST be independently buildable and testable. The `agent-sdk` provides core functionality; `code` provides CLI interface. No circular dependencies between packages allowed.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+**Rationale**: Monorepo structure requires clear separation of concerns to maintain scalability and enable independent development.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### II. TypeScript Excellence
+All code MUST be written in TypeScript with strict type checking enabled. No `any` types allowed without explicit justification. Type definitions MUST be comprehensive and accurate.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+**Rationale**: Type safety prevents runtime errors and improves developer experience in an AI-assisted development environment.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### III. Test Alignment
+Test file paths MUST mirror source file structure exactly (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. Integration tests in `packages/*/examples` for real scenarios; unit tests in `packages/*/tests` for mockable scenarios.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+**Rationale**: Consistent test organization enables predictable development workflows and clear test discovery.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### IV. Build Dependencies
+After modifying `agent-sdk`, MUST run `pnpm build` before testing changes in dependent packages. Use `pnpm` exclusively for package management, never `npm`.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+**Rationale**: Build-time dependencies require explicit build steps to propagate changes correctly across the monorepo.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### V. Documentation Minimalism
+Do NOT create Markdown documentation files unless explicitly requested by users. Focus on code clarity and inline documentation rather than separate documentation files.
+
+**Rationale**: Over-documentation creates maintenance burden; well-written code with good naming is often self-documenting.
+
+## Quality Standards
+
+All code MUST pass TypeScript compilation without errors or warnings. All tests MUST pass before merging. Code MUST follow the established linting and formatting rules enforced by ESLint and Prettier.
+
+**Testing Requirements**: 
+- Examples directory: Real integration tests using `npx tsx` locally
+- Tests directory: Unit tests that can run in CI/CD with mocking
+- All new features require corresponding tests
+
+## Development Workflow
+
+**Package Management**: Use `pnpm` for all dependency management operations. Never use `npm` directly.
+
+**Build Process**: 
+1. Modify code in any package
+2. Run `pnpm build` if changes affect `agent-sdk`
+3. Test in dependent packages
+4. Commit with clear, descriptive messages
+
+**Testing Strategy**:
+- Unit tests for individual functions and components
+- Integration tests for cross-package interactions
+- Use appropriate test directory based on mocking requirements
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other development practices. All pull requests MUST verify compliance with these principles. Any complexity introduced MUST be justified against simpler alternatives.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Amendment Process**: Constitution changes require documentation of rationale, impact analysis on existing code, and migration plan for non-compliant code. All template files must be updated to maintain consistency.
+
+**Version Control**: Use semantic versioning for constitution updates. Breaking changes to principles require major version bump.
+
+**Version**: 1.0.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-01-27
