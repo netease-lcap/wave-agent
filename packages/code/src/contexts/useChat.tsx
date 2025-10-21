@@ -48,7 +48,6 @@ export interface ChatContextType {
   killBackgroundShell: (shellId: string) => boolean;
   // Slash Command functionality
   slashCommands: SlashCommand[];
-  executeSlashCommand: (commandInput: string) => Promise<boolean>;
   hasSlashCommand: (commandId: string) => boolean;
 }
 
@@ -215,28 +214,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           return;
         }
 
-        // Handle slash command - 检查是否是斜杠命令（以/开头）
-        if (content.startsWith("/")) {
-          const command = content.trim();
-          if (!command || command === "/") return;
-
-          // 在斜杠命令模式下，不添加用户消息到UI，直接执行命令
-          // 执行斜杠命令会自动添加相应的消息
-
-          // 设置 loading 状态
-          setIsLoading(true);
-
-          try {
-            await agentRef.current?.executeSlashCommandInput(command);
-          } finally {
-            // 清除 loading 状态
-            setIsLoading(false);
-          }
-
-          return;
-        }
-
-        // Handle normal AI message
+        // Handle normal AI message and slash commands
+        // 斜杠命令现在在 agent.sendMessage 内部处理
 
         // 设置 loading 状态
         setIsLoading(true);
@@ -288,21 +267,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     return agentRef.current.killBackgroundShell(shellId);
   }, []);
 
-  // Slash Command 管理方法 - 委托给 Agent
-  const executeSlashCommand = useCallback(async (commandInput: string) => {
-    if (!agentRef.current) return false;
-
-    // 设置 command running 状态
-    setIsLoading(true);
-
-    try {
-      return await agentRef.current.executeSlashCommandInput(commandInput);
-    } finally {
-      // 清除 command running 状态
-      setIsLoading(false);
-    }
-  }, []);
-
   const hasSlashCommand = useCallback((commandId: string) => {
     if (!agentRef.current) return false;
     return agentRef.current.hasSlashCommand(commandId);
@@ -327,7 +291,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     getBackgroundShellOutput,
     killBackgroundShell,
     slashCommands,
-    executeSlashCommand,
     hasSlashCommand,
   };
 

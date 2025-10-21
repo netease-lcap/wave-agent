@@ -40,7 +40,6 @@ export interface InputBoxProps {
   disconnectMcpServer?: (serverName: string) => Promise<boolean>;
   // Slash Command 相关属性
   slashCommands?: SlashCommand[];
-  executeSlashCommand?: (commandInput: string) => Promise<boolean>;
   hasSlashCommand?: (commandId: string) => boolean;
 }
 
@@ -55,7 +54,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   connectMcpServer = async () => false,
   disconnectMcpServer = async () => false,
   slashCommands = [],
-  executeSlashCommand = async () => false,
   hasSlashCommand = () => false,
 }) => {
   // Bash shell manager state
@@ -104,7 +102,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   } = useCommandSelector({
     onShowBashManager: () => setShowBashManager(true),
     onShowMcpManager: () => setShowMcpManager(true),
-    executeSlashCommand,
+    sendMessage: async (content: string) => {
+      await sendMessage(content);
+    },
     hasSlashCommand,
   });
 

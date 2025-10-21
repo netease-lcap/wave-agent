@@ -226,8 +226,8 @@ describe("Agent - Abort Handling", () => {
       });
     });
 
-    // Start executing a slash command (this would normally trigger sub-agent)
-    const executePromise = agent.executeSlashCommand("clear");
+    // Start executing a slash command via sendMessage (this would normally trigger sub-agent)
+    const executePromise = agent.sendMessage("/clear");
 
     // Immediately abort
     setTimeout(() => {
@@ -237,8 +237,9 @@ describe("Agent - Abort Handling", () => {
     // Wait for execution to complete
     await executePromise;
 
-    // The clear command should still execute since it's synchronous
-    // But for custom commands that use AI, the abort would work
-    await expect(executePromise).resolves.toBeTruthy();
+    // The clear command should execute since it's synchronous and completes quickly
+    // For custom commands that use AI, the abort would work
+    // Since sendMessage returns void, we just verify it doesn't throw
+    expect(true).toBe(true); // Test passes if no exception was thrown
   });
 });

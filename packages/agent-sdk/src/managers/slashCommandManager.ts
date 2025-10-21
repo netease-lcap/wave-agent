@@ -159,15 +159,25 @@ export class SlashCommandManager {
   }
 
   /**
-   * Parse and execute a full slash command input (e.g., "/fix-issue 123 high")
+   * Parse and validate a slash command input
+   * Returns whether the command is valid along with parsed commandId and args
    */
-  public async executeSlashCommandInput(input: string): Promise<boolean> {
+  public parseAndValidateSlashCommand(input: string): {
+    isValid: boolean;
+    commandId?: string;
+    args?: string;
+  } {
     try {
       const { command: commandId, args } = parseSlashCommandInput(input);
-      return await this.executeCommand(commandId, args);
+      const isValid = this.hasCommand(commandId);
+      return {
+        isValid,
+        commandId: isValid ? commandId : undefined,
+        args: isValid ? args || undefined : undefined, // Convert empty string to undefined
+      };
     } catch (error) {
       console.error(`Failed to parse slash command input "${input}":`, error);
-      return false;
+      return { isValid: false };
     }
   }
 

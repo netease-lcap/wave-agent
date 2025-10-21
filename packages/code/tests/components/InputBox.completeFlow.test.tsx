@@ -8,7 +8,6 @@ import type { SlashCommand } from "wave-agent-sdk";
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox Complete Slash Command Flow", () => {
-  let mockExecuteSlashCommand: ReturnType<typeof vi.fn>;
   let mockHasSlashCommand: ReturnType<typeof vi.fn>;
   let mockSendMessage: ReturnType<typeof vi.fn>;
 
@@ -28,7 +27,6 @@ describe("InputBox Complete Slash Command Flow", () => {
   ];
 
   beforeEach(() => {
-    mockExecuteSlashCommand = vi.fn();
     mockHasSlashCommand = vi.fn();
     mockSendMessage = vi.fn();
     vi.clearAllMocks();
@@ -36,12 +34,11 @@ describe("InputBox Complete Slash Command Flow", () => {
 
   it("should complete the full workflow: type partial command -> select from dropdown -> execute -> clear input", async () => {
     mockHasSlashCommand.mockReturnValue(true);
-    mockExecuteSlashCommand.mockResolvedValue(true);
+    mockSendMessage.mockResolvedValue(undefined);
 
     const { stdin, lastFrame } = render(
       <InputBox
         slashCommands={testCommands}
-        executeSlashCommand={mockExecuteSlashCommand}
         hasSlashCommand={mockHasSlashCommand}
         sendMessage={mockSendMessage}
       />,
@@ -73,8 +70,7 @@ describe("InputBox Complete Slash Command Flow", () => {
 
     // Step 5: 验证命令被正确执行
     expect(mockHasSlashCommand).toHaveBeenCalledWith("git-commit");
-    expect(mockExecuteSlashCommand).toHaveBeenCalledWith("/git-commit");
-    expect(mockSendMessage).not.toHaveBeenCalled();
+    expect(mockSendMessage).toHaveBeenCalledWith("/git-commit");
 
     // Step 6: 验证输入框被清空并返回初始状态
     const finalFrame = lastFrame();
@@ -85,12 +81,11 @@ describe("InputBox Complete Slash Command Flow", () => {
 
   it("should send slash command as message when typed directly", async () => {
     mockHasSlashCommand.mockReturnValue(true);
-    mockExecuteSlashCommand.mockResolvedValue(true);
+    mockSendMessage.mockResolvedValue(undefined);
 
     const { stdin, lastFrame } = render(
       <InputBox
         slashCommands={testCommands}
-        executeSlashCommand={mockExecuteSlashCommand}
         hasSlashCommand={mockHasSlashCommand}
         sendMessage={mockSendMessage}
       />,
@@ -102,14 +97,11 @@ describe("InputBox Complete Slash Command Flow", () => {
 
     expect(lastFrame()).toContain("/git-commit some arguments");
 
-    // 按回车 - 这会作为普通消息发送，而不是执行斜杠命令
+    // 按回车 - 这会作为普通消息发送，斜杠命令会在 sendMessage 内部处理
     stdin.write("\r");
     await delay(100);
 
-    // 验证斜杠命令执行函数没有被调用（因为没有通过选择器选择）
-    expect(mockExecuteSlashCommand).not.toHaveBeenCalled();
-
-    // 验证作为普通消息发送
+    // 验证作为消息发送（斜杠命令处理现在在 sendMessage 内部）
     expect(mockSendMessage).toHaveBeenCalledWith(
       "/git-commit some arguments",
       undefined,

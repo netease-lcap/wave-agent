@@ -232,6 +232,28 @@ export class Agent {
     images?: Array<{ path: string; mimeType: string }>,
   ): Promise<void> {
     try {
+      // Handle slash command - 检查是否是斜杠命令（以/开头）
+      if (content.startsWith("/")) {
+        const command = content.trim();
+        if (!command || command === "/") return;
+
+        // 解析并验证斜杠命令
+        const { isValid, commandId, args } =
+          this.slashCommandManager.parseAndValidateSlashCommand(command);
+
+        if (isValid && commandId !== undefined) {
+          // 执行有效的斜杠命令
+          await this.slashCommandManager.executeCommand(commandId, args);
+
+          // 添加斜杠命令到历史记录
+          this.addToInputHistory(command);
+          return;
+        }
+
+        // 如果命令不存在，继续作为普通消息处理
+        // 不添加到历史记录，让下面的普通消息处理逻辑来处理
+      }
+
       // Handle normal AI message
       // 添加用户消息到历史记录
       this.addToInputHistory(content);
@@ -329,16 +351,6 @@ export class Agent {
   /** 获取所有可用斜杠命令 */
   public getSlashCommands(): SlashCommand[] {
     return this.slashCommandManager.getCommands();
-  }
-
-  /** 执行斜杠命令 */
-  public async executeSlashCommand(commandId: string): Promise<boolean> {
-    return await this.slashCommandManager.executeCommand(commandId);
-  }
-
-  /** 解析并执行完整的斜杠命令输入 */
-  public async executeSlashCommandInput(input: string): Promise<boolean> {
-    return await this.slashCommandManager.executeSlashCommandInput(input);
   }
 
   /** 检查斜杠命令是否存在 */

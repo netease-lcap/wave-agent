@@ -3,14 +3,14 @@ import { useState, useCallback } from "react";
 export interface UseCommandSelectorParams {
   onShowBashManager?: () => void;
   onShowMcpManager?: () => void;
-  executeSlashCommand?: (commandInput: string) => Promise<boolean>; // 执行命令函数（包含参数）
+  sendMessage?: (content: string) => Promise<void>; // 使用 sendMessage 替代 executeSlashCommand
   hasSlashCommand?: (commandId: string) => boolean; // 检查命令是否存在函数
 }
 
 export const useCommandSelector = ({
   onShowBashManager,
   onShowMcpManager,
-  executeSlashCommand,
+  sendMessage,
   hasSlashCommand,
 }: UseCommandSelectorParams) => {
   const [showCommandSelector, setShowCommandSelector] = useState(false);
@@ -56,14 +56,15 @@ export const useCommandSelector = ({
         (async () => {
           // 先检查是否是agent命令
           let commandExecuted = false;
-          if (
-            executeSlashCommand &&
-            hasSlashCommand &&
-            hasSlashCommand(command)
-          ) {
+          if (sendMessage && hasSlashCommand && hasSlashCommand(command)) {
             // 执行完整的命令（将部分输入替换为完整命令名）
             const fullCommand = `/${command}`;
-            commandExecuted = await executeSlashCommand(fullCommand);
+            try {
+              await sendMessage(fullCommand);
+              commandExecuted = true;
+            } catch (error) {
+              console.error("Failed to execute slash command:", error);
+            }
           }
 
           // 如果不是agent命令或执行失败，检查本地命令
@@ -90,7 +91,7 @@ export const useCommandSelector = ({
       slashPosition,
       onShowBashManager,
       onShowMcpManager,
-      executeSlashCommand,
+      sendMessage,
       hasSlashCommand,
     ],
   );

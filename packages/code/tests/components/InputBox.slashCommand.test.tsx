@@ -8,7 +8,6 @@ import type { SlashCommand } from "wave-agent-sdk";
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox Slash Command Functionality", () => {
-  let mockExecuteSlashCommand: ReturnType<typeof vi.fn>;
   let mockHasSlashCommand: ReturnType<typeof vi.fn>;
   let mockSendMessage: ReturnType<typeof vi.fn>;
 
@@ -28,7 +27,6 @@ describe("InputBox Slash Command Functionality", () => {
   ];
 
   beforeEach(() => {
-    mockExecuteSlashCommand = vi.fn();
     mockHasSlashCommand = vi.fn();
     mockSendMessage = vi.fn();
     vi.clearAllMocks();
@@ -38,7 +36,6 @@ describe("InputBox Slash Command Functionality", () => {
     const { stdin, lastFrame } = render(
       <InputBox
         slashCommands={testCommands}
-        executeSlashCommand={mockExecuteSlashCommand}
         hasSlashCommand={mockHasSlashCommand}
       />,
     );
@@ -57,7 +54,6 @@ describe("InputBox Slash Command Functionality", () => {
     const { stdin, lastFrame } = render(
       <InputBox
         slashCommands={testCommands}
-        executeSlashCommand={mockExecuteSlashCommand}
         hasSlashCommand={mockHasSlashCommand}
       />,
     );
@@ -82,12 +78,11 @@ describe("InputBox Slash Command Functionality", () => {
 
   it("should execute command and clear input when selected with Enter", async () => {
     mockHasSlashCommand.mockReturnValue(true);
-    mockExecuteSlashCommand.mockResolvedValue(true);
+    mockSendMessage.mockResolvedValue(undefined);
 
     const { stdin, lastFrame } = render(
       <InputBox
         slashCommands={testCommands}
-        executeSlashCommand={mockExecuteSlashCommand}
         hasSlashCommand={mockHasSlashCommand}
         sendMessage={mockSendMessage}
       />,
@@ -111,24 +106,20 @@ describe("InputBox Slash Command Functionality", () => {
 
     // 验证命令被执行
     expect(mockHasSlashCommand).toHaveBeenCalledWith("test-command");
-    expect(mockExecuteSlashCommand).toHaveBeenCalledWith("/test-command");
+    expect(mockSendMessage).toHaveBeenCalledWith("/test-command");
 
     // 验证输入框被清空（不应该再有任何输入内容）
     const output = lastFrame();
     expect(output).toContain("Type your message"); // 应该显示占位符
-
-    // 验证没有发送普通消息
-    expect(mockSendMessage).not.toHaveBeenCalled();
   });
 
   it("should send slash command as message when entered directly and pressed enter", async () => {
     mockHasSlashCommand.mockReturnValue(true);
-    mockExecuteSlashCommand.mockResolvedValue(true);
+    mockSendMessage.mockResolvedValue(undefined);
 
     const { stdin, lastFrame } = render(
       <InputBox
         slashCommands={testCommands}
-        executeSlashCommand={mockExecuteSlashCommand}
         hasSlashCommand={mockHasSlashCommand}
         sendMessage={mockSendMessage}
       />,
@@ -138,18 +129,15 @@ describe("InputBox Slash Command Functionality", () => {
     stdin.write("/test-command with args");
     await delay(50);
 
-    // 直接按回车 - 这会当作普通消息发送，而不是执行斜杠命令
+    // 直接按回车 - 这会通过 sendMessage 处理斜杠命令
     stdin.write("\r");
     await delay(100);
-
-    // 验证斜杠命令执行函数没有被调用（因为没有通过选择器选择）
-    expect(mockExecuteSlashCommand).not.toHaveBeenCalled();
 
     // 验证输入框被清空
     const output = lastFrame();
     expect(output).toContain("Type your message");
 
-    // 验证作为普通消息发送
+    // 验证作为消息发送（斜杠命令会在 sendMessage 内部处理）
     expect(mockSendMessage).toHaveBeenCalledWith(
       "/test-command with args",
       undefined,
@@ -158,12 +146,11 @@ describe("InputBox Slash Command Functionality", () => {
 
   it("should send slash command as message when entered directly (no command selector)", async () => {
     mockHasSlashCommand.mockReturnValue(true);
-    mockExecuteSlashCommand.mockResolvedValue(false); // 这个不会被调用
+    mockSendMessage.mockResolvedValue(undefined);
 
     const { stdin } = render(
       <InputBox
         slashCommands={testCommands}
-        executeSlashCommand={mockExecuteSlashCommand}
         hasSlashCommand={mockHasSlashCommand}
         sendMessage={mockSendMessage}
       />,
@@ -173,14 +160,11 @@ describe("InputBox Slash Command Functionality", () => {
     stdin.write("/test-command");
     await delay(50);
 
-    // 按回车 - 直接当作普通消息发送
+    // 按回车 - 通过 sendMessage 处理
     stdin.write("\r");
     await delay(100);
 
-    // 验证命令执行函数没有被调用（因为没有通过选择器选择）
-    expect(mockExecuteSlashCommand).not.toHaveBeenCalled();
-
-    // 验证作为普通消息发送
+    // 验证作为消息发送（斜杠命令会在 sendMessage 内部处理）
     expect(mockSendMessage).toHaveBeenCalledWith("/test-command", undefined);
   });
 
@@ -188,7 +172,6 @@ describe("InputBox Slash Command Functionality", () => {
     const { stdin, lastFrame } = render(
       <InputBox
         slashCommands={testCommands}
-        executeSlashCommand={mockExecuteSlashCommand}
         hasSlashCommand={mockHasSlashCommand}
       />,
     );

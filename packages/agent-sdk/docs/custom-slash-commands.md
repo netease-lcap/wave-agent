@@ -106,8 +106,8 @@ const commands = agent.getSlashCommands();
 // Get custom command details
 const customCommands = agent.getCustomCommands();
 
-// Execute a custom command
-await agent.executeSlashCommand("refactor");
+// Execute a custom command via sendMessage
+await agent.sendMessage("/refactor");
 
 // Reload custom commands (useful during development)
 agent.reloadCustomCommands();

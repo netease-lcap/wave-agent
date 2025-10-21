@@ -21,7 +21,6 @@ export const ChatInterface: React.FC = () => {
     isExpanded,
     latestTotalTokens,
     slashCommands,
-    executeSlashCommand,
     hasSlashCommand,
   } = useChat();
 
@@ -81,7 +80,6 @@ export const ChatInterface: React.FC = () => {
           connectMcpServer={connectMcpServer}
           disconnectMcpServer={disconnectMcpServer}
           slashCommands={slashCommands}
-          executeSlashCommand={executeSlashCommand}
           hasSlashCommand={hasSlashCommand}
         />
       )}
