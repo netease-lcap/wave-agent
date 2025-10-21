@@ -1,4 +1,14 @@
 node_modules/
 dist/
+build/
 .eslintcache
 tsconfig.tsbuildinfo
+*.log
+.env*
+coverage/
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+.vscode/
+.idea/

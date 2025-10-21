@@ -1,9 +1,10 @@
 <!--
 Sync Impact Report:
-- Version change: Initial → 1.0.0
-- Added principles: Package-First Architecture, TypeScript Excellence, Test Alignment, Build Dependencies, Monorepo Standards
-- Added sections: Quality Standards, Development Workflow
-- Templates requiring updates: ✅ plan-template.md, spec-template.md, tasks-template.md all aligned
+- Version change: 1.0.0 → 1.2.0
+- Added principles: VI. Quality Gates (new principle requiring type-check and lint)
+- Modified principles: III. Test Alignment (refined to allow feature-based organization for complex modules)
+- Modified sections: Quality Standards (expanded to include pre-commit requirements)
+- Templates requiring updates: ✅ plan-template.md, spec-template.md, tasks-template.md all align with existing standards
 - Follow-up TODOs: None - all placeholders filled
 -->
 
@@ -22,9 +23,9 @@ All code MUST be written in TypeScript with strict type checking enabled. No `an
 **Rationale**: Type safety prevents runtime errors and improves developer experience in an AI-assisted development environment.
 
 ### III. Test Alignment
-Test file paths MUST mirror source file structure exactly (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. Integration tests in `packages/*/examples` for real scenarios; unit tests in `packages/*/tests` for mockable scenarios.
+Test file organization MUST follow logical patterns for discoverability. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. Integration tests in `packages/*/examples` for real scenarios; unit tests in `packages/*/tests` for mockable scenarios.
 
-**Rationale**: Consistent test organization enables predictable development workflows and clear test discovery.
+**Rationale**: Flexible test organization enables both predictable discovery and manageable test suites for complex modules.
 
 ### IV. Build Dependencies
 After modifying `agent-sdk`, MUST run `pnpm build` before testing changes in dependent packages. Use `pnpm` exclusively for package management, never `npm`.
@@ -36,9 +37,14 @@ Do NOT create Markdown documentation files unless explicitly requested by users.
 
 **Rationale**: Over-documentation creates maintenance burden; well-written code with good naming is often self-documenting.
 
+### VI. Quality Gates
+After any modifications, MUST run `pnpm run type-check` and `pnpm run lint` to validate code quality. All type checking MUST pass without errors or warnings. All linting rules MUST be satisfied before committing changes.
+
+**Rationale**: Automated quality checks prevent defects from entering the codebase and ensure consistent code standards across all contributors.
+
 ## Quality Standards
 
-All code MUST pass TypeScript compilation without errors or warnings. All tests MUST pass before merging. Code MUST follow the established linting and formatting rules enforced by ESLint and Prettier.
+All code MUST pass TypeScript compilation without errors or warnings. All tests MUST pass before merging. Code MUST follow the established linting and formatting rules enforced by ESLint and Prettier. Quality gates (type-check and lint) MUST be run and pass after every modification.
 
 **Testing Requirements**: 
 - Examples directory: Real integration tests using `npx tsx` locally
@@ -53,7 +59,8 @@ All code MUST pass TypeScript compilation without errors or warnings. All tests 
 1. Modify code in any package
 2. Run `pnpm build` if changes affect `agent-sdk`
 3. Test in dependent packages
-4. Commit with clear, descriptive messages
+4. Run `pnpm run type-check` and `pnpm run lint`
+5. Commit with clear, descriptive messages
 
 **Testing Strategy**:
 - Unit tests for individual functions and components
@@ -68,4 +75,4 @@ This constitution supersedes all other development practices. All pull requests 
 
 **Version Control**: Use semantic versioning for constitution updates. Breaking changes to principles require major version bump.
 
-**Version**: 1.0.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-01-27
+**Version**: 1.2.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-01-27

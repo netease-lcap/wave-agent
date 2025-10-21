@@ -14,6 +14,7 @@ import {
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import type { SlashCommand, CustomSlashCommand } from "./types.js";
 import type { Message, Logger, McpServerStatus } from "./types.js";
+import { HookManager } from "./hooks/index.js";
 
 export interface AgentOptions {
   callbacks?: AgentCallbacks;
@@ -40,6 +41,7 @@ export class Agent {
   private toolManager: ToolManager; // 添加工具注册表实例
   private mcpManager: McpManager; // 添加 MCP 管理器实例
   private slashCommandManager: SlashCommandManager; // 添加斜杠命令管理器实例
+  private hookManager: HookManager; // 添加 hooks 管理器实例
 
   // 私有构造函数，防止直接实例化
   private constructor(options: AgentOptions) {
@@ -50,6 +52,7 @@ export class Agent {
     this.backgroundBashManager = new BackgroundBashManager({ callbacks });
     this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // 初始化 MCP 管理器
     this.toolManager = new ToolManager({ mcpManager: this.mcpManager }); // 初始化工具注册表，传入 MCP 管理器
+    this.hookManager = new HookManager(undefined, undefined, this.logger); // 初始化 hooks 管理器
 
     // 初始化 MessageManager
     this.messageManager = new MessageManager({
@@ -63,6 +66,7 @@ export class Agent {
       toolManager: this.toolManager,
       logger: this.logger,
       backgroundBashManager: this.backgroundBashManager,
+      hookManager: this.hookManager,
       callbacks,
     });
 
@@ -149,6 +153,17 @@ export class Agent {
       // Don't throw error to prevent app startup failure
     }
 
+    // Initialize hooks configuration
+    try {
+      // Load hooks configuration from user and project settings
+      this.logger?.info("Loading hooks configuration...");
+      this.hookManager.loadConfigurationFromSettings();
+      this.logger?.debug("Hooks system initialized successfully");
+    } catch (error) {
+      this.logger?.error("Failed to initialize hooks system:", error);
+      // Don't throw error to prevent app startup failure
+    }
+
     // Handle session restoration or set provided messages
     if (options?.messages) {
       // If messages are provided, use them directly (useful for testing)
@@ -220,6 +235,21 @@ export class Agent {
       // Handle normal AI message
       // 添加用户消息到历史记录
       this.addToInputHistory(content);
+
+      // Execute UserPromptSubmit hooks before processing the prompt
+      if (this.hookManager) {
+        try {
+          await this.hookManager.executeHooks("UserPromptSubmit", {
+            event: "UserPromptSubmit",
+            projectDir: process.cwd(),
+            timestamp: new Date(),
+            // UserPromptSubmit doesn't need toolName
+          });
+        } catch (error) {
+          this.logger?.warn("UserPromptSubmit hooks execution failed:", error);
+          // Continue processing even if hooks fail
+        }
+      }
 
       // 添加用户消息，会自动同步到 UI
       this.messageManager.addUserMessage(

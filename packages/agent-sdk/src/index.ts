@@ -17,5 +17,8 @@ export * from "./utils/stringUtils.js";
 export * from "./utils/markdownParser.js";
 export * from "./utils/customCommands.js";
 
+// Export hooks system
+export * from "./hooks/index.js";
+
 // Export types
 export * from "./types.js";

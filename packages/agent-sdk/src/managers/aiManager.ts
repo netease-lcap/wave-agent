@@ -9,6 +9,8 @@ import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
+import type { HookManager } from "../hooks/index.js";
+import type { HookExecutionContext } from "../hooks/types.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -19,6 +21,7 @@ export interface AIManagerOptions {
   toolManager: ToolManager;
   logger?: Logger;
   backgroundBashManager?: BackgroundBashManager;
+  hookManager?: HookManager;
   callbacks?: AIManagerCallbacks;
 }
 
@@ -30,11 +33,13 @@ export class AIManager {
   private toolManager: ToolManager;
   private messageManager: MessageManager;
   private backgroundBashManager?: BackgroundBashManager;
+  private hookManager?: HookManager;
 
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
     this.toolManager = options.toolManager;
     this.backgroundBashManager = options.backgroundBashManager;
+    this.hookManager = options.hookManager;
     this.logger = options.logger;
     this.callbacks = options.callbacks ?? {};
   }
@@ -273,6 +278,9 @@ export class AIManager {
             });
 
             try {
+              // Execute PreToolUse hooks before tool execution
+              await this.executePreToolUseHooks(toolName);
+
               // 创建工具执行上下文
               const context: ToolContext = {
                 abortSignal: toolAbortController.signal,
@@ -316,6 +324,9 @@ export class AIManager {
                   toolResult.newContent,
                 );
               }
+
+              // Execute PostToolUse hooks after successful tool completion
+              await this.executePostToolUseHooks(toolName);
             } catch (toolError) {
               const errorMessage =
                 toolError instanceof Error
@@ -404,7 +415,121 @@ export class AIManager {
       // Only clear loading state for the initial call
       if (recursionDepth === 0) {
         this.setIsLoading(false);
+
+        // Execute Stop hooks when AI response cycle completes
+        await this.executeStopHooks();
       }
+    }
+  }
+
+  /**
+   * Execute Stop hooks when AI response cycle completes
+   */
+  private async executeStopHooks(): Promise<void> {
+    if (!this.hookManager) return;
+
+    try {
+      const context: HookExecutionContext = {
+        event: "Stop",
+        projectDir: process.cwd(),
+        timestamp: new Date(),
+        // Stop hooks don't need toolName
+      };
+
+      const results = await this.hookManager.executeHooks("Stop", context);
+
+      // Log hook execution results for debugging
+      if (results.length > 0) {
+        this.logger?.debug(
+          `Executed ${results.length} Stop hook(s):`,
+          results.map((r) => ({
+            success: r.success,
+            duration: r.duration,
+            exitCode: r.exitCode,
+            timedOut: r.timedOut,
+            stderr: r.stderr,
+          })),
+        );
+      }
+    } catch (error) {
+      // Hook execution errors should not interrupt the main workflow
+      this.logger?.error("Stop hook execution failed:", error);
+    }
+  }
+
+  /**
+   * Execute PreToolUse hooks before tool execution
+   */
+  private async executePreToolUseHooks(toolName: string): Promise<void> {
+    if (!this.hookManager) return;
+
+    try {
+      const context: HookExecutionContext = {
+        event: "PreToolUse",
+        projectDir: process.cwd(),
+        timestamp: new Date(),
+        toolName,
+      };
+
+      const results = await this.hookManager.executeHooks(
+        "PreToolUse",
+        context,
+      );
+
+      // Log hook execution results for debugging
+      if (results.length > 0) {
+        this.logger?.debug(
+          `Executed ${results.length} PreToolUse hook(s) for ${toolName}:`,
+          results.map((r) => ({
+            success: r.success,
+            duration: r.duration,
+            exitCode: r.exitCode,
+            timedOut: r.timedOut,
+            stderr: r.stderr,
+          })),
+        );
+      }
+    } catch (error) {
+      // Hook execution errors should not interrupt the main workflow
+      this.logger?.error("PreToolUse hook execution failed:", error);
+    }
+  }
+
+  /**
+   * Execute PostToolUse hooks after tool completion
+   */
+  private async executePostToolUseHooks(toolName: string): Promise<void> {
+    if (!this.hookManager) return;
+
+    try {
+      const context: HookExecutionContext = {
+        event: "PostToolUse",
+        projectDir: process.cwd(),
+        timestamp: new Date(),
+        toolName,
+      };
+
+      const results = await this.hookManager.executeHooks(
+        "PostToolUse",
+        context,
+      );
+
+      // Log hook execution results for debugging
+      if (results.length > 0) {
+        this.logger?.debug(
+          `Executed ${results.length} PostToolUse hook(s) for ${toolName}:`,
+          results.map((r) => ({
+            success: r.success,
+            duration: r.duration,
+            exitCode: r.exitCode,
+            timedOut: r.timedOut,
+            stderr: r.stderr,
+          })),
+        );
+      }
+    } catch (error) {
+      // Hook execution errors should not interrupt the main workflow
+      this.logger?.error("PostToolUse hook execution failed:", error);
     }
   }
 }
