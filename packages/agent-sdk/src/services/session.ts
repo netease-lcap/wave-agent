@@ -57,6 +57,7 @@ function getSessionFilePath(sessionId: string): string {
 export async function saveSession(
   sessionId: string,
   messages: Message[],
+  workdir: string,
   latestTotalTokens: number = 0,
   startedAt?: string,
 ): Promise<void> {
@@ -73,7 +74,7 @@ export async function saveSession(
     timestamp: now,
     version: VERSION,
     metadata: {
-      workdir: process.cwd(),
+      workdir: workdir,
       startedAt: startedAt || now,
       lastActiveAt: now,
       latestTotalTokens,
@@ -120,8 +121,10 @@ export async function loadSession(
 /**
  * 获取最近的会话
  */
-export async function getLatestSession(): Promise<SessionData | null> {
-  const sessions = await listSessions();
+export async function getLatestSession(
+  workdir: string,
+): Promise<SessionData | null> {
+  const sessions = await listSessions(workdir);
   if (sessions.length === 0) {
     return null;
   }
@@ -138,7 +141,10 @@ export async function getLatestSession(): Promise<SessionData | null> {
 /**
  * 列出所有会话
  */
-export async function listSessions(): Promise<SessionMetadata[]> {
+export async function listSessions(
+  workdir: string,
+  includeAllWorkdirs = false,
+): Promise<SessionMetadata[]> {
   try {
     await ensureSessionDir();
     const files = await fs.readdir(SESSION_DIR);
@@ -155,8 +161,8 @@ export async function listSessions(): Promise<SessionMetadata[]> {
         const content = await fs.readFile(filePath, "utf-8");
         const sessionData = JSON.parse(content) as SessionData;
 
-        // 只返回当前工作目录的会话
-        if (sessionData.metadata.workdir !== process.cwd()) {
+        // 只返回当前工作目录的会话，除非 includeAllWorkdirs 为 true
+        if (!includeAllWorkdirs && sessionData.metadata.workdir !== workdir) {
           continue;
         }
 
@@ -203,13 +209,13 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
 /**
  * 清理过期会话
  */
-export async function cleanupExpiredSessions(): Promise<number> {
+export async function cleanupExpiredSessions(workdir: string): Promise<number> {
   // 在测试环境下不执行清理操作
   if (process.env.NODE_ENV === "test") {
     return 0;
   }
 
-  const sessions = await listSessions();
+  const sessions = await listSessions(workdir, true);
   const now = new Date();
   const maxAge = MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // 转换为毫秒
 

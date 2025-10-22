@@ -61,10 +61,8 @@ describe("Agent User Memory Integration", () => {
       onMessagesChange: vi.fn(),
     };
 
-    // Mock process.cwd() to return temp directory
-    vi.spyOn(process, "cwd").mockReturnValue(tempDir);
-
     agent = await Agent.create({
+      workdir: tempDir,
       callbacks: mockCallbacks,
     });
   });
@@ -87,10 +85,8 @@ describe("Agent User Memory Integration", () => {
     if (agent) {
       await agent.destroy();
     }
-    // Mock process.cwd() to return temp directory
-    vi.spyOn(process, "cwd").mockReturnValue(tempDir);
-
     agent = await Agent.create({
+      workdir: tempDir,
       callbacks: mockCallbacks,
     });
 
@@ -114,10 +110,8 @@ describe("Agent User Memory Integration", () => {
     if (agent) {
       await agent.destroy();
     }
-    // Mock process.cwd() to return temp directory
-    vi.spyOn(process, "cwd").mockReturnValue(tempDir);
-
     agent = await Agent.create({
+      workdir: tempDir,
       callbacks: mockCallbacks,
     });
 
@@ -140,10 +134,8 @@ describe("Agent User Memory Integration", () => {
     if (agent) {
       await agent.destroy();
     }
-    // Mock process.cwd() to return temp directory
-    vi.spyOn(process, "cwd").mockReturnValue(tempDir);
-
     agent = await Agent.create({
+      workdir: tempDir,
       callbacks: mockCallbacks,
     });
 
@@ -166,10 +158,8 @@ describe("Agent User Memory Integration", () => {
     if (agent) {
       await agent.destroy();
     }
-    // Mock process.cwd() to return temp directory
-    vi.spyOn(process, "cwd").mockReturnValue(tempDir);
-
     agent = await Agent.create({
+      workdir: tempDir,
       callbacks: mockCallbacks,
     });
 
@@ -194,8 +184,6 @@ describe("Agent User Memory Integration", () => {
     if (agent) {
       await agent.destroy();
     }
-    // Mock process.cwd() to return temp directory
-    vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
     // Add a user message first with correct structure
     const initialMessages = [
@@ -211,6 +199,7 @@ describe("Agent User Memory Integration", () => {
     ];
 
     agent = await Agent.create({
+      workdir: tempDir,
       messages: initialMessages,
     });
 
@@ -233,15 +222,15 @@ describe("Agent User Memory Integration", () => {
     const tempDir1 = await fs.mkdtemp(path.join(os.tmpdir(), "test1-"));
     const tempDir2 = await fs.mkdtemp(path.join(os.tmpdir(), "test2-"));
 
-    // Mock process.cwd for first manager
-    vi.spyOn(process, "cwd").mockReturnValue(tempDir1);
+    // Create agent for first manager
     const agent1 = await Agent.create({
+      workdir: tempDir1,
       callbacks: mockCallbacks,
     });
 
-    // Mock process.cwd for second manager
-    vi.spyOn(process, "cwd").mockReturnValue(tempDir2);
+    // Create agent for second manager
     const agent2 = await Agent.create({
+      workdir: tempDir2,
       callbacks: mockCallbacks,
     });
 

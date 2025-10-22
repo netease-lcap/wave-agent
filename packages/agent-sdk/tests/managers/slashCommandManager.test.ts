@@ -12,6 +12,7 @@ describe("SlashCommandManager", () => {
     // 创建带有必要回调的 MessageManager
     messageManager = new MessageManager({
       callbacks: {},
+      workdir: "/test/workdir",
     });
 
     // 创建模拟的 AIManager
@@ -23,6 +24,7 @@ describe("SlashCommandManager", () => {
     slashCommandManager = new SlashCommandManager({
       messageManager,
       aiManager,
+      workdir: "/test/workdir",
     });
   });
 

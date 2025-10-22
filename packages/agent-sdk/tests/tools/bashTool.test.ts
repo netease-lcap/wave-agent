@@ -31,9 +31,12 @@ describe("bashTool", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    backgroundBashManager = new BackgroundBashManager();
+    backgroundBashManager = new BackgroundBashManager({
+      workdir: "/test/workdir",
+    });
     context = {
       backgroundBashManager,
+      workdir: "/test/workdir",
     };
   });
 
@@ -79,7 +82,7 @@ describe("bashTool", () => {
       expect(mockSpawn).toHaveBeenCalledWith("echo hello", {
         shell: true,
         stdio: "pipe",
-        cwd: process.cwd(),
+        cwd: "/test/workdir",
         env: expect.any(Object),
       });
     });
@@ -195,6 +198,7 @@ describe("bashTool", () => {
       const testContext: ToolContext = {
         abortSignal: abortController.signal,
         backgroundBashManager,
+        workdir: "/test/workdir",
       };
 
       // Start the command execution
@@ -216,11 +220,11 @@ describe("bashTool", () => {
 
     it("should format compact params correctly", () => {
       const params1 = { command: "echo hello" };
-      const result1 = bashTool.formatCompactParams?.(params1);
+      const result1 = bashTool.formatCompactParams?.(params1, context);
       expect(result1).toBe("echo hello");
 
       const params2 = { command: "echo hello", run_in_background: true };
-      const result2 = bashTool.formatCompactParams?.(params2);
+      const result2 = bashTool.formatCompactParams?.(params2, context);
       expect(result2).toBe("echo hello background");
     });
   });
@@ -304,11 +308,11 @@ describe("bashTool", () => {
 
     it("should format compact params correctly", () => {
       const params1 = { bash_id: "bash_1" };
-      const result1 = bashOutputTool.formatCompactParams?.(params1);
+      const result1 = bashOutputTool.formatCompactParams?.(params1, context);
       expect(result1).toBe("bash_1");
 
       const params2 = { bash_id: "bash_1", filter: "error" };
-      const result2 = bashOutputTool.formatCompactParams?.(params2);
+      const result2 = bashOutputTool.formatCompactParams?.(params2, context);
       expect(result2).toBe("bash_1 filtered: error");
     });
   });
@@ -426,7 +430,7 @@ describe("bashTool", () => {
 
     it("should format compact params correctly", () => {
       const params = { shell_id: "bash_1" };
-      const result = killBashTool.formatCompactParams?.(params);
+      const result = killBashTool.formatCompactParams?.(params, context);
       expect(result).toBe("bash_1");
     });
   });

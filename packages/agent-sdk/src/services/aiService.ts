@@ -48,7 +48,7 @@ export interface CallAgentOptions {
   sessionId?: string;
   abortSignal?: AbortSignal;
   memory?: string; // 记忆内容参数，从 WAVE.md 读取的内容
-  workdir?: string; // 当前工作目录
+  workdir: string; // 当前工作目录
   tools?: ChatCompletionFunctionTool[]; // 工具配置
   model?: string; // 自定义模型
 }
@@ -73,7 +73,7 @@ export async function callAgent(
     let systemContent = `You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
 ## Current Working Directory
-${workdir || process.cwd()}
+${workdir}
 `;
 
     // 如果有记忆内容，添加到系统提示词中

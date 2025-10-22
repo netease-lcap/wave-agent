@@ -142,6 +142,7 @@ export const addBashCommandToHistory = (
 export const searchBashHistory = (
   query: string,
   limit: number = 10,
+  workdir: string,
 ): BashHistoryEntry[] => {
   try {
     const history = loadBashHistory();
@@ -149,9 +150,9 @@ export const searchBashHistory = (
 
     let filteredCommands = history.commands;
 
-    // 工作目录过滤 - 默认过滤当前工作目录
+    // 工作目录过滤
     filteredCommands = filteredCommands.filter(
-      (entry) => entry.workdir === process.cwd(),
+      (entry) => entry.workdir === workdir,
     );
 
     if (!normalizedQuery) {
@@ -235,14 +236,14 @@ const deduplicateCommands = (
  * 获取最近使用的bash命令
  */
 export const getRecentBashCommands = (
-  workdir?: string,
+  workdir: string,
   limit: number = 10,
 ): BashHistoryEntry[] => {
   try {
     const history = loadBashHistory();
-    const filtered = workdir
-      ? history.commands.filter((entry) => entry.workdir === workdir)
-      : history.commands;
+    const filtered = history.commands.filter(
+      (entry) => entry.workdir === workdir,
+    );
 
     // 去重后返回最近的命令
     const deduped = deduplicateCommands(filtered);

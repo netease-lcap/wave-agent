@@ -32,12 +32,9 @@ async function setupTest() {
   await fs.writeFile(configPath, JSON.stringify(mcpConfig, null, 2));
   console.log(`⚙️ Created MCP config: ${configPath}`);
 
-  // 设置工作目录
-  console.log(`🔧 Setting working directory: ${tempDir}`);
-  process.chdir(tempDir);
-
-  // 创建 AI Manager with comprehensive callbacks
+  // 创建 AI Manager with comprehensive callbacks and workdir
   agent = await Agent.create({
+    workdir: tempDir, // 使用 workdir 参数替代 process.chdir
     callbacks: {
       // 增量回调
       onUserMessageAdded: (content: string) => {

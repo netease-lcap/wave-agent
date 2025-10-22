@@ -5,6 +5,7 @@ import { logger } from "../utils/logger.js";
 
 export interface BashHistorySelectorProps {
   searchQuery: string;
+  workdir: string;
   onSelect: (command: string) => void;
   onExecute: (command: string) => void;
   onCancel: () => void;
@@ -12,6 +13,7 @@ export interface BashHistorySelectorProps {
 
 export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
   searchQuery,
+  workdir,
   onSelect,
   onExecute,
   onCancel,
@@ -21,14 +23,15 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
 
   // 搜索bash历史
   useEffect(() => {
-    const results = searchBashHistory(searchQuery, 10);
+    const results = searchBashHistory(searchQuery, 10, workdir);
     setCommands(results);
     setSelectedIndex(0);
     logger.debug("Bash history search:", {
       searchQuery,
+      workdir,
       resultCount: results.length,
     });
-  }, [searchQuery]);
+  }, [searchQuery, workdir]);
 
   useInput((input, key) => {
     logger.debug("BashHistorySelector useInput:", {
@@ -143,7 +146,7 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
             <Box marginLeft={4} flexDirection="column">
               <Text color="gray" dimColor>
                 {formatTimestamp(cmd.timestamp)}
-                {cmd.workdir !== process.cwd() && ` • in ${cmd.workdir}`}
+                {cmd.workdir !== workdir && ` • in ${cmd.workdir}`}
               </Text>
             </Box>
           )}

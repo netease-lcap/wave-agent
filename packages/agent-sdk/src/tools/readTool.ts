@@ -1,5 +1,5 @@
 import { readFile } from "fs/promises";
-import type { ToolPlugin, ToolResult } from "./types.js";
+import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 
 /**
@@ -36,7 +36,10 @@ export const readTool: ToolPlugin = {
       },
     },
   },
-  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (
+    args: Record<string, unknown>,
+    context: ToolContext,
+  ): Promise<ToolResult> => {
     const filePath = args.file_path as string;
     const offset = args.offset as number;
     const limit = args.limit as number;
@@ -54,7 +57,7 @@ export const readTool: ToolPlugin = {
       // 但为了保持兼容性，如果不是绝对路径，我们仍然尝试解析
       const actualFilePath = filePath.startsWith("/")
         ? filePath
-        : resolvePath(filePath);
+        : resolvePath(filePath, context.workdir);
 
       const fileContent = await readFile(actualFilePath, "utf-8");
 
@@ -142,12 +145,15 @@ export const readTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>) => {
+  formatCompactParams: (
+    params: Record<string, unknown>,
+    context: ToolContext,
+  ) => {
     const filePath = params.file_path as string;
     const offset = params.offset as number;
     const limit = params.limit as number;
 
-    let displayPath = getDisplayPath(filePath || "");
+    let displayPath = getDisplayPath(filePath || "", context.workdir);
 
     if (typeof offset === "number" || typeof limit === "number") {
       const offsetStr = typeof offset === "number" ? offset.toString() : "1";

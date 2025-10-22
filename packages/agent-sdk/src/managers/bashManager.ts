@@ -4,6 +4,7 @@ import type { MessageManager } from "./messageManager.js";
 
 export interface BashManagerOptions {
   messageManager: MessageManager;
+  workdir: string;
 }
 
 export interface CommandExecutionResult {
@@ -18,7 +19,7 @@ export class BashManager {
   private currentProcess: ChildProcess | null = null;
 
   constructor(options: BashManagerOptions) {
-    this.workdir = process.cwd();
+    this.workdir = options.workdir;
     this.messageManager = options.messageManager;
   }
 

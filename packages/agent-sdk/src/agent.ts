@@ -23,6 +23,8 @@ export interface AgentOptions {
   logger?: Logger;
   /**添加可选的初始消息参数，方便测试 */
   messages?: Message[];
+  /**工作目录 - 如果未指定，使用 process.cwd() */
+  workdir?: string;
 }
 
 export interface AgentCallbacks
@@ -42,21 +44,32 @@ export class Agent {
   private mcpManager: McpManager; // 添加 MCP 管理器实例
   private slashCommandManager: SlashCommandManager; // 添加斜杠命令管理器实例
   private hookManager: HookManager; // 添加 hooks 管理器实例
+  private workdir: string; // 工作目录
 
   // 私有构造函数，防止直接实例化
   private constructor(options: AgentOptions) {
-    const { callbacks = {}, logger } = options;
+    const { callbacks = {}, logger, workdir } = options;
 
     this.callbacks = callbacks;
     this.logger = logger; // 保存传入的 logger
-    this.backgroundBashManager = new BackgroundBashManager({ callbacks });
+    this.workdir = workdir || process.cwd(); // 设置工作目录，默认为当前工作目录
+    this.backgroundBashManager = new BackgroundBashManager({
+      callbacks,
+      workdir: this.workdir,
+    });
     this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // 初始化 MCP 管理器
     this.toolManager = new ToolManager({ mcpManager: this.mcpManager }); // 初始化工具注册表，传入 MCP 管理器
-    this.hookManager = new HookManager(undefined, undefined, this.logger); // 初始化 hooks 管理器
+    this.hookManager = new HookManager(
+      this.workdir,
+      undefined,
+      undefined,
+      this.logger,
+    ); // 初始化 hooks 管理器
 
     // 初始化 MessageManager
     this.messageManager = new MessageManager({
       callbacks,
+      workdir: this.workdir,
       logger: this.logger,
     });
 
@@ -68,18 +81,21 @@ export class Agent {
       backgroundBashManager: this.backgroundBashManager,
       hookManager: this.hookManager,
       callbacks,
+      workdir: this.workdir,
     });
 
     // Initialize command manager
     this.slashCommandManager = new SlashCommandManager({
       messageManager: this.messageManager,
       aiManager: this.aiManager,
+      workdir: this.workdir,
       logger: this.logger,
     });
 
     // Initialize bash manager
     this.bashManager = new BashManager({
       messageManager: this.messageManager,
+      workdir: this.workdir,
     });
   }
 
@@ -98,6 +114,11 @@ export class Agent {
 
   public get userInputHistory(): string[] {
     return this.messageManager.getUserInputHistory();
+  }
+
+  /** 获取工作目录 */
+  public get workingDirectory(): string {
+    return this.workdir;
   }
 
   /** 获取AI加载状态 */
@@ -147,7 +168,7 @@ export class Agent {
   }): Promise<void> {
     // Initialize MCP servers with auto-connect
     try {
-      await this.mcpManager.initialize(process.cwd(), true);
+      await this.mcpManager.initialize(this.workdir, true);
     } catch (error) {
       this.logger?.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
@@ -263,7 +284,7 @@ export class Agent {
         try {
           await this.hookManager.executeHooks("UserPromptSubmit", {
             event: "UserPromptSubmit",
-            projectDir: process.cwd(),
+            projectDir: this.workdir,
             timestamp: new Date(),
             // UserPromptSubmit doesn't need toolName
           });
@@ -297,7 +318,7 @@ export class Agent {
   ): Promise<void> {
     try {
       if (type === "project") {
-        await memory.addMemory(message);
+        await memory.addMemory(message, this.workdir);
       } else {
         await memory.addUserMemory(message);
       }

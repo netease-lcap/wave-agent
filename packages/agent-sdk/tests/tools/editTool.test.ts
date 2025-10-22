@@ -12,6 +12,7 @@ vi.mock("fs/promises", () => ({
 describe("editTool", () => {
   const mockContext: ToolContext = {
     abortSignal: new AbortController().signal,
+    workdir: "/test/workdir",
   };
 
   beforeEach(() => {

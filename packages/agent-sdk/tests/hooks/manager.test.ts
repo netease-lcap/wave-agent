@@ -32,7 +32,7 @@ describe("HookManager", () => {
     };
 
     // Create manager with mocks
-    manager = new HookManager(mockMatcher, mockExecutor);
+    manager = new HookManager("/test/workdir", mockMatcher, mockExecutor);
   });
 
   describe("Configuration Management", () => {

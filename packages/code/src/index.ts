@@ -39,14 +39,15 @@ export async function main() {
   // Handle list sessions command
   if (argv.listSessions) {
     try {
-      const sessions = await listSessions();
+      const currentWorkdir = process.cwd();
+      const sessions = await listSessions(currentWorkdir);
 
       if (sessions.length === 0) {
-        console.log(`No sessions found for workdir: ${process.cwd()}`);
+        console.log(`No sessions found for workdir: ${currentWorkdir}`);
         return;
       }
 
-      console.log(`Available sessions for: ${process.cwd()}`);
+      console.log(`Available sessions for: ${currentWorkdir}`);
       console.log("==========================================");
 
       for (const session of sessions) {

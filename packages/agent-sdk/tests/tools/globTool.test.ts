@@ -4,15 +4,15 @@ import { mkdtemp, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { rimraf } from "rimraf";
+import type { ToolContext } from "@/tools/types.js";
+
+const testContext: ToolContext = { workdir: "/test/workdir" };
 
 describe("globTool", () => {
   let tempDir: string;
-  let originalCwd: string;
 
   beforeEach(async () => {
-    originalCwd = process.cwd();
     tempDir = await mkdtemp(join(tmpdir(), "glob-test-"));
-    process.chdir(tempDir);
 
     // 创建测试文件结构
     await mkdir(join(tempDir, "src"), { recursive: true });
@@ -40,7 +40,6 @@ describe("globTool", () => {
   });
 
   afterEach(async () => {
-    process.chdir(originalCwd);
     await rimraf(tempDir);
   });
 
@@ -57,7 +56,10 @@ describe("globTool", () => {
   });
 
   it("should find TypeScript files with **/*.ts pattern", async () => {
-    const result = await globTool.execute({ pattern: "**/*.ts" });
+    const result = await globTool.execute(
+      { pattern: "**/*.ts" },
+      { workdir: tempDir },
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
@@ -66,7 +68,10 @@ describe("globTool", () => {
   });
 
   it("should find all files with ** pattern", async () => {
-    const result = await globTool.execute({ pattern: "**/*" });
+    const result = await globTool.execute(
+      { pattern: "**/*" },
+      { workdir: tempDir },
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("package.json");
@@ -76,7 +81,10 @@ describe("globTool", () => {
   });
 
   it("should find files in specific directory", async () => {
-    const result = await globTool.execute({ pattern: "src/*" });
+    const result = await globTool.execute(
+      { pattern: "src/*" },
+      { workdir: tempDir },
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
@@ -85,7 +93,10 @@ describe("globTool", () => {
   });
 
   it("should return no matches for non-existent pattern", async () => {
-    const result = await globTool.execute({ pattern: "**/*.nonexistent" });
+    const result = await globTool.execute(
+      { pattern: "**/*.nonexistent" },
+      { workdir: tempDir },
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toBe("No files match the pattern");
@@ -94,7 +105,10 @@ describe("globTool", () => {
 
   it("should work with custom search path", async () => {
     const srcDir = join(tempDir, "src");
-    const result = await globTool.execute({ pattern: "*.ts", path: srcDir });
+    const result = await globTool.execute(
+      { pattern: "*.ts", path: srcDir },
+      testContext,
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("index.ts");
@@ -102,14 +116,14 @@ describe("globTool", () => {
   });
 
   it("should return error for missing pattern", async () => {
-    const result = await globTool.execute({});
+    const result = await globTool.execute({}, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("pattern parameter is required");
   });
 
   it("should return error for invalid pattern type", async () => {
-    const result = await globTool.execute({ pattern: 123 });
+    const result = await globTool.execute({ pattern: 123 }, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain(
@@ -119,10 +133,12 @@ describe("globTool", () => {
 
   it("should format compact parameters correctly", () => {
     const params1 = { pattern: "**/*.ts" };
-    expect(globTool.formatCompactParams?.(params1)).toBe("**/*.ts");
+    expect(globTool.formatCompactParams?.(params1, testContext)).toBe(
+      "**/*.ts",
+    );
 
     const params2 = { pattern: "*.js", path: "/custom/path" };
-    expect(globTool.formatCompactParams?.(params2)).toBe(
+    expect(globTool.formatCompactParams?.(params2, testContext)).toBe(
       "*.js in /custom/path",
     );
   });
@@ -136,7 +152,10 @@ describe("globTool", () => {
     await new Promise((resolve) => setTimeout(resolve, 50)); // 等待确保时间差
     await writeFile(file2, "content2");
 
-    const result = await globTool.execute({ pattern: "file*.txt" });
+    const result = await globTool.execute(
+      { pattern: "file*.txt" },
+      { workdir: tempDir },
+    );
 
     expect(result.success).toBe(true);
     const lines = result.content.split("\n");
@@ -153,7 +172,10 @@ describe("globTool", () => {
       "module.exports = {};",
     );
 
-    const result = await globTool.execute({ pattern: "**/*.js" });
+    const result = await globTool.execute(
+      { pattern: "**/*.js" },
+      { workdir: tempDir },
+    );
 
     expect(result.success).toBe(true);
     // 应该包含 tests 目录下的 .js 文件

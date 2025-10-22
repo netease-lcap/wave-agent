@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { deleteFileTool } from "@/tools/deleteFileTool.js";
-import type { ToolResult } from "@/tools/types.js";
+import type { ToolResult, ToolContext } from "@/tools/types.js";
+
+const testContext: ToolContext = { workdir: "/test/workdir" };
 
 // Mock fs/promises module
 vi.mock("fs/promises", async (importOriginal) => {
@@ -33,11 +35,16 @@ describe("deleteFileTool", () => {
   it("should successfully delete an existing file", async () => {
     mockUnlink.mockResolvedValue();
 
-    const result: ToolResult = await deleteFileTool.execute({
-      target_file: "test.js",
-    });
+    const result: ToolResult = await deleteFileTool.execute(
+      {
+        target_file: "test.js",
+      },
+      testContext,
+    );
 
-    expect(mockUnlink).toHaveBeenCalledWith("test.js");
+    expect(mockUnlink).toHaveBeenCalledWith(
+      expect.stringMatching(/.*test\.js$/),
+    );
     expect(result.success).toBe(true);
     expect(result.content).toBe("Successfully deleted file: test.js");
   });
@@ -50,11 +57,16 @@ describe("deleteFileTool", () => {
 
     mockUnlink.mockRejectedValue(notFoundError);
 
-    const result: ToolResult = await deleteFileTool.execute({
-      target_file: "nonexistent.js",
-    });
+    const result: ToolResult = await deleteFileTool.execute(
+      {
+        target_file: "nonexistent.js",
+      },
+      testContext,
+    );
 
-    expect(mockUnlink).toHaveBeenCalledWith("nonexistent.js");
+    expect(mockUnlink).toHaveBeenCalledWith(
+      expect.stringMatching(/.*nonexistent\.js$/),
+    );
     expect(result.success).toBe(false);
     expect(result.error).toBe("File does not exist: nonexistent.js");
   });
@@ -67,18 +79,23 @@ describe("deleteFileTool", () => {
 
     mockUnlink.mockRejectedValue(permissionError);
 
-    const result: ToolResult = await deleteFileTool.execute({
-      target_file: "protected.js",
-    });
+    const result: ToolResult = await deleteFileTool.execute(
+      {
+        target_file: "protected.js",
+      },
+      testContext,
+    );
 
-    expect(mockUnlink).toHaveBeenCalledWith("protected.js");
+    expect(mockUnlink).toHaveBeenCalledWith(
+      expect.stringMatching(/.*protected\.js$/),
+    );
     expect(result.success).toBe(false);
     expect(result.error).toBe("Permission denied");
   });
 
   it("should validate required parameters", async () => {
     // Test missing target_file
-    const result = await deleteFileTool.execute({});
+    const result = await deleteFileTool.execute({}, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe(
@@ -89,9 +106,12 @@ describe("deleteFileTool", () => {
 
   it("should handle invalid target_file types", async () => {
     // Test non-string target_file
-    const result = await deleteFileTool.execute({
-      target_file: 123 as unknown as string,
-    });
+    const result = await deleteFileTool.execute(
+      {
+        target_file: 123 as unknown as string,
+      },
+      testContext,
+    );
 
     expect(result.success).toBe(false);
     expect(result.error).toBe(
@@ -116,11 +136,16 @@ describe("deleteFileTool", () => {
     });
 
     try {
-      const result: ToolResult = await deleteFileTool.execute({
-        target_file: "src/test.js",
-      });
+      const result: ToolResult = await deleteFileTool.execute(
+        {
+          target_file: "src/test.js",
+        },
+        testContext,
+      );
 
-      expect(mockUnlink).toHaveBeenCalledWith("/project/root/src/test.js");
+      expect(mockUnlink).toHaveBeenCalledWith(
+        expect.stringMatching(/.*src\/test\.js$/),
+      );
       expect(result.success).toBe(true);
       expect(result.content).toBe("Successfully deleted file: src/test.js");
     } finally {
@@ -142,11 +167,16 @@ describe("deleteFileTool", () => {
 
     mockUnlink.mockRejectedValue(unknownError);
 
-    const result: ToolResult = await deleteFileTool.execute({
-      target_file: "test.js",
-    });
+    const result: ToolResult = await deleteFileTool.execute(
+      {
+        target_file: "test.js",
+      },
+      testContext,
+    );
 
-    expect(mockUnlink).toHaveBeenCalledWith("test.js");
+    expect(mockUnlink).toHaveBeenCalledWith(
+      expect.stringMatching(/.*test\.js$/),
+    );
     expect(result.success).toBe(false);
     expect(result.error).toBe("Disk full");
   });

@@ -43,7 +43,7 @@ class ToolManager {
   async execute(
     name: string,
     args: Record<string, unknown>,
-    context?: ToolContext,
+    context: ToolContext,
   ): Promise<ToolResult> {
     // Check if it's an MCP tool first
     if (this.mcpManager.isMcpTool(name)) {

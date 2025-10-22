@@ -3,6 +3,8 @@ import { writeTool } from "@/tools/writeTool.js";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 
+const testContext: ToolContext = { workdir: "/test/workdir" };
+
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
   readFile: vi.fn(),
@@ -13,6 +15,7 @@ vi.mock("fs/promises", () => ({
 describe("writeTool", () => {
   const mockContext: ToolContext = {
     abortSignal: new AbortController().signal,
+    workdir: "/test/workdir",
   };
 
   beforeEach(() => {
@@ -284,7 +287,7 @@ describe("writeTool", () => {
       };
 
       expect(writeTool.formatCompactParams).toBeDefined();
-      const result = writeTool.formatCompactParams!(params);
+      const result = writeTool.formatCompactParams!(params, testContext);
       expect(result).toBe("/test/example.txt 3 lines, 16 chars");
     });
 
@@ -295,7 +298,7 @@ describe("writeTool", () => {
       };
 
       expect(writeTool.formatCompactParams).toBeDefined();
-      const result = writeTool.formatCompactParams!(params);
+      const result = writeTool.formatCompactParams!(params, testContext);
       expect(result).toBe("/test/empty.txt");
     });
 
@@ -305,7 +308,7 @@ describe("writeTool", () => {
       };
 
       expect(writeTool.formatCompactParams).toBeDefined();
-      const result = writeTool.formatCompactParams!(params);
+      const result = writeTool.formatCompactParams!(params, testContext);
       expect(result).toBe(" 1 lines, 12 chars");
     });
 
@@ -315,7 +318,7 @@ describe("writeTool", () => {
       };
 
       expect(writeTool.formatCompactParams).toBeDefined();
-      const result = writeTool.formatCompactParams!(params);
+      const result = writeTool.formatCompactParams!(params, testContext);
       expect(result).toBe("/test/file.txt");
     });
   });

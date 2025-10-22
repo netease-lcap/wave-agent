@@ -174,7 +174,7 @@ describe("McpManager - Tools Registry", () => {
         mockResult,
       );
 
-      const context: ToolContext = {};
+      const context: ToolContext = { workdir: "/test/workdir" };
       const result = await mcpManager.executeMcpToolByRegistry(
         "server1_tool1",
         { param: "test" },

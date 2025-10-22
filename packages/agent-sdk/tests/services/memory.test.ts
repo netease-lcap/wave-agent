@@ -20,26 +20,16 @@ vi.mock("@/utils/constants", () => ({
 
 describe("Memory Module", () => {
   let tempDir: string;
-  let originalCwd: string;
 
   beforeEach(async () => {
-    // Save original cwd
-    originalCwd = process.cwd();
-
     // Create a temporary directory for testing
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "memory-test-"));
-
-    // Mock process.cwd to return temp directory
-    vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
     // Reset all mocks
     vi.clearAllMocks();
   });
 
   afterEach(async () => {
-    // Restore original cwd
-    vi.spyOn(process, "cwd").mockReturnValue(originalCwd);
-
     // Clean up temp directory
     try {
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -71,7 +61,7 @@ describe("Memory Module", () => {
   describe("addMemory", () => {
     it("should add memory to WAVE.md file for messages starting with #", async () => {
       const message = "#Test memory message";
-      await memory.addMemory(message);
+      await memory.addMemory(message, tempDir);
 
       const memoryFilePath = path.join(tempDir, "WAVE.md");
       const content = await fs.readFile(memoryFilePath, "utf-8");
@@ -82,7 +72,7 @@ describe("Memory Module", () => {
 
     it("should not add memory for messages not starting with #", async () => {
       const message = "Regular message";
-      await memory.addMemory(message);
+      await memory.addMemory(message, tempDir);
 
       const memoryFilePath = path.join(tempDir, "WAVE.md");
 

@@ -42,7 +42,7 @@ export const bashTool: ToolPlugin = {
   },
   execute: async (
     args: Record<string, unknown>,
-    context?: ToolContext,
+    context: ToolContext,
   ): Promise<ToolResult> => {
     const command = args.command as string;
     const runInBackground = args.run_in_background as boolean | undefined;
@@ -95,7 +95,7 @@ export const bashTool: ToolPlugin = {
       const child: ChildProcess = spawn(command, {
         shell: true,
         stdio: "pipe",
-        cwd: process.cwd(),
+        cwd: context.workdir,
         env: {
           ...process.env,
         },
@@ -260,7 +260,7 @@ export const bashOutputTool: ToolPlugin = {
   },
   execute: async (
     args: Record<string, unknown>,
-    context?: ToolContext,
+    context: ToolContext,
   ): Promise<ToolResult> => {
     const bashId = args.bash_id as string;
     const filter = args.filter as string | undefined;
@@ -347,7 +347,7 @@ export const killBashTool: ToolPlugin = {
   },
   execute: async (
     args: Record<string, unknown>,
-    context?: ToolContext,
+    context: ToolContext,
   ): Promise<ToolResult> => {
     const shellId = args.shell_id as string;
 

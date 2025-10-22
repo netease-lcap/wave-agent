@@ -59,11 +59,8 @@ async function main() {
     JSON.stringify({ hooks }, null, 2),
   );
 
-  const originalCwd = process.cwd();
-  process.chdir(testDir);
-
   try {
-    const agent = await Agent.create({});
+    const agent = await Agent.create({ workdir: testDir });
     await agent.sendMessage('Edit test.js and add comment "// test"');
     await agent.destroy();
 
@@ -83,7 +80,6 @@ async function main() {
       `\n${correct ? "✅" : "❌"} Order ${correct ? "correct" : "incorrect"}`,
     );
   } finally {
-    process.chdir(originalCwd);
     rmSync(testDir, { recursive: true, force: true });
   }
 }

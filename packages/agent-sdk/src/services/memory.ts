@@ -7,13 +7,16 @@ export const isMemoryMessage = (message: string): boolean => {
   return message.trim().startsWith("#");
 };
 
-export const addMemory = async (message: string): Promise<void> => {
+export const addMemory = async (
+  message: string,
+  workdir: string,
+): Promise<void> => {
   if (!isMemoryMessage(message)) {
     return;
   }
 
   try {
-    const memoryFilePath = path.join(process.cwd(), "WAVE.md");
+    const memoryFilePath = path.join(workdir, "WAVE.md");
 
     // 格式化记忆条目，使用 - 开头，不添加时间戳
     const memoryEntry = `- ${message.substring(1).trim()}\n`;
@@ -108,9 +111,9 @@ export const getUserMemoryContent = async (): Promise<string> => {
 };
 
 // 读取项目记忆文件内容
-export const readMemoryFile = async (): Promise<string> => {
+export const readMemoryFile = async (workdir: string): Promise<string> => {
   try {
-    const memoryFilePath = path.join(process.cwd(), "WAVE.md");
+    const memoryFilePath = path.join(workdir, "WAVE.md");
     return await fs.readFile(memoryFilePath, "utf-8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -121,9 +124,11 @@ export const readMemoryFile = async (): Promise<string> => {
 };
 
 // 获取合并的记忆内容（项目记忆 + 用户记忆）
-export const getCombinedMemoryContent = async (): Promise<string> => {
+export const getCombinedMemoryContent = async (
+  workdir: string,
+): Promise<string> => {
   // 读取记忆文件内容
-  const memoryContent = await readMemoryFile();
+  const memoryContent = await readMemoryFile(workdir);
 
   // 读取用户级记忆内容
   const userMemoryContent = await getUserMemoryContent();

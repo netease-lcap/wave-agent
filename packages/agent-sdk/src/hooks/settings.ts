@@ -22,8 +22,8 @@ export function getUserHooksConfigPath(): string {
 /**
  * Get the project-specific hooks configuration file path
  */
-export function getProjectHooksConfigPath(): string {
-  return join(process.cwd(), ".wave", "hooks.json");
+export function getProjectHooksConfigPath(workdir: string): string {
+  return join(workdir, ".wave", "hooks.json");
 }
 
 /**
@@ -63,16 +63,20 @@ export function loadUserHooksConfig(): PartialHookConfiguration | null {
 /**
  * Load project hooks configuration
  */
-export function loadProjectHooksConfig(): PartialHookConfiguration | null {
-  return loadHooksConfigFromFile(getProjectHooksConfigPath());
+export function loadProjectHooksConfig(
+  workdir: string,
+): PartialHookConfiguration | null {
+  return loadHooksConfigFromFile(getProjectHooksConfigPath(workdir));
 }
 
 /**
  * Load and merge hooks configuration with project settings taking precedence
  */
-export function loadMergedHooksConfig(): PartialHookConfiguration {
+export function loadMergedHooksConfig(
+  workdir: string,
+): PartialHookConfiguration {
   const userConfig = loadUserHooksConfig();
-  const projectConfig = loadProjectHooksConfig();
+  const projectConfig = loadProjectHooksConfig(workdir);
 
   const merged: PartialHookConfiguration = {};
 
@@ -100,17 +104,17 @@ export function loadMergedHooksConfig(): PartialHookConfiguration {
 /**
  * Check if any hooks configuration files exist
  */
-export function hasHooksConfiguration(): boolean {
+export function hasHooksConfiguration(workdir: string): boolean {
   return (
     existsSync(getUserHooksConfigPath()) ||
-    existsSync(getProjectHooksConfigPath())
+    existsSync(getProjectHooksConfigPath(workdir))
   );
 }
 
 /**
  * Get information about available hooks configuration files
  */
-export function getHooksConfigurationInfo(): {
+export function getHooksConfigurationInfo(workdir: string): {
   userConfigExists: boolean;
   projectConfigExists: boolean;
   userConfigPath: string;
@@ -118,8 +122,8 @@ export function getHooksConfigurationInfo(): {
 } {
   return {
     userConfigExists: existsSync(getUserHooksConfigPath()),
-    projectConfigExists: existsSync(getProjectHooksConfigPath()),
+    projectConfigExists: existsSync(getProjectHooksConfigPath(workdir)),
     userConfigPath: getUserHooksConfigPath(),
-    projectConfigPath: getProjectHooksConfigPath(),
+    projectConfigPath: getProjectHooksConfigPath(workdir),
   };
 }

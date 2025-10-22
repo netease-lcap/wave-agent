@@ -1,4 +1,4 @@
-import type { ToolPlugin, ToolResult } from "./types.js";
+import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { spawn } from "child_process";
 import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
 import { rgPath } from "@vscode/ripgrep";
@@ -84,7 +84,10 @@ export const grepTool: ToolPlugin = {
       },
     },
   },
-  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (
+    args: Record<string, unknown>,
+    context: ToolContext,
+  ): Promise<ToolResult> => {
     const pattern = args.pattern as string;
     const searchPath = args.path as string;
     const globPattern = args.glob as string;
@@ -116,7 +119,7 @@ export const grepTool: ToolPlugin = {
     }
 
     try {
-      const workdir = process.cwd();
+      const workdir = context.workdir;
       const rgArgs: string[] = ["--color=never"];
 
       // 设置输出模式
@@ -245,7 +248,10 @@ export const grepTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>) => {
+  formatCompactParams: (
+    params: Record<string, unknown>,
+    context: ToolContext,
+  ) => {
     const pattern = params.pattern as string;
     const outputMode = params.output_mode as string;
     const fileType = params.type as string;
@@ -258,7 +264,7 @@ export const grepTool: ToolPlugin = {
     }
 
     if (path) {
-      const displayPath = getDisplayPath(path);
+      const displayPath = getDisplayPath(path, context.workdir);
       result += ` in ${displayPath}`;
     }
 

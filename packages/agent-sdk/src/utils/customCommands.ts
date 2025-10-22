@@ -7,8 +7,8 @@ import { parseMarkdownFile } from "./markdownParser.js";
 /**
  * Get the project-specific commands directory
  */
-export function getProjectCommandsDir(): string {
-  return join(process.cwd(), ".wave", "commands");
+export function getProjectCommandsDir(workdir: string): string {
+  return join(workdir, ".wave", "commands");
 }
 
 /**
@@ -64,8 +64,8 @@ function scanCommandsDirectory(dirPath: string): CustomSlashCommand[] {
 /**
  * Load all custom slash commands from both project and user directories
  */
-export function loadCustomSlashCommands(): CustomSlashCommand[] {
-  const projectCommands = scanCommandsDirectory(getProjectCommandsDir());
+export function loadCustomSlashCommands(workdir: string): CustomSlashCommand[] {
+  const projectCommands = scanCommandsDirectory(getProjectCommandsDir(workdir));
   const userCommands = scanCommandsDirectory(getUserCommandsDir());
 
   // Project commands take precedence over user commands with the same name

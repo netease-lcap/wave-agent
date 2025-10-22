@@ -27,6 +27,7 @@ export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
 export interface InputBoxProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
+  workdir?: string;
   userInputHistory?: string[];
   sendMessage?: (
     message: string,
@@ -46,6 +47,7 @@ export interface InputBoxProps {
 export const InputBox: React.FC<InputBoxProps> = ({
   isLoading = false,
   isCommandRunning = false,
+  workdir,
   userInputHistory = [],
   sendMessage = () => {},
   abortMessage = () => {},
@@ -56,6 +58,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   slashCommands = [],
   hasSlashCommand = () => false,
 }) => {
+  // Get current working directory
+  const currentWorkdir = workdir || process.cwd();
   // Bash shell manager state
   const [showBashManager, setShowBashManager] = useState(false);
   // MCP manager state
@@ -255,6 +259,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       {showBashHistorySelector && (
         <BashHistorySelector
           searchQuery={bashHistorySearchQuery}
+          workdir={currentWorkdir}
           onSelect={handleBashHistorySelect}
           onExecute={keyboardHandleBashHistoryExecute}
           onCancel={handleCancelBashHistorySelect}

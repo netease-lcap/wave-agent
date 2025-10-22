@@ -32,20 +32,12 @@ This is a test command content.`;
 
     writeFileSync(join(commandsDir, "test-command.md"), commandContent);
 
-    // Mock process.cwd to return our test directory
-    const originalCwd = process.cwd;
-    process.cwd = () => testDir;
+    const commands = loadCustomSlashCommands(testDir);
+    const testCommand = commands.find((cmd) => cmd.name === "test-command");
 
-    try {
-      const commands = loadCustomSlashCommands();
-      const testCommand = commands.find((cmd) => cmd.name === "test-command");
-
-      expect(testCommand).toBeDefined();
-      expect(testCommand?.description).toBe("Custom test command description");
-      expect(testCommand?.config?.model).toBe("claude-3-5-sonnet-20241022");
-    } finally {
-      process.cwd = originalCwd;
-    }
+    expect(testCommand).toBeDefined();
+    expect(testCommand?.description).toBe("Custom test command description");
+    expect(testCommand?.config?.model).toBe("claude-3-5-sonnet-20241022");
   });
 
   it("should handle commands without description", () => {
@@ -57,22 +49,12 @@ This is a test command without description.`;
 
     writeFileSync(join(commandsDir, "no-desc-command.md"), commandContent);
 
-    // Mock process.cwd to return our test directory
-    const originalCwd = process.cwd;
-    process.cwd = () => testDir;
+    const commands = loadCustomSlashCommands(testDir);
+    const testCommand = commands.find((cmd) => cmd.name === "no-desc-command");
 
-    try {
-      const commands = loadCustomSlashCommands();
-      const testCommand = commands.find(
-        (cmd) => cmd.name === "no-desc-command",
-      );
-
-      expect(testCommand).toBeDefined();
-      expect(testCommand?.description).toBeUndefined();
-      expect(testCommand?.config?.model).toBe("claude-3-5-sonnet-20241022");
-    } finally {
-      process.cwd = originalCwd;
-    }
+    expect(testCommand).toBeDefined();
+    expect(testCommand?.description).toBeUndefined();
+    expect(testCommand?.config?.model).toBe("claude-3-5-sonnet-20241022");
   });
 
   it("should handle commands with no frontmatter", () => {
@@ -80,19 +62,11 @@ This is a test command without description.`;
 
     writeFileSync(join(commandsDir, "simple-command.md"), commandContent);
 
-    // Mock process.cwd to return our test directory
-    const originalCwd = process.cwd;
-    process.cwd = () => testDir;
+    const commands = loadCustomSlashCommands(testDir);
+    const testCommand = commands.find((cmd) => cmd.name === "simple-command");
 
-    try {
-      const commands = loadCustomSlashCommands();
-      const testCommand = commands.find((cmd) => cmd.name === "simple-command");
-
-      expect(testCommand).toBeDefined();
-      expect(testCommand?.description).toBeUndefined();
-      expect(testCommand?.config).toBeUndefined();
-    } finally {
-      process.cwd = originalCwd;
-    }
+    expect(testCommand).toBeDefined();
+    expect(testCommand?.description).toBeUndefined();
+    expect(testCommand?.config).toBeUndefined();
   });
 });

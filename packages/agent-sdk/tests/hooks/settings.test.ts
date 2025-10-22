@@ -70,7 +70,7 @@ describe("Hook Settings", () => {
 
   describe("merged configuration loading", () => {
     it("should return empty configuration when no files exist", () => {
-      const merged = loadMergedHooksConfig();
+      const merged = loadMergedHooksConfig("/test/workdir");
       // The test may load user-level configuration, so we just check that it returns an object
       expect(typeof merged).toBe("object");
       expect(merged).not.toBeNull();

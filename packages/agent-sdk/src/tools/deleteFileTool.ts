@@ -1,5 +1,5 @@
 import { unlink } from "fs/promises";
-import type { ToolPlugin, ToolResult } from "./types.js";
+import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 
 /**
@@ -29,7 +29,10 @@ export const deleteFileTool: ToolPlugin = {
       },
     },
   },
-  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (
+    args: Record<string, unknown>,
+    context: ToolContext,
+  ): Promise<ToolResult> => {
     const targetFile = args.target_file as string;
 
     if (!targetFile || typeof targetFile !== "string") {
@@ -41,7 +44,7 @@ export const deleteFileTool: ToolPlugin = {
     }
 
     try {
-      const filePath = resolvePath(targetFile);
+      const filePath = resolvePath(targetFile, context.workdir);
 
       // 删除文件
       await unlink(filePath);
@@ -69,8 +72,11 @@ export const deleteFileTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>) => {
+  formatCompactParams: (
+    params: Record<string, unknown>,
+    context: ToolContext,
+  ) => {
     const targetFile = params.target_file as string;
-    return getDisplayPath(targetFile || "");
+    return getDisplayPath(targetFile || "", context.workdir);
   },
 };

@@ -10,9 +10,12 @@ export interface ToolPlugin {
   config: ChatCompletionFunctionTool;
   execute: (
     args: Record<string, unknown>,
-    context?: ToolContext,
+    context: ToolContext,
   ) => Promise<ToolResult>;
-  formatCompactParams?: (params: Record<string, unknown>) => string;
+  formatCompactParams?: (
+    params: Record<string, unknown>,
+    context: ToolContext,
+  ) => string;
 }
 
 export interface ToolResult {
@@ -41,4 +44,5 @@ export interface ToolResult {
 export interface ToolContext {
   abortSignal?: AbortSignal;
   backgroundBashManager?: import("../managers/backgroundBashManager.js").BackgroundBashManager;
+  workdir: string;
 }

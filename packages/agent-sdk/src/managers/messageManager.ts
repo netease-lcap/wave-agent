@@ -55,6 +55,7 @@ export interface MessageManagerCallbacks {
 
 export interface MessageManagerOptions {
   callbacks: MessageManagerCallbacks;
+  workdir: string;
   logger?: Logger;
 }
 
@@ -66,6 +67,7 @@ export class MessageManager {
   private userInputHistory: string[];
   private sessionStartTime: string;
   private lastSaveTime: number = 0;
+  private workdir: string;
   private logger?: Logger; // 添加可选的 logger 属性
   private callbacks: MessageManagerCallbacks;
 
@@ -75,6 +77,7 @@ export class MessageManager {
     this.latestTotalTokens = 0;
     this.userInputHistory = [];
     this.sessionStartTime = new Date().toISOString();
+    this.workdir = options.workdir;
     this.callbacks = options.callbacks;
     this.logger = options.logger;
   }
@@ -130,6 +133,7 @@ export class MessageManager {
       await saveSession(
         this.sessionId,
         this.messages,
+        this.workdir,
         this.latestTotalTokens,
         this.sessionStartTime,
       );
@@ -147,7 +151,7 @@ export class MessageManager {
   ): Promise<void> {
     // Clean up expired sessions first
     try {
-      await cleanupExpiredSessions();
+      await cleanupExpiredSessions(this.workdir);
     } catch (error) {
       console.warn("Failed to cleanup expired sessions:", error);
     }
@@ -166,10 +170,10 @@ export class MessageManager {
           process.exit(1);
         }
       } else if (continueLastSession) {
-        sessionToRestore = await getLatestSession();
+        sessionToRestore = await getLatestSession(this.workdir);
         if (!sessionToRestore) {
           console.error(
-            `No previous session found for workdir: ${process.cwd()}`,
+            `No previous session found for workdir: ${this.workdir}`,
           );
           process.exit(1);
         }

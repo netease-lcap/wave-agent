@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { minimatch } from "minimatch";
-import type { ToolPlugin, ToolResult } from "./types.js";
+import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { isBinary, getDisplayPath } from "@/utils/path.js";
 
 /**
@@ -36,9 +36,15 @@ export const lsTool: ToolPlugin = {
       },
     },
   },
-  execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
+  execute: async (
+    args: Record<string, unknown>,
+    context: ToolContext,
+  ): Promise<ToolResult> => {
     const targetPath = args.path as string;
     const ignorePatterns = args.ignore as string[];
+
+    // Note: context.workdir is not used as this tool requires absolute paths
+    void context.workdir;
 
     if (!targetPath || typeof targetPath !== "string") {
       return {
@@ -160,11 +166,14 @@ export const lsTool: ToolPlugin = {
       };
     }
   },
-  formatCompactParams: (params: Record<string, unknown>) => {
+  formatCompactParams: (
+    params: Record<string, unknown>,
+    context: ToolContext,
+  ) => {
     const targetPath = params.path as string;
     const ignorePatterns = params.ignore as string[];
 
-    let result = getDisplayPath(targetPath || "");
+    let result = getDisplayPath(targetPath || "", context.workdir);
 
     if (
       ignorePatterns &&

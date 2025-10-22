@@ -4,6 +4,9 @@ import { mkdtemp, writeFile, mkdir, symlink } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { rimraf } from "rimraf";
+import type { ToolContext } from "@/tools/types.js";
+
+const testContext: ToolContext = { workdir: "/test/workdir" };
 
 describe("lsTool", () => {
   let tempDir: string;
@@ -64,7 +67,7 @@ describe("lsTool", () => {
   });
 
   it("should list directory contents", async () => {
-    const result = await lsTool.execute({ path: tempDir });
+    const result = await lsTool.execute({ path: tempDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Directory:");
@@ -79,7 +82,7 @@ describe("lsTool", () => {
   });
 
   it("should show file sizes", async () => {
-    const result = await lsTool.execute({ path: tempDir });
+    const result = await lsTool.execute({ path: tempDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("large-file.txt (5000 bytes)");
@@ -87,7 +90,7 @@ describe("lsTool", () => {
   });
 
   it("should sort directories first, then files", async () => {
-    const result = await lsTool.execute({ path: tempDir });
+    const result = await lsTool.execute({ path: tempDir }, testContext);
 
     expect(result.success).toBe(true);
     const lines = result.content.split("\n");
@@ -113,10 +116,13 @@ describe("lsTool", () => {
     await writeFile(join(tempDir, "backup.bak"), "backup");
     await writeFile(join(tempDir, "config.log"), "log file");
 
-    const result = await lsTool.execute({
-      path: tempDir,
-      ignore: ["*.tmp", "*.bak", "*.log"],
-    });
+    const result = await lsTool.execute(
+      {
+        path: tempDir,
+        ignore: ["*.tmp", "*.bak", "*.log"],
+      },
+      testContext,
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).not.toContain("temp.tmp");
@@ -126,10 +132,13 @@ describe("lsTool", () => {
   });
 
   it("should ignore files matching path patterns", async () => {
-    const result = await lsTool.execute({
-      path: tempDir,
-      ignore: [join(tempDir, "docs")],
-    });
+    const result = await lsTool.execute(
+      {
+        path: tempDir,
+        ignore: [join(tempDir, "docs")],
+      },
+      testContext,
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).not.toContain("📁 docs");
@@ -137,7 +146,7 @@ describe("lsTool", () => {
   });
 
   it("should show symlinks with special indicator", async () => {
-    const result = await lsTool.execute({ path: tempDir });
+    const result = await lsTool.execute({ path: tempDir }, testContext);
 
     expect(result.success).toBe(true);
     // 检查是否包含符号链接（如果系统支持的话）
@@ -148,7 +157,7 @@ describe("lsTool", () => {
 
   it("should return error for non-existent path", async () => {
     const nonExistentPath = join(tempDir, "non-existent");
-    const result = await lsTool.execute({ path: nonExistentPath });
+    const result = await lsTool.execute({ path: nonExistentPath }, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("ENOENT");
@@ -156,28 +165,31 @@ describe("lsTool", () => {
 
   it("should return error for file path (not directory)", async () => {
     const filePath = join(tempDir, "package.json");
-    const result = await lsTool.execute({ path: filePath });
+    const result = await lsTool.execute({ path: filePath }, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("is not a directory");
   });
 
   it("should return error for relative path", async () => {
-    const result = await lsTool.execute({ path: "./relative/path" });
+    const result = await lsTool.execute(
+      { path: "./relative/path" },
+      testContext,
+    );
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Path must be an absolute path");
   });
 
   it("should return error for missing path parameter", async () => {
-    const result = await lsTool.execute({});
+    const result = await lsTool.execute({}, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("path parameter is required");
   });
 
   it("should return error for invalid path type", async () => {
-    const result = await lsTool.execute({ path: 123 });
+    const result = await lsTool.execute({ path: 123 }, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain(
@@ -187,7 +199,7 @@ describe("lsTool", () => {
 
   it("should list subdirectory contents", async () => {
     const srcPath = join(tempDir, "src");
-    const result = await lsTool.execute({ path: srcPath });
+    const result = await lsTool.execute({ path: srcPath }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Directory: " + srcPath);
@@ -201,7 +213,7 @@ describe("lsTool", () => {
     const emptyDir = join(tempDir, "empty");
     await mkdir(emptyDir);
 
-    const result = await lsTool.execute({ path: emptyDir });
+    const result = await lsTool.execute({ path: emptyDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Total items: 0");
@@ -210,24 +222,26 @@ describe("lsTool", () => {
 
   it("should format compact parameters correctly", () => {
     const params1 = { path: "/home/user/project" };
-    expect(lsTool.formatCompactParams?.(params1)).toBe("/home/user/project");
+    expect(lsTool.formatCompactParams?.(params1, testContext)).toBe(
+      "/home/user/project",
+    );
 
     const params2 = {
       path: "/home/user/project",
       ignore: ["*.tmp", "*.log"],
     };
-    expect(lsTool.formatCompactParams?.(params2)).toBe(
+    expect(lsTool.formatCompactParams?.(params2, testContext)).toBe(
       "/home/user/project ignore: *.tmp, *.log",
     );
 
     const params3 = { path: "/test" };
-    expect(lsTool.formatCompactParams?.(params3)).toBe("/test");
+    expect(lsTool.formatCompactParams?.(params3, testContext)).toBe("/test");
   });
 
   it("should handle files without read permissions gracefully", async () => {
     // 创建一个文件，然后尝试创建没有读权限的文件
     // 注意：这在某些系统上可能不工作，所以我们只测试基本功能
-    const result = await lsTool.execute({ path: tempDir });
+    const result = await lsTool.execute({ path: tempDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Total items:");
@@ -238,7 +252,7 @@ describe("lsTool", () => {
     const binaryContent = Buffer.from([0x00, 0x01, 0x02, 0x03, 0xff, 0xfe]);
     await writeFile(join(tempDir, "binary.bin"), binaryContent);
 
-    const result = await lsTool.execute({ path: tempDir });
+    const result = await lsTool.execute({ path: tempDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("binary.bin");
@@ -251,7 +265,7 @@ describe("lsTool", () => {
     await writeFile(join(tempDir, "file-with-dashes.txt"), "content");
     await writeFile(join(tempDir, "file_with_underscores.txt"), "content");
 
-    const result = await lsTool.execute({ path: tempDir });
+    const result = await lsTool.execute({ path: tempDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("file with spaces.txt");

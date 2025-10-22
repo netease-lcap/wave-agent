@@ -90,8 +90,6 @@ describe("Session Service", () => {
     vi.clearAllMocks();
     // Reset NODE_ENV for each test
     delete process.env.NODE_ENV;
-    // Mock process.cwd() to return test workdir
-    vi.spyOn(process, "cwd").mockReturnValue(mockWorkdir);
   });
 
   afterEach(() => {
@@ -107,7 +105,7 @@ describe("Session Service", () => {
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.writeFile.mockResolvedValue(undefined);
 
-      await saveSession(mockSessionId, mockMessages, 100);
+      await saveSession(mockSessionId, mockMessages, mockWorkdir, 100);
 
       expect(mockFs.mkdir).toHaveBeenCalledWith(mockSessionDir, {
         recursive: true,
@@ -122,7 +120,7 @@ describe("Session Service", () => {
     it("should not save session in test environment", async () => {
       process.env.NODE_ENV = "test";
 
-      await saveSession(mockSessionId, mockMessages, 100);
+      await saveSession(mockSessionId, mockMessages, mockWorkdir, 100);
 
       expect(mockFs.mkdir).not.toHaveBeenCalled();
       expect(mockFs.writeFile).not.toHaveBeenCalled();
@@ -132,7 +130,9 @@ describe("Session Service", () => {
       const error = new Error("Permission denied");
       mockFs.mkdir.mockRejectedValue(error);
 
-      await expect(saveSession(mockSessionId, mockMessages)).rejects.toThrow(
+      await expect(
+        saveSession(mockSessionId, mockMessages, mockWorkdir),
+      ).rejects.toThrow(
         "Failed to create session directory: Error: Permission denied",
       );
     });
@@ -142,7 +142,9 @@ describe("Session Service", () => {
       const error = new Error("Disk full");
       mockFs.writeFile.mockRejectedValue(error);
 
-      await expect(saveSession(mockSessionId, mockMessages)).rejects.toThrow(
+      await expect(
+        saveSession(mockSessionId, mockMessages, mockWorkdir),
+      ).rejects.toThrow(
         `Failed to save session ${mockSessionId}: Error: Disk full`,
       );
     });
@@ -238,7 +240,7 @@ describe("Session Service", () => {
           }),
         );
 
-      const result = await getLatestSession();
+      const result = await getLatestSession(mockWorkdir);
 
       expect(result?.id).toBe("session_2");
     });
@@ -247,7 +249,7 @@ describe("Session Service", () => {
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.readdir.mockResolvedValue([] as never);
 
-      const result = await getLatestSession();
+      const result = await getLatestSession(mockWorkdir);
 
       expect(result).toBeNull();
     });
@@ -273,7 +275,7 @@ describe("Session Service", () => {
         .mockResolvedValueOnce(JSON.stringify(sessionData1))
         .mockResolvedValueOnce(JSON.stringify(sessionData2));
 
-      const result = await listSessions();
+      const result = await listSessions(mockWorkdir);
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("session_1");
@@ -297,7 +299,7 @@ describe("Session Service", () => {
         .spyOn(console, "warn")
         .mockImplementation(() => {});
 
-      const result = await listSessions();
+      const result = await listSessions(mockWorkdir);
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("session_valid");
@@ -313,7 +315,7 @@ describe("Session Service", () => {
       const error = new Error("Permission denied");
       mockFs.readdir.mockRejectedValue(error);
 
-      await expect(listSessions()).rejects.toThrow(
+      await expect(listSessions(mockWorkdir)).rejects.toThrow(
         "Failed to list sessions: Error: Permission denied",
       );
     });
@@ -353,7 +355,7 @@ describe("Session Service", () => {
     it("should not cleanup in test environment", async () => {
       process.env.NODE_ENV = "test";
 
-      const result = await cleanupExpiredSessions();
+      const result = await cleanupExpiredSessions(mockWorkdir);
 
       expect(result).toBe(0);
       expect(mockFs.readdir).not.toHaveBeenCalled();
@@ -392,7 +394,7 @@ describe("Session Service", () => {
         .mockResolvedValueOnce(JSON.stringify(expiredSession));
       mockFs.unlink.mockResolvedValue(undefined);
 
-      const result = await cleanupExpiredSessions();
+      const result = await cleanupExpiredSessions(mockWorkdir);
 
       expect(result).toBe(1);
       expect(mockFs.unlink).toHaveBeenCalledTimes(1);
@@ -422,7 +424,7 @@ describe("Session Service", () => {
         .spyOn(console, "warn")
         .mockImplementation(() => {});
 
-      const result = await cleanupExpiredSessions();
+      const result = await cleanupExpiredSessions(mockWorkdir);
 
       expect(result).toBe(0);
       expect(consoleWarnSpy).toHaveBeenCalledWith(

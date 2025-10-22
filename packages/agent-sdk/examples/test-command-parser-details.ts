@@ -34,9 +34,7 @@ async function cleanupTestDir() {
 async function testArgumentParsing() {
   console.log("🚀 Testing command argument parsing functions...\n");
 
-  // 切换到临时工作目录
-  const originalCwd = process.cwd();
-  process.chdir(tempWorkDir);
+  // 设置工作目录
   console.log(`📁 Working in temporary directory: ${tempWorkDir}\n`);
 
   try {
@@ -148,9 +146,6 @@ async function testArgumentParsing() {
   } catch (error) {
     console.error("❌ Test failed:", error);
   } finally {
-    // 恢复原工作目录
-    process.chdir(originalCwd);
-
     // 清理临时目录
     await cleanupTestDir();
   }

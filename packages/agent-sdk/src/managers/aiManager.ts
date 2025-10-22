@@ -23,6 +23,7 @@ export interface AIManagerOptions {
   backgroundBashManager?: BackgroundBashManager;
   hookManager?: HookManager;
   callbacks?: AIManagerCallbacks;
+  workdir: string;
 }
 
 export class AIManager {
@@ -34,6 +35,7 @@ export class AIManager {
   private messageManager: MessageManager;
   private backgroundBashManager?: BackgroundBashManager;
   private hookManager?: HookManager;
+  private workdir: string;
 
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
@@ -41,6 +43,7 @@ export class AIManager {
     this.backgroundBashManager = options.backgroundBashManager;
     this.hookManager = options.hookManager;
     this.logger = options.logger;
+    this.workdir = options.workdir;
     this.callbacks = options.callbacks ?? {};
   }
 
@@ -98,7 +101,10 @@ export class AIManager {
         .list()
         .find((plugin) => plugin.name === toolName);
       if (toolPlugin?.formatCompactParams) {
-        return toolPlugin.formatCompactParams(toolArgs);
+        const context: ToolContext = {
+          workdir: this.workdir,
+        };
+        return toolPlugin.formatCompactParams(toolArgs, context);
       }
     } catch (error) {
       this.logger?.warn("Failed to generate compactParams", error);
@@ -206,7 +212,9 @@ export class AIManager {
 
     try {
       // 获取合并的记忆内容
-      const combinedMemory = await memory.getCombinedMemoryContent();
+      const combinedMemory = await memory.getCombinedMemoryContent(
+        this.workdir,
+      );
 
       // 调用 AI 服务（非流式）
       const result = await callAgent({
@@ -214,7 +222,7 @@ export class AIManager {
         sessionId: this.messageManager.getSessionId(),
         abortSignal: abortController.signal,
         memory: combinedMemory, // 传递合并后的记忆内容
-        workdir: process.cwd(), // 传递当前工作目录
+        workdir: this.workdir, // 传递工作目录
         tools: this.getFilteredToolsConfig(allowedTools), // 传递过滤后的工具配置
         model: model, // 使用传入的模型
       });
@@ -288,6 +296,7 @@ export class AIManager {
               const context: ToolContext = {
                 abortSignal: toolAbortController.signal,
                 backgroundBashManager: this.backgroundBashManager,
+                workdir: this.workdir,
               };
 
               // 执行工具
@@ -430,7 +439,7 @@ export class AIManager {
     try {
       const context: HookExecutionContext = {
         event: "Stop",
-        projectDir: process.cwd(),
+        projectDir: this.workdir,
         timestamp: new Date(),
         // Stop hooks don't need toolName
       };
@@ -465,7 +474,7 @@ export class AIManager {
     try {
       const context: HookExecutionContext = {
         event: "PreToolUse",
-        projectDir: process.cwd(),
+        projectDir: this.workdir,
         timestamp: new Date(),
         toolName,
       };
@@ -503,7 +512,7 @@ export class AIManager {
     try {
       const context: HookExecutionContext = {
         event: "PostToolUse",
-        projectDir: process.cwd(),
+        projectDir: this.workdir,
         timestamp: new Date(),
         toolName,
       };

@@ -38,7 +38,7 @@ export { HookExecutor, hookExecutor } from "./executor.js";
 
 // Hook management and orchestration
 export type { IHookManager } from "./manager.js";
-export { HookManager, hookManager } from "./manager.js";
+export { HookManager } from "./manager.js";
 
 // Settings and configuration loading
 export {
@@ -52,19 +52,18 @@ export {
 } from "./settings.js";
 
 // Import the exports for internal use
-import { HookManager, hookManager } from "./manager.js";
+import { HookManager } from "./manager.js";
 import { HookMatcher, hookMatcher } from "./matcher.js";
 import { HookExecutor, hookExecutor } from "./executor.js";
 
 // Convenience re-exports for common usage patterns
 export const hooks = {
   // Singleton instances for simple usage
-  manager: hookManager,
   matcher: hookMatcher,
   executor: hookExecutor,
 
   // Factory functions for custom instances
-  createManager: () => new HookManager(),
+  createManager: (workdir: string) => new HookManager(workdir),
   createMatcher: () => new HookMatcher(),
   createExecutor: () => new HookExecutor(),
 } as const;

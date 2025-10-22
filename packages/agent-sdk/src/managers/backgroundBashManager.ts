@@ -7,15 +7,18 @@ export interface BackgroundBashManagerCallbacks {
 
 export interface BackgroundBashManagerOptions {
   callbacks?: BackgroundBashManagerCallbacks;
+  workdir: string;
 }
 
 export class BackgroundBashManager {
   private shells = new Map<string, BackgroundShell>();
   private nextId = 1;
   private callbacks: BackgroundBashManagerCallbacks;
+  private workdir: string;
 
-  constructor(options: BackgroundBashManagerOptions = {}) {
+  constructor(options: BackgroundBashManagerOptions) {
     this.callbacks = options.callbacks || {};
+    this.workdir = options.workdir;
   }
 
   private notifyShellsChange(): void {
@@ -29,7 +32,7 @@ export class BackgroundBashManager {
     const child = spawn(command, {
       shell: true,
       stdio: "pipe",
-      cwd: process.cwd(),
+      cwd: this.workdir,
       env: {
         ...process.env,
       },

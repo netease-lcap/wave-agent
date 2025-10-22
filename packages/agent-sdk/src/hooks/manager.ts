@@ -53,12 +53,15 @@ export class HookManager implements IHookManager {
   private readonly matcher: IHookMatcher;
   private readonly executor: IHookExecutor;
   private readonly logger?: Logger;
+  private readonly workdir: string;
 
   constructor(
+    workdir: string,
     matcher: IHookMatcher = new HookMatcher(),
     executor?: IHookExecutor,
     logger?: Logger,
   ) {
+    this.workdir = workdir;
     this.matcher = matcher;
     // Create executor with logger if provided, or use passed executor, or create default
     this.executor = logger
@@ -105,10 +108,8 @@ export class HookManager implements IHookManager {
    */
   loadConfigurationFromSettings(): void {
     try {
-      this.logger?.info(
-        `[HookManager] Loading configuration from cwd: ${process.cwd()}`,
-      );
-      const mergedConfig = loadMergedHooksConfig();
+      this.logger?.info(`[HookManager] Loading configuration...`);
+      const mergedConfig = loadMergedHooksConfig(this.workdir);
       this.logger?.info(`[HookManager] Merged config result:`, mergedConfig);
       this.configuration = mergedConfig;
 
@@ -614,6 +615,3 @@ export class HookManager implements IHookManager {
     };
   }
 }
-
-// Default singleton instance
-export const hookManager = new HookManager();

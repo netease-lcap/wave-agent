@@ -68,10 +68,8 @@ describe("BashManager", () => {
     // Setup spawn mock to return our mock child process
     mockSpawn.mockReturnValue(mockChildProcess as unknown as ChildProcess);
 
-    // Mock process.cwd() to return test workdir
-    vi.spyOn(process, "cwd").mockReturnValue(testWorkdir);
-
     bashManager = new BashManager({
+      workdir: testWorkdir,
       messageManager: mockMessageManager,
     });
   });
@@ -89,6 +87,7 @@ describe("BashManager", () => {
     it("should create BashManager using factory function", () => {
       const manager = new BashManager({
         messageManager: createMockMessageManager(),
+        workdir: "/test/workdir",
       });
       expect(manager).toBeInstanceOf(BashManager);
     });

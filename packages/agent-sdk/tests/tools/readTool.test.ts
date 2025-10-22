@@ -4,15 +4,15 @@ import { mkdtemp, writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { rimraf } from "rimraf";
+import type { ToolContext } from "@/tools/types.js";
+
+const testContext: ToolContext = { workdir: "/test/workdir" };
 
 describe("readTool", () => {
   let tempDir: string;
-  let originalCwd: string;
 
   beforeEach(async () => {
-    originalCwd = process.cwd();
     tempDir = await mkdtemp(join(tmpdir(), "read-test-"));
-    process.chdir(tempDir);
 
     // 创建测试文件
     await writeFile(
@@ -55,7 +55,6 @@ Multi-byte: café naïve résumé`,
   });
 
   afterEach(async () => {
-    process.chdir(originalCwd);
     await rimraf(tempDir);
   });
 
@@ -75,7 +74,7 @@ Multi-byte: café naïve résumé`,
 
   it("should read small file completely", async () => {
     const filePath = join(tempDir, "small.txt");
-    const result = await readTool.execute({ file_path: filePath });
+    const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("File:");
@@ -88,7 +87,7 @@ Multi-byte: café naïve résumé`,
 
   it("should read file with absolute path", async () => {
     const filePath = join(tempDir, "small.txt");
-    const result = await readTool.execute({ file_path: filePath });
+    const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Line 1");
@@ -97,11 +96,14 @@ Multi-byte: café naïve résumé`,
 
   it("should read file with offset", async () => {
     const filePath = join(tempDir, "medium.txt");
-    const result = await readTool.execute({
-      file_path: filePath,
-      offset: 10,
-      limit: 5,
-    });
+    const result = await readTool.execute(
+      {
+        file_path: filePath,
+        offset: 10,
+        limit: 5,
+      },
+      testContext,
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Lines 10-14 of 50");
@@ -113,10 +115,13 @@ Multi-byte: café naïve résumé`,
 
   it("should read file with limit", async () => {
     const filePath = join(tempDir, "medium.txt");
-    const result = await readTool.execute({
-      file_path: filePath,
-      limit: 10,
-    });
+    const result = await readTool.execute(
+      {
+        file_path: filePath,
+        limit: 10,
+      },
+      testContext,
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Lines 1-10 of 50");
@@ -127,7 +132,7 @@ Multi-byte: café naïve résumé`,
 
   it("should truncate long lines", async () => {
     const filePath = join(tempDir, "long-lines.txt");
-    const result = await readTool.execute({ file_path: filePath });
+    const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Short line");
@@ -138,7 +143,7 @@ Multi-byte: café naïve résumé`,
 
   it("should handle empty file", async () => {
     const filePath = join(tempDir, "empty.txt");
-    const result = await readTool.execute({ file_path: filePath });
+    const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain(
@@ -149,7 +154,7 @@ Multi-byte: café naïve résumé`,
 
   it("should handle unicode content", async () => {
     const filePath = join(tempDir, "unicode.txt");
-    const result = await readTool.execute({ file_path: filePath });
+    const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Hello 世界");
@@ -159,7 +164,7 @@ Multi-byte: café naïve résumé`,
 
   it("should limit to 2000 lines by default for large files", async () => {
     const filePath = join(tempDir, "large.txt");
-    const result = await readTool.execute({ file_path: filePath });
+    const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Lines 1-2000 of 3000");
@@ -171,11 +176,14 @@ Multi-byte: café naïve résumé`,
 
   it("should read from specific offset in large file", async () => {
     const filePath = join(tempDir, "large.txt");
-    const result = await readTool.execute({
-      file_path: filePath,
-      offset: 2500,
-      limit: 100,
-    });
+    const result = await readTool.execute(
+      {
+        file_path: filePath,
+        offset: 2500,
+        limit: 100,
+      },
+      testContext,
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Lines 2500-2599 of 3000");
@@ -184,9 +192,12 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should handle relative paths", async () => {
-    const result = await readTool.execute({
-      file_path: "small.txt",
-    });
+    const result = await readTool.execute(
+      {
+        file_path: "small.txt",
+      },
+      { workdir: tempDir },
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Line 1");
@@ -194,7 +205,7 @@ Multi-byte: café naïve résumé`,
 
   it("should handle nested file paths", async () => {
     const filePath = join(tempDir, "subdir/nested.txt");
-    const result = await readTool.execute({ file_path: filePath });
+    const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Nested file content");
@@ -202,21 +213,21 @@ Multi-byte: café naïve résumé`,
 
   it("should return error for non-existent file", async () => {
     const filePath = join(tempDir, "non-existent.txt");
-    const result = await readTool.execute({ file_path: filePath });
+    const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Failed to read file");
   });
 
   it("should return error for missing file_path parameter", async () => {
-    const result = await readTool.execute({});
+    const result = await readTool.execute({}, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("file_path parameter is required");
   });
 
   it("should return error for invalid file_path type", async () => {
-    const result = await readTool.execute({ file_path: 123 });
+    const result = await readTool.execute({ file_path: 123 }, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain(
@@ -226,10 +237,13 @@ Multi-byte: café naïve résumé`,
 
   it("should return error for invalid offset", async () => {
     const filePath = join(tempDir, "small.txt");
-    const result = await readTool.execute({
-      file_path: filePath,
-      offset: 100, // 超出文件行数
-    });
+    const result = await readTool.execute(
+      {
+        file_path: filePath,
+        offset: 100, // 超出文件行数
+      },
+      testContext,
+    );
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Start line 100 exceeds total lines");
@@ -237,11 +251,14 @@ Multi-byte: café naïve résumé`,
 
   it("should adjust end line if it exceeds file length", async () => {
     const filePath = join(tempDir, "small.txt");
-    const result = await readTool.execute({
-      file_path: filePath,
-      offset: 3,
-      limit: 10, // 超出文件行数
-    });
+    const result = await readTool.execute(
+      {
+        file_path: filePath,
+        offset: 3,
+        limit: 10, // 超出文件行数
+      },
+      testContext,
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Lines 3-5 of 5");
@@ -251,14 +268,16 @@ Multi-byte: café naïve résumé`,
 
   it("should format compact parameters correctly", () => {
     const params1 = { file_path: "/path/to/file.txt" };
-    expect(readTool.formatCompactParams?.(params1)).toBe("/path/to/file.txt");
+    expect(readTool.formatCompactParams?.(params1, testContext)).toBe(
+      "/path/to/file.txt",
+    );
 
     const params2 = {
       file_path: "/path/to/file.txt",
       offset: 10,
       limit: 20,
     };
-    expect(readTool.formatCompactParams?.(params2)).toBe(
+    expect(readTool.formatCompactParams?.(params2, testContext)).toBe(
       "/path/to/file.txt 10:20",
     );
 
@@ -266,7 +285,7 @@ Multi-byte: café naïve résumé`,
       file_path: "/path/to/file.txt",
       offset: 5,
     };
-    expect(readTool.formatCompactParams?.(params3)).toBe(
+    expect(readTool.formatCompactParams?.(params3, testContext)).toBe(
       "/path/to/file.txt 5:2000",
     );
 
@@ -274,7 +293,7 @@ Multi-byte: café naïve résumé`,
       file_path: "/path/to/file.txt",
       limit: 50,
     };
-    expect(readTool.formatCompactParams?.(params4)).toBe(
+    expect(readTool.formatCompactParams?.(params4, testContext)).toBe(
       "/path/to/file.txt 1:50",
     );
   });
@@ -287,7 +306,7 @@ Multi-byte: café naïve résumé`,
     );
 
     const filePath = join(tempDir, "mixed-endings.txt");
-    const result = await readTool.execute({ file_path: filePath });
+    const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Line 1");
@@ -297,11 +316,14 @@ Multi-byte: café naïve résumé`,
 
   it("should show proper line numbering with gaps", async () => {
     const filePath = join(tempDir, "medium.txt");
-    const result = await readTool.execute({
-      file_path: filePath,
-      offset: 45,
-      limit: 10,
-    });
+    const result = await readTool.execute(
+      {
+        file_path: filePath,
+        offset: 45,
+        limit: 10,
+      },
+      testContext,
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("    45\tLine 45");
@@ -318,7 +340,7 @@ Multi-byte: café naïve résumé`,
     );
 
     const filePath = join(tempDir, "special-chars.txt");
-    const result = await readTool.execute({ file_path: filePath });
+    const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Normal text");

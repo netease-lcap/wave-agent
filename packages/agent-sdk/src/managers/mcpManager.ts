@@ -465,7 +465,7 @@ export class McpManager {
   async executeMcpToolByRegistry(
     name: string,
     args: Record<string, unknown>,
-    context?: ToolContext,
+    context: ToolContext,
   ): Promise<ToolResult> {
     const plugins = this.getMcpToolPlugins();
     const tool = plugins.find((plugin) => plugin.name === name);

@@ -21,6 +21,7 @@ const execAsync = promisify(exec);
 export interface SlashCommandManagerOptions {
   messageManager: MessageManager;
   aiManager: AIManager;
+  workdir: string;
   logger?: Logger;
 }
 
@@ -29,11 +30,13 @@ export class SlashCommandManager {
   private customCommands = new Map<string, CustomSlashCommand>();
   private messageManager: MessageManager;
   private aiManager: AIManager;
+  private workdir: string;
   private logger?: Logger;
 
   constructor(options: SlashCommandManagerOptions) {
     this.messageManager = options.messageManager;
     this.aiManager = options.aiManager;
+    this.workdir = options.workdir;
     this.logger = options.logger;
 
     this.initializeBuiltinCommands();
@@ -57,7 +60,7 @@ export class SlashCommandManager {
    */
   private loadCustomCommands(): void {
     try {
-      const customCommands = loadCustomSlashCommands();
+      const customCommands = loadCustomSlashCommands(this.workdir);
 
       for (const command of customCommands) {
         this.customCommands.set(command.id, command);
@@ -220,7 +223,7 @@ export class SlashCommandManager {
       for (const command of commands) {
         try {
           const { stdout, stderr } = await execAsync(command, {
-            cwd: process.cwd(),
+            cwd: this.workdir,
             timeout: 30000, // 30 second timeout
           });
           bashResults.push({
