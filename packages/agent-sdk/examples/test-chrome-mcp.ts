@@ -43,8 +43,10 @@ async function setupTest() {
       onUserMessageAdded: (content: string) => {
         console.log(`👤 User message: "${content}"`);
       },
-      onAssistantMessageAdded: () => {
+      onAssistantMessageAdded: (content, toolCalls) => {
         console.log("🤖 Assistant message started");
+        if (content) console.log("Content:", content);
+        if (toolCalls?.length) console.log(`Tool calls: ${toolCalls.length}`);
       },
       onToolBlockUpdated: (params) => {
         const status = params.isRunning

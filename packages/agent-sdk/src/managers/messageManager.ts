@@ -33,16 +33,20 @@ export interface MessageManagerCallbacks {
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
   ) => void;
-  onAssistantMessageAdded?: () => void;
+  onAssistantMessageAdded?: (
+    content?: string,
+    toolCalls?: ChatCompletionMessageFunctionToolCall[],
+  ) => void;
   onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
   onDiffBlockAdded?: (filePath: string, diffResult: string) => void;
   onErrorBlockAdded?: (error: string) => void;
-  onCompressBlockAdded?: (content: string) => void;
+  onCompressBlockAdded?: (insertIndex: number, content: string) => void;
   onCompressionStateChange?: (isCompressing: boolean) => void;
   onMemoryBlockAdded?: (
     content: string,
     success: boolean,
     type: "project" | "user",
+    storagePath: string,
   ) => void;
   // Bash 命令回调
   onAddCommandOutputMessage?: (command: string) => void;
@@ -286,7 +290,7 @@ export class MessageManager {
       toolCalls,
     );
     this.setMessages(newMessages);
-    this.callbacks.onAssistantMessageAdded?.();
+    this.callbacks.onAssistantMessageAdded?.(content, toolCalls);
   }
 
   public updateToolBlock(params: AgentToolBlockUpdateParams): void {
@@ -335,7 +339,7 @@ export class MessageManager {
       compressContent: content,
     });
     this.setMessages(newMessages);
-    this.callbacks.onCompressBlockAdded?.(content);
+    this.callbacks.onCompressBlockAdded?.(insertIndex, content);
   }
 
   public addMemoryBlock(
@@ -352,7 +356,7 @@ export class MessageManager {
       storagePath,
     });
     this.setMessages(newMessages);
-    this.callbacks.onMemoryBlockAdded?.(content, success, type);
+    this.callbacks.onMemoryBlockAdded?.(content, success, type, storagePath);
   }
 
   // Bash 命令相关的消息操作

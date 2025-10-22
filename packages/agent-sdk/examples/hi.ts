@@ -17,8 +17,10 @@ const agent = await Agent.create({
         console.log(`🖼️  With ${images.length} images`);
       }
     },
-    onAssistantMessageAdded: () => {
+    onAssistantMessageAdded: (content, toolCalls) => {
       console.log("🤖 Assistant message started");
+      console.log("Content:", content);
+      console.log("Tool calls:", toolCalls?.length || 0);
     },
     onToolBlockUpdated: (params) => {
       console.log(`🔧 Tool updated: ${JSON.stringify(params, null, 2)}`);
@@ -29,16 +31,19 @@ const agent = await Agent.create({
     onErrorBlockAdded: (error: string) => {
       console.log(`❌ Error block added: ${error}`);
     },
-    onCompressBlockAdded: (content: string) => {
-      console.log(`🗜️  Compress block added (${content.length} chars)`);
+    onCompressBlockAdded: (insertIndex: number, content: string) => {
+      console.log(
+        `🗜️  Compress block added at index ${insertIndex} (${content.length} chars)`,
+      );
     },
     onMemoryBlockAdded: (
       content: string,
       success: boolean,
       type: "project" | "user",
+      storagePath: string,
     ) => {
       console.log(
-        `🧠 Memory ${type} ${success ? "saved" : "failed"}: ${content}`,
+        `🧠 Memory ${type} ${success ? "saved" : "failed"} at ${storagePath}: ${content}`,
       );
     },
 
