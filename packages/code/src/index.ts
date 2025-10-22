@@ -16,6 +16,11 @@ export async function main() {
       description: "Continue from last session",
       type: "boolean",
     })
+    .option("plain", {
+      alias: "p",
+      description: "Plain mode with message to send",
+      type: "string",
+    })
     .option("list-sessions", {
       description: "List all available sessions",
       type: "boolean",
@@ -25,6 +30,8 @@ export async function main() {
     .example("$0", "Start CLI with default settings")
     .example("$0 --restore session_123", "Restore specific session")
     .example("$0 --continue", "Continue from last session")
+    .example("$0 --plain 'Hello'", "Send message in plain mode")
+    .example("$0 -p 'Hello'", "Send message in plain mode (short)")
     .example("$0 --list-sessions", "List all available sessions")
     .help("h")
     .parseAsync();
@@ -59,6 +66,16 @@ export async function main() {
       console.error("Failed to list sessions:", error);
       process.exit(1);
     }
+  }
+
+  // Handle plain mode directly
+  if (argv.plain !== undefined) {
+    const { startPlainCli } = await import("./plain-cli.js");
+    return startPlainCli({
+      restoreSessionId: argv.restore,
+      continueLastSession: argv.continue,
+      message: argv.plain,
+    });
   }
 
   await startCli({

@@ -11,6 +11,7 @@ export interface CliOptions {
 export async function startCli(options: CliOptions): Promise<void> {
   const { restoreSessionId, continueLastSession } = options;
 
+  // Continue with ink-based UI for normal mode
   // Global cleanup tracker
   let isCleaningUp = false;
   let appUnmounted = false;
