@@ -144,11 +144,14 @@ export class AIManager {
             abortSignal: abortController.signal,
           });
 
-          // 在指定位置插入压缩块
-          this.messageManager.addCompressBlock(insertIndex, compressedContent);
+          // 执行压缩后的消息重构和sessionId更新
+          this.messageManager.compressMessagesAndUpdateSession(
+            insertIndex,
+            compressedContent,
+          );
 
           this.logger?.info(
-            `Successfully compressed ${messagesToCompress.length} messages`,
+            `Successfully compressed ${messagesToCompress.length} messages and updated session`,
           );
         } catch (compressError) {
           this.logger?.error("Failed to compress messages:", compressError);

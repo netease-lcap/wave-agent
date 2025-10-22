@@ -54,12 +54,6 @@ export interface AddErrorBlockParams {
   error: string;
 }
 
-export interface AddCompressBlockParams {
-  messages: Message[];
-  insertIndex: number;
-  compressContent: string;
-}
-
 export interface AddMemoryBlockParams {
   messages: Message[];
   content: string;
@@ -330,30 +324,6 @@ export const addErrorBlockToMessage = ({
   return newMessages;
 };
 
-// 添加压缩块到指定位置的消息
-export const addCompressBlockToMessage = ({
-  messages,
-  insertIndex,
-  compressContent,
-}: AddCompressBlockParams): Message[] => {
-  const newMessages = [...messages];
-
-  // 创建一个新的助手消息来包含压缩块
-  const compressMessage: Message = {
-    role: "assistant",
-    blocks: [
-      {
-        type: "compress",
-        content: compressContent,
-      },
-    ],
-  };
-
-  // 在指定位置插入压缩消息
-  newMessages.splice(insertIndex, 0, compressMessage);
-  return newMessages;
-};
-
 // 添加 Memory Block 作为新的助手消息
 export const addMemoryBlockToMessage = ({
   messages,
@@ -455,8 +425,8 @@ export const getMessagesToCompress = (
   // 需要压缩的消息是从起始位置到计算出的位置之前的所有消息
   const messagesToCompress = messages.slice(startIndex, messageIndex);
 
-  // 插入位置就是保留消息前的位置
-  const insertIndex = messageIndex;
+  // 插入位置改为负数，表示从末尾开始的位置
+  const insertIndex = messageIndex - messages.length;
 
   return { messagesToCompress, insertIndex };
 };

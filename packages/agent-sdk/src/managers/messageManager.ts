@@ -3,7 +3,6 @@ import {
   addAssistantMessageToMessages,
   updateToolBlockInMessage,
   addErrorBlockToMessage,
-  addCompressBlockToMessage,
   addDiffBlockToMessage,
   addUserMessageToMessages,
   extractUserInputHistory,
@@ -332,14 +331,44 @@ export class MessageManager {
     this.callbacks.onErrorBlockAdded?.(error);
   }
 
-  public addCompressBlock(insertIndex: number, content: string): void {
-    const newMessages = addCompressBlockToMessage({
-      messages: this.messages,
-      insertIndex,
-      compressContent: content,
-    });
+  /**
+   * 压缩消息并更新session，删除被压缩的消息，只保留压缩消息和之后的消息
+   */
+  public compressMessagesAndUpdateSession(
+    insertIndex: number,
+    compressedContent: string,
+  ): void {
+    const currentMessages = this.messages;
+
+    // 创建压缩消息
+    const compressMessage: Message = {
+      role: "assistant",
+      blocks: [
+        {
+          type: "compress",
+          content: compressedContent,
+        },
+      ],
+    };
+
+    // 将负数索引转换为正数索引
+    const actualIndex =
+      insertIndex < 0 ? currentMessages.length + insertIndex : insertIndex;
+
+    // 构建新的消息数组：保留压缩消息和从actualIndex开始的所有消息
+    const newMessages: Message[] = [
+      compressMessage,
+      ...currentMessages.slice(actualIndex),
+    ];
+
+    // 更新sessionId
+    this.setSessionId(randomUUID());
+
+    // 设置新的消息列表
     this.setMessages(newMessages);
-    this.callbacks.onCompressBlockAdded?.(insertIndex, content);
+
+    // 触发压缩回调，insertIndex 保持原值
+    this.callbacks.onCompressBlockAdded?.(insertIndex, compressedContent);
   }
 
   public addMemoryBlock(
