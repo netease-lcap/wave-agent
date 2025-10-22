@@ -313,15 +313,11 @@ export class AIManager {
               if (
                 toolResult.success &&
                 toolResult.diffResult &&
-                toolResult.filePath &&
-                toolResult.originalContent !== undefined &&
-                toolResult.newContent !== undefined
+                toolResult.filePath
               ) {
                 this.messageManager.addDiffBlock(
                   toolResult.filePath,
                   toolResult.diffResult,
-                  toolResult.originalContent,
-                  toolResult.newContent,
                 );
               }
 

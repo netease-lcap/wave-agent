@@ -47,9 +47,6 @@ export interface AddDiffBlockParams {
   messages: Message[];
   path: string;
   diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>;
-  original: string;
-  modified: string;
-  warning?: string;
 }
 
 export interface AddErrorBlockParams {
@@ -221,9 +218,6 @@ export const addDiffBlockToMessage = ({
   messages,
   path,
   diffResult,
-  original,
-  modified,
-  warning,
 }: AddDiffBlockParams): Message[] => {
   const newMessages = [...messages];
   // 找到最后一个助手消息
@@ -233,10 +227,7 @@ export const addDiffBlockToMessage = ({
       newMessages[i].blocks.push({
         type: "diff",
         path: path,
-        original: original,
-        modified: modified,
         diffResult: diffResult,
-        warning: warning,
       });
       break;
     }

@@ -63,14 +63,11 @@ export interface ImageBlock {
 export interface DiffBlock {
   type: "diff";
   path: string;
-  original: string;
-  modified: string;
   diffResult: Array<{
     value: string;
     added?: boolean;
     removed?: boolean;
   }>;
-  warning?: string;
 }
 
 export interface CommandOutputBlock {

@@ -272,14 +272,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
 
   return (
     <Box flexDirection="column">
-      {block.warning && (
-        <Box marginBottom={1}>
-          <Text color="red" bold>
-            ⚠️ {block.warning}
-          </Text>
-        </Box>
-      )}
-
       <Box flexDirection="column">
         <Box flexDirection="column">
           {diffLines.map((line, index) => {

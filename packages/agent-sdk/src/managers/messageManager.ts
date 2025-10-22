@@ -309,15 +309,11 @@ export class MessageManager {
   public addDiffBlock(
     filePath: string,
     diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
-    originalContent: string,
-    newContent: string,
   ): void {
     const newMessages = addDiffBlockToMessage({
       messages: this.messages,
       path: filePath,
       diffResult,
-      original: originalContent,
-      modified: newContent,
     });
     this.setMessages(newMessages);
     this.callbacks.onDiffBlockAdded?.(filePath, JSON.stringify(diffResult));
