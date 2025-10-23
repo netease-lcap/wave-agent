@@ -67,7 +67,6 @@ export class MessageManager {
   private latestTotalTokens: number;
   private userInputHistory: string[];
   private sessionStartTime: string;
-  private lastSaveTime: number = 0;
   private workdir: string;
   private logger?: Logger; // Add optional logger property
   private callbacks: MessageManagerCallbacks;
@@ -115,19 +114,6 @@ export class MessageManager {
   public setMessages(messages: Message[]): void {
     this.messages = [...messages];
     this.callbacks.onMessagesChange?.([...messages]);
-
-    // Throttled save: only save if more than 30 seconds have passed since last save
-    const now = Date.now();
-    if (now - this.lastSaveTime > 30000) {
-      this.lastSaveTime = now;
-      // Asynchronously save session (non-blocking UI)
-      this.saveSession().catch((error) => {
-        this.logger?.error(
-          "Failed to save session after message update:",
-          error,
-        );
-      });
-    }
   }
 
   /**
