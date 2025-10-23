@@ -117,8 +117,8 @@ export class HookExecutor implements IHookExecutor {
     }
 
     // Log hook execution start
-    this.logger?.info(`[Hook] Executing ${context.event} hook: ${command}`);
-    this.logger?.info(
+    this.logger?.debug(`[Hook] Executing ${context.event} hook: ${command}`);
+    this.logger?.debug(
       `[Hook] Context: event=${context.event}, tool=${context.toolName || "N/A"}, cwd=${cwd}`,
     );
 
@@ -151,7 +151,7 @@ export class HookExecutor implements IHookExecutor {
       ? buildHookJsonInput(context as ExtendedHookExecutionContext)
       : null;
 
-    this.logger?.info(`[Hook] Resolved command: ${resolvedCommand}`);
+    this.logger?.debug(`[Hook] Resolved command: ${resolvedCommand}`);
     if (jsonInput) {
       this.logger?.debug(`[Hook] JSON input: ${JSON.stringify(jsonInput)}`);
     }
@@ -227,7 +227,7 @@ export class HookExecutor implements IHookExecutor {
 
           // Log execution result
           if (success) {
-            this.logger?.info(
+            this.logger?.debug(
               `[Hook] Command completed successfully in ${duration}ms (exit code: ${exitCode})`,
             );
           } else {
@@ -240,7 +240,7 @@ export class HookExecutor implements IHookExecutor {
           }
 
           if (stdout && stdout.trim()) {
-            this.logger?.info(`[Hook] stdout: ${stdout.trim()}`);
+            this.logger?.debug(`[Hook] stdout: ${stdout.trim()}`);
           }
 
           resolve({
@@ -302,7 +302,7 @@ export class HookExecutor implements IHookExecutor {
   ): Promise<HookExecutionResult[]> {
     const results: HookExecutionResult[] = [];
 
-    this.logger?.info(
+    this.logger?.debug(
       `[Hook] Executing ${commands.length} commands in sequence for ${context.event} event`,
     );
 
@@ -343,7 +343,7 @@ export class HookExecutor implements IHookExecutor {
     }
 
     const successCount = results.filter((r) => r.success).length;
-    this.logger?.info(
+    this.logger?.debug(
       `[Hook] Completed sequence: ${successCount}/${results.length} commands succeeded`,
     );
 

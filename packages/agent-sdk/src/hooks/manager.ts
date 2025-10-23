@@ -109,9 +109,9 @@ export class HookManager implements IHookManager {
    */
   loadConfigurationFromSettings(): void {
     try {
-      this.logger?.info(`[HookManager] Loading configuration...`);
+      this.logger?.debug(`[HookManager] Loading configuration...`);
       const mergedConfig = loadMergedHooksConfig(this.workdir);
-      this.logger?.info(`[HookManager] Merged config result:`, mergedConfig);
+      this.logger?.debug(`[HookManager] Merged config result:`, mergedConfig);
       this.configuration = mergedConfig;
 
       // Validate the loaded configuration
@@ -123,7 +123,7 @@ export class HookManager implements IHookManager {
         );
       }
 
-      this.logger?.info(
+      this.logger?.debug(
         `[HookManager] Configuration loaded successfully with ${Object.keys(mergedConfig).length} event types`,
       );
     } catch (error) {
@@ -166,7 +166,7 @@ export class HookManager implements IHookManager {
     }
 
     if (!this.configuration) {
-      this.logger?.info(
+      this.logger?.debug(
         `[HookManager] No configuration loaded, skipping ${event} hooks`,
       );
       return [];
@@ -174,11 +174,11 @@ export class HookManager implements IHookManager {
 
     const eventConfigs = this.configuration[event];
     if (!eventConfigs || eventConfigs.length === 0) {
-      this.logger?.info(`[HookManager] No hooks configured for ${event} event`);
+      this.logger?.debug(`[HookManager] No hooks configured for ${event} event`);
       return [];
     }
 
-    this.logger?.info(
+    this.logger?.debug(
       `[HookManager] Starting ${event} hook execution with ${eventConfigs.length} configurations`,
     );
 
@@ -200,7 +200,7 @@ export class HookManager implements IHookManager {
         continue;
       }
 
-      this.logger?.info(
+      this.logger?.debug(
         `[HookManager] Executing configuration ${configIndex + 1} with ${config.hooks.length} commands (matcher: ${config.matcher || "any"})`,
       );
 
@@ -225,7 +225,7 @@ export class HookManager implements IHookManager {
 
           // Report individual command result
           if (result.success) {
-            this.logger?.info(
+            this.logger?.debug(
               `[HookManager] Command ${commandIndex + 1} completed successfully in ${result.duration}ms`,
             );
           } else {
