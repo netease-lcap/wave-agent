@@ -25,6 +25,8 @@ export interface AgentOptions {
   messages?: Message[];
   /**Working directory - if not specified, use process.cwd() */
   workdir?: string;
+  /**Optional custom system prompt - if provided, replaces default system prompt */
+  systemPrompt?: string;
 }
 
 export interface AgentCallbacks
@@ -45,14 +47,16 @@ export class Agent {
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private hookManager: HookManager; // Add hooks manager instance
   private workdir: string; // Working directory
+  private systemPrompt?: string; // Custom system prompt
 
   // Private constructor to prevent direct instantiation
   private constructor(options: AgentOptions) {
-    const { callbacks = {}, logger, workdir } = options;
+    const { callbacks = {}, logger, workdir, systemPrompt } = options;
 
     this.callbacks = callbacks;
     this.logger = logger; // Save the passed logger
     this.workdir = workdir || process.cwd(); // Set working directory, default to current working directory
+    this.systemPrompt = systemPrompt; // Save custom system prompt
     this.backgroundBashManager = new BackgroundBashManager({
       callbacks,
       workdir: this.workdir,
@@ -82,6 +86,7 @@ export class Agent {
       hookManager: this.hookManager,
       callbacks,
       workdir: this.workdir,
+      systemPrompt: this.systemPrompt,
     });
 
     // Initialize command manager

@@ -51,6 +51,7 @@ export interface CallAgentOptions {
   workdir: string; // Current working directory
   tools?: ChatCompletionFunctionTool[]; // Tool configuration
   model?: string; // Custom model
+  systemPrompt?: string; // Custom system prompt
 }
 
 export interface CallAgentResult {
@@ -66,19 +67,28 @@ export interface CallAgentResult {
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
-  const { messages, abortSignal, memory, workdir, tools, model } = options;
+  const { messages, abortSignal, memory, workdir, tools, model, systemPrompt } =
+    options;
 
   try {
     // Build system prompt content
-    let systemContent = `You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
+    let systemContent: string;
+
+    if (systemPrompt) {
+      // Use custom system prompt if provided
+      systemContent = systemPrompt;
+    } else {
+      // Use default system prompt
+      systemContent = `You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
 ## Current Working Directory
 ${workdir}
 `;
 
-    // If there is memory content, add it to the system prompt
-    if (memory && memory.trim()) {
-      systemContent += `\n\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${memory}`;
+      // If there is memory content, add it to the system prompt
+      if (memory && memory.trim()) {
+        systemContent += `\n\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${memory}`;
+      }
     }
 
     // Add system prompt

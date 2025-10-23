@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { FAST_MODEL_ID } from "@/utils/constants.js";
-import type { CompressMessagesOptions } from "@/services/aiService.js";
+import type {
+  CompressMessagesOptions,
+  CallAgentOptions,
+} from "@/services/aiService.js";
 
 // Mock the OpenAI client
 const mockCreate = vi.fn();
@@ -49,6 +52,120 @@ describe("AI Service", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe("callAgent", () => {
+    // Import the function after mocking
+    let callAgent: (
+      options: CallAgentOptions,
+    ) => Promise<import("@/services/aiService.js").CallAgentResult>;
+
+    beforeEach(async () => {
+      const aiService = await import("@/services/aiService.js");
+      callAgent = aiService.callAgent;
+    });
+
+    it("should use default system prompt when no custom systemPrompt provided", async () => {
+      mockCreate.mockResolvedValueOnce({
+        choices: [
+          {
+            message: {
+              content: "Test response",
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      });
+
+      await callAgent({
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+
+      // Should have system message as first message
+      expect(callArgs.messages[0].role).toBe("system");
+      expect(callArgs.messages[0].content).toContain(
+        "You are an interactive CLI tool",
+      );
+      expect(callArgs.messages[0].content).toContain(
+        "## Current Working Directory",
+      );
+      expect(callArgs.messages[0].content).toContain("/test/workdir");
+    });
+
+    it("should use custom systemPrompt when provided", async () => {
+      mockCreate.mockResolvedValueOnce({
+        choices: [
+          {
+            message: {
+              content: "Test response",
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      });
+
+      const customPrompt =
+        "You are a custom AI assistant with special capabilities.";
+
+      await callAgent({
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        systemPrompt: customPrompt,
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+
+      // Should have custom system message as first message
+      expect(callArgs.messages[0].role).toBe("system");
+      expect(callArgs.messages[0].content).toBe(customPrompt);
+      // Should not contain default prompt content
+      expect(callArgs.messages[0].content).not.toContain(
+        "You are an interactive CLI tool",
+      );
+    });
+
+    it("should add memory to default system prompt when no custom systemPrompt provided", async () => {
+      mockCreate.mockResolvedValueOnce({
+        choices: [
+          {
+            message: {
+              content: "Test response",
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
+        },
+      });
+
+      const memoryContent = "Important previous context and memory.";
+
+      await callAgent({
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        memory: memoryContent,
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+
+      // Should have system message with memory
+      expect(callArgs.messages[0].role).toBe("system");
+      expect(callArgs.messages[0].content).toContain("## Memory Context");
+      expect(callArgs.messages[0].content).toContain(memoryContent);
+    });
   });
 
   describe("compressMessages", () => {

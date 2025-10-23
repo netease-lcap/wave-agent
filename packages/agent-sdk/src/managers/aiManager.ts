@@ -27,6 +27,7 @@ export interface AIManagerOptions {
   hookManager?: HookManager;
   callbacks?: AIManagerCallbacks;
   workdir: string;
+  systemPrompt?: string;
 }
 
 export class AIManager {
@@ -39,6 +40,7 @@ export class AIManager {
   private backgroundBashManager?: BackgroundBashManager;
   private hookManager?: HookManager;
   private workdir: string;
+  private systemPrompt?: string;
 
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
@@ -47,6 +49,7 @@ export class AIManager {
     this.hookManager = options.hookManager;
     this.logger = options.logger;
     this.workdir = options.workdir;
+    this.systemPrompt = options.systemPrompt;
     this.callbacks = options.callbacks ?? {};
   }
 
@@ -228,6 +231,7 @@ export class AIManager {
         workdir: this.workdir, // Pass working directory
         tools: this.getFilteredToolsConfig(allowedTools), // Pass filtered tool configuration
         model: model, // Use passed model
+        systemPrompt: this.systemPrompt, // Pass custom system prompt
       });
 
       // Collect content and tool calls
