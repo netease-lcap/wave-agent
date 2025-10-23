@@ -7,14 +7,12 @@ export interface SessionData {
   id: string;
   timestamp: string;
   version: string;
+  messages: Message[];
   metadata: {
     workdir: string;
     startedAt: string;
     lastActiveAt: string;
     latestTotalTokens: number;
-  };
-  state: {
-    messages: Message[];
   };
 }
 
@@ -52,6 +50,18 @@ export function getSessionFilePath(sessionId: string): string {
 }
 
 /**
+ * Filter out diff blocks from messages to avoid saving unimportant data
+ */
+function filterDiffBlocks(messages: Message[]): Message[] {
+  return messages
+    .map((message) => ({
+      ...message,
+      blocks: message.blocks.filter((block) => block.type !== "diff"),
+    }))
+    .filter((message) => message.blocks.length > 0);
+}
+
+/**
  * Save session data
  */
 export async function saveSession(
@@ -68,19 +78,20 @@ export async function saveSession(
 
   await ensureSessionDir();
 
+  // Filter out diff blocks before saving
+  const filteredMessages = filterDiffBlocks(messages);
+
   const now = new Date().toISOString();
   const sessionData: SessionData = {
     id: sessionId,
     timestamp: now,
     version: VERSION,
+    messages: filteredMessages,
     metadata: {
       workdir: workdir,
       startedAt: startedAt || now,
       lastActiveAt: now,
       latestTotalTokens,
-    },
-    state: {
-      messages,
     },
   };
 
@@ -105,7 +116,7 @@ export async function loadSession(
     const sessionData = JSON.parse(content) as SessionData;
 
     // Validate session data format
-    if (!sessionData.id || !sessionData.state || !sessionData.metadata) {
+    if (!sessionData.id || !sessionData.messages || !sessionData.metadata) {
       throw new Error("Invalid session data format");
     }
 

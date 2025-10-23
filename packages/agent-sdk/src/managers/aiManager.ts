@@ -10,10 +10,7 @@ import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "../hooks/index.js";
-import type {
-  HookExecutionContext,
-  ExtendedHookExecutionContext,
-} from "../hooks/types.js";
+import type { ExtendedHookExecutionContext } from "../hooks/types.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -448,11 +445,14 @@ export class AIManager {
     if (!this.hookManager) return;
 
     try {
-      const context: HookExecutionContext = {
+      const context: ExtendedHookExecutionContext = {
         event: "Stop",
         projectDir: this.workdir,
         timestamp: new Date(),
-        // Stop hooks don't need toolName
+        sessionId: this.messageManager.getSessionId(),
+        transcriptPath: this.messageManager.getTranscriptPath(),
+        cwd: this.workdir,
+        // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
       };
 
       const results = await this.hookManager.executeHooks("Stop", context);

@@ -185,6 +185,3 @@ export class HookMatcher implements IHookMatcher {
     }
   }
 }
-
-// Default singleton instance
-export const hookMatcher = new HookMatcher();

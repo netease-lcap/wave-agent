@@ -190,7 +190,7 @@ export class MessageManager {
         // Initialize from session data
         this.initializeFromSession(
           sessionToRestore.id,
-          sessionToRestore.state.messages,
+          sessionToRestore.messages,
           sessionToRestore.metadata.latestTotalTokens,
         );
       }

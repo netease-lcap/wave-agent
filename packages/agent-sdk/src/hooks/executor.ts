@@ -438,6 +438,3 @@ export class HookExecutor implements IHookExecutor {
     }
   }
 }
-
-// Default singleton instance
-export const hookExecutor = new HookExecutor();

@@ -69,14 +69,12 @@ describe("Session Service", () => {
     id: mockSessionId,
     timestamp: "2024-01-01T00:00:00.000Z",
     version: "1.0.0",
+    messages: mockMessages,
     metadata: {
       workdir: mockWorkdir,
       startedAt: "2024-01-01T00:00:00.000Z",
       lastActiveAt: "2024-01-01T00:00:00.000Z",
       latestTotalTokens: 100,
-    },
-    state: {
-      messages: mockMessages,
     },
   };
 
@@ -115,6 +113,94 @@ describe("Session Service", () => {
         expect.stringContaining(mockSessionId),
         "utf-8",
       );
+    });
+
+    it("should filter out diff blocks when saving", async () => {
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const messagesWithDiff: Message[] = [
+        {
+          role: "user",
+          blocks: [{ type: "text", content: "Hello" }],
+        },
+        {
+          role: "assistant",
+          blocks: [
+            { type: "text", content: "Hi there!" },
+            {
+              type: "diff",
+              path: "/test/file.js",
+              diffResult: [
+                { value: "line 1", added: false, removed: false },
+                { value: "line 2", added: true, removed: false },
+              ],
+            },
+          ],
+        },
+      ];
+
+      await saveSession(mockSessionId, messagesWithDiff, mockWorkdir, 100);
+
+      expect(mockFs.writeFile).toHaveBeenCalled();
+      const writeFileMock = mockFs.writeFile as ReturnType<typeof vi.fn>;
+      const savedData = JSON.parse(
+        writeFileMock.mock.calls[0][1] as string,
+      ) as SessionData;
+
+      // Check that diff blocks are filtered out
+      expect(savedData.messages).toHaveLength(2);
+      expect(savedData.messages[0].blocks).toHaveLength(1);
+      expect(savedData.messages[0].blocks[0].type).toBe("text");
+      expect(savedData.messages[1].blocks).toHaveLength(1);
+      expect(savedData.messages[1].blocks[0].type).toBe("text");
+
+      // Ensure no diff blocks are present
+      const allBlocks = savedData.messages.flatMap((msg) => msg.blocks);
+      expect(allBlocks.every((block) => block.type !== "diff")).toBe(true);
+    });
+
+    it("should filter out messages with only diff blocks", async () => {
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      const messagesWithOnlyDiff: Message[] = [
+        {
+          role: "user",
+          blocks: [{ type: "text", content: "Hello" }],
+        },
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "diff",
+              path: "/test/file.js",
+              diffResult: [{ value: "line 1", added: false, removed: false }],
+            },
+          ],
+        },
+        {
+          role: "assistant",
+          blocks: [{ type: "text", content: "Done!" }],
+        },
+      ];
+
+      await saveSession(mockSessionId, messagesWithOnlyDiff, mockWorkdir, 100);
+
+      expect(mockFs.writeFile).toHaveBeenCalled();
+      const writeFileMock = mockFs.writeFile as ReturnType<typeof vi.fn>;
+      const savedData = JSON.parse(
+        writeFileMock.mock.calls[0][1] as string,
+      ) as SessionData;
+
+      // Check that messages with only diff blocks are filtered out
+      expect(savedData.messages).toHaveLength(2);
+      expect(
+        (savedData.messages[0].blocks[0] as { content: string }).content,
+      ).toBe("Hello");
+      expect(
+        (savedData.messages[1].blocks[0] as { content: string }).content,
+      ).toBe("Done!");
     });
 
     it("should not save session in test environment", async () => {
