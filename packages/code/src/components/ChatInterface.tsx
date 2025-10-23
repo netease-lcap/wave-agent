@@ -24,14 +24,14 @@ export const ChatInterface: React.FC = () => {
     hasSlashCommand,
   } = useChat();
 
-  // 创建一个 ref 来存储 expanded 模式下的消息
+  // Create a ref to store messages in expanded mode
   const expandedMessagesRef = useRef<Message[]>([]);
 
   useEffect(() => {
-    // 仅仅在折叠时同步
+    // Only sync when collapsed
     if (!isExpanded) {
       expandedMessagesRef.current = messages.map((message, index) => {
-        // 如果是最后一个消息，深拷贝其 blocks
+        // If it's the last message, deep copy its blocks
         if (index === messages.length - 1) {
           return {
             ...message,
@@ -47,7 +47,7 @@ export const ChatInterface: React.FC = () => {
     <Box flexDirection="column" height="100%">
       <Box flexGrow={1} flexDirection="column" paddingX={1}>
         {isExpanded ? (
-          // expanded 模式下使用 ref 中的消息，loading 和 tokens 写死为 false 和 0
+          // Expanded mode uses messages from ref, loading and tokens are hardcoded to false and 0
           <MessageList
             messages={expandedMessagesRef.current}
             isLoading={false}
@@ -56,7 +56,7 @@ export const ChatInterface: React.FC = () => {
             isExpanded={true}
           />
         ) : (
-          // 正常模式下使用实时状态
+          // Normal mode uses real-time state
           <MessageList
             messages={messages}
             isLoading={isLoading}

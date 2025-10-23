@@ -7,22 +7,22 @@ const AVAILABLE_COMMANDS: SlashCommand[] = [
     id: "bashes",
     name: "bashes",
     description: "View and manage background bash shells",
-    handler: () => {}, // 这里的handler不会被使用，实际处理在hook中
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
     id: "mcp",
     name: "mcp",
     description: "View and manage MCP servers",
-    handler: () => {}, // 这里的handler不会被使用，实际处理在hook中
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
 ];
 
 export interface CommandSelectorProps {
   searchQuery: string;
   onSelect: (command: string) => void;
-  onInsert?: (command: string) => void; // 新增：Tab键插入命令到输入框
+  onInsert?: (command: string) => void; // New: Tab key to insert command into input box
   onCancel: () => void;
-  commands?: SlashCommand[]; // 新增可选的命令列表参数
+  commands?: SlashCommand[]; // New optional command list parameter
 }
 
 export const CommandSelector: React.FC<CommandSelectorProps> = ({
@@ -30,14 +30,14 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
   onSelect,
   onInsert,
   onCancel,
-  commands = [], // 默认为空数组
+  commands = [], // Default to empty array
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // 合并agent命令和本地命令
+  // Merge agent commands and local commands
   const allCommands = [...commands, ...AVAILABLE_COMMANDS];
 
-  // 过滤命令列表
+  // Filter command list
   const filteredCommands = allCommands.filter(
     (command) =>
       !searchQuery ||

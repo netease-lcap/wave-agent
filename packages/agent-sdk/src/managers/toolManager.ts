@@ -4,7 +4,7 @@ import { deleteFileTool } from "../tools/deleteFileTool.js";
 import { editTool } from "../tools/editTool.js";
 import { multiEditTool } from "../tools/multiEditTool.js";
 import { writeTool } from "../tools/writeTool.js";
-// 新的工具
+// New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
 import { lsTool } from "../tools/lsTool.js";
@@ -17,7 +17,7 @@ export interface ToolManagerOptions {
 }
 
 /**
- * 工具管理器
+ * Tool Manager
  */
 class ToolManager {
   private tools = new Map<string, ToolPlugin>([
@@ -86,5 +86,5 @@ class ToolManager {
   }
 }
 
-// 导出工具注册中心类和类型
+// Export tool registry class and types
 export { ToolManager };

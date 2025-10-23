@@ -62,7 +62,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
 
   const maxDisplay = 10;
 
-  // 计算显示窗口的开始和结束位置
+  // Calculate display window start and end positions
   const getDisplayWindow = () => {
     const startIndex = Math.max(
       0,
@@ -96,7 +96,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
         {searchQuery && `(filtering: "${searchQuery}")`}
       </Text>
 
-      {/* 显示上方还有更多文件的提示 */}
+      {/* Show hint for more files above */}
       {startIndex > 0 && (
         <Text dimColor>... {startIndex} more files above</Text>
       )}
@@ -119,7 +119,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
         );
       })}
 
-      {/* 显示下方还有更多文件的提示 */}
+      {/* Show hint for more files below */}
       {endIndex < files.length && (
         <Text dimColor>... {files.length - endIndex} more files below</Text>
       )}

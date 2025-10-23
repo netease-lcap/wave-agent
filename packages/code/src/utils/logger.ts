@@ -1,11 +1,11 @@
 /**
- * 日志工具模块
- * 支持按照日志级别和关键词进行过滤
- * 日志会写入文件而不是终端，避免被 Ink 应用清空
+ * Logger utility module
+ * Supports filtering by log level and keywords
+ * Logs are written to files instead of terminal to avoid being cleared by Ink app
  *
- * 性能优化：
- * - 在测试环境中，可以通过设置环境变量 DISABLE_LOGGER_IO=true 来禁用所有文件和控制台 I/O 操作
- * - 这样可以显著提升测试执行性能，避免不必要的磁盘写入
+ * Performance optimization:
+ * - In test environment, you can disable all file and console I/O operations by setting environment variable DISABLE_LOGGER_IO=true
+ * - This can significantly improve test execution performance by avoiding unnecessary disk writes
  */
 
 import * as fs from "fs";
@@ -14,7 +14,7 @@ import { LOG_FILE, DATA_DIRECTORY } from "./constants.js";
 const logFile = process.env.LOG_FILE || LOG_FILE;
 
 /**
- * 日志级别枚举
+ * Log level enumeration
  */
 export enum LogLevel {
   DEBUG = 0,
@@ -24,7 +24,7 @@ export enum LogLevel {
 }
 
 /**
- * 日志级别名称映射
+ * Log level name mapping
  */
 const LOG_LEVEL_NAMES = {
   [LogLevel.DEBUG]: "DEBUG",
@@ -34,7 +34,7 @@ const LOG_LEVEL_NAMES = {
 };
 
 /**
- * 日志配置接口
+ * Log configuration interface
  */
 interface LogConfig {
   readonly level: LogLevel;
@@ -42,7 +42,7 @@ interface LogConfig {
 }
 
 /**
- * 解析环境变量中的日志级别
+ * Parse log level from environment variable
  */
 const parseLogLevel = (levelStr: string | undefined): LogLevel => {
   if (!levelStr) return LogLevel.INFO;
@@ -63,7 +63,7 @@ const parseLogLevel = (levelStr: string | undefined): LogLevel => {
 };
 
 /**
- * 解析环境变量中的关键词过滤
+ * Parse keyword filter from environment variable
  */
 const parseKeywords = (keywordsStr: string | undefined): string[] => {
   if (!keywordsStr) return [];
@@ -74,11 +74,11 @@ const parseKeywords = (keywordsStr: string | undefined): string[] => {
 };
 
 /**
- * 从环境变量加载日志配置
+ * Load log configuration from environment variables
  *
- * 支持的环境变量：
- * - LOG_LEVEL: 日志级别 (DEBUG, INFO, WARN, ERROR)，默认 INFO
- * - LOG_KEYWORDS: 关键词过滤，用逗号分隔，默认无过滤
+ * Supported environment variables:
+ * - LOG_LEVEL: Log level (DEBUG, INFO, WARN, ERROR), default INFO
+ * - LOG_KEYWORDS: Keyword filter, comma-separated, default no filter
  */
 const logConfig: LogConfig = {
   level: parseLogLevel(process.env.LOG_LEVEL),
@@ -86,33 +86,33 @@ const logConfig: LogConfig = {
 };
 
 /**
- * 检查是否应该记录日志
+ * Check if log should be recorded
  */
 const shouldLog = (level: LogLevel, message: string): boolean => {
-  // 检查日志级别
+  // Check log level
   if (level < logConfig.level) {
     return false;
   }
 
-  // 如果没有设置关键词过滤，则记录所有符合级别的日志
+  // If no keyword filter is set, record all logs that meet the level requirement
   if (logConfig.keywords.length === 0) {
     return true;
   }
 
-  // 检查关键词过滤
+  // Check keyword filter
   const lowerMessage = message.toLowerCase();
   return logConfig.keywords.some((keyword) => lowerMessage.includes(keyword));
 };
 
 /**
- * 格式化日志参数
+ * Format log arguments
  */
 const formatArg = (arg: unknown): string => {
   if (arg === null) return "null";
   if (arg === undefined) return "undefined";
 
   if (arg instanceof Error) {
-    // 特殊处理 Error 对象，显示 stack 或 message
+    // Special handling for Error objects, display stack or message
     return arg.stack || arg.message || String(arg);
   }
 
@@ -120,7 +120,7 @@ const formatArg = (arg: unknown): string => {
     try {
       return JSON.stringify(arg, null, 2);
     } catch {
-      // 如果 JSON.stringify 失败，fallback 到 String()
+      // If JSON.stringify fails, fallback to String()
       return String(arg);
     }
   }
@@ -129,17 +129,17 @@ const formatArg = (arg: unknown): string => {
 };
 
 /**
- * 通用日志输出函数
+ * Generic log output function
  */
 const logMessage = (level: LogLevel, ...args: unknown[]): void => {
   const messageText = args.map(formatArg).join(" ");
 
-  // 检查是否应该记录这条日志
+  // Check if this log should be recorded
   if (!shouldLog(level, messageText)) {
     return;
   }
 
-  // 如果禁用了 logger I/O 操作，直接返回以节约性能
+  // If logger I/O operations are disabled, return directly to save performance
   if (process.env.DISABLE_LOGGER_IO === "true") {
     return;
   }
@@ -149,15 +149,15 @@ const logMessage = (level: LogLevel, ...args: unknown[]): void => {
   const formattedMessage = `[${timestamp}] [${levelName}] ${messageText}\n`;
 
   try {
-    // 确保目录存在
+    // Ensure directory exists
     if (!fs.existsSync(DATA_DIRECTORY)) {
       fs.mkdirSync(DATA_DIRECTORY, { recursive: true });
     }
 
-    // 将日志写入文件
+    // Write log to file
     fs.appendFileSync(logFile, formattedMessage);
   } catch (error) {
-    // 如果文件写入失败，fallback 到 stderr
+    // If file write fails, fallback to stderr
     process.stderr.write(
       `[${levelName}] Failed to write to log file: ${error}\n`,
     );
@@ -166,32 +166,32 @@ const logMessage = (level: LogLevel, ...args: unknown[]): void => {
 };
 
 /**
- * 日志器对象
+ * Logger object
  */
 export const logger = {
   /**
-   * 调试日志输出函数
+   * Debug log output function
    */
   debug: (...args: unknown[]): void => {
     logMessage(LogLevel.DEBUG, ...args);
   },
 
   /**
-   * 信息日志输出函数
+   * Info log output function
    */
   info: (...args: unknown[]): void => {
     logMessage(LogLevel.INFO, ...args);
   },
 
   /**
-   * 警告日志输出函数
+   * Warning log output function
    */
   warn: (...args: unknown[]): void => {
     logMessage(LogLevel.WARN, ...args);
   },
 
   /**
-   * 错误日志输出函数
+   * Error log output function
    */
   error: (...args: unknown[]): void => {
     logMessage(LogLevel.ERROR, ...args);
@@ -199,32 +199,32 @@ export const logger = {
 };
 
 /**
- * 获取当前日志配置
+ * Get current log configuration
  */
 export const getLogConfig = (): LogConfig => {
   return logConfig;
 };
 
 /**
- * 获取日志文件路径
+ * Get log file path
  */
 export const getLogFile = (): string => {
   return logFile;
 };
 
 /**
- * 日志清理配置
+ * Log cleanup configuration
  */
 interface LogCleanupConfig {
-  /** 当前日志文件最大大小（字节），默认10MB */
+  /** Maximum size of current log file (bytes), default 10MB */
   maxFileSize: number;
-  /** 截断时保留的行数，默认1000行 */
+  /** Number of lines to keep when truncating, default 1000 lines */
   keepLines: number;
 }
 
 /**
- * 获取日志清理配置
- * 可以通过环境变量覆盖默认配置
+ * Get log cleanup configuration
+ * Can override default configuration with environment variables
  */
 const getCleanupConfig = (): LogCleanupConfig => {
   return {
@@ -234,11 +234,11 @@ const getCleanupConfig = (): LogCleanupConfig => {
 };
 
 /**
- * 截断当前日志文件如果太大
- * 保留最后指定行数的日志
+ * Truncate current log file if too large
+ * Keep the last specified number of lines
  */
 const truncateLogFileIfNeeded = (config: LogCleanupConfig): void => {
-  // 如果禁用了 logger I/O 操作，直接返回以节约性能
+  // If logger I/O operations are disabled, return directly to save performance
   if (process.env.DISABLE_LOGGER_IO === "true") {
     return;
   }
@@ -250,19 +250,19 @@ const truncateLogFileIfNeeded = (config: LogCleanupConfig): void => {
 
     const stats = fs.statSync(logFile);
 
-    // 如果文件大小超过限制，截断文件
+    // If file size exceeds limit, truncate file
     if (stats.size > config.maxFileSize) {
       const content = fs.readFileSync(logFile, "utf8");
       const lines = content.split("\n");
 
-      // 保留最后指定行数的日志
+      // Keep the last specified number of lines
       const keepLines = Math.min(config.keepLines, lines.length);
       const truncatedContent = lines.slice(-keepLines).join("\n");
 
-      // 写入截断后的内容
+      // Write truncated content
       fs.writeFileSync(logFile, truncatedContent);
 
-      // 记录截断操作
+      // Record truncation operation
       const removedLines = lines.length - keepLines;
       logger.info(
         `Log file truncated: removed ${removedLines} lines, kept last ${keepLines} lines`,
@@ -274,15 +274,15 @@ const truncateLogFileIfNeeded = (config: LogCleanupConfig): void => {
 };
 
 /**
- * 执行日志清理
- * 截断当前日志文件（如果需要）
+ * Execute log cleanup
+ * Truncate current log file (if needed)
  *
- * @param customConfig 自定义清理配置，如果不提供则使用默认配置
+ * @param customConfig Custom cleanup configuration, if not provided uses default configuration
  */
 export const cleanupLogs = async (
   customConfig?: Partial<LogCleanupConfig>,
 ): Promise<void> => {
-  // 如果禁用了 logger I/O 操作，直接返回以节约性能
+  // If logger I/O operations are disabled, return directly to save performance
   if (process.env.DISABLE_LOGGER_IO === "true") {
     return;
   }
@@ -294,7 +294,7 @@ export const cleanupLogs = async (
     keepLines: config.keepLines,
   });
 
-  // 截断当前日志文件（如果需要）
+  // Truncate current log file (if needed)
   truncateLogFileIfNeeded(config);
 
   logger.info("Log cleanup completed");

@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
 
-// 项目内存相关方法
+// Project memory related methods
 export const isMemoryMessage = (message: string): boolean => {
   return message.trim().startsWith("#");
 };
@@ -18,27 +18,27 @@ export const addMemory = async (
   try {
     const memoryFilePath = path.join(workdir, "WAVE.md");
 
-    // 格式化记忆条目，使用 - 开头，不添加时间戳
+    // Format memory entry, starting with -, no timestamp
     const memoryEntry = `- ${message.substring(1).trim()}\n`;
 
-    // 检查文件是否存在
+    // Check if file exists
     let existingContent = "";
     try {
       existingContent = await fs.readFile(memoryFilePath, "utf-8");
     } catch (error) {
-      // 文件不存在，创建新文件
+      // File does not exist, create new file
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         existingContent =
-          "# Memory\n\n这是AI助手的记忆文件，记录重要信息和上下文。\n\n";
+          "# Memory\n\nThis is the AI assistant's memory file, recording important information and context.\n\n";
       } else {
         throw error;
       }
     }
 
-    // 追加新的记忆条目到文件末尾
+    // Append new memory entry to the end of the file
     const updatedContent = existingContent + memoryEntry;
 
-    // 写入文件
+    // Write file
     await fs.writeFile(memoryFilePath, updatedContent, "utf-8");
 
     // logger.info(`Memory added to ${memoryFilePath}:`, message);
@@ -48,20 +48,20 @@ export const addMemory = async (
   }
 };
 
-// 用户内存相关方法
+// User memory related methods
 export const ensureUserMemoryFile = async (): Promise<void> => {
   try {
-    // 确保数据目录存在
+    // Ensure data directory exists
     await fs.mkdir(DATA_DIRECTORY, { recursive: true });
 
-    // 检查用户记忆文件是否存在
+    // Check if user memory file exists
     try {
       await fs.access(USER_MEMORY_FILE);
     } catch (error) {
-      // 文件不存在，创建新文件
+      // File does not exist, create new file
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         const initialContent =
-          "# User Memory\n\n这是用户级记忆文件，记录跨项目的重要信息和上下文。\n\n";
+          "# User Memory\n\nThis is the user-level memory file, recording important information and context across projects.\n\n";
         await fs.writeFile(USER_MEMORY_FILE, initialContent, "utf-8");
         // logger.info(`Created user memory file: ${USER_MEMORY_FILE}`);
       } else {
@@ -78,19 +78,19 @@ export const ensureUserMemoryFile = async (): Promise<void> => {
 
 export const addUserMemory = async (message: string): Promise<void> => {
   try {
-    // 确保用户记忆文件存在
+    // Ensure user memory file exists
     await ensureUserMemoryFile();
 
-    // 格式化记忆条目，使用 - 开头
+    // Format memory entry, starting with -
     const memoryEntry = `- ${message.substring(1).trim()}\n`;
 
-    // 读取现有内容
+    // Read existing content
     const existingContent = await fs.readFile(USER_MEMORY_FILE, "utf-8");
 
-    // 追加新的记忆条目到文件末尾
+    // Append new memory entry to the end of the file
     const updatedContent = existingContent + memoryEntry;
 
-    // 写入文件
+    // Write file
     await fs.writeFile(USER_MEMORY_FILE, updatedContent, "utf-8");
 
     // logger.info(`User memory added to ${USER_MEMORY_FILE}:`, message);
@@ -110,7 +110,7 @@ export const getUserMemoryContent = async (): Promise<string> => {
   }
 };
 
-// 读取项目记忆文件内容
+// Read project memory file content
 export const readMemoryFile = async (workdir: string): Promise<string> => {
   try {
     const memoryFilePath = path.join(workdir, "WAVE.md");
@@ -123,17 +123,17 @@ export const readMemoryFile = async (workdir: string): Promise<string> => {
   }
 };
 
-// 获取合并的记忆内容（项目记忆 + 用户记忆）
+// Get merged memory content (project memory + user memory)
 export const getCombinedMemoryContent = async (
   workdir: string,
 ): Promise<string> => {
-  // 读取记忆文件内容
+  // Read memory file content
   const memoryContent = await readMemoryFile(workdir);
 
-  // 读取用户级记忆内容
+  // Read user-level memory content
   const userMemoryContent = await getUserMemoryContent();
 
-  // 合并项目记忆和用户记忆
+  // Merge project memory and user memory
   let combinedMemory = "";
   if (memoryContent.trim()) {
     combinedMemory += memoryContent;

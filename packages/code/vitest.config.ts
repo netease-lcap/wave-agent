@@ -2,10 +2,10 @@ import { defineConfig } from "vitest/config";
 import { resolve } from "path";
 
 export default defineConfig(() => {
-  // 检查是否在 CI 环境中 - 支持多种 CI 环境变量
+  // Check if running in CI environment - supports multiple CI environment variables
   const isCI = !!(process.env.CI === "true");
 
-  // 在 CI 环境中输出重试配置信息
+  // Output retry configuration info in CI environment
   if (isCI) {
     console.log(`🔄 CI environment detected: test retry enabled (2 retries)`);
   }
@@ -16,12 +16,12 @@ export default defineConfig(() => {
       environment: "node",
       include: ["tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
       exclude: ["node_modules", "dist"],
-      // CI 环境下启用重试：失败的测试最多重试 2 次
+      // Enable retry in CI environment: failed tests will retry up to 2 times
       retry: isCI ? 2 : 0,
-      // 测试环境变量：默认禁用 logger I/O 操作以提升性能
+      // Test environment variables: disable logger I/O operations by default to improve performance
       env: {
         DISABLE_LOGGER_IO: "true",
-        // 设置较短的防抖时间以加速测试
+        // Set shorter debounce time to accelerate tests
         FILE_SELECTOR_DEBOUNCE_MS: "50",
       },
       maxWorkers: 1,

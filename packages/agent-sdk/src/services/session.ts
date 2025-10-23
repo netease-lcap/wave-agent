@@ -33,7 +33,7 @@ const VERSION = "1.0.0";
 const MAX_SESSION_AGE_DAYS = 30;
 
 /**
- * 确保会话目录存在
+ * Ensure session directory exists
  */
 async function ensureSessionDir(): Promise<void> {
   try {
@@ -44,7 +44,7 @@ async function ensureSessionDir(): Promise<void> {
 }
 
 /**
- * 生成会话文件路径
+ * Generate session file path
  */
 function getSessionFilePath(sessionId: string): string {
   const shortId = sessionId.split("_")[2] || sessionId.slice(-8);
@@ -52,7 +52,7 @@ function getSessionFilePath(sessionId: string): string {
 }
 
 /**
- * 保存会话数据
+ * Save session data
  */
 export async function saveSession(
   sessionId: string,
@@ -61,7 +61,7 @@ export async function saveSession(
   latestTotalTokens: number = 0,
   startedAt?: string,
 ): Promise<void> {
-  // 在测试环境下不保存session文件
+  // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
     return;
   }
@@ -93,7 +93,7 @@ export async function saveSession(
 }
 
 /**
- * 加载会话数据
+ * Load session data
  */
 export async function loadSession(
   sessionId: string,
@@ -104,7 +104,7 @@ export async function loadSession(
     const content = await fs.readFile(filePath, "utf-8");
     const sessionData = JSON.parse(content) as SessionData;
 
-    // 验证会话数据格式
+    // Validate session data format
     if (!sessionData.id || !sessionData.state || !sessionData.metadata) {
       throw new Error("Invalid session data format");
     }
@@ -112,14 +112,14 @@ export async function loadSession(
     return sessionData;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return null; // 会话文件不存在
+      return null; // Session file does not exist
     }
     throw new Error(`Failed to load session ${sessionId}: ${error}`);
   }
 }
 
 /**
- * 获取最近的会话
+ * Get most recent session
  */
 export async function getLatestSession(
   workdir: string,
@@ -129,7 +129,7 @@ export async function getLatestSession(
     return null;
   }
 
-  // 按最后活跃时间排序，返回最新的
+  // Sort by last active time, return the latest
   const latestSession = sessions.sort(
     (a, b) =>
       new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime(),
@@ -139,7 +139,7 @@ export async function getLatestSession(
 }
 
 /**
- * 列出所有会话
+ * List all sessions
  */
 export async function listSessions(
   workdir: string,
@@ -161,7 +161,7 @@ export async function listSessions(
         const content = await fs.readFile(filePath, "utf-8");
         const sessionData = JSON.parse(content) as SessionData;
 
-        // 只返回当前工作目录的会话，除非 includeAllWorkdirs 为 true
+        // Only return sessions for the current working directory, unless includeAllWorkdirs is true
         if (!includeAllWorkdirs && sessionData.metadata.workdir !== workdir) {
           continue;
         }
@@ -175,7 +175,7 @@ export async function listSessions(
           latestTotalTokens: sessionData.metadata.latestTotalTokens,
         });
       } catch {
-        // 忽略损坏的会话文件
+        // Ignore corrupted session files
         console.warn(`Skipping corrupted session file: ${file}`);
       }
     }
@@ -190,7 +190,7 @@ export async function listSessions(
 }
 
 /**
- * 删除会话
+ * Delete session
  */
 export async function deleteSession(sessionId: string): Promise<boolean> {
   const filePath = getSessionFilePath(sessionId);
@@ -200,24 +200,24 @@ export async function deleteSession(sessionId: string): Promise<boolean> {
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return false; // 文件不存在
+      return false; // File does not exist
     }
     throw new Error(`Failed to delete session ${sessionId}: ${error}`);
   }
 }
 
 /**
- * 清理过期会话
+ * Clean up expired sessions
  */
 export async function cleanupExpiredSessions(workdir: string): Promise<number> {
-  // 在测试环境下不执行清理操作
+  // Do not perform cleanup operations in test environment
   if (process.env.NODE_ENV === "test") {
     return 0;
   }
 
   const sessions = await listSessions(workdir, true);
   const now = new Date();
-  const maxAge = MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // 转换为毫秒
+  const maxAge = MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // Convert to milliseconds
 
   let deletedCount = 0;
 
@@ -240,7 +240,7 @@ export async function cleanupExpiredSessions(workdir: string): Promise<number> {
 }
 
 /**
- * 检查会话是否存在
+ * Check if session exists
  */
 export async function sessionExists(sessionId: string): Promise<boolean> {
   const filePath = getSessionFilePath(sessionId);

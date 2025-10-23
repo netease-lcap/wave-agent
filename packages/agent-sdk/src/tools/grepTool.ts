@@ -5,7 +5,7 @@ import { rgPath } from "@vscode/ripgrep";
 import { getDisplayPath } from "../utils/path.js";
 
 /**
- * Grep 工具插件 - 基于 ripgrep 的强大搜索工具
+ * Grep tool plugin - powerful search tool based on ripgrep
  */
 export const grepTool: ToolPlugin = {
   name: "Grep",
@@ -122,35 +122,35 @@ export const grepTool: ToolPlugin = {
       const workdir = context.workdir;
       const rgArgs: string[] = ["--color=never"];
 
-      // 设置输出模式
+      // Set output mode
       if (outputMode === "files_with_matches") {
         rgArgs.push("-l");
       } else if (outputMode === "count") {
         rgArgs.push("-c");
       }
-      // content 模式是默认的，不需要特殊参数
+      // content mode is default, no special parameters needed
 
-      // 添加行号 (仅在 content 模式下有效)
+      // Add line numbers (only effective in content mode)
       if (showLineNumbers && outputMode === "content") {
         rgArgs.push("-n");
       }
 
-      // 添加文件名 (在 content 模式下)
+      // Add file names (in content mode)
       if (outputMode === "content") {
         rgArgs.push("-H");
       }
 
-      // 大小写不敏感
+      // Case insensitive
       if (caseInsensitive) {
         rgArgs.push("-i");
       }
 
-      // 多行模式
+      // Multiline mode
       if (multiline) {
         rgArgs.push("-U", "--multiline-dotall");
       }
 
-      // 上下文行数 (仅在 content 模式下有效)
+      // Context lines (only effective in content mode)
       if (outputMode === "content") {
         if (contextAround) {
           rgArgs.push("-C", contextAround.toString());
@@ -164,26 +164,26 @@ export const grepTool: ToolPlugin = {
         }
       }
 
-      // 文件类型过滤
+      // File type filtering
       if (fileType) {
         rgArgs.push("--type", fileType);
       }
 
-      // Glob 模式过滤
+      // Glob pattern filtering
       if (globPattern) {
         rgArgs.push("--glob", globPattern);
       }
 
-      // 获取通用忽略规则
+      // Get common ignore rules
       const ignorePatterns = getGlobIgnorePatterns(workdir);
       for (const exclude of ignorePatterns) {
         rgArgs.push("--glob", `!${exclude}`);
       }
 
-      // 添加搜索模式 - 使用 -e 参数避免以 - 开头的模式被误认为是命令行选项
+      // Add search pattern - use -e parameter to avoid patterns starting with - being mistaken as command line options
       rgArgs.push("-e", pattern);
 
-      // 添加搜索路径
+      // Add search path
       if (searchPath) {
         rgArgs.push(searchPath);
       } else {
@@ -193,7 +193,7 @@ export const grepTool: ToolPlugin = {
       const result = await executeCommand(rgPath, rgArgs, workdir);
 
       if (result.error && result.exitCode !== 1) {
-        // rg 返回 1 表示没有匹配，不是错误
+        // rg returns 1 for no matches, not an error
         return {
           success: false,
           content: "",
@@ -210,7 +210,7 @@ export const grepTool: ToolPlugin = {
         };
       }
 
-      // 应用 head_limit
+      // Apply head_limit
       let finalOutput = output;
       let lines = output.split("\n");
 
@@ -219,7 +219,7 @@ export const grepTool: ToolPlugin = {
         finalOutput = lines.join("\n");
       }
 
-      // 生成简短结果
+      // Generate short result
       let shortResult: string;
       const totalLines = output.split("\n").length;
 
@@ -277,7 +277,7 @@ export const grepTool: ToolPlugin = {
 };
 
 /**
- * 执行命令并返回结果
+ * Execute command and return result
  */
 function executeCommand(
   command: string,
@@ -311,7 +311,7 @@ function executeCommand(
         stdout,
         stderr,
         exitCode: code,
-        error: code !== 0 && code !== 1, // rg 返回 1 表示没有匹配，不是错误
+        error: code !== 0 && code !== 1, // rg returns 1 for no matches, not an error
       });
     });
 

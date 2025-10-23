@@ -14,7 +14,7 @@ describe("readTool", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "read-test-"));
 
-    // 创建测试文件
+    // Create test file
     await writeFile(
       join(tempDir, "small.txt"),
       `Line 1
@@ -137,7 +137,7 @@ Multi-byte: café naïve résumé`,
     expect(result.success).toBe(true);
     expect(result.content).toContain("Short line");
     expect(result.content).toContain("Another short line");
-    // 长行应该被截断并添加 "..."
+    // Long lines should be truncated and "..." added
     expect(result.content).toContain("...");
   });
 
@@ -240,7 +240,7 @@ Multi-byte: café naïve résumé`,
     const result = await readTool.execute(
       {
         file_path: filePath,
-        offset: 100, // 超出文件行数
+        offset: 100, // Exceeds file line count
       },
       testContext,
     );
@@ -255,7 +255,7 @@ Multi-byte: café naïve résumé`,
       {
         file_path: filePath,
         offset: 3,
-        limit: 10, // 超出文件行数
+        limit: 10, // Exceeds file line count
       },
       testContext,
     );
@@ -299,7 +299,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should handle files with different line endings", async () => {
-    // 创建包含不同行结束符的文件
+    // Create file with different line endings
     await writeFile(
       join(tempDir, "mixed-endings.txt"),
       "Line 1\r\nLine 2\nLine 3\r\n",
@@ -328,12 +328,12 @@ Multi-byte: café naïve résumé`,
     expect(result.success).toBe(true);
     expect(result.content).toContain("    45\tLine 45");
     expect(result.content).toContain("    50\tLine 50");
-    // 确保行号格式正确对齐
+    // Ensure line number format is correctly aligned
     expect(result.content).toMatch(/\s+\d+\t/);
   });
 
   it("should handle binary-like content gracefully", async () => {
-    // 创建包含一些非打印字符的文件（但仍然是文本文件）
+    // Create file with some non-printing characters (but still a text file)
     await writeFile(
       join(tempDir, "special-chars.txt"),
       "Normal text\x00\x01\x02More text",

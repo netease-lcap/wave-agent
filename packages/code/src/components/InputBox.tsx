@@ -35,11 +35,11 @@ export interface InputBoxProps {
   ) => void;
   abortMessage?: () => void;
   saveMemory?: (message: string, type: "project" | "user") => Promise<void>;
-  // MCP 相关属性
+  // MCP related properties
   mcpServers?: McpServerStatus[];
   connectMcpServer?: (serverName: string) => Promise<boolean>;
   disconnectMcpServer?: (serverName: string) => Promise<boolean>;
-  // Slash Command 相关属性
+  // Slash Command related properties
   slashCommands?: SlashCommand[];
   hasSlashCommand?: (commandId: string) => boolean;
 }
@@ -64,7 +64,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [showBashManager, setShowBashManager] = useState(false);
   // MCP manager state
   const [showMcpManager, setShowMcpManager] = useState(false);
-  // 基础输入状态
+  // Basic input state
   const {
     inputText,
     setInputText,
@@ -79,7 +79,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     moveCursorToEnd,
   } = useInputState();
 
-  // 文件选择器功能
+  // File selector functionality
   const {
     showFileSelector,
     filteredFiles,
@@ -92,7 +92,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     atPosition,
   } = useFileSelector();
 
-  // 命令选择器功能
+  // Command selector functionality
   const {
     showCommandSelector,
     commandSearchQuery,
@@ -112,7 +112,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     hasSlashCommand,
   });
 
-  // Bash历史选择器功能
+  // Bash history selector functionality
   const {
     showBashHistorySelector,
     bashHistorySearchQuery,
@@ -125,7 +125,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     exclamationPosition,
   } = useBashHistorySelector();
 
-  // 记忆类型选择器功能
+  // Memory type selector functionality
   const {
     showMemoryTypeSelector,
     memoryMessage,
@@ -134,16 +134,16 @@ export const InputBox: React.FC<InputBoxProps> = ({
     handleCancelMemoryTypeSelect,
   } = useMemoryTypeSelector();
 
-  // 输入历史功能
+  // Input history functionality
   const { resetHistoryNavigation, navigateHistory } = useInputHistory({
     userInputHistory,
   });
 
-  // 图片管理功能（包含剪贴板粘贴）
+  // Image management functionality (includes clipboard paste)
   const { attachedImages, clearImages, handlePasteImage } =
     useImageManager(insertTextAtCursor);
 
-  // 键盘处理
+  // Keyboard handling
   const {
     handleFileSelect,
     handleCommandSelect,
@@ -205,7 +205,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const isPlaceholder = !inputText;
   const placeholderText = INPUT_PLACEHOLDER_TEXT;
 
-  // 为 CommandSelector 创建适配器函数
+  // Create adapter function for CommandSelector
   const handleCommandInsert = useCallback(
     (command: string) => {
       const result = handleCommandSelectorInsert(
@@ -225,14 +225,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
     ],
   );
 
-  // 将文本拆分为光标前、光标位置、光标后三部分
+  // Split text into three parts: before cursor, cursor position, after cursor
   const displayText = isPlaceholder ? placeholderText : inputText;
   const beforeCursor = displayText.substring(0, cursorPosition);
   const atCursor =
     cursorPosition < displayText.length ? displayText[cursorPosition] : " ";
   const afterCursor = displayText.substring(cursorPosition + 1);
 
-  // 始终显示光标，允许用户在 loading 期间继续输入
+  // Always show cursor, allow user to continue input during loading
   const shouldShowCursor = true;
 
   return (

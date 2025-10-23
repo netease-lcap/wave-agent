@@ -14,7 +14,7 @@ describe("grepTool", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "grep-test-"));
 
-    // 创建测试文件结构
+    // Create test file structure
     await mkdir(join(tempDir, "src"), { recursive: true });
     await mkdir(join(tempDir, "tests"), { recursive: true });
 
@@ -250,7 +250,7 @@ It contains various files with different content.`,
   });
 
   it("should work with multiline mode", async () => {
-    // 创建一个包含多行模式的文件
+    // Create a file with multiline patterns
     await writeFile(
       join(tempDir, "multiline.txt"),
       `struct User {
@@ -339,7 +339,7 @@ It contains various files with different content.`,
   });
 
   it("should handle complex glob patterns with braces", async () => {
-    // 添加一个包含 export 的 jsx 文件来测试 braces glob
+    // Add a jsx file containing export to test braces glob
     await writeFile(
       join(tempDir, "src/component.jsx"),
       `export const Button = () => {
@@ -373,8 +373,8 @@ It contains various files with different content.`,
     );
 
     expect(result.success).toBe(true);
-    // 由于 glob "*.ts,*.js" 只匹配根目录的文件，不会匹配 src/ 目录下的文件
-    // 这个测试主要验证逗号分割功能仍然有效
+    // Since glob "*.ts,*.js" only matches files in root directory, it won't match files in src/ directory
+    // This test mainly verifies that comma separation functionality still works
     expect(result.success).toBe(true);
   });
 
@@ -393,7 +393,7 @@ It contains various files with different content.`,
   });
 
   it("should handle patterns starting with dash", async () => {
-    // 创建一个包含以 - 开头内容的文件来测试
+    // Create a file with content starting with - to test
     await writeFile(
       join(tempDir, "tasks.md"),
       `# Tasks
@@ -421,7 +421,7 @@ It contains various files with different content.`,
   });
 
   it("should handle patterns starting with double dash", async () => {
-    // 确保 tasks.md 文件存在（如果前面的测试没有创建）
+    // Ensure tasks.md file exists (if previous tests didn't create it)
     await writeFile(
       join(tempDir, "tasks.md"),
       `# Tasks

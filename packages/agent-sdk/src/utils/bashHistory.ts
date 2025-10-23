@@ -1,6 +1,6 @@
 /**
- * Bash 命令历史管理模块
- * 用于持久化存储和搜索用户执行过的 bash 命令
+ * Bash command history management module
+ * Used for persistent storage and searching of bash commands executed by users
  */
 
 import fs from "fs";
@@ -21,7 +21,7 @@ const HISTORY_VERSION = 1;
 const MAX_HISTORY_SIZE = 1000;
 
 /**
- * 确保数据目录存在
+ * Ensure data directory exists
  */
 const ensureDataDirectory = (): void => {
   try {
@@ -34,7 +34,7 @@ const ensureDataDirectory = (): void => {
 };
 
 /**
- * 加载bash历史
+ * Load bash history
  */
 export const loadBashHistory = (): BashHistory => {
   try {
@@ -50,7 +50,7 @@ export const loadBashHistory = (): BashHistory => {
     const data = fs.readFileSync(BASH_HISTORY_FILE, "utf-8");
     const history: BashHistory = JSON.parse(data);
 
-    // 版本兼容性检查
+    // Version compatibility check
     if (history.version !== HISTORY_VERSION) {
       // logger.debug("Bash history version mismatch, resetting history");
       return {
@@ -70,7 +70,7 @@ export const loadBashHistory = (): BashHistory => {
 };
 
 /**
- * 保存bash历史
+ * Save bash history
  */
 export const saveBashHistory = (history: BashHistory): void => {
   try {
@@ -82,7 +82,7 @@ export const saveBashHistory = (history: BashHistory): void => {
 
     ensureDataDirectory();
 
-    // 限制历史记录大小
+    // Limit history size
     if (history.commands.length > MAX_HISTORY_SIZE) {
       history.commands = history.commands.slice(-MAX_HISTORY_SIZE);
     }
@@ -95,14 +95,14 @@ export const saveBashHistory = (history: BashHistory): void => {
 };
 
 /**
- * 添加命令到bash历史记录
+ * Add command to bash history
  */
 export const addBashCommandToHistory = (
   command: string,
   workdir: string,
 ): void => {
   try {
-    // 过滤系统生成的命令，不添加到历史记录中
+    // Filter system-generated commands, do not add to history
     if (command.startsWith("git add . && git commit -m")) {
       // logger.debug("Skipping system-generated command:", { command, workdir });
       return;
@@ -111,17 +111,17 @@ export const addBashCommandToHistory = (
     const history = loadBashHistory();
     const timestamp = Date.now();
 
-    // 检查是否是重复的连续命令，避免重复记录
+    // Check if it's a duplicate consecutive command to avoid duplicate recording
     const lastCommand = history.commands[history.commands.length - 1];
     if (
       lastCommand &&
       lastCommand.command === command &&
       lastCommand.workdir === workdir
     ) {
-      // 更新最后一条记录的时间戳
+      // Update timestamp of the last record
       lastCommand.timestamp = timestamp;
     } else {
-      // 添加新的命令记录
+      // Add new command record
       history.commands.push({
         command,
         timestamp,
@@ -137,7 +137,7 @@ export const addBashCommandToHistory = (
 };
 
 /**
- * 根据关键字搜索bash历史
+ * Search bash history by keywords
  */
 export const searchBashHistory = (
   query: string,
@@ -150,54 +150,54 @@ export const searchBashHistory = (
 
     let filteredCommands = history.commands;
 
-    // 工作目录过滤
+    // Working directory filter
     filteredCommands = filteredCommands.filter(
       (entry) => entry.workdir === workdir,
     );
 
     if (!normalizedQuery) {
-      // 如果没有查询词，返回最近的命令（去重后）
+      // If no search query, return recent commands (deduplicated)
       const deduped = deduplicateCommands(filteredCommands);
-      return deduped.slice(-limit).reverse(); // 最新的在前面
+      return deduped.slice(-limit).reverse(); // Latest first
     }
 
-    // 按相关性搜索
+    // Search by relevance
     const matches = filteredCommands
       .filter((entry) => {
-        // 命令内容匹配
+        // Command content matching
         const command = entry.command.toLowerCase();
         return command.includes(normalizedQuery);
       })
       .map((entry) => {
-        // 计算匹配得分
+        // Calculate match score
         const command = entry.command.toLowerCase();
         let score = 0;
 
-        // 精确匹配得分更高
+        // Exact match gets higher score
         if (command.includes(normalizedQuery)) {
           score += 10;
         }
 
-        // 命令开头匹配得分更高
+        // Command prefix match gets higher score
         if (command.startsWith(normalizedQuery)) {
           score += 20;
         }
 
-        // 单词边界匹配得分更高
+        // Word boundary match gets higher score
         const words = command.split(/\s+/);
         if (words.some((word) => word.startsWith(normalizedQuery))) {
           score += 15;
         }
 
-        // 时间戳影响（越新得分越高）
-        score += entry.timestamp / 1000000; // 归一化时间戳
+        // Timestamp influence (newer gets higher score)
+        score += entry.timestamp / 1000000; // Normalize timestamp
 
         return { entry, score };
       })
-      .sort((a, b) => b.score - a.score) // 按得分降序排列
+      .sort((a, b) => b.score - a.score) // Sort by score descending
       .map((item) => item.entry);
 
-    // 对搜索结果去重，保留最新的记录
+    // Deduplicate search results, keep latest record
     const dedupedMatches = deduplicateCommands(matches);
     const result = dedupedMatches.slice(0, limit);
 
@@ -211,14 +211,14 @@ export const searchBashHistory = (
 };
 
 /**
- * 去重命令列表，保留每个命令的最新记录
+ * Deduplicate command list, keep latest record for each command
  */
 const deduplicateCommands = (
   commands: BashHistoryEntry[],
 ): BashHistoryEntry[] => {
   const commandMap = new Map<string, BashHistoryEntry>();
 
-  // 遍历所有命令，保留每个命令的最新记录
+  // Iterate through all commands, keep latest record for each
   for (const entry of commands) {
     const existing = commandMap.get(entry.command);
     if (!existing || entry.timestamp > existing.timestamp) {
@@ -226,14 +226,14 @@ const deduplicateCommands = (
     }
   }
 
-  // 按时间戳排序返回
+  // Sort by timestamp and return
   return Array.from(commandMap.values()).sort(
     (a, b) => a.timestamp - b.timestamp,
   );
 };
 
 /**
- * 获取最近使用的bash命令
+ * Get recently used bash commands
  */
 export const getRecentBashCommands = (
   workdir: string,
@@ -245,9 +245,9 @@ export const getRecentBashCommands = (
       (entry) => entry.workdir === workdir,
     );
 
-    // 去重后返回最近的命令
+    // Return recent commands after deduplication
     const deduped = deduplicateCommands(filtered);
-    return deduped.slice(-limit).reverse(); // 最新的在前面
+    return deduped.slice(-limit).reverse(); // Latest first
   } catch {
     // logger.debug("Failed to get recent bash commands:", error);
     return [];
@@ -255,7 +255,7 @@ export const getRecentBashCommands = (
 };
 
 /**
- * 清空bash历史
+ * Clear bash history
  */
 export const clearBashHistory = (): void => {
   try {
@@ -271,7 +271,7 @@ export const clearBashHistory = (): void => {
 };
 
 /**
- * 获取bash命令统计信息
+ * Get bash command statistics
  */
 export const getBashCommandStats = (): {
   totalCommands: number;

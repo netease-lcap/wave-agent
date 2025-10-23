@@ -8,15 +8,15 @@ import {
 import { FAST_MODEL_ID, AGENT_MODEL_ID } from "@/utils/constants.js";
 
 /**
- * 模型配置类型，基于 OpenAI 的参数但排除 messages
+ * Model configuration type, based on OpenAI parameters but excluding messages
  */
 type ModelConfig = Omit<ChatCompletionCreateParamsNonStreaming, "messages">;
 
 /**
- * 根据模型名称获取特定的配置参数
- * @param modelName 模型名称
- * @param baseConfig 基础配置
- * @returns 配置好的模型参数
+ * Get specific configuration parameters based on model name
+ * @param modelName Model name
+ * @param baseConfig Base configuration
+ * @returns Configured model parameters
  */
 function getModelConfig(
   modelName: string,
@@ -28,9 +28,9 @@ function getModelConfig(
     ...baseConfig,
   };
 
-  // 针对特定模型的配置规则
+  // Configuration rules for specific models
   if (modelName.includes("gpt-5-codex")) {
-    // gpt-5-codex 模型设置 temperature 为 undefined
+    // gpt-5-codex model sets temperature to undefined
     config.temperature = undefined;
   }
 
@@ -47,10 +47,10 @@ export interface CallAgentOptions {
   messages: ChatCompletionMessageParam[];
   sessionId?: string;
   abortSignal?: AbortSignal;
-  memory?: string; // 记忆内容参数，从 WAVE.md 读取的内容
-  workdir: string; // 当前工作目录
-  tools?: ChatCompletionFunctionTool[]; // 工具配置
-  model?: string; // 自定义模型
+  memory?: string; // Memory content parameter, content read from WAVE.md
+  workdir: string; // Current working directory
+  tools?: ChatCompletionFunctionTool[]; // Tool configuration
+  model?: string; // Custom model
 }
 
 export interface CallAgentResult {
@@ -69,46 +69,46 @@ export async function callAgent(
   const { messages, abortSignal, memory, workdir, tools, model } = options;
 
   try {
-    // 构建系统提示词内容
+    // Build system prompt content
     let systemContent = `You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
 ## Current Working Directory
 ${workdir}
 `;
 
-    // 如果有记忆内容，添加到系统提示词中
+    // If there is memory content, add it to the system prompt
     if (memory && memory.trim()) {
       systemContent += `\n\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${memory}`;
     }
 
-    // 添加系统提示词
+    // Add system prompt
     const systemMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
       role: "system",
       content: systemContent,
     };
 
-    // ChatCompletionMessageParam[] 已经是 OpenAI 格式，添加系统提示词到开头
+    // ChatCompletionMessageParam[] is already in OpenAI format, add system prompt to the beginning
     const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
       [systemMessage, ...messages];
 
-    // 获取模型配置
+    // Get model configuration
     const modelConfig = getModelConfig(model || AGENT_MODEL_ID, {
       temperature: 0,
       max_completion_tokens: 32768,
     });
 
-    // 准备 API 调用参数
+    // Prepare API call parameters
     const createParams: ChatCompletionCreateParamsNonStreaming = {
       ...modelConfig,
       messages: openaiMessages,
     };
 
-    // 只有当 tools 存在时才添加到参数中
+    // Only add tools if they exist
     if (tools && tools.length > 0) {
       createParams.tools = tools;
     }
 
-    // 调用 OpenAI API（非流式）
+    // Call OpenAI API (non-streaming)
     const response = await openai.chat.completions.create(createParams, {
       signal: abortSignal,
     });
@@ -124,17 +124,17 @@ ${workdir}
 
     const result: CallAgentResult = {};
 
-    // 返回内容
+    // Return content
     if (finalMessage?.content) {
       result.content = finalMessage.content;
     }
 
-    // 返回工具调用
+    // Return tool call
     if (finalMessage?.tool_calls && finalMessage.tool_calls.length > 0) {
       result.tool_calls = finalMessage.tool_calls;
     }
 
-    // 返回 token 使用信息
+    // Return token usage information
     if (totalUsage) {
       result.usage = totalUsage;
     }
@@ -159,7 +159,7 @@ export async function compressMessages(
 ): Promise<string> {
   const { messages, abortSignal } = options;
 
-  // 获取模型配置
+  // Get model configuration
   const modelConfig = getModelConfig(FAST_MODEL_ID, {
     temperature: 0.1,
     max_tokens: 1500,

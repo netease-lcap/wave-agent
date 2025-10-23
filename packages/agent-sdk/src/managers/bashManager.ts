@@ -66,7 +66,7 @@ export class BashManager {
       child.on("exit", (code, signal) => {
         const exitCode = code === null && signal ? 130 : (code ?? 0);
 
-        // 添加命令到bash历史记录
+        // Add command to bash history
         addBashCommandToHistory(command, this.workdir);
 
         this.messageManager.completeCommandMessage(command, exitCode);

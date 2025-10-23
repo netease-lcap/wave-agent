@@ -10,8 +10,8 @@ export interface ClipboardImageResult {
 }
 
 /**
- * 读取剪贴板中的图片
- * @returns Promise<ClipboardImageResult> 包含图片路径或错误信息的结果
+ * Read image from clipboard
+ * @returns Promise<ClipboardImageResult> Result containing image path or error information
  */
 export async function readClipboardImage(): Promise<ClipboardImageResult> {
   try {
@@ -38,7 +38,7 @@ export async function readClipboardImage(): Promise<ClipboardImageResult> {
 }
 
 /**
- * macOS 系统读取剪贴板图片
+ * Read clipboard image on macOS
  */
 async function readClipboardImageMac(): Promise<ClipboardImageResult> {
   const { exec } = await import("child_process");
@@ -46,7 +46,7 @@ async function readClipboardImageMac(): Promise<ClipboardImageResult> {
   const execAsync = promisify(exec);
 
   try {
-    // 直接尝试读取图片数据来检查是否存在图片
+    // Try to read image data directly to check if image exists
     const testScript = `
       tell application "System Events"
         try
@@ -75,10 +75,10 @@ async function readClipboardImageMac(): Promise<ClipboardImageResult> {
       };
     }
 
-    // 生成临时文件路径
+    // Generate temporary file path
     const tempFilePath = join(tmpdir(), `clipboard-image-${Date.now()}.png`);
 
-    // 使用 osascript 将剪贴板图片保存为文件
+    // Use osascript to save clipboard image as file
     const saveScript = `
       tell application "System Events"
         try
@@ -98,7 +98,7 @@ async function readClipboardImageMac(): Promise<ClipboardImageResult> {
 
     await execAsync(`osascript -e '${saveScript}'`);
 
-    // 验证文件是否创建成功
+    // Verify if file was created successfully
     if (!existsSync(tempFilePath)) {
       return {
         success: false,
@@ -120,7 +120,7 @@ async function readClipboardImageMac(): Promise<ClipboardImageResult> {
 }
 
 /**
- * Windows 系统读取剪贴板图片
+ * Read clipboard image on Windows
  */
 async function readClipboardImageWindows(): Promise<ClipboardImageResult> {
   try {
@@ -128,7 +128,7 @@ async function readClipboardImageWindows(): Promise<ClipboardImageResult> {
     const { promisify } = await import("util");
     const execAsync = promisify(exec);
 
-    // 使用 PowerShell 检查剪贴板是否包含图片
+    // Use PowerShell to check if clipboard contains image
     const checkScript = `
       Add-Type -AssemblyName System.Windows.Forms
       if ([System.Windows.Forms.Clipboard]::ContainsImage()) {
@@ -151,10 +151,10 @@ async function readClipboardImageWindows(): Promise<ClipboardImageResult> {
         };
       }
 
-      // 生成临时文件路径
+      // Generate temporary file path
       const tempFilePath = join(tmpdir(), `clipboard-image-${Date.now()}.png`);
 
-      // 使用 PowerShell 保存剪贴板图片
+      // Use PowerShell to save clipboard image
       const saveScript = `
         Add-Type -AssemblyName System.Windows.Forms
         Add-Type -AssemblyName System.Drawing
@@ -198,16 +198,16 @@ async function readClipboardImageWindows(): Promise<ClipboardImageResult> {
 }
 
 /**
- * Linux 系统读取剪贴板图片
+ * Read clipboard image on Linux
  */
 async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
   try {
-    // Linux 上可以使用 xclip 或 wl-clipboard 等工具
+    // Linux can use tools like xclip or wl-clipboard
     const { exec } = await import("child_process");
     const { promisify } = await import("util");
     const execAsync = promisify(exec);
 
-    // 检查是否有 xclip
+    // Check if xclip is available
     try {
       await execAsync("which xclip");
     } catch {
@@ -218,7 +218,7 @@ async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
       };
     }
 
-    // 检查剪贴板是否包含图片
+    // Check if clipboard contains image
     try {
       await execAsync(
         "xclip -selection clipboard -t image/png -o > /dev/null 2>&1",
@@ -230,10 +230,10 @@ async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
       };
     }
 
-    // 生成临时文件路径
+    // Generate temporary file path
     const tempFilePath = join(tmpdir(), `clipboard-image-${Date.now()}.png`);
 
-    // 使用 xclip 保存剪贴板图片
+    // Use xclip to save clipboard image
     try {
       await execAsync(
         `xclip -selection clipboard -t image/png -o > "${tempFilePath}"`,
@@ -266,8 +266,8 @@ async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
 }
 
 /**
- * 清理临时图片文件
- * @param imagePath 要清理的图片路径
+ * Clean up temporary image file
+ * @param imagePath Path to the image file to clean up
  */
 export function cleanupTempImage(imagePath: string): void {
   try {
@@ -280,8 +280,8 @@ export function cleanupTempImage(imagePath: string): void {
 }
 
 /**
- * 检查剪贴板是否包含图片（快速检查，不保存文件）
- * @returns Promise<boolean> 是否包含图片
+ * Check if clipboard contains image (quick check, does not save file)
+ * @returns Promise<boolean> Whether it contains image
  */
 export async function hasClipboardImage(): Promise<boolean> {
   try {
@@ -302,7 +302,7 @@ export async function hasClipboardImage(): Promise<boolean> {
 }
 
 /**
- * macOS 检查剪贴板是否包含图片
+ * Check if clipboard contains image on macOS
  */
 async function hasClipboardImageMac(): Promise<boolean> {
   try {
@@ -329,7 +329,7 @@ async function hasClipboardImageMac(): Promise<boolean> {
 }
 
 /**
- * Windows 检查剪贴板是否包含图片
+ * Check if clipboard contains image on Windows
  */
 async function hasClipboardImageWindows(): Promise<boolean> {
   try {
@@ -354,7 +354,7 @@ async function hasClipboardImageWindows(): Promise<boolean> {
 }
 
 /**
- * Linux 检查剪贴板是否包含图片
+ * Check if clipboard contains image on Linux
  */
 async function hasClipboardImageLinux(): Promise<boolean> {
   try {
@@ -362,14 +362,14 @@ async function hasClipboardImageLinux(): Promise<boolean> {
     const { promisify } = await import("util");
     const execAsync = promisify(exec);
 
-    // 检查是否有 xclip
+    // Check if xclip is available
     try {
       await execAsync("which xclip");
     } catch {
       return false;
     }
 
-    // 检查剪贴板是否包含图片
+    // Check if clipboard contains image
     try {
       await execAsync(
         "xclip -selection clipboard -t image/png -o > /dev/null 2>&1",

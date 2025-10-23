@@ -43,16 +43,16 @@ describe("Memory Module", () => {
 
   describe("isMemoryMessage", () => {
     it("should return true for messages starting with #", () => {
-      expect(memory.isMemoryMessage("#记住这个信息")).toBe(true);
-      expect(memory.isMemoryMessage("#记录下来")).toBe(true);
-      expect(memory.isMemoryMessage("#保存到记忆")).toBe(true);
-      expect(memory.isMemoryMessage("# 添加到记忆")).toBe(true);
+      expect(memory.isMemoryMessage("#remember this info")).toBe(true);
+      expect(memory.isMemoryMessage("#record this")).toBe(true);
+      expect(memory.isMemoryMessage("#save to memory")).toBe(true);
+      expect(memory.isMemoryMessage("# add to memory")).toBe(true);
       expect(memory.isMemoryMessage("#remember this")).toBe(true);
     });
 
     it("should return false for regular messages", () => {
       expect(memory.isMemoryMessage("hello world")).toBe(false);
-      expect(memory.isMemoryMessage("记住这个信息")).toBe(false);
+      expect(memory.isMemoryMessage("remember this info")).toBe(false);
       expect(memory.isMemoryMessage("")).toBe(false);
       expect(memory.isMemoryMessage("not # at start")).toBe(false);
     });
@@ -87,7 +87,7 @@ describe("Memory Module", () => {
       const mockMkdir = vi.spyOn(fs, "mkdir").mockResolvedValue(undefined);
       const mockWriteFile = vi.spyOn(fs, "writeFile").mockResolvedValue();
       vi.spyOn(fs, "readFile").mockResolvedValue(
-        "# User Memory\n\n这是用户级记忆文件，记录跨项目的重要信息和上下文。\n\n",
+        "# User Memory\n\nThis is a user-level memory file, recording important information and context across projects.\n\n",
       );
 
       // Mock fs.access to simulate file doesn't exist initially

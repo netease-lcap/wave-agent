@@ -8,7 +8,7 @@ describe("Memory Display Fixes", () => {
 
     const result = addMemoryBlockToMessage({
       messages,
-      content: "项目记忆: test memory content",
+      content: "Project memory: test memory content",
       isSuccess: true,
       memoryType: "project",
       storagePath: "WAVE.md",
@@ -21,7 +21,7 @@ describe("Memory Display Fixes", () => {
 
     const memoryBlock = result[0].blocks[0];
     if (memoryBlock.type === "memory") {
-      expect(memoryBlock.content).toBe("项目记忆: test memory content");
+      expect(memoryBlock.content).toBe("Project memory: test memory content");
       expect(memoryBlock.isSuccess).toBe(true);
       expect(memoryBlock.memoryType).toBe("project");
       expect(memoryBlock.storagePath).toBe("WAVE.md");
@@ -33,7 +33,7 @@ describe("Memory Display Fixes", () => {
 
     const result = addMemoryBlockToMessage({
       messages,
-      content: "用户记忆: user preference",
+      content: "User memory: user preference",
       isSuccess: true,
       memoryType: "user",
       storagePath: "user-memory.md",
@@ -46,7 +46,7 @@ describe("Memory Display Fixes", () => {
 
     const memoryBlock = result[0].blocks[0];
     if (memoryBlock.type === "memory") {
-      expect(memoryBlock.content).toBe("用户记忆: user preference");
+      expect(memoryBlock.content).toBe("User memory: user preference");
       expect(memoryBlock.isSuccess).toBe(true);
       expect(memoryBlock.memoryType).toBe("user");
       expect(memoryBlock.storagePath).toBe("user-memory.md");
@@ -58,7 +58,7 @@ describe("Memory Display Fixes", () => {
 
     const result = addMemoryBlockToMessage({
       messages,
-      content: "用户记忆添加失败: Permission denied",
+      content: "User memory addition failed: Permission denied",
       isSuccess: false,
       memoryType: "user",
       storagePath: "user-memory.md",
@@ -68,7 +68,9 @@ describe("Memory Display Fixes", () => {
 
     const memoryBlock = result[0].blocks[0];
     if (memoryBlock.type === "memory") {
-      expect(memoryBlock.content).toBe("用户记忆添加失败: Permission denied");
+      expect(memoryBlock.content).toBe(
+        "User memory addition failed: Permission denied",
+      );
       expect(memoryBlock.isSuccess).toBe(false);
       expect(memoryBlock.memoryType).toBe("user");
       expect(memoryBlock.storagePath).toBe("user-memory.md");

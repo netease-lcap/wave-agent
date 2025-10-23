@@ -31,7 +31,7 @@ describe("Agent Message Compression Tests", () => {
     vi.clearAllMocks();
   });
 
-  // 辅助函数：生成指定数量的消息对话
+  // Helper function: generate specified number of message conversations
   const generateMessages = (count: number): Message[] => {
     const messages: Message[] = [];
     for (let i = 0; i < count; i++) {
@@ -58,10 +58,10 @@ describe("Agent Message Compression Tests", () => {
   };
 
   it("should trigger compression when token usage exceeds 64k", async () => {
-    // 创建包含足够多消息的历史（生成8对消息，共16条）
+    // Create message history with enough messages (generate 8 pairs of messages, total 16)
     const messages = generateMessages(8);
 
-    // 添加一个新的用户消息来触发 AI 调用
+    // Add a new user message to trigger AI call
     const newUserMessage: Message = {
       role: "user",
       blocks: [
@@ -72,7 +72,7 @@ describe("Agent Message Compression Tests", () => {
       ],
     };
 
-    // 重新创建 Agent 并传入消息历史
+    // Recreate Agent and pass in message history
     await agent.destroy();
     agent = await Agent.create({
       messages: [...messages, newUserMessage],
@@ -80,50 +80,50 @@ describe("Agent Message Compression Tests", () => {
 
     let compressMessagesCalled = false;
 
-    // Mock AI 服务
+    // Mock AI service
     const mockCallAgent = vi.mocked(aiService.callAgent);
     const mockCompressMessages = vi.mocked(aiService.compressMessages);
 
     mockCallAgent.mockImplementation(async () => {
-      // 返回高 token 使用量来触发压缩
+      // Return high token usage to trigger compression
       return {
         content: "I understand your request. Let me help you with that.",
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // 超过默认限制触发压缩
+          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // Exceed default limit to trigger compression
         },
       };
     });
 
     mockCompressMessages.mockImplementation(async () => {
       compressMessagesCalled = true;
-      return "压缩内容：之前的对话涉及多个任务请求和相应的处理。";
+      return "Compressed content: Previous conversations involved multiple task requests and corresponding processing.";
     });
 
-    // 调用 sendMessage 来触发 AI 调用（这会触发压缩）
+    // Call sendMessage to trigger AI call (this will trigger compression)
     await agent.sendMessage("Test message");
 
-    // 验证 AI 服务被调用
+    // Verify AI service was called
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
 
-    // 验证压缩函数被调用（因为 token 使用量超过了 64k）
+    // Verify compression function was called (because token usage exceeded 64k)
     expect(compressMessagesCalled).toBe(true);
     expect(mockCompressMessages).toHaveBeenCalledTimes(1);
 
-    // 验证压缩函数被调用时的参数
+    // Verify compression function parameters when called
     const compressCall = mockCompressMessages.mock.calls[0];
     expect(compressCall[0]).toHaveProperty("messages");
     expect(Array.isArray(compressCall[0].messages)).toBe(true);
     expect(compressCall[0].messages.length).toBeGreaterThan(0);
 
-    // 验证 compressCall 里的 messages 应该包括 user1 到 user6
+    // Verify compressCall messages should include user1 to user6
     const messagesToCompress = compressCall[0].messages;
     const userMessages = messagesToCompress.filter(
       (msg) => msg.role === "user",
     );
 
-    // 验证包含user1到user6的消息内容
+    // Verify contains user1 to user6 message content
     for (let i = 1; i < 7; i++) {
       const expectedUserContent = `User message ${i}: Please help me with task ${i}`;
       const hasUserMessage = userMessages.some((msg) => {
@@ -140,10 +140,10 @@ describe("Agent Message Compression Tests", () => {
   });
 
   it("should not trigger compression when token usage is below threshold", async () => {
-    // 创建一个较小的消息历史（只生成1对消息，共2条）
+    // Create a small message history (only generate 1 pair of messages, total 2)
     const messages = generateMessages(1);
 
-    // 添加一个新的用户消息来触发 AI 调用
+    // Add a new user message to trigger AI call
     const newUserMessage: Message = {
       role: "user",
       blocks: [
@@ -154,7 +154,7 @@ describe("Agent Message Compression Tests", () => {
       ],
     };
 
-    // 重新创建 Agent 并传入消息历史
+    // Recreate Agent and pass in message history
     await agent.destroy();
     agent = await Agent.create({
       messages: [...messages, newUserMessage],
@@ -162,7 +162,7 @@ describe("Agent Message Compression Tests", () => {
 
     let compressMessagesCalled = false;
 
-    // Mock AI 服务返回低 token 使用量
+    // Mock AI service returns low token usage
     const mockCallAgent = vi.mocked(aiService.callAgent);
     const mockCompressMessages = vi.mocked(aiService.compressMessages);
 
@@ -172,7 +172,7 @@ describe("Agent Message Compression Tests", () => {
         usage: {
           prompt_tokens: 100,
           completion_tokens: 50,
-          total_tokens: 150, // 远低于默认限制
+          total_tokens: 150, // Far below default limit
         },
       };
     });
@@ -182,20 +182,20 @@ describe("Agent Message Compression Tests", () => {
       return "This should not be called";
     });
 
-    // 调用 sendMessage
+    // Call sendMessage
     await agent.sendMessage("Test message");
 
-    // 验证 AI 服务被调用但压缩函数未被调用
+    // Verify AI service was called but compression function was not called
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
     expect(compressMessagesCalled).toBe(false);
     expect(mockCompressMessages).toHaveBeenCalledTimes(0);
   });
 
   it("should handle compression errors gracefully", async () => {
-    // 创建包含足够多消息的历史（生成10对消息，共20条）
+    // Create message history with enough messages (generate 10 pairs of messages, total 20)
     const messages = generateMessages(10);
 
-    // 添加一个新的用户消息来触发 AI 调用
+    // Add a new user message to trigger AI call
     const newUserMessage: Message = {
       role: "user",
       blocks: [
@@ -206,13 +206,13 @@ describe("Agent Message Compression Tests", () => {
       ],
     };
 
-    // 重新创建 Agent 并传入消息历史
+    // Recreate Agent and pass in message history
     await agent.destroy();
     agent = await Agent.create({
       messages: [...messages, newUserMessage],
     });
 
-    // Mock AI 服务
+    // Mock AI service
     const mockCallAgent = vi.mocked(aiService.callAgent);
     const mockCompressMessages = vi.mocked(aiService.compressMessages);
 
@@ -222,47 +222,47 @@ describe("Agent Message Compression Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // 超过默认限制触发压缩
+          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // Exceed default limit to trigger compression
         },
       };
     });
 
-    // Mock 压缩函数抛出错误
+    // Mock compression function throws error
     mockCompressMessages.mockRejectedValue(new Error("Compression failed"));
 
-    // 调用 sendMessage 触发压缩
+    // Call sendMessage to trigger compression
     await agent.sendMessage("Test message");
 
-    // 验证调用情况
+    // Verify call details
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
     expect(mockCompressMessages).toHaveBeenCalledTimes(1);
 
-    // 验证即使压缩失败，AI 调用仍然成功（不抛出异常）
-    // 如果这里没有抛出异常，说明错误处理是正确的
+    // Verify even if compression fails, AI call still succeeds (no exception thrown)
+    // If no exception thrown here, error handling is correct
   });
 
   it("should compress messages from 7th last to previous compressed message when session already contains compression", async () => {
-    // 测试场景：当会话中已经包含压缩消息时，新的压缩操作应该只压缩从上一个压缩点到倒数第8条消息之间的内容
+    // Test scenario: When session already contains compression message, new compression should only compress content between previous compression point and 8th to last message
 
-    // 创建初始的15对消息（30条消息）
+    // Create initial 15 pairs of messages (30 messages)
     const initialMessages = generateMessages(15);
 
-    // 在第9个位置插入一个压缩消息（代表之前的压缩）
+    // Insert a compression message at position 9 (representing previous compression)
     const messagesWithCompression: Message[] = [
-      ...initialMessages.slice(0, 8), // 前8条消息
+      ...initialMessages.slice(0, 8), // First 8 messages
       {
         role: "assistant",
         blocks: [
           {
             type: "compress",
-            content: "压缩内容：包含了前面6条消息的总结",
+            content: "Compressed content: Contains summary of first 6 messages",
           },
         ],
       },
-      ...initialMessages.slice(8), // 后面的消息
+      ...initialMessages.slice(8), // Remaining messages
     ];
 
-    // 添加一个新的用户消息来触发 AI 调用
+    // Add a new user message to trigger AI call
     const newUserMessage: Message = {
       role: "user",
       blocks: [
@@ -273,7 +273,7 @@ describe("Agent Message Compression Tests", () => {
       ],
     };
 
-    // 重新创建 Agent 并传入消息历史
+    // Recreate Agent and pass in message history
     await agent.destroy();
     agent = await Agent.create({
       callbacks: {
@@ -282,7 +282,7 @@ describe("Agent Message Compression Tests", () => {
       messages: [...messagesWithCompression, newUserMessage],
     });
 
-    // Mock AI 服务
+    // Mock AI service
     const mockCallAgent = vi.mocked(aiService.callAgent);
     const mockCompressMessages = vi.mocked(aiService.compressMessages);
 
@@ -292,37 +292,37 @@ describe("Agent Message Compression Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // 超过默认限制触发压缩
+          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // Exceed default limit to trigger compression
         },
       };
     });
 
     mockCompressMessages.mockImplementation(async () => {
-      return "新的压缩内容：包含了更多消息的总结";
+      return "New compressed content: Contains summary of more messages";
     });
 
-    // 调用 sendMessage 触发压缩
+    // Call sendMessage to trigger compression
     await agent.sendMessage("Test message");
 
-    // 验证压缩函数被调用
+    // Verify compression function was called
     expect(mockCompressMessages).toHaveBeenCalledTimes(1);
 
-    // 验证压缩函数被调用时的参数
+    // Verify compression function parameters when called
     const compressCall = mockCompressMessages.mock.calls[0];
     expect(compressCall[0]).toHaveProperty("messages");
     expect(Array.isArray(compressCall[0].messages)).toBe(true);
     expect(compressCall[0].messages.length).toBeGreaterThan(0);
 
-    // 验证 compressCall 里的 messages 应该是从倒数第7条到上一个压缩消息之间的消息
+    // Verify compressCall messages should be from 7th to last to previous compression message
     const messagesToCompress = compressCall[0].messages;
 
-    // 检查压缩的消息范围：应该从压缩消息之后到倒数第8条消息（因为保留最近7条）
+    // Check compressed message range: should be from after compression message to 8th to last message (keeping recent 7)
     const userMessages = messagesToCompress.filter(
       (msg) => msg.role === "user",
     );
 
-    // 验证包含的消息内容（应该包含压缩消息之后的一些用户消息）
-    // 根据我们的设置，压缩消息在第9个位置，所以之后应该从 "User message 5" 开始
+    // Verify the included message content (should include some user messages after the compressed message)
+    // According to our settings, the compressed message is at the 9th position, so it should start from "User message 5" afterwards
     const hasUser5 = userMessages.some((msg) => {
       const content = Array.isArray(msg.content)
         ? msg.content
@@ -336,7 +336,7 @@ describe("Agent Message Compression Tests", () => {
     });
     expect(hasUser5).toBe(true);
 
-    // 验证包含到倒数第7条的消息（应该包含 User message 13，因为最后一条是我们新发送的消息）
+    // Verify that the message includes up to the 7th to last message (should include User message 13, because the last message is the one we just sent)
     const hasUser13 = userMessages.some((msg) => {
       const content = Array.isArray(msg.content)
         ? msg.content
@@ -350,18 +350,20 @@ describe("Agent Message Compression Tests", () => {
     });
     expect(hasUser13).toBe(true);
 
-    // 验证应该包含前一个压缩消息作为上下文（这是期望的行为）
-    // convertMessagesForAPI 会将压缩消息转换为系统消息格式
-    const hasCompressedMessage = messagesToCompress.some(
+    // Verify that the previous compressed message should be included as context (this is the expected behavior)
+    // convertMessagesForAPI will convert compressed messages to system message format
+    const hasCompressedMessage = compressCall[0].messages.some(
       (msg) =>
         msg.role === "system" &&
         typeof msg.content === "string" &&
-        msg.content.includes("压缩内容：包含了前面6条消息的总结"),
+        msg.content.includes(
+          "Compressed content: Contains summary of first 6 messages",
+        ),
     );
     expect(hasCompressedMessage).toBe(true);
 
-    // 验证不应该包含最新的几条消息（应该保留最新的几条不被压缩）
-    // 最新的用户消息应该是 User message 15，它不应该在压缩的消息中
+    // Verify that the latest messages should not be included (the latest messages should be kept uncompressed)
+    // The latest user message should be User message 15, which should not be in the compressed message
     const hasLatestUser = userMessages.some((msg) => {
       const content = Array.isArray(msg.content)
         ? msg.content
@@ -374,10 +376,10 @@ describe("Agent Message Compression Tests", () => {
   });
 
   it("should send compressed message plus all messages after compression point to callAgent", async () => {
-    // 创建10对消息（20条消息）来触发压缩
+    // Create 10 pairs of messages (20 messages) to trigger compression
     const messages = generateMessages(10);
 
-    // 添加第一个用户消息来触发压缩
+    // Add the first user message to trigger compression
     const firstUserMessage: Message = {
       role: "user",
       blocks: [
@@ -388,13 +390,13 @@ describe("Agent Message Compression Tests", () => {
       ],
     };
 
-    // 重新创建 Agent 并传入消息历史
+    // Recreate Agent and pass in message history
     await agent.destroy();
     agent = await Agent.create({
       messages: [...messages, firstUserMessage],
     });
 
-    // Mock AI 服务
+    // Mock AI service
     const mockCallAgent = vi.mocked(aiService.callAgent);
     const mockCompressMessages = vi.mocked(aiService.compressMessages);
 
@@ -406,17 +408,17 @@ describe("Agent Message Compression Tests", () => {
       messagesPassedToCallAgent = params.messages || [];
 
       if (callAgentCallCount === 1) {
-        // 第一次调用返回高 token 使用量来触发压缩
+        // First call returns high token usage to trigger compression
         return {
           content: "I understand. Let me help you with that task.",
           usage: {
             prompt_tokens: 50000,
             completion_tokens: 20000,
-            total_tokens: 70000, // 超过 64000 触发压缩
+            total_tokens: 70000, // Exceeds 64000 to trigger compression
           },
         };
       } else {
-        // 第二次调用返回正常响应
+        // Second call returns normal response
         return {
           content: "Here's my response to your second message.",
           usage: {
@@ -429,63 +431,63 @@ describe("Agent Message Compression Tests", () => {
     });
 
     mockCompressMessages.mockImplementation(async () => {
-      return "压缩内容：这里包含了之前多轮对话的总结信息。";
+      return "Compressed content: This contains summary information of previous multi-round conversations.";
     });
 
-    // 第一次调用 sendMessage 触发压缩
+    // First call to sendMessage triggers compression
     await agent.sendMessage("Test message");
 
-    // 验证压缩被触发
+    // Verify compression is triggered
     expect(mockCompressMessages).toHaveBeenCalledTimes(1);
     expect(callAgentCallCount).toBe(1);
 
-    // 获取压缩后的消息列表
+    // Get compressed message list
     const messagesAfterCompression = agent.messages;
 
-    // 验证倒数第八个消息变成了压缩消息
+    // Verify that the eighth message from the end becomes a compressed message
     const eighthLastMessage =
       messagesAfterCompression[messagesAfterCompression.length - 8];
     expect(eighthLastMessage.role).toBe("assistant");
     expect(eighthLastMessage.blocks[0].type).toBe("compress");
-    // 类型断言来访问 CompressBlock 的 content 属性
+    // Type assertion to access the content property of CompressBlock
     const compressBlock = eighthLastMessage.blocks[0] as {
       type: "compress";
       content: string;
     };
     expect(compressBlock.content).toBe(
-      "压缩内容：这里包含了之前多轮对话的总结信息。",
+      "Compressed content: This contains summary information of previous multi-round conversations.",
     );
 
-    // 重置 messagesPassedToCallAgent 来捕获第二次调用的参数
+    // Reset messagesPassedToCallAgent to capture parameters for the second call
     messagesPassedToCallAgent = [];
 
-    // 第二次调用 sendMessage
+    // Second call to sendMessage
     await agent.sendMessage("Second message after compression");
 
-    // 验证第二次调用的参数
+    // Verify parameters of the second call
     expect(callAgentCallCount).toBe(2);
 
-    // 验证传递给 callAgent 的消息包含压缩消息加上从压缩点之后的所有消息
-    expect(messagesPassedToCallAgent.length).toBeGreaterThan(1); // 至少有压缩消息和一些最近消息
+    // Verify that messages passed to callAgent include the compressed message plus all messages after the compression point
+    expect(messagesPassedToCallAgent.length).toBeGreaterThan(1); // At least one compressed message and some recent messages
 
-    // 验证传递给 callAgent 的消息结构
-    // 第一条应该是压缩后的系统消息
+    // Verify the structure of messages passed to callAgent
+    // The first message should be the compressed system message
     expect(messagesPassedToCallAgent[0].role).toBe("system");
     expect(messagesPassedToCallAgent[0].content).toContain(
       "[Compressed Message Summary]",
     );
 
-    // 验证第二条消息是压缩后保留的第一条用户消息
+    // Verify that the second message is the first user message retained after compression
     const secondMessage = messagesPassedToCallAgent[1];
     expect(secondMessage.role).toBe("user");
 
-    // 验证包含预期的助手回复
+    // Verify that the expected assistant reply is included
     const assistantMessages = messagesPassedToCallAgent.filter(
       (m) => m.role === "assistant",
     );
     expect(assistantMessages.length).toBeGreaterThan(0);
 
-    // 最后一条应该是我们添加的第二个用户消息
+    // The last message should be the second user message we added
     const lastMessage =
       messagesPassedToCallAgent[messagesPassedToCallAgent.length - 1];
     expect(lastMessage.role).toBe("user");

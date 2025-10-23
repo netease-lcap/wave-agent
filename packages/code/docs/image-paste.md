@@ -1,80 +1,80 @@
-# 图片粘贴功能
+# Image Paste Feature
 
-## 功能概述
+## Feature Overview
 
-InputBox 现在支持通过 `Ctrl+V` 快捷键粘贴剪贴板中的图片。这使得用户可以方便地将图片与文本一起发送给 AI。
+InputBox now supports pasting images from clipboard via `Ctrl+V` shortcut. This allows users to conveniently send images along with text to AI.
 
-## 使用方法
+## Usage
 
-1. **复制图片到剪贴板**：
-   - 截图 (Cmd+Shift+4 on macOS, Win+Shift+S on Windows)
-   - 从文件管理器复制图片文件
-   - 从网页或应用程序复制图片
+1. **Copy image to clipboard**:
+   - Screenshot (Cmd+Shift+4 on macOS, Win+Shift+S on Windows)
+   - Copy image file from file manager
+   - Copy image from web page or application
 
-2. **粘贴图片**：
-   - 在 InputBox 中按 `Ctrl+V`
-   - 图片会显示为 `[Image #1]` 占位符
-   - 支持连续粘贴多张图片：`[Image #1][Image #2]`
+2. **Paste image**:
+   - Press `Ctrl+V` in InputBox
+   - Image will display as `[Image #1]` placeholder
+   - Supports consecutive pasting of multiple images: `[Image #1][Image #2]`
 
-3. **查看附加的图片**：
-   - 粘贴图片后会显示附加图片列表
-   - 显示格式：`📎 Attached Images: • [Image #1] (image/png)`
+3. **View attached images**:
+   - Attached image list will display after pasting
+   - Display format: `📎 Attached Images: • [Image #1] (image/png)`
 
-4. **发送消息**：
-   - 输入文本消息（可选）
-   - 按 Enter 发送
-   - 图片数据会自动传递给 AI
-   - 发送后图片列表会自动清空
+4. **Send message**:
+   - Enter text message (optional)
+   - Press Enter to send
+   - Image data will be automatically passed to AI
+   - Image list will be automatically cleared after sending
 
-## 技术实现
+## Technical Implementation
 
-### 核心组件
+### Core Components
 
-- **useImageManager**: 管理附加图片的状态
-- **useClipboardPaste**: 处理剪贴板图片读取
-- **useInputKeyboardHandler**: 集成 Ctrl+V 快捷键
-- **InputBox**: 显示图片占位符和附加列表
+- **useImageManager**: Manages attached image state
+- **useClipboardPaste**: Handles clipboard image reading
+- **useInputKeyboardHandler**: Integrates Ctrl+V shortcut
+- **InputBox**: Displays image placeholders and attachment list
 
-### 消息格式
+### Message Format
 
-发送的消息包含：
+Sent messages contain:
 
-- 文本内容（移除图片占位符后）
-- 图片数组：`[{path: string, mimeType: string}]`
+- Text content (after removing image placeholders)
+- Image array: `[{path: string, mimeType: string}]`
 
-### 支持的图片格式
+### Supported Image Formats
 
 - PNG
 - JPEG/JPG
-- 其他剪贴板支持的图片格式
+- Other clipboard-supported image formats
 
-## 测试覆盖
+## Test Coverage
 
-- 图片粘贴功能测试
-- 多图片支持测试
-- 失败情况处理测试
-- 消息发送集成测试
-- 图片清理功能测试
+- Image paste functionality tests
+- Multi-image support tests
+- Failure case handling tests
+- Message sending integration tests
+- Image cleanup functionality tests
 
-## 错误处理
+## Error Handling
 
-- 剪贴板为空时静默失败
-- 非图片内容时不显示占位符
-- 读取失败时在控制台显示警告
-- 不影响现有功能的正常使用
+- Silent failure when clipboard is empty
+- No placeholder displayed for non-image content
+- Warning displayed in console when reading fails
+- Does not affect normal use of existing functionality
 
-## 键盘快捷键
+## Keyboard Shortcuts
 
-| 快捷键   | 功能                           |
+| Shortcut | Function |
 | -------- | ------------------------------ |
-| `Ctrl+V` | 粘贴剪贴板图片                 |
-| `Enter`  | 发送消息（包含图片）           |
-| `Esc`    | 取消选择器（不影响已粘贴图片） |
+| `Ctrl+V` | Paste clipboard image                 |
+| `Enter`  | Send message (including images)           |
+| `Esc`    | Cancel selector (does not affect pasted images) |
 
-## 与现有功能的集成
+## Integration with Existing Features
 
-- 完全兼容文件选择器 (`@` 功能)
-- 完全兼容命令选择器 (`/` 功能)
-- 完全兼容 Bash 历史选择器 (`!` 功能)
-- 支持历史记录导航
-- 支持光标移动和编辑
+- Fully compatible with file selector (`@` function)
+- Fully compatible with command selector (`/` function)
+- Fully compatible with Bash history selector (`!` function)
+- Supports history navigation
+- Supports cursor movement and editing

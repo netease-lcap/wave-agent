@@ -14,10 +14,10 @@ interface PaginationInfo {
 export const usePagination = (messages: Message[]) => {
   const messagesPerPage = MESSAGES_PER_PAGE;
 
-  // 计算分页信息，确保第一页可以不完整，之后的页面都完整
+  // Calculate pagination info, ensuring first page can be incomplete while subsequent pages are complete
   const paginationInfo = useMemo((): PaginationInfo => {
     if (messages.length <= messagesPerPage) {
-      // 如果消息总数不超过一页，直接显示所有消息
+      // If total messages don't exceed one page, display all messages directly
       return {
         currentPage: 1,
         totalPages: 1,
@@ -27,11 +27,11 @@ export const usePagination = (messages: Message[]) => {
       };
     }
 
-    // 计算剩余消息数量（除了第一页之外的消息）
+    // Calculate remaining messages (messages other than the first page)
     const remainingMessages = messages.length % messagesPerPage;
 
     if (remainingMessages === 0) {
-      // 消息数量刚好可以完整分页，使用标准分页
+      // Message count fits perfectly into complete pages, use standard pagination
       const totalPages = Math.ceil(messages.length / messagesPerPage);
       const currentPage = totalPages;
       const startIndex = (currentPage - 1) * messagesPerPage;
@@ -45,11 +45,11 @@ export const usePagination = (messages: Message[]) => {
         messagesPerPage,
       };
     } else {
-      // 有剩余消息，让第一页显示剩余的消息，后面的页面都完整
+      // Has remaining messages, let first page display remaining messages, subsequent pages are complete
       const firstPageMessageCount = remainingMessages;
       const totalPages = Math.floor(messages.length / messagesPerPage) + 1;
 
-      // 默认显示最后一页（完整页面）
+      // Default to showing the last page (complete page)
       const currentPage = totalPages;
       const startIndex =
         firstPageMessageCount + (currentPage - 2) * messagesPerPage;
@@ -65,21 +65,21 @@ export const usePagination = (messages: Message[]) => {
     }
   }, [messages.length, messagesPerPage]);
 
-  // 手动控制的当前页（用于键盘导航）
+  // Manually controlled current page (for keyboard navigation)
   const [manualPage, setManualPage] = useState<number | null>(null);
 
-  // 计算实际显示的页面信息
+  // Calculate actual display page info
   const displayInfo = useMemo((): PaginationInfo => {
     if (manualPage === null) {
-      return paginationInfo; // 自动模式：显示最后一页
+      return paginationInfo; // Auto mode: display last page
     }
 
-    // 手动模式：显示用户选择的页面
+    // Manual mode: display user-selected page
     const totalPages = paginationInfo.totalPages;
     const currentPage = Math.min(Math.max(1, manualPage), totalPages);
 
     if (messages.length <= messagesPerPage) {
-      // 只有一页的情况
+      // Only one page case
       return {
         currentPage,
         totalPages,
@@ -92,7 +92,7 @@ export const usePagination = (messages: Message[]) => {
     const remainingMessages = messages.length % messagesPerPage;
 
     if (remainingMessages === 0) {
-      // 消息数量刚好可以完整分页
+      // Message count fits perfectly into complete pages
       const startIndex = (currentPage - 1) * messagesPerPage;
       const endIndex = Math.min(startIndex + messagesPerPage, messages.length);
 
@@ -104,9 +104,9 @@ export const usePagination = (messages: Message[]) => {
         messagesPerPage,
       };
     } else {
-      // 第一页不完整，后面的页面完整
+      // First page incomplete, subsequent pages complete
       if (currentPage === 1) {
-        // 第一页：显示剩余的消息数量
+        // First page: display remaining message count
         return {
           currentPage,
           totalPages,
@@ -115,7 +115,7 @@ export const usePagination = (messages: Message[]) => {
           messagesPerPage,
         };
       } else {
-        // 其他页面：每页显示完整的消息数量
+        // Other pages: display complete message count per page
         const firstPageMessageCount = remainingMessages;
         const startIndex =
           firstPageMessageCount + (currentPage - 2) * messagesPerPage;
@@ -135,10 +135,10 @@ export const usePagination = (messages: Message[]) => {
     }
   }, [messages.length, messagesPerPage, manualPage, paginationInfo]);
 
-  // 当消息数量变化时，如果用户没有手动导航，则重置为自动模式
+  // When message count changes, if user hasn't manually navigated, reset to auto mode
   useEffect(() => {
     if (manualPage !== null) {
-      // 如果用户当前在最后一页，则保持自动模式
+      // If user is currently on the last page, keep auto mode
       const totalPages = Math.ceil(messages.length / messagesPerPage);
       if (manualPage >= totalPages) {
         setManualPage(null);
@@ -146,7 +146,7 @@ export const usePagination = (messages: Message[]) => {
     }
   }, [messages.length, messagesPerPage, manualPage]);
 
-  // 翻页功能
+  // Pagination functionality
   const goToPage = (page: number | null) => {
     setManualPage(page);
   };
@@ -166,12 +166,12 @@ export const usePagination = (messages: Message[]) => {
   };
 
   const goToLastPage = () => {
-    setManualPage(null); // 返回自动模式（最后一页）
+    setManualPage(null); // Return to auto mode (last page)
   };
 
-  // 集成快捷键处理
+  // Integrate keyboard shortcut handling
   useInput((input, key) => {
-    // Ctrl+U/D 快捷键 (Vim/Less 风格)
+    // Ctrl+U/D shortcuts (Vim/Less style)
     if (key.ctrl) {
       if (input === "u") {
         goToPrevPage();
@@ -180,7 +180,7 @@ export const usePagination = (messages: Message[]) => {
       }
     }
 
-    // Page Up/Down 支持
+    // Page Up/Down support
     if (key.pageUp) {
       goToPrevPage();
     }

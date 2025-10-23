@@ -98,7 +98,7 @@ pnpm build
 
 ## Environment Configuration
 
-在使用前，需要配置以下环境变量用于AI模型鉴权：
+Before use, you need to configure the following environment variables for AI model authentication:
 
 ### Required Environment Variables
 
@@ -131,8 +131,6 @@ export LOG_MAX_FILE_SIZE="10485760"
 # Token limit (optional, defaults to 64000)
 export TOKEN_LIMIT="64000"
 
-# Disable raw mode (optional, for testing)
-export DISABLE_RAW_MODE="false"
 ```
 
 ### Setting Environment Variables

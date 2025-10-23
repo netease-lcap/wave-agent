@@ -8,12 +8,12 @@ interface HookTesterProps<T> {
 
 export interface HookTesterRef<T> {
   getState: () => T;
-  getCurrentState: () => T; // 别名，更清晰
+  getCurrentState: () => T; // Alias, clearer naming
 }
 
 /**
- * 通用的 Hook 测试组件
- * 使用 useImperativeHandle 将 hook 状态暴露给测试
+ * Generic Hook testing component
+ * Uses useImperativeHandle to expose hook state to tests
  */
 export const HookTester = forwardRef<
   HookTesterRef<unknown>,
@@ -30,7 +30,7 @@ export const HookTester = forwardRef<
     return <>{children(hookResult)}</>;
   }
 
-  // 默认渲染：显示组件正在测试
+  // Default render: show component is under test
   return (
     <Box flexDirection="column">
       <Text>Hook Tester Active</Text>

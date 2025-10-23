@@ -3,7 +3,7 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 
 /**
- * Read 工具插件 - 读取文件内容
+ * Read Tool Plugin - Read file content
  */
 export const readTool: ToolPlugin = {
   name: "Read",
@@ -53,15 +53,15 @@ export const readTool: ToolPlugin = {
     }
 
     try {
-      // 注意：新的 Read 工具要求绝对路径，所以我们不使用 resolvePath
-      // 但为了保持兼容性，如果不是绝对路径，我们仍然尝试解析
+      // Note: New Read tool requires absolute paths, so we don't use resolvePath
+      // But for compatibility, if it's not an absolute path, we still try to resolve
       const actualFilePath = filePath.startsWith("/")
         ? filePath
         : resolvePath(filePath, context.workdir);
 
       const fileContent = await readFile(actualFilePath, "utf-8");
 
-      // 检查文件是否为空
+      // Check if file is empty
       if (fileContent.length === 0) {
         // logger.warn(`File ${filePath} exists but has empty contents`);
         return {
@@ -75,9 +75,9 @@ export const readTool: ToolPlugin = {
       const lines = fileContent.split("\n");
       const totalLines = lines.length;
 
-      // 处理偏移和限制
+      // Handle offset and limit
       let startLine = 1;
-      let endLine = Math.min(totalLines, 2000); // 默认最多读取 2000 行
+      let endLine = Math.min(totalLines, 2000); // Default maximum read 2000 lines
 
       if (typeof offset === "number") {
         startLine = Math.max(1, offset);
@@ -87,13 +87,13 @@ export const readTool: ToolPlugin = {
         endLine = Math.min(totalLines, startLine + limit - 1);
       }
 
-      // 如果没有指定偏移和限制，读取整个文件（最多2000行）
+      // If no offset and limit specified, read entire file (maximum 2000 lines)
       if (typeof offset !== "number" && typeof limit !== "number") {
         startLine = 1;
         endLine = Math.min(totalLines, 2000);
       }
 
-      // 验证行号范围
+      // Validate line number range
       if (startLine > totalLines) {
         return {
           success: false,
@@ -102,21 +102,21 @@ export const readTool: ToolPlugin = {
         };
       }
 
-      // 提取指定行范围
+      // Extract specified line range
       const selectedLines = lines.slice(startLine - 1, endLine);
 
-      // 格式化输出 (cat -n 格式，带行号)
+      // Format output (cat -n format, with line numbers)
       const formattedContent = selectedLines
         .map((line, index) => {
           const lineNumber = startLine + index;
-          // 截断超长行
+          // Truncate overly long lines
           const truncatedLine =
             line.length > 2000 ? line.substring(0, 2000) + "..." : line;
           return `${lineNumber.toString().padStart(6)}\t${truncatedLine}`;
         })
         .join("\n");
 
-      // 添加文件信息头部
+      // Add file information header
       let content = `File: ${filePath}\n`;
       if (startLine > 1 || endLine < totalLines) {
         content += `Lines ${startLine}-${endLine} of ${totalLines}\n`;
@@ -126,7 +126,7 @@ export const readTool: ToolPlugin = {
       content += "─".repeat(50) + "\n";
       content += formattedContent;
 
-      // 如果只显示了部分内容，添加提示
+      // If only showing partial content, add prompt
       if (endLine < totalLines) {
         content += `\n${"─".repeat(50)}\n`;
         content += `... ${totalLines - endLine} more lines not shown`;

@@ -5,7 +5,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
-// 延迟函数
+// Delay function
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox File Selector", () => {
@@ -13,16 +13,16 @@ describe("InputBox File Selector", () => {
   let originalCwd: string;
 
   beforeAll(async () => {
-    // 保存原始工作目录
+    // Save original working directory
     originalCwd = process.cwd();
 
-    // 创建临时目录
+    // Create temporary directory
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "file-selector-test-"));
 
-    // 直接切换到临时目录
+    // Switch directly to temporary directory
     process.chdir(tempDir);
 
-    // 创建测试文件结构
+    // Create test file structure
     const testFiles = [
       "src/index.ts",
       "src/components/App.tsx",
@@ -30,26 +30,26 @@ describe("InputBox File Selector", () => {
       "package.json",
     ];
 
-    // 创建目录结构和文件
+    // Create directory structure and files
     for (const filePath of testFiles) {
       const fullPath = path.join(tempDir, filePath);
       const dir = path.dirname(fullPath);
 
-      // 确保目录存在
+      // Ensure directory exists
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      // 写入文件内容
+      // Write file content
       fs.writeFileSync(fullPath, `// Test file: ${filePath}`);
     }
   });
 
   afterAll(() => {
-    // 恢复原始工作目录
+    // Restore original working directory
     process.chdir(originalCwd);
 
-    // 清理临时目录
+    // Clean up temporary directory
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -58,56 +58,56 @@ describe("InputBox File Selector", () => {
   it("should trigger file selector when @ is typed", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 输入 @ 符号
+    // Input @ symbol
     stdin.write("@");
-    await delay(100); // 增加延迟以等待防抖搜索完成
+    await delay(100); // Increase delay to wait for debounced search completion
 
-    // 验证文件选择器出现
+    // Verify file selector appears
     expect(lastFrame()).toContain("Select File");
     expect(lastFrame()).toContain("src/index.ts");
     expect(lastFrame()).toContain("src/cli.tsx");
-    // 验证显示了至少一些文件
+    // Verify at least some files are displayed
     expect(lastFrame()).toMatch(/File \d+ of \d+/);
   });
 
   it("should filter files when typing after @", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 先输入 @ 触发文件选择器
+    // First input @ to trigger file selector
     stdin.write("@");
-    await delay(100); // 等待防抖搜索完成
+    await delay(100); // Wait for debounced search completion
 
-    // 验证文件选择器已经显示
+    // Verify file selector is already displayed
     expect(lastFrame()).toContain("Select File");
 
-    // 然后输入过滤条件（搜索包含 "src" 的文件）
+    // Then input filter condition (search for files containing "src")
     stdin.write("src");
-    await delay(100); // 等待防抖搜索完成
+    await delay(100); // Wait for debounced search completion
 
-    // 验证文件选择器显示了过滤后的结果
+    // Verify file selector displays filtered results
     const output = lastFrame();
     expect(output).toContain('filtering: "src"');
     expect(output).toContain("src/index.ts");
-    // package.json 应该被过滤掉
+    // package.json should be filtered out
     expect(output).not.toContain("package.json");
   });
 
   it("should filter files with more specific query", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 先输入 @ 触发文件选择器
+    // First input @ to trigger file selector
     stdin.write("@");
-    await delay(100); // 等待初始搜索完成
+    await delay(100); // Wait for initial search completion
 
-    // 然后输入更具体的过滤条件
+    // Then input more specific filter condition
     stdin.write("tsx");
-    await delay(100); // 等待防抖搜索完成
+    await delay(100); // Wait for debounced search completion
 
-    // 验证只显示匹配的文件
+    // Verify only matching files are displayed
     expect(lastFrame()).toContain("Select File");
     expect(lastFrame()).toContain('filtering: "tsx"');
     expect(lastFrame()).toContain("src/cli.tsx");
-    // 其他文件应该被过滤掉
+    // Other files should be filtered out
     expect(lastFrame()).not.toContain("src/index.ts");
     expect(lastFrame()).not.toContain("package.json");
   });
@@ -115,15 +115,15 @@ describe("InputBox File Selector", () => {
   it("should show no files message when no matches found", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 先输入 @ 触发文件选择器
+    // First input @ to trigger file selector
     stdin.write("@");
-    await delay(100); // 等待初始搜索完成
+    await delay(100); // Wait for initial search completion
 
-    // 然后输入不存在的文件过滤条件
+    // Then input non-existent file filter condition
     stdin.write("nonexistent");
-    await delay(100); // 等待防抖搜索完成
+    await delay(100); // Wait for debounced search completion
 
-    // 验证显示无匹配文件的消息
+    // Verify no matching files message is displayed
     expect(lastFrame()).toContain('No files found for "nonexistent"');
     expect(lastFrame()).toContain("Press Escape to cancel");
   });
@@ -131,16 +131,16 @@ describe("InputBox File Selector", () => {
   it("should close file selector when escape is pressed", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 输入 @ 触发文件选择器
+    // Input @ to trigger file selector
     stdin.write("@");
-    await delay(100); // 等待防抖搜索完成
+    await delay(100); // Wait for debounced search completion
     expect(lastFrame()).toContain("Select File");
 
-    // 按 Escape 键
+    // Press Escape key
     stdin.write("\u001B"); // ESC key
     await delay(50);
 
-    // 验证文件选择器消失
+    // Verify file selector disappears
     expect(lastFrame()).not.toContain("Select File");
     expect(lastFrame()).toContain("@");
   });
@@ -148,41 +148,41 @@ describe("InputBox File Selector", () => {
   it("should close file selector when @ is deleted", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 先输入 @ 触发文件选择器
+    // First input @ to trigger file selector
     stdin.write("@");
-    await delay(100); // 等待防抖搜索完成
+    await delay(100); // Wait for debounced search completion
 
-    // 验证文件选择器出现
+    // Verify file selector appears
     expect(lastFrame()).toContain("Select File");
 
-    // 删除 @ 字符
+    // Delete @ character
     stdin.write("\u007F"); // Backspace
     await delay(50);
 
-    // 验证文件选择器消失
+    // Verify file selector disappears
     expect(lastFrame()).not.toContain("Select File");
   });
 
   it("should select file and replace @ query when Enter is pressed", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 先输入 @ 触发文件选择器
+    // First input @ to trigger file selector
     stdin.write("@");
-    await delay(100); // 等待初始搜索完成
+    await delay(100); // Wait for initial search completion
 
-    // 然后输入过滤条件
+    // Then input filter condition
     stdin.write("tsx");
-    await delay(100); // 等待防抖搜索完成
+    await delay(100); // Wait for debounced search completion
 
-    // 验证文件选择器显示
+    // Verify file selector displays
     expect(lastFrame()).toContain("Select File");
     expect(lastFrame()).toContain("src/cli.tsx");
 
-    // 按 Enter 选择第一个文件
+    // Press Enter to select first file
     stdin.write("\r"); // Enter key
     await delay(50);
 
-    // 验证文件选择器消失，文本被替换
+    // Verify file selector disappears, text is replaced
     expect(lastFrame()).not.toContain("Select File");
     expect(lastFrame()).toContain("src/cli.tsx");
   });
@@ -190,26 +190,26 @@ describe("InputBox File Selector", () => {
   it("should navigate files with arrow keys in file selector", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 输入 @ 触发文件选择器
+    // Input @ to trigger file selector
     stdin.write("@");
-    await delay(100); // 等待防抖搜索完成
+    await delay(100); // Wait for debounced search completion
 
-    // 验证第一个项目被选中（现在目录优先显示，所以应该是 src 目录）
+    // Verify first item is selected (directories are shown first, so it should be src directory)
     expect(lastFrame()).toContain("▶ 📁 src");
 
-    // 按下箭头键移动选择
+    // Press down arrow key to move selection
     stdin.write("\u001B[B"); // Down arrow
     await delay(50);
 
-    // 验证选择移动到第二个项目（应该是第一个文件）
+    // Verify selection moves to second item (should be first file)
     expect(lastFrame()).toContain("▶ 📄 src/index.ts");
     expect(lastFrame()).not.toContain("▶ 📁 src");
 
-    // 按上箭头键
+    // Press up arrow key
     stdin.write("\u001B[A"); // Up arrow
     await delay(50);
 
-    // 验证选择回到第一个项目（目录）
+    // Verify selection returns to first item (directory)
     expect(lastFrame()).toContain("▶ 📁 src");
     expect(lastFrame()).not.toContain("▶ 📄 src/index.ts");
   });
@@ -217,27 +217,27 @@ describe("InputBox File Selector", () => {
   it("should handle complex input with @ in the middle", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // 输入一些文本，然后在中间插入 @
+    // Input some text, then insert @ in the middle
     stdin.write("Check this file ");
     await delay(50);
 
-    // 先输入 @ 触发文件选择器
+    // First input @ to trigger file selector
     stdin.write("@");
-    await delay(100); // 等待初始搜索完成
+    await delay(100); // Wait for initial search completion
 
-    // 然后输入过滤条件
+    // Then input filter condition
     stdin.write("tsx");
-    await delay(100); // 等待防抖搜索完成
+    await delay(100); // Wait for debounced search completion
 
-    // 验证文件选择器显示
+    // Verify file selector displays
     expect(lastFrame()).toContain("Select File");
     expect(lastFrame()).toContain('filtering: "tsx"');
 
-    // 选择文件
+    // Select file
     stdin.write("\r"); // Enter
     await delay(50);
 
-    // 验证完整的文本
+    // Verify complete text
     expect(lastFrame()).toContain("Check this file src/cli.tsx");
     expect(lastFrame()).not.toContain("Select File");
   });

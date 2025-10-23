@@ -14,7 +14,7 @@ describe("globTool", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "glob-test-"));
 
-    // 创建测试文件结构
+    // Create test file structure
     await mkdir(join(tempDir, "src"), { recursive: true });
     await mkdir(join(tempDir, "tests"), { recursive: true });
     await mkdir(join(tempDir, "docs"), { recursive: true });
@@ -35,7 +35,7 @@ describe("globTool", () => {
     await writeFile(join(tempDir, "package.json"), "{}");
     await writeFile(join(tempDir, ".gitignore"), "node_modules/");
 
-    // 等待一下确保文件时间戳不同
+    // Wait to ensure file timestamps are different
     await new Promise((resolve) => setTimeout(resolve, 10));
   });
 
@@ -144,12 +144,12 @@ describe("globTool", () => {
   });
 
   it("should sort files by modification time", async () => {
-    // 创建文件并确保有不同的修改时间
+    // Create files and ensure different modification times
     const file1 = join(tempDir, "file1.txt");
     const file2 = join(tempDir, "file2.txt");
 
     await writeFile(file1, "content1");
-    await new Promise((resolve) => setTimeout(resolve, 50)); // 等待确保时间差
+    await new Promise((resolve) => setTimeout(resolve, 50)); // Wait to ensure time difference
     await writeFile(file2, "content2");
 
     const result = await globTool.execute(
@@ -159,13 +159,13 @@ describe("globTool", () => {
 
     expect(result.success).toBe(true);
     const lines = result.content.split("\n");
-    // 最近修改的文件应该在前面
+    // Most recently modified files should come first
     expect(lines[0]).toContain("file2.txt");
     expect(lines[1]).toContain("file1.txt");
   });
 
   it("should respect gitignore patterns", async () => {
-    // 创建 node_modules 目录和文件
+    // Create node_modules directory and files
     await mkdir(join(tempDir, "node_modules"), { recursive: true });
     await writeFile(
       join(tempDir, "node_modules/package.js"),
@@ -178,9 +178,9 @@ describe("globTool", () => {
     );
 
     expect(result.success).toBe(true);
-    // 应该包含 tests 目录下的 .js 文件
+    // Should include .js files in tests directory
     expect(result.content).toContain("tests/app.test.js");
-    // 但不应该包含 node_modules 下的文件（被 gitignore 忽略）
+    // But should not include files under node_modules (ignored by gitignore)
     expect(result.content).not.toContain("node_modules/package.js");
   });
 });

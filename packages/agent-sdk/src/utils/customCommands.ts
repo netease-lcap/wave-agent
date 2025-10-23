@@ -45,7 +45,7 @@ function scanCommandsDirectory(dirPath: string): CustomSlashCommand[] {
         commands.push({
           id: commandName,
           name: commandName,
-          description: config?.description, // 使用frontmatter中的description
+          description: config?.description, // Use description from frontmatter
           filePath,
           content,
           config,

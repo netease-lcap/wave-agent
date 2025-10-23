@@ -5,7 +5,7 @@ import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { diffLines } from "diff";
 
 /**
- * 文件写入工具插件
+ * File Write Tool Plugin
  */
 export const writeTool: ToolPlugin = {
   name: "Write",
@@ -41,7 +41,7 @@ export const writeTool: ToolPlugin = {
     const filePath = args.file_path as string;
     const content = args.content as string;
 
-    // 验证必需参数
+    // Validate required parameters
     if (!filePath || typeof filePath !== "string") {
       return {
         success: false,
@@ -61,7 +61,7 @@ export const writeTool: ToolPlugin = {
     try {
       const resolvedPath = resolvePath(filePath, context.workdir);
 
-      // 检查文件是否已存在
+      // Check if file already exists
       let originalContent = "";
       let isExistingFile = false;
 
@@ -69,11 +69,11 @@ export const writeTool: ToolPlugin = {
         originalContent = await readFile(resolvedPath, "utf-8");
         isExistingFile = true;
       } catch {
-        // 文件不存在，这是正常的新文件创建情况
+        // File doesn't exist, this is normal for new file creation
         isExistingFile = false;
       }
 
-      // 检查是否是覆盖现有文件但内容相同
+      // Check if overwriting existing file but content is the same
       if (isExistingFile && originalContent === content) {
         return {
           success: true,
@@ -86,12 +86,12 @@ export const writeTool: ToolPlugin = {
         };
       }
 
-      // 确保目录存在
+      // Ensure directory exists
       const fileDir = dirname(resolvedPath);
       try {
         await mkdir(fileDir, { recursive: true });
       } catch (mkdirError) {
-        // 忽略目录已存在的错误
+        // Ignore directory already exists error
         if (
           mkdirError instanceof Error &&
           !mkdirError.message.includes("EEXIST")
@@ -102,7 +102,7 @@ export const writeTool: ToolPlugin = {
         }
       }
 
-      // 写入文件
+      // Write file
       try {
         await writeFile(resolvedPath, content, "utf-8");
       } catch (writeError) {
@@ -113,7 +113,7 @@ export const writeTool: ToolPlugin = {
         };
       }
 
-      // 生成 diff 信息
+      // Generate diff information
       const diffResult = diffLines(originalContent, content);
 
       const shortResult = isExistingFile ? "File overwritten" : "File created";

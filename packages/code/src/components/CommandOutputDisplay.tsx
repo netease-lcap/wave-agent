@@ -13,9 +13,9 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
 }) => {
   const { command, output, isRunning, exitCode } = block;
   const [isOverflowing, setIsOverflowing] = useState(false);
-  const MAX_LINES = 10; // 设置最大显示行数
+  const MAX_LINES = 10; // Set maximum display lines
 
-  // 检测内容是否溢出
+  // Detect if content is overflowing
   useEffect(() => {
     if (output) {
       const lines = output.split("\n");
@@ -27,7 +27,7 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
     if (isRunning) return "yellow";
     if (exitCode === 0) return "green";
     if (exitCode !== null && exitCode !== 0) return "red";
-    return "gray"; // 未知状态
+    return "gray"; // Unknown state
   };
 
   const getStatusText = () => {
@@ -35,7 +35,7 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
     if (exitCode === 0) return "✅";
     if (exitCode === 130) return "⚠️"; // SIGINT (Ctrl+C)
     if (exitCode !== null && exitCode !== 0) return "❌";
-    return ""; // 未知状态时不显示文本
+    return ""; // Don't display text for unknown state
   };
 
   return (

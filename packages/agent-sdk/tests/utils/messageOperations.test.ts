@@ -152,8 +152,8 @@ describe("convertImageToBase64", () => {
   let tempImagePath: string;
 
   beforeEach(() => {
-    // 创建一个临时的PNG图片文件用于测试
-    // 这是一个1x1像素透明PNG的二进制数据
+    // Create a temporary PNG image file for testing
+    // This is binary data for a 1x1 pixel transparent PNG
     const pngBuffer = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
       0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
@@ -168,7 +168,7 @@ describe("convertImageToBase64", () => {
   });
 
   afterEach(() => {
-    // 清理临时文件
+    // Clean up temporary file
     if (existsSync(tempImagePath)) {
       try {
         unlinkSync(tempImagePath);
@@ -187,7 +187,7 @@ describe("convertImageToBase64", () => {
 
   it("should handle JPEG files with correct MIME type", () => {
     const jpegPath = tempImagePath.replace(".png", ".jpg");
-    // 复制文件并重命名为.jpg
+    // Copy file and rename to .jpg
     const pngBuffer = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
       0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
@@ -202,7 +202,7 @@ describe("convertImageToBase64", () => {
 
     expect(result).toMatch(/^data:image\/jpeg;base64,/);
 
-    // 清理临时JPEG文件
+    // Clean up temporary JPEG file
     if (existsSync(jpegPath)) {
       unlinkSync(jpegPath);
     }
@@ -213,7 +213,7 @@ describe("convertImageToBase64", () => {
 
     const result = convertImageToBase64(nonExistentPath);
 
-    // 应该返回空的base64占位符，而不是抛出错误
+    // Should return empty base64 placeholder instead of throwing error
     expect(result).toBe("data:image/png;base64,");
   });
 
@@ -231,10 +231,10 @@ describe("convertImageToBase64", () => {
 
     const result = convertImageToBase64(unknownExtPath);
 
-    // 应该默认使用PNG MIME类型
+    // Should default to PNG MIME type
     expect(result).toMatch(/^data:image\/png;base64,/);
 
-    // 清理临时文件
+    // Clean up temporary file
     if (existsSync(unknownExtPath)) {
       unlinkSync(unknownExtPath);
     }
@@ -252,7 +252,7 @@ describe("addMemoryBlockToMessage", () => {
 
     const result = addMemoryBlockToMessage({
       messages: initialMessages,
-      content: "记住这个重要信息",
+      content: "Remember this important information",
       isSuccess: true,
     });
 
@@ -262,7 +262,7 @@ describe("addMemoryBlockToMessage", () => {
       blocks: [
         {
           type: "memory",
-          content: "记住这个重要信息",
+          content: "Remember this important information",
           isSuccess: true,
         },
       ],
@@ -279,7 +279,7 @@ describe("addMemoryBlockToMessage", () => {
 
     const result = addMemoryBlockToMessage({
       messages: initialMessages,
-      content: "添加记忆失败: 磁盘空间不足",
+      content: "Memory addition failed: Insufficient disk space",
       isSuccess: false,
     });
 
@@ -289,7 +289,7 @@ describe("addMemoryBlockToMessage", () => {
       blocks: [
         {
           type: "memory",
-          content: "添加记忆失败: 磁盘空间不足",
+          content: "Memory addition failed: Insufficient disk space",
           isSuccess: false,
         },
       ],
@@ -301,7 +301,7 @@ describe("addMemoryBlockToMessage", () => {
 
     const result = addMemoryBlockToMessage({
       messages: initialMessages,
-      content: "第一个记忆",
+      content: "First memory",
       isSuccess: true,
     });
 
@@ -311,7 +311,7 @@ describe("addMemoryBlockToMessage", () => {
       blocks: [
         {
           type: "memory",
-          content: "第一个记忆",
+          content: "First memory",
           isSuccess: true,
         },
       ],
@@ -328,7 +328,7 @@ describe("addMemoryBlockToMessage", () => {
 
     const result = addMemoryBlockToMessage({
       messages: initialMessages,
-      content: "记忆内容",
+      content: "Memory content",
       isSuccess: true,
     });
 

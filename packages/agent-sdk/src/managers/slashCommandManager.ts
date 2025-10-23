@@ -44,7 +44,7 @@ export class SlashCommandManager {
   }
 
   private initializeBuiltinCommands(): void {
-    // 注册内置的 clear 命令
+    // Register built-in clear command
     this.registerCommand({
       id: "clear",
       name: "clear",
@@ -65,7 +65,7 @@ export class SlashCommandManager {
       for (const command of customCommands) {
         this.customCommands.set(command.id, command);
 
-        // 生成描述：优先使用自定义描述，否则使用默认描述
+        // Generate description: prioritize custom description, otherwise use default description
         const description =
           command.description ||
           `Custom command: ${command.name}${hasParameterPlaceholders(command.content) ? " (supports parameters)" : ""}`;
@@ -113,35 +113,35 @@ export class SlashCommandManager {
   }
 
   /**
-   * 注册新命令
+   * Register new command
    */
   private registerCommand(command: SlashCommand): void {
     this.commands.set(command.id, command);
   }
 
   /**
-   * 取消注册命令
+   * Unregister command
    */
   private unregisterCommand(commandId: string): boolean {
     return this.commands.delete(commandId);
   }
 
   /**
-   * 获取所有可用命令
+   * Get all available commands
    */
   public getCommands(): SlashCommand[] {
     return Array.from(this.commands.values());
   }
 
   /**
-   * 根据ID获取命令
+   * Get command by ID
    */
   public getCommand(commandId: string): SlashCommand | undefined {
     return this.commands.get(commandId);
   }
 
   /**
-   * 执行命令
+   * Execute command
    */
   public async executeCommand(
     commandId: string,
@@ -185,7 +185,7 @@ export class SlashCommandManager {
   }
 
   /**
-   * 检查命令是否存在
+   * Check if command exists
    */
   public hasCommand(commandId: string): boolean {
     return this.commands.has(commandId);
@@ -284,7 +284,7 @@ export class SlashCommandManager {
   }
 
   /**
-   * 中断当前正在执行的斜杠命令
+   * Interrupt the currently executing slash command
    */
   public abortCurrentCommand(): void {
     // Abort the AI manager if it's running

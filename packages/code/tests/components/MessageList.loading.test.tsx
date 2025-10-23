@@ -124,16 +124,16 @@ describe("MessageList Loading State", () => {
         isLoading={true}
         isCommandRunning={true}
         latestTotalTokens={1000}
-        isExpanded={true} // 展开状态
+        isExpanded={true} // Expanded state
       />,
     );
     const output = lastFrame();
 
-    // 在展开状态时，不应该显示 loading 相关的 UI
+    // In expanded state, should not show loading related UI
     expect(output).not.toContain("💭 AI is thinking...");
     expect(output).not.toContain("Command is running...");
 
-    // 但应该显示消息内容
+    // But should show message content
     expect(output).toContain("Hello");
     expect(output).toContain("Hi there!");
   });

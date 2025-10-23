@@ -1,5 +1,5 @@
 /**
- * 工具插件接口定义
+ * Tool plugin interface definitions
  */
 
 import { ChatCompletionFunctionTool } from "openai/resources.js";
@@ -22,9 +22,9 @@ export interface ToolResult {
   success: boolean;
   content: string;
   error?: string;
-  // 简短输出，用于折叠状态下显示概要信息
+  // Short output, used to display summary information in collapsed state
   shortResult?: string;
-  // 文件编辑工具的额外属性
+  // Additional properties for file editing tools
   originalContent?: string;
   newContent?: string;
   diffResult?: Array<{
@@ -34,10 +34,10 @@ export interface ToolResult {
     removed?: boolean;
   }>;
   filePath?: string;
-  // 图片数据，用于支持多媒体内容
+  // Image data, for supporting multimedia content
   images?: Array<{
-    data: string; // base64 编码的图片数据
-    mediaType?: string; // 图片的媒体类型，如 "image/png"
+    data: string; // base64 encoded image data
+    mediaType?: string; // Image media type, such as "image/png"
   }>;
 }
 

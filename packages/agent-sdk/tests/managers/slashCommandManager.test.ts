@@ -9,13 +9,13 @@ describe("SlashCommandManager", () => {
   let aiManager: AIManager;
 
   beforeEach(() => {
-    // 创建带有必要回调的 MessageManager
+    // Create MessageManager with necessary callbacks
     messageManager = new MessageManager({
       callbacks: {},
       workdir: "/test/workdir",
     });
 
-    // 创建模拟的 AIManager
+    // Create mock AIManager
     aiManager = {
       sendAIMessage: vi.fn(),
       abortAIMessage: vi.fn(),

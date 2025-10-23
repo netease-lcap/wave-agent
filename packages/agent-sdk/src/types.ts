@@ -1,8 +1,8 @@
 import type { ChildProcess } from "child_process";
 
 /**
- * Logger 接口定义
- * 与 OpenAI 包的 Logger 接口兼容
+ * Logger interface definition
+ * Compatible with OpenAI package Logger interface
  */
 export interface Logger {
   error: (...args: unknown[]) => void;
@@ -41,18 +41,18 @@ export interface ToolBlock {
   type: "tool";
   parameters?: string;
   result?: string;
-  shortResult?: string; // 添加 shortResult 字段
+  shortResult?: string; // Add shortResult field
   images?: Array<{
-    // 添加图片数据支持
-    data: string; // base64 编码的图片数据
-    mediaType?: string; // 图片的媒体类型
+    // Add image data support
+    data: string; // Base64 encoded image data
+    mediaType?: string; // Media type of the image
   }>;
   id?: string;
   name?: string;
-  isRunning?: boolean; // 标记工具是否在实际执行中
+  isRunning?: boolean; // Mark if tool is actually executing
   success?: boolean;
   error?: string | Error;
-  compactParams?: string; // 紧凑参数显示
+  compactParams?: string; // Compact parameter display
 }
 
 export interface ImageBlock {
@@ -87,15 +87,15 @@ export interface MemoryBlock {
   type: "memory";
   content: string;
   isSuccess: boolean;
-  memoryType?: "project" | "user"; // 记忆类型
-  storagePath?: string; // 存储路径文案
+  memoryType?: "project" | "user"; // Memory type
+  storagePath?: string; // Storage path text
 }
 
 export interface CustomCommandBlock {
   type: "custom_command";
   commandName: string;
-  content: string; // 完整的命令内容，传给AI时使用
-  originalInput?: string; // 原始的用户输入，用于UI显示（如 "/fix-issue 123 high"）
+  content: string; // Complete command content, used when passing to AI
+  originalInput?: string; // Original user input, used for UI display (e.g., "/fix-issue 123 high")
 }
 
 export interface AIRequest {
@@ -167,7 +167,7 @@ export interface CustomSlashCommandConfig {
 export interface CustomSlashCommand {
   id: string;
   name: string;
-  description?: string; // 添加描述字段
+  description?: string; // Add description field
   filePath: string;
   content: string;
   config?: CustomSlashCommandConfig;

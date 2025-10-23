@@ -2,11 +2,11 @@ import * as fs from "fs";
 import * as path from "path";
 
 /**
- * 通用的忽略目录和文件模式
- * 可以被多个工具复用（glob, ripgrep, 等）
+ * Common ignore directory and file patterns
+ * Can be reused by multiple tools (glob, ripgrep, etc.)
  */
 export const COMMON_IGNORE_PATTERNS = {
-  // 依赖和构建目录
+  // Dependencies and build directories
   dependencies: [
     "node_modules/**",
     ".git/**",
@@ -19,18 +19,18 @@ export const COMMON_IGNORE_PATTERNS = {
     "temp/**",
   ],
 
-  // 缓存和临时文件
+  // Cache and temporary files
   cache: ["*.log", "*.cache", ".DS_Store", "Thumbs.db", "*~", "*.swp", "*.swo"],
 
-  // 编辑器和 IDE 文件
+  // Editor and IDE files
   editor: [".vscode/**", ".idea/**", "*.sublime-*"],
 
-  // 操作系统相关
+  // Operating system related
   os: [".DS_Store", "Thumbs.db", "desktop.ini"],
 };
 
 /**
- * 获取所有通用忽略模式的扁平数组
+ * Get flat array of all common ignore patterns
  */
 export const getAllIgnorePatterns = (): string[] => {
   return [
@@ -42,10 +42,10 @@ export const getAllIgnorePatterns = (): string[] => {
 };
 
 /**
- * 递归查找目录中的所有 .gitignore 文件
- * @param dir 要搜索的目录
- * @param maxDepth 最大递归深度，防止过深的搜索
- * @returns .gitignore 文件路径数组
+ * Recursively find all .gitignore files in directory
+ * @param dir Directory to search
+ * @param maxDepth Maximum recursion depth to prevent too deep searches
+ * @returns Array of .gitignore file paths
  */
 const findAllGitignoreFiles = (dir: string, maxDepth: number = 5): string[] => {
   const gitignoreFiles: string[] = [];
@@ -61,19 +61,19 @@ const findAllGitignoreFiles = (dir: string, maxDepth: number = 5): string[] => {
       if (item.isFile() && item.name === ".gitignore") {
         gitignoreFiles.push(fullPath);
       } else if (item.isDirectory() && !shouldSkipDirectory(item.name)) {
-        // 递归搜索子目录，但跳过一些明显不需要的目录
+        // Recursively search subdirectories, but skip some obviously unnecessary directories
         gitignoreFiles.push(...findAllGitignoreFiles(fullPath, maxDepth - 1));
       }
     }
   } catch {
-    // 忽略权限错误等问题
+    // Ignore permission errors and other issues
   }
 
   return gitignoreFiles;
 };
 
 /**
- * 判断是否应该跳过某个目录的搜索
+ * Determine whether to skip searching a directory
  */
 const shouldSkipDirectory = (dirName: string): boolean => {
   const skipDirs = [
@@ -92,10 +92,10 @@ const shouldSkipDirectory = (dirName: string): boolean => {
 };
 
 /**
- * 解析单个 .gitignore 文件内容
- * @param gitignorePath .gitignore 文件路径
- * @param basePath 基础路径，用于计算相对路径
- * @returns 解析出的 glob 模式数组
+ * Parse single .gitignore file content
+ * @param gitignorePath .gitignore file path
+ * @param basePath Base path for calculating relative paths
+ * @returns Array of parsed glob patterns
  */
 const parseGitignoreFile = (
   gitignorePath: string,
@@ -107,7 +107,7 @@ const parseGitignoreFile = (
     if (fs.existsSync(gitignorePath)) {
       const gitignoreContent = fs.readFileSync(gitignorePath, "utf8");
       const gitignoreDir = path.dirname(gitignorePath);
-      // 计算相对于基础路径的相对目录
+      // Calculate relative directory relative to base path
       const relativeDirFromBase = path.relative(basePath, gitignoreDir);
 
       const lines = gitignoreContent
@@ -116,39 +116,39 @@ const parseGitignoreFile = (
         .filter((line) => line && !line.startsWith("#"));
 
       for (const line of lines) {
-        // 跳过否定规则（以 ! 开头）
+        // Skip negation rules (starting with !)
         if (line.startsWith("!")) {
           continue;
         }
 
         let pattern = line;
 
-        // 处理以 / 开头的模式（相对于当前 .gitignore 文件所在目录）
+        // Handle patterns starting with / (relative to current .gitignore file directory)
         if (pattern.startsWith("/")) {
-          pattern = pattern.slice(1); // 移除开头的 /
+          pattern = pattern.slice(1); // Remove leading /
         }
 
-        // 如果 .gitignore 在子目录中，需要添加路径前缀
+        // If .gitignore is in subdirectory, need to add path prefix
         if (relativeDirFromBase && relativeDirFromBase !== ".") {
           pattern = path.posix.join(relativeDirFromBase, pattern);
         }
 
-        // 如果是目录模式（以 / 结尾）
+        // If directory pattern (ending with /)
         if (pattern.endsWith("/")) {
           const dirName = pattern.slice(0, -1);
-          // 对于目录模式，同时添加精确匹配和通配符匹配
-          patterns.push(`${dirName}/**`); // 目录及其所有子内容
-          // 如果不包含路径分隔符，说明是简单的目录名，添加全局匹配
+          // For directory patterns, add both exact match and wildcard match
+          patterns.push(`${dirName}/**`); // Directory and all its sub-content
+          // If no path separators, it's a simple directory name, add global match
           if (!dirName.includes("/") && !dirName.includes("*")) {
-            patterns.push(`**/${dirName}/**`); // 匹配任意层级的同名目录
+            patterns.push(`**/${dirName}/**`); // Match directories of same name at any level
           }
         } else {
-          // 文件模式
+          // File pattern
           patterns.push(pattern);
-          // 如果没有通配符且不包含扩展名，也作为目录处理
+          // If no wildcards and no extension, also treat as directory
           if (!pattern.includes("*") && !pattern.includes(".")) {
             patterns.push(`${pattern}/**`);
-            // 同样为简单目录名添加全局匹配
+            // Also add global match for simple directory names
             if (!pattern.includes("/")) {
               patterns.push(`**/${pattern}/**`);
             }
@@ -157,43 +157,43 @@ const parseGitignoreFile = (
       }
     }
   } catch {
-    // 忽略读取 .gitignore 文件时的错误
+    // Ignore errors when reading .gitignore files
   }
 
   return patterns;
 };
 
 /**
- * 解析工作目录及其子目录中的所有 .gitignore 文件并转换为 glob 模式
- * @param workdir 工作目录
- * @returns glob 忽略模式数组
+ * Parse all .gitignore files in the working directory and its subdirectories and convert to glob patterns
+ * @param workdir Working directory
+ * @returns Array of glob ignore patterns
  */
 export const parseGitignoreToGlob = (workdir: string): string[] => {
   const patterns: string[] = [];
 
   try {
-    // 查找所有 .gitignore 文件
+    // Find all .gitignore files
     const gitignoreFiles = findAllGitignoreFiles(workdir);
 
-    // 解析每个 .gitignore 文件
+    // Parse each .gitignore file
     for (const gitignoreFile of gitignoreFiles) {
       patterns.push(...parseGitignoreFile(gitignoreFile, workdir));
     }
   } catch {
-    // 忽略搜索过程中的错误
+    // Ignore errors during search process
   }
 
   return patterns;
 };
 
 /**
- * 获取用于 glob 搜索的忽略模式
- * @param workdir 工作目录，用于解析 .gitignore 文件
+ * Get ignore patterns for glob search
+ * @param workdir Working directory for resolving .gitignore files
  */
 export const getGlobIgnorePatterns = (workdir?: string): string[] => {
   const patterns = getAllIgnorePatterns();
 
-  // 如果提供了工作目录，解析 .gitignore 文件
+  // If working directory is provided, parse .gitignore files
   if (workdir) {
     patterns.push(...parseGitignoreToGlob(workdir));
   }

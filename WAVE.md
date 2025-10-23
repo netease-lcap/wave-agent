@@ -1,13 +1,13 @@
 # Memory
 
-这是AI助手的记忆文件，记录重要信息和上下文。
+This is the AI assistant's memory file, recording important information and context.
 
-- 使用 pnpm 而非 npm
-- 测试框架是 vitest
-- 除非用户明确提及，否则不要创建 Markdown 文档
-- 不要写 any 类型
-- 使用 HookTester 测试 hooks
-- packages/\*/examples 目录下是难以 mock 的真实测试文件，需要创建临时目录，然后通过发送真实消息来测试，cd 到 packages/\*后，用 pnpm tsx 在本地运行
-- packages/\*/tests 目录下是容易 mock 的测试文件，可以在本地和 CICD 上运行
-- 修改 agent-sdk 后需要 build 才能在 code 里使用
-- 修改完，注意使用 pnpm run type-check 和 pnpm run lint 来检查 
+- Use pnpm instead of npm
+- Testing framework is vitest
+- Don't create Markdown documents unless explicitly mentioned by user
+- Don't write any types
+- Use HookTester to test hooks
+- packages/*/examples directories contain real test files that are hard to mock, need to create temporary directories, then test by sending real messages, cd to packages/* and run locally with pnpm tsx
+- packages/*/tests directories contain test files that are easy to mock, can run locally and on CI/CD
+- After modifying agent-sdk, need to build before using in code
+- After modifications, remember to use pnpm run type-check and pnpm run lint to check 

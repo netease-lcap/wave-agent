@@ -51,17 +51,17 @@ export class AIManager {
   private callbacks: AIManagerCallbacks;
 
   /**
-   * 获取过滤后的工具配置
+   * Get filtered tool configuration
    */
   private getFilteredToolsConfig(allowedTools?: string[]) {
     const allTools = this.toolManager.getToolsConfig();
 
-    // 如果没有指定 allowedTools，返回所有工具
+    // If no allowedTools specified, return all tools
     if (!allowedTools || allowedTools.length === 0) {
       return allTools;
     }
 
-    // 过滤出允许的工具
+    // Filter allowed tools
     return allTools.filter((tool) => allowedTools.includes(tool.function.name));
   }
 
@@ -70,7 +70,7 @@ export class AIManager {
   }
 
   public abortAIMessage(): void {
-    // 中断AI服务
+    // Interrupt AI service
     if (this.abortController) {
       try {
         this.abortController.abort();
@@ -79,7 +79,7 @@ export class AIManager {
       }
     }
 
-    // 中断工具执行
+    // Interrupt tool execution
     if (this.toolAbortController) {
       try {
         this.toolAbortController.abort();
@@ -91,7 +91,7 @@ export class AIManager {
     this.setIsLoading(false);
   }
 
-  // 生成 compactParams 的辅助方法
+  // Helper method to generate compactParams
   private generateCompactParams(
     toolName: string,
     toolArgs: Record<string, unknown>,
@@ -112,17 +112,17 @@ export class AIManager {
     return undefined;
   }
 
-  // 处理 token 统计和消息压缩的私有方法
+  // Private method to handle token statistics and message compression
   private async handleTokenUsageAndCompression(
     usage: { total_tokens: number } | undefined,
     abortController: AbortController,
   ): Promise<void> {
     if (!usage) return;
 
-    // 更新 token 统计 - 显示最新一次的token使用量
+    // Update token statistics - display latest token usage
     this.messageManager.setlatestTotalTokens(usage.total_tokens);
 
-    // 检查是否超过token限制
+    // Check if token limit exceeded
     const tokenLimit = parseInt(
       process.env.TOKEN_LIMIT || `${DEFAULT_TOKEN_LIMIT}`,
       10,
@@ -133,13 +133,13 @@ export class AIManager {
         `Token usage exceeded ${tokenLimit}, compressing messages...`,
       );
 
-      // 检查是否需要压缩消息
+      // Check if messages need compression
       const { messagesToCompress, insertIndex } = getMessagesToCompress(
         this.messageManager.getMessages(),
         7,
       );
 
-      // 如果有需要压缩的消息，则进行压缩
+      // If there are messages to compress, perform compression
       if (messagesToCompress.length > 0) {
         const recentChatMessages = convertMessagesForAPI(messagesToCompress);
 
@@ -150,7 +150,7 @@ export class AIManager {
             abortSignal: abortController.signal,
           });
 
-          // 执行压缩后的消息重构和sessionId更新
+          // Execute message reconstruction and sessionId update after compression
           this.messageManager.compressMessagesAndUpdateSession(
             insertIndex,
             compressedContent,
@@ -192,11 +192,11 @@ export class AIManager {
       return;
     }
 
-    // 创建新的AbortController
+    // Create new AbortController
     const abortController = new AbortController();
     this.abortController = abortController;
 
-    // 为工具执行创建单独的AbortController
+    // Create separate AbortController for tool execution
     const toolAbortController = new AbortController();
     this.toolAbortController = toolAbortController;
 
@@ -205,29 +205,29 @@ export class AIManager {
       this.setIsLoading(true);
     }
 
-    // 获取近期消息历史
+    // Get recent message history
     const recentMessages = convertMessagesForAPI(
       this.messageManager.getMessages(),
     );
 
     try {
-      // 获取合并的记忆内容
+      // Get combined memory content
       const combinedMemory = await memory.getCombinedMemoryContent(
         this.workdir,
       );
 
-      // 调用 AI 服务（非流式）
+      // Call AI service (non-streaming)
       const result = await callAgent({
         messages: recentMessages,
         sessionId: this.messageManager.getSessionId(),
         abortSignal: abortController.signal,
-        memory: combinedMemory, // 传递合并后的记忆内容
-        workdir: this.workdir, // 传递工作目录
-        tools: this.getFilteredToolsConfig(allowedTools), // 传递过滤后的工具配置
-        model: model, // 使用传入的模型
+        memory: combinedMemory, // Pass combined memory content
+        workdir: this.workdir, // Pass working directory
+        tools: this.getFilteredToolsConfig(allowedTools), // Pass filtered tool configuration
+        model: model, // Use passed model
       });
 
-      // 收集内容和工具调用
+      // Collect content and tool calls
       const content = result.content || "";
       const toolCalls: ChatCompletionMessageFunctionToolCall[] = [];
 
@@ -239,15 +239,15 @@ export class AIManager {
         }
       }
 
-      // 一次性添加助手消息（包含内容和工具调用）
+      // Add assistant message at once (including content and tool calls)
       this.messageManager.addAssistantMessage(content, toolCalls);
 
       if (toolCalls.length > 0) {
         for (const functionToolCall of toolCalls) {
           const toolId = functionToolCall.id || "";
-          // 执行工具
+          // Execute tool
           try {
-            // 检查是否已被中断，如果是则跳过工具执行
+            // Check if already interrupted, skip tool execution if so
             if (
               abortController.signal.aborted ||
               toolAbortController.signal.aborted
@@ -255,25 +255,25 @@ export class AIManager {
               return;
             }
 
-            // 安全解析工具参数，处理无参数工具的情况
+            // Safely parse tool parameters, handle tools without parameters
             let toolArgs: Record<string, unknown> = {};
             const argsString = functionToolCall.function?.arguments?.trim();
 
             if (!argsString || argsString === "") {
-              // 无参数工具，使用空对象
+              // Tool without parameters, use empty object
               toolArgs = {};
             } else {
               try {
                 toolArgs = JSON.parse(argsString);
               } catch (parseError) {
-                // 对于非空但格式错误的JSON，仍然抛出异常
+                // For non-empty but malformed JSON, still throw exception
                 const errorMessage = `Failed to parse tool arguments: ${argsString}`;
                 this.logger?.error(errorMessage, parseError);
                 throw new Error(errorMessage);
               }
             }
 
-            // 设置工具开始执行状态
+            // Set tool start execution state
             const toolName = functionToolCall.function?.name || "";
             const compactParams = this.generateCompactParams(
               toolName,
@@ -292,21 +292,21 @@ export class AIManager {
               // Execute PreToolUse hooks before tool execution
               await this.executePreToolUseHooks(toolName);
 
-              // 创建工具执行上下文
+              // Create tool execution context
               const context: ToolContext = {
                 abortSignal: toolAbortController.signal,
                 backgroundBashManager: this.backgroundBashManager,
                 workdir: this.workdir,
               };
 
-              // 执行工具
+              // Execute tool
               const toolResult = await this.toolManager.execute(
                 functionToolCall.function?.name || "",
                 toolArgs,
                 context,
               );
 
-              // 更新消息状态 - 工具执行完成
+              // Update message state - tool execution completed
               this.messageManager.updateToolBlock({
                 toolId,
                 args: JSON.stringify(toolArgs, null, 2),
@@ -321,7 +321,7 @@ export class AIManager {
                 compactParams,
               });
 
-              // 如果工具返回了diff信息，添加diff块
+              // If tool returns diff information, add diff block
               if (
                 toolResult.success &&
                 toolResult.diffResult &&
@@ -353,13 +353,13 @@ export class AIManager {
               });
             }
           } catch (parseError) {
-            // 检查是否是因为中断导致的解析错误
+            // Check if it's a parsing error due to interruption
             const isAborted =
               abortController.signal.aborted ||
               toolAbortController.signal.aborted;
 
             if (isAborted) {
-              // 如果是中断导致的，直接返回，不显示错误
+              // If interrupted, return directly without showing error
               return;
             }
 
@@ -374,23 +374,23 @@ export class AIManager {
         }
       }
 
-      // 处理 token 统计和消息压缩
+      // Handle token statistics and message compression
       await this.handleTokenUsageAndCompression(result.usage, abortController);
 
-      // 检查是否有工具操作，如果有则自动发起下一次 AI 服务调用
+      // Check if there are tool operations, if so automatically initiate next AI service call
       if (toolCalls.length > 0) {
-        // 检查中断状态
+        // Check interruption status
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
 
-        // AI 服务调用结束，清除 abort controller
+        // AI service call ends, clear abort controller
         this.abortController = null;
 
-        // 工具执行完成后清理工具的AbortController
+        // Clear tool AbortController after tool execution completes
         this.toolAbortController = null;
 
         if (!isCurrentlyAborted) {
-          // 递归调用 AI 服务，递增的递归深度，并传递相同的配置
+          // Recursively call AI service, increment recursion depth, and pass same configuration
           await this.sendAIMessage({
             recursionDepth: recursionDepth + 1,
             model,
@@ -398,12 +398,12 @@ export class AIManager {
           });
         }
       } else {
-        // 没有工具操作时也要清除 abort controller
+        // Clear abort controller when no tool operations
         this.abortController = null;
         this.toolAbortController = null;
       }
     } catch (error) {
-      // 检查是否是由于用户中断操作导致的错误
+      // Check if error is due to user interrupt operation
       const isAborted =
         abortController.signal.aborted ||
         toolAbortController.signal.aborted ||
@@ -416,7 +416,7 @@ export class AIManager {
         );
       }
 
-      // 出错时也要重置 abort controller
+      // Reset abort controller on error
       this.abortController = null;
       this.toolAbortController = null;
     } finally {

@@ -8,9 +8,9 @@ import {
 } from "openai/resources.js";
 
 /**
- * 安全处理工具调用参数，确保返回合法的 JSON 字符串
- * @param args 工具调用参数
- * @returns 合法的 JSON 字符串
+ * Safely handle tool call parameters, ensuring a legal JSON string is returned
+ * @param args Tool call parameters
+ * @returns Legal JSON string
  */
 function safeToolArguments(args: string): string {
   if (!args) {
@@ -18,20 +18,20 @@ function safeToolArguments(args: string): string {
   }
 
   try {
-    // 尝试解析为 JSON 以验证格式
+    // Try to parse as JSON to validate format
     JSON.parse(args);
     return args;
   } catch {
     // logger.error(`Invalid tool arguments: ${args}`);
-    // 如果不是合法的 JSON，返回兜底的空对象
+    // If not valid JSON, return a fallback empty object
     return "{}";
   }
 }
 
 /**
- * 转换消息格式为API调用格式，遇到压缩消息时停止
- * @param messages 消息列表
- * @returns 转换后的API消息格式列表
+ * Convert message format to API call format, stopping when a compressed message is encountered
+ * @param messages Message list
+ * @returns Converted API message format list
  */
 export function convertMessagesForAPI(
   messages: Message[],
@@ -42,12 +42,12 @@ export function convertMessagesForAPI(
   for (let i = startIndex; i >= 0; i--) {
     const message = messages[i];
 
-    // 检查是否遇到压缩块，如果遇到则停止遍历
+    // Check if a compression block is encountered, if so, stop iteration
     if (
       message.role === "assistant" &&
       message.blocks.some((block) => block.type === "compress")
     ) {
-      // 将压缩块的内容作为助手消息添加到历史中
+      // Add the content of the compression block as an assistant message to the history
       const compressBlock = message.blocks.find(
         (block) => block.type === "compress",
       );
@@ -60,38 +60,38 @@ export function convertMessagesForAPI(
       break;
     }
 
-    // 跳过空的助手消息
+    // Skip empty assistant messages
     if (message.role === "assistant" && message.blocks.length === 0) {
       continue;
     }
 
     if (message.role === "assistant") {
-      // 先检查是否有 tool block，如果有则先添加 tool 消息
-      // 过滤掉未完成的 tool blocks（没有 result 或正在运行中的）
+      // First check if there is a tool block, if so, add the tool message first
+      // Filter out incomplete tool blocks (no result or still running)
       const toolBlocks = message.blocks.filter(
         (block) => block.type === "tool",
       );
-      const completedToolIds = new Set<string>(); // 记录已完成的工具ID
+      const completedToolIds = new Set<string>(); // Record completed tool IDs
 
       if (toolBlocks.length > 0) {
         toolBlocks.forEach((toolBlock) => {
-          // 只添加已完成的 tool blocks（即不在运行中的）
+          // Only add completed tool blocks (i.e., not running)
           if (toolBlock.id && !toolBlock.isRunning) {
             completedToolIds.add(toolBlock.id);
 
-            // 检查是否有图片数据
+            // Check for image data
             if (toolBlock.images && toolBlock.images.length > 0) {
-              // 如果有图片，创建用户消息而不是 tool 消息
+              // If there is an image, create a user message instead of a tool message
               const contentParts: ChatCompletionContentPart[] = [];
 
-              // 添加工具结果作为文本
+              // Add tool result as text
               const toolResultText = `Tool result for ${toolBlock.name || "unknown tool"}:\n${stripAnsiColors(toolBlock.result || "")}`;
               contentParts.push({
                 type: "text",
                 text: toolResultText,
               });
 
-              // 添加图片
+              // Add image
               toolBlock.images.forEach((image) => {
                 const imageUrl = image.data.startsWith("data:")
                   ? image.data
@@ -106,13 +106,13 @@ export function convertMessagesForAPI(
                 });
               });
 
-              // 添加用户消息
+              // Add user message
               recentMessages.unshift({
                 role: "user",
                 content: contentParts,
               });
             } else {
-              // 正常的 tool 消息
+              // Normal tool message
               recentMessages.unshift({
                 tool_call_id: toolBlock.id,
                 role: "tool",
@@ -123,11 +123,11 @@ export function convertMessagesForAPI(
         });
       }
 
-      // 构建助手消息的内容
+      // Construct the content of the assistant message
       let content = "";
       let tool_calls: ChatCompletionMessageToolCall[] | undefined = undefined;
 
-      // 从文本块中构建内容
+      // Construct content from text blocks
       const textBlocks = message.blocks.filter(
         (block) => block.type === "text",
       );
@@ -135,7 +135,7 @@ export function convertMessagesForAPI(
         content = textBlocks.map((block) => block.content || "").join("\n");
       }
 
-      // 从工具块中构建工具调用
+      // Construct tool calls from tool blocks
       if (toolBlocks.length > 0) {
         tool_calls = toolBlocks
           .filter(
@@ -157,7 +157,7 @@ export function convertMessagesForAPI(
         }
       }
 
-      // 构建助手消息 - 只有在有内容或工具调用时才添加
+      // Construct assistant message - only add if there is content or tool calls
       if (content || tool_calls) {
         const assistantMessage: ChatCompletionMessageParam = {
           role: "assistant",
@@ -168,11 +168,11 @@ export function convertMessagesForAPI(
         recentMessages.unshift(assistantMessage);
       }
     } else if (message.role === "user") {
-      // 用户消息转换为标准格式
+      // User messages converted to standard format
       const contentParts: ChatCompletionContentPart[] = [];
 
       message.blocks.forEach((block) => {
-        // 添加文本内容
+        // Add text content
         if (block.type === "text" && block.content) {
           contentParts.push({
             type: "text",
@@ -180,7 +180,7 @@ export function convertMessagesForAPI(
           });
         }
 
-        // 处理自定义命令块 - 将完整内容作为文本传给 AI
+        // Handle custom command blocks - pass full content as text to AI
         if (block.type === "custom_command" && block.content) {
           contentParts.push({
             type: "text",
@@ -188,17 +188,17 @@ export function convertMessagesForAPI(
           });
         }
 
-        // 如果有图片，添加图片内容
+        // If there is an image, add image content
         if (
           block.type === "image" &&
           block.imageUrls &&
           block.imageUrls.length > 0
         ) {
           block.imageUrls.forEach((imageUrl: string) => {
-            // 检查是否已经是base64格式，如果不是则转换
+            // Check if it's already base64, convert if not
             let finalImageUrl = imageUrl;
             if (!imageUrl.startsWith("data:image/")) {
-              // 如果是文件路径，需要转换为base64
+              // If it's a file path, it needs to be converted to base64
               try {
                 finalImageUrl = convertImageToBase64(imageUrl);
               } catch (error) {
@@ -207,7 +207,7 @@ export function convertMessagesForAPI(
                   imageUrl,
                   error,
                 );
-                // 跳过这个图片，不添加到content中
+                // Skip this image, do not add to content
                 return;
               }
             }

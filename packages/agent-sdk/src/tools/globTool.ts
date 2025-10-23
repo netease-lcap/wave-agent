@@ -5,7 +5,7 @@ import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
 
 /**
- * Glob 工具插件 - 快速文件模式匹配
+ * Glob Tool Plugin - Fast file pattern matching
  */
 export const globTool: ToolPlugin = {
   name: "Glob",
@@ -50,18 +50,18 @@ export const globTool: ToolPlugin = {
     }
 
     try {
-      // 确定搜索目录
+      // Determine search directory
       const workdir = searchPath
         ? resolvePath(searchPath, context.workdir)
         : context.workdir;
 
-      // 执行 glob 搜索
+      // Execute glob search
       const matches = await glob(pattern, {
         cwd: workdir,
         ignore: getGlobIgnorePatterns(workdir),
         dot: false,
         absolute: false,
-        nocase: false, // 保持大小写敏感
+        nocase: false, // Keep case sensitive
       });
 
       if (matches.length === 0) {
@@ -72,7 +72,7 @@ export const globTool: ToolPlugin = {
         };
       }
 
-      // 获取文件修改时间并排序
+      // Get file modification time and sort
       const filesWithStats = await Promise.allSettled(
         matches.map(async (file) => {
           try {
@@ -83,7 +83,7 @@ export const globTool: ToolPlugin = {
               mtime: stats.mtime,
             };
           } catch {
-            // 如果无法获取文件统计信息，使用当前时间
+            // If unable to get file stats, use current time
             return {
               path: file,
               mtime: new Date(),
@@ -92,7 +92,7 @@ export const globTool: ToolPlugin = {
         }),
       );
 
-      // 过滤成功的结果并按修改时间排序
+      // Filter successful results and sort by modification time
       const sortedFiles = filesWithStats
         .filter((result) => result.status === "fulfilled")
         .map(
@@ -100,10 +100,10 @@ export const globTool: ToolPlugin = {
             (result as PromiseFulfilledResult<{ path: string; mtime: Date }>)
               .value,
         )
-        .sort((a, b) => b.mtime.getTime() - a.mtime.getTime()) // 最近修改的文件在前
+        .sort((a, b) => b.mtime.getTime() - a.mtime.getTime()) // Most recently modified files first
         .map((item) => item.path);
 
-      // 格式化输出
+      // Format output
       const output = sortedFiles
         .map((file, index) => `${index + 1}. ${file}`)
         .join("\n");

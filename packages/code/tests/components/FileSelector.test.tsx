@@ -63,14 +63,14 @@ describe("FileSelector", () => {
   });
 
   it("should handle scroll window logic correctly", () => {
-    // 测试滚动窗口逻辑
+    // Test scrolling window logic
     const maxDisplay = 10;
     const files: FileItem[] = Array.from({ length: 20 }, (_, i) => ({
       path: `file${i + 1}.txt`,
       type: "file",
     }));
 
-    // 测试选择第一个文件时的窗口计算
+    // Test window calculation when selecting first file
     const getDisplayWindow = (selectedIndex: number) => {
       const startIndex = Math.max(
         0,
@@ -88,7 +88,7 @@ describe("FileSelector", () => {
       };
     };
 
-    // 测试不同的选择位置
+    // Test different selection positions
     const windowAt0 = getDisplayWindow(0);
     expect(windowAt0.startIndex).toBe(0);
     expect(windowAt0.endIndex).toBe(10);

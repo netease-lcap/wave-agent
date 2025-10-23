@@ -21,7 +21,7 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [commands, setCommands] = useState<BashHistoryEntry[]>([]);
 
-  // 搜索bash历史
+  // Search bash history
   useEffect(() => {
     const results = searchBashHistory(searchQuery, 10, workdir);
     setCommands(results);
@@ -46,7 +46,7 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
         const selectedCommand = commands[selectedIndex];
         onExecute(selectedCommand.command);
       } else if (commands.length === 0 && searchQuery.trim()) {
-        // 当没有历史记录匹配时，将搜索查询作为新命令执行
+        // When no history records match, execute the search query as a new command
         onExecute(searchQuery.trim());
       }
       return;
@@ -57,7 +57,7 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
         const selectedCommand = commands[selectedIndex];
         onSelect(selectedCommand.command);
       } else if (commands.length === 0 && searchQuery.trim()) {
-        // 当没有历史记录匹配时，将搜索查询插入
+        // When no history records match, insert the search query
         onSelect(searchQuery.trim());
       }
       return;

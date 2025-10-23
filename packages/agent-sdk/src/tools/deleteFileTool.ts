@@ -3,7 +3,7 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 
 /**
- * 删除文件工具插件
+ * Delete file tool plugin
  */
 export const deleteFileTool: ToolPlugin = {
   name: "Delete",
@@ -46,7 +46,7 @@ export const deleteFileTool: ToolPlugin = {
     try {
       const filePath = resolvePath(targetFile, context.workdir);
 
-      // 删除文件
+      // Delete file
       await unlink(filePath);
 
       // logger.info(`Successfully deleted file: ${filePath}`);

@@ -14,7 +14,7 @@ export const useBashHistorySelector = () => {
   const handleBashHistorySelect = useCallback(
     (command: string, inputText: string, cursorPosition: number) => {
       if (exclamationPosition >= 0) {
-        // 替换 ! 和搜索查询为选中的命令
+        // Replace ! and search query with selected command
         const beforeExclamation = inputText.substring(0, exclamationPosition);
         const afterQuery = inputText.substring(cursorPosition);
         const newInput = beforeExclamation + `!${command}` + afterQuery;
@@ -41,7 +41,7 @@ export const useBashHistorySelector = () => {
     setShowBashHistorySelector(false);
     setExclamationPosition(-1);
     setBashHistorySearchQuery("");
-    return command; // 返回要执行的命令
+    return command; // Return command to execute
   }, []);
 
   const updateBashHistorySearchQuery = useCallback((query: string) => {

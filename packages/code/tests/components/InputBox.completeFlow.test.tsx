@@ -4,7 +4,7 @@ import { render } from "ink-testing-library";
 import { InputBox } from "../../src/components/InputBox.js";
 import type { SlashCommand } from "wave-agent-sdk";
 
-// 延迟函数
+// Delay function
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox Complete Slash Command Flow", () => {
@@ -44,10 +44,10 @@ describe("InputBox Complete Slash Command Flow", () => {
       />,
     );
 
-    // Step 1: 初始状态应该显示占位符
+    // Step 1: Initial state should show placeholder
     expect(lastFrame()).toContain("Type your message");
 
-    // Step 2: 输入 "/" 激活命令选择器
+    // Step 2: Input "/" to activate command selector
     stdin.write("/");
     await delay(50);
 
@@ -56,23 +56,23 @@ describe("InputBox Complete Slash Command Flow", () => {
     expect(afterSlashFrame).toContain("git-commit");
     expect(afterSlashFrame).toContain("docs");
 
-    // Step 3: 输入 "git" 过滤命令
+    // Step 3: Input "git" to filter commands
     stdin.write("git");
     await delay(50);
 
     const filteredFrame = lastFrame();
     expect(filteredFrame).toContain("git-commit");
-    expect(filteredFrame).not.toContain("docs"); // docs 应该被过滤掉
+    expect(filteredFrame).not.toContain("docs"); // docs should be filtered out
 
-    // Step 4: 按回车选择并执行命令
+    // Step 4: Press Enter to select and execute command
     stdin.write("\r");
     await delay(100);
 
-    // Step 5: 验证命令被正确执行
+    // Step 5: Verify command is executed correctly
     expect(mockHasSlashCommand).toHaveBeenCalledWith("git-commit");
     expect(mockSendMessage).toHaveBeenCalledWith("/git-commit");
 
-    // Step 6: 验证输入框被清空并返回初始状态
+    // Step 6: Verify input box is cleared and returns to initial state
     const finalFrame = lastFrame();
     expect(finalFrame).toContain("Type your message");
     expect(finalFrame).not.toContain("Command Selector");
@@ -91,23 +91,23 @@ describe("InputBox Complete Slash Command Flow", () => {
       />,
     );
 
-    // 直接输入完整命令
+    // Input complete command directly
     stdin.write("/git-commit some arguments");
     await delay(50);
 
     expect(lastFrame()).toContain("/git-commit some arguments");
 
-    // 按回车 - 这会作为普通消息发送，斜杠命令会在 sendMessage 内部处理
+    // Press Enter - this will be sent as regular message, slash command will be handled inside sendMessage
     stdin.write("\r");
     await delay(100);
 
-    // 验证作为消息发送（斜杠命令处理现在在 sendMessage 内部）
+    // Verify sent as message (slash command processing now inside sendMessage)
     expect(mockSendMessage).toHaveBeenCalledWith(
       "/git-commit some arguments",
       undefined,
     );
 
-    // 验证输入框被清空
+    // Verify input box is cleared
     expect(lastFrame()).toContain("Type your message");
   });
 });

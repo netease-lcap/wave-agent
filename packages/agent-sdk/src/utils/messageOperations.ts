@@ -80,13 +80,13 @@ export interface CompleteCommandParams {
 }
 
 /**
- * 从 messages 数组中提取用户消息的文本内容
+ * Extract text content from user messages in the messages array
  */
 export const extractUserInputHistory = (messages: Message[]): string[] => {
   return messages
     .filter((message) => message.role === "user")
     .map((message) => {
-      // 提取所有文本块的内容并合并
+      // Extract all text block content and merge
       const textBlocks = message.blocks.filter(
         (block) => block.type === "text",
       );
@@ -95,21 +95,21 @@ export const extractUserInputHistory = (messages: Message[]): string[] => {
         .join(" ")
         .trim();
     })
-    .filter((text) => text.length > 0); // 过滤掉空文本
+    .filter((text) => text.length > 0); // Filter out empty text
 };
 
 /**
- * 将图片文件路径转换为base64格式
- * @param imagePath 图片文件路径
- * @returns base64格式的图片数据URL
+ * Convert image file path to base64 format
+ * @param imagePath Image file path
+ * @returns base64 format image data URL
  */
 export const convertImageToBase64 = (imagePath: string): string => {
   try {
     const imageBuffer = readFileSync(imagePath);
     const ext = extname(imagePath).toLowerCase().substring(1);
 
-    // 根据文件扩展名确定MIME类型
-    let mimeType = "image/png"; // 默认
+    // Determine MIME type based on file extension
+    let mimeType = "image/png"; // Default
     switch (ext) {
       case "jpg":
       case "jpeg":
@@ -135,12 +135,12 @@ export const convertImageToBase64 = (imagePath: string): string => {
     return `data:${mimeType};base64,${base64String}`;
   } catch {
     // logger.error(`Failed to convert image to base64: ${imagePath}`, error);
-    // 返回一个错误占位符或抛出错误
-    return `data:image/png;base64,`; // 空的base64，避免程序崩溃
+    // Return an error placeholder or throw error
+    return `data:image/png;base64,`; // Empty base64, avoid program crash
   }
 };
 
-// 添加用户消息
+// Add user message
 export const addUserMessageToMessages = ({
   messages,
   content,
@@ -149,14 +149,14 @@ export const addUserMessageToMessages = ({
 }: AddUserMessageParams): Message[] => {
   const blocks: Message["blocks"] = [];
 
-  // 如果有自定义命令块，使用它而不是文本内容
+  // If there's a custom command block, use it instead of text content
   if (customCommandBlock) {
     blocks.push(customCommandBlock);
   } else {
     blocks.push({ type: "text", content });
   }
 
-  // 如果有图片，添加图片块
+  // If there are images, add image block
   if (images && images.length > 0) {
     const imageUrls = images.map((img) => img.path);
     blocks.push({
@@ -172,7 +172,7 @@ export const addUserMessageToMessages = ({
   return [...messages, userMessage];
 };
 
-// 添加助手消息（支持一次性添加答案和工具调用）
+// Add assistant message (support one-time addition of answer and tool calls)
 export const addAssistantMessageToMessages = (
   messages: Message[],
   content?: string,
@@ -180,12 +180,12 @@ export const addAssistantMessageToMessages = (
 ): Message[] => {
   const blocks: Message["blocks"] = [];
 
-  // 如果有答案内容，添加文本块
+  // If there's answer content, add text block
   if (content) {
     blocks.push({ type: "text", content: content });
   }
 
-  // 如果有工具调用，添加工具块
+  // If there are tool calls, add tool blocks
   if (toolCalls && toolCalls.length > 0) {
     toolCalls.forEach((toolCall) => {
       blocks.push({
@@ -207,17 +207,17 @@ export const addAssistantMessageToMessages = (
   return [...messages, initialAssistantMessage];
 };
 
-// 更新最后一个助手消息的 File Operation Block
+// Update File Operation Block of the last assistant message
 export const addDiffBlockToMessage = ({
   messages,
   path,
   diffResult,
 }: AddDiffBlockParams): Message[] => {
   const newMessages = [...messages];
-  // 找到最后一个助手消息
+  // Find the last assistant message
   for (let i = newMessages.length - 1; i >= 0; i--) {
     if (newMessages[i].role === "assistant") {
-      // 直接添加 diff 块，而不是替换现有块
+      // Directly add diff block instead of replacing existing blocks
       newMessages[i].blocks.push({
         type: "diff",
         path: path,
@@ -229,7 +229,7 @@ export const addDiffBlockToMessage = ({
   return newMessages;
 };
 
-// 更新最后一个助手消息的 Tool Block
+// Update Tool Block of the last assistant message
 export const updateToolBlockInMessage = ({
   messages,
   id,
@@ -244,7 +244,7 @@ export const updateToolBlockInMessage = ({
   compactParams,
 }: UpdateToolBlockParams): Message[] => {
   const newMessages = [...messages];
-  // 找到最后一个助手消息
+  // Find the last assistant message
   for (let i = newMessages.length - 1; i >= 0; i--) {
     if (newMessages[i].role === "assistant") {
       const toolBlockIndex = newMessages[i].blocks.findIndex(
@@ -257,7 +257,7 @@ export const updateToolBlockInMessage = ({
           toolBlock.parameters = parameters;
           if (result !== undefined) toolBlock.result = result;
           if (shortResult !== undefined) toolBlock.shortResult = shortResult;
-          if (images !== undefined) toolBlock.images = images; // 添加图片数据更新
+          toolBlock.images = images; // Add image data update
           if (success !== undefined) toolBlock.success = success;
           if (error !== undefined) toolBlock.error = error;
           if (isRunning !== undefined) toolBlock.isRunning = isRunning;
@@ -265,13 +265,13 @@ export const updateToolBlockInMessage = ({
             toolBlock.compactParams = compactParams;
         }
       } else if (result !== undefined) {
-        // 如果找不到现有block，创建新的
+        // If existing block not found, create new one
         newMessages[i].blocks.push({
           type: "tool",
           parameters: parameters,
           result: result,
           shortResult: shortResult,
-          images: images, // 添加图片数据
+          images: images, // Add image data
           id: id,
           name: name || "unknown",
           success: success,
@@ -286,13 +286,13 @@ export const updateToolBlockInMessage = ({
   return newMessages;
 };
 
-// 添加 Error Block 到最后一个助手消息
+// Add Error Block to the last assistant message
 export const addErrorBlockToMessage = ({
   messages,
   error,
 }: AddErrorBlockParams): Message[] => {
   const newMessages = [...messages];
-  // 找到最后一个助手消息
+  // Find the last assistant message
   let assistantMessageFound = false;
   for (let i = newMessages.length - 1; i >= 0; i--) {
     if (newMessages[i].role === "assistant") {
@@ -308,7 +308,7 @@ export const addErrorBlockToMessage = ({
     }
   }
 
-  // 如果没有找到助手消息，创建一个新的助手消息只包含错误块
+  // If no assistant message found, create a new assistant message with only error block
   if (!assistantMessageFound) {
     newMessages.push({
       role: "assistant",
@@ -324,7 +324,7 @@ export const addErrorBlockToMessage = ({
   return newMessages;
 };
 
-// 添加 Memory Block 作为新的助手消息
+// Add Memory Block as new assistant message
 export const addMemoryBlockToMessage = ({
   messages,
   content,
@@ -334,7 +334,7 @@ export const addMemoryBlockToMessage = ({
 }: AddMemoryBlockParams): Message[] => {
   const newMessages = [...messages];
 
-  // 创建新的助手消息包含 MemoryBlock
+  // Create new assistant message containing MemoryBlock
   const memoryMessage: Message = {
     role: "assistant",
     blocks: [
@@ -348,17 +348,17 @@ export const addMemoryBlockToMessage = ({
     ],
   };
 
-  // 添加到消息列表末尾
+  // Add to end of message list
   newMessages.push(memoryMessage);
   return newMessages;
 };
 
 /**
- * 从后往前计算有效的 block 数量
- * 只有 text、image、tool 类型的 block 才会被计入
- * @param messages 消息数组
- * @param targetCount 需要计算的有效 block 数量
- * @returns { messageIndex: number, blockCount: number } 消息索引和实际计算到的 block 数量
+ * Count valid blocks from the end
+ * Only text, image, and tool type blocks are counted
+ * @param messages Message array
+ * @param targetCount Number of valid blocks to count
+ * @returns { messageIndex: number, blockCount: number } Message index and actual counted block count
  */
 export const countValidBlocksFromEnd = (
   messages: Message[],
@@ -366,13 +366,13 @@ export const countValidBlocksFromEnd = (
 ): { messageIndex: number; blockCount: number } => {
   let validBlockCount = 0;
 
-  // 从后往前遍历消息
+  // Iterate messages from end to beginning
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
 
-    // 遍历当前消息的所有 blocks
+    // Iterate through all blocks of current message
     for (const block of message.blocks) {
-      // 只计算有效的 block 类型
+      // Only count valid block types
       if (
         block.type === "text" ||
         block.type === "image" ||
@@ -380,7 +380,7 @@ export const countValidBlocksFromEnd = (
       ) {
         validBlockCount++;
 
-        // 如果达到目标数量，返回当前消息的索引
+        // If target count reached, return current message index
         if (validBlockCount >= targetCount) {
           return { messageIndex: i, blockCount: validBlockCount };
         }
@@ -388,24 +388,24 @@ export const countValidBlocksFromEnd = (
     }
   }
 
-  // 如果没有达到目标数量，返回0索引
+  // If target count not reached, return index 0
   return { messageIndex: 0, blockCount: validBlockCount };
 };
 
 /**
- * 获取需要压缩的消息和插入位置
- * @param messages 消息数组
- * @param keepLastCount 保留最后几个有效 block 不压缩
+ * Get messages to be compressed and insertion position
+ * @param messages Message array
+ * @param keepLastCount Keep the last few valid blocks uncompressed
  * @returns { messagesToCompress: Message[], insertIndex: number }
  */
 export const getMessagesToCompress = (
   messages: Message[],
   keepLastCount: number = 7,
 ): { messagesToCompress: Message[]; insertIndex: number } => {
-  // 从后往前计算需要保留的消息位置
+  // Calculate message position to keep from end to beginning
   const { messageIndex } = countValidBlocksFromEnd(messages, keepLastCount);
 
-  // 找到最后一个包含压缩块的消息索引
+  // Find the last message containing compression block
   let lastCompressIndex = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
     const hasCompressBlock = messages[i].blocks.some(
@@ -417,21 +417,21 @@ export const getMessagesToCompress = (
     }
   }
 
-  // 确定压缩的起始位置
-  // 如果存在压缩块，从压缩块位置开始（包含压缩块）
-  // 如果不存在压缩块，从开始位置开始
+  // Determine compression start position
+  // If compression block exists, start from compression block position (include compression block)
+  // If no compression block, start from beginning
   const startIndex = lastCompressIndex >= 0 ? lastCompressIndex : 0;
 
-  // 需要压缩的消息是从起始位置到计算出的位置之前的所有消息
+  // Messages to compress are all messages from start position to before calculated position
   const messagesToCompress = messages.slice(startIndex, messageIndex);
 
-  // 插入位置改为负数，表示从末尾开始的位置
+  // Change insertion position to negative number, indicating position from end
   const insertIndex = messageIndex - messages.length;
 
   return { messagesToCompress, insertIndex };
 };
 
-// 添加命令输出块到消息列表
+// Add command output block to message list
 export const addCommandOutputMessage = ({
   messages,
   command,
@@ -452,7 +452,7 @@ export const addCommandOutputMessage = ({
   return [...messages, outputMessage];
 };
 
-// 更新命令输出块的输出内容
+// Update output content of command output block
 export const updateCommandOutputInMessage = ({
   messages,
   command,
@@ -478,7 +478,7 @@ export const updateCommandOutputInMessage = ({
   return newMessages;
 };
 
-// 完成命令执行，更新退出状态
+// Complete command execution, update exit status
 export const completeCommandInMessage = ({
   messages,
   command,

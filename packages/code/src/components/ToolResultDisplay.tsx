@@ -14,21 +14,21 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   const { parameters, result, compactParams, isRunning, success, error, name } =
     block;
 
-  // 直接使用 compactParams
+  // Directly use compactParams
   // (no change needed as we destructured it above)
 
   const getStatusColor = () => {
     if (isRunning) return "yellow";
     if (success) return "green";
     if (error || success === false) return "red";
-    return "gray"; // 未知状态或无状态信息
+    return "gray"; // Unknown state or no state information
   };
 
   const getStatusText = () => {
     if (isRunning) return "🔄";
     if (success) return "";
     if (error || success === false) return "❌ Failed";
-    return ""; // 未知状态时不显示文本
+    return ""; // Don't display text for unknown state
   };
 
   const hasImages = () => {
@@ -43,13 +43,13 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
 
   const toolName = name ? String(name) : "Tool";
 
-  // 获取shortResult，如果没有则显示result的后5行
+  // Get shortResult, if not available show last 5 lines of result
   const getShortResult = () => {
     if (block.shortResult) {
       return block.shortResult;
     }
 
-    // 如果没有shortResult，且有result，返回后5行
+    // If no shortResult but has result, return last 5 lines
     if (block.result) {
       const lines = block.result.split("\n");
       if (lines.length > 5) {
@@ -68,16 +68,16 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
       <Box>
         <Text color="magenta">🔧 </Text>
         <Text color="white">{toolName}</Text>
-        {/* 折叠状态下显示 compactParams */}
+        {/* Display compactParams in collapsed state */}
         {!isExpanded && compactParams && (
           <Text color="gray"> ({compactParams})</Text>
         )}
         <Text color={getStatusColor()}> {getStatusText()}</Text>
-        {/* 显示图片指示器 */}
+        {/* Display image indicator */}
         {hasImages() && <Text color="blue"> {getImageIndicator()}</Text>}
       </Box>
 
-      {/* 折叠状态下显示shortResult */}
+      {/* Display shortResult in collapsed state */}
       {!isExpanded && shortResult && (
         <Box
           paddingLeft={2}
@@ -93,7 +93,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
         </Box>
       )}
 
-      {/* 展开状态下显示完整参数 */}
+      {/* Display complete parameters in expanded state */}
       {isExpanded && parameters && (
         <Box
           paddingLeft={2}
@@ -108,7 +108,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
         </Box>
       )}
 
-      {/* 展开状态下显示完整结果 */}
+      {/* Display complete result in expanded state */}
       {isExpanded && result && (
         <Box flexDirection="column">
           <Box
@@ -125,7 +125,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
         </Box>
       )}
 
-      {/* 错误信息始终显示 */}
+      {/* Error information always displayed */}
       {error && (
         <Box>
           <Text color="red">

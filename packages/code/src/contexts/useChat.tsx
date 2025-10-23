@@ -93,7 +93,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   const agentRef = useRef<Agent | null>(null);
 
-  // 监听 Ctrl+O 快捷键切换折叠/展开状态
+  // Listen for Ctrl+O hotkey to toggle collapse/expand state
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
       setIsExpanded((prev) => !prev);
@@ -170,44 +170,44 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     };
   }, []);
 
-  // 发送消息函数 (包含判断逻辑)
+  // Send message function (including judgment logic)
   const sendMessage = useCallback(
     async (
       content: string,
       images?: Array<{ path: string; mimeType: string }>,
     ) => {
-      // 检查是否有内容可以发送（文本内容或图片附件）
+      // Check if there's content to send (text content or image attachments)
       const hasTextContent = content.trim();
       const hasImageAttachments = images && images.length > 0;
 
       if (!hasTextContent && !hasImageAttachments) return;
 
       try {
-        // Handle memory mode - 检查是否是记忆消息（以#开头且只有一行）
+        // Handle memory mode - check if it's a memory message (starts with # and only one line)
         if (content.startsWith("#") && !content.includes("\n")) {
           const memoryText = content.substring(1).trim();
           if (!memoryText) return;
 
-          // 在记忆模式下，不添加用户消息，只等待用户选择记忆类型后添加助手消息
-          // 不自动保存，等待用户选择记忆类型
+          // In memory mode, don't add user message, only wait for user to choose memory type then add assistant message
+          // Don't auto-save, wait for user to choose memory type
           return;
         }
 
-        // Handle bash mode - 检查是否是bash命令（以!开头且只有一行）
+        // Handle bash mode - check if it's a bash command (starts with ! and only one line)
         if (content.startsWith("!") && !content.includes("\n")) {
           const command = content.substring(1).trim();
           if (!command) return;
 
-          // 在bash模式下，不添加用户消息到UI，直接执行命令
-          // 执行bash命令会自动添加助手消息
+          // In bash mode, don't add user message to UI, directly execute command
+          // Executing bash command will automatically add assistant message
 
-          // 设置 command running 状态
+          // Set command running state
           setIsCommandRunning(true);
 
           try {
             await agentRef.current?.executeBashCommand(command);
           } finally {
-            // 清除 command running 状态
+            // Clear command running state
             setIsCommandRunning(false);
           }
 
@@ -215,15 +215,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         }
 
         // Handle normal AI message and slash commands
-        // 斜杠命令现在在 agent.sendMessage 内部处理
+        // Slash commands are now handled internally in agent.sendMessage
 
-        // 设置 loading 状态
+        // Set loading state
         setIsLoading(true);
 
         try {
           await agentRef.current?.sendMessage(content, images);
         } finally {
-          // 清除 loading 状态
+          // Clear loading state
           setIsLoading(false);
         }
       } catch (error) {
@@ -234,12 +234,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     [],
   );
 
-  // 统一的中断方法，同时中断AI消息和命令执行
+  // Unified interrupt method, interrupt both AI messages and command execution
   const abortMessage = useCallback(() => {
     agentRef.current?.abortMessage();
   }, []);
 
-  // 记忆保存函数 - 委托给 Agent
+  // Memory save function - delegate to Agent
   const saveMemory = useCallback(
     async (message: string, type: "project" | "user") => {
       await agentRef.current?.saveMemory(message, type);
@@ -247,7 +247,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     [],
   );
 
-  // MCP 管理方法 - 委托给 Agent
+  // MCP management methods - delegate to Agent
   const connectMcpServer = useCallback(async (serverName: string) => {
     return (await agentRef.current?.connectMcpServer(serverName)) ?? false;
   }, []);
@@ -256,7 +256,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     return (await agentRef.current?.disconnectMcpServer(serverName)) ?? false;
   }, []);
 
-  // Background bash 管理方法 - 委托给 Agent
+  // Background bash management methods - delegate to Agent
   const getBackgroundShellOutput = useCallback((shellId: string) => {
     if (!agentRef.current) return null;
     return agentRef.current.getBackgroundShellOutput(shellId);

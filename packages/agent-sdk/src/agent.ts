@@ -21,9 +21,9 @@ export interface AgentOptions {
   restoreSessionId?: string;
   continueLastSession?: boolean;
   logger?: Logger;
-  /**添加可选的初始消息参数，方便测试 */
+  /**Add optional initial messages parameter for testing convenience */
   messages?: Message[];
-  /**工作目录 - 如果未指定，使用 process.cwd() */
+  /**Working directory - if not specified, use process.cwd() */
   workdir?: string;
 }
 
@@ -39,34 +39,34 @@ export class Agent {
 
   private bashManager: BashManager | null = null;
   private backgroundBashManager: BackgroundBashManager;
-  private logger?: Logger; // 添加可选的 logger 属性
-  private toolManager: ToolManager; // 添加工具注册表实例
-  private mcpManager: McpManager; // 添加 MCP 管理器实例
-  private slashCommandManager: SlashCommandManager; // 添加斜杠命令管理器实例
-  private hookManager: HookManager; // 添加 hooks 管理器实例
-  private workdir: string; // 工作目录
+  private logger?: Logger; // Add optional logger property
+  private toolManager: ToolManager; // Add tool registry instance
+  private mcpManager: McpManager; // Add MCP manager instance
+  private slashCommandManager: SlashCommandManager; // Add slash command manager instance
+  private hookManager: HookManager; // Add hooks manager instance
+  private workdir: string; // Working directory
 
-  // 私有构造函数，防止直接实例化
+  // Private constructor to prevent direct instantiation
   private constructor(options: AgentOptions) {
     const { callbacks = {}, logger, workdir } = options;
 
     this.callbacks = callbacks;
-    this.logger = logger; // 保存传入的 logger
-    this.workdir = workdir || process.cwd(); // 设置工作目录，默认为当前工作目录
+    this.logger = logger; // Save the passed logger
+    this.workdir = workdir || process.cwd(); // Set working directory, default to current working directory
     this.backgroundBashManager = new BackgroundBashManager({
       callbacks,
       workdir: this.workdir,
     });
-    this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // 初始化 MCP 管理器
-    this.toolManager = new ToolManager({ mcpManager: this.mcpManager }); // 初始化工具注册表，传入 MCP 管理器
+    this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
+    this.toolManager = new ToolManager({ mcpManager: this.mcpManager }); // Initialize tool registry, pass MCP manager
     this.hookManager = new HookManager(
       this.workdir,
       undefined,
       undefined,
       this.logger,
-    ); // 初始化 hooks 管理器
+    ); // Initialize hooks manager
 
-    // 初始化 MessageManager
+    // Initialize MessageManager
     this.messageManager = new MessageManager({
       callbacks,
       workdir: this.workdir,
@@ -99,7 +99,7 @@ export class Agent {
     });
   }
 
-  // 公开的 getter 方法
+  // Public getter methods
   public get sessionId(): string {
     return this.messageManager.getSessionId();
   }
@@ -116,27 +116,27 @@ export class Agent {
     return this.messageManager.getUserInputHistory();
   }
 
-  /** 获取工作目录 */
+  /** Get working directory */
   public get workingDirectory(): string {
     return this.workdir;
   }
 
-  /** 获取AI加载状态 */
+  /** Get AI loading status */
   public get isLoading(): boolean {
     return this.aiManager.isLoading;
   }
 
-  /** 获取消息压缩状态 */
+  /** Get message compression status */
   public get isCompressing(): boolean {
     return this.aiManager.getIsCompressing();
   }
 
-  /** 获取bash命令执行状态 */
+  /** Get bash command execution status */
   public get isCommandRunning(): boolean {
     return this.bashManager?.isCommandRunning ?? false;
   }
 
-  /** 获取后台 bash shell 输出 */
+  /** Get background bash shell output */
   public getBackgroundShellOutput(
     id: string,
     filter?: string,
@@ -144,12 +144,12 @@ export class Agent {
     return this.backgroundBashManager.getOutput(id, filter);
   }
 
-  /** 杀死后台 bash shell */
+  /** Kill background bash shell */
   public killBackgroundShell(id: string): boolean {
     return this.backgroundBashManager.killShell(id);
   }
 
-  /** 静态异步工厂方法 */
+  /** Static async factory method */
   static async create(options: AgentOptions): Promise<Agent> {
     const instance = new Agent(options);
     await instance.initialize({
@@ -160,7 +160,7 @@ export class Agent {
     return instance;
   }
 
-  /** 私有初始化方法，处理异步初始化逻辑 */
+  /** Private initialization method, handles async initialization logic */
   private async initialize(options?: {
     restoreSessionId?: string;
     continueLastSession?: boolean;
@@ -202,41 +202,41 @@ export class Agent {
     this.aiManager.abortAIMessage();
   }
 
-  /** 执行 bash 命令 */
+  /** Execute bash command */
   public async executeBashCommand(command: string): Promise<void> {
-    // 添加用户消息到历史记录（但不显示在UI中）
+    // Add user message to history (but not displayed in UI)
     this.addToInputHistory(`!${command}`);
     await this.bashManager?.executeCommand(command);
   }
 
-  /** 清空消息和输入历史 */
+  /** Clear messages and input history */
   public clearMessages(): void {
     this.messageManager.clearMessages();
   }
 
-  /** 统一的中断方法，同时中断AI消息和命令执行 */
+  /** Unified interrupt method, interrupts both AI messages and command execution */
   public abortMessage(): void {
     this.abortAIMessage();
     this.abortBashCommand();
     this.abortSlashCommand();
   }
 
-  /** 添加到输入历史记录 */
+  /** Add to input history */
   private addToInputHistory(input: string): void {
     this.messageManager.addToInputHistory(input);
   }
 
-  /** 中断bash命令执行 */
+  /** Interrupt bash command execution */
   public abortBashCommand(): void {
     this.bashManager?.abortCommand();
   }
 
-  /** 中断斜杠命令执行 */
+  /** Interrupt slash command execution */
   public abortSlashCommand(): void {
     this.slashCommandManager.abortCurrentCommand();
   }
 
-  /** 销毁管理器，清理资源 */
+  /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
     this.messageManager.saveSession();
     this.abortAIMessage();
@@ -253,30 +253,30 @@ export class Agent {
     images?: Array<{ path: string; mimeType: string }>,
   ): Promise<void> {
     try {
-      // Handle slash command - 检查是否是斜杠命令（以/开头）
+      // Handle slash command - check if it's a slash command (starts with /)
       if (content.startsWith("/")) {
         const command = content.trim();
         if (!command || command === "/") return;
 
-        // 解析并验证斜杠命令
+        // Parse and validate slash command
         const { isValid, commandId, args } =
           this.slashCommandManager.parseAndValidateSlashCommand(command);
 
         if (isValid && commandId !== undefined) {
-          // 执行有效的斜杠命令
+          // Execute valid slash command
           await this.slashCommandManager.executeCommand(commandId, args);
 
-          // 添加斜杠命令到历史记录
+          // Add slash command to history
           this.addToInputHistory(command);
           return;
         }
 
-        // 如果命令不存在，继续作为普通消息处理
-        // 不添加到历史记录，让下面的普通消息处理逻辑来处理
+        // If command doesn't exist, continue as normal message processing
+        // Don't add to history, let normal message processing logic below handle it
       }
 
       // Handle normal AI message
-      // 添加用户消息到历史记录
+      // Add user message to history
       this.addToInputHistory(content);
 
       // Execute UserPromptSubmit hooks before processing the prompt
@@ -294,7 +294,7 @@ export class Agent {
         }
       }
 
-      // 添加用户消息，会自动同步到 UI
+      // Add user message, will automatically sync to UI
       this.messageManager.addUserMessage(
         content,
         images?.map((img) => ({
@@ -303,7 +303,7 @@ export class Agent {
         })),
       );
 
-      // 发送AI消息
+      // Send AI message
       await this.aiManager.sendAIMessage();
     } catch (error) {
       console.error("Failed to add user message:", error);
@@ -311,7 +311,7 @@ export class Agent {
     }
   }
 
-  /** 保存记忆到项目或用户记忆文件 */
+  /** Save memory to project or user memory file */
   public async saveMemory(
     message: string,
     type: "project" | "user",
@@ -323,9 +323,9 @@ export class Agent {
         await memory.addUserMemory(message);
       }
 
-      // 添加成功的 MemoryBlock 到最后一个助手消息
+      // Add successful MemoryBlock to the last assistant message
       const memoryText = message.substring(1).trim();
-      const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
+      const typeLabel = type === "project" ? "Project Memory" : "User Memory";
       const storagePath = type === "project" ? "WAVE.md" : "user-memory.md";
 
       this.messageManager.addMemoryBlock(
@@ -335,12 +335,12 @@ export class Agent {
         storagePath,
       );
     } catch (error) {
-      // 添加失败的 MemoryBlock 到最后一个助手消息
-      const typeLabel = type === "project" ? "项目记忆" : "用户记忆";
+      // Add failed MemoryBlock to the last assistant message
+      const typeLabel = type === "project" ? "Project Memory" : "User Memory";
       const storagePath = type === "project" ? "WAVE.md" : "user-memory.md";
 
       this.messageManager.addMemoryBlock(
-        `${typeLabel}添加失败: ${
+        `${typeLabel} add failed: ${
           error instanceof Error ? error.message : String(error)
         }`,
         false,
@@ -350,46 +350,46 @@ export class Agent {
     }
   }
 
-  // ========== MCP 管理方法 ==========
+  // ========== MCP Management Methods ==========
 
-  /** 获取所有 MCP 服务器状态 */
+  /** Get all MCP server status */
   public getMcpServers(): McpServerStatus[] {
     return this.mcpManager.getAllServers();
   }
 
-  /** 连接 MCP 服务器 */
+  /** Connect MCP server */
   public async connectMcpServer(serverName: string): Promise<boolean> {
     return await this.mcpManager.connectServer(serverName);
   }
 
-  /** 断开 MCP 服务器连接 */
+  /** Disconnect MCP server */
   public async disconnectMcpServer(serverName: string): Promise<boolean> {
     return await this.mcpManager.disconnectServer(serverName);
   }
 
-  // ========== 斜杠命令管理方法 ==========
+  // ========== Slash Command Management Methods ==========
 
-  /** 获取所有可用斜杠命令 */
+  /** Get all available slash commands */
   public getSlashCommands(): SlashCommand[] {
     return this.slashCommandManager.getCommands();
   }
 
-  /** 检查斜杠命令是否存在 */
+  /** Check if slash command exists */
   public hasSlashCommand(commandId: string): boolean {
     return this.slashCommandManager.hasCommand(commandId);
   }
 
-  /** 重新加载自定义命令 */
+  /** Reload custom commands */
   public reloadCustomCommands(): void {
     this.slashCommandManager.reloadCustomCommands();
   }
 
-  /** 获取自定义命令详情 */
+  /** Get custom command details */
   public getCustomCommand(commandId: string): CustomSlashCommand | undefined {
     return this.slashCommandManager.getCustomCommand(commandId);
   }
 
-  /** 获取所有自定义命令 */
+  /** Get all custom commands */
   public getCustomCommands(): CustomSlashCommand[] {
     return this.slashCommandManager.getCustomCommands();
   }

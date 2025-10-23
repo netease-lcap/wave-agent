@@ -4,7 +4,7 @@ import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { diffLines } from "diff";
 
 /**
- * 格式化紧凑参数显示
+ * Format compact parameter display
  */
 function formatCompactParams(
   args: Record<string, unknown>,
@@ -15,7 +15,7 @@ function formatCompactParams(
 }
 
 /**
- * 单文件编辑工具插件
+ * Single file edit tool plugin
  */
 export const editTool: ToolPlugin = {
   name: "Edit",
@@ -63,7 +63,7 @@ export const editTool: ToolPlugin = {
     const newString = args.new_string as string;
     const replaceAll = (args.replace_all as boolean) || false;
 
-    // 验证必需参数
+    // Validate required parameters
     if (!filePath || typeof filePath !== "string") {
       return {
         success: false,
@@ -99,7 +99,7 @@ export const editTool: ToolPlugin = {
     try {
       const resolvedPath = resolvePath(filePath, context.workdir);
 
-      // 读取文件内容
+      // Read file content
       let originalContent: string;
       try {
         originalContent = await readFile(resolvedPath, "utf-8");
@@ -111,7 +111,7 @@ export const editTool: ToolPlugin = {
         };
       }
 
-      // 检查 old_string 是否存在
+      // Check if old_string exists
       if (!originalContent.includes(oldString)) {
         return {
           success: false,
@@ -124,12 +124,12 @@ export const editTool: ToolPlugin = {
       let replacementCount: number;
 
       if (replaceAll) {
-        // 替换所有匹配项
+        // Replace all matches
         const regex = new RegExp(escapeRegExp(oldString), "g");
         newContent = originalContent.replace(regex, newString);
         replacementCount = (originalContent.match(regex) || []).length;
       } else {
-        // 只替换第一个匹配项，但首先检查是否唯一
+        // Replace only the first match, but first check if it's unique
         const matches = originalContent.split(oldString).length - 1;
         if (matches > 1) {
           return {
@@ -143,7 +143,7 @@ export const editTool: ToolPlugin = {
         replacementCount = 1;
       }
 
-      // 写入文件
+      // Write file
       try {
         await writeFile(resolvedPath, newContent, "utf-8");
       } catch (writeError) {
@@ -154,7 +154,7 @@ export const editTool: ToolPlugin = {
         };
       }
 
-      // 生成 diff 信息
+      // Generate diff information
       const diffResult = diffLines(originalContent, newContent);
 
       const shortResult = replaceAll
@@ -186,7 +186,7 @@ export const editTool: ToolPlugin = {
 };
 
 /**
- * 转义正则表达式特殊字符
+ * Escape regular expression special characters
  */
 function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

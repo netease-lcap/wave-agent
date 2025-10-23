@@ -7,7 +7,7 @@ import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
 import { usePagination } from "../hooks/usePagination.js";
 
-// 渲染单个消息的函数
+// Function to render a single message
 const renderMessageItem = (
   message: Message,
   originalIndex: number,
@@ -125,10 +125,10 @@ export const MessageList: React.FC<MessageListProps> = ({
   latestTotalTokens = 0,
   isExpanded = false,
 }) => {
-  // 使用原始消息进行分页计算
+  // Use original messages for pagination calculation
   const { displayInfo } = usePagination(messages);
 
-  // 获取当前页的消息，同时保留原始索引信息
+  // Get current page messages while preserving original index information
   const currentMessagesWithIndex = useMemo(() => {
     return messages
       .slice(displayInfo.startIndex, displayInfo.endIndex)
@@ -138,7 +138,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       }));
   }, [messages, displayInfo.startIndex, displayInfo.endIndex]);
 
-  // 空消息状态
+  // Empty message state
   if (messages.length === 0) {
     return (
       <Box flexDirection="column" paddingY={1}>
@@ -149,10 +149,10 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   return (
     <Box flexDirection="column">
-      {/* 消息列表 */}
+      {/* Message list */}
       <Box flexDirection="column">
         {currentMessagesWithIndex.map(({ message, originalIndex }) => {
-          // 获取前一个消息
+          // Get previous message
           const previousMessage =
             originalIndex > 0 ? messages[originalIndex - 1] : undefined;
           return renderMessageItem(
@@ -164,7 +164,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         })}
       </Box>
 
-      {/* Loading 状态显示 - 仅在非展开状态下显示 */}
+      {/* Loading state display - only show in non-expanded state */}
       {!isExpanded && (isLoading || isCommandRunning || isCompressing) && (
         <Box marginTop={1} flexDirection="column" gap={1}>
           {isLoading && (
@@ -199,7 +199,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         </Box>
       )}
 
-      {/* 底部信息和快捷键提示 */}
+      {/* Bottom info and shortcut key hints */}
       {messages.length > 0 && (
         <Box marginTop={1}>
           <Box justifyContent="space-between" width="100%">

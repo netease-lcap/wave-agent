@@ -3,31 +3,31 @@ import { homedir } from "os";
 import { relative } from "path";
 
 /**
- * 处理路径，支持 ~ 开头的路径扩展
- * @param filePath 文件路径
- * @param workdir 工作目录
- * @returns 解析后的绝对路径
+ * Handle paths, supporting ~ expansion
+ * @param filePath File path
+ * @param workdir Working directory
+ * @returns Resolved absolute path
  */
 export function resolvePath(filePath: string, workdir: string): string {
-  // 如果路径以 ~ 开头，将其替换为用户主目录
+  // If the path starts with ~, replace it with the user's home directory
   if (filePath.startsWith("~/")) {
     return resolve(homedir(), filePath.slice(2));
   }
 
-  // 如果路径以 ~ 开头但没有斜杠，表示就是主目录
+  // If the path starts with ~ but has no slash, it means it's the home directory
   if (filePath === "~") {
     return homedir();
   }
 
-  // 对于其他路径，使用指定的工作目录解析
+  // For other paths, resolve using the specified working directory
   return resolve(workdir, filePath);
 }
 
 /**
- * 二进制文件扩展名列表
+ * Binary file extension list
  */
 export const binaryExtensions = [
-  // 图片文件
+  // Image files
   "png",
   "jpg",
   "jpeg",
@@ -37,17 +37,17 @@ export const binaryExtensions = [
   "webp",
   "svg",
   "sketch",
-  // 音频文件
+  // Audio files
   "mp3",
   "wav",
   "ogg",
   "aac",
-  // 视频文件
+  // Video files
   "mp4",
   "webm",
   "avi",
   "mov",
-  // 文档文件
+  // Document files
   "pdf",
   "doc",
   "docx",
@@ -55,19 +55,19 @@ export const binaryExtensions = [
   "xlsx",
   "ppt",
   "pptx",
-  // 压缩文件
+  // Compressed files
   "zip",
   "rar",
   "7z",
   "tar",
   "gz",
-  // 字体文件
+  // Font files
   "ttf",
   "otf",
   "woff",
   "woff2",
   "eot",
-  // 其他二进制文件
+  // Other binary files
   "exe",
   "dll",
   "so",
@@ -75,9 +75,9 @@ export const binaryExtensions = [
   "bin",
 ] as const;
 /**
- * 检查文件是否为二进制文件
- * @param filename 文件名
- * @returns 是否为二进制文件
+ * Check if a file is a binary file
+ * @param filename File name
+ * @returns Whether it is a binary file
  */
 export const isBinary = (filename: string): boolean => {
   const parts = filename.split(".");
@@ -86,10 +86,10 @@ export const isBinary = (filename: string): boolean => {
 };
 
 /**
- * 获取相对路径用于显示，如果相对路径更短且不在父目录则使用相对路径
- * @param filePath 绝对路径
- * @param workdir 工作目录
- * @returns 用于显示的路径（相对路径或绝对路径）
+ * Get relative path for display, use relative path if shorter and not in parent directory
+ * @param filePath Absolute path
+ * @param workdir Working directory
+ * @returns Path for display (relative or absolute)
  */
 export function getDisplayPath(filePath: string, workdir: string): string {
   if (!filePath) {
@@ -99,12 +99,12 @@ export function getDisplayPath(filePath: string, workdir: string): string {
   try {
     const relativePath = relative(workdir, filePath);
 
-    // 如果相对路径为空（即路径相同），返回 "."
+    // If the relative path is empty (i.e., the paths are the same), return "."
     if (relativePath === "") {
       return ".";
     }
 
-    // 如果相对路径比绝对路径短且不以 .. 开头（不在父目录），则使用相对路径
+    // If the relative path is shorter than the absolute path and does not start with .. (not in parent directory), use the relative path
     if (
       relativePath.length < filePath.length &&
       !relativePath.startsWith("..")
@@ -112,7 +112,7 @@ export function getDisplayPath(filePath: string, workdir: string): string {
       return relativePath;
     }
   } catch {
-    // 如果计算相对路径失败，保持原路径
+    // If calculating the relative path fails, keep the original path
   }
   return filePath;
 }

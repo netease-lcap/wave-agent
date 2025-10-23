@@ -3,7 +3,7 @@ import { render } from "ink-testing-library";
 import { InputBox } from "../../src/components/InputBox.js";
 import { waitForText } from "../helpers/waitHelpers.js";
 
-// 延迟函数
+// Delay function
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox Memory Functionality", () => {
@@ -62,23 +62,23 @@ describe("InputBox Memory Functionality", () => {
       <InputBox sendMessage={mockSendMessage} saveMemory={mockSaveMemory} />,
     );
 
-    // 一口气输入包含换行的#文本（模拟粘贴操作）
-    const pastedText = "#这是多行\n记忆内容";
+    // Input multi-line # text (simulating paste operation)
+    const pastedText = "#This is multi-line\nmemory content";
     stdin.write(pastedText);
-    await waitForText(lastFrame, "#这是多行");
+    await waitForText(lastFrame, "#This is multi-line");
 
-    // 发送消息
+    // Send message
     stdin.write("\r"); // Enter key
     await waitForText(lastFrame, "Type your message");
 
-    // 验证 sendMessage 被调用，因为包含换行符
+    // Verify sendMessage is called because it contains newlines
     expect(mockSendMessage).toHaveBeenCalled();
 
     const sendMessageCalls = mockSendMessage.mock.calls;
     expect(sendMessageCalls).toHaveLength(1);
 
     const [content, images] = sendMessageCalls[0];
-    expect(content).toBe("#这是多行\n记忆内容");
+    expect(content).toBe("#This is multi-line\nmemory content");
     expect(images).toBeUndefined();
   });
 
@@ -87,7 +87,7 @@ describe("InputBox Memory Functionality", () => {
       <InputBox sendMessage={mockSendMessage} saveMemory={mockSaveMemory} />,
     );
 
-    // 逐字符输入单行记忆内容
+    // Input single line memory content character by character
     const memoryText = "# important note";
     for (const char of memoryText) {
       stdin.write(char);
@@ -96,14 +96,14 @@ describe("InputBox Memory Functionality", () => {
 
     await waitForText(lastFrame, "# important note");
 
-    // 发送消息
+    // Send message
     stdin.write("\r"); // Enter key
     await waitForText(lastFrame, "Save Memory:");
 
-    // 应该触发记忆类型选择器，而不是发送消息
+    // Should trigger memory type selector, not send message
     expect(mockSendMessage).not.toHaveBeenCalled();
 
-    // 应该显示记忆类型选择器
+    // Should display memory type selector
     const output = lastFrame();
     expect(output).toContain("Save Memory:");
     expect(output).toContain("important note");

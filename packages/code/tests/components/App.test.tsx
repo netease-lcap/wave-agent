@@ -13,10 +13,10 @@ describe("App Component", () => {
   it("should render the chat interface", () => {
     const { lastFrame } = render(<App />);
 
-    // ChatInterface 会渲染 MessageList 和 InputBox，这里测试整体渲染
+    // ChatInterface renders MessageList and InputBox, test overall rendering here
     expect(lastFrame()).toBeTruthy();
-    // 可以测试是否包含输入框的边框等UI元素
-    expect(lastFrame()).toMatch(/[┌┐└┘│─]/); // 检查是否有边框字符
+    // Can test whether it contains UI elements like input box borders
+    expect(lastFrame()).toMatch(/[┌┐└┘│─]/); // Check if there are border characters
   });
 
   it("should wrap components with providers", () => {

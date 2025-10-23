@@ -8,7 +8,7 @@ interface DiffViewerProps {
   isExpanded?: boolean;
 }
 
-// 渲染单词级 diff
+// Render word-level diff
 const renderWordLevelDiff = (removedLine: string, addedLine: string) => {
   const changes = diffWords(removedLine, addedLine);
 
@@ -29,7 +29,7 @@ const renderWordLevelDiff = (removedLine: string, addedLine: string) => {
         </Text>,
       );
     } else {
-      // 未改变的部分，两边都要显示
+      // Unchanged parts, need to display on both sides
       removedParts.push(
         <Text key={`removed-unchanged-${index}`} color="red">
           {part.value}
@@ -59,7 +59,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
       content: string;
       type: "added" | "removed" | "unchanged" | "separator";
       lineNumber?: number;
-      rawContent?: string; // 存储原始内容用于单词级对比
+      rawContent?: string; // Store original content for word-level comparison
       wordDiff?: {
         removedParts: React.ReactNode[];
         addedParts: React.ReactNode[];
@@ -68,9 +68,9 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
 
     let originalLineNum = 1;
     let modifiedLineNum = 1;
-    const maxContext = 3; // 最多显示3行上下文
+    const maxContext = 3; // Show at most 3 lines of context
 
-    // 用于存储上下文的缓冲区
+    // Buffer for storing context
     let contextBuffer: Array<{
       content: string;
       type: "unchanged";
@@ -80,7 +80,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     let hasAnyChanges = false;
     let afterChangeContext = 0;
 
-    // 临时存储相邻的删除和新增行，用于单词级对比
+    // Temporarily store adjacent deleted and added lines for word-level comparison
     let pendingRemovedLines: Array<{
       content: string;
       rawContent: string;
@@ -102,15 +102,15 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     diffResult.forEach(
       (part: { value: string; added?: boolean; removed?: boolean }) => {
         const partLines = part.value.split("\n");
-        // 移除最后一个空行（split产生的）
+        // Remove the last empty line (produced by split)
         if (partLines[partLines.length - 1] === "") {
           partLines.pop();
         }
 
         if (part.removed) {
-          // 如果这是第一次遇到变更，添加前面的上下文
+          // If this is the first change encountered, add preceding context
           if (!hasAnyChanges) {
-            // 取缓冲区中最后几行作为前置上下文
+            // Take the last few lines from the buffer as preceding context
             const preContext = contextBuffer.slice(-maxContext);
             if (contextBuffer.length > maxContext) {
               lines.push({
@@ -120,14 +120,14 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
             }
             lines.push(...preContext);
           } else if (afterChangeContext > maxContext) {
-            // 如果上一个变更后的上下文太多，添加分隔符
+            // If there's too much context after the previous change, add a separator
             lines.push({
               content: "...",
               type: "separator",
             });
           }
 
-          // 暂存删除行，等待可能的新增行来做单词级对比
+          // Temporarily store deleted lines, waiting for possible added lines for word-level comparison
           partLines.forEach((line: string) => {
             pendingRemovedLines.push({
               content: `- ${line}`,
@@ -138,9 +138,9 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
 
           hasAnyChanges = true;
           afterChangeContext = 0;
-          contextBuffer = []; // 清空缓冲区
+          contextBuffer = []; // Clear buffer
         } else if (part.added) {
-          // 如果这是第一次遇到变更，添加前面的上下文
+          // If this is the first change encountered, add preceding context
           if (!hasAnyChanges) {
             const preContext = contextBuffer.slice(-maxContext);
             if (contextBuffer.length > maxContext) {
@@ -157,17 +157,17 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
             });
           }
 
-          // 处理新增行，尝试与待处理的删除行做单词级对比
+          // Process added lines, try to do word-level comparison with pending deleted lines
           partLines.forEach((line: string, index: number) => {
             if (index < pendingRemovedLines.length) {
-              // 有对应的删除行，进行单词级对比
+              // Has corresponding deleted line, perform word-level comparison
               const removedLine = pendingRemovedLines[index];
               const wordDiff = renderWordLevelDiff(
                 removedLine.rawContent,
                 line,
               );
 
-              // 添加删除行（带单词级高亮）
+              // Add deleted line (with word-level highlighting)
               lines.push({
                 content: `- ${removedLine.rawContent}`,
                 type: "removed",
@@ -179,7 +179,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
                 },
               });
 
-              // 添加新增行（带单词级高亮）
+              // Add added line (with word-level highlighting)
               lines.push({
                 content: `+ ${line}`,
                 type: "added",
@@ -188,7 +188,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
                 wordDiff: { removedParts: [], addedParts: wordDiff.addedParts },
               });
             } else {
-              // 没有对应的删除行，直接添加新增行
+              // No corresponding deleted line, directly add the added line
               lines.push({
                 content: `+ ${line}`,
                 type: "added",
@@ -198,7 +198,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
             }
           });
 
-          // 如果删除行比新增行多，添加剩余的删除行
+          // If there are more deleted lines than added lines, add remaining deleted lines
           for (let i = partLines.length; i < pendingRemovedLines.length; i++) {
             const removedLine = pendingRemovedLines[i];
             lines.push({
@@ -209,15 +209,15 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
             });
           }
 
-          pendingRemovedLines = []; // 清空待处理的删除行
+          pendingRemovedLines = []; // Clear pending deleted lines
           hasAnyChanges = true;
           afterChangeContext = 0;
           contextBuffer = [];
         } else {
-          // 处理未变更的行前，先清空待处理的删除行
+          // Before processing unchanged lines, first clear pending deleted lines
           flushPendingLines();
 
-          // 处理未变更的行
+          // Process unchanged lines
           partLines.forEach((line: string) => {
             const contextLine = {
               content: `  ${line}`,
@@ -226,13 +226,13 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
             };
 
             if (hasAnyChanges) {
-              // 如果已经有变更，这些是后置上下文
+              // If there are already changes, these are post-change context
               if (afterChangeContext < maxContext) {
                 lines.push(contextLine);
                 afterChangeContext++;
               }
             } else {
-              // 如果还没有变更，加入缓冲区
+              // If no changes yet, add to buffer
               contextBuffer.push(contextLine);
             }
 
@@ -243,10 +243,10 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
       },
     );
 
-    // 处理结尾可能剩余的删除行
+    // Handle remaining deleted lines at the end
     flushPendingLines();
 
-    // 只在折叠状态下限制显示行数
+    // Only limit displayed lines in collapsed state
     if (!isExpanded) {
       const MAX_DISPLAY_LINES = 50;
       if (lines.length > MAX_DISPLAY_LINES) {
@@ -275,7 +275,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
       <Box flexDirection="column">
         <Box flexDirection="column">
           {diffLines.map((line, index) => {
-            // 如果有单词级 diff，渲染特殊效果
+            // If has word-level diff, render special effects
             if (line.wordDiff) {
               const prefix = line.type === "removed" ? "- " : "+ ";
               const parts =
@@ -295,7 +295,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
               );
             }
 
-            // 普通渲染
+            // Normal rendering
             return (
               <Text
                 key={index}

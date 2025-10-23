@@ -9,14 +9,14 @@ describe("Custom Slash Commands with Description", () => {
   let commandsDir: string;
 
   beforeEach(() => {
-    // 使用系统临时目录创建临时测试目录
+    // Create temporary test directory using system temp directory
     testDir = mkdtempSync(join(tmpdir(), "wave-test-"));
     commandsDir = join(testDir, ".wave", "commands");
     mkdirSync(commandsDir, { recursive: true });
   });
 
   afterEach(() => {
-    // 清理临时目录
+    // Clean up temporary directory
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
     }

@@ -78,10 +78,10 @@ describe("Image Support in Tool Results", () => {
 
     const apiMessages = convertMessagesForAPI(messages);
 
-    // 应该生成两条消息：assistant message (tool calls) + user message (tool result with images)
+    // Should generate two messages: assistant message (tool calls) + user message (tool result with images)
     expect(apiMessages).toHaveLength(2);
 
-    // 第一条应该是 assistant 消息包含工具调用
+    // First should be assistant message containing tool calls
     expect(apiMessages[0].role).toBe("assistant");
     expect(apiMessages[0]).toHaveProperty("tool_calls");
     if ("tool_calls" in apiMessages[0] && apiMessages[0].tool_calls) {
@@ -92,18 +92,18 @@ describe("Image Support in Tool Results", () => {
       }
     }
 
-    // 第二条应该是 user 消息包含工具结果和图片
+    // Second should be user message containing tool results and images
     expect(apiMessages[1].role).toBe("user");
 
-    // 检查内容结构
+    // Check content structure
     const content = apiMessages[1].content;
     expect(Array.isArray(content)).toBe(true);
 
     if (Array.isArray(content)) {
-      // 应该包含文本和图片
+      // Should contain text and images
       expect(content).toHaveLength(2);
 
-      // 第一部分应该是文本
+      // First part should be text
       expect(content[0].type).toBe("text");
       expect(content[0]).toHaveProperty("text");
       if (content[0].type === "text") {
@@ -111,7 +111,7 @@ describe("Image Support in Tool Results", () => {
         expect(content[0].text).toContain("Screenshot captured successfully");
       }
 
-      // 第二部分应该是图片
+      // Second part should be image
       expect(content[1].type).toBe("image_url");
       expect(content[1]).toHaveProperty("image_url");
       if (content[1].type === "image_url") {
@@ -139,14 +139,14 @@ describe("Image Support in Tool Results", () => {
 
     const apiMessages = convertMessagesForAPI(messages);
 
-    // 应该生成两条消息：assistant message + tool message
+    // Should generate two messages: assistant message + tool message
     expect(apiMessages).toHaveLength(2);
 
-    // 第一条应该是 assistant 消息
+    // First should be assistant message
     expect(apiMessages[0].role).toBe("assistant");
     expect(apiMessages[0]).toHaveProperty("tool_calls");
 
-    // 第二条应该是工具消息（不是用户消息，因为没有图片）
+    // Second should be tool message (not user message, because no images)
     expect(apiMessages[1].role).toBe("tool");
     expect(apiMessages[1]).toHaveProperty("tool_call_id", "tool-456");
     expect(apiMessages[1].content).toBe("File content here");
@@ -181,26 +181,26 @@ describe("Image Support in Tool Results", () => {
 
     const apiMessages = convertMessagesForAPI(messages);
 
-    // 应该生成两条消息：assistant message + user message with images
+    // Should generate two messages: assistant message + user message with images
     expect(apiMessages).toHaveLength(2);
 
-    // 第一条应该是 assistant 消息
+    // First should be assistant message
     expect(apiMessages[0].role).toBe("assistant");
     expect(apiMessages[0]).toHaveProperty("tool_calls");
 
-    // 第二条应该是用户消息包含图片
+    // Second should be user message containing images
     expect(apiMessages[1].role).toBe("user");
 
     const content = apiMessages[1].content;
     if (Array.isArray(content)) {
-      // 应该包含1个文本 + 2个图片 = 3个内容部分
+      // Should contain 1 text + 2 images = 3 content parts
       expect(content).toHaveLength(3);
 
       expect(content[0].type).toBe("text");
       expect(content[1].type).toBe("image_url");
       expect(content[2].type).toBe("image_url");
 
-      // 检查图片URL格式
+      // Check image URL format
       if (content[1].type === "image_url") {
         expect(content[1].image_url.url).toContain(
           "data:image/png;base64,image1_base64_data",

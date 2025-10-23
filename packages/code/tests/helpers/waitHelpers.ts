@@ -1,14 +1,14 @@
 /**
- * 通用的等待函数，等待特定条件满足
- * @param condition 条件函数，返回true表示条件满足
- * @param options 配置选项
+ * Generic wait function that waits for specific condition to be met
+ * @param condition Condition function, returns true when condition is satisfied
+ * @param options Configuration options
  */
 export async function waitFor(
   condition: () => boolean,
   options?: {
-    timeout?: number; // 超时时间(ms)，默认5000ms
-    interval?: number; // 检查间隔(ms)，默认50ms
-    message?: string; // 超时错误消息
+    timeout?: number; // Timeout (ms), default 5000ms
+    interval?: number; // Check interval (ms), default 50ms
+    message?: string; // Timeout error message
   },
 ): Promise<void> {
   const {
@@ -39,10 +39,10 @@ export async function waitFor(
 }
 
 /**
- * 等待渲染结果中包含特定文本
- * @param lastFrame lastFrame 函数，用于获取最新的渲染帧
- * @param expectedText 期望包含的文本
- * @param options 配置选项
+ * Wait for specific text to appear in render result
+ * @param lastFrame lastFrame function used to get the latest render frame
+ * @param expectedText Expected text to contain
+ * @param options Configuration options
  */
 export async function waitForText(
   lastFrame: () => string | undefined,
@@ -70,10 +70,10 @@ export async function waitForText(
 }
 
 /**
- * 等待渲染结果中不包含特定文本
- * @param lastFrame lastFrame 函数，用于获取最新的渲染帧
- * @param unexpectedText 不应该包含的文本
- * @param options 配置选项
+ * Wait for specific text to disappear from render result
+ * @param lastFrame lastFrame function used to get the latest render frame
+ * @param unexpectedText Text that should not be contained
+ * @param options Configuration options
  */
 export async function waitForTextToDisappear(
   lastFrame: () => string | undefined,

@@ -71,16 +71,16 @@ describe("InputBox Bash Functionality", () => {
       <InputBox sendMessage={mockSendMessage} />,
     );
 
-    // 一口气输入以!开头的单行文本（模拟粘贴操作）
+    // Input single line text starting with ! (simulating paste operation)
     const pastedText = "!pwd";
     stdin.write(pastedText);
     await waitForText(lastFrame, "pwd");
 
-    // 发送消息
+    // Send message
     stdin.write("\r"); // Enter key
     await waitForTextToDisappear(lastFrame, "pwd");
 
-    // 验证 sendMessage 被调用且检测为 bash 命令
+    // Verify sendMessage is called and detected as bash command
     expect(mockSendMessage).toHaveBeenCalled();
 
     const sendMessageCalls = mockSendMessage.mock.calls;
@@ -96,23 +96,23 @@ describe("InputBox Bash Functionality", () => {
       <InputBox sendMessage={mockSendMessage} />,
     );
 
-    // 一口气输入以!开头的多行文本（模拟粘贴操作）
-    const pastedText = "!这是多行\n命令";
+    // Input multi-line text starting with ! (simulating paste operation)
+    const pastedText = "!This is multi-line\ncommand";
     stdin.write(pastedText);
-    await waitForText(lastFrame, "!这是多行");
+    await waitForText(lastFrame, "!This is multi-line");
 
-    // 发送消息
+    // Send message
     stdin.write("\r"); // Enter key
-    await waitForTextToDisappear(lastFrame, "!这是多行");
+    await waitForTextToDisappear(lastFrame, "!This is multi-line");
 
-    // 验证 sendMessage 被调用但不会检测为 bash 命令
+    // Verify sendMessage is called but not detected as bash command
     expect(mockSendMessage).toHaveBeenCalled();
 
     const sendMessageCalls = mockSendMessage.mock.calls;
     expect(sendMessageCalls).toHaveLength(1);
 
     const [content, images] = sendMessageCalls[0];
-    expect(content).toBe("!这是多行\n命令");
+    expect(content).toBe("!This is multi-line\ncommand");
     expect(images).toBeUndefined();
   });
 

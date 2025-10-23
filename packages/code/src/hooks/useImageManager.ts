@@ -38,10 +38,10 @@ export const useImageManager = (insertTextAtCursor: (text: string) => void) => {
       const result = await readClipboardImage();
 
       if (result.success && result.imagePath && result.mimeType) {
-        // 添加图片到管理器
+        // Add image to manager
         const attachedImage = addImage(result.imagePath, result.mimeType);
 
-        // 在光标位置插入图片占位符
+        // Insert image placeholder at cursor position
         insertTextAtCursor(`[Image #${attachedImage.id}]`);
 
         return true;

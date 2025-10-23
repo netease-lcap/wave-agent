@@ -1,11 +1,11 @@
 /**
- * 移除代码块包裹符
- * @param content 可能包含代码块包裹符的内容
- * @returns 移除包裹符后的内容
+ * Remove code block wrappers
+ * @param content Content that may contain code block wrappers
+ * @returns Content after removing wrappers
  */
 export function removeCodeBlockWrappers(content: string): string {
-  // 移除开头和结尾的代码块包裹符
-  // 支持以下格式：
+  // Remove code block wrappers from beginning and end
+  // Supports the following formats:
   // ```language
   // code content
   // ```
@@ -18,29 +18,29 @@ export function removeCodeBlockWrappers(content: string): string {
   let startIndex = 0;
   let endIndex = lines.length - 1;
 
-  // 检查开头是否有代码块标记
+  // Check if there is a code block marker at the beginning
   if (lines[startIndex]?.trim().startsWith("```")) {
     startIndex = 1;
   }
 
-  // 检查结尾是否有代码块标记
+  // Check if there is a code block marker at the end
   if (lines[endIndex]?.trim() === "```") {
     endIndex = endIndex - 1;
   }
 
-  // 如果没有找到完整的代码块包裹，返回原内容
+  // If no complete code block wrapper is found, return original content
   if (startIndex === 0 && endIndex === lines.length - 1) {
     return content;
   }
 
-  // 返回移除包裹符后的内容
+  // Return content after removing wrappers
   return lines.slice(startIndex, endIndex + 1).join("\n");
 }
 
 /**
- * 移除 ANSI 颜色代码的函数
- * @param text 包含 ANSI 颜色代码的文本
- * @returns 移除颜色代码后的纯文本
+ * Function to remove ANSI color codes
+ * @param text Text containing ANSI color codes
+ * @returns Plain text with color codes removed
  */
 export const stripAnsiColors = (text: string): string => {
   // Create the escape character dynamically to avoid control character detection

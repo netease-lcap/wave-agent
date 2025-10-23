@@ -14,7 +14,7 @@ describe("lsTool", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "ls-test-"));
 
-    // 创建测试文件结构
+    // Create test file structure
     await mkdir(join(tempDir, "src"), { recursive: true });
     await mkdir(join(tempDir, "tests"), { recursive: true });
     await mkdir(join(tempDir, "docs"), { recursive: true });
@@ -36,17 +36,17 @@ describe("lsTool", () => {
     );
     await writeFile(join(tempDir, "docs/guide.md"), "# Guide");
 
-    // 创建一个大文件以测试文件大小显示
+    // Create a large file to test file size display
     await writeFile(join(tempDir, "large-file.txt"), "x".repeat(5000));
 
-    // 创建符号链接（如果支持的话）
+    // Create symbolic link (if supported)
     try {
       await symlink(
         join(tempDir, "README.md"),
         join(tempDir, "readme-link.md"),
       );
     } catch {
-      // 在不支持符号链接的系统上忽略
+      // Ignore on systems that don't support symbolic links
     }
   });
 
@@ -98,20 +98,20 @@ describe("lsTool", () => {
       (line) => line.startsWith("📁") || line.startsWith("📄"),
     );
 
-    // 所有目录应该在文件之前
+    // All directories should come before files
     let foundFile = false;
     for (const line of itemLines) {
       if (line.startsWith("📄")) {
         foundFile = true;
       } else if (line.startsWith("📁") && foundFile) {
-        // 如果找到文件后又找到目录，说明排序有问题
+        // If we find a directory after finding a file, sorting is wrong
         expect(false).toBe(true);
       }
     }
   });
 
   it("should ignore files matching ignore patterns", async () => {
-    // 创建一些应该被忽略的文件
+    // Create some files that should be ignored
     await writeFile(join(tempDir, "temp.tmp"), "temporary");
     await writeFile(join(tempDir, "backup.bak"), "backup");
     await writeFile(join(tempDir, "config.log"), "log file");
@@ -128,7 +128,7 @@ describe("lsTool", () => {
     expect(result.content).not.toContain("temp.tmp");
     expect(result.content).not.toContain("backup.bak");
     expect(result.content).not.toContain("config.log");
-    expect(result.content).toContain("package.json"); // 正常文件应该存在
+    expect(result.content).toContain("package.json"); // Normal files should exist
   });
 
   it("should ignore files matching path patterns", async () => {
@@ -142,14 +142,14 @@ describe("lsTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).not.toContain("📁 docs");
-    expect(result.content).toContain("📁 src"); // 其他目录应该存在
+    expect(result.content).toContain("📁 src"); // Other directories should exist
   });
 
   it("should show symlinks with special indicator", async () => {
     const result = await lsTool.execute({ path: tempDir }, testContext);
 
     expect(result.success).toBe(true);
-    // 检查是否包含符号链接（如果系统支持的话）
+    // Check if symbolic links are included (if system supports them)
     if (result.content.includes("readme-link.md")) {
       expect(result.content).toContain("🔗 readme-link.md");
     }
@@ -205,7 +205,7 @@ describe("lsTool", () => {
     expect(result.content).toContain("Directory: " + srcPath);
     expect(result.content).toContain("📄 index.ts");
     expect(result.content).toContain("📄 utils.ts");
-    expect(result.content).not.toContain("package.json"); // 不应该包含父目录的文件
+    expect(result.content).not.toContain("package.json"); // Should not contain parent directory files
     expect(result.shortResult).toContain("2 items (0 dirs, 2 files)");
   });
 
@@ -239,8 +239,8 @@ describe("lsTool", () => {
   });
 
   it("should handle files without read permissions gracefully", async () => {
-    // 创建一个文件，然后尝试创建没有读权限的文件
-    // 注意：这在某些系统上可能不工作，所以我们只测试基本功能
+    // Create a file, then try to create a file without read permissions
+    // Note: This may not work on some systems, so we only test basic functionality
     const result = await lsTool.execute({ path: tempDir }, testContext);
 
     expect(result.success).toBe(true);
@@ -248,7 +248,7 @@ describe("lsTool", () => {
   });
 
   it("should show binary file indicator", async () => {
-    // 创建一个二进制文件
+    // Create a binary file
     const binaryContent = Buffer.from([0x00, 0x01, 0x02, 0x03, 0xff, 0xfe]);
     await writeFile(join(tempDir, "binary.bin"), binaryContent);
 
@@ -256,11 +256,11 @@ describe("lsTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("binary.bin");
-    // 检查是否有二进制文件标识（取决于 isBinary 函数的实现）
+    // Check if there's a binary file identifier (depends on isBinary function implementation)
   });
 
   it("should handle files with special characters in names", async () => {
-    // 创建包含特殊字符的文件名
+    // Create files with special characters in names
     await writeFile(join(tempDir, "file with spaces.txt"), "content");
     await writeFile(join(tempDir, "file-with-dashes.txt"), "content");
     await writeFile(join(tempDir, "file_with_underscores.txt"), "content");

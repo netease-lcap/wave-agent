@@ -5,7 +5,7 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { isBinary, getDisplayPath } from "@/utils/path.js";
 
 /**
- * LS 工具插件 - 列出文件和目录
+ * LS Tool Plugin - List files and directories
  */
 export const lsTool: ToolPlugin = {
   name: "LS",
@@ -54,7 +54,7 @@ export const lsTool: ToolPlugin = {
       };
     }
 
-    // 验证路径是绝对路径
+    // Validate that the path is absolute
     if (!path.isAbsolute(targetPath)) {
       return {
         success: false,
@@ -64,7 +64,7 @@ export const lsTool: ToolPlugin = {
     }
 
     try {
-      // 检查路径是否存在且是目录
+      // Check if path exists and is a directory
       const stats = await fs.promises.stat(targetPath);
       if (!stats.isDirectory()) {
         return {
@@ -74,18 +74,18 @@ export const lsTool: ToolPlugin = {
         };
       }
 
-      // 读取目录内容
+      // Read directory contents
       const entries = await fs.promises.readdir(targetPath, {
         withFileTypes: true,
       });
 
-      // 处理目录项
+      // Process directory items
       const items: { name: string; type: string; size?: number }[] = [];
 
       for (const entry of entries) {
         const entryPath = path.join(targetPath, entry.name);
 
-        // 检查是否应该忽略
+        // Check if it should be ignored
         if (ignorePatterns && Array.isArray(ignorePatterns)) {
           const shouldIgnore = ignorePatterns.some(
             (pattern) =>
@@ -110,7 +110,7 @@ export const lsTool: ToolPlugin = {
               size: fileStats.size,
             });
           } catch {
-            // 如果无法获取文件统计信息，仍然添加文件但不显示大小
+            // If file stats cannot be obtained, still add the file but do not display size
             items.push({
               name: entry.name,
               type: "file",

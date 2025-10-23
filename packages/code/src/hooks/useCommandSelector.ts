@@ -3,8 +3,8 @@ import { useState, useCallback } from "react";
 export interface UseCommandSelectorParams {
   onShowBashManager?: () => void;
   onShowMcpManager?: () => void;
-  sendMessage?: (content: string) => Promise<void>; // 使用 sendMessage 替代 executeSlashCommand
-  hasSlashCommand?: (commandId: string) => boolean; // 检查命令是否存在函数
+  sendMessage?: (content: string) => Promise<void>; // Use sendMessage instead of executeSlashCommand
+  hasSlashCommand?: (commandId: string) => boolean; // Function to check if command exists
 }
 
 export const useCommandSelector = ({
@@ -26,7 +26,7 @@ export const useCommandSelector = ({
   const handleCommandInsert = useCallback(
     (command: string, inputText: string, cursorPosition: number) => {
       if (slashPosition >= 0) {
-        // 替换从 / 开始到当前光标位置的内容为 /命令名 + 空格
+        // Replace content from / to current cursor position with /command_name + space
         const beforeSlash = inputText.substring(0, slashPosition);
         const afterQuery = inputText.substring(cursorPosition);
         const newInput = beforeSlash + `/${command} ` + afterQuery;
@@ -46,18 +46,18 @@ export const useCommandSelector = ({
   const handleCommandSelect = useCallback(
     (command: string, inputText: string, cursorPosition: number) => {
       if (slashPosition >= 0) {
-        // 替换命令部分，保留其他内容
+        // Replace command part, keep other content
         const beforeSlash = inputText.substring(0, slashPosition);
         const afterQuery = inputText.substring(cursorPosition);
         const newInput = beforeSlash + afterQuery;
         const newCursorPosition = beforeSlash.length;
 
-        // 异步执行命令
+        // Execute command asynchronously
         (async () => {
-          // 先检查是否是agent命令
+          // First check if it's an agent command
           let commandExecuted = false;
           if (sendMessage && hasSlashCommand && hasSlashCommand(command)) {
-            // 执行完整的命令（将部分输入替换为完整命令名）
+            // Execute complete command (replace partial input with complete command name)
             const fullCommand = `/${command}`;
             try {
               await sendMessage(fullCommand);
@@ -67,7 +67,7 @@ export const useCommandSelector = ({
             }
           }
 
-          // 如果不是agent命令或执行失败，检查本地命令
+          // If not an agent command or execution failed, check local commands
           if (!commandExecuted) {
             if (command === "bashes" && onShowBashManager) {
               onShowBashManager();

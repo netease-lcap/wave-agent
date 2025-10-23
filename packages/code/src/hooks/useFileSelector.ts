@@ -12,7 +12,7 @@ export const useFileSelector = () => {
   const [filteredFiles, setFilteredFiles] = useState<FileItem[]>([]);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 检查路径是否为目录
+  // Check if path is a directory
   const isDirectory = useCallback((filePath: string): boolean => {
     try {
       const fullPath = path.isAbsolute(filePath)
@@ -24,7 +24,7 @@ export const useFileSelector = () => {
     }
   }, []);
 
-  // 将字符串路径转换为 FileItem 对象
+  // Convert string paths to FileItem objects
   const convertToFileItems = useCallback(
     (paths: string[]): FileItem[] => {
       return paths.map((filePath) => ({
@@ -34,7 +34,7 @@ export const useFileSelector = () => {
     },
     [isDirectory],
   );
-  // 使用 glob 搜索文件和目录
+  // Use glob to search files and directories
   const searchFiles = useCallback(
     async (query: string) => {
       try {
@@ -44,13 +44,13 @@ export const useFileSelector = () => {
         const globOptions = {
           ignore: getGlobIgnorePatterns(process.cwd()),
           maxDepth: 10,
-          nocase: true, // 不区分大小写
-          dot: true, // 包括隐藏文件和目录
-          cwd: process.cwd(), // 指定搜索的根目录
+          nocase: true, // Case insensitive
+          dot: true, // Include hidden files and directories
+          cwd: process.cwd(), // Specify search root directory
         };
 
         if (!query.trim()) {
-          // 当查询为空时，显示一些常见的文件类型和目录
+          // When query is empty, show some common file types and directories
           const commonPatterns = [
             "**/*.ts",
             "**/*.tsx",
@@ -59,12 +59,12 @@ export const useFileSelector = () => {
             "**/*.json",
           ];
 
-          // 搜索文件
+          // Search files
           const filePromises = commonPatterns.map((pattern) =>
             glob(pattern, { ...globOptions, nodir: true }),
           );
 
-          // 搜索目录（只搜索一级目录避免过多结果）
+          // Search directories (only search first level to avoid too many results)
           const dirPromises = [glob("*/", { ...globOptions, maxDepth: 1 })];
 
           const fileResults = await Promise.all(filePromises);
@@ -72,31 +72,31 @@ export const useFileSelector = () => {
 
           files = fileResults.flat();
           directories = dirResults.flat().map((dir) => {
-            // glob 返回字符串类型的路径，移除末尾的斜杠
+            // glob returns string type paths, remove trailing slash
             return String(dir).replace(/\/$/, "");
           });
         } else {
-          // 构建多个 glob 模式来支持更灵活的搜索
+          // Build multiple glob patterns to support more flexible search
           const filePatterns = [
-            // 匹配文件名包含查询词的文件
+            // Match files with filenames containing query
             `**/*${query}*`,
-            // 匹配路径中包含查询词的文件（匹配目录名）
+            // Match files with query in path (match directory names)
             `**/${query}*/**/*`,
           ];
 
           const dirPatterns = [
-            // 匹配目录名包含查询词的目录
+            // Match directory names containing query
             `**/*${query}*/`,
-            // 匹配路径中包含查询词的目录
+            // Match directories containing query in path
             `**/${query}*/`,
           ];
 
-          // 搜索文件
+          // Search files
           const filePromises = filePatterns.map((pattern) =>
             glob(pattern, { ...globOptions, nodir: true }),
           );
 
-          // 搜索目录
+          // Search directories
           const dirPromises = dirPatterns.map((pattern) =>
             glob(pattern, { ...globOptions, nodir: false }),
           );
@@ -106,17 +106,17 @@ export const useFileSelector = () => {
 
           files = fileResults.flat();
           directories = dirResults.flat().map((dir) => {
-            // glob 返回字符串类型的路径，移除末尾的斜杠
+            // glob returns string type paths, remove trailing slash
             return String(dir).replace(/\/$/, "");
           });
         }
 
-        // 去重并合并文件和目录
+        // Deduplicate and merge files and directories
         const uniqueFiles = Array.from(new Set(files));
         const uniqueDirectories = Array.from(new Set(directories));
-        const allPaths = [...uniqueDirectories, ...uniqueFiles]; // 目录优先显示
+        const allPaths = [...uniqueDirectories, ...uniqueFiles]; // Directories first
 
-        // 限制最多显示 10 条结果并转换为 FileItem
+        // Limit to maximum 10 results and convert to FileItem
         const fileItems = convertToFileItems(allPaths.slice(0, 10));
         setFilteredFiles(fileItems);
       } catch (error) {
@@ -127,15 +127,15 @@ export const useFileSelector = () => {
     [convertToFileItems],
   );
 
-  // 防抖搜索
+  // Debounced search
   const debouncedSearchFiles = useCallback(
     (query: string) => {
-      // 清除之前的定时器
+      // Clear previous timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
 
-      // 设置新的定时器，支持环境变量配置
+      // Set new timer, support environment variable configuration
       const debounceDelay = parseInt(
         process.env.FILE_SELECTOR_DEBOUNCE_MS || "300",
         10,
@@ -147,11 +147,11 @@ export const useFileSelector = () => {
     [searchFiles],
   );
 
-  // 当搜索查询改变时触发防抖搜索
+  // Trigger debounced search when search query changes
   useEffect(() => {
     debouncedSearchFiles(searchQuery);
 
-    // 清理函数：组件卸载时清除定时器
+    // Cleanup function: clear timer when component unmounts
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -164,7 +164,7 @@ export const useFileSelector = () => {
       setShowFileSelector(true);
       setAtPosition(position);
       setSearchQuery("");
-      // 立即触发搜索以显示初始文件列表，而不是等待防抖
+      // Immediately trigger search to display initial file list, without waiting for debounce
       searchFiles("");
     },
     [searchFiles],
@@ -173,7 +173,7 @@ export const useFileSelector = () => {
   const handleFileSelect = useCallback(
     (filePath: string, inputText: string, cursorPosition: number) => {
       if (atPosition >= 0) {
-        // 替换 @ 和搜索查询为选中的文件路径，移除 @ 符号
+        // Replace @ and search query with selected file path, remove @ symbol
         const beforeAt = inputText.substring(0, atPosition);
         const afterQuery = inputText.substring(cursorPosition);
         const newInput = beforeAt + `${filePath} ` + afterQuery;

@@ -27,7 +27,7 @@ export interface MessageManagerCallbacks {
   onSessionIdChange?: (sessionId: string) => void;
   onLatestTotalTokensChange?: (latestTotalTokens: number) => void;
   onUserInputHistoryChange?: (history: string[]) => void;
-  // 增量回调
+  // Incremental callback
   onUserMessageAdded?: (
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
@@ -47,7 +47,7 @@ export interface MessageManagerCallbacks {
     type: "project" | "user",
     storagePath: string,
   ) => void;
-  // Bash 命令回调
+  // Bash command callback
   onAddCommandOutputMessage?: (command: string) => void;
   onUpdateCommandOutputMessage?: (command: string, output: string) => void;
   onCompleteCommandMessage?: (command: string, exitCode: number) => void;
@@ -60,7 +60,7 @@ export interface MessageManagerOptions {
 }
 
 export class MessageManager {
-  // 私有状态属性
+  // Private state properties
   private sessionId: string;
   private messages: Message[];
   private latestTotalTokens: number;
@@ -68,7 +68,7 @@ export class MessageManager {
   private sessionStartTime: string;
   private lastSaveTime: number = 0;
   private workdir: string;
-  private logger?: Logger; // 添加可选的 logger 属性
+  private logger?: Logger; // Add optional logger property
   private callbacks: MessageManagerCallbacks;
 
   constructor(options: MessageManagerOptions) {
@@ -82,7 +82,7 @@ export class MessageManager {
     this.logger = options.logger;
   }
 
-  // Getter 方法
+  // Getter methods
   public getSessionId(): string {
     return this.sessionId;
   }
@@ -99,7 +99,7 @@ export class MessageManager {
     return [...this.userInputHistory];
   }
 
-  // Setter 方法，会触发回调
+  // Setter methods, will trigger callbacks
   public setSessionId(sessionId: string): void {
     if (this.sessionId !== sessionId) {
       this.sessionId = sessionId;
@@ -111,11 +111,11 @@ export class MessageManager {
     this.messages = [...messages];
     this.callbacks.onMessagesChange?.([...messages]);
 
-    // 节流保存：只有距离上次保存超过30秒才保存
+    // Throttled save: only save if more than 30 seconds have passed since last save
     const now = Date.now();
     if (now - this.lastSaveTime > 30000) {
       this.lastSaveTime = now;
-      // 异步保存会话（不阻塞UI）
+      // Asynchronously save session (non-blocking UI)
       this.saveSession().catch((error) => {
         this.logger?.error(
           "Failed to save session after message update:",
@@ -126,7 +126,7 @@ export class MessageManager {
   }
 
   /**
-   * 保存当前会话
+   * Save current session
    */
   public async saveSession(): Promise<void> {
     try {
@@ -208,7 +208,7 @@ export class MessageManager {
   }
 
   /**
-   * 清空消息和输入历史
+   * Clear messages and input history
    */
   public clearMessages(): void {
     this.setMessages([]);
@@ -218,7 +218,7 @@ export class MessageManager {
     this.sessionStartTime = new Date().toISOString();
   }
 
-  // 从会话数据初始化状态
+  // Initialize state from session data
   public initializeFromSession(
     sessionId: string,
     messages: Message[],
@@ -232,25 +232,25 @@ export class MessageManager {
     this.setUserInputHistory(extractUserInputHistory(messages));
   }
 
-  // 添加到输入历史记录
+  // Add to input history
   public addToInputHistory(input: string): void {
-    // 避免重复添加相同的输入
+    // Avoid adding duplicate inputs
     if (
       this.userInputHistory.length > 0 &&
       this.userInputHistory[this.userInputHistory.length - 1] === input
     ) {
       return;
     }
-    // 限制历史记录数量，保留最近的100条
+    // Limit history records, keep the latest 100
     this.setUserInputHistory([...this.userInputHistory, input].slice(-100));
   }
 
-  // 清空输入历史记录
+  // Clear input history
   public clearInputHistory(): void {
     this.setUserInputHistory([]);
   }
 
-  // 封装的消息操作函数
+  // Encapsulated message operation functions
   public addUserMessage(
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
@@ -271,7 +271,7 @@ export class MessageManager {
   ): void {
     const newMessages = addUserMessageToMessages({
       messages: this.messages,
-      content: "", // 空内容，因为我们会用 CustomCommandBlock
+      content: "", // Empty content, as we will use CustomCommandBlock
       customCommandBlock: {
         type: "custom_command",
         commandName,
@@ -336,7 +336,7 @@ export class MessageManager {
   }
 
   /**
-   * 压缩消息并更新session，删除被压缩的消息，只保留压缩消息和之后的消息
+   * Compress messages and update session, delete compressed messages, only keep compressed messages and subsequent messages
    */
   public compressMessagesAndUpdateSession(
     insertIndex: number,
@@ -344,7 +344,7 @@ export class MessageManager {
   ): void {
     const currentMessages = this.messages;
 
-    // 创建压缩消息
+    // Create compressed message
     const compressMessage: Message = {
       role: "assistant",
       blocks: [
@@ -355,23 +355,23 @@ export class MessageManager {
       ],
     };
 
-    // 将负数索引转换为正数索引
+    // Convert negative index to positive index
     const actualIndex =
       insertIndex < 0 ? currentMessages.length + insertIndex : insertIndex;
 
-    // 构建新的消息数组：保留压缩消息和从actualIndex开始的所有消息
+    // Build new message array: keep compressed message and all messages from actualIndex onwards
     const newMessages: Message[] = [
       compressMessage,
       ...currentMessages.slice(actualIndex),
     ];
 
-    // 更新sessionId
+    // Update sessionId
     this.setSessionId(randomUUID());
 
-    // 设置新的消息列表
+    // Set new message list
     this.setMessages(newMessages);
 
-    // 触发压缩回调，insertIndex 保持原值
+    // Trigger compression callback, insertIndex remains unchanged
     this.callbacks.onCompressBlockAdded?.(insertIndex, compressedContent);
   }
 
@@ -392,7 +392,7 @@ export class MessageManager {
     this.callbacks.onMemoryBlockAdded?.(content, success, type, storagePath);
   }
 
-  // Bash 命令相关的消息操作
+  // Bash command related message operations
   public addCommandOutputMessage(command: string): void {
     const updatedMessages = addCommandOutputMessage({
       messages: this.messages,

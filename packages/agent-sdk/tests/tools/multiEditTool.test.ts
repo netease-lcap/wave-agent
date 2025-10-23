@@ -182,12 +182,12 @@ describe("multiEditTool", () => {
         edits: [
           {
             old_string: "var x = 1;",
-            new_string: "let x = 1;\nlet a = 3;", // 这会创建两个 "let"
+            new_string: "let x = 1;\nlet a = 3;", // This will create two "let"
           },
           {
             old_string: "let",
             new_string: "const",
-            replace_all: false, // 要求唯一匹配，但现在有多个 "let"
+            replace_all: false, // Requires unique match, but now there are multiple "let"
           },
         ],
       },

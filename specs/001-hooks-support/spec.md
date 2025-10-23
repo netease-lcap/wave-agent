@@ -3,7 +3,7 @@
 **Feature Branch**: `001-hooks-support`  
 **Created**: 2024-12-19  
 **Status**: Draft  
-**Input**: User description: "支持 hooks，参考 hooks.md"
+**Input**: User description: "Support hooks, refer to hooks.md"
 
 ## User Scenarios & Testing *(mandatory)*
 

@@ -20,7 +20,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     );
 
     const output = lastFrame();
-    // 应该显示从 attributes 获取的 compactParams
+    // Should display compactParams obtained from attributes
     expect(output).toContain('(example.ts: "useState")');
   });
 
@@ -38,7 +38,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     );
 
     const output = lastFrame();
-    // 不应该显示 compactParams
+    // Should not display compactParams
     expect(output).not.toContain("(");
     expect(output).not.toContain(")");
   });
@@ -59,7 +59,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     );
 
     const output = lastFrame();
-    // 应该正常渲染，不显示 compactParams
+    // Should render normally, without displaying compactParams
     expect(output).toContain("test_tool");
     expect(output).not.toContain("(");
   });
@@ -80,7 +80,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     );
 
     const output = lastFrame();
-    // 展开模式下不应该显示 compactParams
+    // Should not display compactParams in expanded mode
     expect(output).not.toContain('(test.ts: "function")');
   });
 
@@ -100,7 +100,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     );
 
     const output = lastFrame();
-    // 应该正常渲染，不显示 compactParams
+    // Should render normally, without displaying compactParams
     expect(output).toContain("test_tool");
     expect(output).not.toContain("(");
   });

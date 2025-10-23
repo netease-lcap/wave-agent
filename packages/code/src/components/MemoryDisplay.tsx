@@ -18,16 +18,16 @@ export const MemoryDisplay: React.FC<MemoryDisplayProps> = ({ block }) => {
   };
 
   const getStatusText = () => {
-    return isSuccess ? "已添加到记忆" : "记忆添加失败";
+    return isSuccess ? "Added to memory" : "Failed to add memory";
   };
 
   const getStorageText = () => {
     if (!isSuccess) return null;
 
     if (memoryType === "user") {
-      return `记忆已保存到 ${storagePath || "user-memory.md"}`;
+      return `Memory saved to ${storagePath || "user-memory.md"}`;
     } else {
-      return `记忆已保存到 ${storagePath || "WAVE.md"}`;
+      return `Memory saved to ${storagePath || "WAVE.md"}`;
     }
   };
 

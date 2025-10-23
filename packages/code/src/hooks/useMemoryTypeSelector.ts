@@ -20,9 +20,9 @@ export const useMemoryTypeSelector = (): UseMemoryTypeSelectorReturn => {
   const handleMemoryTypeSelect = (type: "project" | "user"): void => {
     setShowMemoryTypeSelector(false);
     setMemoryMessage("");
-    // type 参数由外部组件传入，这里只负责关闭选择器
-    // 实际的类型处理在 useInputKeyboardHandler 中完成
-    void type; // 明确标记参数已知但未使用
+    // Type parameter is passed by external component, here only responsible for closing selector
+    // Actual type handling is completed in useInputKeyboardHandler
+    void type; // Explicitly mark parameter as known but unused
   };
 
   const handleCancelMemoryTypeSelect = () => {

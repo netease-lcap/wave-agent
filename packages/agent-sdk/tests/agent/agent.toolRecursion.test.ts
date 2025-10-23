@@ -51,14 +51,14 @@ describe("Agent Tool Recursion Tests", () => {
   });
 
   it("should trigger recursive AI call after tool execution and verify message structure", async () => {
-    // Mock AI service 返回工具调用，然后在第二次调用时返回简单响应
+    // Mock AI service returns tool calls, then returns simple response on second call
     const mockCallAgent = vi.mocked(aiService.callAgent);
 
     mockCallAgent.mockImplementation(async () => {
       aiServiceCallCount++;
 
       if (aiServiceCallCount === 1) {
-        // 第一次 AI 调用：返回工具调用
+        // First AI call: return tool call
         return {
           tool_calls: [
             {
@@ -73,17 +73,17 @@ describe("Agent Tool Recursion Tests", () => {
           ],
         };
       } else if (aiServiceCallCount === 2) {
-        // 第二次 AI 调用：返回基于工具结果的响应
+        // Second AI call: return response based on tool results
         return {
           content:
-            "好的，我已经成功执行了 `ls -la` 命令。从输出结果可以看到当前目录包含了 test.txt 文件以及其他内容。",
+            "Great! I have successfully executed the `ls -la` command. From the output, I can see that the current directory contains the test.txt file along with other content.",
         };
       }
 
       return {};
     });
 
-    // Mock 工具执行
+    // Mock tool execution
     mockToolExecute.mockResolvedValue({
       success: true,
       content:
@@ -91,14 +91,14 @@ describe("Agent Tool Recursion Tests", () => {
       shortResult: "Listed directory contents",
     });
 
-    // 调用 sendMessage 触发工具递归
+    // Call sendMessage to trigger tool recursion
     await agent.sendMessage("Test message");
 
-    // 验证 AI service 被调用了两次（工具调用 + 递归调用）
+    // Verify AI service was called twice (tool call + recursive call)
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
     expect(aiServiceCallCount).toBe(2);
 
-    // 验证工具被执行了一次
+    // Verify tool was executed once
     expect(mockToolExecute).toHaveBeenCalledTimes(1);
     expect(mockToolExecute).toHaveBeenCalledWith(
       "run_terminal_cmd",
@@ -108,34 +108,34 @@ describe("Agent Tool Recursion Tests", () => {
       }),
     );
 
-    // 验证第一次 AI 调用的参数（应该包含用户消息和新添加的助手消息）
+    // Verify first AI call parameters (should contain user message and newly added assistant message)
     const firstCall = mockCallAgent.mock.calls[0][0];
-    expect(firstCall.messages).toHaveLength(1); // 只有 user 消息
+    expect(firstCall.messages).toHaveLength(1); // Only user message
     expect(firstCall.messages[0].role).toBe("user");
 
-    // 验证第二次 AI 调用的参数（应该包含工具执行结果）
+    // Verify second AI call parameters (should contain tool execution results)
     const secondCall = mockCallAgent.mock.calls[1][0];
     expect(secondCall.messages.length).toBeGreaterThan(2);
 
-    // 应该包含原始用户消息
+    // Should contain original user message
     const userMessage = secondCall.messages.find((msg) => msg.role === "user");
     expect(userMessage).toBeDefined();
 
-    // 应该包含助手的工具调用消息
+    // Should contain assistant's tool call message
     const assistantMessage = secondCall.messages.find(
       (msg) => msg.role === "assistant",
     );
     expect(assistantMessage).toBeDefined();
 
-    // 应该包含工具执行结果消息
+    // Should contain tool execution result message
     const toolMessage = secondCall.messages.find((msg) => msg.role === "tool");
     expect(toolMessage).toBeDefined();
     expect(toolMessage?.tool_call_id).toBe("call_123");
-    expect(toolMessage?.content).toContain("total 8"); // 验证工具执行有输出
+    expect(toolMessage?.content).toContain("total 8"); // Verify tool execution has output
   });
 
   it("should handle multiple tool calls in sequence", async () => {
-    // 重新初始化计数器，确保测试间隔离
+    // Re-initialize counter to ensure test isolation
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
@@ -144,7 +144,7 @@ describe("Agent Tool Recursion Tests", () => {
       aiServiceCallCount++;
 
       if (aiServiceCallCount === 1) {
-        // 第一次：执行第一个工具
+        // First: execute first tool
         return {
           tool_calls: [
             {
@@ -159,7 +159,7 @@ describe("Agent Tool Recursion Tests", () => {
           ],
         };
       } else if (aiServiceCallCount === 2) {
-        // 第二次：执行第二个工具
+        // Second: execute second tool
         return {
           tool_calls: [
             {
@@ -174,16 +174,17 @@ describe("Agent Tool Recursion Tests", () => {
           ],
         };
       } else if (aiServiceCallCount === 3) {
-        // 第三次：返回最终回答
+        // Third: return final answer
         return {
-          content: "我已经执行了所有必要的命令，获得了当前路径和时间信息。",
+          content:
+            "I have executed all necessary commands and obtained the current path and time information.",
         };
       }
 
       return {};
     });
 
-    // Mock 工具执行 - 根据工具名称返回不同结果
+    // Mock tool execution - return different results based on tool name
     mockToolExecute.mockImplementation(
       async (toolName: string, args: Record<string, unknown>) => {
         if (args.command === "pwd") {
@@ -207,17 +208,17 @@ describe("Agent Tool Recursion Tests", () => {
       },
     );
 
-    // 调用 sendMessage 触发工具递归
+    // Call sendMessage to trigger tool recursion
     await agent.sendMessage("Test message");
 
-    // 验证 AI service 被调用了3次
+    // Verify AI service was called 3 times
     expect(mockCallAgent).toHaveBeenCalledTimes(3);
     expect(aiServiceCallCount).toBe(3);
 
-    // 验证工具被执行了2次
+    // Verify tools were executed 2 times
     expect(mockToolExecute).toHaveBeenCalledTimes(2);
 
-    // 验证第一个工具调用
+    // Verify first tool call
     expect(mockToolExecute).toHaveBeenNthCalledWith(
       1,
       "run_terminal_cmd",
@@ -227,7 +228,7 @@ describe("Agent Tool Recursion Tests", () => {
       }),
     );
 
-    // 验证第二个工具调用
+    // Verify second tool call
     expect(mockToolExecute).toHaveBeenNthCalledWith(
       2,
       "run_terminal_cmd",
@@ -237,14 +238,14 @@ describe("Agent Tool Recursion Tests", () => {
       }),
     );
 
-    // 验证最后一次 AI 调用包含了所有工具执行结果
+    // Verify last AI call contains all tool execution results
     const finalCall = mockCallAgent.mock.calls[2][0];
     const toolMessages = finalCall.messages.filter(
       (msg) => msg.role === "tool",
     );
     expect(toolMessages).toHaveLength(2);
 
-    // 验证工具消息的内容
+    // Verify tool message content
     const pwdToolMessage = toolMessages.find(
       (msg) => msg.tool_call_id === "call_001",
     );
@@ -265,7 +266,7 @@ describe("Agent Tool Recursion Tests", () => {
       aiServiceCallCount++;
 
       if (aiServiceCallCount === 1) {
-        // 第一次：返回工具调用
+        // First: return tool call
         return {
           tool_calls: [
             {
@@ -280,16 +281,17 @@ describe("Agent Tool Recursion Tests", () => {
           ],
         };
       } else if (aiServiceCallCount === 2) {
-        // 第二次：基于错误结果返回响应
+        // Second: return response based on error result
         return {
-          content: "看起来命令执行失败了，让我为您提供其他帮助。",
+          content:
+            "It seems the command execution failed. Let me provide other assistance for you.",
         };
       }
 
       return {};
     });
 
-    // Mock 工具执行失败
+    // Mock tool execution failure
     mockToolExecute.mockResolvedValue({
       success: false,
       content: "Error: command not found: invalid-command",
@@ -297,17 +299,17 @@ describe("Agent Tool Recursion Tests", () => {
       shortResult: "Command failed",
     });
 
-    // 调用 sendMessage 触发工具递归
+    // Call sendMessage to trigger tool recursion
     await agent.sendMessage("Test message");
 
-    // 验证 AI service 被调用了两次（即使工具失败也会触发递归）
+    // Verify AI service was called twice (even tool failure triggers recursion)
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
     expect(aiServiceCallCount).toBe(2);
 
-    // 验证工具被执行了一次
+    // Verify tool was executed once
     expect(mockToolExecute).toHaveBeenCalledTimes(1);
 
-    // 验证第二次 AI 调用包含了错误信息
+    // Verify second AI call contains error information
     const secondCall = mockCallAgent.mock.calls[1][0];
     const toolMessage = secondCall.messages.find((msg) => msg.role === "tool");
     expect(toolMessage).toBeDefined();
@@ -324,7 +326,7 @@ describe("Agent Tool Recursion Tests", () => {
       aiServiceCallCount++;
 
       if (aiServiceCallCount === 1) {
-        // 第一次：返回工具调用
+        // First: return tool call
         return {
           tool_calls: [
             {
@@ -339,33 +341,33 @@ describe("Agent Tool Recursion Tests", () => {
           ],
         };
       } else if (aiServiceCallCount === 2) {
-        // 第二次：只返回内容，不返回工具调用 - 应该停止递归
+        // Second: only return content, no tool calls - should stop recursion
         return {
-          content: "任务已完成！我执行了命令并得到了结果。",
+          content: "Task completed! I executed the command and got the result.",
         };
       }
 
-      // 不应该到达这里
+      // Should not reach here
       return {
-        content: "意外的第三次调用",
+        content: "Unexpected third call",
       };
     });
 
-    // Mock 工具执行
+    // Mock tool execution
     mockToolExecute.mockResolvedValue({
       success: true,
       content: "task completed",
       shortResult: "Echo command executed",
     });
 
-    // 调用 sendMessage 触发工具递归
+    // Call sendMessage to trigger tool recursion
     await agent.sendMessage("Test message");
 
-    // 验证 AI service 只被调用了两次（递归在没有更多工具调用时停止）
+    // Verify AI service was only called twice (recursion stops when no more tool calls)
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
     expect(aiServiceCallCount).toBe(2);
 
-    // 验证工具只被执行了一次
+    // Verify tool was only executed once
     expect(mockToolExecute).toHaveBeenCalledTimes(1);
   });
 });

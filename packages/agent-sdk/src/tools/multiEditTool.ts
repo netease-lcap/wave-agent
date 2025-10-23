@@ -10,7 +10,7 @@ interface EditOperation {
 }
 
 /**
- * 格式化紧凑参数显示
+ * Format compact parameter display
  */
 function formatCompactParams(
   args: Record<string, unknown>,
@@ -24,7 +24,7 @@ function formatCompactParams(
 }
 
 /**
- * 多重编辑工具插件
+ * Multi-edit tool plugin
  */
 export const multiEditTool: ToolPlugin = {
   name: "MultiEdit",
@@ -84,7 +84,7 @@ export const multiEditTool: ToolPlugin = {
     const filePath = args.file_path as string;
     const edits = args.edits as EditOperation[];
 
-    // 验证必需参数
+    // Validate required parameters
     if (!filePath || typeof filePath !== "string") {
       return {
         success: false,
@@ -101,7 +101,7 @@ export const multiEditTool: ToolPlugin = {
       };
     }
 
-    // 验证每个编辑操作
+    // Validate each edit operation
     for (let i = 0; i < edits.length; i++) {
       const edit = edits[i];
       if (!edit || typeof edit !== "object") {
@@ -140,14 +140,14 @@ export const multiEditTool: ToolPlugin = {
     try {
       const resolvedPath = resolvePath(filePath, context.workdir);
 
-      // 读取文件内容
+      // Read file content
       let originalContent: string;
       let isNewFile = false;
 
       try {
         originalContent = await readFile(resolvedPath, "utf-8");
       } catch (readError) {
-        // 检查是否是新文件创建的情况（第一个编辑的 old_string 为空）
+        // Check if this is a new file creation case (first edit has empty old_string)
         if (edits[0] && edits[0].old_string === "") {
           originalContent = "";
           isNewFile = true;
@@ -164,12 +164,12 @@ export const multiEditTool: ToolPlugin = {
       let currentContent = originalContent;
       const appliedEdits: string[] = [];
 
-      // 依次应用每个编辑操作
+      // Apply each edit operation in sequence
       for (let i = 0; i < edits.length; i++) {
         const edit = edits[i];
         const replaceAll = edit.replace_all || false;
 
-        // 特殊处理新文件创建的第一个编辑
+        // Special handling for the first edit of new file creation
         if (isNewFile && i === 0 && edit.old_string === "") {
           currentContent = edit.new_string;
           appliedEdits.push(
@@ -178,7 +178,7 @@ export const multiEditTool: ToolPlugin = {
           continue;
         }
 
-        // 检查 old_string 是否存在
+        // Check if old_string exists
         if (!currentContent.includes(edit.old_string)) {
           return {
             success: false,
@@ -190,7 +190,7 @@ export const multiEditTool: ToolPlugin = {
         let replacementCount: number;
 
         if (replaceAll) {
-          // 替换所有匹配项
+          // Replace all matches
           const regex = new RegExp(escapeRegExp(edit.old_string), "g");
           currentContent = currentContent.replace(regex, edit.new_string);
           replacementCount = (currentContent.match(regex) || []).length;
@@ -198,7 +198,7 @@ export const multiEditTool: ToolPlugin = {
             `Replaced ${replacementCount} instances of "${edit.old_string.substring(0, 50)}${edit.old_string.length > 50 ? "..." : ""}"`,
           );
         } else {
-          // 只替换第一个匹配项，但首先检查是否唯一
+          // Replace only the first match, but first check if it's unique
           const matches = currentContent.split(edit.old_string).length - 1;
           if (matches > 1) {
             return {
@@ -218,7 +218,7 @@ export const multiEditTool: ToolPlugin = {
         }
       }
 
-      // 写入文件
+      // Write file
       try {
         await writeFile(resolvedPath, currentContent, "utf-8");
       } catch (writeError) {
@@ -229,7 +229,7 @@ export const multiEditTool: ToolPlugin = {
         };
       }
 
-      // 生成 diff 信息
+      // Generate diff information
       const diffResult = diffLines(originalContent, currentContent);
 
       const shortResult = isNewFile
@@ -263,7 +263,7 @@ export const multiEditTool: ToolPlugin = {
 };
 
 /**
- * 转义正则表达式特殊字符
+ * Escape regular expression special characters
  */
 function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

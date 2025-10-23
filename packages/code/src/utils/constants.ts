@@ -1,22 +1,22 @@
 /**
- * 应用常量定义
+ * Application constants definition
  */
 
 import path from "path";
 import os from "os";
 
 /**
- * 应用数据存储目录
- * 用于存储调试日志、命令历史等数据
+ * Application data storage directory
+ * Used to store debug logs, command history and other data
  */
 export const DATA_DIRECTORY = path.join(os.homedir(), ".wave");
 
 /**
- * 应用日志文件路径
+ * Application log file path
  */
 export const LOG_FILE = path.join(DATA_DIRECTORY, "app.log");
 
 /**
- * 分页相关常量
+ * Pagination related constants
  */
-export const MESSAGES_PER_PAGE = 20; // 每页显示的消息数量
+export const MESSAGES_PER_PAGE = 20; // Number of messages displayed per page

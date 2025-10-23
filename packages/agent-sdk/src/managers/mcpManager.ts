@@ -85,7 +85,7 @@ export class McpManager {
       }
 
       this.logger?.info("MCP servers initialization completed");
-      // 初始化完成后触发状态变化回调
+      // Trigger state change callback after initialization
       this.callbacks.onServersChange?.(this.getAllServers());
     }
   }
@@ -166,7 +166,7 @@ export class McpManager {
     const server = this.servers.get(name);
     if (server) {
       this.servers.set(name, { ...server, ...updates });
-      // 触发状态变化回调
+      // Trigger state change callback
       this.callbacks.onServersChange?.(this.getAllServers());
     }
   }
@@ -363,7 +363,7 @@ export class McpManager {
                 arguments: args,
               });
 
-              // 分离文本内容和图片数据
+              // Separate text content and image data
               const textContent: string[] = [];
               const images: Array<{ data: string; mediaType?: string }> = [];
 
@@ -381,7 +381,7 @@ export class McpManager {
                     } else if (c.type === "image" && c.data) {
                       images.push({
                         data: c.data,
-                        mediaType: "image/png", // 默认为 PNG，可以根据实际情况调整
+                        mediaType: "image/png", // Default to PNG, can be adjusted according to actual situation
                       });
                     } else if (c.type === "resource") {
                       textContent.push(`[Resource: ${c.resource?.uri || ""}]`);

@@ -4,7 +4,7 @@ import { render } from "ink-testing-library";
 import { InputBox } from "../../src/components/InputBox.js";
 import type { SlashCommand } from "wave-agent-sdk";
 
-// 延迟函数
+// Delay function
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox Slash Command Functionality", () => {
@@ -40,7 +40,7 @@ describe("InputBox Slash Command Functionality", () => {
       />,
     );
 
-    // 输入 / 触发命令选择器
+    // Input / to trigger command selector
     stdin.write("/");
     await delay(50);
 
@@ -58,7 +58,7 @@ describe("InputBox Slash Command Functionality", () => {
       />,
     );
 
-    // 逐个字符输入 /test，避免被当作粘贴操作
+    // Input /test character by character to avoid being treated as paste operation
     stdin.write("/");
     await delay(50);
     stdin.write("t");
@@ -88,7 +88,7 @@ describe("InputBox Slash Command Functionality", () => {
       />,
     );
 
-    // 逐个字符输入 /test
+    // Input /test character by character
     stdin.write("/");
     await delay(50);
     stdin.write("t");
@@ -100,17 +100,17 @@ describe("InputBox Slash Command Functionality", () => {
     stdin.write("t");
     await delay(50);
 
-    // 按回车选择第一个命令
+    // Press Enter to select the first command
     stdin.write("\r");
     await delay(100);
 
-    // 验证命令被执行
+    // Verify command is executed
     expect(mockHasSlashCommand).toHaveBeenCalledWith("test-command");
     expect(mockSendMessage).toHaveBeenCalledWith("/test-command");
 
-    // 验证输入框被清空（不应该再有任何输入内容）
+    // Verify input box is cleared (should not have any input content)
     const output = lastFrame();
-    expect(output).toContain("Type your message"); // 应该显示占位符
+    expect(output).toContain("Type your message"); // Should display placeholder
   });
 
   it("should send slash command as message when entered directly and pressed enter", async () => {
@@ -125,19 +125,19 @@ describe("InputBox Slash Command Functionality", () => {
       />,
     );
 
-    // 输入完整的斜杠命令
+    // Input complete slash command
     stdin.write("/test-command with args");
     await delay(50);
 
-    // 直接按回车 - 这会通过 sendMessage 处理斜杠命令
+    // Press Enter directly - this will handle slash command through sendMessage
     stdin.write("\r");
     await delay(100);
 
-    // 验证输入框被清空
+    // Verify input box is cleared
     const output = lastFrame();
     expect(output).toContain("Type your message");
 
-    // 验证作为消息发送（斜杠命令会在 sendMessage 内部处理）
+    // Verify sent as message (slash command will be handled internally in sendMessage)
     expect(mockSendMessage).toHaveBeenCalledWith(
       "/test-command with args",
       undefined,
@@ -156,15 +156,15 @@ describe("InputBox Slash Command Functionality", () => {
       />,
     );
 
-    // 输入斜杠命令
+    // Input slash command
     stdin.write("/test-command");
     await delay(50);
 
-    // 按回车 - 通过 sendMessage 处理
+    // Press Enter - handle through sendMessage
     stdin.write("\r");
     await delay(100);
 
-    // 验证作为消息发送（斜杠命令会在 sendMessage 内部处理）
+    // Verify sent as message (slash command will be handled internally in sendMessage)
     expect(mockSendMessage).toHaveBeenCalledWith("/test-command", undefined);
   });
 
@@ -176,7 +176,7 @@ describe("InputBox Slash Command Functionality", () => {
       />,
     );
 
-    // 逐个字符输入 /test
+    // Input /test character by character
     stdin.write("/");
     await delay(50);
     stdin.write("t");
@@ -188,16 +188,16 @@ describe("InputBox Slash Command Functionality", () => {
     stdin.write("t");
     await delay(50);
 
-    // 按 Tab 插入命令
+    // Press Tab to insert command
     stdin.write("\t");
     await delay(50);
 
-    // 验证命令被插入且可以继续输入参数
+    // Verify command is inserted and can continue to input parameters
     const output = lastFrame();
     expect(output).toContain("/test-command ");
-    expect(output).not.toContain("Command Selector"); // 选择器应该关闭
+    expect(output).not.toContain("Command Selector"); // Selector should close
 
-    // 继续输入参数
+    // Continue inputting parameters
     stdin.write("arg1 arg2");
     await delay(50);
 

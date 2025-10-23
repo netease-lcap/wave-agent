@@ -4,10 +4,10 @@ import { Agent } from "../src/agent.js";
 
 console.log("🚀 Starting Agent hi test...");
 
-// 创建 Agent 实例，监听所有可用的回调
+// Create Agent instance, listen to all available callbacks
 const agent = await Agent.create({
   callbacks: {
-    // 增量回调
+    // Incremental callback
     onUserMessageAdded: (
       content: string,
       images?: Array<{ path: string; mimeType: string }>,
@@ -47,9 +47,9 @@ const agent = await Agent.create({
       );
     },
 
-    // Messages 变化回调 - 当消息列表发生变化时触发
-    // 这个回调可以用于在前端框架中实时更新 UI
-    // 例如：React: setMessages(messages)
+    // Messages change callback - triggered when message list changes
+    // This callback can be used to update UI in real-time in frontend frameworks
+    // Example: React: setMessages(messages)
     onMessagesChange: (messages) => {
       console.log(`📋 Messages updated: ${messages.length} total messages`);
     },
@@ -57,14 +57,14 @@ const agent = await Agent.create({
 });
 
 async function main() {
-  // agent 已经在顶层创建
+  // agent is already created at the top level
   try {
     console.log("\n💬 Sending 'hi' message to AI...\n");
 
-    // 发送 "hi" 消息
+    // Send "hi" message
     await agent.sendMessage("hi");
 
-    // 获取当前状态
+    // Get current state
     console.log("\n📊 Final state:");
     console.log(`   Session ID: ${agent.sessionId}`);
     console.log(`   Messages: ${agent.messages.length}`);
@@ -74,14 +74,14 @@ async function main() {
   } catch (error) {
     console.error("❌ Error occurred:", error);
   } finally {
-    // 清理资源
+    // Clean up resources
     console.log("\n🧹 Cleaning up...");
     await agent.destroy();
     console.log("👋 Done!");
   }
 }
 
-// 处理进程退出
+// Handle process exit
 process.on("SIGINT", async () => {
   console.log("\n\n🛑 Received SIGINT, cleaning up...");
   await agent.destroy();
@@ -94,7 +94,7 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-// 运行主函数
+// Run main function
 main().catch((error) => {
   console.error("💥 Unhandled error:", error);
   process.exit(1);

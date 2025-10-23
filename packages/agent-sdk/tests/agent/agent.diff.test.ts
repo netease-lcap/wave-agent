@@ -57,7 +57,7 @@ describe("Agent Diff Integration Tests", () => {
       aiServiceCallCount++;
 
       if (aiServiceCallCount === 1) {
-        // 第一次 AI 调用：返回 edit_file 工具调用
+        // First AI call: return edit_file tool call
         return {
           tool_calls: [
             {
@@ -81,16 +81,16 @@ describe("Agent Diff Integration Tests", () => {
           ],
         };
       } else if (aiServiceCallCount === 2) {
-        // 第二次 AI 调用：基于工具结果的响应
+        // Second AI call: response based on tool results
         return {
-          content: "已添加错误处理逻辑。",
+          content: "Error handling logic has been added.",
         };
       }
 
       return {};
     });
 
-    // Mock edit_file 工具执行，返回 diff 相关信息
+    // Mock edit_file tool execution, return diff related information
     mockToolExecute.mockResolvedValue({
       success: true,
       content: "Rewrote file test.js with error handling",
@@ -116,14 +116,14 @@ describe("Agent Diff Integration Tests", () => {
       ],
     });
 
-    // 调用 sendMessage 触发工具执行和递归
+    // Call sendMessage to trigger tool execution and recursion
     await agent.sendMessage("Test message");
 
-    // 验证 AI service 被调用了两次
+    // Verify AI service was called twice
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
     expect(aiServiceCallCount).toBe(2);
 
-    // 验证工具被执行了一次
+    // Verify tool was executed once
     expect(mockToolExecute).toHaveBeenCalledTimes(1);
     expect(mockToolExecute).toHaveBeenCalledWith(
       "edit_file",
@@ -137,20 +137,20 @@ describe("Agent Diff Integration Tests", () => {
       }),
     );
 
-    // 验证第二次 AI 调用包含了工具执行结果
+    // Verify the second AI call included the tool execution result
     const secondCall = mockCallAgent.mock.calls[1][0];
     const toolMessage = secondCall.messages.find((msg) => msg.role === "tool");
     expect(toolMessage).toBeDefined();
     expect(toolMessage?.tool_call_id).toBe("call_edit_123");
     expect(toolMessage?.content).toContain("Rewrote file test.js");
 
-    // 验证获取到了当前 Agent 状态中的消息
+    // Verify messages in current Agent state were obtained
     const messages = agent.messages;
 
-    // 应该包含用户消息、助手消息（带工具调用）、工具结果消息、以及最终的助手回复
+    // Should include user message, assistant message (with tool call), tool result message, and final assistant reply
     expect(messages.length).toBeGreaterThanOrEqual(3);
 
-    // 检查是否有文件操作的 diff 块
+    // Check for diff block of file operations
     const hasDiffBlock = messages.some((message) =>
       message.blocks?.some(
         (block) =>
@@ -167,7 +167,7 @@ describe("Agent Diff Integration Tests", () => {
   });
 
   it("should show diff after search_replace tool execution", async () => {
-    // 重置计数器
+    // Reset counter
     aiServiceCallCount = 0;
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
@@ -176,7 +176,7 @@ describe("Agent Diff Integration Tests", () => {
       aiServiceCallCount++;
 
       if (aiServiceCallCount === 1) {
-        // 第一次 AI 调用：返回 search_replace 工具调用
+        // First AI call: return search_replace tool call
         return {
           tool_calls: [
             {
@@ -195,16 +195,17 @@ describe("Agent Diff Integration Tests", () => {
           ],
         };
       } else if (aiServiceCallCount === 2) {
-        // 第二次 AI 调用：基于工具结果的响应
+        // Second AI call: response based on tool results
         return {
-          content: "已将字符串拼接改为模板字符串。",
+          content:
+            "String concatenation has been changed to template literals.",
         };
       }
 
       return {};
     });
 
-    // Mock search_replace 工具执行，返回 diff 相关信息
+    // Mock search_replace tool execution, return diff related information
     mockToolExecute.mockResolvedValue({
       success: true,
       content: "Successfully replaced text in test.js",
@@ -224,14 +225,14 @@ describe("Agent Diff Integration Tests", () => {
       ],
     });
 
-    // 调用 sendMessage 触发工具执行和递归
+    // Call sendMessage to trigger tool execution and recursion
     await agent.sendMessage("Test message");
 
-    // 验证调用次数
+    // Verify call count
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
     expect(aiServiceCallCount).toBe(2);
 
-    // 验证工具执行
+    // Verify tool execution
     expect(mockToolExecute).toHaveBeenCalledTimes(1);
     expect(mockToolExecute).toHaveBeenCalledWith(
       "search_replace",
@@ -245,17 +246,17 @@ describe("Agent Diff Integration Tests", () => {
       }),
     );
 
-    // 验证工具执行结果
+    // Verify tool execution result
     const secondCall = mockCallAgent.mock.calls[1][0];
     const toolMessage = secondCall.messages.find((msg) => msg.role === "tool");
     expect(toolMessage).toBeDefined();
     expect(toolMessage?.tool_call_id).toBe("call_replace_456");
     expect(toolMessage?.content).toContain("Successfully replaced text");
 
-    // 验证当前状态中包含 diff 信息
+    // Verify current state contains diff information
     const messages = agent.messages;
 
-    // 检查是否有文件操作的 diff 块
+    // Check for diff block of file operations
     const hasDiffBlock = messages.some((message) =>
       message.blocks?.some(
         (block) =>
@@ -280,7 +281,7 @@ describe("Agent Diff Integration Tests", () => {
       aiServiceCallCount++;
 
       if (aiServiceCallCount === 1) {
-        // 第一次 AI 调用：返回多个工具调用
+        // First AI call: return multiple tool calls
         return {
           tool_calls: [
             {
@@ -312,16 +313,16 @@ describe("Agent Diff Integration Tests", () => {
           ],
         };
       } else if (aiServiceCallCount === 2) {
-        // 第二次 AI 调用：基于工具结果的响应
+        // Second AI call: response based on tool results
         return {
-          content: "已修改了两个文件，添加了日志记录和错误处理。",
+          content: "Modified two files, added logging and error handling.",
         };
       }
 
       return {};
     });
 
-    // Mock 工具执行 - 根据文件名返回不同结果
+    // Mock tool execution - return different results based on file name
     mockToolExecute.mockImplementation(
       async (toolName: string, args: Record<string, unknown>) => {
         if (args.target_file === "file1.js") {
@@ -361,16 +362,16 @@ describe("Agent Diff Integration Tests", () => {
       },
     );
 
-    // 调用 sendMessage 触发工具执行和递归
+    // Call sendMessage to trigger tool execution and recursion
     await agent.sendMessage("Test message");
 
-    // 验证 AI service 被调用了两次
+    // Verify AI service was called twice
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
 
-    // 验证工具被执行了两次
+    // Verify tools were executed twice
     expect(mockToolExecute).toHaveBeenCalledTimes(2);
 
-    // 验证第一个工具调用
+    // Verify first tool call
     expect(mockToolExecute).toHaveBeenNthCalledWith(
       1,
       "edit_file",
@@ -378,7 +379,7 @@ describe("Agent Diff Integration Tests", () => {
       expect.any(Object),
     );
 
-    // 验证第二个工具调用
+    // Verify second tool call
     expect(mockToolExecute).toHaveBeenNthCalledWith(
       2,
       "edit_file",
@@ -386,14 +387,14 @@ describe("Agent Diff Integration Tests", () => {
       expect.any(Object),
     );
 
-    // 验证第二次 AI 调用包含了所有工具执行结果
+    // Verify second AI call contains all tool execution results
     const secondCall = mockCallAgent.mock.calls[1][0];
     const toolMessages = secondCall.messages.filter(
       (msg) => msg.role === "tool",
     );
     expect(toolMessages).toHaveLength(2);
 
-    // 验证工具消息的内容
+    // Verify tool message content
     const file1ToolMessage = toolMessages.find(
       (msg) => msg.tool_call_id === "call_edit_1",
     );
@@ -404,17 +405,17 @@ describe("Agent Diff Integration Tests", () => {
     );
     expect(file2ToolMessage?.content).toContain("Created file2.js");
 
-    // 验证当前状态中包含两个文件的 diff 信息
+    // Verify current state contains diff information for two files
     const messages = agent.messages;
 
-    // 检查是否有两个文件操作的 diff 块
+    // Check if there are diff blocks for two file operations
     const diffBlocks = messages.flatMap(
       (message) =>
         message.blocks?.filter((block) => block.type === "diff") || [],
     );
     expect(diffBlocks).toHaveLength(2);
 
-    // 验证每个文件的 diff 内容
+    // Verify diff content for each file
     const file1Block = diffBlocks.find(
       (block) => "path" in block && block.path === "file1.js",
     );
@@ -457,7 +458,7 @@ describe("Agent Diff Integration Tests", () => {
       aiServiceCallCount++;
 
       if (aiServiceCallCount === 1) {
-        // 第一次 AI 调用：返回工具调用
+        // First AI call: return tool call
         return {
           tool_calls: [
             {
@@ -476,16 +477,16 @@ describe("Agent Diff Integration Tests", () => {
           ],
         };
       } else if (aiServiceCallCount === 2) {
-        // 第二次 AI 调用：基于错误结果的响应
+        // Second AI call: response based on error result
         return {
-          content: "抱歉，文件不存在，无法进行修改。",
+          content: "Sorry, the file does not exist and cannot be modified.",
         };
       }
 
       return {};
     });
 
-    // Mock 工具执行失败 - 没有 diff 相关信息
+    // Mock tool execution failure - no diff related information
     mockToolExecute.mockResolvedValue({
       success: false,
       content: "Error: File nonexistent.js not found",
@@ -493,16 +494,16 @@ describe("Agent Diff Integration Tests", () => {
       shortResult: "File operation failed",
     });
 
-    // 调用 sendMessage 触发工具执行和递归
+    // Call sendMessage to trigger tool execution and recursion
     await agent.sendMessage("Test message");
 
-    // 验证 AI service 被调用了两次（即使工具失败也会触发递归）
+    // Verify AI service was called twice (even tool failure triggers recursion)
     expect(mockCallAgent).toHaveBeenCalledTimes(2);
 
-    // 验证工具被执行了一次
+    // Verify tool was executed once
     expect(mockToolExecute).toHaveBeenCalledTimes(1);
 
-    // 验证第二次 AI 调用包含了错误信息
+    // Verify second AI call contains error information
     const secondCall = mockCallAgent.mock.calls[1][0];
     const toolMessage = secondCall.messages.find((msg) => msg.role === "tool");
     expect(toolMessage).toBeDefined();
@@ -511,7 +512,7 @@ describe("Agent Diff Integration Tests", () => {
       "Error: File nonexistent.js not found",
     );
 
-    // 验证当前状态中没有 diff 相关的块（因为工具执行失败）
+    // Verify current state has no diff related blocks (because tool execution failed)
     const messages = agent.messages;
 
     const diffBlocks = messages.flatMap(

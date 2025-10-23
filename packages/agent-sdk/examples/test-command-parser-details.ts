@@ -1,8 +1,8 @@
 #!/usr/bin/env npx tsx
 
 /**
- * 详细测试命令参数解析功能
- * 运行方式：npx tsx packages/agent-sdk/examples/test-command-parser-details.ts
+ * Detailed test for command argument parsing functionality
+ * Run with: npx tsx packages/agent-sdk/examples/test-command-parser-details.ts
  */
 
 import {
@@ -17,7 +17,7 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 
-// 创建临时工作目录
+// Create temporary working directory
 const tempWorkDir = fs.mkdtempSync(path.join(os.tmpdir(), "wave-parser-test-"));
 
 async function cleanupTestDir() {
@@ -34,11 +34,11 @@ async function cleanupTestDir() {
 async function testArgumentParsing() {
   console.log("🚀 Testing command argument parsing functions...\n");
 
-  // 设置工作目录
+  // Set working directory
   console.log(`📁 Working in temporary directory: ${tempWorkDir}\n`);
 
   try {
-    // 测试参数解析
+    // Test argument parsing
     console.log("🔍 Testing parseCommandArguments():");
     const testArguments = [
       "alice",
@@ -59,7 +59,7 @@ async function testArgumentParsing() {
       console.log();
     });
 
-    // 测试参数替换
+    // Test argument replacement
     console.log("🔧 Testing substituteCommandParameters():");
     const testTemplates = [
       {
@@ -96,7 +96,7 @@ async function testArgumentParsing() {
       console.log();
     });
 
-    // 测试命令输入解析
+    // Test command input parsing
     console.log("⚡ Testing parseSlashCommandInput():");
     const testInputs = [
       "/greet Alice",
@@ -120,7 +120,7 @@ async function testArgumentParsing() {
       console.log();
     });
 
-    // 测试占位符检测
+    // Test placeholder detection
     console.log("🎯 Testing hasParameterPlaceholders():");
     const testContents = [
       "Hello $1!",
@@ -137,7 +137,7 @@ async function testArgumentParsing() {
     });
     console.log();
 
-    // 测试占位符提取
+    // Test placeholder extraction
     console.log("📝 Testing getUsedParameterPlaceholders():");
     testContents.forEach((content) => {
       const placeholders = getUsedParameterPlaceholders(content);
@@ -146,12 +146,12 @@ async function testArgumentParsing() {
   } catch (error) {
     console.error("❌ Test failed:", error);
   } finally {
-    // 清理临时目录
+    // Clean up temporary directory
     await cleanupTestDir();
   }
 }
 
-// 运行测试
+// Run test
 testArgumentParsing()
   .then(() => {
     console.log("✅ All parser tests completed!");

@@ -13,11 +13,11 @@ let agent: Agent;
 process.env.AIGW_MODEL = "gemini-2.5-flash";
 
 async function setupTest() {
-  // 创建临时目录
+  // Create temporary directory
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "chrome-mcp-test-"));
   console.log(`📁 Created temporary directory: ${tempDir}`);
 
-  // Chrome MCP 配置
+  // Chrome MCP configuration
   const mcpConfig = {
     mcpServers: {
       "chrome-devtools": {
@@ -27,16 +27,16 @@ async function setupTest() {
     },
   };
 
-  // 创建 .mcp.json 配置文件
+  // Create .mcp.json config file
   const configPath = path.join(tempDir, ".mcp.json");
   await fs.writeFile(configPath, JSON.stringify(mcpConfig, null, 2));
   console.log(`⚙️ Created MCP config: ${configPath}`);
 
-  // 创建 AI Manager with comprehensive callbacks and workdir
+  // Create AI Manager with comprehensive callbacks and workdir
   agent = await Agent.create({
-    workdir: tempDir, // 使用 workdir 参数替代 process.chdir
+    workdir: tempDir, // Use workdir parameter instead of process.chdir
     callbacks: {
-      // 增量回调
+      // Incremental callback
       onUserMessageAdded: (content: string) => {
         console.log(`👤 User message: "${content}"`);
       },
@@ -74,15 +74,15 @@ async function setupTest() {
 }
 
 async function runTest() {
-  // 发送消息：让 AI 访问 example.com 并总结
+  // Send message: let AI visit example.com and summarize
   const userMessage =
-    "请访问 example.com 网站，获取页面内容并总结一下这个页面的信息。不需要截图。";
+    "Please visit the example.com website, get the page content and summarize the information on this page. No screenshot needed.";
   console.log(`\n💬 Sending message: ${userMessage}\n`);
 
-  // 使用 sendMessage 方法，避免手动操作 messages
+  // Use sendMessage method, avoid manual message operations
   await agent.sendMessage(userMessage);
 
-  // 获取最终状态和结果
+  // Get final state and results
   console.log("\n📊 Final state:");
   console.log(`   Session ID: ${agent.sessionId}`);
   console.log(`   Messages: ${agent.messages.length}`);
@@ -94,13 +94,13 @@ async function runTest() {
 async function cleanup() {
   console.log("\n🧹 Cleaning up...");
   try {
-    // 销毁 AI Manager (包含 MCP 清理)
+    // Destroy AI Manager (includes MCP cleanup)
     if (agent) {
       await agent.destroy();
       console.log("✅ AI Manager and MCP connections cleaned up");
     }
 
-    // 删除临时目录
+    // Delete temporary directory
     if (tempDir) {
       await fs.rm(tempDir, { recursive: true, force: true });
       console.log(`🗑️ Cleaned up temporary directory: ${tempDir}`);
@@ -123,7 +123,7 @@ async function main() {
   }
 }
 
-// 处理进程退出
+// Handle process exit
 process.on("SIGINT", async () => {
   console.log("\n\n🛑 Received SIGINT, cleaning up...");
   await cleanup();
@@ -136,7 +136,7 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-// 运行主函数
+// Run main function
 main().catch((error) => {
   console.error("💥 Unhandled error:", error);
   process.exit(1);

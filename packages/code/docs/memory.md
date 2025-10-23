@@ -1,53 +1,53 @@
-# 记忆功能使用示例
+# Memory Function Usage Example
 
-这个示例展示了如何使用记忆功能来保存和使用重要的上下文信息。
+This example demonstrates how to use the memory function to save and utilize important contextual information.
 
-## 功能概述
+## Function Overview
 
-1. **添加记忆**: 用户输入以 `#` 开头的消息会自动保存到 `WAVE.md` 文件
-2. **自动读取**: AI 在每次调用时会自动读取 `WAVE.md` 文件作为系统提示词的一部分
-3. **持久化存储**: 记忆内容会持久保存在工作目录下
+1. **Add Memory**: User input starting with `#` will be automatically saved to the `WAVE.md` file
+2. **Automatic Reading**: AI automatically reads the `WAVE.md` file as part of the system prompt on each call
+3. **Persistent Storage**: Memory content is persistently saved in the working directory
 
-## 使用示例
+## Usage Examples
 
-### 1. 添加项目设置记忆
-
-```
-用户输入: #这个项目使用 React + TypeScript，主要是一个CLI工具
-系统响应: ✅ 已将记忆添加到 WAVE.md: 这个项目使用 React + TypeScript，主要是一个CLI工具
-```
-
-### 2. 添加重要约定记忆
+### 1. Add Project Settings Memory
 
 ```
-用户输入: #代码风格: 使用 ESLint + Prettier，组件采用函数式写法
-系统响应: ✅ 已将记忆添加到 WAVE.md: 代码风格: 使用 ESLint + Prettier，组件采用函数式写法
+User input: #This project uses React + TypeScript, mainly a CLI tool
+System response: ✅ Memory added to WAVE.md: This project uses React + TypeScript, mainly a CLI tool
 ```
 
-### 3. 添加业务规则记忆
+### 2. Add Important Convention Memory
 
 ```
-用户输入: #重要: 所有文件操作都需要错误处理，用户输入需要验证
-系统响应: ✅ 已将记忆添加到 WAVE.md: 重要: 所有文件操作都需要错误处理，用户输入需要验证
+User input: #Code style: Use ESLint + Prettier, components use functional approach
+System response: ✅ Memory added to WAVE.md: Code style: Use ESLint + Prettier, components use functional approach
 ```
 
-## WAVE.md 文件示例
+### 3. Add Business Rules Memory
 
-添加记忆后，`WAVE.md` 文件内容如下：
+```
+User input: #Important: All file operations need error handling, user input needs validation
+System response: ✅ Memory added to WAVE.md: Important: All file operations need error handling, user input needs validation
+```
+
+## WAVE.md File Example
+
+After adding memories, the `WAVE.md` file content is as follows:
 
 ```markdown
 # WAVE Memory
 
-这是AI助手的记忆文件，记录重要信息和上下文。
+This is the AI assistant's memory file, recording important information and context.
 
-- 这个项目使用 React + TypeScript，主要是一个CLI工具
-- 代码风格: 使用 ESLint + Prettier，组件采用函数式写法
-- 重要: 所有文件操作都需要错误处理，用户输入需要验证
+- This project uses React + TypeScript, mainly a CLI tool
+- Code style: Use ESLint + Prettier, components use functional approach
+- Important: All file operations need error handling, user input needs validation
 ```
 
-## AI 系统提示词集成
+## AI System Prompt Integration
 
-AI 在处理请求时会自动读取记忆内容，系统提示词会包含：
+AI automatically reads memory content when processing requests, and the system prompt will include:
 
 ```
 You are a professional web development expert.
@@ -65,34 +65,34 @@ The following is important context and memory from previous interactions:
 
 # WAVE Memory
 
-这是AI助手的记忆文件，记录重要信息和上下文。
+This is the AI assistant's memory file, recording important information and context.
 
-- 这个项目使用 React + TypeScript，主要是一个CLI工具
-- 代码风格: 使用 ESLint + Prettier，组件采用函数式写法
-- 重要: 所有文件操作都需要错误处理，用户输入需要验证
+- This project uses React + TypeScript, mainly a CLI tool
+- Code style: Use ESLint + Prettier, components use functional approach
+- Important: All file operations need error handling, user input needs validation
 ```
 
-## 注意事项
+## Important Notes
 
-1. **# 开头**: 只有以 `#` 开头的消息才会被识别为记忆
-2. **列表格式**: 系统会将记忆内容以 `-` 开头的列表项格式保存
-3. **文件位置**: 记忆文件固定保存为工作目录下的 `WAVE.md`
-4. **错误处理**: 如果文件操作失败，会显示错误消息但不影响正常聊天
-5. **追加模式**: 新记忆会追加到文件末尾，不会覆盖已有内容
+1. **# prefix**: Only messages starting with `#` will be recognized as memory
+2. **List format**: The system will save memory content in list item format starting with `-`
+3. **File location**: Memory file is fixed to be saved as `WAVE.md` in the working directory
+4. **Error handling**: If file operations fail, error messages will be displayed but won't affect normal chat
+5. **Append mode**: New memories will be appended to the end of the file, not overwriting existing content
 
-## 最佳实践
+## Best Practices
 
-1. **项目设置**: 在项目开始时添加基本配置和技术栈信息
-2. **编码规范**: 记录团队约定的代码风格和最佳实践
-3. **业务规则**: 保存重要的业务逻辑和约束条件
-4. **常见问题**: 记录经常遇到的问题和解决方案
-5. **重要决策**: 保存技术选型和架构决策的理由
+1. **Project setup**: Add basic configuration and tech stack information at the beginning of the project
+2. **Coding standards**: Record team-agreed code styles and best practices
+3. **Business rules**: Save important business logic and constraints
+4. **Common issues**: Record frequently encountered problems and solutions
+5. **Important decisions**: Save reasons for technology choices and architectural decisions
 
-## 格式说明
+## Format Description
 
-记忆内容采用简洁的列表格式：
+Memory content uses a concise list format:
 
-- 每条记忆以 `-` 开头作为列表项
-- 保持内容简洁明了，便于AI理解和使用
-- 新记忆会自动追加到文件末尾
-- 支持中英文混合内容
+- Each memory starts with `-` as a list item
+- Keep content concise and clear for AI understanding and use
+- New memories are automatically appended to the end of the file
+- Supports mixed Chinese and English content

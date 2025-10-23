@@ -157,20 +157,20 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     isPasting: false,
   });
 
-  // 长文本压缩管理
+  // Long text compression management
   const longTextCounterRef = useRef<number>(0);
   const longTextMapRef = useRef<Map<string, string>>(new Map());
 
   const generateCompressedText = (originalText: string): string => {
     longTextCounterRef.current += 1;
-    const compressedLabel = `[长文本#${longTextCounterRef.current}]`;
+    const compressedLabel = `[LongText#${longTextCounterRef.current}]`;
     longTextMapRef.current.set(compressedLabel, originalText);
     return compressedLabel;
   };
 
   const expandLongTextPlaceholders = (text: string): string => {
     let expandedText = text;
-    const longTextRegex = /\[长文本#(\d+)\]/g;
+    const longTextRegex = /\[LongText#(\d+)\]/g;
     const matches = [...text.matchAll(longTextRegex)];
 
     for (const match of matches) {
@@ -204,12 +204,12 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           setInputText(newInput);
           setCursorPosition(cursorPosition - 1);
 
-          // 更新搜索查询
+          // Update search query
           if (atPosition >= 0) {
             const queryStart = atPosition + 1;
             const queryEnd = cursorPosition - 1;
             if (queryEnd <= atPosition) {
-              // 删除了 @ 符号，关闭文件选择器
+              // Deleted @ symbol, close file selector
               handleCancelFileSelect();
             } else {
               const newQuery = newInput.substring(queryStart, queryEnd);
@@ -219,7 +219,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
             const queryStart = slashPosition + 1;
             const queryEnd = cursorPosition - 1;
             if (queryEnd <= slashPosition) {
-              // 删除了 / 符号，关闭命令选择器
+              // Deleted / symbol, close command selector
               handleCancelCommandSelect();
             } else {
               const newQuery = newInput.substring(queryStart, queryEnd);
@@ -229,7 +229,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
             const queryStart = exclamationPosition + 1;
             const queryEnd = cursorPosition - 1;
             if (queryEnd <= exclamationPosition) {
-              // 删除了 ! 符号，关闭bash历史选择器
+              // Deleted ! symbol, close bash history selector
               handleCancelBashHistorySelect();
             } else {
               const newQuery = newInput.substring(queryStart, queryEnd);
@@ -240,9 +240,9 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         return;
       }
 
-      // 箭头键应该被选择器组件处理，不需要在这里过滤
+      // Arrow keys should be handled by selector components, no need to filter here
       if (key.upArrow || key.downArrow) {
-        // 让选择器组件处理箭头键导航
+        // Let selector component handle arrow key navigation
         return;
       }
 
@@ -258,7 +258,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         !("home" in key && key.home) &&
         !("end" in key && key.end)
       ) {
-        // 处理字符输入用于搜索
+        // Handle character input for search
         const char = input;
         const newInput =
           inputText.substring(0, cursorPosition) +
@@ -267,7 +267,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         setInputText(newInput);
         setCursorPosition(cursorPosition + input.length);
 
-        // 更新搜索查询
+        // Update search query
         if (atPosition >= 0) {
           const queryStart = atPosition + 1;
           const queryEnd = cursorPosition + input.length;
@@ -306,7 +306,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
   const handleNormalInput = useCallback(
     async (input: string, key: Key) => {
       if (key.return) {
-        // 在 loading 或命令运行期间阻止提交
+        // Prevent submission during loading or command execution
         if (isLoading || isCommandRunning) {
           return;
         }
@@ -314,14 +314,14 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         if (inputText.trim()) {
           const trimmedInput = inputText.trim();
 
-          // 检查是否是记忆消息（以#开头且只有一行）
+          // Check if it's a memory message (starts with # and only one line)
           if (trimmedInput.startsWith("#") && !trimmedInput.includes("\n")) {
-            // 激活记忆类型选择器
+            // Activate memory type selector
             activateMemoryTypeSelector(trimmedInput);
             return;
           }
 
-          // 提取图片信息
+          // Extract image information
           const imageRegex = /\[Image #(\d+)\]/g;
           const matches = [...inputText.matchAll(imageRegex)];
           const referencedImages = matches
@@ -335,7 +335,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
             )
             .map((img) => ({ path: img.path, mimeType: img.mimeType }));
 
-          // 移除图片占位符，展开长文本占位符，发送消息
+          // Remove image placeholders, expand long text placeholders, send message
           let cleanContent = inputText.replace(imageRegex, "").trim();
           cleanContent = expandLongTextPlaceholders(cleanContent);
 
@@ -347,7 +347,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           clearImages();
           resetHistoryNavigation();
 
-          // 清理长文本映射
+          // Clear long text mapping
           longTextMapRef.current.clear();
         }
         return;
@@ -398,7 +398,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         return;
       }
 
-      // 处理 Ctrl+V 粘贴图片
+      // Handle Ctrl+V for pasting images
       if (key.ctrl && input === "v") {
         handlePasteImage().catch((error) => {
           console.warn("Failed to handle paste image:", error);
@@ -406,7 +406,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         return;
       }
 
-      // 处理上下键进行历史导航（仅在没有选择器激活时）
+      // Handle up/down keys for history navigation (only when no selector is active)
       if (
         key.upArrow &&
         !showFileSelector &&
@@ -437,7 +437,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         return;
       }
 
-      // 处理打字输入
+      // Handle typing input
       if (
         input &&
         !key.ctrl &&
@@ -454,14 +454,14 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       ) {
         const inputString = input;
 
-        // 检测是否为粘贴操作（输入包含多个字符或换行符）
+        // Detect if it's a paste operation (input contains multiple characters or newlines)
         const isPasteOperation =
           inputString.length > 1 ||
           inputString.includes("\n") ||
           inputString.includes("\r");
 
         if (isPasteOperation) {
-          logger.debug("[InputBox] 🔍 检测到粘贴操作:", {
+          logger.debug("[InputBox] 🔍 Detected paste operation:", {
             inputLength: inputString.length,
             input:
               inputString.substring(0, 50) +
@@ -470,18 +470,18 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
               inputString.includes("\n") || inputString.includes("\r"),
           });
 
-          // 开始或继续粘贴操作的debounce处理
+          // Start or continue the debounce handling for paste operation
           if (!pasteDebounceRef.current.isPasting) {
-            // 开始新的粘贴操作
+            // Start new paste operation
             logger.debug(
-              "[InputBox] 🚀 开始新的粘贴操作 - 初始化debounce缓冲区",
+              "[InputBox] 🚀 Starting new paste operation - initializing debounce buffer",
             );
             pasteDebounceRef.current.isPasting = true;
             pasteDebounceRef.current.buffer = inputString;
             pasteDebounceRef.current.initialCursorPosition = cursorPosition;
           } else {
-            // 继续粘贴操作，将新输入添加到缓冲区
-            logger.debug("[InputBox] 📝 合并粘贴内容到缓冲区:", {
+            // Continue paste operation, add new input to buffer
+            logger.debug("[InputBox] 📝 Merging paste content to buffer:", {
               previousBufferLength: pasteDebounceRef.current.buffer.length,
               newInputLength: inputString.length,
               newTotalLength:
@@ -490,35 +490,38 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
             pasteDebounceRef.current.buffer += inputString;
           }
 
-          // 清除之前的定时器
+          // Clear previous timer
           if (pasteDebounceRef.current.timer) {
             logger.debug(
-              "[InputBox] ⏰ 清除之前的debounce定时器，重新设置30毫秒延迟",
+              "[InputBox] ⏰ Clearing previous debounce timer, resetting 30ms delay",
             );
             clearTimeout(pasteDebounceRef.current.timer);
           }
 
-          // 设置新的30毫秒定时器
+          // Set new 30ms timer
           pasteDebounceRef.current.timer = setTimeout(() => {
-            logger.debug("[InputBox] ✅ Debounce完成 - 处理合并后的粘贴内容:", {
-              finalBufferLength: pasteDebounceRef.current.buffer.length,
-              content:
-                pasteDebounceRef.current.buffer.substring(0, 100) +
-                (pasteDebounceRef.current.buffer.length > 100 ? "..." : ""),
-            });
+            logger.debug(
+              "[InputBox] ✅ Debounce complete - processing merged paste content:",
+              {
+                finalBufferLength: pasteDebounceRef.current.buffer.length,
+                content:
+                  pasteDebounceRef.current.buffer.substring(0, 100) +
+                  (pasteDebounceRef.current.buffer.length > 100 ? "..." : ""),
+              },
+            );
 
-            // 处理缓冲区中的所有粘贴内容
+            // Process all paste content in buffer
             let processedInput = pasteDebounceRef.current.buffer.replace(
               /\r/g,
               "\n",
             );
 
-            // 检查是否需要长文本压缩（超过200字符）
+            // Check if long text compression is needed (over 200 characters)
             if (processedInput.length > 200) {
               const originalText = processedInput;
               const compressedLabel = generateCompressedText(originalText);
               logger.info(
-                "[InputBox] 📦 长文本压缩: originalLength:",
+                "[InputBox] 📦 Long text compression: originalLength:",
                 originalText.length,
                 "compressedLabel:",
                 compressedLabel,
@@ -531,23 +534,25 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
             insertTextAtCursor(processedInput);
             resetHistoryNavigation();
 
-            // 重置粘贴状态
+            // Reset paste state
             pasteDebounceRef.current.isPasting = false;
             pasteDebounceRef.current.buffer = "";
             pasteDebounceRef.current.timer = null;
 
-            logger.debug("[InputBox] 🎯 粘贴debounce处理完成，状态已重置");
+            logger.debug(
+              "[InputBox] 🎯 Paste debounce processing complete, state reset",
+            );
           }, 30);
         } else {
-          // 处理单字符输入
+          // Handle single character input
           let char = inputString;
 
-          // 检查是否为中文叹号，如果是且在开头位置，则转换为英文叹号
+          // Check if it's Chinese exclamation mark, convert to English if at beginning
           if (char === "！" && cursorPosition === 0) {
             char = "!";
           }
 
-          // 先更新输入文本和光标位置
+          // First update input text and cursor position
           const newInputText =
             inputText.substring(0, cursorPosition) +
             char +
@@ -557,31 +562,33 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
           insertTextAtCursor(char);
           resetHistoryNavigation();
 
-          // 检查特殊字符并设置相应的选择器
+          // Check special characters and set corresponding selectors
           if (char === "@") {
             activateFileSelector(cursorPosition);
           } else if (char === "/") {
             activateCommandSelector(cursorPosition);
           } else if (char === "!" && cursorPosition === 0) {
-            // ! 必须在第一个字符才能唤起 bash selector
+            // ! must be the first character to trigger bash selector
             activateBashHistorySelector(cursorPosition);
           } else if (char === "#" && cursorPosition === 0) {
-            // # 在开头位置，将被发送时自动检测为记忆消息
-            logger.debug("[InputBox] 📝 记忆消息检测，输入以 # 开头");
+            // # at beginning position, will be auto-detected as memory message when sent
+            logger.debug(
+              "[InputBox] 📝 Memory message detection, input starts with #",
+            );
           } else if (showFileSelector && atPosition >= 0) {
-            // 更新搜索查询
+            // Update search query
             const queryStart = atPosition + 1;
             const queryEnd = newCursorPosition;
             const newQuery = newInputText.substring(queryStart, queryEnd);
             updateSearchQuery(newQuery);
           } else if (showCommandSelector && slashPosition >= 0) {
-            // 更新命令搜索查询
+            // Update command search query
             const queryStart = slashPosition + 1;
             const queryEnd = newCursorPosition;
             const newQuery = newInputText.substring(queryStart, queryEnd);
             updateCommandSearchQuery(newQuery);
           } else if (showBashHistorySelector && exclamationPosition >= 0) {
-            // 更新bash历史搜索查询
+            // Update bash history search query
             const queryStart = exclamationPosition + 1;
             const queryEnd = newCursorPosition;
             const newQuery = newInputText.substring(queryStart, queryEnd);
@@ -633,17 +640,17 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
   );
 
   useInput((input, key) => {
-    // 处理中断请求 - 使用 Esc 键中断AI请求或命令
+    // Handle interrupt request - use Esc key to interrupt AI request or command
     if (key.escape && (isLoading || isCommandRunning)) {
-      // 统一中断AI消息生成和命令执行
+      // Unified interrupt for AI message generation and command execution
       if (typeof abortMessage === "function") {
         abortMessage();
       }
       return;
     }
 
-    // 在 loading 或命令运行期间，除了 Esc 键以外，其他输入操作继续正常处理
-    // 但会在 handleNormalInput 中阻止回车提交
+    // During loading or command execution, except for Esc key, other input operations continue normally
+    // but will prevent Enter submission in handleNormalInput
 
     if (
       showFileSelector ||
@@ -654,7 +661,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
       showMcpManager
     ) {
       if (showMemoryTypeSelector || showBashManager || showMcpManager) {
-        // 记忆类型选择器、bash管理器和MCP管理器不需要处理输入，由组件自己处理
+        // Memory type selector, bash manager and MCP manager don't need to handle input, handled by component itself
         return;
       }
       handleSelectorInput(input, key);
@@ -743,7 +750,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     handleBashHistoryExecute: useCallback(
       (command: string) => {
         const commandToExecute = handleBashHistoryExecute(command);
-        // 清空输入框并执行命令，确保命令以!开头
+        // Clear input box and execute command, ensure command starts with !
         const bashCommand = commandToExecute.startsWith("!")
           ? commandToExecute
           : `!${commandToExecute}`;
@@ -760,9 +767,9 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         if (currentMessage.startsWith("#")) {
           await saveMemory(currentMessage, type);
         }
-        // 调用来自useMemoryTypeSelector的处理函数来关闭选择器
+        // Call the handler function from useMemoryTypeSelector to close the selector
         handleMemoryTypeSelect(type);
-        // 清空输入框
+        // Clear input box
         clearInput();
       },
       [inputText, saveMemory, handleMemoryTypeSelect, clearInput],
