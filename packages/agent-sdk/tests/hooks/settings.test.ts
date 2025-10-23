@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { tmpdir } from "os";
 import { join } from "path";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
@@ -10,16 +10,21 @@ import type { HookConfiguration } from "../../src/hooks/types.js";
 
 describe("Hook Settings", () => {
   let testDir: string;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     testDir = join(tmpdir(), `wave-hooks-settings-test-${Date.now()}`);
     mkdirSync(testDir, { recursive: true });
+    // Mock console.warn to prevent stderr output
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
     }
+    // Restore console.warn
+    consoleWarnSpy?.mockRestore();
   });
 
   describe("configuration file loading", () => {
