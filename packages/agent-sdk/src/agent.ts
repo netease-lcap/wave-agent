@@ -287,6 +287,10 @@ export class Agent {
             projectDir: this.workdir,
             timestamp: new Date(),
             // UserPromptSubmit doesn't need toolName
+            sessionId: this.sessionId,
+            transcriptPath: this.messageManager.getTranscriptPath(),
+            cwd: this.workdir,
+            userPrompt: content,
           });
         } catch (error) {
           this.logger?.warn("UserPromptSubmit hooks execution failed:", error);

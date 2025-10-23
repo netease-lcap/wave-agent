@@ -10,21 +10,63 @@ import {
   type HookExecutionContext,
   type HookExecutionResult,
   type HookExecutionOptions,
+  type ExtendedHookExecutionContext,
+  type HookJsonInput,
+  getSessionFilePath,
 } from "./types.js";
 import type { Logger } from "../types.js";
+
+/**
+ * Build JSON input data for hook stdin
+ */
+function buildHookJsonInput(
+  context: ExtendedHookExecutionContext,
+): HookJsonInput {
+  const jsonInput: HookJsonInput = {
+    session_id: context.sessionId || "unknown",
+    transcript_path:
+      context.transcriptPath ||
+      (context.sessionId ? getSessionFilePath(context.sessionId) : ""),
+    cwd: context.cwd || context.projectDir,
+    hook_event_name: context.event,
+  };
+
+  // Add optional fields based on event type
+  if (context.event === "PreToolUse" || context.event === "PostToolUse") {
+    if (context.toolName) {
+      jsonInput.tool_name = context.toolName;
+    }
+    if (context.toolInput !== undefined) {
+      jsonInput.tool_input = context.toolInput;
+    }
+  }
+
+  if (context.event === "PostToolUse" && context.toolResponse !== undefined) {
+    jsonInput.tool_response = context.toolResponse;
+  }
+
+  if (
+    context.event === "UserPromptSubmit" &&
+    context.userPrompt !== undefined
+  ) {
+    jsonInput.user_prompt = context.userPrompt;
+  }
+
+  return jsonInput;
+}
 
 export interface IHookExecutor {
   // Execute a single hook command
   executeCommand(
     command: string,
-    context: HookExecutionContext,
+    context: HookExecutionContext | ExtendedHookExecutionContext,
     options?: HookExecutionOptions,
   ): Promise<HookExecutionResult>;
 
   // Execute multiple commands in sequence
   executeCommands(
     commands: string[],
-    context: HookExecutionContext,
+    context: HookExecutionContext | ExtendedHookExecutionContext,
     options?: HookExecutionOptions,
   ): Promise<HookExecutionResult[]>;
 
@@ -52,7 +94,7 @@ export class HookExecutor implements IHookExecutor {
    */
   async executeCommand(
     command: string,
-    context: HookExecutionContext,
+    context: HookExecutionContext | ExtendedHookExecutionContext,
     options: HookExecutionOptions = {},
   ): Promise<HookExecutionResult> {
     const startTime = Date.now();
@@ -99,7 +141,20 @@ export class HookExecutor implements IHookExecutor {
     // Resolve command with environment variables
     const resolvedCommand = this.resolveEnvironmentVariables(command, env);
 
+    // Prepare JSON input for stdin (if extended context is provided)
+    const isExtendedContext =
+      "sessionId" in context ||
+      "toolInput" in context ||
+      "toolResponse" in context ||
+      "userPrompt" in context;
+    const jsonInput = isExtendedContext
+      ? buildHookJsonInput(context as ExtendedHookExecutionContext)
+      : null;
+
     this.logger?.info(`[Hook] Resolved command: ${resolvedCommand}`);
+    if (jsonInput) {
+      this.logger?.debug(`[Hook] JSON input: ${JSON.stringify(jsonInput)}`);
+    }
 
     return new Promise((resolve) => {
       let stdout = "";
@@ -140,6 +195,18 @@ export class HookExecutor implements IHookExecutor {
         });
 
         this.logger?.debug(`[Hook] Process started (PID: ${childProcess.pid})`);
+
+        // Write JSON input to stdin if available
+        if (jsonInput && childProcess.stdin) {
+          try {
+            const jsonString = JSON.stringify(jsonInput, null, 2);
+            childProcess.stdin.write(jsonString);
+            childProcess.stdin.end();
+            this.logger?.debug(`[Hook] JSON input written to stdin`);
+          } catch (error) {
+            this.logger?.warn(`[Hook] Failed to write JSON to stdin: ${error}`);
+          }
+        }
 
         // Collect stdout
         childProcess.stdout?.on("data", (data) => {
@@ -230,7 +297,7 @@ export class HookExecutor implements IHookExecutor {
    */
   async executeCommands(
     commands: string[],
-    context: HookExecutionContext,
+    context: HookExecutionContext | ExtendedHookExecutionContext,
     options: HookExecutionOptions = {},
   ): Promise<HookExecutionResult[]> {
     const results: HookExecutionResult[] = [];
@@ -317,9 +384,6 @@ export class HookExecutor implements IHookExecutor {
     return {
       ...process.env, // Inherit parent environment
       WAVE_PROJECT_DIR: context.projectDir,
-      WAVE_HOOK_EVENT: context.event,
-      WAVE_TOOL_NAME: context.toolName || "",
-      WAVE_TIMESTAMP: context.timestamp.toISOString(),
     };
   }
 

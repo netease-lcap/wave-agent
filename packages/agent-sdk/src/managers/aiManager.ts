@@ -4,13 +4,16 @@ import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import * as memory from "../services/memory.js";
 import type { Logger } from "../types.js";
 import type { ToolManager } from "./toolManager.js";
-import type { ToolContext } from "../tools/types.js";
+import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "../hooks/index.js";
-import type { HookExecutionContext } from "../hooks/types.js";
+import type {
+  HookExecutionContext,
+  ExtendedHookExecutionContext,
+} from "../hooks/types.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -290,7 +293,7 @@ export class AIManager {
 
             try {
               // Execute PreToolUse hooks before tool execution
-              await this.executePreToolUseHooks(toolName);
+              await this.executePreToolUseHooks(toolName, toolArgs);
 
               // Create tool execution context
               const context: ToolContext = {
@@ -334,7 +337,11 @@ export class AIManager {
               }
 
               // Execute PostToolUse hooks after successful tool completion
-              await this.executePostToolUseHooks(toolName);
+              await this.executePostToolUseHooks(
+                toolName,
+                toolArgs,
+                toolResult,
+              );
             } catch (toolError) {
               const errorMessage =
                 toolError instanceof Error
@@ -468,15 +475,22 @@ export class AIManager {
   /**
    * Execute PreToolUse hooks before tool execution
    */
-  private async executePreToolUseHooks(toolName: string): Promise<void> {
+  private async executePreToolUseHooks(
+    toolName: string,
+    toolInput?: Record<string, unknown>,
+  ): Promise<void> {
     if (!this.hookManager) return;
 
     try {
-      const context: HookExecutionContext = {
+      const context: ExtendedHookExecutionContext = {
         event: "PreToolUse",
         projectDir: this.workdir,
         timestamp: new Date(),
         toolName,
+        sessionId: this.messageManager.getSessionId(),
+        transcriptPath: this.messageManager.getTranscriptPath(),
+        cwd: this.workdir,
+        toolInput,
       };
 
       const results = await this.hookManager.executeHooks(
@@ -506,15 +520,24 @@ export class AIManager {
   /**
    * Execute PostToolUse hooks after tool completion
    */
-  private async executePostToolUseHooks(toolName: string): Promise<void> {
+  private async executePostToolUseHooks(
+    toolName: string,
+    toolInput?: Record<string, unknown>,
+    toolResponse?: ToolResult,
+  ): Promise<void> {
     if (!this.hookManager) return;
 
     try {
-      const context: HookExecutionContext = {
+      const context: ExtendedHookExecutionContext = {
         event: "PostToolUse",
         projectDir: this.workdir,
         timestamp: new Date(),
         toolName,
+        sessionId: this.messageManager.getSessionId(),
+        transcriptPath: this.messageManager.getTranscriptPath(),
+        cwd: this.workdir,
+        toolInput,
+        toolResponse,
       };
 
       const results = await this.hookManager.executeHooks(

@@ -11,6 +11,7 @@ import {
   type HookConfiguration,
   type PartialHookConfiguration,
   type HookExecutionContext,
+  type ExtendedHookExecutionContext,
   type HookExecutionResult,
   type ValidationResult,
   HookConfigurationError,
@@ -35,7 +36,7 @@ export interface IHookManager {
   // Execute hooks for specific event
   executeHooks(
     event: HookEvent,
-    context: HookExecutionContext,
+    context: HookExecutionContext | ExtendedHookExecutionContext,
   ): Promise<HookExecutionResult[]>;
 
   // Check if hooks are configured for event
@@ -146,7 +147,7 @@ export class HookManager implements IHookManager {
    */
   async executeHooks(
     event: HookEvent,
-    context: HookExecutionContext,
+    context: HookExecutionContext | ExtendedHookExecutionContext,
   ): Promise<HookExecutionResult[]> {
     // Validate execution context
     const contextValidation = this.validateExecutionContext(event, context);

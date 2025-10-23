@@ -5,6 +5,15 @@
  * enabling automated actions at specific workflow points.
  */
 
+import { join } from "path";
+import { homedir } from "os";
+
+// Session path utility (from session.ts)
+export function getSessionFilePath(sessionId: string): string {
+  const shortId = sessionId.split("_")[2] || sessionId.slice(-8);
+  return join(homedir(), ".wave", "sessions", `session_${shortId}.json`);
+}
+
 // Hook event types - trigger points in the AI workflow
 export type HookEvent =
   | "PreToolUse"
@@ -126,6 +135,31 @@ export function isValidHookEventConfig(
   if ("matcher" in cfg && typeof cfg.matcher !== "string") return false;
 
   return true;
+}
+
+// JSON structure passed to hooks via stdin
+export interface HookJsonInput {
+  // Required fields for all events
+  session_id: string; // Format: "wave_session_{uuid}_{shortId}"
+  transcript_path: string; // Format: "~/.wave/sessions/session_{shortId}.json"
+  cwd: string; // Absolute path to current working directory
+  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop"
+
+  // Optional fields based on event type
+  tool_name?: string; // Present for PreToolUse, PostToolUse
+  tool_input?: unknown; // Present for PreToolUse, PostToolUse
+  tool_response?: unknown; // Present for PostToolUse only
+  user_prompt?: string; // Present for UserPromptSubmit only
+}
+
+// Extended context interface for passing additional data to hook executor
+export interface ExtendedHookExecutionContext extends HookExecutionContext {
+  sessionId?: string; // Session identifier for JSON construction
+  transcriptPath?: string; // Path to session transcript file
+  cwd?: string; // Current working directory
+  toolInput?: unknown; // Tool input parameters (PreToolUse/PostToolUse)
+  toolResponse?: unknown; // Tool execution result (PostToolUse only)
+  userPrompt?: string; // User prompt text (UserPromptSubmit only)
 }
 
 // Environment variables injected into hook processes

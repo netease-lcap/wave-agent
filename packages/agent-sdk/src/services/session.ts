@@ -46,7 +46,7 @@ async function ensureSessionDir(): Promise<void> {
 /**
  * Generate session file path
  */
-function getSessionFilePath(sessionId: string): string {
+export function getSessionFilePath(sessionId: string): string {
   const shortId = sessionId.split("_")[2] || sessionId.slice(-8);
   return join(SESSION_DIR, `session_${shortId}.json`);
 }

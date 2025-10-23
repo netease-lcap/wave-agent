@@ -231,9 +231,6 @@ describe("HookExecutor", () => {
 
       expect(spawnEnv).toBeDefined();
       expect(spawnEnv!.WAVE_PROJECT_DIR).toBe("/test/project");
-      expect(spawnEnv!.WAVE_HOOK_EVENT).toBe("PostToolUse");
-      expect(spawnEnv!.WAVE_TOOL_NAME).toBe("Edit");
-      expect(spawnEnv!.WAVE_TIMESTAMP).toBe("2024-01-01T00:00:00.000Z");
     });
 
     it("should resolve environment variables in commands", async () => {
@@ -261,10 +258,8 @@ describe("HookExecutor", () => {
 
     it("should handle context without tool name", async () => {
       const mockProcess = new MockChildProcess();
-      let spawnEnv: NodeJS.ProcessEnv | undefined;
 
-      mockSpawn.mockImplementation((command, args, options) => {
-        spawnEnv = options?.env;
+      mockSpawn.mockImplementation(() => {
         return mockProcess;
       });
 
@@ -282,9 +277,9 @@ describe("HookExecutor", () => {
         mockProcess.emit("close", 0);
       }, 10);
 
-      await resultPromise;
+      const result = await resultPromise;
 
-      expect(spawnEnv!.WAVE_TOOL_NAME).toBe("");
+      expect(result.success).toBe(true);
     });
   });
 

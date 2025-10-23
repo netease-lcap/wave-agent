@@ -19,6 +19,7 @@ import {
   loadSession,
   saveSession,
   SessionData,
+  getSessionFilePath,
 } from "../services/session.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 
@@ -97,6 +98,10 @@ export class MessageManager {
 
   public getUserInputHistory(): string[] {
     return [...this.userInputHistory];
+  }
+
+  public getTranscriptPath(): string {
+    return getSessionFilePath(this.sessionId);
   }
 
   // Setter methods, will trigger callbacks
