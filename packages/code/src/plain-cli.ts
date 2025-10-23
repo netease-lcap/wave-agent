@@ -22,13 +22,14 @@ export async function startPlainCli(options: PlainCliOptions): Promise<void> {
   }
 
   let agent: Agent;
+  let lastAssistantMessage: string | undefined;
 
   // Setup callbacks for agent
   const callbacks: AgentCallbacks = {
     onAssistantMessageAdded: (content?: string) => {
-      // Only output the content field, not tool calls
+      // Store the content instead of immediately printing it
       if (content) {
-        console.log(content);
+        lastAssistantMessage = content;
       }
     },
   };
@@ -45,6 +46,11 @@ export async function startPlainCli(options: PlainCliOptions): Promise<void> {
     // Send message if provided and not empty
     if (message && message.trim() !== "") {
       await agent.sendMessage(message);
+    }
+
+    // Output only the last assistant message
+    if (lastAssistantMessage) {
+      console.log(lastAssistantMessage);
     }
 
     // Destroy agent and exit after sendMessage completes
