@@ -252,6 +252,7 @@ describe("McpManager", () => {
         command: "npx",
         args: ["test-mcp-server"],
         env: { TEST_VAR: "value" },
+        cwd: "/test/workdir",
       });
       expect(mockClient.connect).toHaveBeenCalledWith(mockTransport);
 

@@ -33,6 +33,7 @@ export class McpManager {
   private servers: Map<string, McpServerStatus> = new Map();
   private connections: Map<string, McpConnection> = new Map();
   private configPath: string = "";
+  private workdir: string = "";
   private callbacks: McpManagerCallbacks;
   private logger?: Logger;
 
@@ -49,6 +50,7 @@ export class McpManager {
     autoConnect: boolean = false,
   ): Promise<void> {
     this.configPath = join(workdir, ".mcp.json");
+    this.workdir = workdir;
 
     if (autoConnect) {
       this.logger?.info("Initializing MCP servers...");
@@ -227,6 +229,7 @@ export class McpManager {
         command: server.config.command,
         args: server.config.args || [],
         env: server.config.env || {},
+        cwd: this.workdir, // Use the agent's workdir as the process working directory
       });
 
       // Create client
