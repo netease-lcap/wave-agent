@@ -25,7 +25,8 @@ describe("editTool", () => {
 
   it("should have correct tool configuration", () => {
     expect(editTool.name).toBe("Edit");
-    expect(editTool.description).toBe(
+    expect(editTool.config.function.name).toBe("Edit");
+    expect(editTool.config.function.description).toContain(
       "Performs exact string replacements in files",
     );
     expect(editTool.config.type).toBe("function");

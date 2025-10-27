@@ -7,7 +7,6 @@ import { resolvePath, getDisplayPath } from "../utils/path.js";
  */
 export const readTool: ToolPlugin = {
   name: "Read",
-  description: "Reads a file from the local filesystem",
   config: {
     type: "function",
     function: {

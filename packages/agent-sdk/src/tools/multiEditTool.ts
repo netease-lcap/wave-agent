@@ -28,8 +28,6 @@ function formatCompactParams(
  */
 export const multiEditTool: ToolPlugin = {
   name: "MultiEdit",
-  description:
-    "This is a tool for making multiple edits to a single file in one operation",
   formatCompactParams,
   config: {
     type: "function",

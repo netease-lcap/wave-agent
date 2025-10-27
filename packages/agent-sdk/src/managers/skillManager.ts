@@ -285,7 +285,6 @@ export class SkillManager implements ISkillManager {
 
     return {
       name: "skill",
-      description: getToolDescription(),
       config: {
         type: "function",
         function: {

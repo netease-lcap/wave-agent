@@ -9,7 +9,6 @@ import { getDisplayPath } from "../utils/path.js";
  */
 export const grepTool: ToolPlugin = {
   name: "Grep",
-  description: "A powerful search tool built on ripgrep",
   config: {
     type: "function",
     function: {

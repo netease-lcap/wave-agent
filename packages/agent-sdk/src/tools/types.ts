@@ -6,7 +6,6 @@ import { ChatCompletionFunctionTool } from "openai/resources.js";
 
 export interface ToolPlugin {
   name: string;
-  description: string;
   config: ChatCompletionFunctionTool;
   execute: (
     args: Record<string, unknown>,

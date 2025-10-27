@@ -7,7 +7,6 @@ import { resolvePath, getDisplayPath } from "../utils/path.js";
  */
 export const deleteFileTool: ToolPlugin = {
   name: "Delete",
-  description: "Deletes a file at the specified path.",
   config: {
     type: "function",
     function: {

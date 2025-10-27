@@ -58,9 +58,6 @@ describe("SkillManager", () => {
       const tool = skillManager.createTool();
 
       expect(tool.name).toBe("skill");
-      expect(tool.description).toContain(
-        "Skills will be loaded during initialization",
-      );
       expect(tool.config).toBeDefined();
       expect(tool.config.type).toBe("function");
       expect(tool.config.function.name).toBe("skill");
