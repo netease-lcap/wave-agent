@@ -28,7 +28,10 @@ describe("writeTool", () => {
 
   it("should have correct tool configuration", () => {
     expect(writeTool.name).toBe("Write");
-    expect(writeTool.description).toBe("Writes a file to the local filesystem");
+    expect(writeTool.config.function.name).toBe("Write");
+    expect(writeTool.config.function.description).toContain(
+      "Writes a file to the local filesystem",
+    );
     expect(writeTool.config.type).toBe("function");
 
     // Type guard to access function properties

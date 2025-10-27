@@ -105,13 +105,17 @@ describe("McpManager - Tools Registry", () => {
         (p: ToolPlugin) => p.name === "server1_tool1",
       );
       expect(plugin1).toBeDefined();
-      expect(plugin1?.description).toBe("Tool 1 from server 1");
+      expect(plugin1?.config.function.description).toBe(
+        "Tool 1 from server 1 (MCP: server1)",
+      );
 
       const plugin2 = plugins.find(
         (p: ToolPlugin) => p.name === "server2_tool2",
       );
       expect(plugin2).toBeDefined();
-      expect(plugin2?.description).toBe("Tool 2 from server 2");
+      expect(plugin2?.config.function.description).toBe(
+        "Tool 2 from server 2 (MCP: server2)",
+      );
     });
 
     it("should return empty array when no MCP tools available", () => {

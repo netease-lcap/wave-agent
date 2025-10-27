@@ -9,7 +9,6 @@ import { diffLines } from "diff";
  */
 export const writeTool: ToolPlugin = {
   name: "Write",
-  description: "Writes a file to the local filesystem",
   config: {
     type: "function",
     function: {

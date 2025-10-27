@@ -6,8 +6,6 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
  */
 export const bashTool: ToolPlugin = {
   name: "Bash",
-  description:
-    "Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.",
   config: {
     type: "function",
     function: {
@@ -232,8 +230,6 @@ export const bashTool: ToolPlugin = {
  */
 export const bashOutputTool: ToolPlugin = {
   name: "BashOutput",
-  description:
-    "Retrieves output from a running or completed background bash shell",
   config: {
     type: "function",
     function: {
@@ -327,7 +323,6 @@ export const bashOutputTool: ToolPlugin = {
  */
 export const killBashTool: ToolPlugin = {
   name: "KillBash",
-  description: "Kills a running background bash shell by its ID",
   config: {
     type: "function",
     function: {

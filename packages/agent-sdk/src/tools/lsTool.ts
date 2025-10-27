@@ -9,7 +9,6 @@ import { isBinary, getDisplayPath } from "@/utils/path.js";
  */
 export const lsTool: ToolPlugin = {
   name: "LS",
-  description: "Lists files and directories in a given path",
   config: {
     type: "function",
     function: {

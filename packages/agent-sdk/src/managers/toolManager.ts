@@ -9,35 +9,51 @@ import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
 import { lsTool } from "../tools/lsTool.js";
 import { readTool } from "../tools/readTool.js";
+import { SkillManager } from "./skillManager.js";
 import { McpManager } from "./mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
+import type { Logger } from "../types.js";
 
 export interface ToolManagerOptions {
   mcpManager: McpManager;
+  logger?: Logger;
 }
 
 /**
  * Tool Manager
  */
 class ToolManager {
-  private tools = new Map<string, ToolPlugin>([
-    [bashTool.name, bashTool],
-    [bashOutputTool.name, bashOutputTool],
-    [killBashTool.name, killBashTool],
-    [deleteFileTool.name, deleteFileTool],
-    [editTool.name, editTool],
-    [multiEditTool.name, multiEditTool],
-    [writeTool.name, writeTool],
-    [globTool.name, globTool],
-    [grepTool.name, grepTool],
-    [lsTool.name, lsTool],
-    [readTool.name, readTool],
-  ]);
-
+  private tools = new Map<string, ToolPlugin>();
   private mcpManager: McpManager;
+  private logger?: Logger;
 
   constructor(options: ToolManagerOptions) {
     this.mcpManager = options.mcpManager;
+    this.logger = options.logger;
+
+    // Initialize built-in tools
+    this.initializeBuiltInTools();
+  }
+
+  private initializeBuiltInTools(): void {
+    const builtInTools = [
+      bashTool,
+      bashOutputTool,
+      killBashTool,
+      deleteFileTool,
+      editTool,
+      multiEditTool,
+      writeTool,
+      globTool,
+      grepTool,
+      lsTool,
+      readTool,
+      new SkillManager({ logger: this.logger }).createTool(),
+    ];
+
+    for (const tool of builtInTools) {
+      this.tools.set(tool.name, tool);
+    }
   }
 
   async execute(

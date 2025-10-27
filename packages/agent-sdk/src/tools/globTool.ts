@@ -9,8 +9,6 @@ import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
  */
 export const globTool: ToolPlugin = {
   name: "Glob",
-  description:
-    "Fast file pattern matching tool that works with any codebase size",
   config: {
     type: "function",
     function: {

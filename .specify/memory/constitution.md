@@ -23,7 +23,7 @@ All code MUST be written in TypeScript with strict type checking enabled. No `an
 **Rationale**: Type safety prevents runtime errors and improves developer experience in an AI-assisted development environment.
 
 ### III. Test Alignment
-Test file organization MUST follow logical patterns for discoverability. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. Integration tests in `packages/*/examples` for real scenarios; unit tests in `packages/*/tests` for mockable scenarios.
+Test file organization MUST follow logical patterns for discoverability. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. All tests (unit and integration) MUST be in `packages/*/tests` directories. Integration tests use temporary directories and real file operations; unit tests use mocking for external dependencies.
 
 **Rationale**: Flexible test organization enables both predictable discovery and manageable test suites for complex modules.
 
@@ -47,8 +47,9 @@ After any modifications, MUST run `pnpm run type-check` and `pnpm run lint` to v
 All code MUST pass TypeScript compilation without errors or warnings. All tests MUST pass before merging. Code MUST follow the established linting and formatting rules enforced by ESLint and Prettier. Quality gates (type-check and lint) MUST be run and pass after every modification.
 
 **Testing Requirements**: 
-- Examples directory: Real integration tests using `npx tsx` locally
-- Tests directory: Unit tests that can run in CI/CD with mocking
+- Tests directory: All tests (unit and integration) with proper isolation
+- Integration tests: Use temporary directories, real file operations, cleanup after each test
+- Unit tests: Use mocking for external dependencies, fast execution
 - All new features require corresponding tests
 
 ## Development Workflow
@@ -63,9 +64,10 @@ All code MUST pass TypeScript compilation without errors or warnings. All tests 
 5. Commit with clear, descriptive messages
 
 **Testing Strategy**:
-- Unit tests for individual functions and components
-- Integration tests for cross-package interactions
-- Use appropriate test directory based on mocking requirements
+- Unit tests for individual functions and components (with mocking)
+- Integration tests for cross-package interactions (with temporary directories)
+- All tests must be in tests directories with proper cleanup
+- Use appropriate isolation based on test type
 
 ## Governance
 

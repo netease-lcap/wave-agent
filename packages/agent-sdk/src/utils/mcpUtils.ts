@@ -41,7 +41,6 @@ export function createMcpToolPlugin(
 ): ToolPlugin {
   return {
     name: mcpTool.name,
-    description: mcpTool.description || `Tool from MCP server ${serverName}`,
     config: mcpToolToOpenAITool(mcpTool, serverName),
     async execute(
       args: Record<string, unknown>,
