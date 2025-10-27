@@ -16,24 +16,20 @@ import type { ToolPlugin, ToolResult } from "../tools/types.js";
 import { parseSkillFile, formatSkillError } from "../utils/skillParser.js";
 
 /**
- * Manages skill discovery, loading, and caching
+ * Manages skill discovery and loading
  */
 export class SkillManager implements ISkillManager {
   private personalSkillsPath: string;
-  private maxMetadataCache: number;
-  private maxContentCache: number;
   private scanTimeout: number;
   private logger?: Logger;
 
-  private metadataCache = new Map<string, SkillMetadata>();
-  private contentCache = new Map<string, Skill>();
+  private skillMetadata = new Map<string, SkillMetadata>();
+  private skillContent = new Map<string, Skill>();
   private initialized = false;
 
   constructor(options: SkillManagerOptions = {}) {
     this.personalSkillsPath =
       options.personalSkillsPath || join(homedir(), ".wave", "skills");
-    this.maxMetadataCache = options.maxMetadataCache || 1000;
-    this.maxContentCache = options.maxContentCache || 100;
     this.scanTimeout = options.scanTimeout || 5000;
     this.logger = options.logger;
   }
@@ -47,13 +43,13 @@ export class SkillManager implements ISkillManager {
     try {
       const discovery = await this.discoverSkills();
 
-      // Update metadata cache with discovered skills
-      this.metadataCache.clear();
+      // Store discovered skill metadata
+      this.skillMetadata.clear();
       discovery.personalSkills.forEach((skill, name) => {
-        this.metadataCache.set(name, skill);
+        this.skillMetadata.set(name, skill);
       });
       discovery.projectSkills.forEach((skill, name) => {
-        this.metadataCache.set(name, skill);
+        this.skillMetadata.set(name, skill);
       });
 
       // Log any discovery errors
@@ -70,7 +66,7 @@ export class SkillManager implements ISkillManager {
 
       this.initialized = true;
       this.logger?.info(
-        `SkillManager initialized with ${this.metadataCache.size} skills`,
+        `SkillManager initialized with ${this.skillMetadata.size} skills`,
       );
     } catch (error) {
       this.logger?.error("Failed to initialize SkillManager:", error);
@@ -86,7 +82,7 @@ export class SkillManager implements ISkillManager {
       throw new Error("SkillManager not initialized. Call initialize() first.");
     }
 
-    return Array.from(this.metadataCache.values());
+    return Array.from(this.skillMetadata.values());
   }
 
   /**
@@ -97,15 +93,15 @@ export class SkillManager implements ISkillManager {
       throw new Error("SkillManager not initialized. Call initialize() first.");
     }
 
-    // Check content cache first
-    const cached = this.contentCache.get(skillName);
-    if (cached) {
-      this.logger?.debug(`Skill '${skillName}' loaded from cache`);
-      return cached;
+    // Check if skill content is already loaded
+    const existing = this.skillContent.get(skillName);
+    if (existing) {
+      this.logger?.debug(`Skill '${skillName}' already loaded`);
+      return existing;
     }
 
-    // Get metadata from cache
-    const metadata = this.metadataCache.get(skillName);
+    // Get skill metadata
+    const metadata = this.skillMetadata.get(skillName);
     if (!metadata) {
       this.logger?.debug(`Skill '${skillName}' not found`);
       return null;
@@ -130,10 +126,8 @@ export class SkillManager implements ISkillManager {
         errors: parsed.validationErrors,
       };
 
-      // Add to content cache if valid and cache has space
-      if (skill.isValid && this.contentCache.size < this.maxContentCache) {
-        this.contentCache.set(skillName, skill);
-      }
+      // Store skill content for future access
+      this.skillContent.set(skillName, skill);
 
       this.logger?.debug(`Skill '${skillName}' loaded from ${skillFilePath}`);
       return skill;
@@ -252,25 +246,6 @@ export class SkillManager implements ISkillManager {
     }
 
     return directories;
-  }
-
-  /**
-   * Clear all caches
-   */
-  clearCache(): void {
-    this.metadataCache.clear();
-    this.contentCache.clear();
-    this.logger?.debug("SkillManager caches cleared");
-  }
-
-  /**
-   * Get cache statistics
-   */
-  getCacheStats(): { metadataSize: number; contentSize: number } {
-    return {
-      metadataSize: this.metadataCache.size,
-      contentSize: this.contentCache.size,
-    };
   }
 
   /**

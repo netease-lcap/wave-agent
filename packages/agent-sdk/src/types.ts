@@ -228,8 +228,6 @@ export interface SkillToolArgs {
 
 export interface SkillManagerOptions {
   personalSkillsPath?: string;
-  maxMetadataCache?: number;
-  maxContentCache?: number;
   scanTimeout?: number;
   logger?: Logger;
 }

@@ -31,7 +31,7 @@ describe("SkillManager", () => {
     it("should use provided options", () => {
       const options: SkillManagerOptions = {
         logger: mockLogger,
-        maxMetadataCache: 100,
+        scanTimeout: 1000,
       };
 
       const manager = new SkillManager(options);
@@ -262,20 +262,6 @@ describe("SkillManager", () => {
       expect(mockLogger.info).toHaveBeenCalledWith(
         "Invoking skill: test-skill",
       );
-    });
-  });
-
-  describe("cache management", () => {
-    it("should clear caches", () => {
-      expect(() => skillManager.clearCache()).not.toThrow();
-    });
-
-    it("should return cache stats", () => {
-      const stats = skillManager.getCacheStats();
-      expect(stats).toHaveProperty("metadataSize");
-      expect(stats).toHaveProperty("contentSize");
-      expect(typeof stats.metadataSize).toBe("number");
-      expect(typeof stats.contentSize).toBe("number");
     });
   });
 
