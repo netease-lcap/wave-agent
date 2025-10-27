@@ -45,29 +45,21 @@ jobs:
       
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        env:
-          NODE_ENV: test
       
       - name: Build
         run: pnpm build
         env:
-          NODE_ENV: test
           AIGW_TOKEN: test-token-for-ci
           AIGW_URL: https://mock-api.test.com
       
       - name: Type check
         run: pnpm type-check
-        env:
-          NODE_ENV: test
       
       - name: Lint
         run: pnpm lint
-        env:
-          NODE_ENV: test
       
       - name: Test
         run: pnpm test
         env:
-          NODE_ENV: test
           AIGW_TOKEN: test-token-for-ci
           AIGW_URL: https://mock-api.test.com
