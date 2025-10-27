@@ -41,10 +41,13 @@ export class SkillManager implements ISkillManager {
     this.logger?.info("Initializing SkillManager...");
 
     try {
+      // Clear existing data before discovery
+      this.skillMetadata.clear();
+      this.skillContent.clear();
+
       const discovery = await this.discoverSkills();
 
       // Store discovered skill metadata
-      this.skillMetadata.clear();
       discovery.personalSkills.forEach((skill, name) => {
         this.skillMetadata.set(name, skill);
       });
@@ -87,54 +90,22 @@ export class SkillManager implements ISkillManager {
 
   /**
    * Load a specific skill by name
+   * Returns the skill content that was loaded during initialization
    */
   async loadSkill(skillName: string): Promise<Skill | null> {
     if (!this.initialized) {
       throw new Error("SkillManager not initialized. Call initialize() first.");
     }
 
-    // Check if skill content is already loaded
-    const existing = this.skillContent.get(skillName);
-    if (existing) {
-      this.logger?.debug(`Skill '${skillName}' already loaded`);
-      return existing;
-    }
-
-    // Get skill metadata
-    const metadata = this.skillMetadata.get(skillName);
-    if (!metadata) {
-      this.logger?.debug(`Skill '${skillName}' not found`);
-      return null;
-    }
-
-    try {
-      // Load skill file
-      const skillFilePath = join(metadata.skillPath, "SKILL.md");
-      const parsed = parseSkillFile(skillFilePath, {
-        basePath: metadata.skillPath,
-        validateMetadata: true,
-      });
-
-      const skill: Skill = {
-        name: parsed.skillMetadata.name,
-        description: parsed.skillMetadata.description,
-        type: metadata.type, // Use the corrected type from metadata
-        skillPath: parsed.skillMetadata.skillPath,
-        content: parsed.content,
-        frontmatter: parsed.frontmatter,
-        isValid: parsed.isValid,
-        errors: parsed.validationErrors,
-      };
-
-      // Store skill content for future access
-      this.skillContent.set(skillName, skill);
-
-      this.logger?.debug(`Skill '${skillName}' loaded from ${skillFilePath}`);
+    // Return skill content that was loaded during initialization
+    const skill = this.skillContent.get(skillName);
+    if (skill) {
+      this.logger?.debug(`Skill '${skillName}' retrieved from loaded content`);
       return skill;
-    } catch (error) {
-      this.logger?.warn(`Failed to load skill '${skillName}':`, error);
-      return null;
     }
+
+    this.logger?.debug(`Skill '${skillName}' not found`);
+    return null;
   }
 
   /**
@@ -203,7 +174,22 @@ export class SkillManager implements ISkillManager {
               ...parsed.skillMetadata,
               type,
             };
+
+            // Create full skill object with content
+            const skill: Skill = {
+              name: parsed.skillMetadata.name,
+              description: parsed.skillMetadata.description,
+              type: type, // Use the collection type
+              skillPath: parsed.skillMetadata.skillPath,
+              content: parsed.content,
+              frontmatter: parsed.frontmatter,
+              isValid: parsed.isValid,
+              errors: parsed.validationErrors,
+            };
+
             collection.skills.set(skillMetadata.name, skillMetadata);
+            // Store the full skill content in the manager's skillContent map
+            this.skillContent.set(skillMetadata.name, skill);
           } else {
             collection.errors.push({
               skillPath: skillDir,
