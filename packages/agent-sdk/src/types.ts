@@ -232,12 +232,6 @@ export interface SkillManagerOptions {
   logger?: Logger;
 }
 
-export interface ISkillManager {
-  initialize(): Promise<void>;
-  getAvailableSkills(): SkillMetadata[];
-  loadSkill(skillName: string): Promise<Skill | null>;
-}
-
 export interface ParsedSkillFile {
   frontmatter: SkillFrontmatter;
   content: string;

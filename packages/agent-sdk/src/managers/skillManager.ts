@@ -2,7 +2,6 @@ import { readdir, stat } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
 import type {
-  ISkillManager,
   SkillManagerOptions,
   SkillMetadata,
   Skill,
@@ -18,7 +17,7 @@ import { parseSkillFile, formatSkillError } from "../utils/skillParser.js";
 /**
  * Manages skill discovery and loading
  */
-export class SkillManager implements ISkillManager {
+export class SkillManager {
   private personalSkillsPath: string;
   private scanTimeout: number;
   private logger?: Logger;
