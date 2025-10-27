@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 
-import { SkillManager } from "../src/managers/skillManager.js";
+import { Agent } from "../src/agent.js";
 import { tmpdir } from "os";
 import { join } from "path";
 import { mkdir, writeFile, rm } from "fs/promises";
@@ -10,58 +10,80 @@ async function main() {
   const skillsDir = join(tempDir, ".wave", "skills");
 
   try {
-    // Setup temp skills
+    // Setup temp skills with additional resource file
     await mkdir(skillsDir, { recursive: true });
     await mkdir(join(skillsDir, "hello-world"), { recursive: true });
 
+    // Create a sample skill with reference to additional file
     await writeFile(
       join(skillsDir, "hello-world", "SKILL.md"),
       `---
 name: hello-world
-description: A simple greeting skill
+description: A simple greeting skill with template
 ---
 
 # Hello World Skill
 
-This demonstrates how Wave Skills work - user-defined automation templates
-that the AI agent can discover and execute.
+This demonstrates Wave Skills - user-defined automation templates that the AI agent can discover and execute.
+
+## Template File
+See the \`template.txt\` file in this skill directory for the greeting template.
 
 ## Features
-- Automatic discovery from .wave/skills directories
-- Frontmatter validation
-- Caching for performance
+- Automatic discovery from .wave/skills directories  
+- Support for additional resource files in skill directory
+- Frontmatter validation and caching
 `,
     );
 
-    // Demo SkillManager
+    // Create additional resource file
+    await writeFile(
+      join(skillsDir, "hello-world", "template.txt"),
+      `Hello! Welcome to Wave Skills.
+
+This is a template file that shows how skills can include additional resources.
+The AI agent can access this file using the skill directory path.
+
+Template Variables:
+- {name}: User's name
+- {date}: Current date
+- {project}: Project name
+`,
+    );
+
+    // Initialize agent in temp directory
     process.chdir(tempDir);
-    const skillManager = new SkillManager({
-      logger: {
-        info: (...args: unknown[]) => console.log("ℹ️ ", ...args),
-        debug: () => {}, // suppress debug logs for cleaner output
-        warn: (...args: unknown[]) => console.log("⚠️ ", ...args),
-        error: (...args: unknown[]) => console.log("❌", ...args),
+
+    console.log("🚀 Initializing Agent with Wave Skills support...\n");
+
+    const agent = await Agent.create({
+      callbacks: {
+        onAssistantMessageAdded: (content) => {
+          if (content) {
+            console.log("🤖 Assistant:", content);
+          }
+        },
+        onToolBlockUpdated: (params) => {
+          if (params.result) {
+            console.log(`\n🛠️  Tool Result:\n${params.result}\n`);
+          }
+        },
+        onErrorBlockAdded: (error) => {
+          console.log(`❌ Error: ${error}`);
+        },
       },
     });
 
-    console.log("🚀 Initializing SkillManager...");
-    await skillManager.initialize();
+    console.log("💬 Asking agent to discover and use Wave skills...\n");
 
-    console.log("\n📋 Available Skills:");
-    skillManager.getAvailableSkills().forEach((skill) => {
-      console.log(`  • ${skill.name}: ${skill.description}`);
-    });
-
-    console.log("\n🛠️  Creating and using skill tool...");
-    const tool = skillManager.createTool();
-    const result = await tool.execute(
-      { skill_name: "hello-world" },
-      { workdir: tempDir },
+    // Send message to discover and use skills
+    await agent.sendMessage(
+      "Please use the skill tool to invoke the hello-world Wave skill, then read the template.txt file from that skill directory.",
     );
 
-    console.log(`\n✅ Result: ${result.shortResult}`);
+    // Show final state
     console.log(
-      `📄 Content preview:\n${result.content.split("\n").slice(0, 3).join("\n")}...`,
+      `\n📊 Final state: ${agent.messages.length} messages exchanged`,
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
