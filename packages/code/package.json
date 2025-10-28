@@ -1,6 +1,6 @@
 {
   "name": "wave-code",
-  "version": "0.3.3",
+  "version": "0.0.2",
   "description": "CLI-based code assistant powered by AI, built with React and Ink",
   "keywords": [
     "ai",
@@ -14,8 +14,8 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "wave-code": "./bin/wave-code.js",
-    "wave": "./bin/wave-code.js"
+    "wave-code": "bin/wave-code.js",
+    "wave": "bin/wave-code.js"
   },
   "files": [
     "dist",
@@ -31,9 +31,9 @@
     "test": "vitest run",
     "lint": "eslint --cache",
     "format": "prettier --write .",
-    "release:patch": "pnpm version patch && npm publish",
-    "release:minor": "pnpm version minor && npm publish",
-    "release:major": "pnpm version major && npm publish",
+    "version:patch": "pnpm version patch",
+    "version:minor": "pnpm version minor",
+    "version:major": "pnpm version major",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

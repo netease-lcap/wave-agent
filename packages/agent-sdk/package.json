@@ -1,6 +1,6 @@
 {
   "name": "wave-agent-sdk",
-  "version": "0.3.3",
+  "version": "0.0.1",
   "description": "SDK for building AI-powered development tools and agents",
   "keywords": [
     "ai",
@@ -25,9 +25,9 @@
     "test": "vitest run",
     "lint": "eslint --cache",
     "format": "prettier --write .",
-    "release:patch": "pnpm version patch && npm publish",
-    "release:minor": "pnpm version minor && npm publish",
-    "release:major": "pnpm version major && npm publish",
+    "version:patch": "pnpm version patch",
+    "version:minor": "pnpm version minor",
+    "version:major": "pnpm version major",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
