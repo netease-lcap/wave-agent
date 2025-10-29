@@ -1,6 +1,6 @@
 {
   "name": "wave-agent-sdk",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "SDK for building AI-powered development tools and agents",
   "keywords": [
     "ai",
@@ -25,10 +25,7 @@
     "test": "vitest run",
     "lint": "eslint --cache",
     "format": "prettier --write .",
-    "version:patch": "pnpm version patch",
-    "version:minor": "pnpm version minor",
-    "version:major": "pnpm version major",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.2",
