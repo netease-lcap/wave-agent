@@ -5,6 +5,7 @@ import { DiffViewer } from "./DiffViewer.js";
 import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
+import { CompressDisplay } from "./CompressDisplay.js";
 import { usePagination } from "../hooks/usePagination.js";
 
 // Function to render a single message
@@ -79,18 +80,7 @@ const renderMessageItem = (
             {block.type === "memory" && <MemoryDisplay block={block} />}
 
             {block.type === "compress" && (
-              <Box flexDirection="column">
-                <Box>
-                  <Text color="yellow" bold>
-                    📦 Compressed Messages
-                  </Text>
-                </Box>
-                <Box marginTop={1}>
-                  <Text color="gray" dimColor>
-                    {block.content}
-                  </Text>
-                </Box>
-              </Box>
+              <CompressDisplay block={block} isExpanded={isExpanded} />
             )}
 
             {block.type === "custom_command" && (
