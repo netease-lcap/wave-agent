@@ -48,6 +48,12 @@ export interface MessageManagerCallbacks {
     type: "project" | "user",
     storagePath: string,
   ) => void;
+  // Custom command callback
+  onCustomCommandAdded?: (
+    commandName: string,
+    content: string,
+    originalInput?: string,
+  ) => void;
   // Bash command callback
   onAddCommandOutputMessage?: (command: string) => void;
   onUpdateCommandOutputMessage?: (command: string, output: string) => void;
@@ -271,7 +277,7 @@ export class MessageManager {
       },
     });
     this.setMessages(newMessages);
-    this.callbacks.onUserMessageAdded?.(content);
+    this.callbacks.onCustomCommandAdded?.(commandName, content, originalInput);
   }
 
   public addAssistantMessage(
