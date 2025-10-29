@@ -203,6 +203,16 @@ describe("Session Service", () => {
       ).toBe("Done!");
     });
 
+    it("should not save session when messages array is empty", async () => {
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      await saveSession(mockSessionId, [], mockWorkdir, 100);
+
+      expect(mockFs.mkdir).not.toHaveBeenCalled();
+      expect(mockFs.writeFile).not.toHaveBeenCalled();
+    });
+
     it("should not save session in test environment", async () => {
       process.env.NODE_ENV = "test";
 
