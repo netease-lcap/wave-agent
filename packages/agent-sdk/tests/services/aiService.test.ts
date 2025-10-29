@@ -1,9 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { FAST_MODEL_ID } from "@/utils/constants.js";
 import type {
   CompressMessagesOptions,
   CallAgentOptions,
 } from "@/services/aiService.js";
+import type { GatewayConfig, ModelConfig } from "@/types.js";
+
+// Test configuration constants
+const TEST_GATEWAY_CONFIG: GatewayConfig = {
+  apiKey: "test-api-key",
+  baseURL: "http://localhost:test",
+};
+
+const TEST_MODEL_CONFIG: ModelConfig = {
+  agentModel: "claude-sonnet-4-20250514",
+  fastModel: "gemini-2.5-flash",
+};
 
 // Mock the OpenAI client
 const mockCreate = vi.fn();
@@ -22,7 +33,6 @@ vi.mock("openai", () => ({
 
 // Mock constants
 vi.mock("@/utils/constants", () => ({
-  FAST_MODEL_ID: "gpt-4o-mini",
   AGENT_MODEL_ID: "gpt-4o",
 }));
 
@@ -82,6 +92,8 @@ describe("AI Service", () => {
       });
 
       await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
       });
@@ -119,6 +131,8 @@ describe("AI Service", () => {
         "You are a custom AI assistant with special capabilities.";
 
       await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
         systemPrompt: customPrompt,
@@ -154,6 +168,8 @@ describe("AI Service", () => {
       const memoryContent = "Important previous context and memory.";
 
       await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
         memory: memoryContent,
@@ -184,7 +200,11 @@ describe("AI Service", () => {
         },
       ];
 
-      await compressMessages({ messages });
+      await compressMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages,
+      });
 
       // Verify that create was called
       expect(mockCreate).toHaveBeenCalledTimes(1);
@@ -193,7 +213,7 @@ describe("AI Service", () => {
       const callArgs = mockCreate.mock.calls[0][0];
 
       // Verify model configuration
-      expect(callArgs.model).toBe(FAST_MODEL_ID);
+      expect(callArgs.model).toBe(TEST_MODEL_CONFIG.fastModel);
       expect(callArgs.temperature).toBe(0.1);
       expect(callArgs.max_tokens).toBe(1500);
       expect(callArgs.stream).toBe(false);
@@ -211,7 +231,11 @@ describe("AI Service", () => {
         },
       ];
 
-      await compressMessages({ messages });
+      await compressMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages,
+      });
 
       const callArgs = mockCreate.mock.calls[0][0];
 
@@ -245,7 +269,11 @@ describe("AI Service", () => {
         },
       ];
 
-      const result = await compressMessages({ messages });
+      const result = await compressMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages,
+      });
 
       expect(result).toBe(expectedContent);
     });
@@ -260,6 +288,8 @@ describe("AI Service", () => {
       ];
 
       await compressMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
         messages,
         abortSignal: abortController.signal,
       });
@@ -287,7 +317,11 @@ describe("AI Service", () => {
         },
       ];
 
-      const result = await compressMessages({ messages });
+      const result = await compressMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages,
+      });
 
       expect(result).toBe("Failed to compress conversation history");
     });
@@ -302,7 +336,11 @@ describe("AI Service", () => {
         },
       ];
 
-      const result = await compressMessages({ messages });
+      const result = await compressMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages,
+      });
 
       expect(result).toBe("Failed to compress conversation history");
     });
@@ -319,9 +357,13 @@ describe("AI Service", () => {
         },
       ];
 
-      await expect(compressMessages({ messages })).rejects.toThrow(
-        "Compression request was aborted",
-      );
+      await expect(
+        compressMessages({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: TEST_MODEL_CONFIG,
+          messages,
+        }),
+      ).rejects.toThrow("Compression request was aborted");
     });
   });
 });
