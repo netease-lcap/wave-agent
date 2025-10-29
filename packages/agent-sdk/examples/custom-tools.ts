@@ -158,12 +158,7 @@ async function runTest() {
   console.log(`\n💬 Testing the get_users_favorite_number tool...`);
 
   try {
-    await Promise.race([
-      agent.sendMessage("What is my favorite number?"),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), 15000),
-      ),
-    ]);
+    await agent.sendMessage("What is my favorite number?");
   } catch (error) {
     if (error instanceof Error && error.message === "Timeout") {
       console.log("⏰ Test completed (timed out waiting for final response)");
