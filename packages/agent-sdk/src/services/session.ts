@@ -76,6 +76,11 @@ export async function saveSession(
     return;
   }
 
+  // Do not save if there are no messages
+  if (messages.length === 0) {
+    return;
+  }
+
   await ensureSessionDir();
 
   // Filter out diff blocks before saving
