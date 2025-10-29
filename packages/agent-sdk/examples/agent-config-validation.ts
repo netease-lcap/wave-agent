@@ -1,16 +1,17 @@
 #!/usr/bin/env tsx
 
 /**
- * Quickstart Examples Validation
+ * Agent Configuration Validation
  *
- * This script validates that all examples from quickstart.md work with the
- * current implementation of the Agent constructor configuration feature.
+ * This script validates that all Agent constructor configuration examples
+ * from quickstart.md work with the current implementation. It tests various
+ * configuration patterns, error handling, and environment variable fallbacks.
  */
 
 import { Agent } from "../src/agent.js";
 
-async function validateQuickstartExamples() {
-  console.log("🚀 Validating Quickstart Examples\n");
+async function validateAgentConfiguration() {
+  console.log("🚀 Validating Agent Configuration Examples\n");
 
   // Test 1: Basic Agent Creation with Configuration
   console.log("1. Testing: Basic Agent Creation with Configuration");
@@ -254,7 +255,7 @@ async function validateQuickstartExamples() {
     );
   }
 
-  console.log("\n✨ Quickstart examples validation completed!");
+  console.log("\n✨ Agent configuration validation completed!");
   console.log("\n📝 Summary:");
   console.log(
     "   • All configuration patterns from quickstart.md have been validated",
@@ -266,4 +267,4 @@ async function validateQuickstartExamples() {
 }
 
 // Run the validation
-validateQuickstartExamples().catch(console.error);
+validateAgentConfiguration().catch(console.error);
