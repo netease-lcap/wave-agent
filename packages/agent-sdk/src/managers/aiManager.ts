@@ -2,12 +2,11 @@ import { callAgent, compressMessages } from "../services/aiService.js";
 import { getMessagesToCompress } from "../utils/messageOperations.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import * as memory from "../services/memory.js";
-import type { Logger } from "../types.js";
+import type { Logger, GatewayConfig, ModelConfig } from "../types.js";
 import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
-import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "../hooks/index.js";
 import type { ExtendedHookExecutionContext } from "../hooks/types.js";
@@ -25,6 +24,10 @@ export interface AIManagerOptions {
   callbacks?: AIManagerCallbacks;
   workdir: string;
   systemPrompt?: string;
+  // Resolved configuration
+  gatewayConfig: GatewayConfig;
+  modelConfig: ModelConfig;
+  tokenLimit: number;
 }
 
 export class AIManager {
@@ -39,6 +42,11 @@ export class AIManager {
   private workdir: string;
   private systemPrompt?: string;
 
+  // Configuration properties
+  private gatewayConfig: GatewayConfig;
+  private modelConfig: ModelConfig;
+  private tokenLimit: number;
+
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
     this.toolManager = options.toolManager;
@@ -48,6 +56,11 @@ export class AIManager {
     this.workdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
     this.callbacks = options.callbacks ?? {};
+
+    // Store resolved configuration
+    this.gatewayConfig = options.gatewayConfig;
+    this.modelConfig = options.modelConfig;
+    this.tokenLimit = options.tokenLimit;
   }
 
   private isCompressing: boolean = false;
@@ -125,15 +138,10 @@ export class AIManager {
     // Update token statistics - display latest token usage
     this.messageManager.setlatestTotalTokens(usage.total_tokens);
 
-    // Check if token limit exceeded
-    const tokenLimit = parseInt(
-      process.env.TOKEN_LIMIT || `${DEFAULT_TOKEN_LIMIT}`,
-      10,
-    );
-
-    if (usage.total_tokens > tokenLimit) {
+    // Check if token limit exceeded - use injected configuration
+    if (usage.total_tokens > this.tokenLimit) {
       this.logger?.info(
-        `Token usage exceeded ${tokenLimit}, compressing messages...`,
+        `Token usage exceeded ${this.tokenLimit}, compressing messages...`,
       );
 
       // Check if messages need compression
@@ -149,6 +157,8 @@ export class AIManager {
         this.setIsCompressing(true);
         try {
           const compressedContent = await compressMessages({
+            gatewayConfig: this.gatewayConfig,
+            modelConfig: this.modelConfig,
             messages: recentChatMessages,
             abortSignal: abortController.signal,
           });
@@ -221,6 +231,8 @@ export class AIManager {
 
       // Call AI service (non-streaming)
       const result = await callAgent({
+        gatewayConfig: this.gatewayConfig,
+        modelConfig: this.modelConfig,
         messages: recentMessages,
         sessionId: this.messageManager.getSessionId(),
         abortSignal: abortController.signal,

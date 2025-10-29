@@ -5,12 +5,15 @@ import {
   ChatCompletionMessageParam,
   ChatCompletionFunctionTool,
 } from "openai/resources.js";
-import { FAST_MODEL_ID, AGENT_MODEL_ID } from "@/utils/constants.js";
+import type { GatewayConfig, ModelConfig } from "../types.js";
 
 /**
- * Model configuration type, based on OpenAI parameters but excluding messages
+ * OpenAI model configuration type, based on OpenAI parameters but excluding messages
  */
-type ModelConfig = Omit<ChatCompletionCreateParamsNonStreaming, "messages">;
+type OpenAIModelConfig = Omit<
+  ChatCompletionCreateParamsNonStreaming,
+  "messages"
+>;
 
 /**
  * Get specific configuration parameters based on model name
@@ -20,9 +23,9 @@ type ModelConfig = Omit<ChatCompletionCreateParamsNonStreaming, "messages">;
  */
 function getModelConfig(
   modelName: string,
-  baseConfig: Partial<ModelConfig> = {},
-): ModelConfig {
-  const config: ModelConfig = {
+  baseConfig: Partial<OpenAIModelConfig> = {},
+): OpenAIModelConfig {
+  const config: OpenAIModelConfig = {
     model: modelName,
     stream: false,
     ...baseConfig,
@@ -37,13 +40,12 @@ function getModelConfig(
   return config;
 }
 
-// Initialize OpenAI client with environment variables
-const openai = new OpenAI({
-  apiKey: process.env.AIGW_TOKEN,
-  baseURL: process.env.AIGW_URL,
-});
-
 export interface CallAgentOptions {
+  // Resolved configuration
+  gatewayConfig: GatewayConfig;
+  modelConfig: ModelConfig;
+
+  // Existing parameters (preserved)
   messages: ChatCompletionMessageParam[];
   sessionId?: string;
   abortSignal?: AbortSignal;
@@ -67,10 +69,25 @@ export interface CallAgentResult {
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
-  const { messages, abortSignal, memory, workdir, tools, model, systemPrompt } =
-    options;
+  const {
+    gatewayConfig,
+    modelConfig,
+    messages,
+    abortSignal,
+    memory,
+    workdir,
+    tools,
+    model,
+    systemPrompt,
+  } = options;
 
   try {
+    // Create OpenAI client with injected configuration
+    const openai = new OpenAI({
+      apiKey: gatewayConfig.apiKey,
+      baseURL: gatewayConfig.baseURL,
+    });
+
     // Build system prompt content
     let systemContent: string;
 
@@ -101,15 +118,15 @@ ${workdir}
     const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
       [systemMessage, ...messages];
 
-    // Get model configuration
-    const modelConfig = getModelConfig(model || AGENT_MODEL_ID, {
+    // Get model configuration - use injected modelConfig with optional override
+    const openaiModelConfig = getModelConfig(model || modelConfig.agentModel, {
       temperature: 0,
       max_completion_tokens: 32768,
     });
 
     // Prepare API call parameters
     const createParams: ChatCompletionCreateParamsNonStreaming = {
-      ...modelConfig,
+      ...openaiModelConfig,
       messages: openaiMessages,
     };
 
@@ -160,6 +177,11 @@ ${workdir}
 }
 
 export interface CompressMessagesOptions {
+  // Resolved configuration
+  gatewayConfig: GatewayConfig;
+  modelConfig: ModelConfig;
+
+  // Existing parameters
   messages: ChatCompletionMessageParam[];
   abortSignal?: AbortSignal;
 }
@@ -167,10 +189,16 @@ export interface CompressMessagesOptions {
 export async function compressMessages(
   options: CompressMessagesOptions,
 ): Promise<string> {
-  const { messages, abortSignal } = options;
+  const { gatewayConfig, modelConfig, messages, abortSignal } = options;
 
-  // Get model configuration
-  const modelConfig = getModelConfig(FAST_MODEL_ID, {
+  // Create OpenAI client with injected configuration
+  const openai = new OpenAI({
+    apiKey: gatewayConfig.apiKey,
+    baseURL: gatewayConfig.baseURL,
+  });
+
+  // Get model configuration - use injected fast model
+  const openaiModelConfig = getModelConfig(modelConfig.fastModel, {
     temperature: 0.1,
     max_tokens: 1500,
   });
@@ -178,7 +206,7 @@ export async function compressMessages(
   try {
     const response = await openai.chat.completions.create(
       {
-        ...modelConfig,
+        ...openaiModelConfig,
         messages: [
           {
             role: "system",

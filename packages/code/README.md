@@ -19,6 +19,43 @@ This is the frontend UI package of the Wave workspace, providing an interactive 
 npm install wave-code
 ```
 
+## Environment Configuration
+
+Before use, you need to configure the following environment variables for AI model authentication:
+
+### Required Environment Variables
+
+```bash
+# AI Gateway access token (required)
+export AIGW_TOKEN="your_token_here"
+
+# AI Gateway API URL (required)
+export AIGW_URL="https://your-api-gateway-url.com"
+```
+
+### Optional Environment Variables
+
+```bash
+# Specify AI model (optional, defaults to system configured model)
+export AIGW_MODEL="gemini-2.5-flash"
+
+# Specify fast AI model (optional, for quick response scenarios)
+export AIGW_FAST_MODEL="gemini-1.5-flash"
+
+# Log level (optional, defaults to info)
+export LOG_LEVEL="debug"
+
+# Log file path (optional)
+export LOG_FILE="/path/to/your/logfile.log"
+
+# Maximum log file size (optional, defaults to 10MB)
+export LOG_MAX_FILE_SIZE="10485760"
+
+# Token limit (optional, defaults to 64000)
+export TOKEN_LIMIT="64000"
+
+```
+
 ## Usage
 
 ### Full Command

@@ -13,10 +13,32 @@ import {
 } from "./managers/backgroundBashManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import type { SlashCommand, CustomSlashCommand } from "./types.js";
-import type { Message, Logger, McpServerStatus } from "./types.js";
+import type {
+  Message,
+  Logger,
+  McpServerStatus,
+  GatewayConfig,
+  ModelConfig,
+} from "./types.js";
 import { HookManager } from "./hooks/index.js";
+import { configResolver } from "./utils/configResolver.js";
+import { configValidator } from "./utils/configValidator.js";
 
+/**
+ * Configuration options for Agent instances
+ *
+ * IMPORTANT: This interface is used by both Agent constructor and Agent.create()
+ * Any changes to this interface must be compatible with both methods.
+ */
 export interface AgentOptions {
+  // Optional configuration with environment fallbacks
+  apiKey?: string;
+  baseURL?: string;
+  agentModel?: string;
+  fastModel?: string;
+  tokenLimit?: number;
+
+  // Existing options (preserved)
   callbacks?: AgentCallbacks;
   restoreSessionId?: string;
   continueLastSession?: boolean;
@@ -49,14 +71,51 @@ export class Agent {
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
 
-  // Private constructor to prevent direct instantiation
-  private constructor(options: AgentOptions) {
+  // Configuration properties
+  private gatewayConfig: GatewayConfig;
+  private modelConfig: ModelConfig;
+  private tokenLimit: number;
+
+  /**
+   * Agent constructor - handles configuration resolution and validation
+   *
+   * IMPORTANT: Keep this constructor's signature exactly the same as Agent.create()
+   * to maintain API consistency. Both methods should accept the same AgentOptions.
+   *
+   * @param options - Configuration options for the Agent instance
+   */
+  constructor(options: AgentOptions) {
     const { callbacks = {}, logger, workdir, systemPrompt } = options;
+
+    // Resolve configuration from constructor args and environment variables
+    const gatewayConfig = configResolver.resolveGatewayConfig(
+      options.apiKey,
+      options.baseURL,
+    );
+    const modelConfig = configResolver.resolveModelConfig(
+      options.agentModel,
+      options.fastModel,
+    );
+    const tokenLimit = configResolver.resolveTokenLimit(options.tokenLimit);
+
+    // Validate resolved configuration
+    configValidator.validateGatewayConfig(gatewayConfig);
+    configValidator.validateTokenLimit(tokenLimit);
+    configValidator.validateModelConfig(
+      modelConfig.agentModel,
+      modelConfig.fastModel,
+    );
 
     this.callbacks = callbacks;
     this.logger = logger; // Save the passed logger
     this.workdir = workdir || process.cwd(); // Set working directory, default to current working directory
     this.systemPrompt = systemPrompt; // Save custom system prompt
+
+    // Store resolved configuration
+    this.gatewayConfig = gatewayConfig;
+    this.modelConfig = modelConfig;
+    this.tokenLimit = tokenLimit;
+
     this.backgroundBashManager = new BackgroundBashManager({
       callbacks,
       workdir: this.workdir,
@@ -77,7 +136,7 @@ export class Agent {
       logger: this.logger,
     });
 
-    // Initialize AI manager
+    // Initialize AI manager with resolved configuration
     this.aiManager = new AIManager({
       messageManager: this.messageManager,
       toolManager: this.toolManager,
@@ -87,6 +146,9 @@ export class Agent {
       callbacks,
       workdir: this.workdir,
       systemPrompt: this.systemPrompt,
+      gatewayConfig: this.gatewayConfig,
+      modelConfig: this.modelConfig,
+      tokenLimit: this.tokenLimit,
     });
 
     // Initialize command manager
@@ -154,8 +216,17 @@ export class Agent {
     return this.backgroundBashManager.killShell(id);
   }
 
-  /** Static async factory method */
+  /**
+   * Static async factory method for creating Agent instances
+   *
+   * IMPORTANT: Keep this method's signature exactly the same as the constructor
+   * to maintain consistency and avoid confusion for users of the API.
+   *
+   * @param options - Same AgentOptions interface used by constructor
+   * @returns Promise<Agent> - Fully initialized Agent instance
+   */
   static async create(options: AgentOptions): Promise<Agent> {
+    // Create Agent instance - configuration resolution and validation now happens in constructor
     const instance = new Agent(options);
     await instance.initialize({
       restoreSessionId: options.restoreSessionId,
