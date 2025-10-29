@@ -30,10 +30,7 @@
     "test": "vitest run",
     "lint": "eslint --cache",
     "format": "prettier --write .",
-    "version:patch": "pnpm version patch",
-    "version:minor": "pnpm version minor",
-    "version:major": "pnpm version major",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "wave-agent-sdk": "workspace:*",
