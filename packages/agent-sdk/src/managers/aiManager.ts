@@ -444,11 +444,14 @@ export class AIManager {
       if (recursionDepth === 0) {
         this.setIsLoading(false);
 
-        // Save session before executing Stop hooks
-        await this.messageManager.saveSession();
+        // Save session and execute Stop hooks in parallel but maintain order
+        (async () => {
+          // Save session before executing Stop hooks
+          await this.messageManager.saveSession();
 
-        // Execute Stop hooks when AI response cycle completes
-        await this.executeStopHooks();
+          // Execute Stop hooks when AI response cycle completes
+          await this.executeStopHooks();
+        })();
       }
     }
   }
