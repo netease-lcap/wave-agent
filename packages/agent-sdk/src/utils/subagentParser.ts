@@ -108,13 +108,10 @@ function validateConfiguration(
     );
   }
 
-  // Validate model if specified
-  if (
-    config.model &&
-    !["sonnet", "opus", "haiku", "inherit"].includes(config.model)
-  ) {
+  // Validate model if specified - allow any non-empty string
+  if (config.model && typeof config.model !== "string") {
     throw new Error(
-      `Invalid model '${config.model}' in ${filePath}. Must be one of: sonnet, opus, haiku, inherit`,
+      `Invalid model '${config.model}' in ${filePath}. Must be a string.`,
     );
   }
 }
