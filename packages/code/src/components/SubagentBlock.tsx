@@ -4,7 +4,33 @@ import type {
   SubagentBlock as SubagentBlockType,
   Message,
   MessageBlock,
-} from "../../../agent-sdk/src/types.js";
+} from "wave-agent-sdk/src/types.js";
+import { ToolResultDisplay } from "./ToolResultDisplay.js";
+
+// Component to render individual message blocks
+interface MessageBlockRendererProps {
+  block: MessageBlock;
+  isExpanded: boolean;
+}
+
+const MessageBlockRenderer: React.FC<MessageBlockRendererProps> = ({
+  block,
+  isExpanded,
+}) => {
+  switch (block.type) {
+    case "text":
+      return <Text>{block.content}</Text>;
+
+    case "error":
+      return <Text color="red">❌ Error: {block.content}</Text>;
+
+    case "tool":
+      return <ToolResultDisplay block={block} isExpanded={isExpanded} />;
+
+    default:
+      return null;
+  }
+};
 
 interface SubagentBlockProps {
   block: SubagentBlockType;
@@ -61,7 +87,7 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
 
         {!isExpanded && (
           <Text color="gray" dimColor>
-            ▶ {block.messages.length} messages
+            {block.messages.length} messages
           </Text>
         )}
       </Box>
@@ -70,52 +96,14 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
       {messagesToShow.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           {messagesToShow.map((message: Message, index: number) => (
-            <Box key={index} flexDirection="column" marginBottom={0}>
+            <Box key={index} flexDirection="column" marginBottom={0} gap={1}>
               {message.blocks.map(
                 (messageBlock: MessageBlock, blockIndex: number) => (
                   <Box key={blockIndex} flexDirection="column">
-                    {messageBlock.type === "text" && (
-                      <Text color="white">
-                        {isExpanded
-                          ? messageBlock.content
-                          : (messageBlock.content || "").slice(0, 100) +
-                            ((messageBlock.content || "").length > 100
-                              ? "..."
-                              : "")}
-                      </Text>
-                    )}
-
-                    {messageBlock.type === "error" && (
-                      <Text color="red">
-                        Error:{" "}
-                        {isExpanded
-                          ? messageBlock.content
-                          : (messageBlock.content || "").slice(0, 100) +
-                            ((messageBlock.content || "").length > 100
-                              ? "..."
-                              : "")}
-                      </Text>
-                    )}
-
-                    {messageBlock.type === "tool" && (
-                      <Box flexDirection="column">
-                        <Text color="gray" dimColor>
-                          🔧 {messageBlock.name || "Tool"}:{" "}
-                          {(messageBlock.parameters || "").slice(0, 50)}
-                          {(messageBlock.parameters || "").length > 50
-                            ? "..."
-                            : ""}
-                        </Text>
-                        {messageBlock.result && (
-                          <Text color="white">
-                            {isExpanded
-                              ? messageBlock.result
-                              : messageBlock.shortResult ||
-                                messageBlock.result.slice(0, 100) + "..."}
-                          </Text>
-                        )}
-                      </Box>
-                    )}
+                    <MessageBlockRenderer
+                      block={messageBlock}
+                      isExpanded={isExpanded}
+                    />
                   </Box>
                 ),
               )}

@@ -64,9 +64,24 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
   // Create Agent with callbacks to observe behavior, including subagent-specific callbacks
   agent = await Agent.create({
     workdir: tempDir,
-    // Use test API key - the structure will be tested even if AI calls fail
-    apiKey: process.env.OPENAI_API_KEY || "test-key-subagent",
     callbacks: {
+      onMessagesChange: (messages) => {
+        console.log(`📝 Messages updated! Total: ${messages.length}`);
+        // Check for subagent blocks in messages
+        messages.forEach((message, msgIndex) => {
+          message.blocks.forEach((block, blockIndex) => {
+            if (block.type === "subagent") {
+              console.log(
+                `🤖💎 Found subagent block in message ${msgIndex}, block ${blockIndex}:`,
+              );
+              console.log(`   - Subagent ID: ${block.subagentId}`);
+              console.log(`   - Subagent Name: ${block.subagentName}`);
+              console.log(`   - Status: ${block.status}`);
+              console.log(`   - Messages: ${block.messages.length}`);
+            }
+          });
+        });
+      },
       onUserMessageAdded: (content: string) => {
         console.log(`👤 User: "${content}"`);
       },
@@ -78,6 +93,7 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
           console.log(`🔧 Running tool: ${params.name}`);
           if (params.name === "Task") {
             console.log(`🚀 Subagent task starting...`);
+            console.log(`🔍 Tool parameters:`, params.args);
           }
         } else if (params.success) {
           console.log(`✅ Tool ${params.name} completed successfully`);
@@ -152,6 +168,7 @@ async function runTests() {
   try {
     // Test real subagent execution with comprehensive callback monitoring
     // This will demonstrate both subagent creation and execution callbacks
+    console.log("\n📤 Sending message to agent with subagent task...");
     await agent.sendMessage(
       "Use the file-analyzer subagent to first list all files in the current directory, then analyze the sample.txt file in detail. Please provide a comprehensive summary of its contents and structure.",
     );

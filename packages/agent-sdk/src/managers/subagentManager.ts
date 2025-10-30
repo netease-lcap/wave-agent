@@ -22,6 +22,7 @@ export interface SubagentInstance {
 export interface SubagentManagerOptions {
   workdir: string;
   parentToolManager: ToolManager;
+  parentMessageManager: MessageManager;
   logger?: Logger;
   gatewayConfig: GatewayConfig;
   modelConfig: ModelConfig;
@@ -34,6 +35,7 @@ export class SubagentManager {
 
   private workdir: string;
   private parentToolManager: ToolManager;
+  private parentMessageManager: MessageManager;
   private logger?: Logger;
   private gatewayConfig: GatewayConfig;
   private modelConfig: ModelConfig;
@@ -42,6 +44,7 @@ export class SubagentManager {
   constructor(options: SubagentManagerOptions) {
     this.workdir = options.workdir;
     this.parentToolManager = options.parentToolManager;
+    this.parentMessageManager = options.parentMessageManager;
     this.logger = options.logger;
     this.gatewayConfig = options.gatewayConfig;
     this.modelConfig = options.modelConfig;
@@ -125,6 +128,10 @@ export class SubagentManager {
         const instance = this.instances.get(subagentId);
         if (instance) {
           instance.messages = messages;
+          // Update parent's subagent block with latest messages
+          this.parentMessageManager.updateSubagentBlock(subagentId, {
+            messages: messages,
+          });
         }
       },
     };
@@ -172,6 +179,14 @@ export class SubagentManager {
 
     this.instances.set(subagentId, instance);
 
+    // Create subagent block in parent message manager
+    this.parentMessageManager.addSubagentBlock(
+      subagentId,
+      configuration.name,
+      "active",
+      [],
+    );
+
     return instance;
   }
 
@@ -186,8 +201,11 @@ export class SubagentManager {
     prompt: string,
   ): Promise<string> {
     try {
-      // Set status to active
+      // Set status to active and update parent
       this.updateInstanceStatus(instance.subagentId, "active");
+      this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
+        status: "active",
+      });
 
       // Add the user's prompt as a message
       instance.messageManager.addUserMessage(prompt);
@@ -229,12 +247,19 @@ export class SubagentManager {
       );
       const response = textBlocks.map((block) => block.content).join("\n");
 
-      // Update status to completed
+      // Update status to completed and update parent with final messages
       this.updateInstanceStatus(instance.subagentId, "completed");
+      this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
+        status: "completed",
+        messages: messages,
+      });
 
       return response || "Task completed with no text response";
     } catch (error) {
       this.updateInstanceStatus(instance.subagentId, "error");
+      this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
+        status: "error",
+      });
       throw error;
     }
   }

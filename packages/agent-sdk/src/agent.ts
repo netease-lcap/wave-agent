@@ -129,16 +129,6 @@ export class Agent {
       logger: this.logger,
     }); // Initialize tool registry, pass MCP manager
 
-    // Initialize subagent manager with all dependencies in constructor
-    this.subagentManager = new SubagentManager({
-      workdir: this.workdir,
-      parentToolManager: this.toolManager,
-      logger: this.logger,
-      gatewayConfig,
-      modelConfig,
-      tokenLimit,
-    });
-
     this.hookManager = new HookManager(
       this.workdir,
       undefined,
@@ -151,6 +141,18 @@ export class Agent {
       callbacks,
       workdir: this.workdir,
       logger: this.logger,
+    });
+
+    // Initialize subagent manager with all dependencies in constructor
+    // IMPORTANT: Must be initialized AFTER MessageManager
+    this.subagentManager = new SubagentManager({
+      workdir: this.workdir,
+      parentToolManager: this.toolManager,
+      parentMessageManager: this.messageManager,
+      logger: this.logger,
+      gatewayConfig,
+      modelConfig,
+      tokenLimit,
     });
 
     // Initialize AI manager with resolved configuration
