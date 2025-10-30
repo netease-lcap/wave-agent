@@ -74,6 +74,24 @@ As a user, I want each subagent to maintain its own context window separate from
 
 ---
 
+### User Story 5 - Subagent Message Display (Priority: P2)
+
+As a user, I want subagent conversations to be displayed as expandable blocks within the message list so that I can track subagent activity while maintaining focus on the main conversation flow.
+
+**Why this priority**: Clear visual representation of subagent activity is essential for user understanding and debugging. Users need to see what subagents are doing without losing context of the main conversation.
+
+**Independent Test**: Can be tested by triggering a subagent and verifying the message block appears with correct visual indicators, collapse/expand behavior, and message preview functionality.
+
+**Acceptance Scenarios**:
+
+1. **Given** a subagent is triggered, **When** it processes a task, **Then** an expandable message block appears in the vertical message list with distinctive border and subagent name/icon header
+2. **Given** a subagent block is collapsed, **When** I view the message list, **Then** I see up to 2 most recent subagent messages in the preview
+3. **Given** a subagent has only 1 message, **When** the block is collapsed, **Then** I see that single message in the preview
+4. **Given** a subagent block is expanded, **When** I view it, **Then** I see all subagent messages in the conversation
+5. **Given** a subagent block is in the message list, **When** I compare it to regular messages, **Then** it is clearly distinguishable through visual indicators
+
+---
+
 ### Edge Cases
 
 - What happens when a subagent configuration file has invalid YAML frontmatter?
@@ -92,13 +110,18 @@ As a user, I want each subagent to maintain its own context window separate from
 - **FR-002**: System MUST parse subagent configuration files with YAML frontmatter containing name, description, tools (optional), and model (optional) fields
 - **FR-003**: System MUST prioritize project-level subagents over user-level subagents when names conflict
 - **FR-004**: System MUST validate subagent configuration files and provide clear error messages for invalid configurations
-- **FR-005**: System MUST automatically match user tasks to appropriate subagents based on task description and subagent description fields
+- **FR-005**: System MUST automatically match user tasks to appropriate subagents based on task description and subagent description fields, selecting the subagent with the most specific description match when multiple candidates exist
 - **FR-006**: System MUST support explicit subagent invocation when users mention subagent names in their requests
 - **FR-007**: System MUST isolate each subagent's context window from the main conversation and other subagents
 - **FR-008**: System MUST restrict subagents to only the tools specified in their configuration, or inherit all tools if none specified
 - **FR-009**: System MUST support configurable models per subagent, with fallback to system default if not specified
 - **FR-010**: System MUST provide clear feedback about which subagent is handling a task
+- **FR-016**: System MUST display subagent messages as expandable blocks within the vertical message list
+- **FR-017**: System MUST show up to 2 most recent subagent messages when the subagent block is collapsed
+- **FR-018**: System MUST show all subagent messages when the subagent block is expanded
+- **FR-020**: System MUST display subagent message blocks with distinctive borders and subagent name/icon headers to differentiate from regular messages
 - **FR-011**: System MUST handle subagent task completion and return results to the main conversation context
+- **FR-019**: System MUST implement subagents as tool calls that return either successful content or error messages to the main agent
 - **FR-012**: System MUST prevent infinite delegation loops between agents
 - **FR-013**: System MUST support markdown content in subagent configuration files as system prompts
 - **FR-014**: System MUST validate that specified tools in subagent configurations exist and are available
@@ -110,6 +133,16 @@ As a user, I want each subagent to maintain its own context window separate from
 - **Subagent Instance**: An active subagent handling a specific task with its own context window and tool access
 - **Task Delegation**: The process of matching user requests to appropriate subagents based on expertise and availability
 - **Agent Context**: Isolated conversation context maintained separately for each subagent and the main agent
+
+## Clarifications
+
+### Session 2024-12-19
+
+- Q: When a subagent is triggered, should the subagent message block be displayed inline within the main conversation flow, or as a separate expandable/collapsible section alongside the main messages? → A: Separate expandable block in messagelist, not alongside, the message list is a vertical list.
+- Q: When the subagent block shows "last 2 messages" in collapsed state, what should happen if the subagent conversation has only 1 message? → A: Show the single message (display up to 2, but show whatever exists)
+- Q: How should the system handle task delegation when a subagent generates an error or fails to complete its task? → A: Return error message to main agent. subagent is tool calling, so it can return successful content or error message
+- Q: When multiple subagents could match a task, what selection criteria should the system use to choose the most appropriate one? → A: Choose subagent with most specific/detailed description match
+- Q: What visual indicators should distinguish the subagent message block from regular messages in the vertical message list? → A: Distinctive border with subagent name/icon header
 
 ## Success Criteria *(mandatory)*
 
