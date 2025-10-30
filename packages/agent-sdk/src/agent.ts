@@ -4,6 +4,7 @@ import {
 } from "./managers/messageManager.js";
 import { AIManager } from "./managers/aiManager.js";
 import { ToolManager } from "./managers/toolManager.js";
+import { SubagentManager } from "./managers/subagentManager.js";
 import * as memory from "./services/memory.js";
 import { McpManager, type McpManagerCallbacks } from "./managers/mcpManager.js";
 import { BashManager } from "./managers/bashManager.js";
@@ -23,6 +24,9 @@ import type {
 import { HookManager } from "./hooks/index.js";
 import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
+import { SkillManager } from "./managers/skillManager.js";
+import { createTaskTool } from "./tools/taskTool.js";
+import { createSkillTool } from "./tools/skillTool.js";
 
 /**
  * Configuration options for Agent instances
@@ -59,13 +63,13 @@ export interface AgentCallbacks
 export class Agent {
   private messageManager: MessageManager;
   private aiManager: AIManager;
-  private callbacks: AgentCallbacks;
 
   private bashManager: BashManager | null = null;
   private backgroundBashManager: BackgroundBashManager;
   private logger?: Logger; // Add optional logger property
   private toolManager: ToolManager; // Add tool registry instance
   private mcpManager: McpManager; // Add MCP manager instance
+  private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private hookManager: HookManager; // Add hooks manager instance
   private workdir: string; // Working directory
@@ -106,7 +110,6 @@ export class Agent {
       modelConfig.fastModel,
     );
 
-    this.callbacks = callbacks;
     this.logger = logger; // Save the passed logger
     this.workdir = workdir || process.cwd(); // Set working directory, default to current working directory
     this.systemPrompt = systemPrompt; // Save custom system prompt
@@ -121,7 +124,11 @@ export class Agent {
       workdir: this.workdir,
     });
     this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
-    this.toolManager = new ToolManager({ mcpManager: this.mcpManager }); // Initialize tool registry, pass MCP manager
+    this.toolManager = new ToolManager({
+      mcpManager: this.mcpManager,
+      logger: this.logger,
+    }); // Initialize tool registry, pass MCP manager
+
     this.hookManager = new HookManager(
       this.workdir,
       undefined,
@@ -134,6 +141,18 @@ export class Agent {
       callbacks,
       workdir: this.workdir,
       logger: this.logger,
+    });
+
+    // Initialize subagent manager with all dependencies in constructor
+    // IMPORTANT: Must be initialized AFTER MessageManager
+    this.subagentManager = new SubagentManager({
+      workdir: this.workdir,
+      parentToolManager: this.toolManager,
+      parentMessageManager: this.messageManager,
+      logger: this.logger,
+      gatewayConfig,
+      modelConfig,
+      tokenLimit,
     });
 
     // Initialize AI manager with resolved configuration
@@ -242,6 +261,31 @@ export class Agent {
     continueLastSession?: boolean;
     messages?: Message[];
   }): Promise<void> {
+    // Initialize managers first
+    try {
+      // Initialize SkillManager
+      const skillManager = new SkillManager({ logger: this.logger });
+      await skillManager.initialize();
+
+      // Initialize SubagentManager (load and cache configurations)
+      await this.subagentManager.initialize();
+
+      // Register Task and Skill tools (now both synchronous since managers are initialized)
+
+      // Create and register tools synchronously
+      const taskTool = createTaskTool(this.subagentManager);
+      const skillTool = createSkillTool(skillManager);
+
+      this.toolManager.register(taskTool);
+      this.toolManager.register(skillTool);
+    } catch (error) {
+      this.logger?.error(
+        "Failed to initialize managers and register tools:",
+        error,
+      );
+      // Don't throw error to prevent app startup failure
+    }
+
     // Initialize MCP servers with auto-connect
     try {
       await this.mcpManager.initialize(this.workdir, true);
@@ -295,6 +339,7 @@ export class Agent {
     this.abortAIMessage();
     this.abortBashCommand();
     this.abortSlashCommand();
+    this.abortSubagents();
   }
 
   /** Add to input history */
@@ -312,16 +357,29 @@ export class Agent {
     this.slashCommandManager.abortCurrentCommand();
   }
 
+  /** Interrupt all subagent execution */
+  public abortSubagents(): void {
+    this.subagentManager.abortAllInstances();
+  }
+
+  /** Interrupt specific subagent execution */
+  public abortSubagent(subagentId: string): boolean {
+    return this.subagentManager.abortInstance(subagentId);
+  }
+
   /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
     this.messageManager.saveSession();
     this.abortAIMessage();
     this.abortBashCommand();
     this.abortSlashCommand();
+    this.abortSubagents();
     // Cleanup background bash manager
     this.backgroundBashManager.cleanup();
     // Cleanup MCP connections
     await this.mcpManager.cleanup();
+    // Cleanup subagent manager
+    this.subagentManager.cleanup();
   }
 
   public async sendMessage(

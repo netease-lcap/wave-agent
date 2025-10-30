@@ -9,8 +9,6 @@ import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
 import { lsTool } from "../tools/lsTool.js";
 import { readTool } from "../tools/readTool.js";
-import { SkillManager } from "./skillManager.js";
-import { createSkillTool } from "../tools/skillTool.js";
 import { McpManager } from "./mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import type { Logger } from "../types.js";
@@ -31,9 +29,14 @@ class ToolManager {
   constructor(options: ToolManagerOptions) {
     this.mcpManager = options.mcpManager;
     this.logger = options.logger;
-
-    // Initialize built-in tools
     this.initializeBuiltInTools();
+  }
+
+  /**
+   * Register a new tool
+   */
+  public register(tool: ToolPlugin): void {
+    this.tools.set(tool.name, tool);
   }
 
   private initializeBuiltInTools(): void {
@@ -49,7 +52,6 @@ class ToolManager {
       grepTool,
       lsTool,
       readTool,
-      createSkillTool(new SkillManager({ logger: this.logger })),
     ];
 
     for (const tool of builtInTools) {
