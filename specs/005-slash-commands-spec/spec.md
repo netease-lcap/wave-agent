@@ -1,6 +1,6 @@
 # Feature Specification: Custom Slash Commands
 
-**Feature Branch**: `007-slash-commands-spec`  
+**Feature Branch**: `005-slash-commands-spec`  
 **Created**: December 19, 2024  
 **Status**: Draft  
 **Input**: User description: "custom slash commands are already implemented without specs, can you generate spec based on current implement?"
@@ -105,7 +105,7 @@ Users can define commands at both project level (`.wave/commands/`) and user lev
 - **FR-004**: System MUST parse quoted arguments correctly, treating quoted strings as single parameters even when containing spaces
 - **FR-005**: System MUST execute embedded bash commands within command content and replace them with their output
 - **FR-006**: System MUST provide a command selector interface triggered by typing `/` with search filtering capabilities
-- **FR-007**: System MUST prioritize project-level commands over user-level commands when names conflict
+- **FR-005**: System MUST prioritize project-level commands over user-level commands when names conflict
 - **FR-008**: System MUST include built-in commands (like `clear`) alongside custom commands in the interface
 - **FR-009**: System MUST reload custom commands when files are modified without requiring application restart
 - **FR-010**: System MUST validate slash command syntax and provide appropriate error handling for malformed commands
@@ -130,5 +130,5 @@ Users can define commands at both project level (`.wave/commands/`) and user lev
 - **SC-004**: System successfully loads and validates 50+ custom commands without performance degradation
 - **SC-005**: 95% of command executions complete successfully when command syntax is valid
 - **SC-006**: Users can find desired commands within 3 keystrokes using the search functionality
-- **SC-007**: Command reloading completes within 200ms after file system changes are detected
+- **SC-005**: Command reloading completes within 200ms after file system changes are detected
 - **SC-008**: Zero data loss occurs during command execution, with all conversation context preserved
