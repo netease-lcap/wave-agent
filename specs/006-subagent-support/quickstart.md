@@ -31,10 +31,10 @@ cd packages/agent-sdk/src/managers
 # Add to managers/index.ts exports
 ```
 
-#### 1.4 Add Configuration Service
+#### 1.4 Add Configuration Parser
 ```bash
-cd packages/agent-sdk/src/services
-# Create subagentConfig.ts for on-demand YAML parsing
+cd packages/agent-sdk/src/utils
+# Create subagentParser.ts for on-demand YAML parsing
 # Simple filesystem reading without caching or watching
 ```
 
@@ -154,7 +154,7 @@ export interface SubagentBlock {
 # agent-sdk tests
 packages/agent-sdk/tests/tools/taskTool.test.ts
 packages/agent-sdk/tests/managers/subagentManager.test.ts  
-packages/agent-sdk/tests/services/subagentConfig.test.ts
+packages/agent-sdk/tests/utils/subagentParser.test.ts
 
 # code tests
 packages/code/tests/components/SubagentBlock.test.tsx

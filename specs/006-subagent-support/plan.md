@@ -85,16 +85,16 @@ packages/
 │   │   │   ├── messageManager.ts              # EXTEND: Add subagent callbacks
 │   │   │   ├── aiManager.ts                   # EXTEND: Add subagent instance support
 │   │   │   └── subagentManager.ts             # NEW: Subagent configuration & lifecycle
-│   │   ├── services/
-│   │   │   └── subagentConfig.ts              # NEW: YAML config parsing
+│   │   ├── utils/
+│   │   │   └── subagentParser.ts             # NEW: YAML config parsing
 │   │   └── types.ts                           # EXTEND: Add subagent message types
 │   └── tests/
 │       ├── tools/
 │       │   └── taskTool.test.ts               # NEW: Task tool tests
 │       ├── managers/
 │       │   └── subagentManager.test.ts        # NEW: Subagent manager tests
-│       └── services/
-│           └── subagentConfig.test.ts         # NEW: Config parsing tests
+│       └── utils/
+│           └── subagentParser.test.ts         # NEW: Config parsing tests
 └── code/
     ├── src/
     │   ├── components/
