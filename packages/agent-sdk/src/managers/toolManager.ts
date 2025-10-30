@@ -10,6 +10,7 @@ import { grepTool } from "../tools/grepTool.js";
 import { lsTool } from "../tools/lsTool.js";
 import { readTool } from "../tools/readTool.js";
 import { SkillManager } from "./skillManager.js";
+import { createSkillTool } from "../tools/skillTool.js";
 import { McpManager } from "./mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import type { Logger } from "../types.js";
@@ -48,7 +49,7 @@ class ToolManager {
       grepTool,
       lsTool,
       readTool,
-      new SkillManager({ logger: this.logger }).createTool(),
+      createSkillTool(new SkillManager({ logger: this.logger })),
     ];
 
     for (const tool of builtInTools) {
