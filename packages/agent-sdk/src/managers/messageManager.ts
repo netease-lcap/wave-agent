@@ -448,7 +448,7 @@ export class MessageManager {
   public updateSubagentBlock(
     subagentId: string,
     updates: Partial<{
-      status: "active" | "completed" | "error";
+      status: "active" | "completed" | "error" | "aborted";
       messages: Message[];
     }>,
   ): void {

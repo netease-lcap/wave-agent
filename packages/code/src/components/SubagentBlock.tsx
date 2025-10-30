@@ -50,6 +50,8 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
         return { icon: "✅", color: "green" as const };
       case "error":
         return { icon: "❌", color: "red" as const };
+      case "aborted":
+        return { icon: "⏹️", color: "gray" as const };
       default:
         return { icon: "⏳", color: "gray" as const };
     }

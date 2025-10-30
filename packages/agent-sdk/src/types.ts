@@ -103,7 +103,7 @@ export interface SubagentBlock {
   type: "subagent";
   subagentId: string;
   subagentName: string;
-  status: "active" | "completed" | "error";
+  status: "active" | "completed" | "error" | "aborted";
   messages: Message[];
 }
 

@@ -14,7 +14,7 @@ export interface SubagentInstance {
   aiManager: AIManager;
   messageManager: MessageManager;
   toolManager: ToolManager;
-  status: "initializing" | "active" | "completed" | "error";
+  status: "initializing" | "active" | "completed" | "error" | "aborted";
   taskDescription: string;
   messages: Message[];
 }
@@ -295,13 +295,61 @@ export class SubagentManager {
   }
 
   /**
-   * Clean up completed or errored instances
+   * Abort a running subagent instance
+   */
+  abortInstance(subagentId: string): boolean {
+    const instance = this.instances.get(subagentId);
+    if (!instance) {
+      return false;
+    }
+
+    // Only abort active or initializing instances
+    if (instance.status !== "active" && instance.status !== "initializing") {
+      return false;
+    }
+
+    try {
+      // Abort the AI manager operations
+      instance.aiManager.abortAIMessage();
+
+      // Update status
+      this.updateInstanceStatus(subagentId, "aborted");
+      this.parentMessageManager.updateSubagentBlock(subagentId, {
+        status: "aborted",
+        messages: instance.messages,
+      });
+
+      this.logger?.info(`Aborted subagent instance: ${subagentId}`);
+      return true;
+    } catch (error) {
+      this.logger?.error(
+        `Failed to abort subagent instance ${subagentId}:`,
+        error,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Abort all active subagent instances
+   */
+  abortAllInstances(): void {
+    const activeInstances = this.getActiveInstances();
+    for (const instance of activeInstances) {
+      this.abortInstance(instance.subagentId);
+    }
+  }
+
+  /**
+   * Clean up completed, errored, or aborted instances
    */
   cleanupInstance(subagentId: string): void {
     const instance = this.instances.get(subagentId);
     if (
       instance &&
-      (instance.status === "completed" || instance.status === "error")
+      (instance.status === "completed" ||
+        instance.status === "error" ||
+        instance.status === "aborted")
     ) {
       this.instances.delete(subagentId);
     }
@@ -321,6 +369,8 @@ export class SubagentManager {
    * Clean up all instances (for session end)
    */
   cleanup(): void {
+    // Abort all active instances before cleanup
+    this.abortAllInstances();
     this.instances.clear();
   }
 }

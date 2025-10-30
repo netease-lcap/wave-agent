@@ -339,6 +339,7 @@ export class Agent {
     this.abortAIMessage();
     this.abortBashCommand();
     this.abortSlashCommand();
+    this.abortSubagents();
   }
 
   /** Add to input history */
@@ -356,16 +357,29 @@ export class Agent {
     this.slashCommandManager.abortCurrentCommand();
   }
 
+  /** Interrupt all subagent execution */
+  public abortSubagents(): void {
+    this.subagentManager.abortAllInstances();
+  }
+
+  /** Interrupt specific subagent execution */
+  public abortSubagent(subagentId: string): boolean {
+    return this.subagentManager.abortInstance(subagentId);
+  }
+
   /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
     this.messageManager.saveSession();
     this.abortAIMessage();
     this.abortBashCommand();
     this.abortSlashCommand();
+    this.abortSubagents();
     // Cleanup background bash manager
     this.backgroundBashManager.cleanup();
     // Cleanup MCP connections
     await this.mcpManager.cleanup();
+    // Cleanup subagent manager
+    this.subagentManager.cleanup();
   }
 
   public async sendMessage(
