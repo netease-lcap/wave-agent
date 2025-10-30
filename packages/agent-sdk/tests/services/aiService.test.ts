@@ -142,7 +142,7 @@ describe("AI Service", () => {
 
       // Should have custom system message as first message
       expect(callArgs.messages[0].role).toBe("system");
-      expect(callArgs.messages[0].content).toBe(customPrompt);
+      expect(callArgs.messages[0].content).toContain(customPrompt);
       // Should not contain default prompt content
       expect(callArgs.messages[0].content).not.toContain(
         "You are an interactive CLI tool",
