@@ -16,7 +16,7 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 [P] Update packages/agent-sdk/src/types.ts to export subagent message block types
+- [X] T001 [P] Update packages/agent-sdk/src/types.ts to export subagent message block types
 
 ---
 
@@ -26,13 +26,13 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T002 Create TaskDelegation interface in packages/agent-sdk/src/tools/types.ts
-- [ ] T003 [P] Create SubagentConfiguration interface in packages/agent-sdk/src/utils/subagentParser.ts
-- [ ] T004 [P] Create SubagentInstance interface in packages/agent-sdk/src/managers/subagentManager.ts
-- [ ] T005 [P] Create SubagentBlock interface in packages/agent-sdk/src/types.ts
-- [ ] T006 [P] Extend MessageManagerCallbacks interface in packages/agent-sdk/src/managers/messageManager.ts
-- [ ] T007 Create base SubagentManager class in packages/agent-sdk/src/managers/subagentManager.ts
-- [ ] T008 Create subagent configuration parser utilities in packages/agent-sdk/src/utils/subagentParser.ts
+- [X] T002 Create TaskDelegation interface in packages/agent-sdk/src/tools/types.ts
+- [X] T003 [P] Create SubagentConfiguration interface in packages/agent-sdk/src/utils/subagentParser.ts
+- [X] T004 [P] Create SubagentInstance interface in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T005 [P] Create SubagentBlock interface in packages/agent-sdk/src/types.ts
+- [X] T006 [P] Extend MessageManagerCallbacks interface in packages/agent-sdk/src/managers/messageManager.ts
+- [X] T007 Create base SubagentManager class in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T008 Create subagent configuration parser utilities in packages/agent-sdk/src/utils/subagentParser.ts
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -46,12 +46,12 @@
 
 ### Implementation for User Story 1
 
-- [ ] T009 [P] [US1] Implement YAML frontmatter parsing logic in packages/agent-sdk/src/utils/subagentParser.ts
-- [ ] T010 [P] [US1] Implement directory scanning for .wave/agents/ and ~/.wave/agents/ in packages/agent-sdk/src/utils/subagentParser.ts
-- [ ] T011 [US1] Implement subagent configuration validation (name pattern, required fields) in packages/agent-sdk/src/utils/subagentParser.ts
-- [ ] T012 [US1] Implement precedence rules (project over user) in packages/agent-sdk/src/utils/subagentParser.ts
-- [ ] T013 [US1] Add configuration loading methods to SubagentManager in packages/agent-sdk/src/managers/subagentManager.ts
-- [ ] T014 [US1] Add error handling for invalid YAML and missing fields in packages/agent-sdk/src/utils/subagentParser.ts
+- [X] T009 [P] [US1] Implement YAML frontmatter parsing logic in packages/agent-sdk/src/utils/subagentParser.ts
+- [X] T010 [P] [US1] Implement directory scanning for .wave/agents/ and ~/.wave/agents/ in packages/agent-sdk/src/utils/subagentParser.ts
+- [X] T011 [US1] Implement subagent configuration validation (name pattern, required fields) in packages/agent-sdk/src/utils/subagentParser.ts
+- [X] T012 [US1] Implement precedence rules (project over user) in packages/agent-sdk/src/utils/subagentParser.ts
+- [X] T013 [US1] Add configuration loading methods to SubagentManager in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T014 [US1] Add error handling for invalid YAML and missing fields in packages/agent-sdk/src/utils/subagentParser.ts
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -67,17 +67,17 @@
 
 ### Implementation for User Story 2
 
-- [ ] T015 [P] [US2] Create Task tool plugin structure in packages/agent-sdk/src/tools/taskTool.ts
-- [ ] T016 [P] [US2] Implement task description matching algorithm in packages/agent-sdk/src/managers/subagentManager.ts
-- [ ] T017 [US2] Implement subagent selection logic with specificity scoring and explicit name matching in packages/agent-sdk/src/managers/subagentManager.ts
-- [ ] T018 [US2] Create SubagentInstance creation logic in packages/agent-sdk/src/managers/subagentManager.ts
-- [ ] T019 [US2] Implement isolated aiManager and messageManager per instance in packages/agent-sdk/src/managers/subagentManager.ts
-- [ ] T020 [US2] Implement Task tool execute method with delegation workflow in packages/agent-sdk/src/tools/taskTool.ts
-- [ ] T021 [US2] Add Task tool to tool registry in packages/agent-sdk/src/tools/index.ts
-- [ ] T022 [US2] Implement tool access restriction based on subagent configuration in packages/agent-sdk/src/managers/subagentManager.ts
-- [ ] T023 [US2] Implement model configuration per subagent in packages/agent-sdk/src/managers/subagentManager.ts
-- [ ] T024 [US2] Implement clear feedback about which subagent is handling a task in packages/agent-sdk/src/tools/taskTool.ts
-- [ ] T025 [US2] Add error handling for nonexistent subagents with available subagents listing in packages/agent-sdk/src/tools/taskTool.ts
+- [X] T015 [P] [US2] Create Task tool plugin structure in packages/agent-sdk/src/tools/taskTool.ts
+- [X] T016 [P] [US2] Implement task description matching algorithm in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T017 [US2] Implement subagent selection logic with specificity scoring and explicit name matching in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T018 [US2] Create SubagentInstance creation logic in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T019 [US2] Implement isolated aiManager and messageManager per instance in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T020 [US2] Implement Task tool execute method with delegation workflow in packages/agent-sdk/src/tools/taskTool.ts
+- [X] T021 [US2] Add Task tool to tool registry in packages/agent-sdk/src/tools/index.ts
+- [X] T022 [US2] Implement tool access restriction based on subagent configuration in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T023 [US2] Implement model configuration per subagent in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T024 [US2] Implement clear feedback about which subagent is handling a task in packages/agent-sdk/src/tools/taskTool.ts
+- [X] T025 [US2] Add error handling for nonexistent subagents with available subagents listing in packages/agent-sdk/src/tools/taskTool.ts
 
 **Checkpoint**: At this point, User Stories 1, 2, and 3 (explicit invocation) should all work through the Task tool mechanism
 
@@ -91,14 +91,14 @@
 
 ### Implementation for User Story 5
 
-- [ ] T026 [P] [US5] Create SubagentBlock React component in packages/code/src/components/SubagentBlock.tsx
-- [ ] T027 [P] [US5] Implement collapsed state showing up to 2 recent messages in packages/code/src/components/SubagentBlock.tsx
-- [ ] T028 [P] [US5] Implement expanded state showing up to 10 recent messages in packages/code/src/components/SubagentBlock.tsx
-- [ ] T029 [P] [US5] Add distinctive border styling with magenta color in packages/code/src/components/SubagentBlock.tsx
-- [ ] T030 [P] [US5] Implement subagent name/icon header with status indicators in packages/code/src/components/SubagentBlock.tsx
-- [ ] T031 [US5] Add SubagentBlock rendering to MessageList in packages/code/src/components/MessageList.tsx
-- [ ] T032 [US5] Integrate SubagentBlock with existing isExpanded prop pattern in packages/code/src/components/MessageList.tsx
-- [ ] T033 [US5] Add SubagentBlock message creation in Task tool result processing in packages/agent-sdk/src/tools/taskTool.ts
+- [X] T026 [P] [US5] Create SubagentBlock React component in packages/code/src/components/SubagentBlock.tsx
+- [X] T027 [P] [US5] Implement collapsed state showing up to 2 recent messages in packages/code/src/components/SubagentBlock.tsx
+- [X] T028 [P] [US5] Implement expanded state showing up to 10 recent messages in packages/code/src/components/SubagentBlock.tsx
+- [X] T029 [P] [US5] Add distinctive border styling with magenta color in packages/code/src/components/SubagentBlock.tsx
+- [X] T030 [P] [US5] Implement subagent name/icon header with status indicators in packages/code/src/components/SubagentBlock.tsx
+- [X] T031 [US5] Add SubagentBlock rendering to MessageList in packages/code/src/components/MessageList.tsx
+- [X] T032 [US5] Integrate SubagentBlock with existing isExpanded prop pattern in packages/code/src/components/MessageList.tsx
+- [X] T033 [US5] Add SubagentBlock message creation in Task tool result processing in packages/agent-sdk/src/tools/taskTool.ts
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -108,11 +108,11 @@
 
 **Purpose**: Handle edge cases and error conditions identified in specification
 
-- [ ] T034 [P] [EH] Implement invalid YAML frontmatter error handling in packages/agent-sdk/src/utils/subagentParser.ts
-- [ ] T035 [P] [EH] Implement tool validation for subagent configurations in packages/agent-sdk/src/managers/subagentManager.ts  
-- [ ] T036 [P] [EH] Implement fallback to main agent when no subagent matches in packages/agent-sdk/src/tools/taskTool.ts
-- [ ] T037 [P] [EH] Add handling for missing required fields in subagent configs in packages/agent-sdk/src/utils/subagentParser.ts
-- [ ] T038 [EH] Add handling for unavailable or invalid model specifications in packages/agent-sdk/src/managers/subagentManager.ts
+- [X] T034 [P] [EH] Implement invalid YAML frontmatter error handling in packages/agent-sdk/src/utils/subagentParser.ts
+- [X] T035 [P] [EH] Implement tool validation for subagent configurations in packages/agent-sdk/src/managers/subagentManager.ts  
+- [X] T036 [P] [EH] Implement fallback to main agent when no subagent matches in packages/agent-sdk/src/tools/taskTool.ts
+- [X] T037 [P] [EH] Add handling for missing required fields in subagent configs in packages/agent-sdk/src/utils/subagentParser.ts
+- [X] T038 [EH] Add handling for unavailable or invalid model specifications in packages/agent-sdk/src/managers/subagentManager.ts
 
 ---
 
@@ -120,12 +120,12 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T039 [P] Update packages/agent-sdk/src/managers/messageManager.ts to handle SubagentBlock message creation
-- [ ] T040 [P] Add comprehensive error handling across all subagent operations
-- [ ] T041 [P] Implement performance optimization for subagent selection (<500ms target)
-- [ ] T042 [P] Add resource cleanup for completed subagent instances
+- [X] T039 [P] Update packages/agent-sdk/src/managers/messageManager.ts to handle SubagentBlock message creation
+- [X] T040 [P] Add comprehensive error handling across all subagent operations
+- [X] T041 [P] Implement performance optimization for subagent selection (<500ms target)
+- [X] T042 [P] Add resource cleanup for completed subagent instances
 - [ ] T043 Run quickstart.md validation scenarios
-- [ ] T044 Update build process in packages/agent-sdk to export all new types and managers
+- [X] T044 Update build process in packages/agent-sdk to export all new types and managers
 
 ---
 

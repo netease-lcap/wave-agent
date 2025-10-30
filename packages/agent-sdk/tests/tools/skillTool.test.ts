@@ -18,9 +18,16 @@ describe("createSkillTool", () => {
     skillManager = new SkillManager({ logger: mockLogger });
   });
 
-  it("should create a tool plugin with correct structure when not initialized", () => {
-    // Mock isInitialized to return false
-    vi.spyOn(skillManager, "isInitialized").mockReturnValue(false);
+  it("should throw error when created with uninitialized SkillManager", () => {
+    // This should throw because SkillManager is not initialized
+    expect(() => createSkillTool(skillManager)).toThrow(
+      "SkillManager not initialized. Call initialize() first.",
+    );
+  });
+
+  it("should create a tool plugin with correct structure when initialized with no skills", async () => {
+    // Initialize the skill manager first
+    await skillManager.initialize();
 
     const tool = createSkillTool(skillManager);
 
@@ -31,55 +38,41 @@ describe("createSkillTool", () => {
     expect(typeof tool.execute).toBe("function");
     expect(typeof tool.formatCompactParams).toBe("function");
 
-    // When not initialized, enum should be empty
+    // When initialized with no skills, enum should be empty
     const params = tool.config.function?.parameters as Record<string, unknown>;
     const properties = params?.properties as Record<string, unknown>;
     const skillName = properties?.skill_name as Record<string, unknown>;
     expect(skillName?.enum).toEqual([]);
   });
 
-  it("should format compact params correctly", () => {
-    // Mock isInitialized to return false
-    vi.spyOn(skillManager, "isInitialized").mockReturnValue(false);
-
+  it("should format compact params correctly", async () => {
+    await skillManager.initialize();
     const tool = createSkillTool(skillManager);
     const context = { workdir: "/test" };
 
-    expect(
-      tool.formatCompactParams?.({ skill_name: "test-skill" }, context),
-    ).toBe("test-skill");
-    expect(tool.formatCompactParams?.({}, context)).toBe("unknown-skill");
+    const params = { skill_name: "test-skill" };
+    const formatted = tool.formatCompactParams?.(params, context);
+
+    expect(formatted).toBe("test-skill");
   });
 
-  it("should handle tool execution when not initialized", async () => {
-    // Mock initialization to succeed
-    vi.spyOn(skillManager, "initialize").mockResolvedValue(undefined);
-    vi.spyOn(skillManager, "isInitialized").mockReturnValue(false);
-    vi.spyOn(skillManager, "executeSkill").mockResolvedValue({
-      content: "Test result",
-      context: { skillName: "test-skill" },
-    });
-
+  it("should handle missing skill_name parameter in formatCompactParams", async () => {
+    await skillManager.initialize();
     const tool = createSkillTool(skillManager);
     const context = { workdir: "/test" };
-    const result = await tool.execute?.({ skill_name: "test-skill" }, context);
 
-    expect(result.success).toBe(true);
-    expect(result.content).toBe("Test result");
-    expect(result.shortResult).toBe("Invoked skill: test-skill");
+    const params = {};
+    const formatted = tool.formatCompactParams?.(params, context);
+
+    expect(formatted).toBe("unknown-skill");
   });
 
   it("should validate skill_name parameter", async () => {
-    // Mock isInitialized to return false initially
-    vi.spyOn(skillManager, "isInitialized").mockReturnValue(false);
-
+    await skillManager.initialize();
     const tool = createSkillTool(skillManager);
     const context = { workdir: "/test" };
 
-    // Mock initialization
-    vi.spyOn(skillManager, "initialize").mockResolvedValue(undefined);
-
-    const result = await tool.execute?.({}, context);
+    const result = await tool.execute({}, context);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe(
@@ -87,53 +80,81 @@ describe("createSkillTool", () => {
     );
   });
 
-  it("should handle initialization errors", async () => {
-    vi.spyOn(skillManager, "initialize").mockRejectedValue(
-      new Error("Init failed"),
-    );
-    vi.spyOn(skillManager, "isInitialized").mockReturnValue(false);
+  it("should handle skill execution successfully", async () => {
+    await skillManager.initialize();
+
+    // Mock executeSkill to return success
+    vi.spyOn(skillManager, "executeSkill").mockResolvedValue({
+      content: "Test result",
+      context: { skillName: "test-skill" },
+    });
 
     const tool = createSkillTool(skillManager);
     const context = { workdir: "/test" };
-    const result = await tool.execute?.({ skill_name: "test-skill" }, context);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Init failed");
+    const result = await tool.execute({ skill_name: "test-skill" }, context);
+
+    expect(result.success).toBe(true);
+    expect(result.content).toBe("Test result");
+    expect(result.shortResult).toBe("Invoked skill: test-skill");
   });
 
-  it("should create tool with initialized skill manager", () => {
-    // Mock isInitialized to return true
-    vi.spyOn(skillManager, "isInitialized").mockReturnValue(true);
-    vi.spyOn(skillManager, "getAvailableSkills").mockReturnValue([
+  it("should handle skill execution errors", async () => {
+    await skillManager.initialize();
+
+    // Mock executeSkill to throw an error
+    vi.spyOn(skillManager, "executeSkill").mockRejectedValue(
+      new Error("Test error"),
+    );
+
+    const tool = createSkillTool(skillManager);
+    const context = { workdir: "/test" };
+
+    const result = await tool.execute({ skill_name: "test" }, context);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Test error");
+  });
+
+  it("should create tool with initialized skill manager", async () => {
+    // Initialize with mock skills
+    await skillManager.initialize();
+
+    // Mock some skills for the enum
+    const mockSkills = [
       {
         name: "test-skill",
-        description: "A test skill",
-        type: "personal",
-        skillPath: "/path/to/skill",
+        type: "personal" as const,
+        description: "Test skill",
+        skillPath: "/path/to/test",
       },
-    ]);
+      {
+        name: "another-skill",
+        type: "project" as const,
+        description: "Another skill",
+        skillPath: "/path/to/another",
+      },
+    ];
+    vi.spyOn(skillManager, "getAvailableSkills").mockReturnValue(mockSkills);
 
     const tool = createSkillTool(skillManager);
 
-    // When initialized, enum should contain available skill names
+    expect(tool.name).toBe("skill");
+    expect(tool.config.function.description).toContain("Available skills:");
+    expect(tool.config.function.description).toContain("test-skill");
+    expect(tool.config.function.description).toContain("another-skill");
+
+    // Check enum contains skill names
     const params = tool.config.function?.parameters as Record<string, unknown>;
     const properties = params?.properties as Record<string, unknown>;
     const skillName = properties?.skill_name as Record<string, unknown>;
-    expect(skillName?.enum).toEqual(["test-skill"]);
-
-    // Description should include available skills
-    expect(tool.config.function.description).toContain("test-skill");
-    expect(tool.config.function.description).toContain("A test skill");
+    expect(skillName?.enum).toEqual(["test-skill", "another-skill"]);
   });
 
-  it("should handle empty skills list when initialized", () => {
-    // Mock isInitialized to return true but no skills available
-    vi.spyOn(skillManager, "isInitialized").mockReturnValue(true);
-    vi.spyOn(skillManager, "getAvailableSkills").mockReturnValue([]);
-
+  it("should handle empty skills list when initialized", async () => {
+    await skillManager.initialize();
     const tool = createSkillTool(skillManager);
 
-    // Description should indicate no skills available
     expect(tool.config.function.description).toContain(
       "No skills are currently available",
     );

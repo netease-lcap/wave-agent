@@ -504,3 +504,83 @@ export const completeCommandInMessage = ({
   }
   return newMessages;
 };
+
+// Subagent block message operations
+export interface AddSubagentBlockParams {
+  messages: Message[];
+  subagentId: string;
+  subagentName: string;
+  status: "active" | "completed" | "error";
+  subagentMessages?: Message[];
+}
+
+export interface UpdateSubagentBlockParams {
+  messages: Message[];
+  subagentId: string;
+  status: "active" | "completed" | "error";
+  subagentMessages: Message[];
+}
+
+export const addSubagentBlockToMessage = ({
+  messages,
+  subagentId,
+  subagentName,
+  status,
+  subagentMessages = [],
+}: AddSubagentBlockParams): Message[] => {
+  const newMessages = [...messages];
+
+  // Find the last assistant message or create one
+  let lastAssistantMessage = newMessages[newMessages.length - 1];
+
+  if (!lastAssistantMessage || lastAssistantMessage.role !== "assistant") {
+    // Create new assistant message if the last message is not from assistant
+    lastAssistantMessage = {
+      role: "assistant",
+      blocks: [],
+    };
+    newMessages.push(lastAssistantMessage);
+  }
+
+  // Add subagent block
+  lastAssistantMessage.blocks.push({
+    type: "subagent",
+    subagentId,
+    subagentName,
+    status,
+    messages: subagentMessages,
+  });
+
+  return newMessages;
+};
+
+export const updateSubagentBlockInMessage = (
+  messages: Message[],
+  subagentId: string,
+  updates: Partial<{
+    status: "active" | "completed" | "error";
+    messages: Message[];
+  }>,
+): Message[] => {
+  const newMessages = [...messages];
+
+  // Find and update the subagent block
+  for (let i = newMessages.length - 1; i >= 0; i--) {
+    const message = newMessages[i];
+    if (message.role === "assistant") {
+      for (const block of message.blocks) {
+        if (block.type === "subagent" && block.subagentId === subagentId) {
+          if (updates.status !== undefined) {
+            block.status = updates.status;
+          }
+          if (updates.messages !== undefined) {
+            block.messages = updates.messages;
+          }
+          return newMessages;
+        }
+      }
+    }
+  }
+
+  return newMessages;
+};

@@ -106,8 +106,8 @@ interface SubagentManager {
 ### With MessageManager Callbacks
 ```typescript
 interface MessageManagerCallbacks {
-  onSubAgentBlockAdded?: (sessionId: string) => void;
-  onSubAgentBlockUpdated?: (sessionId: string, messages: Message[]) => void;
+  onSubAgentBlockAdded?: (subagentId: string) => void;
+  onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
 }
 ```
 

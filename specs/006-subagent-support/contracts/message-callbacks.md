@@ -12,7 +12,7 @@ Extends existing `MessageManagerCallbacks` interface with subagent-specific call
 
 **Signature**:
 ```typescript
-onSubAgentBlockAdded?: (sessionId: string) => void;
+onSubAgentBlockAdded?: (subagentId: string) => void;
 ```
 
 **Usage**: Optional callback for advanced integrations. The standard `onMessagesChange` callback is sufficient for most use cases.
@@ -23,7 +23,7 @@ onSubAgentBlockAdded?: (sessionId: string) => void;
 
 **Signature**:
 ```typescript
-onSubAgentBlockUpdated?: (sessionId: string, messages: Message[]) => void;
+onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
 ```
 
 **Usage**: Optional callback for advanced integrations. The standard `onMessagesChange` callback is sufficient for most use cases.
@@ -49,11 +49,11 @@ onSubAgentBlockUpdated?: (sessionId: string, messages: Message[]) => void;
 ```typescript
 const messageManager = new MessageManager({
   // ... existing callbacks
-  onSubAgentBlockAdded: (sessionId) => {
-    uiState.addSubagentBlock(sessionId);
+  onSubAgentBlockAdded: (subagentId) => {
+    uiState.addSubagentBlock(subagentId);
   },
-  onSubAgentBlockUpdated: (sessionId, messages) => {
-    uiState.updateSubagentBlock(sessionId, messages);
+  onSubAgentBlockUpdated: (subagentId, messages) => {
+    uiState.updateSubagentBlock(subagentId, messages);
   }
 });
 ```
@@ -131,7 +131,7 @@ expect(mockCallbacks.onSubAgentBlockUpdated).toHaveBeenCalledWith(
 
 ### Integration Testing
 - Verify callbacks called in correct order
-- Confirm sessionId consistency across callbacks
+- Confirm subagentId consistency across callbacks
 - Validate message array contents and limits
 - Test error scenarios (callback failures)
 - Verify cleanup behavior on session end

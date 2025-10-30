@@ -10,6 +10,10 @@ import {
   addCommandOutputMessage,
   updateCommandOutputInMessage,
   completeCommandInMessage,
+  addSubagentBlockToMessage,
+  updateSubagentBlockInMessage,
+  type AddSubagentBlockParams,
+  type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
 import type { Logger, Message } from "../types.js";
@@ -58,6 +62,9 @@ export interface MessageManagerCallbacks {
   onAddCommandOutputMessage?: (command: string) => void;
   onUpdateCommandOutputMessage?: (command: string, output: string) => void;
   onCompleteCommandMessage?: (command: string, exitCode: number) => void;
+  // Subagent callbacks
+  onSubAgentBlockAdded?: (subagentId: string) => void;
+  onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
 }
 
 export interface MessageManagerOptions {
@@ -417,5 +424,46 @@ export class MessageManager {
     });
     this.setMessages(updatedMessages);
     this.callbacks.onCompleteCommandMessage?.(command, exitCode);
+  }
+
+  // Subagent block methods
+  public addSubagentBlock(
+    subagentId: string,
+    subagentName: string,
+    status: "active" | "completed" | "error" = "active",
+    subagentMessages: Message[] = [],
+  ): void {
+    const params: AddSubagentBlockParams = {
+      messages: this.messages,
+      subagentId,
+      subagentName,
+      status,
+      subagentMessages,
+    };
+    const updatedMessages = addSubagentBlockToMessage(params);
+    this.setMessages(updatedMessages);
+    this.callbacks.onSubAgentBlockAdded?.(params.subagentId);
+  }
+
+  public updateSubagentBlock(
+    subagentId: string,
+    updates: Partial<{
+      status: "active" | "completed" | "error";
+      messages: Message[];
+    }>,
+  ): void {
+    const updatedMessages = updateSubagentBlockInMessage(
+      this.messages,
+      subagentId,
+      updates,
+    );
+    this.setMessages(updatedMessages);
+    const params: UpdateSubagentBlockParams = {
+      messages: this.messages,
+      subagentId,
+      status: updates.status || "active",
+      subagentMessages: updates.messages || [],
+    };
+    this.callbacks.onSubAgentBlockUpdated?.(params.subagentId, params.messages);
   }
 }

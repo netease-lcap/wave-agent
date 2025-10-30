@@ -130,8 +130,8 @@ Focus on:
 ```typescript
 export interface MessageManagerCallbacks {
   // Existing callbacks...
-  onSubAgentBlockAdded?: (sessionId: string) => void;
-  onSubAgentBlockUpdated?: (sessionId: string, messages: Message[]) => void;
+  onSubAgentBlockAdded?: (subagentId: string) => void;
+  onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
 }
 ```
 
@@ -139,7 +139,7 @@ export interface MessageManagerCallbacks {
 ```typescript
 export interface SubagentBlock {
   type: "subagent";
-  sessionId: string;
+  subagentId: string;
   subagentName: string;
   status: 'active' | 'completed' | 'error';
   messages: Message[];

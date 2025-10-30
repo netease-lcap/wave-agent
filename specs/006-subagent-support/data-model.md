@@ -28,7 +28,7 @@ Represents a subagent definition loaded from filesystem configuration.
 Represents an active subagent handling a specific task.
 
 **Fields**:
-- `sessionId: string` - Unique session identifier (UUID)
+- `subagentId: string` - Unique subagent identifier (UUID)
 - `configuration: SubagentConfiguration` - Configuration reference
 - `aiManager: AiManager` - Isolated AI manager instance
 - `messageManager: MessageManager` - Isolated message manager instance
@@ -38,7 +38,7 @@ Represents an active subagent handling a specific task.
 - `messages: Message[]` - Subagent conversation history
 
 **Validation Rules**:
-- SessionId must be valid UUID v4
+- SubagentId must be valid UUID v4
 - Status transitions: initializing → active → (completed | error)
 - Messages array maintains chronological order
 - CreatedAt cannot be future date
@@ -71,14 +71,14 @@ UI representation of subagent activity within message list.
 
 **Fields**:
 - `type: 'subagent'` - Block type identifier
-- `sessionId: string` - Reference to SubagentInstance
+- `subagentId: string` - Reference to SubagentInstance
 - `subagentName: string` - Display name from configuration
 - `messages: Message[]` - Cached message subset for display
 - `status: 'active' | 'completed' | 'error'` - Current status
 
 
 **Validation Rules**:
-- SessionId must reference valid SubagentInstance
+- SubagentId must reference valid SubagentInstance
 - SubagentName must match configuration
 - Messages array limited to 10 most recent when expanded, 2 when collapsed
 - Status must match associated SubagentInstance status
@@ -133,7 +133,7 @@ Multiple paragraphs supported.
 - No caching or file watching for simplicity
 
 ### Memory-based State
-**SubagentInstances**: Map<sessionId, SubagentInstance>
+**SubagentInstances**: Map<subagentId, SubagentInstance>
 **TaskDelegation**: Input parameters only (no persistent state)
 
 **Lifecycle Management**:

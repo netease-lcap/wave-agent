@@ -6,6 +6,7 @@ import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
+import { SubagentBlock } from "./SubagentBlock.js";
 import { usePagination } from "../hooks/usePagination.js";
 
 // Function to render a single message
@@ -90,6 +91,10 @@ const renderMessageItem = (
                 </Text>
                 <Text>{block.originalInput || `/${block.commandName}`}</Text>
               </Box>
+            )}
+
+            {block.type === "subagent" && (
+              <SubagentBlock block={block} isExpanded={isExpanded} />
             )}
           </Box>
         ))}
