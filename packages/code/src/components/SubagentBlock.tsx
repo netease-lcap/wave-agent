@@ -94,7 +94,7 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
 
       {/* Messages Section */}
       {messagesToShow.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="column" marginTop={1} gap={1}>
           {messagesToShow.map((message: Message, index: number) => (
             <Box key={index} flexDirection="column" marginBottom={0} gap={1}>
               {message.blocks.map(

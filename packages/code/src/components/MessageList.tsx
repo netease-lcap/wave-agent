@@ -19,7 +19,7 @@ const renderMessageItem = (
   const shouldShowHeader = previousMessage?.role !== message.role;
 
   return (
-    <Box key={`message-${originalIndex}`} flexDirection="column" marginTop={1}>
+    <Box key={`message-${originalIndex}`} flexDirection="column">
       {shouldShowHeader && (
         <Box>
           <Text color={message.role === "user" ? "cyan" : "green"} bold>
@@ -143,9 +143,9 @@ export const MessageList: React.FC<MessageListProps> = ({
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" gap={1} marginTop={1}>
       {/* Message list */}
-      <Box flexDirection="column">
+      <Box flexDirection="column" gap={1}>
         {currentMessagesWithIndex.map(({ message, originalIndex }) => {
           // Get previous message
           const previousMessage =
@@ -161,7 +161,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
       {/* Loading state display - only show in non-expanded state */}
       {!isExpanded && (isLoading || isCommandRunning || isCompressing) && (
-        <Box marginTop={1} flexDirection="column" gap={1}>
+        <Box flexDirection="column" gap={1}>
           {isLoading && (
             <Box>
               <Text color="yellow">💭 AI is thinking... </Text>
@@ -196,7 +196,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
       {/* Bottom info and shortcut key hints */}
       {messages.length > 0 && (
-        <Box marginTop={1}>
+        <Box>
           <Box justifyContent="space-between" width="100%">
             <Box>
               <Text color="gray">
