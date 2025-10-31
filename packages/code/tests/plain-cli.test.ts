@@ -77,7 +77,7 @@ test("startPlainCli sends message and exits after completion", async () => {
   expect(mockExit).toHaveBeenCalledWith(0);
 });
 
-test("onAssistantMessageAdded collects content but doesn't output immediately", async () => {
+test("onAssistantMessageAdded outputs content", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
@@ -103,15 +103,13 @@ test("onAssistantMessageAdded collects content but doesn't output immediately", 
     expect(String(error)).toContain("process.exit called");
   }
 
-  // Test the onAssistantMessageAdded callback - it should NOT output immediately
+  // Test the onAssistantMessageAdded callback
   capturedCallbacks?.onAssistantMessageAdded?.(
     "Hello, this is assistant content!",
   );
 
-  // Verify that console.log was NOT called during the callback
-  expect(consoleSpy).not.toHaveBeenCalledWith(
-    "Hello, this is assistant content!",
-  );
+  // Verify that console.log was called with the content
+  expect(consoleSpy).toHaveBeenCalledWith("Hello, this is assistant content!");
 
   consoleSpy.mockRestore();
 });
@@ -146,49 +144,6 @@ test("startPlainCli works with continue session", async () => {
   // Verify agent was destroyed and process.exit was called
   expect(mockAgent.destroy).toHaveBeenCalled();
   expect(mockExit).toHaveBeenCalledWith(0);
-});
-
-test("outputs only the last assistant message after sendMessage completes", async () => {
-  const mockAgent = {
-    sendMessage: vi.fn(),
-    destroy: vi.fn(),
-    abortMessage: vi.fn(),
-  };
-
-  interface AgentCallbacks {
-    onAssistantMessageAdded?: (content?: string) => void;
-  }
-
-  let capturedCallbacks: AgentCallbacks | undefined;
-  vi.mocked(Agent.create).mockImplementation(async (options) => {
-    capturedCallbacks = options.callbacks;
-    return mockAgent as unknown as Agent;
-  });
-
-  const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-
-  // Simulate multiple assistant messages during sendMessage
-  mockAgent.sendMessage.mockImplementation(async () => {
-    // Simulate first assistant message
-    capturedCallbacks?.onAssistantMessageAdded?.("First message");
-    // Simulate second assistant message
-    capturedCallbacks?.onAssistantMessageAdded?.("Second message");
-    // Simulate final assistant message
-    capturedCallbacks?.onAssistantMessageAdded?.("Final message");
-  });
-
-  try {
-    await startPlainCli({ message: "test message" });
-  } catch (error) {
-    // Expected when process.exit is called
-    expect(String(error)).toContain("process.exit called");
-  }
-
-  // Verify that only the last message was output
-  expect(consoleSpy).toHaveBeenCalledTimes(1);
-  expect(consoleSpy).toHaveBeenCalledWith("Final message");
-
-  consoleSpy.mockRestore();
 });
 
 afterEach(() => {
