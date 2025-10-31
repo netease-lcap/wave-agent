@@ -25,8 +25,6 @@ import { HookManager } from "./hooks/index.js";
 import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
-import { createTaskTool } from "./tools/taskTool.js";
-import { createSkillTool } from "./tools/skillTool.js";
 
 /**
  * Configuration options for Agent instances
@@ -270,19 +268,13 @@ export class Agent {
       // Initialize SubagentManager (load and cache configurations)
       await this.subagentManager.initialize();
 
-      // Register Task and Skill tools (now both synchronous since managers are initialized)
-
-      // Create and register tools synchronously
-      const taskTool = createTaskTool(this.subagentManager);
-      const skillTool = createSkillTool(skillManager);
-
-      this.toolManager.register(taskTool);
-      this.toolManager.register(skillTool);
+      // Initialize built-in tools with dependencies
+      this.toolManager.initializeBuiltInTools({
+        subagentManager: this.subagentManager,
+        skillManager: skillManager,
+      });
     } catch (error) {
-      this.logger?.error(
-        "Failed to initialize managers and register tools:",
-        error,
-      );
+      this.logger?.error("Failed to initialize managers and tools:", error);
       // Don't throw error to prevent app startup failure
     }
 
