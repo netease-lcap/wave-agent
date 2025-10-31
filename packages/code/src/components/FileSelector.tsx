@@ -112,7 +112,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
               color={isSelected ? "black" : "white"}
               backgroundColor={isSelected ? "cyan" : undefined}
             >
-              {isSelected ? "▶ " : "  "}
+              {"  "}
               {icon} {fileItem.path}
             </Text>
           </Box>
