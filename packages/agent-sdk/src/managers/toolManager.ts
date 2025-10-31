@@ -9,9 +9,14 @@ import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
 import { lsTool } from "../tools/lsTool.js";
 import { readTool } from "../tools/readTool.js";
+import { todoWriteTool } from "../tools/todoWriteTool.js";
+import { createTaskTool } from "../tools/taskTool.js";
+import { createSkillTool } from "../tools/skillTool.js";
 import { McpManager } from "./mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import type { Logger } from "../types.js";
+import type { SubagentManager } from "./subagentManager.js";
+import type { SkillManager } from "./skillManager.js";
 
 export interface ToolManagerOptions {
   mcpManager: McpManager;
@@ -29,7 +34,6 @@ class ToolManager {
   constructor(options: ToolManagerOptions) {
     this.mcpManager = options.mcpManager;
     this.logger = options.logger;
-    this.initializeBuiltInTools();
   }
 
   /**
@@ -39,7 +43,33 @@ class ToolManager {
     this.tools.set(tool.name, tool);
   }
 
-  private initializeBuiltInTools(): void {
+  /**
+   * Initialize built-in tools. Can be called with dependencies for tools that require them.
+   *
+   * This method can be called multiple times safely. When called without dependencies,
+   * it registers basic tools (Bash, Read, Write, TodoWrite, etc.). When called with
+   * dependencies, it also registers tools that require managers (Task, Skill).
+   *
+   * @param deps Optional dependencies for advanced tools
+   * @param deps.subagentManager SubagentManager instance for Task tool
+   * @param deps.skillManager SkillManager instance for Skill tool
+   *
+   * @example
+   * ```typescript
+   * // Initialize basic tools only
+   * toolManager.initializeBuiltInTools();
+   *
+   * // Initialize all tools including those requiring dependencies
+   * toolManager.initializeBuiltInTools({
+   *   subagentManager: mySubagentManager,
+   *   skillManager: mySkillManager
+   * });
+   * ```
+   */
+  public initializeBuiltInTools(deps?: {
+    subagentManager?: SubagentManager;
+    skillManager?: SkillManager;
+  }): void {
     const builtInTools = [
       bashTool,
       bashOutputTool,
@@ -52,10 +82,22 @@ class ToolManager {
       grepTool,
       lsTool,
       readTool,
+      todoWriteTool,
     ];
 
     for (const tool of builtInTools) {
       this.tools.set(tool.name, tool);
+    }
+
+    // Register tools that require dependencies
+    if (deps?.subagentManager) {
+      const taskTool = createTaskTool(deps.subagentManager);
+      this.tools.set(taskTool.name, taskTool);
+    }
+
+    if (deps?.skillManager) {
+      const skillTool = createSkillTool(deps.skillManager);
+      this.tools.set(skillTool.name, skillTool);
     }
   }
 
