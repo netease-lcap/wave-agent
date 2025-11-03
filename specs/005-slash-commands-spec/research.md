@@ -92,11 +92,6 @@ Since this feature is already implemented, this research documents the existing 
 
 ## Performance Optimizations
 
-### Decision: Lazy Command Loading
-**Rationale**: Commands loaded on startup and reloaded on file changes rather than parsing files on each execution, balancing responsiveness with resource usage.
-
-**Implementation**: File system watching (implicit through reload API) enables dynamic updates without application restart.
-
 ### Decision: In-Memory Command Registry
 **Rationale**: Map-based command storage provides O(1) lookup performance for command execution and validation operations.
 

@@ -94,14 +94,6 @@ export class SubagentManager {
   }
 
   /**
-   * Find best matching subagent based on description
-   */
-  async findBestMatch(description: string) {
-    const { findBestMatch } = await import("../utils/subagentParser.js");
-    return findBestMatch(description, this.workdir);
-  }
-
-  /**
    * Create a new subagent instance with isolated managers
    */
   async createInstance(
