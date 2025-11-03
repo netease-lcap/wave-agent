@@ -61,18 +61,25 @@
 
 ## Subagent Selection Algorithm
 
-**Decision**: Implement specificity-based matching algorithm
+**Decision**: Implement explicit tool-based subagent selection with exact name matching only
 
 **Rationale**:
-- Uses description length and keyword density for scoring
-- Prioritizes subagents with "PROACTIVELY" keyword as specified
-- Handles explicit invocation by name matching
-- Falls back to main agent when no matches found
+- Uses explicit `Task` tool invocation with `subagent_type` parameter
+- Exact name matching only via `findSubagentByName()` function
+- No fuzzy matching or fallback mechanisms - requires precise subagent names
+- Clear error messages listing available subagents when no match found
+- Simplifies implementation and prevents unexpected subagent selection
+
+**Implementation Details**:
+- Single-stage lookup: exact name match only
+- No keyword-based fuzzy matching
+- Clear failure messages with available options
+- Project-level and user-level subagent discovery maintained
 
 **Alternatives considered**:
-- Simple keyword matching - rejected as insufficient for complex scenarios
+- Fuzzy matching with keyword scoring - removed to ensure predictable behavior
+- Automatic matching based on task description - rejected in favor of explicit tool calling
 - ML-based matching - rejected due to complexity and dependency overhead
-- First-match approach - rejected due to poor user experience
 
 ## Message Manager Callbacks Extension
 

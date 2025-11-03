@@ -81,13 +81,8 @@ ${subagentList || "No subagents configured"}`;
       }
 
       try {
-        // Subagent selection logic with specificity scoring and explicit name matching
-        let configuration = await subagentManager.findSubagent(subagent_type);
-
-        // If no exact match, try fuzzy matching on description
-        if (!configuration) {
-          configuration = await subagentManager.findBestMatch(subagent_type);
-        }
+        // Subagent selection logic with explicit name matching only
+        const configuration = await subagentManager.findSubagent(subagent_type);
 
         if (!configuration) {
           // Error handling for nonexistent subagents with available subagents listing
