@@ -6,6 +6,31 @@ import {
   ChatCompletionFunctionTool,
 } from "openai/resources.js";
 import type { GatewayConfig, ModelConfig } from "../types.js";
+import * as os from "os";
+import * as fs from "fs";
+import * as path from "path";
+
+/**
+ * Check if a directory is a git repository
+ * @param dirPath Directory path to check
+ * @returns "Yes" if it's a git repo, "No" otherwise
+ */
+function isGitRepository(dirPath: string): string {
+  try {
+    // Check if .git directory exists in current directory or any parent directory
+    let currentPath = path.resolve(dirPath);
+    while (currentPath !== path.dirname(currentPath)) {
+      const gitPath = path.join(currentPath, ".git");
+      if (fs.existsSync(gitPath)) {
+        return "Yes";
+      }
+      currentPath = path.dirname(currentPath);
+    }
+    return "No";
+  } catch {
+    return "No";
+  }
+}
 
 /**
  * OpenAI model configuration type, based on OpenAI parameters but excluding messages
@@ -99,9 +124,9 @@ export async function callAgent(
 Here is useful information about the environment you are running in:
 <env>
 Working directory: ${workdir}
-Is directory a git repo: Yes
-Platform: darwin
-OS Version: Darwin 24.6.0
+Is directory a git repo: ${isGitRepository(workdir)}
+Platform: ${os.platform()}
+OS Version: ${os.type()} ${os.release()}
 Today's date: ${new Date().toISOString().split("T")[0]}
 </env>
 `;
