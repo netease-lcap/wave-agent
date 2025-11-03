@@ -71,7 +71,7 @@ export const grepTool: ToolPlugin = {
           head_limit: {
             type: "number",
             description:
-              'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). When unspecified, shows all results from ripgrep.',
+              'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults to 100 to prevent excessive token usage.',
           },
           multiline: {
             type: "boolean",
@@ -209,12 +209,15 @@ export const grepTool: ToolPlugin = {
         };
       }
 
-      // Apply head_limit
+      // Apply head_limit with default fallback
       let finalOutput = output;
       let lines = output.split("\n");
 
-      if (headLimit && headLimit > 0 && lines.length > headLimit) {
-        lines = lines.slice(0, headLimit);
+      // Set default head_limit if not specified to prevent excessive token usage
+      const effectiveHeadLimit = headLimit || 100;
+
+      if (lines.length > effectiveHeadLimit) {
+        lines = lines.slice(0, effectiveHeadLimit);
         finalOutput = lines.join("\n");
       }
 
@@ -230,8 +233,8 @@ export const grepTool: ToolPlugin = {
         shortResult = `Found ${totalLines} matching line${totalLines === 1 ? "" : "s"}`;
       }
 
-      if (headLimit && totalLines > headLimit) {
-        shortResult += ` (showing first ${headLimit})`;
+      if (effectiveHeadLimit && totalLines > effectiveHeadLimit) {
+        shortResult += ` (showing first ${effectiveHeadLimit})`;
       }
 
       return {
