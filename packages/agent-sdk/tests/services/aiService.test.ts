@@ -106,7 +106,7 @@ describe("AI Service", () => {
         "You are an interactive CLI tool",
       );
       expect(callArgs.messages[0].content).toContain(
-        "## Current Working Directory",
+        "Working directory: /test/workdir",
       );
       expect(callArgs.messages[0].content).toContain("/test/workdir");
     });
