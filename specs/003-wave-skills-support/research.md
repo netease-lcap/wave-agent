@@ -19,7 +19,7 @@
 ### Decision: File Discovery Strategy
 **Rationale**: Need to efficiently discover skills in both `~/.wave/skills/` and `.wave/skills/` directories with proper priority handling (project over personal).  
 **Alternatives considered**: Polling, file watching, on-demand scanning  
-**Chosen approach**: Initial scan on startup with file watching for updates, cache metadata for performance
+**Chosen approach**: Initial scan on startup, skills loaded once into memory maps for O(1) lookup performance
 
 ### Decision: Tool Integration Pattern
 **Rationale**: Skills must integrate seamlessly with existing tool system. The Skill tool acts as a meta-tool that can invoke specific skills.  
@@ -45,11 +45,11 @@
 - ✅ Node.js fs module for file operations
 - ✅ Path resolution for home directory (`~/.wave/skills/`)
 - ✅ Recursive directory scanning for skill discovery
-- **Extension needed**: File watching for skill updates, graceful error handling
+- **Extension needed**: Graceful error handling for malformed skills
 
 ### Performance Considerations
-- ✅ Metadata caching to avoid repeated file parsing
-- ✅ Lazy loading of skill bodies until invocation
+- ✅ In-memory storage to avoid repeated file parsing
+- ✅ One-time loading of skill content during initialization
 - ✅ Efficient directory scanning with early termination
 - **Target**: <500ms initial skill discovery, <100ms skill invocation
 
@@ -84,7 +84,7 @@ skill-name/
 ## Implementation Approach
 
 ### Phase 1 Components
-1. **SkillManager**: Discovery, caching, file watching
+1. **SkillManager**: Discovery and in-memory storage
 2. **Skill Tool**: Tool plugin with dynamic descriptions
 3. **Parser Extensions**: Skill-specific validation
 4. **Type Definitions**: Skill metadata and configuration types
@@ -102,8 +102,8 @@ skill-name/
 **Implementation**: Try-catch blocks with user-friendly fallbacks
 
 ### Performance Impact
-**Strategy**: Metadata caching with lazy loading  
-**Implementation**: In-memory cache with file modification tracking
+**Strategy**: In-memory storage with one-time loading  
+**Implementation**: Skills loaded once during initialization for fast lookup
 
 ### Skill Conflicts
 **Strategy**: Clear priority rules with user notification  
@@ -117,6 +117,6 @@ All success criteria from spec are technically achievable:
 - ✅ SC-003: 90% correct invocation - metadata-based selection
 - ✅ SC-004: <500ms evaluation - cached metadata approach
 - ✅ SC-005: 2-minute error fix - validation with clear messages
-- ✅ SC-006: Auto-reload - file watching implementation
+- ❌ SC-006: Auto-reload - not implemented (requires manual restart)
 
 **Research Status**: ✅ COMPLETE - All technical unknowns resolved
