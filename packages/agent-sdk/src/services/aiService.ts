@@ -93,11 +93,17 @@ export async function callAgent(
       systemPrompt ||
       `You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.`;
 
-    // Always add working directory context using += to reuse ${workdir}
+    // Always add environment information
     systemContent += `
 
-## Current Working Directory
-${workdir}
+Here is useful information about the environment you are running in:
+<env>
+Working directory: ${workdir}
+Is directory a git repo: Yes
+Platform: darwin
+OS Version: Darwin 24.6.0
+Today's date: ${new Date().toISOString().split("T")[0]}
+</env>
 `;
 
     // If there is memory content, add it to the system prompt
