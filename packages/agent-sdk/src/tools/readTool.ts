@@ -84,8 +84,19 @@ export const readTool: ToolPlugin = {
         };
       }
 
-      const lines = fileContent.split("\n");
+      // Check content size limit (100KB)
+      const MAX_CONTENT_SIZE = 100 * 1024; // 100KB
+      let contentToProcess = fileContent;
+      let contentTruncated = false;
+
+      if (fileContent.length > MAX_CONTENT_SIZE) {
+        contentToProcess = fileContent.substring(0, MAX_CONTENT_SIZE);
+        contentTruncated = true;
+      }
+
+      const lines = contentToProcess.split("\n");
       const totalLines = lines.length;
+      const originalTotalLines = fileContent.split("\n").length;
 
       // Handle offset and limit
       let startLine = 1;
@@ -130,7 +141,10 @@ export const readTool: ToolPlugin = {
 
       // Add file information header
       let content = `File: ${filePath}\n`;
-      if (startLine > 1 || endLine < totalLines) {
+      if (contentTruncated) {
+        content += `Content truncated at ${MAX_CONTENT_SIZE} bytes\n`;
+        content += `Lines ${startLine}-${endLine} of ${totalLines} (original file: ${originalTotalLines} lines)\n`;
+      } else if (startLine > 1 || endLine < totalLines) {
         content += `Lines ${startLine}-${endLine} of ${totalLines}\n`;
       } else {
         content += `Total lines: ${totalLines}\n`;
@@ -139,15 +153,22 @@ export const readTool: ToolPlugin = {
       content += formattedContent;
 
       // If only showing partial content, add prompt
-      if (endLine < totalLines) {
+      if (endLine < totalLines || contentTruncated) {
         content += `\n${"─".repeat(50)}\n`;
-        content += `... ${totalLines - endLine} more lines not shown`;
+        if (contentTruncated) {
+          content += `... content truncated due to size limit (${MAX_CONTENT_SIZE} bytes)`;
+          if (endLine < totalLines) {
+            content += ` and ${totalLines - endLine} more lines not shown`;
+          }
+        } else {
+          content += `... ${totalLines - endLine} more lines not shown`;
+        }
       }
 
       return {
         success: true,
         content,
-        shortResult: `Read ${selectedLines.length} lines${totalLines > 2000 ? " (truncated)" : ""}`,
+        shortResult: `Read ${selectedLines.length} lines${totalLines > 2000 || contentTruncated ? " (truncated)" : ""}`,
       };
     } catch (error) {
       return {
