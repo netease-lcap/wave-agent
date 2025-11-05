@@ -11,7 +11,7 @@ describe("Memory Display Fixes", () => {
       content: "Project memory: test memory content",
       isSuccess: true,
       memoryType: "project",
-      storagePath: "WAVE.md",
+      storagePath: "AGENTS.md",
     });
 
     expect(result).toHaveLength(1);
@@ -24,7 +24,7 @@ describe("Memory Display Fixes", () => {
       expect(memoryBlock.content).toBe("Project memory: test memory content");
       expect(memoryBlock.isSuccess).toBe(true);
       expect(memoryBlock.memoryType).toBe("project");
-      expect(memoryBlock.storagePath).toBe("WAVE.md");
+      expect(memoryBlock.storagePath).toBe("AGENTS.md");
     }
   });
 

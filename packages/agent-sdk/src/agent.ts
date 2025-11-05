@@ -456,7 +456,7 @@ export class Agent {
       // Add successful MemoryBlock to the last assistant message
       const memoryText = message.substring(1).trim();
       const typeLabel = type === "project" ? "Project Memory" : "User Memory";
-      const storagePath = type === "project" ? "WAVE.md" : "user-memory.md";
+      const storagePath = type === "project" ? "AGENTS.md" : "user-memory.md";
 
       this.messageManager.addMemoryBlock(
         `${typeLabel}: ${memoryText}`,
@@ -467,7 +467,7 @@ export class Agent {
     } catch (error) {
       // Add failed MemoryBlock to the last assistant message
       const typeLabel = type === "project" ? "Project Memory" : "User Memory";
-      const storagePath = type === "project" ? "WAVE.md" : "user-memory.md";
+      const storagePath = type === "project" ? "AGENTS.md" : "user-memory.md";
 
       this.messageManager.addMemoryBlock(
         `${typeLabel} add failed: ${

@@ -16,7 +16,7 @@ export const addMemory = async (
   }
 
   try {
-    const memoryFilePath = path.join(workdir, "WAVE.md");
+    const memoryFilePath = path.join(workdir, "AGENTS.md");
 
     // Format memory entry, starting with -, no timestamp
     const memoryEntry = `- ${message.substring(1).trim()}\n`;
@@ -113,7 +113,7 @@ export const getUserMemoryContent = async (): Promise<string> => {
 // Read project memory file content
 export const readMemoryFile = async (workdir: string): Promise<string> => {
   try {
-    const memoryFilePath = path.join(workdir, "WAVE.md");
+    const memoryFilePath = path.join(workdir, "AGENTS.md");
     return await fs.readFile(memoryFilePath, "utf-8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
