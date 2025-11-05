@@ -18,7 +18,7 @@ export const MemoryTypeSelector: React.FC<MemoryTypeSelectorProps> = ({
     {
       type: "project" as const,
       label: "Project Memory",
-      description: "Save to current project (WAVE.md)",
+      description: "Save to current project (AGENTS.md)",
     },
     {
       type: "user" as const,

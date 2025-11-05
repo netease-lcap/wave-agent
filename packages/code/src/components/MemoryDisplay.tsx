@@ -27,7 +27,7 @@ export const MemoryDisplay: React.FC<MemoryDisplayProps> = ({ block }) => {
     if (memoryType === "user") {
       return `Memory saved to ${storagePath || "user-memory.md"}`;
     } else {
-      return `Memory saved to ${storagePath || "WAVE.md"}`;
+      return `Memory saved to ${storagePath || "AGENTS.md"}`;
     }
   };
 

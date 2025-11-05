@@ -74,7 +74,7 @@ export interface CallAgentOptions {
   messages: ChatCompletionMessageParam[];
   sessionId?: string;
   abortSignal?: AbortSignal;
-  memory?: string; // Memory content parameter, content read from WAVE.md
+  memory?: string; // Memory content parameter, content read from AGENTS.md
   workdir: string; // Current working directory
   tools?: ChatCompletionFunctionTool[]; // Tool configuration
   model?: string; // Custom model
