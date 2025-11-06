@@ -520,7 +520,7 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
             if (processedInput.length > 200) {
               const originalText = processedInput;
               const compressedLabel = generateCompressedText(originalText);
-              logger.info(
+              logger.debug(
                 "[InputBox] 📦 Long text compression: originalLength:",
                 originalText.length,
                 "compressedLabel:",

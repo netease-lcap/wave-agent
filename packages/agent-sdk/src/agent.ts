@@ -289,7 +289,7 @@ export class Agent {
     // Initialize hooks configuration
     try {
       // Load hooks configuration from user and project settings
-      this.logger?.info("Loading hooks configuration...");
+      this.logger?.debug("Loading hooks configuration...");
       this.hookManager.loadConfigurationFromSettings();
       this.logger?.debug("Hooks system initialized successfully");
     } catch (error) {

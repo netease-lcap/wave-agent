@@ -41,7 +41,7 @@ export const addMemory = async (
     // Write file
     await fs.writeFile(memoryFilePath, updatedContent, "utf-8");
 
-    // logger.info(`Memory added to ${memoryFilePath}:`, message);
+    // logger.debug(`Memory added to ${memoryFilePath}:`, message);
   } catch (error) {
     // logger.error("Failed to add memory:", error);
     throw new Error(`Failed to add memory: ${(error as Error).message}`);
@@ -63,7 +63,7 @@ export const ensureUserMemoryFile = async (): Promise<void> => {
         const initialContent =
           "# User Memory\n\nThis is the user-level memory file, recording important information and context across projects.\n\n";
         await fs.writeFile(USER_MEMORY_FILE, initialContent, "utf-8");
-        // logger.info(`Created user memory file: ${USER_MEMORY_FILE}`);
+        // logger.debug(`Created user memory file: ${USER_MEMORY_FILE}`);
       } else {
         throw error;
       }
@@ -93,7 +93,7 @@ export const addUserMemory = async (message: string): Promise<void> => {
     // Write file
     await fs.writeFile(USER_MEMORY_FILE, updatedContent, "utf-8");
 
-    // logger.info(`User memory added to ${USER_MEMORY_FILE}:`, message);
+    // logger.debug(`User memory added to ${USER_MEMORY_FILE}:`, message);
   } catch (error) {
     // logger.error("Failed to add user memory:", error);
     throw new Error(`Failed to add user memory: ${(error as Error).message}`);

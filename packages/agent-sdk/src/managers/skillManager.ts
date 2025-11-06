@@ -36,7 +36,7 @@ export class SkillManager {
    * Initialize the skill manager by discovering available skills
    */
   async initialize(): Promise<void> {
-    this.logger?.info("Initializing SkillManager...");
+    this.logger?.debug("Initializing SkillManager...");
 
     try {
       // Clear existing data before discovery
@@ -66,7 +66,7 @@ export class SkillManager {
       }
 
       this.initialized = true;
-      this.logger?.info(
+      this.logger?.debug(
         `SkillManager initialized with ${this.skillMetadata.size} skills`,
       );
     } catch (error) {
@@ -247,7 +247,7 @@ export class SkillManager {
   ): Promise<{ content: string; context?: SkillInvocationContext }> {
     const { skill_name } = args;
 
-    this.logger?.info(`Invoking skill: ${skill_name}`);
+    this.logger?.debug(`Invoking skill: ${skill_name}`);
 
     try {
       // Load the skill

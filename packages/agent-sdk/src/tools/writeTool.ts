@@ -121,7 +121,7 @@ export const writeTool: ToolPlugin = {
       const chars = content.length;
       const detailedContent = `${shortResult} (${lines} lines, ${chars} characters)`;
 
-      // logger.info(`Write tool: ${shortResult}`);
+      // logger.debug(`Write tool: ${shortResult}`);
 
       return {
         success: true,

@@ -160,7 +160,7 @@ export const editTool: ToolPlugin = {
         ? `Replaced ${replacementCount} instances`
         : "Text replaced successfully";
 
-      // logger.info(`Edit tool: ${shortResult}`);
+      // logger.debug(`Edit tool: ${shortResult}`);
 
       return {
         success: true,

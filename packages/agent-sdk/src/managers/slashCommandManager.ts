@@ -92,7 +92,7 @@ export class SlashCommandManager {
         });
       }
 
-      this.logger?.info(`Loaded ${customCommands.length} custom commands`);
+      this.logger?.debug(`Loaded ${customCommands.length} custom commands`);
     } catch (error) {
       this.logger?.warn("Failed to load custom commands:", error);
     }

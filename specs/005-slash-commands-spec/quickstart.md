@@ -183,7 +183,7 @@ private loadCustomCommands(): void {
       }
     }
     
-    this.logger?.info(`Loaded ${customCommands.length} custom commands`);
+    this.logger?.debug(`Loaded ${customCommands.length} custom commands`);
   } catch (error) {
     // System continues with built-in commands only
     this.logger?.warn("Failed to load custom commands:", error);
