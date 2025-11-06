@@ -177,7 +177,7 @@ describe("SkillManager", () => {
 
       await skillManager.executeSkill({ skill_name: "test-skill" });
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.debug).toHaveBeenCalledWith(
         "Invoking skill: test-skill",
       );
     });

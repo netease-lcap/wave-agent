@@ -149,7 +149,7 @@ export const multiEditTool: ToolPlugin = {
         if (edits[0] && edits[0].old_string === "") {
           originalContent = "";
           isNewFile = true;
-          // logger.info(`Creating new file: ${resolvedPath}`);
+          // logger.debug(`Creating new file: ${resolvedPath}`);
         } else {
           return {
             success: false,
@@ -236,7 +236,7 @@ export const multiEditTool: ToolPlugin = {
 
       const detailedContent = `${shortResult}\n\nOperations performed:\n${appliedEdits.map((edit, i) => `${i + 1}. ${edit}`).join("\n")}`;
 
-      // logger.info(`MultiEdit tool: ${shortResult}`);
+      // logger.debug(`MultiEdit tool: ${shortResult}`);
 
       return {
         success: true,

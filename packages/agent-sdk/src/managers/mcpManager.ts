@@ -53,7 +53,7 @@ export class McpManager {
     this.workdir = workdir;
 
     if (autoConnect) {
-      this.logger?.info("Initializing MCP servers...");
+      this.logger?.debug("Initializing MCP servers...");
 
       // Ensure MCP configuration is loaded
       const config = await this.ensureConfigLoaded();
@@ -63,10 +63,10 @@ export class McpManager {
         const connectionPromises = Object.keys(config.mcpServers).map(
           async (serverName) => {
             try {
-              this.logger?.info(`Connecting to MCP server: ${serverName}`);
+              this.logger?.debug(`Connecting to MCP server: ${serverName}`);
               const success = await this.connectServer(serverName);
               if (success) {
-                this.logger?.info(
+                this.logger?.debug(
                   `Successfully connected to MCP server: ${serverName}`,
                 );
               } else {
@@ -86,7 +86,7 @@ export class McpManager {
         await Promise.all(connectionPromises);
       }
 
-      this.logger?.info("MCP servers initialization completed");
+      this.logger?.debug("MCP servers initialization completed");
       // Trigger state change callback after initialization
       this.callbacks.onServersChange?.(this.getAllServers());
     }
@@ -255,7 +255,7 @@ export class McpManager {
       };
 
       transport.onclose = () => {
-        this.logger?.info(`MCP Server ${name} transport closed`);
+        this.logger?.debug(`MCP Server ${name} transport closed`);
         this.connections.delete(name);
         this.updateServerStatus(name, {
           status: "disconnected",

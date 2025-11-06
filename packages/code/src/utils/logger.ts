@@ -264,7 +264,7 @@ const truncateLogFileIfNeeded = (config: LogCleanupConfig): void => {
 
       // Record truncation operation
       const removedLines = lines.length - keepLines;
-      logger.info(
+      logger.debug(
         `Log file truncated: removed ${removedLines} lines, kept last ${keepLines} lines`,
       );
     }
@@ -289,7 +289,7 @@ export const cleanupLogs = async (
 
   const config = { ...getCleanupConfig(), ...customConfig };
 
-  logger.info("Starting log cleanup...", {
+  logger.debug("Starting log cleanup...", {
     maxFileSize: config.maxFileSize,
     keepLines: config.keepLines,
   });
@@ -297,5 +297,5 @@ export const cleanupLogs = async (
   // Truncate current log file (if needed)
   truncateLogFileIfNeeded(config);
 
-  logger.info("Log cleanup completed");
+  logger.debug("Log cleanup completed");
 };

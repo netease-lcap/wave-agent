@@ -311,7 +311,7 @@ export class SubagentManager {
         messages: instance.messages,
       });
 
-      this.logger?.info(`Aborted subagent instance: ${subagentId}`);
+      this.logger?.debug(`Aborted subagent instance: ${subagentId}`);
       return true;
     } catch (error) {
       this.logger?.error(

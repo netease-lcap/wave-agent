@@ -48,7 +48,7 @@ export const deleteFileTool: ToolPlugin = {
       // Delete file
       await unlink(filePath);
 
-      // logger.info(`Successfully deleted file: ${filePath}`);
+      // logger.debug(`Successfully deleted file: ${filePath}`);
 
       return {
         success: true,

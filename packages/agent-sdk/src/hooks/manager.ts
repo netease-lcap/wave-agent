@@ -174,7 +174,9 @@ export class HookManager implements IHookManager {
 
     const eventConfigs = this.configuration[event];
     if (!eventConfigs || eventConfigs.length === 0) {
-      this.logger?.debug(`[HookManager] No hooks configured for ${event} event`);
+      this.logger?.debug(
+        `[HookManager] No hooks configured for ${event} event`,
+      );
       return [];
     }
 
@@ -261,7 +263,7 @@ export class HookManager implements IHookManager {
       results,
       totalDuration,
     );
-    this.logger?.info(`[HookManager] ${event} execution summary: ${summary}`);
+    this.logger?.debug(`[HookManager] ${event} execution summary: ${summary}`);
 
     return results;
   }

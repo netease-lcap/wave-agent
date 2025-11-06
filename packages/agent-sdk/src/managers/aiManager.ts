@@ -140,7 +140,7 @@ export class AIManager {
 
     // Check if token limit exceeded - use injected configuration
     if (usage.total_tokens > this.tokenLimit) {
-      this.logger?.info(
+      this.logger?.debug(
         `Token usage exceeded ${this.tokenLimit}, compressing messages...`,
       );
 
@@ -169,7 +169,7 @@ export class AIManager {
             compressedContent,
           );
 
-          this.logger?.info(
+          this.logger?.debug(
             `Successfully compressed ${messagesToCompress.length} messages and updated session`,
           );
         } catch (compressError) {
