@@ -16,3 +16,4 @@ This is the AI assistant's memory file, recording important information and cont
 - After modifying agent-sdk, need to build before using in code
 - After modifications, remember to use test-runner to check
 - Do not perform git commit operation if the latest user message do not mention it
+- Do not modify tsconfig unless user ask you to do that

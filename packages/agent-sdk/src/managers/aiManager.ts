@@ -2,7 +2,7 @@ import { callAgent, compressMessages } from "../services/aiService.js";
 import { getMessagesToCompress } from "../utils/messageOperations.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import * as memory from "../services/memory.js";
-import type { Logger, GatewayConfig, ModelConfig } from "../types.js";
+import type { Logger, GatewayConfig, ModelConfig, Usage } from "../types.js";
 import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
@@ -13,6 +13,7 @@ import type { ExtendedHookExecutionContext } from "../hooks/types.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
+  onUsageAdded?: (usage: Usage) => void;
 }
 
 export interface AIManagerOptions {
@@ -156,7 +157,7 @@ export class AIManager {
 
         this.setIsCompressing(true);
         try {
-          const compressedContent = await compressMessages({
+          const compressionResult = await compressMessages({
             gatewayConfig: this.gatewayConfig,
             modelConfig: this.modelConfig,
             messages: recentChatMessages,
@@ -166,8 +167,24 @@ export class AIManager {
           // Execute message reconstruction and sessionId update after compression
           this.messageManager.compressMessagesAndUpdateSession(
             insertIndex,
-            compressedContent,
+            compressionResult.content,
           );
+
+          // Handle usage tracking for compression operations
+          if (compressionResult.usage) {
+            const usage: Usage = {
+              prompt_tokens: compressionResult.usage.prompt_tokens,
+              completion_tokens: compressionResult.usage.completion_tokens,
+              total_tokens: compressionResult.usage.total_tokens,
+              model: this.modelConfig.fastModel,
+              operation_type: "compress",
+            };
+
+            // Notify Agent to add to usage tracking
+            if (this.callbacks?.onUsageAdded) {
+              this.callbacks.onUsageAdded(usage);
+            }
+          }
 
           this.logger?.debug(
             `Successfully compressed ${messagesToCompress.length} messages and updated session`,
@@ -255,8 +272,27 @@ export class AIManager {
         }
       }
 
-      // Add assistant message at once (including content and tool calls)
-      this.messageManager.addAssistantMessage(content, toolCalls);
+      // Handle usage tracking for agent operations
+      let usage: Usage | undefined;
+      if (result.usage) {
+        usage = {
+          prompt_tokens: result.usage.prompt_tokens,
+          completion_tokens: result.usage.completion_tokens,
+          total_tokens: result.usage.total_tokens,
+          model: model || this.modelConfig.agentModel,
+          operation_type: "agent",
+        };
+      }
+
+      // Add assistant message at once (including content, tool calls, and usage)
+      this.messageManager.addAssistantMessage(content, toolCalls, usage);
+
+      // Notify Agent to add to usage tracking
+      if (usage) {
+        if (this.callbacks?.onUsageAdded) {
+          this.callbacks.onUsageAdded(usage);
+        }
+      }
 
       if (toolCalls.length > 0) {
         for (const functionToolCall of toolCalls) {

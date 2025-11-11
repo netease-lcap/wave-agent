@@ -3,7 +3,7 @@
 ## Basic Agent Creation with Configuration
 
 ```typescript
-import { Agent } from '@wave-agent/agent-sdk';
+import { Agent } from 'wave-agent-sdk';
 
 // All configuration options are optional - fallback to environment variables
 const agent = await Agent.create({
@@ -47,7 +47,7 @@ const agent = await Agent.create({
 ## Testing Configuration
 
 ```typescript
-import { Agent } from '@wave-agent/agent-sdk';
+import { Agent } from 'wave-agent-sdk';
 
 // Test with mock configuration
 const testAgent = await Agent.create({

@@ -186,7 +186,9 @@ describe("AI Service", () => {
 
   describe("compressMessages", () => {
     // Import the function after mocking
-    let compressMessages: (options: CompressMessagesOptions) => Promise<string>;
+    let compressMessages: (
+      options: CompressMessagesOptions,
+    ) => Promise<import("@/services/aiService.js").CompressMessagesResult>;
 
     beforeEach(async () => {
       const aiService = await import("@/services/aiService.js");
@@ -275,7 +277,7 @@ describe("AI Service", () => {
         messages,
       });
 
-      expect(result).toBe(expectedContent);
+      expect(result.content).toBe(expectedContent);
     });
 
     it("should handle abort signal", async () => {
@@ -323,7 +325,7 @@ describe("AI Service", () => {
         messages,
       });
 
-      expect(result).toBe("Failed to compress conversation history");
+      expect(result.content).toBe("Failed to compress conversation history");
     });
 
     it("should handle API errors gracefully", async () => {
@@ -342,7 +344,7 @@ describe("AI Service", () => {
         messages,
       });
 
-      expect(result).toBe("Failed to compress conversation history");
+      expect(result.content).toBe("Failed to compress conversation history");
     });
 
     it("should handle abort errors", async () => {

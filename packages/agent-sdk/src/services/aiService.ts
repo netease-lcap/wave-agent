@@ -214,9 +214,18 @@ export interface CompressMessagesOptions {
   abortSignal?: AbortSignal;
 }
 
+export interface CompressMessagesResult {
+  content: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
 export async function compressMessages(
   options: CompressMessagesOptions,
-): Promise<string> {
+): Promise<CompressMessagesResult> {
   const { gatewayConfig, modelConfig, messages, abortSignal } = options;
 
   // Create OpenAI client with injected configuration
@@ -294,15 +303,29 @@ For technical conversations, structure as:
       },
     );
 
-    return (
+    const content =
       response.choices[0]?.message?.content?.trim() ||
-      "Failed to compress conversation history"
-    );
+      "Failed to compress conversation history";
+    const usage = response.usage
+      ? {
+          prompt_tokens: response.usage.prompt_tokens,
+          completion_tokens: response.usage.completion_tokens,
+          total_tokens: response.usage.total_tokens,
+        }
+      : undefined;
+
+    return {
+      content,
+      usage,
+    };
   } catch (error) {
     if ((error as Error).name === "AbortError") {
       throw new Error("Compression request was aborted");
     }
     // // logger.error("Failed to compress messages:", error);
-    return "Failed to compress conversation history";
+    return {
+      content: "Failed to compress conversation history",
+      usage: undefined,
+    };
   }
 }

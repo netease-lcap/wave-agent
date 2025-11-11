@@ -1,6 +1,12 @@
 import { randomUUID } from "crypto";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
-import type { Message, Logger, GatewayConfig, ModelConfig } from "../types.js";
+import type {
+  Message,
+  Logger,
+  GatewayConfig,
+  ModelConfig,
+  Usage,
+} from "../types.js";
 import { AIManager } from "./aiManager.js";
 import {
   MessageManager,
@@ -27,6 +33,7 @@ export interface SubagentManagerOptions {
   gatewayConfig: GatewayConfig;
   modelConfig: ModelConfig;
   tokenLimit: number;
+  onUsageAdded?: (usage: Usage) => void;
 }
 
 export class SubagentManager {
@@ -40,6 +47,7 @@ export class SubagentManager {
   private gatewayConfig: GatewayConfig;
   private modelConfig: ModelConfig;
   private tokenLimit: number;
+  private onUsageAdded?: (usage: Usage) => void;
 
   constructor(options: SubagentManagerOptions) {
     this.workdir = options.workdir;
@@ -49,6 +57,7 @@ export class SubagentManager {
     this.gatewayConfig = options.gatewayConfig;
     this.modelConfig = options.modelConfig;
     this.tokenLimit = options.tokenLimit;
+    this.onUsageAdded = options.onUsageAdded;
   }
 
   /**
@@ -156,6 +165,9 @@ export class SubagentManager {
         agentModel: modelToUse,
       },
       tokenLimit: this.tokenLimit,
+      callbacks: {
+        onUsageAdded: this.onUsageAdded,
+      },
     });
 
     const instance: SubagentInstance = {

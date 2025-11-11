@@ -98,7 +98,10 @@ describe("Agent Message Compression Tests", () => {
 
     mockCompressMessages.mockImplementation(async () => {
       compressMessagesCalled = true;
-      return "Compressed content: Previous conversations involved multiple task requests and corresponding processing.";
+      return {
+        content:
+          "Compressed content: Previous conversations involved multiple task requests and corresponding processing.",
+      };
     });
 
     // Call sendMessage to trigger AI call (this will trigger compression)
@@ -179,7 +182,9 @@ describe("Agent Message Compression Tests", () => {
 
     mockCompressMessages.mockImplementation(async () => {
       compressMessagesCalled = true;
-      return "This should not be called";
+      return {
+        content: "This should not be called",
+      };
     });
 
     // Call sendMessage
@@ -298,7 +303,9 @@ describe("Agent Message Compression Tests", () => {
     });
 
     mockCompressMessages.mockImplementation(async () => {
-      return "New compressed content: Contains summary of more messages";
+      return {
+        content: "New compressed content: Contains summary of more messages",
+      };
     });
 
     // Call sendMessage to trigger compression
@@ -431,7 +438,10 @@ describe("Agent Message Compression Tests", () => {
     });
 
     mockCompressMessages.mockImplementation(async () => {
-      return "Compressed content: This contains summary information of previous multi-round conversations.";
+      return {
+        content:
+          "Compressed content: This contains summary information of previous multi-round conversations.",
+      };
     });
 
     // First call to sendMessage triggers compression

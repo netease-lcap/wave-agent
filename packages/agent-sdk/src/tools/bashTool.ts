@@ -44,10 +44,10 @@ export const bashTool: ToolPlugin = {
   ): Promise<ToolResult> => {
     const command = args.command as string;
     const runInBackground = args.run_in_background as boolean | undefined;
-    // Set default timeout: 30s for foreground, no timeout for background
+    // Set default timeout: 60s for foreground, no timeout for background
     const timeout =
       (args.timeout as number | undefined) ??
-      (runInBackground ? undefined : 30000);
+      (runInBackground ? undefined : 60000);
 
     if (!command || typeof command !== "string") {
       return {
