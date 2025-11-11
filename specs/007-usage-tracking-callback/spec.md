@@ -14,6 +14,7 @@
 - Q: Failed operation handling → A: No usage tracking for failed operations (no AI service consumption occurred)
 - Q: Callback error handling strategy → A: Log callback errors and continue normal SDK operation without interruption
 - Q: Usage data format structure → A: use the openai Usage type, usages: Usage[]
+- Q: Implementation approach → A: Reuse current callbacks system, add usage field in Message type, save in session file
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -39,13 +40,13 @@ SDK users need to programmatically retrieve current usage statistics at any time
 
 **Why this priority**: Essential for applications that need on-demand usage data for reporting, but secondary to real-time notifications which provide immediate operational value.
 
-**Independent Test**: Can be fully tested by making several agent calls, then calling the getUsages() method and verifying it returns accurate cumulative statistics.
+**Independent Test**: Can be fully tested by making several agent calls, then calling the `public get usages()` method and verifying it returns accurate cumulative statistics.
 
 **Acceptance Scenarios**:
 
-1. **Given** several agent operations have completed, **When** developer calls getUsages() method, **Then** returns Usage[] array with current usage statistics and operation metadata
-2. **Given** no operations have been performed, **When** developer calls getUsages(), **Then** returns empty Usage[] array
-3. **Given** mixed agent calls and message compression operations, **When** getUsages() is called, **Then** returns Usage[] array with separate Usage objects for each operation type
+1. **Given** several agent operations have completed, **When** developer calls `public get usages()` method, **Then** returns Usage[] array with current usage statistics and operation metadata
+2. **Given** no operations have been performed, **When** developer calls `public get usages()`, **Then** returns empty Usage[] array
+3. **Given** mixed agent calls and message compression operations, **When** `public get usages()` is called, **Then** returns Usage[] array with separate Usage objects for each operation type
 
 ---
 
@@ -65,6 +66,23 @@ SDK users need usage data embedded within assistant messages in the session so t
 
 ---
 
+### User Story 4 - CLI Exit Token Summary (Priority: P2)
+
+CLI users need to see a summary of total token usage by model when the CLI application exits. This enables them to understand the cost impact of their session, track budget consumption, and make informed decisions about future usage patterns.
+
+**Why this priority**: Provides valuable cost visibility to CLI users without requiring callback implementation, but secondary to core tracking functionality.
+
+**Independent Test**: Can be fully tested by running CLI operations with different models, then verifying that exit summary displays accurate token totals grouped by model name.
+
+**Acceptance Scenarios**:
+
+1. **Given** a CLI session with agent calls using different models, **When** the CLI exits normally, **Then** console.log displays total tokens consumed by each model
+2. **Given** a CLI session with mixed agent calls and compression operations, **When** the CLI exits, **Then** the summary shows separate token totals for agent model and fast model usage
+3. **Given** a CLI session with no AI operations, **When** the CLI exits, **Then** no token summary is displayed or shows zero usage
+4. **Given** a CLI session that exits due to error, **When** the process terminates, **Then** token summary is still displayed before exit
+
+---
+
 ### Edge Cases
 
 - What happens when the onUsagesChange callback throws an error or fails? (Errors are logged and SDK continues normal operation without interruption)
@@ -77,18 +95,21 @@ SDK users need usage data embedded within assistant messages in the session so t
 
 ### Functional Requirements
 
-- **FR-001**: SDK MUST provide an onUsagesChange callback registration mechanism that accepts a callback function
+- **FR-001**: SDK MUST reuse existing callback system to provide onUsagesChange callback registration mechanism
 - **FR-002**: SDK MUST trigger the onUsagesChange callback immediately after each callAgent() operation completes with Usage[] array containing all session usage data
 - **FR-003**: SDK MUST trigger the onUsagesChange callback immediately after each compressMessages() operation completes with Usage[] array containing all session usage data  
-- **FR-004**: SDK MUST provide a getUsages() method that returns current cumulative usage statistics on demand
+- **FR-004**: SDK MUST provide a `public get usages()` method that returns current cumulative usage statistics on demand
 - **FR-005**: SDK MUST track token usage (prompt tokens, completion tokens, total tokens) for both agent calls and compression operations
 - **FR-006**: SDK MUST track operation counts separately for agent calls and compression operations
-- **FR-007**: SDK MUST embed usage data as metadata within assistant messages in the session after each operation
+- **FR-007**: SDK MUST add usage field to Message type and embed usage data within assistant messages saved in session file after each operation
 - **FR-008**: SDK MUST calculate cumulative usage statistics by aggregating usage data from all assistant messages in the current session
 - **FR-009**: SDK MUST handle callback errors gracefully by logging errors and continuing normal operations without interruption
-- **FR-010**: SDK MUST provide usage data using OpenAI Usage type format as Usage[] array consistently across callbacks and getUsages() method
+- **FR-010**: SDK MUST provide usage data using OpenAI Usage type format as Usage[] array consistently across callbacks and `public get usages()` method
 - **FR-011**: SDK MUST continue normal operation even when message metadata embedding fails
 - **FR-012**: SDK MUST NOT track usage data for failed operations where no AI service consumption occurred
+- **FR-013**: CLI MUST display total token usage by model name when exiting, showing prompt tokens, completion tokens and total tokens for each model used during the session
+- **FR-014**: CLI MUST calculate token summary from session usage data and display it via console.log before process termination
+- **FR-015**: CLI MUST handle exit token summary gracefully, continuing normal exit process even if summary generation fails
 
 ### Key Entities *(include if feature involves data)*
 
@@ -105,3 +126,4 @@ SDK users need usage data embedded within assistant messages in the session so t
 - **SC-003**: Usage data is accurately embedded in assistant messages with 100% consistency for tracking per-interaction costs
 - **SC-004**: System maintains normal operation performance with less than 5% overhead when usage tracking is enabled
 - **SC-005**: SDK handles callback errors gracefully with 99.9% uptime for core agent operations even when monitoring fails
+- **SC-006**: CLI displays accurate token usage summary within 500ms of exit command across all supported exit scenarios (normal, error, interrupt)
