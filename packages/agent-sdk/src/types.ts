@@ -14,6 +14,7 @@ export interface Logger {
 export interface Message {
   role: "user" | "assistant";
   blocks: MessageBlock[];
+  usage?: Usage; // Usage data for this message's AI operation (assistant messages only)
 }
 
 export type MessageBlock =
@@ -330,6 +331,18 @@ export class ConfigurationError extends Error {
     super(message);
     this.name = "ConfigurationError";
   }
+}
+
+/**
+ * Usage statistics for AI operations
+ * Extends OpenAI's Usage format with additional tracking fields
+ */
+export interface Usage {
+  prompt_tokens: number; // Tokens used in prompts
+  completion_tokens: number; // Tokens generated in completions
+  total_tokens: number; // Sum of prompt + completion tokens
+  model?: string; // Model used for the operation (e.g., "gpt-4", "gpt-3.5-turbo")
+  operation_type?: "agent" | "compress"; // Type of operation that generated usage
 }
 
 // Standard error messages

@@ -16,7 +16,7 @@ import {
   type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import type { Logger, Message } from "../types.js";
+import type { Logger, Message, Usage } from "../types.js";
 import {
   cleanupExpiredSessions,
   getLatestSession,
@@ -32,6 +32,7 @@ export interface MessageManagerCallbacks {
   onSessionIdChange?: (sessionId: string) => void;
   onLatestTotalTokensChange?: (latestTotalTokens: number) => void;
   onUserInputHistoryChange?: (history: string[]) => void;
+  onUsagesChange?: (usages: Usage[]) => void;
   // Incremental callback
   onUserMessageAdded?: (
     content: string,
@@ -290,11 +291,13 @@ export class MessageManager {
   public addAssistantMessage(
     content?: string,
     toolCalls?: ChatCompletionMessageFunctionToolCall[],
+    usage?: Usage,
   ): void {
     const newMessages = addAssistantMessageToMessages(
       this.messages,
       content,
       toolCalls,
+      usage,
     );
     this.setMessages(newMessages);
     this.callbacks.onAssistantMessageAdded?.(content, toolCalls);
@@ -465,5 +468,18 @@ export class MessageManager {
       subagentMessages: updates.messages || [],
     };
     this.callbacks.onSubAgentBlockUpdated?.(params.subagentId, params.messages);
+  }
+
+  /**
+   * Trigger usage change callback with all usage data from assistant messages
+   */
+  public triggerUsageChange(): void {
+    const usages: Usage[] = [];
+    for (const message of this.messages) {
+      if (message.role === "assistant" && message.usage) {
+        usages.push(message.usage);
+      }
+    }
+    this.callbacks.onUsagesChange?.(usages);
   }
 }

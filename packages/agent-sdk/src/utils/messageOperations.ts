@@ -1,4 +1,4 @@
-import type { Message } from "../types.js";
+import type { Message, Usage } from "../types.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
@@ -177,6 +177,7 @@ export const addAssistantMessageToMessages = (
   messages: Message[],
   content?: string,
   toolCalls?: ChatCompletionMessageFunctionToolCall[],
+  usage?: Usage,
 ): Message[] => {
   const blocks: Message["blocks"] = [];
 
@@ -202,6 +203,7 @@ export const addAssistantMessageToMessages = (
   const initialAssistantMessage: Message = {
     role: "assistant",
     blocks,
+    usage, // Include usage data if provided
   };
 
   return [...messages, initialAssistantMessage];

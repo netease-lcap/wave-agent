@@ -13,9 +13,11 @@ import type {
   McpServerStatus,
   BackgroundShell,
   SlashCommand,
+  Usage,
 } from "wave-agent-sdk";
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
+import { displayUsageSummary } from "../utils/usageSummary.js";
 
 // Main Chat Context
 export interface ChatContextType {
@@ -49,6 +51,8 @@ export interface ChatContextType {
   // Slash Command functionality
   slashCommands: SlashCommand[];
   hasSlashCommand: (commandId: string) => boolean;
+  // Usage tracking
+  usages: Usage[];
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -91,6 +95,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // Command state
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
 
+  // Usage tracking state
+  const [usages, setUsages] = useState<Usage[]>([]);
+
   const agentRef = useRef<Agent | null>(null);
 
   // Listen for Ctrl+O hotkey to toggle collapse/expand state
@@ -125,6 +132,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         onShellsChange: (shells) => {
           setBackgroundShells([...shells]);
         },
+        onUsagesChange: (newUsages) => {
+          setUsages([...newUsages]);
+        },
       };
 
       try {
@@ -153,6 +163,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         // Get initial commands
         const agentSlashCommands = agent.getSlashCommands?.() || [];
         setSlashCommands(agentSlashCommands);
+
+        // Get initial usages
+        setUsages(agent.usages);
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
       }
@@ -165,6 +178,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   useEffect(() => {
     return () => {
       if (agentRef.current) {
+        try {
+          // Display usage summary before cleanup
+          const usages = agentRef.current.usages;
+          displayUsageSummary(usages);
+        } catch {
+          // Silently ignore usage summary errors during cleanup
+        }
+
         agentRef.current.destroy();
       }
     };
@@ -292,6 +313,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     killBackgroundShell,
     slashCommands,
     hasSlashCommand,
+    usages,
   };
 
   return (

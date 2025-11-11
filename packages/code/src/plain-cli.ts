@@ -1,5 +1,6 @@
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "./utils/logger.js";
+import { displayUsageSummary } from "./utils/usageSummary.js";
 
 export interface PlainCliOptions {
   restoreSessionId?: string;
@@ -47,12 +48,27 @@ export async function startPlainCli(options: PlainCliOptions): Promise<void> {
       await agent.sendMessage(message);
     }
 
+    // Display usage summary before exit
+    try {
+      const usages = agent.usages;
+      displayUsageSummary(usages);
+    } catch {
+      // Silently ignore usage summary errors
+    }
+
     // Destroy agent and exit after sendMessage completes
     agent.destroy();
     process.exit(0);
   } catch (error) {
     console.error("Failed to send message:", error);
     if (agent!) {
+      // Display usage summary even on error
+      try {
+        const usages = agent.usages;
+        displayUsageSummary(usages);
+      } catch {
+        // Silently ignore usage summary errors
+      }
       agent.destroy();
     }
     process.exit(1);

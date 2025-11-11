@@ -20,6 +20,7 @@ import type {
   McpServerStatus,
   GatewayConfig,
   ModelConfig,
+  Usage,
 } from "./types.js";
 import { HookManager } from "./hooks/index.js";
 import { configResolver } from "./utils/configResolver.js";
@@ -72,6 +73,7 @@ export class Agent {
   private hookManager: HookManager; // Add hooks manager instance
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
+  private _usages: Usage[] = []; // Usage tracking array
 
   // Configuration properties
   private gatewayConfig: GatewayConfig;
@@ -151,6 +153,7 @@ export class Agent {
       gatewayConfig,
       modelConfig,
       tokenLimit,
+      onUsageAdded: (usage) => this.addUsage(usage),
     });
 
     // Initialize AI manager with resolved configuration
@@ -160,7 +163,12 @@ export class Agent {
       logger: this.logger,
       backgroundBashManager: this.backgroundBashManager,
       hookManager: this.hookManager,
-      callbacks,
+      callbacks: {
+        ...callbacks,
+        onUsageAdded: (usage: Usage) => {
+          this.addUsage(usage);
+        },
+      },
       workdir: this.workdir,
       systemPrompt: this.systemPrompt,
       gatewayConfig: this.gatewayConfig,
@@ -190,6 +198,34 @@ export class Agent {
 
   public get messages(): Message[] {
     return this.messageManager.getMessages();
+  }
+
+  public get usages(): Usage[] {
+    return [...this._usages]; // Return copy to prevent external modification
+  }
+
+  /**
+   * Rebuild usage array from messages containing usage metadata
+   * Called during session restoration to reconstruct usage tracking
+   */
+  private rebuildUsageFromMessages(): void {
+    this._usages = [];
+    this.messages.forEach((message) => {
+      if (message.role === "assistant" && message.usage) {
+        this._usages.push(message.usage);
+      }
+    });
+    // Trigger callback after rebuilding usage array
+    this.messageManager.triggerUsageChange();
+  }
+
+  /**
+   * Add usage data to the tracking array and trigger callbacks
+   * @param usage Usage data from AI operations
+   */
+  private addUsage(usage: Usage): void {
+    this._usages.push(usage);
+    this.messageManager.triggerUsageChange();
   }
 
   public get latestTotalTokens(): number {
@@ -301,12 +337,16 @@ export class Agent {
     if (options?.messages) {
       // If messages are provided, use them directly (useful for testing)
       this.messageManager.setMessages(options.messages);
+      // Rebuild usage array from restored messages
+      this.rebuildUsageFromMessages();
     } else {
       // Otherwise, handle session restoration
       await this.messageManager.handleSessionRestoration(
         options?.restoreSessionId,
         options?.continueLastSession,
       );
+      // Rebuild usage array from restored messages
+      this.rebuildUsageFromMessages();
     }
   }
 
