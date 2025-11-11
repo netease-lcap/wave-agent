@@ -115,6 +115,31 @@ describe("Session Service", () => {
       );
     });
 
+    it("should save session data with custom sessionDir", async () => {
+      const customSessionDir = "/custom/sessions";
+      const customSessionFilePath = `${customSessionDir}/session_${mockShortId}.json`;
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.writeFile.mockResolvedValue(undefined);
+
+      await saveSession(
+        mockSessionId,
+        mockMessages,
+        mockWorkdir,
+        100,
+        undefined,
+        customSessionDir,
+      );
+
+      expect(mockFs.mkdir).toHaveBeenCalledWith(customSessionDir, {
+        recursive: true,
+      });
+      expect(mockFs.writeFile).toHaveBeenCalledWith(
+        customSessionFilePath,
+        expect.stringContaining(mockSessionId),
+        "utf-8",
+      );
+    });
+
     it("should filter out diff blocks when saving", async () => {
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.writeFile.mockResolvedValue(undefined);
@@ -259,6 +284,20 @@ describe("Session Service", () => {
       expect(result).toEqual(mockSessionData);
     });
 
+    it("should load session data from custom sessionDir", async () => {
+      const customSessionDir = "/custom/sessions";
+      const customSessionFilePath = `${customSessionDir}/session_${mockShortId}.json`;
+      mockFs.readFile.mockResolvedValue(JSON.stringify(mockSessionData));
+
+      const result = await loadSession(mockSessionId, customSessionDir);
+
+      expect(mockFs.readFile).toHaveBeenCalledWith(
+        customSessionFilePath,
+        "utf-8",
+      );
+      expect(result).toEqual(mockSessionData);
+    });
+
     it("should return null for non-existent session", async () => {
       const error = new Error("File not found") as NodeJS.ErrnoException;
       error.code = "ENOENT";
@@ -341,6 +380,55 @@ describe("Session Service", () => {
       expect(result?.id).toBe("session_2");
     });
 
+    it("should return the most recent session from custom sessionDir", async () => {
+      const customSessionDir = "/custom/sessions";
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockJoin.mockReturnValueOnce(`${customSessionDir}/session_1.json`);
+      mockJoin.mockReturnValueOnce(`${customSessionDir}/session_2.json`);
+      mockFs.readdir.mockResolvedValue([
+        "session_1.json",
+        "session_2.json",
+      ] as never);
+
+      // Mock reading session files
+      mockFs.readFile
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            ...mockSessionData,
+            id: "session_1",
+            metadata: {
+              ...mockSessionData.metadata,
+              lastActiveAt: "2024-01-01T10:00:00.000Z",
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            ...mockSessionData,
+            id: "session_2",
+            metadata: {
+              ...mockSessionData.metadata,
+              lastActiveAt: "2024-01-01T12:00:00.000Z",
+            },
+          }),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            ...mockSessionData,
+            id: "session_2",
+            metadata: {
+              ...mockSessionData.metadata,
+              lastActiveAt: "2024-01-01T12:00:00.000Z",
+            },
+          }),
+        );
+
+      const result = await getLatestSession(mockWorkdir, customSessionDir);
+
+      expect(mockFs.readdir).toHaveBeenCalledWith(customSessionDir);
+      expect(result?.id).toBe("session_2");
+    });
+
     it("should return null when no sessions exist", async () => {
       mockFs.mkdir.mockResolvedValue(undefined);
       mockFs.readdir.mockResolvedValue([] as never);
@@ -373,6 +461,34 @@ describe("Session Service", () => {
 
       const result = await listSessions(mockWorkdir);
 
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("session_1");
+      expect(result[0].workdir).toBe(mockWorkdir);
+    });
+
+    it("should list sessions from custom sessionDir", async () => {
+      const customSessionDir = "/custom/sessions";
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.readdir.mockResolvedValue([
+        "session_1.json",
+        "session_2.json",
+        "other_file.txt",
+      ] as never);
+
+      const sessionData1 = { ...mockSessionData, id: "session_1" };
+      const sessionData2 = {
+        ...mockSessionData,
+        id: "session_2",
+        metadata: { ...mockSessionData.metadata, workdir: "/other/workdir" },
+      };
+
+      mockFs.readFile
+        .mockResolvedValueOnce(JSON.stringify(sessionData1))
+        .mockResolvedValueOnce(JSON.stringify(sessionData2));
+
+      const result = await listSessions(mockWorkdir, false, customSessionDir);
+
+      expect(mockFs.readdir).toHaveBeenCalledWith(customSessionDir);
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("session_1");
       expect(result[0].workdir).toBe(mockWorkdir);
@@ -424,6 +540,17 @@ describe("Session Service", () => {
       const result = await deleteSession(mockSessionId);
 
       expect(mockFs.unlink).toHaveBeenCalledWith(mockSessionFilePath);
+      expect(result).toBe(true);
+    });
+
+    it("should delete session from custom sessionDir", async () => {
+      const customSessionDir = "/custom/sessions";
+      const customSessionFilePath = `${customSessionDir}/session_${mockShortId}.json`;
+      mockFs.unlink.mockResolvedValue(undefined);
+
+      const result = await deleteSession(mockSessionId, customSessionDir);
+
+      expect(mockFs.unlink).toHaveBeenCalledWith(customSessionFilePath);
       expect(result).toBe(true);
     });
 
@@ -498,6 +625,37 @@ describe("Session Service", () => {
       vi.useRealTimers();
     });
 
+    it("should cleanup expired sessions from custom sessionDir", async () => {
+      const customSessionDir = "/custom/sessions";
+      const now = new Date("2024-02-01T00:00:00.000Z");
+      vi.setSystemTime(now);
+
+      const expiredSession = {
+        ...mockSessionData,
+        id: "expired_session",
+        metadata: {
+          ...mockSessionData.metadata,
+          lastActiveAt: "2023-12-01T00:00:00.000Z", // 62 days old
+        },
+      };
+
+      mockFs.mkdir.mockResolvedValue(undefined);
+      mockFs.readdir.mockResolvedValue(["session_expired.json"] as never);
+      mockFs.readFile.mockResolvedValue(JSON.stringify(expiredSession));
+      mockFs.unlink.mockResolvedValue(undefined);
+
+      const result = await cleanupExpiredSessions(
+        mockWorkdir,
+        customSessionDir,
+      );
+
+      expect(mockFs.readdir).toHaveBeenCalledWith(customSessionDir);
+      expect(result).toBe(1);
+      expect(mockFs.unlink).toHaveBeenCalledTimes(1);
+
+      vi.useRealTimers();
+    });
+
     it("should handle cleanup errors gracefully", async () => {
       const now = new Date("2024-02-01T00:00:00.000Z");
       vi.setSystemTime(now);
@@ -539,6 +697,17 @@ describe("Session Service", () => {
       const result = await sessionExists(mockSessionId);
 
       expect(mockFs.access).toHaveBeenCalledWith(mockSessionFilePath);
+      expect(result).toBe(true);
+    });
+
+    it("should return true for existing session in custom sessionDir", async () => {
+      const customSessionDir = "/custom/sessions";
+      const customSessionFilePath = `${customSessionDir}/session_${mockShortId}.json`;
+      mockFs.access.mockResolvedValue(undefined);
+
+      const result = await sessionExists(mockSessionId, customSessionDir);
+
+      expect(mockFs.access).toHaveBeenCalledWith(customSessionFilePath);
       expect(result).toBe(true);
     });
 
