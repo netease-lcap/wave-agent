@@ -1,135 +1,55 @@
-import { describe, it, expect, vi, beforeEach, Mock } from "vitest";
-import { Agent } from "../../src/agent.js";
-import { MessageManager } from "../../src/managers/messageManager.js";
-import { AIManager } from "../../src/managers/aiManager.js";
-import { ToolManager } from "../../src/managers/toolManager.js";
-import { HookManager } from "../../src/hooks/index.js";
-import type { Usage } from "../../src/types.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Agent } from "@/agent.js";
+import * as aiService from "@/services/aiService.js";
+import type { Usage } from "@/types.js";
 
-// Type definitions for mock objects
-type MockMessageManager = Partial<MessageManager>;
-type MockAIManager = Partial<AIManager>;
-type MockToolManager = Partial<ToolManager> & {
-  tools?: Map<string, unknown>;
-  mcpManager?: Partial<ToolManager["mcpManager"]>;
-};
-type MockHookManager = Partial<HookManager> & {
-  configuration?: HookManager["configuration"];
-  matcher?: Partial<HookManager["matcher"]>;
-  executor?: Partial<HookManager["executor"]>;
-  workdir?: string;
-};
-type AIManagerConstructor = Mock;
-type AIManagerOptions = {
-  callbacks?: {
-    onUsageAdded?: (usage: Usage) => void;
-  };
-};
+// Mock the session service
+vi.mock("@/services/session", () => ({
+  saveSession: vi.fn(),
+  loadSession: vi.fn(() => Promise.resolve(null)),
+  getLatestSession: vi.fn(() => Promise.resolve(null)),
+  cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
+}));
 
-// Mock all dependencies
-vi.mock("../../src/managers/messageManager.js");
-vi.mock("../../src/managers/aiManager.js");
-vi.mock("../../src/managers/toolManager.js");
-vi.mock("../../src/hooks/index.js");
+// Mock AI Service
+vi.mock("@/services/aiService");
+
+// Mock tool registry
+vi.mock("@/managers/toolManager", () => ({
+  ToolManager: vi.fn().mockImplementation(() => ({
+    execute: vi.fn(),
+    list: vi.fn(() => []),
+    getToolsConfig: vi.fn(() => []),
+  })),
+}));
 
 describe("Agent Usage Tracking", () => {
   let agent: Agent;
-  let mockMessageManager: MockMessageManager;
-  let mockAIManager: MockAIManager;
-  let mockToolManager: MockToolManager;
-  let mockHookManager: MockHookManager;
+  let usagesHistory: Usage[];
 
-  beforeEach(() => {
-    // Reset mocks
-    vi.clearAllMocks();
-
-    // Create mock instances
-    mockMessageManager = {
-      addUserMessage: vi.fn(),
-      addAssistantMessage: vi.fn(),
-      triggerUsageChange: vi.fn(),
-      getMessages: vi.fn().mockReturnValue([]),
-      clearMessages: vi.fn(),
-      getSessionId: vi.fn().mockReturnValue("test-session"),
-      getlatestTotalTokens: vi.fn().mockReturnValue(0),
-      getUserInputHistory: vi.fn().mockReturnValue([]),
-      getTranscriptPath: vi.fn().mockReturnValue("/path/to/transcript"),
-      setSessionId: vi.fn(),
-      setMessages: vi.fn(),
-      saveSession: vi.fn(),
-      handleSessionRestoration: vi.fn(),
-      setlatestTotalTokens: vi.fn(),
-      setUserInputHistory: vi.fn(),
-      initializeFromSession: vi.fn(),
-      addToInputHistory: vi.fn(),
-      clearInputHistory: vi.fn(),
-      addCustomCommandMessage: vi.fn(),
-      updateToolBlock: vi.fn(),
-      addDiffBlock: vi.fn(),
-      addErrorBlock: vi.fn(),
-      compressMessagesAndUpdateSession: vi.fn(),
-      addMemoryBlock: vi.fn(),
-      addCommandOutputMessage: vi.fn(),
-      updateCommandOutputMessage: vi.fn(),
-      completeCommandMessage: vi.fn(),
-      addSubagentBlock: vi.fn(),
-      updateSubagentBlock: vi.fn(),
+  beforeEach(async () => {
+    // Create mock callbacks that track usage changes
+    usagesHistory = [];
+    const mockCallbacks = {
+      onMessagesChange: vi.fn(),
+      onLoadingChange: vi.fn(),
+      onUsagesChange: vi.fn((usages: Usage[]) => {
+        usagesHistory = [...usages];
+      }),
     };
 
-    mockAIManager = {
-      sendAIMessage: vi.fn(),
-      isLoading: false,
-      setIsLoading: vi.fn(),
-      abortAIMessage: vi.fn(),
-      getIsCompressing: vi.fn().mockReturnValue(false),
-      setIsCompressing: vi.fn(),
-    };
-
-    mockToolManager = {
-      register: vi.fn(),
-      getToolsConfig: vi.fn().mockReturnValue([]),
-      list: vi.fn().mockReturnValue([]),
-      initializeBuiltInTools: vi.fn(),
-      execute: vi.fn(),
-      tools: new Map(),
-      mcpManager: {},
-    };
-
-    mockHookManager = {
-      executeHooks: vi.fn(),
-      hasHooks: vi.fn().mockReturnValue(false),
-      loadConfiguration: vi.fn(),
-      loadConfigurationFromSettings: vi.fn(),
-      validateConfiguration: vi
-        .fn()
-        .mockReturnValue({ valid: true, errors: [] }),
-      getConfiguration: vi.fn().mockReturnValue({}),
-      configuration: undefined,
-      matcher: {},
-      executor: {},
-      workdir: "/test/workdir",
-    };
-
-    // Mock constructors to return our mocks
-    (MessageManager as unknown as Mock).mockImplementation(
-      () => mockMessageManager as MessageManager,
-    );
-    (AIManager as unknown as Mock).mockImplementation(
-      () => mockAIManager as AIManager,
-    );
-    (ToolManager as unknown as Mock).mockImplementation(
-      () => mockToolManager as unknown as ToolManager,
-    );
-    (HookManager as unknown as Mock).mockImplementation(
-      () => mockHookManager as unknown as HookManager,
-    );
-
-    // Create agent instance
-    agent = new Agent({
-      apiKey: "test-key",
-      agentModel: "gpt-4",
-      fastModel: "gpt-3.5-turbo",
+    // Create Agent instance with required parameters
+    agent = await Agent.create({
+      callbacks: mockCallbacks,
     });
+
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    if (agent) {
+      await agent.destroy();
+    }
   });
 
   describe("usages getter", () => {
@@ -166,192 +86,284 @@ describe("Agent Usage Tracking", () => {
     });
   });
 
-  describe("addUsage private method", () => {
-    it("should add usage to internal array when called through callback", () => {
-      const mockUsage: Usage = {
+  describe("usage tracking through AI calls", () => {
+    it("should track usage when AI service returns usage data", async () => {
+      const mockCallAgent = vi.mocked(aiService.callAgent);
+
+      const expectedUsage: Usage = {
         prompt_tokens: 100,
         completion_tokens: 50,
         total_tokens: 150,
-        model: "gpt-4",
+        model: "claude-sonnet-4-20250514",
         operation_type: "agent",
       };
 
-      // Simulate the AIManager callback being triggered
-      const aiManagerOptions = (AIManager as unknown as AIManagerConstructor)
-        .mock.calls[0]?.[0] as AIManagerOptions;
-      const onUsageAdded = aiManagerOptions?.callbacks?.onUsageAdded;
-      if (onUsageAdded) {
-        onUsageAdded(mockUsage);
-      }
+      mockCallAgent.mockResolvedValue({
+        content: "Test response",
+        usage: {
+          prompt_tokens: expectedUsage.prompt_tokens,
+          completion_tokens: expectedUsage.completion_tokens,
+          total_tokens: expectedUsage.total_tokens,
+        },
+      });
 
-      expect(agent.usages).toEqual([mockUsage]);
-      expect(mockMessageManager.triggerUsageChange).toHaveBeenCalledTimes(1);
+      await agent.sendMessage("Test message");
+
+      expect(agent.usages).toHaveLength(1);
+      expect(agent.usages[0]).toMatchObject(expectedUsage);
+      expect(usagesHistory).toHaveLength(1);
+      expect(usagesHistory[0]).toMatchObject(expectedUsage);
     });
 
-    it("should accumulate multiple usage entries", () => {
-      const usage1: Usage = {
+    it("should accumulate multiple usage entries from multiple AI calls", async () => {
+      const mockCallAgent = vi.mocked(aiService.callAgent);
+
+      const usage1 = {
         prompt_tokens: 100,
         completion_tokens: 50,
         total_tokens: 150,
-        model: "gpt-4",
-        operation_type: "agent",
       };
 
-      const usage2: Usage = {
+      const usage2 = {
         prompt_tokens: 200,
         completion_tokens: 100,
         total_tokens: 300,
-        model: "gpt-3.5-turbo",
-        operation_type: "compress",
       };
 
-      // Simulate multiple callbacks
-      const aiManagerOptions = (AIManager as unknown as AIManagerConstructor)
-        .mock.calls[0]?.[0] as AIManagerOptions;
-      const onUsageAdded = aiManagerOptions?.callbacks?.onUsageAdded;
-      if (onUsageAdded) {
-        onUsageAdded(usage1);
-        onUsageAdded(usage2);
-      }
+      mockCallAgent
+        .mockResolvedValueOnce({
+          content: "First response",
+          usage: usage1,
+        })
+        .mockResolvedValueOnce({
+          content: "Second response",
+          usage: usage2,
+        });
 
-      expect(agent.usages).toEqual([usage1, usage2]);
-      expect(mockMessageManager.triggerUsageChange).toHaveBeenCalledTimes(2);
+      await agent.sendMessage("First message");
+      await agent.sendMessage("Second message");
+
+      expect(agent.usages).toHaveLength(2);
+      expect(agent.usages[0]).toMatchObject({
+        ...usage1,
+        operation_type: "agent",
+      });
+      expect(agent.usages[1]).toMatchObject({
+        ...usage2,
+        operation_type: "agent",
+      });
+      expect(usagesHistory).toHaveLength(2);
     });
 
-    it("should maintain correct order of usage entries", () => {
-      const usages: Usage[] = [];
+    it("should maintain correct order of usage entries", async () => {
+      const mockCallAgent = vi.mocked(aiService.callAgent);
 
-      for (let i = 1; i <= 5; i++) {
-        usages.push({
+      const usageData = [];
+      for (let i = 1; i <= 3; i++) {
+        usageData.push({
           prompt_tokens: i * 10,
           completion_tokens: i * 5,
           total_tokens: i * 15,
-          model: i % 2 === 0 ? "gpt-4" : "gpt-3.5-turbo",
-          operation_type: i % 2 === 0 ? "agent" : "compress",
         });
       }
 
-      const aiManagerOptions = (AIManager as unknown as AIManagerConstructor)
-        .mock.calls[0]?.[0] as AIManagerOptions;
-      const onUsageAdded = aiManagerOptions?.callbacks?.onUsageAdded;
+      // Mock multiple calls
+      for (let i = 0; i < usageData.length; i++) {
+        mockCallAgent.mockResolvedValueOnce({
+          content: `Response ${i + 1}`,
+          usage: usageData[i],
+        });
+      }
 
-      // Add usages in order
-      usages.forEach((usage) => {
-        if (onUsageAdded) {
-          onUsageAdded(usage);
-        }
-      });
+      // Send multiple messages
+      for (let i = 1; i <= 3; i++) {
+        await agent.sendMessage(`Message ${i}`);
+      }
 
-      expect(agent.usages).toEqual(usages);
+      expect(agent.usages).toHaveLength(3);
+      for (let i = 0; i < 3; i++) {
+        expect(agent.usages[i]).toMatchObject({
+          ...usageData[i],
+          operation_type: "agent",
+        });
+      }
     });
   });
 
-  describe("integration with MessageManager callbacks", () => {
-    it("should trigger MessageManager.triggerUsageChange when usage is added", () => {
-      const mockUsage: Usage = {
+  describe("integration with usage callbacks", () => {
+    it("should trigger onUsageChange callback when usage is tracked", async () => {
+      const mockCallAgent = vi.mocked(aiService.callAgent);
+
+      mockCallAgent.mockResolvedValue({
+        content: "Test response",
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+        },
+      });
+
+      await agent.sendMessage("Test message");
+
+      // Verify callback was triggered with usage data
+      expect(usagesHistory).toHaveLength(1);
+      expect(usagesHistory[0]).toMatchObject({
         prompt_tokens: 100,
         completion_tokens: 50,
         total_tokens: 150,
-        model: "gpt-4",
         operation_type: "agent",
-      };
-
-      const aiManagerOptions = (AIManager as unknown as AIManagerConstructor)
-        .mock.calls[0]?.[0] as AIManagerOptions;
-      const onUsageAdded = aiManagerOptions?.callbacks?.onUsageAdded;
-      if (onUsageAdded) {
-        onUsageAdded(mockUsage);
-      }
-
-      expect(mockMessageManager.triggerUsageChange).toHaveBeenCalledTimes(1);
+      });
     });
 
-    it("should handle callback system properly", () => {
-      // Verify that the Agent constructor passes the correct callback to AIManager
-      expect(AIManager).toHaveBeenCalledWith(
-        expect.objectContaining({
-          callbacks: expect.objectContaining({
-            onUsageAdded: expect.any(Function),
-          }),
-        }),
-      );
+    it("should handle multiple usage updates correctly", async () => {
+      const mockCallAgent = vi.mocked(aiService.callAgent);
+
+      mockCallAgent
+        .mockResolvedValueOnce({
+          content: "First response",
+          usage: {
+            prompt_tokens: 50,
+            completion_tokens: 25,
+            total_tokens: 75,
+          },
+        })
+        .mockResolvedValueOnce({
+          content: "Second response",
+          usage: {
+            prompt_tokens: 80,
+            completion_tokens: 40,
+            total_tokens: 120,
+          },
+        });
+
+      await agent.sendMessage("First message");
+      await agent.sendMessage("Second message");
+
+      // Verify accumulated usage data
+      expect(usagesHistory).toHaveLength(2);
+      expect(usagesHistory[0].total_tokens).toBe(75);
+      expect(usagesHistory[1].total_tokens).toBe(120);
     });
   });
 
   describe("edge cases", () => {
-    it("should handle usage with zero tokens", () => {
-      const zeroUsage: Usage = {
+    it("should handle usage with zero tokens", async () => {
+      const mockCallAgent = vi.mocked(aiService.callAgent);
+
+      mockCallAgent.mockResolvedValue({
+        content: "Empty response",
+        usage: {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0,
+        },
+      });
+
+      await agent.sendMessage("Test message");
+
+      expect(agent.usages).toHaveLength(1);
+      expect(agent.usages[0]).toMatchObject({
         prompt_tokens: 0,
         completion_tokens: 0,
         total_tokens: 0,
-        model: "gpt-4",
         operation_type: "agent",
-      };
-
-      const aiManagerOptions = (AIManager as unknown as AIManagerConstructor)
-        .mock.calls[0]?.[0] as AIManagerOptions;
-      const onUsageAdded = aiManagerOptions?.callbacks?.onUsageAdded;
-      if (onUsageAdded) {
-        onUsageAdded(zeroUsage);
-      }
-
-      expect(agent.usages).toEqual([zeroUsage]);
+      });
     });
 
-    it("should handle usage with different operation types", () => {
-      const agentUsage: Usage = {
-        prompt_tokens: 100,
-        completion_tokens: 50,
-        total_tokens: 150,
-        model: "gpt-4",
-        operation_type: "agent",
-      };
+    it("should handle AI calls without usage data", async () => {
+      const mockCallAgent = vi.mocked(aiService.callAgent);
 
-      const compressUsage: Usage = {
-        prompt_tokens: 200,
-        completion_tokens: 100,
-        total_tokens: 300,
-        model: "gpt-3.5-turbo",
-        operation_type: "compress",
-      };
+      mockCallAgent.mockResolvedValue({
+        content: "Response without usage",
+        // No usage field
+      });
 
-      const aiManagerOptions = (AIManager as unknown as AIManagerConstructor)
-        .mock.calls[0]?.[0] as AIManagerOptions;
-      const onUsageAdded = aiManagerOptions?.callbacks?.onUsageAdded;
-      if (onUsageAdded) {
-        onUsageAdded(agentUsage);
-        onUsageAdded(compressUsage);
-      }
+      await agent.sendMessage("Test message");
 
-      expect(agent.usages).toEqual([agentUsage, compressUsage]);
+      // Should not add any usage when no usage data is provided
+      expect(agent.usages).toHaveLength(0);
+      expect(usagesHistory).toHaveLength(0);
     });
 
-    it("should handle usage with different models", () => {
-      const gpt4Usage: Usage = {
-        prompt_tokens: 100,
-        completion_tokens: 50,
-        total_tokens: 150,
-        model: "gpt-4",
-        operation_type: "agent",
-      };
+    it("should track compression usage when it occurs", async () => {
+      const mockCallAgent = vi.mocked(aiService.callAgent);
+      const mockCompressMessages = vi.mocked(aiService.compressMessages);
 
-      const gpt35Usage: Usage = {
-        prompt_tokens: 200,
-        completion_tokens: 100,
-        total_tokens: 300,
-        model: "gpt-3.5-turbo",
-        operation_type: "agent",
-      };
+      // Set up an agent instance with initial messages to have enough content for compression
+      const initialMessages = [
+        {
+          role: "user" as const,
+          blocks: [{ type: "text" as const, content: "Message 1" }],
+        },
+        {
+          role: "assistant" as const,
+          blocks: [{ type: "text" as const, content: "Response 1" }],
+        },
+        {
+          role: "user" as const,
+          blocks: [{ type: "text" as const, content: "Message 2" }],
+        },
+        {
+          role: "assistant" as const,
+          blocks: [{ type: "text" as const, content: "Response 2" }],
+        },
+        {
+          role: "user" as const,
+          blocks: [{ type: "text" as const, content: "Message 3" }],
+        },
+        {
+          role: "assistant" as const,
+          blocks: [{ type: "text" as const, content: "Response 3" }],
+        },
+        {
+          role: "user" as const,
+          blocks: [{ type: "text" as const, content: "Message 4" }],
+        },
+        {
+          role: "assistant" as const,
+          blocks: [{ type: "text" as const, content: "Response 4" }],
+        },
+      ];
 
-      const aiManagerOptions = (AIManager as unknown as AIManagerConstructor)
-        .mock.calls[0]?.[0] as AIManagerOptions;
-      const onUsageAdded = aiManagerOptions?.callbacks?.onUsageAdded;
-      if (onUsageAdded) {
-        onUsageAdded(gpt4Usage);
-        onUsageAdded(gpt35Usage);
-      }
+      // Create new agent instance with initial messages
+      await agent.destroy();
+      agent = await Agent.create({
+        callbacks: {
+          onMessagesChange: vi.fn(),
+          onUsagesChange: vi.fn((usages: Usage[]) => {
+            usagesHistory = [...usages];
+          }),
+        },
+        messages: initialMessages,
+      });
 
-      expect(agent.usages).toEqual([gpt4Usage, gpt35Usage]);
+      vi.clearAllMocks();
+
+      // Mock high token usage to trigger compression
+      mockCallAgent.mockResolvedValue({
+        content: "Response that triggers compression",
+        usage: {
+          prompt_tokens: 50000,
+          completion_tokens: 20000,
+          total_tokens: 70000, // Exceeds limit
+        },
+      });
+
+      mockCompressMessages.mockResolvedValue({
+        content: "Compressed summary",
+        usage: {
+          prompt_tokens: 1000,
+          completion_tokens: 500,
+          total_tokens: 1500,
+        },
+      });
+
+      await agent.sendMessage("Message that triggers compression");
+
+      // Should track both agent and compression usage
+      expect(agent.usages).toHaveLength(2);
+      expect(agent.usages[0].operation_type).toBe("agent");
+      expect(agent.usages[1].operation_type).toBe("compress");
     });
   });
 });
