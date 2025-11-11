@@ -52,6 +52,14 @@ export interface AgentOptions {
   workdir?: string;
   /**Optional custom system prompt - if provided, replaces default system prompt */
   systemPrompt?: string;
+
+  // New: Session directory configuration
+  /**
+   * Optional custom directory for session file storage
+   * @default join(homedir(), ".wave", "sessions")
+   * @example "/path/to/custom/sessions"
+   */
+  sessionDir?: string;
 }
 
 export interface AgentCallbacks
@@ -83,13 +91,21 @@ export class Agent {
   /**
    * Agent constructor - handles configuration resolution and validation
    *
-   * IMPORTANT: Keep this constructor's signature exactly the same as Agent.create()
-   * to maintain API consistency. Both methods should accept the same AgentOptions.
+   * IMPORTANT: This constructor is private. Use Agent.create() instead for proper
+   * async initialization. Keep this constructor's signature exactly the same as
+   * Agent.create() to maintain API consistency.
    *
    * @param options - Configuration options for the Agent instance
+   * @param options.sessionDir - Optional custom directory for session storage
    */
-  constructor(options: AgentOptions) {
-    const { callbacks = {}, logger, workdir, systemPrompt } = options;
+  private constructor(options: AgentOptions) {
+    const {
+      callbacks = {},
+      logger,
+      workdir,
+      systemPrompt,
+      sessionDir,
+    } = options;
 
     // Resolve configuration from constructor args and environment variables
     const gatewayConfig = configResolver.resolveGatewayConfig(
@@ -141,6 +157,7 @@ export class Agent {
       callbacks,
       workdir: this.workdir,
       logger: this.logger,
+      sessionDir,
     });
 
     // Initialize subagent manager with all dependencies in constructor
@@ -278,6 +295,43 @@ export class Agent {
    * @param options - Same AgentOptions interface used by constructor
    * @returns Promise<Agent> - Fully initialized Agent instance
    */
+  /**
+   * Create a new Agent instance with async initialization
+   *
+   * This is the recommended way to create Agent instances. The constructor is private
+   * to ensure proper async initialization of all components.
+   *
+   * @param options - Configuration options for the Agent instance
+   * @param options.apiKey - API key for the AI service (or set WAVE_API_KEY env var)
+   * @param options.baseURL - Base URL for the AI service (or set WAVE_BASE_URL env var)
+   * @param options.sessionDir - Optional custom directory for session file storage.
+   *   If not provided, defaults to ~/.wave/sessions/. Can be relative or absolute path.
+   *   Examples: "./app-sessions", "/var/myapp/sessions", "~/Documents/sessions"
+   * @param options.callbacks - Optional callbacks for various Agent events
+   * @param options.restoreSessionId - Optional session ID to restore from
+   * @param options.continueLastSession - Whether to continue the last session automatically
+   * @param options.logger - Optional custom logger implementation
+   * @param options.messages - Optional initial messages for testing convenience
+   * @param options.workdir - Working directory (defaults to process.cwd())
+   * @param options.systemPrompt - Optional custom system prompt
+   * @returns Promise that resolves to initialized Agent instance
+   *
+   * @example
+   * ```typescript
+   * // Basic usage with default session directory
+   * const agent = await Agent.create({
+   *   apiKey: 'your-api-key',
+   *   baseURL: 'https://api.example.com'
+   * });
+   *
+   * // Custom session directory
+   * const agent = await Agent.create({
+   *   apiKey: 'your-api-key',
+   *   baseURL: 'https://api.example.com',
+   *   sessionDir: './app-sessions'
+   * });
+   * ```
+   */
   static async create(options: AgentOptions): Promise<Agent> {
     // Create Agent instance - configuration resolution and validation now happens in constructor
     const instance = new Agent(options);
@@ -401,7 +455,7 @@ export class Agent {
 
   /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
-    this.messageManager.saveSession();
+    await this.messageManager.saveSession();
     this.abortAIMessage();
     this.abortBashCommand();
     this.abortSlashCommand();
