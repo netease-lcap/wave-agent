@@ -35,12 +35,12 @@
 - [x] T003 [P] Move and rename src/types.ts to src/types/index.ts
 - [x] T004 [P] Move src/hooks/types.ts to src/types/hooks.ts and update internal imports
 - [x] T005 [P] Move src/hooks/matcher.ts to src/utils/matcher.ts and update internal imports
-- [x] T006 [P] Move src/hooks/manager.ts to src/managers/hook-manager.ts and update internal imports to reference new locations
+- [x] T006 [P] Move src/hooks/manager.ts to src/managers/hookManager.ts and update internal imports to reference new locations
 - [x] T007 Create consolidated src/services/hook.ts by merging executor and settings functionality from src/hooks/executor.ts and src/hooks/settings.ts
 - [x] T008 Refactor executor functions in src/services/hook.ts to remove logger dependencies and convert from class methods to standalone functions
 - [x] T009 [P] Move tests/hooks/types.test.ts to tests/types/hooks.test.ts and update imports
 - [x] T010 [P] Move tests/hooks/matcher.test.ts to tests/utils/matcher.test.ts and update imports
-- [x] T011 [P] Move tests/hooks/manager.test.ts to tests/managers/hook-manager.test.ts and update imports
+- [x] T011 [P] Move tests/hooks/manager.test.ts to tests/managers/hookManager.test.ts and update imports
 - [x] T012 Create consolidated tests/services/hook.test.ts by merging executor and settings test functionality from tests/hooks/executor.test.ts and tests/hooks/settings.test.ts
 
 **Checkpoint**: Foundation ready - import path updates can now begin
@@ -55,10 +55,10 @@
 
 ### Implementation for User Story 1
 
-- [x] T013 [US1] Update HookManager imports in src/agent.ts to reference src/managers/hook-manager.ts
-- [x] T014 [P] [US1] Update hook executor function imports in src/managers/hook-manager.ts to reference src/services/hook.ts
-- [x] T015 [P] [US1] Update hook settings function imports in src/managers/hook-manager.ts to reference src/services/hook.ts
-- [x] T016 [P] [US1] Update HookMatcher imports in src/managers/hook-manager.ts to reference src/utils/matcher.ts
+- [x] T013 [US1] Update HookManager imports in src/agent.ts to reference src/managers/hookManager.ts
+- [x] T014 [P] [US1] Update hook executor function imports in src/managers/hookManager.ts to reference src/services/hook.ts
+- [x] T015 [P] [US1] Update hook settings function imports in src/managers/hookManager.ts to reference src/services/hook.ts
+- [x] T016 [P] [US1] Update HookMatcher imports in src/managers/hookManager.ts to reference src/utils/matcher.ts
 - [x] T017 [P] [US1] Update hook type imports across all moved files to reference src/types/hooks.ts
 - [x] T018 [US1] Remove hooks export from src/index.ts (line 20: export * from "./hooks/index.js")
 - [x] T019 [US1] Add individual exports for hook components in src/index.ts referencing their new locations

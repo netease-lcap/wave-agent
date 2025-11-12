@@ -22,7 +22,7 @@ import type {
   ModelConfig,
   Usage,
 } from "./types/index.js";
-import { HookManager } from "./managers/hook-manager.js";
+import { HookManager } from "./managers/hookManager.js";
 import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";

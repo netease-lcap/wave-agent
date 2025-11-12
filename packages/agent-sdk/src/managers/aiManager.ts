@@ -13,7 +13,7 @@ import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
-import type { HookManager } from "./hook-manager.js";
+import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 
 export interface AIManagerCallbacks {

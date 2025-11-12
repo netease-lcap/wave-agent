@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { HookManager } from "../../src/managers/hook-manager.js";
+import { HookManager } from "../../src/managers/hookManager.js";
 import type { IHookMatcher } from "../../src/utils/hookMatcher.js";
 import {
   executeCommand,
