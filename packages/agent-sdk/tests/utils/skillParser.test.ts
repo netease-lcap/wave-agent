@@ -6,7 +6,7 @@ import {
   isValidSkillName,
   formatSkillError,
 } from "../../src/utils/skillParser.js";
-import type { SkillMetadata } from "../../src/types.js";
+import type { SkillMetadata } from "../../src/types/index.js";
 
 // Mock fs module
 vi.mock("fs", () => ({

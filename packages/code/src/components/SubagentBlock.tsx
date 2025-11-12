@@ -4,7 +4,7 @@ import type {
   SubagentBlock as SubagentBlockType,
   Message,
   MessageBlock,
-} from "wave-agent-sdk/src/types.js";
+} from "wave-agent-sdk";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
 
 // Component to render individual message blocks

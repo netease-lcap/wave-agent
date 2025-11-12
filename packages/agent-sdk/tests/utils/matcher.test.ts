@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { HookMatcher } from "../../src/hooks/matcher.js";
+import { HookMatcher } from "../../src/utils/hookMatcher.js";
 
 describe("HookMatcher", () => {
   let matcher: HookMatcher;

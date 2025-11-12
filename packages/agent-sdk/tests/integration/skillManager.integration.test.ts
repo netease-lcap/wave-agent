@@ -3,7 +3,7 @@ import { SkillManager } from "../../src/managers/skillManager.js";
 import { mkdir, writeFile, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import type { Logger, SkillManagerOptions } from "../../src/types.js";
+import type { Logger, SkillManagerOptions } from "../../src/types/index.js";
 
 describe("SkillManager Integration Tests", () => {
   let personalSkillsDir: string;

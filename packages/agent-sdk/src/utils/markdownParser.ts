@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import type { CustomSlashCommandConfig } from "../types.js";
+import type { CustomSlashCommandConfig } from "../types/index.js";
 
 interface ParsedMarkdownFile {
   content: string;

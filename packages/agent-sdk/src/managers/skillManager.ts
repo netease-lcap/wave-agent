@@ -10,7 +10,7 @@ import type {
   SkillToolArgs,
   SkillInvocationContext,
   Logger,
-} from "../types.js";
+} from "../types/index.js";
 import { parseSkillFile, formatSkillError } from "../utils/skillParser.js";
 
 /**

@@ -6,7 +6,7 @@ import type {
   GatewayConfig,
   ModelConfig,
   Usage,
-} from "../types.js";
+} from "../types/index.js";
 import { AIManager } from "./aiManager.js";
 import {
   MessageManager,

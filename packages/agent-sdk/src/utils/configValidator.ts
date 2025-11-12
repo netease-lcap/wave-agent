@@ -3,7 +3,11 @@
  * Validates configuration values for correctness and security
  */
 
-import { GatewayConfig, ConfigurationError, CONFIG_ERRORS } from "../types.js";
+import {
+  GatewayConfig,
+  ConfigurationError,
+  CONFIG_ERRORS,
+} from "../types/index.js";
 
 export class ConfigValidator {
   /**

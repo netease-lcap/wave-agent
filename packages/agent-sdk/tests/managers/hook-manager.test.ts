@@ -1,16 +1,31 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { HookManager } from "../../src/hooks/manager.js";
-import type { IHookMatcher } from "../../src/hooks/matcher.js";
-import type { IHookExecutor } from "../../src/hooks/executor.js";
+import { HookManager } from "../../src/managers/hook-manager.js";
+import type { IHookMatcher } from "../../src/utils/hookMatcher.js";
+import {
+  executeCommand,
+  executeCommands,
+  isCommandSafe,
+} from "../../src/services/hook.js";
 import type {
   PartialHookConfiguration,
   HookExecutionContext,
-} from "../../src/hooks/types.js";
+  HookExecutionResult,
+} from "../../src/types/hooks.js";
+
+// Mock the hook services
+vi.mock("../../src/services/hook.js", () => ({
+  executeCommand: vi.fn(),
+  executeCommands: vi.fn(),
+  isCommandSafe: vi.fn(),
+}));
+
+const mockExecuteCommand = executeCommand as ReturnType<typeof vi.fn>;
+const mockExecuteCommands = executeCommands as ReturnType<typeof vi.fn>;
+const mockIsCommandSafe = isCommandSafe as ReturnType<typeof vi.fn>;
 
 describe("HookManager", () => {
   let manager: HookManager;
   let mockMatcher: IHookMatcher;
-  let mockExecutor: IHookExecutor;
 
   beforeEach(() => {
     // Create mocks
@@ -20,19 +35,21 @@ describe("HookManager", () => {
       getPatternType: vi.fn().mockReturnValue("tool"),
     };
 
-    mockExecutor = {
-      executeCommand: vi.fn().mockResolvedValue({
-        success: true,
-        duration: 100,
-        timedOut: false,
-        exitCode: 0,
-      }),
-      executeCommands: vi.fn().mockResolvedValue([]),
-      isCommandSafe: vi.fn().mockReturnValue(true),
-    };
+    // Setup service mocks
+    mockExecuteCommand.mockResolvedValue({
+      success: true,
+      duration: 100,
+      timedOut: false,
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+    } as HookExecutionResult);
+
+    mockExecuteCommands.mockResolvedValue([]);
+    mockIsCommandSafe.mockReturnValue(true);
 
     // Create manager with mocks
-    manager = new HookManager("/test/workdir", mockMatcher, mockExecutor);
+    manager = new HookManager("/test/workdir", mockMatcher);
   });
 
   describe("Configuration Management", () => {

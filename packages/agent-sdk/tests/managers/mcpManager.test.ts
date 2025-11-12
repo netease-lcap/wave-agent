@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { McpManager } from "../../src/managers/mcpManager.js";
-import type { McpServerConfig, Logger } from "../../src/types.js";
+import type { McpServerConfig, Logger } from "../../src/types/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 

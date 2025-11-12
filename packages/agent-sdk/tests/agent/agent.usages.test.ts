@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
-import type { Usage } from "@/types.js";
+import type { Usage } from "@/types/index.js";
 
 // Mock the session service
 vi.mock("@/services/session", () => ({

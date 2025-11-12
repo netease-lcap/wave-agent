@@ -3,7 +3,7 @@ import {
   calculateTokenSummary,
   displayUsageSummary,
 } from "../../src/utils/usageSummary.js";
-import type { Usage } from "../../../agent-sdk/src/types.js";
+import type { Usage } from "wave-agent-sdk/src/types/index.js";
 
 describe("Usage Summary Utilities", () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;

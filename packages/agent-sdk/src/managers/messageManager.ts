@@ -16,7 +16,7 @@ import {
   type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import type { Logger, Message, Usage } from "../types.js";
+import type { Logger, Message, Usage } from "../types/index.js";
 import {
   cleanupExpiredSessions,
   getLatestSession,

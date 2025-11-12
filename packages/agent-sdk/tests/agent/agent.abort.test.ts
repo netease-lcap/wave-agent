@@ -10,7 +10,7 @@ vi.mock("@/services/session", () => ({
   getLatestSession: vi.fn(() => Promise.resolve(null)),
   cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
 }));
-import type { ErrorBlock } from "@/types.js";
+import type { ErrorBlock } from "@/types/index.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");

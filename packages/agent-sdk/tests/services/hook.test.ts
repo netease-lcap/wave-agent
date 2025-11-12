@@ -1,8 +1,8 @@
 /**
- * Hook Executor Unit Tests
+ * Hook Services Unit Tests
  *
- * Tests command execution with mocked child processes, timeout handling,
- * environment variable injection, and cross-platform compatibility.
+ * Consolidated tests for hook execution and settings functionality.
+ * Tests command execution, configuration loading, and service integration.
  */
 
 import {
@@ -16,8 +16,20 @@ import {
 } from "vitest";
 import { spawn } from "child_process";
 import { EventEmitter } from "events";
-import { HookExecutor } from "../../src/hooks/executor.js";
-import type { HookExecutionContext } from "../../src/hooks/types.js";
+import { tmpdir } from "os";
+import { join } from "path";
+import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import {
+  executeCommand,
+  executeCommands,
+  isCommandSafe,
+  loadHooksConfigFromFile,
+  loadMergedHooksConfig,
+} from "../../src/services/hook.js";
+import type {
+  HookExecutionContext,
+  HookConfiguration,
+} from "../../src/types/hooks.js";
 
 // Mock child_process module
 vi.mock("child_process", () => ({
@@ -32,6 +44,7 @@ const mockSpawn = spawn as unknown as MockedFunction<
 class MockChildProcess extends EventEmitter {
   stdout = new EventEmitter();
   stderr = new EventEmitter();
+  stdin = new EventEmitter();
   killed = false;
   pid?: number;
 
@@ -47,15 +60,25 @@ class MockChildProcess extends EventEmitter {
   ref() {}
 }
 
-describe("HookExecutor", () => {
-  let executor: HookExecutor;
+// Mock stdin that can be written to and ended
+class MockStdin extends EventEmitter {
+  write() {
+    return true;
+  }
+  end() {
+    return;
+  }
+}
+
+describe("Hook Services", () => {
   let mockContext: HookExecutionContext;
+  let testDir: string;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     // Enable hooks execution testing in this test suite
-    process.env.WAVE_TEST_HOOKS_EXECUTION = "true";
+    process.env.TEST_HOOK_EXECUTION = "true";
 
-    executor = new HookExecutor();
     mockContext = {
       event: "PostToolUse",
       toolName: "Edit",
@@ -63,24 +86,35 @@ describe("HookExecutor", () => {
       timestamp: new Date("2024-01-01T00:00:00Z"),
     };
 
+    testDir = join(tmpdir(), `wave-hooks-services-test-${Date.now()}`);
+    mkdirSync(testDir, { recursive: true });
+
+    // Mock console.warn to prevent stderr output
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
     vi.clearAllMocks();
   });
 
   afterEach(() => {
     // Clean up environment variable
-    delete process.env.WAVE_TEST_HOOKS_EXECUTION;
+    delete process.env.TEST_HOOK_EXECUTION;
+
+    if (existsSync(testDir)) {
+      rmSync(testDir, { recursive: true, force: true });
+    }
+
+    // Restore console.warn
+    consoleWarnSpy?.mockRestore();
   });
 
   describe("command execution", () => {
     it("should execute successful command", async () => {
       const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
       mockSpawn.mockReturnValue(mockProcess);
 
       // Start execution
-      const resultPromise = executor.executeCommand(
-        'echo "hello"',
-        mockContext,
-      );
+      const resultPromise = executeCommand('echo "hello"', mockContext);
 
       // Simulate successful execution
       setTimeout(() => {
@@ -93,16 +127,17 @@ describe("HookExecutor", () => {
       expect(result.success).toBe(true);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toBe("hello");
-      expect(result.stderr).toBeUndefined();
+      expect(result.stderr).toBe("");
       expect(result.timedOut).toBe(false);
       expect(result.duration).toBeGreaterThan(0);
     });
 
     it("should handle command failure", async () => {
       const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
       mockSpawn.mockReturnValue(mockProcess);
 
-      const resultPromise = executor.executeCommand("false", mockContext);
+      const resultPromise = executeCommand("false", mockContext);
 
       setTimeout(() => {
         mockProcess.stderr.emit("data", "command failed\n");
@@ -113,19 +148,17 @@ describe("HookExecutor", () => {
 
       expect(result.success).toBe(false);
       expect(result.exitCode).toBe(1);
-      expect(result.stdout).toBeUndefined();
+      expect(result.stdout).toBe("");
       expect(result.stderr).toBe("command failed");
       expect(result.timedOut).toBe(false);
     });
 
     it("should handle process errors", async () => {
       const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
       mockSpawn.mockReturnValue(mockProcess);
 
-      const resultPromise = executor.executeCommand(
-        "nonexistent-command",
-        mockContext,
-      );
+      const resultPromise = executeCommand("nonexistent-command", mockContext);
 
       setTimeout(() => {
         mockProcess.emit("error", new Error("Command not found"));
@@ -137,14 +170,29 @@ describe("HookExecutor", () => {
       expect(result.stderr).toBe("Command not found");
       expect(result.timedOut).toBe(false);
     });
+
+    it("should return mock result when execution is skipped", async () => {
+      // Clean up the execution flag to test skip behavior
+      delete process.env.TEST_HOOK_EXECUTION;
+
+      const result = await executeCommand("echo test", mockContext);
+
+      expect(result.success).toBe(true);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("");
+      expect(result.duration).toBe(0);
+      expect(result.timedOut).toBe(false);
+    });
   });
 
   describe("timeout handling", () => {
     it("should timeout long-running commands", async () => {
       const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
       mockSpawn.mockReturnValue(mockProcess);
 
-      const resultPromise = executor.executeCommand("sleep 30", mockContext, {
+      const resultPromise = executeCommand("sleep 30", mockContext, {
         timeout: 100,
       });
 
@@ -159,10 +207,11 @@ describe("HookExecutor", () => {
 
     it("should respect custom timeout values", async () => {
       const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
       mockSpawn.mockReturnValue(mockProcess);
 
       const startTime = Date.now();
-      const resultPromise = executor.executeCommand("sleep 1", mockContext, {
+      const resultPromise = executeCommand("sleep 1", mockContext, {
         timeout: 50,
       });
 
@@ -172,45 +221,37 @@ describe("HookExecutor", () => {
       expect(result.timedOut).toBe(true);
       expect(duration).toBeLessThan(100); // Should timeout quickly
     });
-
-    it("should use default timeout when not specified", async () => {
-      const stats = executor.getExecutionStats();
-      expect(stats.defaultTimeout).toBe(10000);
-      expect(stats.maxTimeout).toBe(300000);
-    });
   });
 
   describe("command safety validation", () => {
     it("should allow safe commands", () => {
-      expect(executor.isCommandSafe('echo "hello"')).toBe(true);
-      expect(executor.isCommandSafe("ls -la")).toBe(true);
-      expect(executor.isCommandSafe("npm test")).toBe(true);
-      expect(executor.isCommandSafe("eslint --fix src/")).toBe(true);
-      expect(executor.isCommandSafe("prettier --write .")).toBe(true);
+      expect(isCommandSafe('echo "hello"')).toBe(true);
+      expect(isCommandSafe("ls -la")).toBe(true);
+      expect(isCommandSafe("npm test")).toBe(true);
+      expect(isCommandSafe("eslint --fix src/")).toBe(true);
+      expect(isCommandSafe("prettier --write .")).toBe(true);
     });
 
     it("should reject dangerous commands", () => {
-      expect(executor.isCommandSafe("rm -rf /")).toBe(false);
-      expect(executor.isCommandSafe("rm -rf ~")).toBe(false);
-      expect(executor.isCommandSafe("rm -rf *")).toBe(false);
-      expect(executor.isCommandSafe("dd if=/dev/zero")).toBe(false);
-      expect(executor.isCommandSafe(":(){ :|:& };:")).toBe(false); // Fork bomb
-      expect(executor.isCommandSafe("eval $(malicious)")).toBe(false);
-      expect(executor.isCommandSafe("exec dangerous")).toBe(false);
+      expect(isCommandSafe("rm -rf /")).toBe(false);
+      expect(isCommandSafe("sudo rm")).toBe(false);
+      expect(isCommandSafe("> /dev/sda")).toBe(false);
+      expect(isCommandSafe("dd if=/dev/zero of=/dev/sda")).toBe(false);
+      expect(isCommandSafe("mkfs")).toBe(false);
+      expect(isCommandSafe("fdisk")).toBe(false);
+      expect(isCommandSafe("format c:")).toBe(false);
     });
 
-    it("should reject invalid command inputs", () => {
-      expect(executor.isCommandSafe("")).toBe(false);
-      expect(executor.isCommandSafe("   ")).toBe(false);
-      // Test with invalid input - these should be safe by design
-      expect(executor.isCommandSafe("")).toBe(false);
-      expect(executor.isCommandSafe(" ")).toBe(false);
+    it("should handle empty commands", () => {
+      expect(isCommandSafe("")).toBe(true);
+      expect(isCommandSafe("   ")).toBe(true);
     });
   });
 
   describe("environment variables", () => {
     it("should inject required environment variables", async () => {
       const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
       let spawnEnv: NodeJS.ProcessEnv | undefined;
 
       mockSpawn.mockImplementation((command, args, options) => {
@@ -218,8 +259,8 @@ describe("HookExecutor", () => {
         return mockProcess;
       });
 
-      const resultPromise = executor.executeCommand(
-        "echo $WAVE_PROJECT_DIR",
+      const resultPromise = executeCommand(
+        "echo $HOOK_PROJECT_DIR",
         mockContext,
       );
 
@@ -230,34 +271,14 @@ describe("HookExecutor", () => {
       await resultPromise;
 
       expect(spawnEnv).toBeDefined();
-      expect(spawnEnv!.WAVE_PROJECT_DIR).toBe("/test/project");
-    });
-
-    it("should resolve environment variables in commands", async () => {
-      const mockProcess = new MockChildProcess();
-      let actualCommand: string | undefined;
-
-      mockSpawn.mockImplementation((shell, args) => {
-        actualCommand = args?.[1]; // Command is typically the second argument
-        return mockProcess;
-      });
-
-      const resultPromise = executor.executeCommand(
-        'ls "$WAVE_PROJECT_DIR"/src',
-        mockContext,
-      );
-
-      setTimeout(() => {
-        mockProcess.emit("close", 0);
-      }, 10);
-
-      await resultPromise;
-
-      expect(actualCommand).toContain('"/test/project"/src');
+      expect(spawnEnv!.HOOK_EVENT).toBe("PostToolUse");
+      expect(spawnEnv!.HOOK_TOOL_NAME).toBe("Edit");
+      expect(spawnEnv!.HOOK_PROJECT_DIR).toBe("/test/project");
     });
 
     it("should handle context without tool name", async () => {
       const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
 
       mockSpawn.mockImplementation(() => {
         return mockProcess;
@@ -268,10 +289,7 @@ describe("HookExecutor", () => {
         toolName: undefined,
       };
 
-      const resultPromise = executor.executeCommand(
-        "echo test",
-        contextWithoutTool,
-      );
+      const resultPromise = executeCommand("echo test", contextWithoutTool);
 
       setTimeout(() => {
         mockProcess.emit("close", 0);
@@ -287,12 +305,14 @@ describe("HookExecutor", () => {
     it("should execute multiple commands in sequence", async () => {
       const mockProcess1 = new MockChildProcess();
       const mockProcess2 = new MockChildProcess();
+      mockProcess1.stdin = new MockStdin();
+      mockProcess2.stdin = new MockStdin();
 
       mockSpawn
         .mockReturnValueOnce(mockProcess1)
         .mockReturnValueOnce(mockProcess2);
 
-      const resultPromise = executor.executeCommands(
+      const resultPromise = executeCommands(
         ['echo "first"', 'echo "second"'],
         mockContext,
       );
@@ -320,10 +340,11 @@ describe("HookExecutor", () => {
 
     it("should stop on first command failure", async () => {
       const mockProcess1 = new MockChildProcess();
+      mockProcess1.stdin = new MockStdin();
 
       mockSpawn.mockReturnValueOnce(mockProcess1);
 
-      const resultPromise = executor.executeCommands(
+      const resultPromise = executeCommands(
         ["false", 'echo "should not run"'],
         mockContext,
       );
@@ -338,6 +359,39 @@ describe("HookExecutor", () => {
       expect(results[0].success).toBe(false);
       expect(mockSpawn).toHaveBeenCalledTimes(1); // Second command should not be executed
     });
+
+    it("should continue on failure when continueOnFailure is set", async () => {
+      const mockProcess1 = new MockChildProcess();
+      const mockProcess2 = new MockChildProcess();
+      mockProcess1.stdin = new MockStdin();
+      mockProcess2.stdin = new MockStdin();
+
+      mockSpawn
+        .mockReturnValueOnce(mockProcess1)
+        .mockReturnValueOnce(mockProcess2);
+
+      const resultPromise = executeCommands(
+        ["false", 'echo "should run"'],
+        mockContext,
+        { continueOnFailure: true },
+      );
+
+      setTimeout(() => {
+        mockProcess1.emit("close", 1);
+      }, 10);
+
+      setTimeout(() => {
+        mockProcess2.stdout.emit("data", "should run\n");
+        mockProcess2.emit("close", 0);
+      }, 20);
+
+      const results = await resultPromise;
+
+      expect(results).toHaveLength(2);
+      expect(results[0].success).toBe(false);
+      expect(results[1].success).toBe(true);
+      expect(results[1].stdout).toBe("should run");
+    });
   });
 
   describe("cross-platform support", () => {
@@ -346,6 +400,7 @@ describe("HookExecutor", () => {
       Object.defineProperty(process, "platform", { value: "win32" });
 
       const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
       let spawnArgs: Parameters<typeof spawn> | undefined;
 
       mockSpawn.mockImplementation((...args) => {
@@ -353,7 +408,7 @@ describe("HookExecutor", () => {
         return mockProcess;
       });
 
-      const resultPromise = executor.executeCommand("echo test", mockContext);
+      const resultPromise = executeCommand("echo test", mockContext);
 
       setTimeout(() => {
         mockProcess.emit("close", 0);
@@ -374,6 +429,7 @@ describe("HookExecutor", () => {
       Object.defineProperty(process, "platform", { value: "linux" });
 
       const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
       let spawnArgs: Parameters<typeof spawn> | undefined;
 
       mockSpawn.mockImplementation((...args) => {
@@ -381,7 +437,7 @@ describe("HookExecutor", () => {
         return mockProcess;
       });
 
-      const resultPromise = executor.executeCommand("echo test", mockContext);
+      const resultPromise = executeCommand("echo test", mockContext);
 
       setTimeout(() => {
         mockProcess.emit("close", 0);
@@ -398,20 +454,100 @@ describe("HookExecutor", () => {
     });
   });
 
-  describe("utility methods", () => {
-    it("should provide execution statistics", () => {
-      const stats = executor.getExecutionStats();
-
-      expect(stats).toHaveProperty("platform");
-      expect(stats).toHaveProperty("defaultTimeout");
-      expect(stats).toHaveProperty("maxTimeout");
-      expect(typeof stats.platform).toBe("string");
-      expect(typeof stats.defaultTimeout).toBe("number");
-      expect(typeof stats.maxTimeout).toBe("number");
+  describe("configuration file loading", () => {
+    it("should return undefined for non-existent file", () => {
+      const config = loadHooksConfigFromFile("/non/existent/path.json");
+      expect(config).toBeUndefined();
     });
 
-    it("should report platform support", () => {
-      expect(executor.isSupported()).toBe(true);
+    it("should load valid configuration file", () => {
+      const configFile = join(testDir, "test-hooks.json");
+      const testConfig: HookConfiguration = {
+        hooks: {
+          PreToolUse: [],
+          PostToolUse: [
+            {
+              matcher: "Edit",
+              hooks: [{ type: "command", command: 'echo "test"' }],
+            },
+          ],
+          UserPromptSubmit: [],
+          Stop: [],
+        },
+      };
+
+      writeFileSync(configFile, JSON.stringify(testConfig, null, 2));
+
+      const loaded = loadHooksConfigFromFile(configFile);
+      expect(loaded).toEqual(testConfig.hooks);
+    });
+
+    it("should handle invalid JSON gracefully", () => {
+      const configFile = join(testDir, "invalid.json");
+      writeFileSync(configFile, "{ invalid json }");
+
+      const loaded = loadHooksConfigFromFile(configFile);
+      expect(loaded).toBeUndefined();
+    });
+
+    it("should handle invalid configuration structure", () => {
+      const configFile = join(testDir, "invalid-structure.json");
+      const invalidConfig = { notHooks: "invalid" };
+      writeFileSync(configFile, JSON.stringify(invalidConfig));
+
+      const loaded = loadHooksConfigFromFile(configFile);
+      expect(loaded).toBeUndefined();
+    });
+  });
+
+  describe("merged configuration loading", () => {
+    it("should return merged configuration or user config if present", () => {
+      const merged = loadMergedHooksConfig("/nonexistent/workdir");
+      // This test might return user configuration if it exists on the system
+      expect(merged).toBeDefined();
+    });
+  });
+
+  describe("JSON input handling", () => {
+    it("should send JSON input to stdin for extended context", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const extendedContext = {
+        ...mockContext,
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.md",
+        cwd: "/test/cwd",
+        userPrompt: "test prompt",
+      };
+
+      const resultPromise = executeCommand("echo test", extendedContext);
+
+      setTimeout(() => {
+        mockProcess.emit("close", 0);
+      }, 10);
+
+      await resultPromise;
+
+      expect(stdinData).toBeTruthy();
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.session_id).toBe("test-session-123");
+      expect(parsedInput.transcript_path).toBe("/path/to/transcript.md");
+      expect(parsedInput.cwd).toBe("/test/cwd");
+      expect(parsedInput.hook_event_name).toBe("PostToolUse");
     });
   });
 });

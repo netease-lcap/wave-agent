@@ -5,7 +5,7 @@ import type {
   SkillParseOptions,
   SkillFrontmatter,
   SkillMetadata,
-} from "../types.js";
+} from "../types/index.js";
 
 /**
  * Parse a SKILL.md file and validate its contents

@@ -10,7 +10,7 @@ import {
   completeCommandInMessage,
   addUserMessageToMessages,
 } from "@/utils/messageOperations.js";
-import type { Message } from "@/types.js";
+import type { Message } from "@/types/index.js";
 
 describe("addUserMessageToMessages", () => {
   it("should add user message with text content only", () => {

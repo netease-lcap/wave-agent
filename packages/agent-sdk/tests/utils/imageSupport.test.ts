@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { updateToolBlockInMessage } from "@/utils/messageOperations.js";
 import { convertMessagesForAPI } from "@/utils/convertMessagesForAPI.js";
-import type { Message } from "@/types.js";
+import type { Message } from "@/types/index.js";
 
 describe("Image Support in Tool Results", () => {
   it("should handle tool result with images in updateToolBlockInMessage", () => {

@@ -17,11 +17,14 @@ import {
   HookConfigurationError,
   isValidHookEvent,
   isValidHookEventConfig,
-} from "./types.js";
-import { type IHookMatcher, HookMatcher } from "./matcher.js";
-import { type IHookExecutor, HookExecutor } from "./executor.js";
-import { loadMergedHooksConfig } from "./settings.js";
-import type { Logger } from "../types.js";
+} from "../types/hooks.js";
+import { type IHookMatcher, HookMatcher } from "../utils/hookMatcher.js";
+import {
+  executeCommand,
+  isCommandSafe,
+  loadMergedHooksConfig,
+} from "../services/hook.js";
+import type { Logger } from "../types/index.js";
 
 export interface IHookManager {
   // Load configuration from settings
@@ -52,22 +55,16 @@ export interface IHookManager {
 export class HookManager implements IHookManager {
   private configuration: PartialHookConfiguration | undefined;
   private readonly matcher: IHookMatcher;
-  private readonly executor: IHookExecutor;
   private readonly logger?: Logger;
   private readonly workdir: string;
 
   constructor(
     workdir: string,
     matcher: IHookMatcher = new HookMatcher(),
-    executor?: IHookExecutor,
     logger?: Logger,
   ) {
     this.workdir = workdir;
     this.matcher = matcher;
-    // Create executor with logger if provided, or use passed executor, or create default
-    this.executor = logger
-      ? new HookExecutor(logger)
-      : executor || new HookExecutor();
     this.logger = logger;
   }
 
@@ -114,17 +111,19 @@ export class HookManager implements IHookManager {
       this.logger?.debug(`[HookManager] Merged config result:`, mergedConfig);
       this.configuration = mergedConfig;
 
-      // Validate the loaded configuration
-      const validation = this.validatePartialConfiguration(mergedConfig);
-      if (!validation.valid) {
-        throw new HookConfigurationError(
-          "filesystem settings",
-          validation.errors,
-        );
+      // Validate the loaded configuration if it exists
+      if (mergedConfig) {
+        const validation = this.validatePartialConfiguration(mergedConfig);
+        if (!validation.valid) {
+          throw new HookConfigurationError(
+            "filesystem settings",
+            validation.errors,
+          );
+        }
       }
 
       this.logger?.debug(
-        `[HookManager] Configuration loaded successfully with ${Object.keys(mergedConfig).length} event types`,
+        `[HookManager] Configuration loaded successfully with ${Object.keys(mergedConfig || {}).length} event types`,
       );
     } catch (error) {
       // If loading fails, start with undefined configuration (no hooks)
@@ -219,10 +218,7 @@ export class HookManager implements IHookManager {
             `[HookManager] Executing command ${commandIndex + 1}/${config.hooks.length} in configuration ${configIndex + 1}`,
           );
 
-          const result = await this.executor.executeCommand(
-            hookCommand.command,
-            context,
-          );
+          const result = await executeCommand(hookCommand.command, context);
           results.push(result);
 
           // Report individual command result
@@ -556,7 +552,7 @@ export class HookManager implements IHookManager {
 
     // Validate commands
     config.hooks.forEach((hookCommand, cmdIndex) => {
-      if (!this.executor.isCommandSafe(hookCommand.command)) {
+      if (!isCommandSafe(hookCommand.command)) {
         errors.push(
           `${prefix}.hooks[${cmdIndex}]: Command may be unsafe: ${hookCommand.command}`,
         );

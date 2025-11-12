@@ -8,7 +8,7 @@ import {
   ModelConfig,
   ConfigurationError,
   CONFIG_ERRORS,
-} from "../types.js";
+} from "../types/index.js";
 
 export class ConfigResolver {
   /**

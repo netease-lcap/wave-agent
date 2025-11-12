@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from "fs";
 import { join, extname, basename } from "path";
 import { homedir } from "os";
-import type { CustomSlashCommand } from "../types.js";
+import type { CustomSlashCommand } from "../types/index.js";
 import { parseMarkdownFile } from "./markdownParser.js";
 
 /**

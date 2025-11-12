@@ -10,7 +10,7 @@ vi.mock("@/services/session", () => ({
   getLatestSession: vi.fn(() => Promise.resolve(null)),
   cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
 }));
-import { Message } from "@/types.js";
+import { Message } from "@/types/index.js";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
 

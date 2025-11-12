@@ -21,7 +21,7 @@ import {
   sessionExists,
   type SessionData,
 } from "@/services/session.js";
-import type { Message } from "@/types.js";
+import type { Message } from "@/types/index.js";
 
 // Mock fs and os modules
 vi.mock("fs", () => ({

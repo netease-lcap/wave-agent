@@ -2,6 +2,7 @@
 export * from "./services/aiService.js";
 export * from "./services/memory.js";
 export * from "./services/session.js";
+export * from "./services/hook.js";
 
 // Export main agent
 export * from "./agent.js";
@@ -15,9 +16,7 @@ export * from "./utils/messageOperations.js";
 export * from "./utils/path.js";
 export * from "./utils/stringUtils.js";
 export * from "./utils/customCommands.js";
-
-// Export hooks system
-export * from "./hooks/index.js";
+export * from "./utils/hookMatcher.js";
 
 // Export types
-export * from "./types.js";
+export * from "./types/index.js";

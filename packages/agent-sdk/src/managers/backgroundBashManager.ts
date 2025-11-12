@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import type { BackgroundShell } from "../types.js";
+import type { BackgroundShell } from "../types/index.js";
 
 export interface BackgroundBashManagerCallbacks {
   onShellsChange?: (shells: BackgroundShell[]) => void;

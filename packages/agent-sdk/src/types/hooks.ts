@@ -68,6 +68,7 @@ export interface HookExecutionResult {
 export interface HookExecutionOptions {
   timeout?: number; // milliseconds, default 10000
   cwd?: string; // working directory, defaults to projectDir
+  continueOnFailure?: boolean; // continue executing remaining hooks on failure
 }
 
 // Validation result for hook configuration
