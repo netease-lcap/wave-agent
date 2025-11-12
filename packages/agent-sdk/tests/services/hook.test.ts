@@ -16,9 +16,7 @@ import {
 } from "vitest";
 import { spawn } from "child_process";
 import { EventEmitter } from "events";
-import { tmpdir } from "os";
-import { join } from "path";
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 
 import {
   executeCommand,
@@ -86,7 +84,6 @@ class MockStdin extends EventEmitter {
 
 describe("Hook Services", () => {
   let mockContext: HookExecutionContext;
-  let testDir: string;
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
@@ -105,9 +102,6 @@ describe("Hook Services", () => {
       timestamp: new Date("2024-01-01T00:00:00Z"),
     };
 
-    testDir = join(tmpdir(), `wave-hooks-services-test-${Date.now()}`);
-    mkdirSync(testDir, { recursive: true });
-
     // Mock console.warn to prevent stderr output
     consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
@@ -117,10 +111,6 @@ describe("Hook Services", () => {
   afterEach(() => {
     // Clean up environment variable
     delete process.env.TEST_HOOK_EXECUTION;
-
-    if (existsSync(testDir)) {
-      rmSync(testDir, { recursive: true, force: true });
-    }
 
     // Restore console.warn
     consoleWarnSpy?.mockRestore();
@@ -474,13 +464,27 @@ describe("Hook Services", () => {
   });
 
   describe("configuration file loading", () => {
+    beforeEach(() => {
+      // Reset fs mocks for this test block
+      mockExistsSync.mockReset();
+      mockReadFileSync.mockReset();
+    });
+
+    afterEach(async () => {
+      // Restore real fs functions after each test
+      const fs = await vi.importActual<typeof import("fs")>("fs");
+      mockExistsSync.mockImplementation(fs.existsSync);
+      mockReadFileSync.mockImplementation(fs.readFileSync);
+    });
+
     it("should return undefined for non-existent file", () => {
+      mockExistsSync.mockReturnValue(false);
+
       const config = loadHooksConfigFromFile("/non/existent/path.json");
       expect(config).toBeUndefined();
     });
 
     it("should load valid configuration file", () => {
-      const configFile = join(testDir, "test-hooks.json");
       const testConfig: HookConfiguration = {
         hooks: {
           PreToolUse: [],
@@ -495,25 +499,30 @@ describe("Hook Services", () => {
         },
       };
 
-      writeFileSync(configFile, JSON.stringify(testConfig, null, 2));
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(testConfig, null, 2));
 
+      const configFile = "/test/test-hooks.json";
       const loaded = loadHooksConfigFromFile(configFile);
       expect(loaded).toEqual(testConfig.hooks);
     });
 
     it("should handle invalid JSON gracefully", () => {
-      const configFile = join(testDir, "invalid.json");
-      writeFileSync(configFile, "{ invalid json }");
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue("{ invalid json }");
 
+      const configFile = "/test/invalid.json";
       const loaded = loadHooksConfigFromFile(configFile);
       expect(loaded).toBeUndefined();
     });
 
     it("should handle invalid configuration structure", () => {
-      const configFile = join(testDir, "invalid-structure.json");
       const invalidConfig = { notHooks: "invalid" };
-      writeFileSync(configFile, JSON.stringify(invalidConfig));
 
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(invalidConfig));
+
+      const configFile = "/test/invalid-structure.json";
       const loaded = loadHooksConfigFromFile(configFile);
       expect(loaded).toBeUndefined();
     });
