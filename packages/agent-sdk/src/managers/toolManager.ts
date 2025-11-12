@@ -14,7 +14,7 @@ import { createTaskTool } from "../tools/taskTool.js";
 import { createSkillTool } from "../tools/skillTool.js";
 import { McpManager } from "./mcpManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
-import type { Logger } from "../types.js";
+import type { Logger } from "../types/index.js";
 import type { SubagentManager } from "./subagentManager.js";
 import type { SkillManager } from "./skillManager.js";
 

@@ -5,7 +5,7 @@ import type {
   SkillManagerOptions,
   SkillMetadata,
   Skill,
-} from "../../src/types.js";
+} from "../../src/types/index.js";
 
 describe("SkillManager", () => {
   let skillManager: SkillManager;

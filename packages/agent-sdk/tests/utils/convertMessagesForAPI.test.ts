@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { convertMessagesForAPI } from "../../src/utils/convertMessagesForAPI.js";
-import type { Message } from "../../src/types.js";
+import type { Message } from "../../src/types/index.js";
 
 describe("convertMessagesForAPI", () => {
   it("should correctly convert user and assistant messages", () => {

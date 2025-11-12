@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { createSkillTool } from "../../src/tools/skillTool.js";
-import type { Logger } from "../../src/types.js";
+import type { Logger } from "../../src/types/index.js";
 
 describe("createSkillTool", () => {
   let skillManager: SkillManager;

@@ -16,7 +16,7 @@ import {
   type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import type { Logger, Message, Usage } from "../types.js";
+import type { Logger, Message, Usage } from "../types/index.js";
 import {
   cleanupExpiredSessions,
   getLatestSession,
@@ -168,7 +168,7 @@ export class MessageManager {
     try {
       await cleanupExpiredSessions(this.workdir, this.sessionDir);
     } catch (error) {
-      console.warn("Failed to cleanup expired sessions:", error);
+      this.logger?.warn("Failed to cleanup expired sessions:", error);
     }
 
     if (!restoreSessionId && !continueLastSession) {

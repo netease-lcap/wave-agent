@@ -1,6 +1,10 @@
 import type { MessageManager } from "./messageManager.js";
 import type { AIManager } from "./aiManager.js";
-import type { SlashCommand, CustomSlashCommand, Logger } from "../types.js";
+import type {
+  SlashCommand,
+  CustomSlashCommand,
+  Logger,
+} from "../types/index.js";
 import { loadCustomSlashCommands } from "../utils/customCommands.js";
 
 import {

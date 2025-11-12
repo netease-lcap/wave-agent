@@ -21,7 +21,7 @@ import {
   sessionExists,
   type SessionData,
 } from "@/services/session.js";
-import type { Message } from "@/types.js";
+import type { Message } from "@/types/index.js";
 
 // Mock fs and os modules
 vi.mock("fs", () => ({
@@ -507,19 +507,11 @@ describe("Session Service", () => {
         .mockResolvedValueOnce(JSON.stringify(validSessionData))
         .mockRejectedValueOnce(new Error("Corrupted file"));
 
-      const consoleWarnSpy = vi
-        .spyOn(console, "warn")
-        .mockImplementation(() => {});
-
       const result = await listSessions(mockWorkdir);
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("session_valid");
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        "Skipping corrupted session file: session_corrupted.json",
-      );
-
-      consoleWarnSpy.mockRestore();
+      // Corrupted files are silently skipped, no console.warn expected
     });
 
     it("should handle readdir error", async () => {
@@ -674,18 +666,11 @@ describe("Session Service", () => {
       mockFs.readFile.mockResolvedValue(JSON.stringify(expiredSession));
       mockFs.unlink.mockRejectedValue(new Error("Permission denied"));
 
-      const consoleWarnSpy = vi
-        .spyOn(console, "warn")
-        .mockImplementation(() => {});
-
       const result = await cleanupExpiredSessions(mockWorkdir);
 
       expect(result).toBe(0);
-      expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to delete expired session"),
-      );
+      // Failed deletions are silently handled, no console.warn expected
 
-      consoleWarnSpy.mockRestore();
       vi.useRealTimers();
     });
   });

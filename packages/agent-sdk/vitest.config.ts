@@ -24,7 +24,6 @@ export default defineConfig(() => {
         // Set shorter debounce time to accelerate tests
         FILE_SELECTOR_DEBOUNCE_MS: "50",
       },
-      maxWorkers: 1,
     },
     resolve: {
       alias: {

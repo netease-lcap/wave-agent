@@ -1,4 +1,4 @@
-import type { Message, Usage } from "../types.js";
+import type { Message, Usage } from "../types/index.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";

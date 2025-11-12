@@ -3,7 +3,7 @@ import type {
   CompressMessagesOptions,
   CallAgentOptions,
 } from "@/services/aiService.js";
-import type { GatewayConfig, ModelConfig } from "@/types.js";
+import type { GatewayConfig, ModelConfig } from "@/types/index.js";
 
 // Test configuration constants
 const TEST_GATEWAY_CONFIG: GatewayConfig = {

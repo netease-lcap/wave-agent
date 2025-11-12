@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { addMemoryBlockToMessage } from "@/utils/messageOperations.js";
-import type { Message } from "@/types.js";
+import type { Message } from "@/types/index.js";
 
 describe("Memory Display Fixes", () => {
   it("should add memory block with correct storage path for project memory", () => {

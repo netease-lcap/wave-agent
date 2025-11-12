@@ -11,7 +11,7 @@ import type {
   McpConfig,
   McpTool,
   McpServerStatus,
-} from "../types.js";
+} from "../types/index.js";
 
 interface McpConnection {
   client: Client;

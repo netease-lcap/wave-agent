@@ -1,4 +1,4 @@
-import type { Message } from "../types.js";
+import type { Message } from "../types/index.js";
 import { convertImageToBase64 } from "./messageOperations.js";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import { stripAnsiColors } from "./stringUtils.js";

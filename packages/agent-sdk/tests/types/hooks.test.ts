@@ -15,7 +15,7 @@ import {
   isValidHookEventConfig,
   HookExecutionError,
   HookConfigurationError,
-} from "../../src/hooks/types.js";
+} from "../../src/types/hooks.js";
 
 describe("Hook Types", () => {
   describe("isValidHookEvent", () => {

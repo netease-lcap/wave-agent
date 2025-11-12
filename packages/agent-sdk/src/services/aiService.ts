@@ -5,7 +5,7 @@ import {
   ChatCompletionMessageParam,
   ChatCompletionFunctionTool,
 } from "openai/resources.js";
-import type { GatewayConfig, ModelConfig } from "../types.js";
+import type { GatewayConfig, ModelConfig } from "../types/index.js";
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";

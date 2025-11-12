@@ -13,7 +13,7 @@ import {
   type BackgroundBashManagerCallbacks,
 } from "./managers/backgroundBashManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
-import type { SlashCommand, CustomSlashCommand } from "./types.js";
+import type { SlashCommand, CustomSlashCommand } from "./types/index.js";
 import type {
   Message,
   Logger,
@@ -21,8 +21,8 @@ import type {
   GatewayConfig,
   ModelConfig,
   Usage,
-} from "./types.js";
-import { HookManager } from "./hooks/index.js";
+} from "./types/index.js";
+import { HookManager } from "./managers/hookManager.js";
 import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
@@ -145,12 +145,7 @@ export class Agent {
       logger: this.logger,
     }); // Initialize tool registry, pass MCP manager
 
-    this.hookManager = new HookManager(
-      this.workdir,
-      undefined,
-      undefined,
-      this.logger,
-    ); // Initialize hooks manager
+    this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
 
     // Initialize MessageManager
     this.messageManager = new MessageManager({

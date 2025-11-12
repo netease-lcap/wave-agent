@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import type { Message } from "../types.js";
+import type { Message } from "../types/index.js";
 
 export interface SessionData {
   id: string;
@@ -235,8 +235,8 @@ export async function listSessions(
           latestTotalTokens: sessionData.metadata.latestTotalTokens,
         });
       } catch {
-        // Ignore corrupted session files
-        console.warn(`Skipping corrupted session file: ${file}`);
+        // Skip corrupted session files and continue processing others
+        continue;
       }
     }
 
@@ -304,10 +304,9 @@ export async function cleanupExpiredSessions(
       try {
         await deleteSession(session.id, sessionDir);
         deletedCount++;
-      } catch (error) {
-        console.warn(
-          `Failed to delete expired session ${session.id}: ${error}`,
-        );
+      } catch {
+        // Skip failed deletions and continue processing other sessions
+        continue;
       }
     }
   }

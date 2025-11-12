@@ -2,14 +2,19 @@ import { callAgent, compressMessages } from "../services/aiService.js";
 import { getMessagesToCompress } from "../utils/messageOperations.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import * as memory from "../services/memory.js";
-import type { Logger, GatewayConfig, ModelConfig, Usage } from "../types.js";
+import type {
+  Logger,
+  GatewayConfig,
+  ModelConfig,
+  Usage,
+} from "../types/index.js";
 import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
-import type { HookManager } from "../hooks/index.js";
-import type { ExtendedHookExecutionContext } from "../hooks/types.js";
+import type { HookManager } from "./hookManager.js";
+import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;

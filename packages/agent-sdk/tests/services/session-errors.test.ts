@@ -4,7 +4,7 @@ import {
   ensureSessionDir,
   resolveSessionDir,
 } from "../../src/services/session.js";
-import type { Message } from "../../src/types.js";
+import type { Message } from "../../src/types/index.js";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
