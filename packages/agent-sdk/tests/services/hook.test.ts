@@ -62,8 +62,8 @@ class MockChildProcess extends EventEmitter {
 
   kill(signal?: string) {
     this.killed = true;
-    // Simulate process termination
-    setTimeout(() => this.emit("close", signal === "SIGKILL" ? -9 : -15), 10);
+    // Simulate process termination immediately
+    setImmediate(() => this.emit("close", signal === "SIGKILL" ? -9 : -15));
   }
 
   // Add other ChildProcess methods as no-ops to satisfy the interface
@@ -86,12 +86,7 @@ describe("Hook Services", () => {
   let mockContext: HookExecutionContext;
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(async () => {
-    // Set up real fs functions as default for most tests
-    const fs = await vi.importActual<typeof import("fs")>("fs");
-    mockExistsSync.mockImplementation(fs.existsSync);
-    mockReadFileSync.mockImplementation(fs.readFileSync);
-
+  beforeEach(() => {
     // Enable hooks execution testing in this test suite
     process.env.TEST_HOOK_EXECUTION = "true";
 
@@ -126,10 +121,10 @@ describe("Hook Services", () => {
       const resultPromise = executeCommand('echo "hello"', mockContext);
 
       // Simulate successful execution
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess.stdout.emit("data", "hello\n");
         mockProcess.emit("close", 0);
-      }, 10);
+      });
 
       const result = await resultPromise;
 
@@ -148,10 +143,10 @@ describe("Hook Services", () => {
 
       const resultPromise = executeCommand("false", mockContext);
 
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess.stderr.emit("data", "command failed\n");
         mockProcess.emit("close", 1);
-      }, 10);
+      });
 
       const result = await resultPromise;
 
@@ -169,9 +164,9 @@ describe("Hook Services", () => {
 
       const resultPromise = executeCommand("nonexistent-command", mockContext);
 
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess.emit("error", new Error("Command not found"));
-      }, 10);
+      });
 
       const result = await resultPromise;
 
@@ -273,9 +268,9 @@ describe("Hook Services", () => {
         mockContext,
       );
 
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess.emit("close", 0);
-      }, 10);
+      });
 
       await resultPromise;
 
@@ -300,9 +295,9 @@ describe("Hook Services", () => {
 
       const resultPromise = executeCommand("echo test", contextWithoutTool);
 
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess.emit("close", 0);
-      }, 10);
+      });
 
       const result = await resultPromise;
 
@@ -327,16 +322,16 @@ describe("Hook Services", () => {
       );
 
       // Simulate first command success
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess1.stdout.emit("data", "first\n");
         mockProcess1.emit("close", 0);
-      }, 10);
+      });
 
       // Simulate second command success
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess2.stdout.emit("data", "second\n");
         mockProcess2.emit("close", 0);
-      }, 20);
+      });
 
       const results = await resultPromise;
 
@@ -358,9 +353,9 @@ describe("Hook Services", () => {
         mockContext,
       );
 
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess1.emit("close", 1);
-      }, 10);
+      });
 
       const results = await resultPromise;
 
@@ -385,14 +380,14 @@ describe("Hook Services", () => {
         { continueOnFailure: true },
       );
 
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess1.emit("close", 1);
-      }, 10);
+      });
 
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess2.stdout.emit("data", "should run\n");
         mockProcess2.emit("close", 0);
-      }, 20);
+      });
 
       const results = await resultPromise;
 
@@ -419,9 +414,9 @@ describe("Hook Services", () => {
 
       const resultPromise = executeCommand("echo test", mockContext);
 
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess.emit("close", 0);
-      }, 10);
+      });
 
       await resultPromise;
 
@@ -448,9 +443,9 @@ describe("Hook Services", () => {
 
       const resultPromise = executeCommand("echo test", mockContext);
 
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess.emit("close", 0);
-      }, 10);
+      });
 
       await resultPromise;
 
@@ -468,13 +463,6 @@ describe("Hook Services", () => {
       // Reset fs mocks for this test block
       mockExistsSync.mockReset();
       mockReadFileSync.mockReset();
-    });
-
-    afterEach(async () => {
-      // Restore real fs functions after each test
-      const fs = await vi.importActual<typeof import("fs")>("fs");
-      mockExistsSync.mockImplementation(fs.existsSync);
-      mockReadFileSync.mockImplementation(fs.readFileSync);
     });
 
     it("should return undefined for non-existent file", () => {
@@ -533,13 +521,6 @@ describe("Hook Services", () => {
       // Override fs functions for these specific tests
       mockExistsSync.mockReset();
       mockReadFileSync.mockReset();
-    });
-
-    afterEach(async () => {
-      // Restore real fs functions after each test
-      const fs = await vi.importActual<typeof import("fs")>("fs");
-      mockExistsSync.mockImplementation(fs.existsSync);
-      mockReadFileSync.mockImplementation(fs.readFileSync);
     });
 
     it("should return undefined when no configurations exist", () => {
@@ -657,9 +638,9 @@ describe("Hook Services", () => {
 
       const resultPromise = executeCommand("echo test", extendedContext);
 
-      setTimeout(() => {
+      setImmediate(() => {
         mockProcess.emit("close", 0);
-      }, 10);
+      });
 
       await resultPromise;
 
