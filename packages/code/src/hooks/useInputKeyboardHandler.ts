@@ -11,8 +11,13 @@ interface KeyboardHandlerProps {
   moveCursorRight: () => void;
   moveCursorToStart: () => void;
   moveCursorToEnd: () => void;
-  deleteCharAtCursor: () => void;
-  insertTextAtCursor: (text: string) => void;
+  deleteCharAtCursor: (
+    callback?: (newText: string, newCursorPosition: number) => void,
+  ) => void;
+  insertTextAtCursor: (
+    text: string,
+    callback?: (newText: string, newCursorPosition: number) => void,
+  ) => void;
   clearInput: () => void;
   resetHistoryNavigation: () => void;
   navigateHistory: (
@@ -198,44 +203,40 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
     (input: string, key: Key) => {
       if (key.backspace || key.delete) {
         if (cursorPosition > 0) {
-          const newInput =
-            inputText.substring(0, cursorPosition - 1) +
-            inputText.substring(cursorPosition);
-          setInputText(newInput);
-          setCursorPosition(cursorPosition - 1);
-
-          // Update search query
-          if (atPosition >= 0) {
-            const queryStart = atPosition + 1;
-            const queryEnd = cursorPosition - 1;
-            if (queryEnd <= atPosition) {
-              // Deleted @ symbol, close file selector
-              handleCancelFileSelect();
-            } else {
-              const newQuery = newInput.substring(queryStart, queryEnd);
-              updateSearchQuery(newQuery);
+          deleteCharAtCursor((newInput, newCursorPosition) => {
+            // Update search query
+            if (atPosition >= 0) {
+              const queryStart = atPosition + 1;
+              const queryEnd = newCursorPosition;
+              if (queryEnd <= atPosition) {
+                // Deleted @ symbol, close file selector
+                handleCancelFileSelect();
+              } else {
+                const newQuery = newInput.substring(queryStart, queryEnd);
+                updateSearchQuery(newQuery);
+              }
+            } else if (slashPosition >= 0) {
+              const queryStart = slashPosition + 1;
+              const queryEnd = newCursorPosition;
+              if (queryEnd <= slashPosition) {
+                // Deleted / symbol, close command selector
+                handleCancelCommandSelect();
+              } else {
+                const newQuery = newInput.substring(queryStart, queryEnd);
+                updateCommandSearchQuery(newQuery);
+              }
+            } else if (exclamationPosition >= 0) {
+              const queryStart = exclamationPosition + 1;
+              const queryEnd = newCursorPosition;
+              if (queryEnd <= exclamationPosition) {
+                // Deleted ! symbol, close bash history selector
+                handleCancelBashHistorySelect();
+              } else {
+                const newQuery = newInput.substring(queryStart, queryEnd);
+                updateBashHistorySearchQuery(newQuery);
+              }
             }
-          } else if (slashPosition >= 0) {
-            const queryStart = slashPosition + 1;
-            const queryEnd = cursorPosition - 1;
-            if (queryEnd <= slashPosition) {
-              // Deleted / symbol, close command selector
-              handleCancelCommandSelect();
-            } else {
-              const newQuery = newInput.substring(queryStart, queryEnd);
-              updateCommandSearchQuery(newQuery);
-            }
-          } else if (exclamationPosition >= 0) {
-            const queryStart = exclamationPosition + 1;
-            const queryEnd = cursorPosition - 1;
-            if (queryEnd <= exclamationPosition) {
-              // Deleted ! symbol, close bash history selector
-              handleCancelBashHistorySelect();
-            } else {
-              const newQuery = newInput.substring(queryStart, queryEnd);
-              updateBashHistorySearchQuery(newQuery);
-            }
-          }
+          });
         }
         return;
       }
@@ -259,38 +260,31 @@ export const useInputKeyboardHandler = (props: KeyboardHandlerProps) => {
         !("end" in key && key.end)
       ) {
         // Handle character input for search
-        const char = input;
-        const newInput =
-          inputText.substring(0, cursorPosition) +
-          char +
-          inputText.substring(cursorPosition);
-        setInputText(newInput);
-        setCursorPosition(cursorPosition + input.length);
-
-        // Update search query
-        if (atPosition >= 0) {
-          const queryStart = atPosition + 1;
-          const queryEnd = cursorPosition + input.length;
-          const newQuery = newInput.substring(queryStart, queryEnd);
-          updateSearchQuery(newQuery);
-        } else if (slashPosition >= 0) {
-          const queryStart = slashPosition + 1;
-          const queryEnd = cursorPosition + input.length;
-          const newQuery = newInput.substring(queryStart, queryEnd);
-          updateCommandSearchQuery(newQuery);
-        } else if (exclamationPosition >= 0) {
-          const queryStart = exclamationPosition + 1;
-          const queryEnd = cursorPosition + input.length;
-          const newQuery = newInput.substring(queryStart, queryEnd);
-          updateBashHistorySearchQuery(newQuery);
-        }
+        insertTextAtCursor(input, (newInput, newCursorPosition) => {
+          // Update search query
+          if (atPosition >= 0) {
+            const queryStart = atPosition + 1;
+            const queryEnd = newCursorPosition;
+            const newQuery = newInput.substring(queryStart, queryEnd);
+            updateSearchQuery(newQuery);
+          } else if (slashPosition >= 0) {
+            const queryStart = slashPosition + 1;
+            const queryEnd = newCursorPosition;
+            const newQuery = newInput.substring(queryStart, queryEnd);
+            updateCommandSearchQuery(newQuery);
+          } else if (exclamationPosition >= 0) {
+            const queryStart = exclamationPosition + 1;
+            const queryEnd = newCursorPosition;
+            const newQuery = newInput.substring(queryStart, queryEnd);
+            updateBashHistorySearchQuery(newQuery);
+          }
+        });
       }
     },
     [
-      inputText,
       cursorPosition,
-      setInputText,
-      setCursorPosition,
+      insertTextAtCursor,
+      deleteCharAtCursor,
       atPosition,
       slashPosition,
       exclamationPosition,
