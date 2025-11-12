@@ -18,7 +18,8 @@ import { spawn } from "child_process";
 import { EventEmitter } from "events";
 import { tmpdir } from "os";
 import { join } from "path";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
+
 import {
   executeCommand,
   executeCommands,
@@ -36,9 +37,22 @@ vi.mock("child_process", () => ({
   spawn: vi.fn(),
 }));
 
+// Mock fs module to enable selective control in tests
+vi.mock("fs", async () => {
+  const actual = await vi.importActual("fs");
+  return {
+    ...actual,
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+  };
+});
+
 const mockSpawn = spawn as unknown as MockedFunction<
   (...args: Parameters<typeof spawn>) => MockChildProcess
 >;
+
+const mockExistsSync = existsSync as MockedFunction<typeof existsSync>;
+const mockReadFileSync = readFileSync as MockedFunction<typeof readFileSync>;
 
 // Mock child process that extends EventEmitter
 class MockChildProcess extends EventEmitter {
@@ -75,7 +89,12 @@ describe("Hook Services", () => {
   let testDir: string;
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Set up real fs functions as default for most tests
+    const fs = await vi.importActual<typeof import("fs")>("fs");
+    mockExistsSync.mockImplementation(fs.existsSync);
+    mockReadFileSync.mockImplementation(fs.readFileSync);
+
     // Enable hooks execution testing in this test suite
     process.env.TEST_HOOK_EXECUTION = "true";
 
@@ -501,10 +520,103 @@ describe("Hook Services", () => {
   });
 
   describe("merged configuration loading", () => {
-    it("should return merged configuration or user config if present", () => {
+    beforeEach(() => {
+      // Override fs functions for these specific tests
+      mockExistsSync.mockReset();
+      mockReadFileSync.mockReset();
+    });
+
+    afterEach(async () => {
+      // Restore real fs functions after each test
+      const fs = await vi.importActual<typeof import("fs")>("fs");
+      mockExistsSync.mockImplementation(fs.existsSync);
+      mockReadFileSync.mockImplementation(fs.readFileSync);
+    });
+
+    it("should return undefined when no configurations exist", () => {
+      // Mock file system to return false for all file existence checks
+      mockExistsSync.mockReturnValue(false);
+
       const merged = loadMergedHooksConfig("/nonexistent/workdir");
-      // This test might return user configuration if it exists on the system
-      expect(merged).toBeDefined();
+      expect(merged).toBeUndefined();
+    });
+
+    it("should return user config when only user config exists", () => {
+      const userConfig = {
+        hooks: {
+          Stop: [{ type: "command" as const, command: "echo user" }],
+        },
+      };
+
+      mockExistsSync.mockImplementation((path) => {
+        // Return true only for user config path (contains home directory)
+        const pathStr = path.toString();
+        return (
+          pathStr.includes(".wave/hooks.json") &&
+          pathStr.includes(process.env.HOME || "/home")
+        );
+      });
+
+      mockReadFileSync.mockReturnValue(JSON.stringify(userConfig));
+
+      const merged = loadMergedHooksConfig("/nonexistent/workdir");
+      expect(merged).toEqual(userConfig.hooks);
+    });
+
+    it("should return project config when only project config exists", () => {
+      const projectConfig = {
+        hooks: {
+          Stop: [{ type: "command" as const, command: "echo project" }],
+        },
+      };
+
+      mockExistsSync.mockImplementation((path) => {
+        // Return true only for project config path
+        const pathStr = path.toString();
+        return pathStr.includes("/test/workdir/.wave/hooks.json");
+      });
+
+      mockReadFileSync.mockReturnValue(JSON.stringify(projectConfig));
+
+      const merged = loadMergedHooksConfig("/test/workdir");
+      expect(merged).toEqual(projectConfig.hooks);
+    });
+
+    it("should merge configurations with project taking precedence", () => {
+      const userConfig = {
+        hooks: {
+          Stop: [{ type: "command" as const, command: "echo user" }],
+          UserPromptSubmit: [
+            { type: "command" as const, command: "echo user prompt" },
+          ],
+        },
+      };
+      const projectConfig = {
+        hooks: {
+          Stop: [{ type: "command" as const, command: "echo project" }],
+        },
+      };
+
+      // Mock both user and project configs exist
+      mockExistsSync.mockReturnValue(true);
+
+      mockReadFileSync.mockImplementation((path) => {
+        const pathStr = path.toString();
+        if (pathStr.includes(process.env.HOME || "/home")) {
+          return JSON.stringify(userConfig);
+        } else {
+          return JSON.stringify(projectConfig);
+        }
+      });
+
+      const merged = loadMergedHooksConfig("/test/workdir");
+      expect(merged).toEqual({
+        Stop: [
+          { type: "command", command: "echo user" },
+          { type: "command", command: "echo project" },
+        ],
+        UserPromptSubmit: [{ type: "command", command: "echo user prompt" }],
+      });
     });
   });
 
