@@ -120,11 +120,11 @@ describe("Hook Services", () => {
       // Start execution
       const resultPromise = executeCommand('echo "hello"', mockContext);
 
-      // Simulate successful execution
-      setImmediate(() => {
+      // Simulate successful execution with a small delay to ensure duration > 0
+      setTimeout(() => {
         mockProcess.stdout.emit("data", "hello\n");
         mockProcess.emit("close", 0);
-      });
+      }, 1);
 
       const result = await resultPromise;
 
