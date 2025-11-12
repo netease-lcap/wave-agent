@@ -113,6 +113,15 @@ describe("Hook Services", () => {
 
   describe("command execution", () => {
     it("should execute successful command", async () => {
+      const mockStartTime = 1000;
+      const mockEndTime = 1050; // 50ms duration
+
+      // Mock Date.now to control timing
+      const mockDateNow = vi.spyOn(Date, "now");
+      mockDateNow
+        .mockReturnValueOnce(mockStartTime) // Called at start
+        .mockReturnValueOnce(mockEndTime); // Called at end
+
       const mockProcess = new MockChildProcess();
       mockProcess.stdin = new MockStdin();
       mockSpawn.mockReturnValue(mockProcess);
@@ -120,11 +129,11 @@ describe("Hook Services", () => {
       // Start execution
       const resultPromise = executeCommand('echo "hello"', mockContext);
 
-      // Simulate successful execution with a small delay to ensure duration > 0
-      setTimeout(() => {
+      // Simulate successful execution immediately
+      setImmediate(() => {
         mockProcess.stdout.emit("data", "hello\n");
         mockProcess.emit("close", 0);
-      }, 1);
+      });
 
       const result = await resultPromise;
 
@@ -133,7 +142,9 @@ describe("Hook Services", () => {
       expect(result.stdout).toBe("hello");
       expect(result.stderr).toBe("");
       expect(result.timedOut).toBe(false);
-      expect(result.duration).toBeGreaterThan(0);
+      expect(result.duration).toBe(50);
+
+      mockDateNow.mockRestore();
     });
 
     it("should handle command failure", async () => {

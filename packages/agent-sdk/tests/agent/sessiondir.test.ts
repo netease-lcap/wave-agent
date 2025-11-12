@@ -98,6 +98,19 @@ describe("Agent sessionDir integration tests", () => {
     // Reset all mocks
     vi.clearAllMocks();
 
+    // Create a valid session data structure
+    const mockSessionData = {
+      id: "session-123",
+      timestamp: new Date().toISOString(),
+      messages: [],
+      metadata: {
+        workdir: process.cwd(),
+        startedAt: new Date().toISOString(),
+        lastActiveAt: new Date().toISOString(),
+        latestTotalTokens: 0,
+      },
+    };
+
     // Set up mock behavior
     tempDir = "/tmp/wave-sessiondir-test-123";
     mockMkdtemp.mockResolvedValue(tempDir);
@@ -106,7 +119,7 @@ describe("Agent sessionDir integration tests", () => {
     mockReaddir.mockResolvedValue(["session_123.json"] as never);
     mockMkdir.mockResolvedValue(undefined);
     mockWriteFile.mockResolvedValue(undefined);
-    mockReadFile.mockResolvedValue("{}");
+    mockReadFile.mockResolvedValue(JSON.stringify(mockSessionData));
     mockStat.mockResolvedValue({
       isDirectory: () => true,
     } as import("fs").Stats);
@@ -117,10 +130,14 @@ describe("Agent sessionDir integration tests", () => {
 
     // Mock NODE_ENV to not be 'test' so session operations actually work
     vi.stubEnv("NODE_ENV", "development");
+
+    // Mock console.warn to suppress "Skipping corrupted session file" messages
+    vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(async () => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
     // No need to clean up - everything is mocked
   });
 
