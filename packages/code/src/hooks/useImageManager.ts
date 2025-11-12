@@ -7,7 +7,12 @@ export interface AttachedImage {
   mimeType: string;
 }
 
-export const useImageManager = (insertTextAtCursor: (text: string) => void) => {
+export const useImageManager = (
+  insertTextAtCursor: (
+    text: string,
+    callback?: (newText: string, newCursorPosition: number) => void,
+  ) => void,
+) => {
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
   const [imageIdCounter, setImageIdCounter] = useState(1);
 

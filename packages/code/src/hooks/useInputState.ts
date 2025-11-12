@@ -4,30 +4,55 @@ export const useInputState = () => {
   const [inputText, setInputText] = useState("");
   const [cursorPosition, setCursorPosition] = useState(0);
 
-  const insertTextAtCursor = useCallback((text: string) => {
-    setCursorPosition((currentCursor) => {
-      setInputText((currentText) => {
-        const beforeCursor = currentText.substring(0, currentCursor);
-        const afterCursor = currentText.substring(currentCursor);
-        return beforeCursor + text + afterCursor;
-      });
-      return currentCursor + text.length;
-    });
-  }, []);
-
-  const deleteCharAtCursor = useCallback(() => {
-    setCursorPosition((currentCursor) => {
-      if (currentCursor > 0) {
+  const insertTextAtCursor = useCallback(
+    (
+      text: string,
+      callback?: (newText: string, newCursorPosition: number) => void,
+    ) => {
+      setCursorPosition((currentCursor) => {
         setInputText((currentText) => {
-          const beforeCursor = currentText.substring(0, currentCursor - 1);
+          const beforeCursor = currentText.substring(0, currentCursor);
           const afterCursor = currentText.substring(currentCursor);
-          return beforeCursor + afterCursor;
+          const newText = beforeCursor + text + afterCursor;
+
+          // Call the callback with the new state if provided
+          if (callback) {
+            const newCursorPosition = currentCursor + text.length;
+            callback(newText, newCursorPosition);
+          }
+
+          return newText;
         });
-        return currentCursor - 1;
-      }
-      return currentCursor;
-    });
-  }, []);
+        return currentCursor + text.length;
+      });
+    },
+    [],
+  );
+
+  const deleteCharAtCursor = useCallback(
+    (callback?: (newText: string, newCursorPosition: number) => void) => {
+      setCursorPosition((currentCursor) => {
+        if (currentCursor > 0) {
+          setInputText((currentText) => {
+            const beforeCursor = currentText.substring(0, currentCursor - 1);
+            const afterCursor = currentText.substring(currentCursor);
+            const newText = beforeCursor + afterCursor;
+
+            // Call the callback with the new state if provided
+            if (callback) {
+              const newCursorPosition = currentCursor - 1;
+              callback(newText, newCursorPosition);
+            }
+
+            return newText;
+          });
+          return currentCursor - 1;
+        }
+        return currentCursor;
+      });
+    },
+    [],
+  );
 
   const clearInput = useCallback(() => {
     setInputText("");
