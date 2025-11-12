@@ -1,10 +1,10 @@
 <!--
 Sync Impact Report:
-- Version change: 1.0.0 → 1.2.0
-- Added principles: VI. Quality Gates (new principle requiring type-check and lint)
-- Modified principles: III. Test Alignment (refined to allow feature-based organization for complex modules)
-- Modified sections: Quality Standards (expanded to include pre-commit requirements)
-- Templates requiring updates: ✅ plan-template.md, spec-template.md, tasks-template.md all align with existing standards
+- Version change: 1.2.0 → 1.3.0
+- Added principles: VII. Source Code Structure (new principle defining package-specific organization patterns)
+- Modified principles: None
+- Modified sections: None  
+- Templates requiring updates: ✅ plan-template.md, spec-template.md, tasks-template.md all maintain compatibility with structure guidelines
 - Follow-up TODOs: None - all placeholders filled
 -->
 
@@ -42,6 +42,11 @@ After any modifications, MUST run `pnpm run type-check` and `pnpm run lint` to v
 
 **Rationale**: Automated quality checks prevent defects from entering the codebase and ensure consistent code standards across all contributors.
 
+### VII. Source Code Structure
+Package source code MUST follow established patterns for maintainability and discoverability. For `agent-sdk`: managers for state-related logic, services for network or IO-related logic, utils for pure functions, types.ts for cross-file type definitions. For `code` package: components for UI, contexts for global state and logic, hooks for reusable state and logic, utils for utility functions. Directory structure MUST reflect functional organization, not technical organization.
+
+**Rationale**: Consistent source code organization enables developers to quickly locate and understand code purpose, reducing cognitive load and improving maintainability.
+
 ## Quality Standards
 
 All code MUST pass TypeScript compilation without errors or warnings. All tests MUST pass before merging. Code MUST follow the established linting and formatting rules enforced by ESLint and Prettier. Quality gates (type-check and lint) MUST be run and pass after every modification.
@@ -77,4 +82,4 @@ This constitution supersedes all other development practices. All pull requests 
 
 **Version Control**: Use semantic versioning for constitution updates. Breaking changes to principles require major version bump.
 
-**Version**: 1.2.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-01-27
+**Version**: 1.3.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-11-12
