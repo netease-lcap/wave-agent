@@ -130,9 +130,6 @@ describe("Agent sessionDir integration tests", () => {
 
     // Mock NODE_ENV to not be 'test' so session operations actually work
     vi.stubEnv("NODE_ENV", "development");
-
-    // Mock console.warn to suppress "Skipping corrupted session file" messages
-    vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(async () => {

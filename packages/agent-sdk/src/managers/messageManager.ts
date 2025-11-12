@@ -168,7 +168,7 @@ export class MessageManager {
     try {
       await cleanupExpiredSessions(this.workdir, this.sessionDir);
     } catch (error) {
-      console.warn("Failed to cleanup expired sessions:", error);
+      this.logger?.warn("Failed to cleanup expired sessions:", error);
     }
 
     if (!restoreSessionId && !continueLastSession) {

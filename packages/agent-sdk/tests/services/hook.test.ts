@@ -476,11 +476,11 @@ describe("Hook Services", () => {
       mockReadFileSync.mockReset();
     });
 
-    it("should return undefined for non-existent file", () => {
+    it("should return null for non-existent file", () => {
       mockExistsSync.mockReturnValue(false);
 
       const config = loadHooksConfigFromFile("/non/existent/path.json");
-      expect(config).toBeUndefined();
+      expect(config).toBeNull();
     });
 
     it("should load valid configuration file", () => {
@@ -511,8 +511,7 @@ describe("Hook Services", () => {
       mockReadFileSync.mockReturnValue("{ invalid json }");
 
       const configFile = "/test/invalid.json";
-      const loaded = loadHooksConfigFromFile(configFile);
-      expect(loaded).toBeUndefined();
+      expect(() => loadHooksConfigFromFile(configFile)).toThrow();
     });
 
     it("should handle invalid configuration structure", () => {
@@ -522,8 +521,9 @@ describe("Hook Services", () => {
       mockReadFileSync.mockReturnValue(JSON.stringify(invalidConfig));
 
       const configFile = "/test/invalid-structure.json";
-      const loaded = loadHooksConfigFromFile(configFile);
-      expect(loaded).toBeUndefined();
+      expect(() => loadHooksConfigFromFile(configFile)).toThrow(
+        "Invalid hooks configuration structure",
+      );
     });
   });
 
@@ -534,12 +534,12 @@ describe("Hook Services", () => {
       mockReadFileSync.mockReset();
     });
 
-    it("should return undefined when no configurations exist", () => {
+    it("should return null when no configurations exist", () => {
       // Mock file system to return false for all file existence checks
       mockExistsSync.mockReturnValue(false);
 
       const merged = loadMergedHooksConfig("/nonexistent/workdir");
-      expect(merged).toBeUndefined();
+      expect(merged).toBeNull();
     });
 
     it("should return user config when only user config exists", () => {

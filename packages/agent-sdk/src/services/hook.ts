@@ -259,32 +259,26 @@ export function getProjectHooksConfigPath(workdir: string): string {
  */
 export function loadHooksConfigFromFile(
   filePath: string,
-): PartialHookConfiguration | undefined {
-  try {
-    if (!existsSync(filePath)) {
-      return undefined;
-    }
-
-    const content = readFileSync(filePath, "utf-8");
-    const config = JSON.parse(content) as HookConfiguration;
-
-    // Validate basic structure
-    if (!config || typeof config !== "object" || !config.hooks) {
-      console.warn(`Invalid hooks configuration structure in ${filePath}`);
-      return undefined;
-    }
-
-    return config.hooks;
-  } catch (error) {
-    console.warn(`Failed to load hooks configuration from ${filePath}:`, error);
-    return undefined;
+): PartialHookConfiguration | null {
+  if (!existsSync(filePath)) {
+    return null;
   }
+
+  const content = readFileSync(filePath, "utf-8");
+  const config = JSON.parse(content) as HookConfiguration;
+
+  // Validate basic structure
+  if (!config || typeof config !== "object" || !config.hooks) {
+    throw new Error(`Invalid hooks configuration structure in ${filePath}`);
+  }
+
+  return config.hooks;
 }
 
 /**
  * Load user-specific hooks configuration
  */
-export function loadUserHooksConfig(): PartialHookConfiguration | undefined {
+export function loadUserHooksConfig(): PartialHookConfiguration | null {
   return loadHooksConfigFromFile(getUserHooksConfigPath());
 }
 
@@ -293,7 +287,7 @@ export function loadUserHooksConfig(): PartialHookConfiguration | undefined {
  */
 export function loadProjectHooksConfig(
   workdir: string,
-): PartialHookConfiguration | undefined {
+): PartialHookConfiguration | null {
   return loadHooksConfigFromFile(getProjectHooksConfigPath(workdir));
 }
 
@@ -302,13 +296,13 @@ export function loadProjectHooksConfig(
  */
 export function loadMergedHooksConfig(
   workdir: string,
-): PartialHookConfiguration | undefined {
+): PartialHookConfiguration | null {
   const userConfig = loadUserHooksConfig();
   const projectConfig = loadProjectHooksConfig(workdir);
 
   // No configuration found
   if (!userConfig && !projectConfig) {
-    return undefined;
+    return null;
   }
 
   // Only one configuration found

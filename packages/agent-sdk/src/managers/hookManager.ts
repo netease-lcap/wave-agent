@@ -109,7 +109,7 @@ export class HookManager implements IHookManager {
       this.logger?.debug(`[HookManager] Loading configuration...`);
       const mergedConfig = loadMergedHooksConfig(this.workdir);
       this.logger?.debug(`[HookManager] Merged config result:`, mergedConfig);
-      this.configuration = mergedConfig;
+      this.configuration = mergedConfig || undefined;
 
       // Validate the loaded configuration if it exists
       if (mergedConfig) {
