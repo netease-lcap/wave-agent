@@ -416,16 +416,6 @@ export class AIManager {
                 });
               }
             } catch (parseError) {
-              // Check if it's a parsing error due to interruption
-              const isAborted =
-                abortController.signal.aborted ||
-                toolAbortController.signal.aborted;
-
-              if (isAborted) {
-                // If interrupted, return directly without showing error
-                return;
-              }
-
               const errorMessage =
                 parseError instanceof Error
                   ? parseError.message
@@ -470,18 +460,9 @@ export class AIManager {
         this.toolAbortController = null;
       }
     } catch (error) {
-      // Check if error is due to user interrupt operation
-      const isAborted =
-        abortController.signal.aborted ||
-        toolAbortController.signal.aborted ||
-        (error instanceof Error &&
-          (error.name === "AbortError" || error.message.includes("aborted")));
-
-      if (!isAborted) {
-        this.messageManager.addErrorBlock(
-          error instanceof Error ? error.message : "Unknown error occurred",
-        );
-      }
+      this.messageManager.addErrorBlock(
+        error instanceof Error ? error.message : "Unknown error occurred",
+      );
 
       // Reset abort controller on error
       this.abortController = null;
@@ -494,8 +475,13 @@ export class AIManager {
         // Save session before executing Stop hooks
         await this.messageManager.saveSession();
 
-        // Execute Stop hooks when AI response cycle completes
-        await this.executeStopHooks();
+        // Execute Stop hooks only if the operation was not aborted
+        const isCurrentlyAborted =
+          abortController.signal.aborted || toolAbortController.signal.aborted;
+
+        if (!isCurrentlyAborted) {
+          await this.executeStopHooks();
+        }
       }
     }
   }
