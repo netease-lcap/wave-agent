@@ -25,7 +25,7 @@ export default defineConfig(() => {
         FILE_SELECTOR_DEBOUNCE_MS: "0",
         PASTE_DEBOUNCE_MS: "0",
       },
-      maxWorkers: 3,
+      maxWorkers: isCI ? 1 : 3,
     },
     resolve: {
       alias: {
