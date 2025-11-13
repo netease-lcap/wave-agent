@@ -7,7 +7,7 @@ This is the AI assistant's memory file, recording important information and cont
 - Don't create Markdown documents unless explicitly mentioned by user
 - Don't write any types
 - Use HookTester to test hooks
-- `packages/*/examples` directories contain real test files that are hard to mock:
+- `packages/*/examples` directories contain real test ts or tsx files that are hard to mock:
   - need to create temporary directories
   - test by sending real messages
   - cd to `packages/\*` and run locally with pnpm tsx
