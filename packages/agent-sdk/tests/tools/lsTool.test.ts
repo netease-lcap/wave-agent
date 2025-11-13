@@ -1,57 +1,74 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { lsTool } from "@/tools/lsTool.js";
-import { mkdtemp, writeFile, mkdir, symlink } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
-import { rimraf } from "rimraf";
 import type { ToolContext } from "@/tools/types.js";
+import type { Stats, Dirent } from "fs";
 
 const testContext: ToolContext = { workdir: "/test/workdir" };
 
+// Mock fs/promises
+vi.mock("fs", () => ({
+  promises: {
+    stat: vi.fn(),
+    readdir: vi.fn(),
+  },
+}));
+
+// Mock path utilities
+vi.mock("@/utils/path.js", () => ({
+  isBinary: vi.fn(),
+  getDisplayPath: vi.fn((path: string) => path),
+}));
+
+// Import the mocked modules
+import * as fs from "fs";
+import { isBinary } from "@/utils/path.js";
+
 describe("lsTool", () => {
-  let tempDir: string;
+  const mockStat = vi.mocked(fs.promises.stat);
+  const mockReaddir = vi.mocked(fs.promises.readdir);
+  const mockIsBinary = vi.mocked(isBinary);
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "ls-test-"));
+  // Helper to create mock stats
+  const createMockStats = (
+    isFile: boolean,
+    isDirectory: boolean,
+    isSymbolicLink: boolean = false,
+    size: number = 100,
+  ): Stats =>
+    ({
+      isFile: () => isFile,
+      isDirectory: () => isDirectory,
+      isSymbolicLink: () => isSymbolicLink,
+      size,
+      mtime: new Date("2023-01-01"),
+    }) as Stats;
 
-    // Create test file structure
-    await mkdir(join(tempDir, "src"), { recursive: true });
-    await mkdir(join(tempDir, "tests"), { recursive: true });
-    await mkdir(join(tempDir, "docs"), { recursive: true });
-
-    await writeFile(join(tempDir, "package.json"), '{"name": "test"}');
-    await writeFile(join(tempDir, "README.md"), "# Test Project");
-    await writeFile(join(tempDir, ".gitignore"), "node_modules/");
-    await writeFile(
-      join(tempDir, "src/index.ts"),
-      "export const app = 'main';",
-    );
-    await writeFile(
-      join(tempDir, "src/utils.ts"),
-      "export const utils = 'helper';",
-    );
-    await writeFile(
-      join(tempDir, "tests/app.test.js"),
-      "test('app', () => {});",
-    );
-    await writeFile(join(tempDir, "docs/guide.md"), "# Guide");
-
-    // Create a large file to test file size display
-    await writeFile(join(tempDir, "large-file.txt"), "x".repeat(5000));
-
-    // Create symbolic link (if supported)
-    try {
-      await symlink(
-        join(tempDir, "README.md"),
-        join(tempDir, "readme-link.md"),
-      );
-    } catch {
-      // Ignore on systems that don't support symbolic links
-    }
+  // Helper to create mock dirent
+  const createMockDirent = (
+    name: string,
+    isFile: boolean,
+    isDirectory: boolean,
+    isSymbolicLink: boolean = false,
+  ): Dirent<string> => ({
+    name,
+    isFile: () => isFile,
+    isDirectory: () => isDirectory,
+    isSymbolicLink: () => isSymbolicLink,
+    isBlockDevice: () => false,
+    isCharacterDevice: () => false,
+    isFIFO: () => false,
+    isSocket: () => false,
+    parentPath: "/test/tempdir",
+    path: `/test/tempdir/${name}`,
   });
 
-  afterEach(async () => {
-    await rimraf(tempDir);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsBinary.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    vi.resetAllMocks();
   });
 
   it("should be properly configured", () => {
@@ -67,7 +84,31 @@ describe("lsTool", () => {
   });
 
   it("should list directory contents", async () => {
-    const result = await lsTool.execute({ path: tempDir }, testContext);
+    const testDir = "/test/tempdir";
+
+    // Mock directory stat
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+
+    // Mock readdir with dirent objects
+    mockReaddir.mockResolvedValueOnce([
+      createMockDirent("docs", false, true),
+      createMockDirent("src", false, true),
+      createMockDirent("tests", false, true),
+      createMockDirent(".gitignore", true, false),
+      createMockDirent("package.json", true, false),
+      createMockDirent("README.md", true, false),
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+    // Mock individual file stats
+    mockStat
+      .mockResolvedValueOnce(createMockStats(false, true)) // docs
+      .mockResolvedValueOnce(createMockStats(false, true)) // src
+      .mockResolvedValueOnce(createMockStats(false, true)) // tests
+      .mockResolvedValueOnce(createMockStats(true, false, false, 20)) // .gitignore
+      .mockResolvedValueOnce(createMockStats(true, false, false, 50)) // package.json
+      .mockResolvedValueOnce(createMockStats(true, false, false, 30)); // README.md
+
+    const result = await lsTool.execute({ path: testDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Directory:");
@@ -82,15 +123,45 @@ describe("lsTool", () => {
   });
 
   it("should show file sizes", async () => {
-    const result = await lsTool.execute({ path: tempDir }, testContext);
+    const testDir = "/test/tempdir";
+
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+
+    mockReaddir.mockResolvedValueOnce([
+      createMockDirent("large-file.txt", true, false),
+      createMockDirent("package.json", true, false),
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(true, false, false, 5000)) // large-file.txt
+      .mockResolvedValueOnce(createMockStats(true, false, false, 25)); // package.json
+
+    const result = await lsTool.execute({ path: testDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("large-file.txt (5000 bytes)");
-    expect(result.content).toMatch(/package\.json \(\d+ bytes\)/);
+    expect(result.content).toContain("package.json (25 bytes)");
   });
 
   it("should sort directories first, then files", async () => {
-    const result = await lsTool.execute({ path: tempDir }, testContext);
+    const testDir = "/test/tempdir";
+
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+
+    mockReaddir.mockResolvedValueOnce([
+      createMockDirent("file1.txt", true, false),
+      createMockDirent("dirA", false, true),
+      createMockDirent("file2.txt", true, false),
+      createMockDirent("dirB", false, true),
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(true, false)) // file1.txt
+      .mockResolvedValueOnce(createMockStats(false, true)) // dirA
+      .mockResolvedValueOnce(createMockStats(true, false)) // file2.txt
+      .mockResolvedValueOnce(createMockStats(false, true)); // dirB
+
+    const result = await lsTool.execute({ path: testDir }, testContext);
 
     expect(result.success).toBe(true);
     const lines = result.content.split("\n");
@@ -111,14 +182,26 @@ describe("lsTool", () => {
   });
 
   it("should ignore files matching ignore patterns", async () => {
-    // Create some files that should be ignored
-    await writeFile(join(tempDir, "temp.tmp"), "temporary");
-    await writeFile(join(tempDir, "backup.bak"), "backup");
-    await writeFile(join(tempDir, "config.log"), "log file");
+    const testDir = "/test/tempdir";
+
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+
+    mockReaddir.mockResolvedValueOnce([
+      createMockDirent("temp.tmp", true, false),
+      createMockDirent("backup.bak", true, false),
+      createMockDirent("config.log", true, false),
+      createMockDirent("package.json", true, false),
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(true, false)) // temp.tmp
+      .mockResolvedValueOnce(createMockStats(true, false)) // backup.bak
+      .mockResolvedValueOnce(createMockStats(true, false)) // config.log
+      .mockResolvedValueOnce(createMockStats(true, false)); // package.json
 
     const result = await lsTool.execute(
       {
-        path: tempDir,
+        path: testDir,
         ignore: ["*.tmp", "*.bak", "*.log"],
       },
       testContext,
@@ -132,10 +215,23 @@ describe("lsTool", () => {
   });
 
   it("should ignore files matching path patterns", async () => {
+    const testDir = "/test/tempdir";
+
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+
+    mockReaddir.mockResolvedValueOnce([
+      createMockDirent("docs", false, true),
+      createMockDirent("src", false, true),
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(false, true)) // docs
+      .mockResolvedValueOnce(createMockStats(false, true)); // src
+
     const result = await lsTool.execute(
       {
-        path: tempDir,
-        ignore: [join(tempDir, "docs")],
+        path: testDir,
+        ignore: [`${testDir}/docs`],
       },
       testContext,
     );
@@ -146,17 +242,33 @@ describe("lsTool", () => {
   });
 
   it("should show symlinks with special indicator", async () => {
-    const result = await lsTool.execute({ path: tempDir }, testContext);
+    const testDir = "/test/tempdir";
+
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+
+    mockReaddir.mockResolvedValueOnce([
+      createMockDirent("readme-link.md", false, false, true),
+      createMockDirent("README.md", true, false),
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(false, false, true)) // readme-link.md (symlink)
+      .mockResolvedValueOnce(createMockStats(true, false, false)); // README.md
+
+    const result = await lsTool.execute({ path: testDir }, testContext);
 
     expect(result.success).toBe(true);
-    // Check if symbolic links are included (if system supports them)
-    if (result.content.includes("readme-link.md")) {
-      expect(result.content).toContain("🔗 readme-link.md");
-    }
+    expect(result.content).toContain("🔗 readme-link.md");
+    expect(result.content).toContain("📄 README.md");
   });
 
   it("should return error for non-existent path", async () => {
-    const nonExistentPath = join(tempDir, "non-existent");
+    const nonExistentPath = "/test/non-existent";
+
+    mockStat.mockRejectedValueOnce(
+      new Error("ENOENT: no such file or directory"),
+    );
+
     const result = await lsTool.execute({ path: nonExistentPath }, testContext);
 
     expect(result.success).toBe(false);
@@ -164,7 +276,10 @@ describe("lsTool", () => {
   });
 
   it("should return error for file path (not directory)", async () => {
-    const filePath = join(tempDir, "package.json");
+    const filePath = "/test/package.json";
+
+    mockStat.mockResolvedValueOnce(createMockStats(true, false)); // is a file
+
     const result = await lsTool.execute({ path: filePath }, testContext);
 
     expect(result.success).toBe(false);
@@ -198,7 +313,19 @@ describe("lsTool", () => {
   });
 
   it("should list subdirectory contents", async () => {
-    const srcPath = join(tempDir, "src");
+    const srcPath = "/test/tempdir/src";
+
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+
+    mockReaddir.mockResolvedValueOnce([
+      createMockDirent("index.ts", true, false),
+      createMockDirent("utils.ts", true, false),
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(true, false)) // index.ts
+      .mockResolvedValueOnce(createMockStats(true, false)); // utils.ts
+
     const result = await lsTool.execute({ path: srcPath }, testContext);
 
     expect(result.success).toBe(true);
@@ -210,8 +337,12 @@ describe("lsTool", () => {
   });
 
   it("should handle empty directory", async () => {
-    const emptyDir = join(tempDir, "empty");
-    await mkdir(emptyDir);
+    const emptyDir = "/test/empty";
+
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+    mockReaddir.mockResolvedValueOnce(
+      [] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>,
+    );
 
     const result = await lsTool.execute({ path: emptyDir }, testContext);
 
@@ -239,20 +370,35 @@ describe("lsTool", () => {
   });
 
   it("should handle files without read permissions gracefully", async () => {
-    // Create a file, then try to create a file without read permissions
-    // Note: This may not work on some systems, so we only test basic functionality
-    const result = await lsTool.execute({ path: tempDir }, testContext);
+    const testDir = "/test/tempdir";
+
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+    mockReaddir.mockResolvedValueOnce([
+      createMockDirent("file.txt", true, false),
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+    mockStat.mockResolvedValueOnce(createMockStats(true, false));
+
+    const result = await lsTool.execute({ path: testDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Total items:");
   });
 
   it("should show binary file indicator", async () => {
-    // Create a binary file
-    const binaryContent = Buffer.from([0x00, 0x01, 0x02, 0x03, 0xff, 0xfe]);
-    await writeFile(join(tempDir, "binary.bin"), binaryContent);
+    const testDir = "/test/tempdir";
 
-    const result = await lsTool.execute({ path: tempDir }, testContext);
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+
+    mockReaddir.mockResolvedValueOnce([
+      createMockDirent("binary.bin", true, false),
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+    mockStat.mockResolvedValueOnce(createMockStats(true, false, false, 6));
+
+    // Mock isBinary to return true for this file
+    mockIsBinary.mockReturnValueOnce(true);
+
+    const result = await lsTool.execute({ path: testDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("binary.bin");
@@ -260,12 +406,22 @@ describe("lsTool", () => {
   });
 
   it("should handle files with special characters in names", async () => {
-    // Create files with special characters in names
-    await writeFile(join(tempDir, "file with spaces.txt"), "content");
-    await writeFile(join(tempDir, "file-with-dashes.txt"), "content");
-    await writeFile(join(tempDir, "file_with_underscores.txt"), "content");
+    const testDir = "/test/tempdir";
 
-    const result = await lsTool.execute({ path: tempDir }, testContext);
+    mockStat.mockResolvedValueOnce(createMockStats(false, true));
+
+    mockReaddir.mockResolvedValueOnce([
+      createMockDirent("file with spaces.txt", true, false),
+      createMockDirent("file-with-dashes.txt", true, false),
+      createMockDirent("file_with_underscores.txt", true, false),
+    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(true, false))
+      .mockResolvedValueOnce(createMockStats(true, false))
+      .mockResolvedValueOnce(createMockStats(true, false));
+
+    const result = await lsTool.execute({ path: testDir }, testContext);
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("file with spaces.txt");

@@ -13,6 +13,7 @@ This is the AI assistant's memory file, recording important information and cont
   - cd to `packages/\*` and run locally with pnpm tsx
   - never access private properties directly with `(agent as any)`
 - `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
+  - use `as unkown as` `Awaited<>` `ReturnType<>` `typeof` to simiplify data that is hard to mock
 - After modifying agent-sdk, need to build before using in code
 - Do not perform git commit operation if the latest user message do not mention it
 - Do not modify tsconfig unless user ask you to do that

@@ -1,61 +1,74 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readTool } from "@/tools/readTool.js";
-import { mkdtemp, writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
-import { rimraf } from "rimraf";
+import { readFile } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
+
+// Mock fs/promises
+vi.mock("fs/promises", () => ({
+  readFile: vi.fn(),
+}));
+
+// Mock path utilities
+vi.mock("@/utils/path.js", () => ({
+  resolvePath: vi.fn((path: string, workdir: string) =>
+    path.startsWith("/") ? path : `${workdir}/${path}`,
+  ),
+  getDisplayPath: vi.fn((path: string) => path),
+}));
+
+// Mock file format utilities
+vi.mock("@/utils/fileFormat.js", () => ({
+  isBinaryDocument: vi.fn(() => false),
+  getBinaryDocumentError: vi.fn(() => "Binary document error"),
+}));
 
 const testContext: ToolContext = { workdir: "/test/workdir" };
 
-describe("readTool", () => {
-  let tempDir: string;
-
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "read-test-"));
-
-    // Create test file
-    await writeFile(
-      join(tempDir, "small.txt"),
-      `Line 1
+// Mock file contents for different test scenarios
+const mockFiles: Record<string, string> = {
+  "/test/workdir/small.txt": `Line 1
 Line 2
 Line 3
 Line 4
 Line 5`,
-    );
-
-    await writeFile(
-      join(tempDir, "medium.txt"),
-      Array.from({ length: 50 }, (_, i) => `Line ${i + 1}`).join("\n"),
-    );
-
-    await writeFile(
-      join(tempDir, "large.txt"),
-      Array.from({ length: 3000 }, (_, i) => `Line ${i + 1}`).join("\n"),
-    );
-
-    await writeFile(join(tempDir, "empty.txt"), "");
-
-    await writeFile(
-      join(tempDir, "long-lines.txt"),
-      `Short line
+  "/test/workdir/medium.txt": Array.from(
+    { length: 50 },
+    (_, i) => `Line ${i + 1}`,
+  ).join("\n"),
+  "/test/workdir/large.txt": Array.from(
+    { length: 3000 },
+    (_, i) => `Line ${i + 1}`,
+  ).join("\n"),
+  "/test/workdir/empty.txt": "",
+  "/test/workdir/long-lines.txt": `Short line
 ${"x".repeat(2500)}
 Another short line`,
-    );
-
-    await writeFile(
-      join(tempDir, "unicode.txt"),
-      `Hello 世界
+  "/test/workdir/unicode.txt": `Hello 世界
 Emoji: 🚀 🌟 ✨
 Multi-byte: café naïve résumé`,
-    );
+  "/test/workdir/subdir/nested.txt": "Nested file content",
+  "/test/workdir/mixed-endings.txt": "Line 1\r\nLine 2\nLine 3\r\n",
+  "/test/workdir/special-chars.txt": "Normal text\x00\x01\x02More text",
+};
 
-    await mkdir(join(tempDir, "subdir"));
-    await writeFile(join(tempDir, "subdir/nested.txt"), "Nested file content");
+const mockReadFile = vi.mocked(readFile);
+
+describe("readTool", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Setup default mock behavior
+    mockReadFile.mockImplementation(async (path: unknown) => {
+      const pathStr = path as string;
+      if (mockFiles[pathStr] !== undefined) {
+        return mockFiles[pathStr];
+      }
+      throw new Error(`ENOENT: no such file or directory, open '${pathStr}'`);
+    });
   });
 
-  afterEach(async () => {
-    await rimraf(tempDir);
+  afterEach(() => {
+    vi.resetAllMocks();
   });
 
   it("should be properly configured", () => {
@@ -73,7 +86,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should read small file completely", async () => {
-    const filePath = join(tempDir, "small.txt");
+    const filePath = "/test/workdir/small.txt";
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
@@ -86,7 +99,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should read file with absolute path", async () => {
-    const filePath = join(tempDir, "small.txt");
+    const filePath = "/test/workdir/small.txt";
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
@@ -95,7 +108,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should read file with offset", async () => {
-    const filePath = join(tempDir, "medium.txt");
+    const filePath = "/test/workdir/medium.txt";
     const result = await readTool.execute(
       {
         file_path: filePath,
@@ -114,7 +127,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should read file with limit", async () => {
-    const filePath = join(tempDir, "medium.txt");
+    const filePath = "/test/workdir/medium.txt";
     const result = await readTool.execute(
       {
         file_path: filePath,
@@ -131,7 +144,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should truncate long lines", async () => {
-    const filePath = join(tempDir, "long-lines.txt");
+    const filePath = "/test/workdir/long-lines.txt";
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
@@ -142,7 +155,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should handle empty file", async () => {
-    const filePath = join(tempDir, "empty.txt");
+    const filePath = "/test/workdir/empty.txt";
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
@@ -153,7 +166,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should handle unicode content", async () => {
-    const filePath = join(tempDir, "unicode.txt");
+    const filePath = "/test/workdir/unicode.txt";
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
@@ -163,7 +176,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should limit to 2000 lines by default for large files", async () => {
-    const filePath = join(tempDir, "large.txt");
+    const filePath = "/test/workdir/large.txt";
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
@@ -175,7 +188,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should read from specific offset in large file", async () => {
-    const filePath = join(tempDir, "large.txt");
+    const filePath = "/test/workdir/large.txt";
     const result = await readTool.execute(
       {
         file_path: filePath,
@@ -196,7 +209,7 @@ Multi-byte: café naïve résumé`,
       {
         file_path: "small.txt",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -204,7 +217,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should handle nested file paths", async () => {
-    const filePath = join(tempDir, "subdir/nested.txt");
+    const filePath = "/test/workdir/subdir/nested.txt";
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
@@ -212,7 +225,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should return error for non-existent file", async () => {
-    const filePath = join(tempDir, "non-existent.txt");
+    const filePath = "/test/workdir/non-existent.txt";
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(false);
@@ -236,7 +249,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should return error for invalid offset", async () => {
-    const filePath = join(tempDir, "small.txt");
+    const filePath = "/test/workdir/small.txt";
     const result = await readTool.execute(
       {
         file_path: filePath,
@@ -250,7 +263,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should adjust end line if it exceeds file length", async () => {
-    const filePath = join(tempDir, "small.txt");
+    const filePath = "/test/workdir/small.txt";
     const result = await readTool.execute(
       {
         file_path: filePath,
@@ -299,13 +312,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should handle files with different line endings", async () => {
-    // Create file with different line endings
-    await writeFile(
-      join(tempDir, "mixed-endings.txt"),
-      "Line 1\r\nLine 2\nLine 3\r\n",
-    );
-
-    const filePath = join(tempDir, "mixed-endings.txt");
+    const filePath = "/test/workdir/mixed-endings.txt";
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
@@ -315,7 +322,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should show proper line numbering with gaps", async () => {
-    const filePath = join(tempDir, "medium.txt");
+    const filePath = "/test/workdir/medium.txt";
     const result = await readTool.execute(
       {
         file_path: filePath,
@@ -333,13 +340,7 @@ Multi-byte: café naïve résumé`,
   });
 
   it("should handle binary-like content gracefully", async () => {
-    // Create file with some non-printing characters (but still a text file)
-    await writeFile(
-      join(tempDir, "special-chars.txt"),
-      "Normal text\x00\x01\x02More text",
-    );
-
-    const filePath = join(tempDir, "special-chars.txt");
+    const filePath = "/test/workdir/special-chars.txt";
     const result = await readTool.execute({ file_path: filePath }, testContext);
 
     expect(result.success).toBe(true);
