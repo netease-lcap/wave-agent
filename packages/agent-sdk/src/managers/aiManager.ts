@@ -227,13 +227,23 @@ export class AIManager {
       return;
     }
 
-    // Create new AbortController
-    const abortController = new AbortController();
-    this.abortController = abortController;
+    // Only create new AbortControllers for the initial call (recursionDepth === 0)
+    // For recursive calls, reuse existing controllers to maintain abort signal
+    let abortController: AbortController;
+    let toolAbortController: AbortController;
 
-    // Create separate AbortController for tool execution
-    const toolAbortController = new AbortController();
-    this.toolAbortController = toolAbortController;
+    if (recursionDepth === 0) {
+      // Create new AbortControllers for initial call
+      abortController = new AbortController();
+      this.abortController = abortController;
+
+      toolAbortController = new AbortController();
+      this.toolAbortController = toolAbortController;
+    } else {
+      // Reuse existing controllers for recursive calls
+      abortController = this.abortController!;
+      toolAbortController = this.toolAbortController!;
+    }
 
     // Only set loading state for the initial call
     if (recursionDepth === 0) {
@@ -440,12 +450,6 @@ export class AIManager {
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
 
-        // AI service call ends, clear abort controller
-        this.abortController = null;
-
-        // Clear tool AbortController after tool execution completes
-        this.toolAbortController = null;
-
         if (!isCurrentlyAborted) {
           // Recursively call AI service, increment recursion depth, and pass same configuration
           await this.sendAIMessage({
@@ -454,23 +458,19 @@ export class AIManager {
             allowedTools,
           });
         }
-      } else {
-        // Clear abort controller when no tool operations
-        this.abortController = null;
-        this.toolAbortController = null;
       }
     } catch (error) {
       this.messageManager.addErrorBlock(
         error instanceof Error ? error.message : "Unknown error occurred",
       );
-
-      // Reset abort controller on error
-      this.abortController = null;
-      this.toolAbortController = null;
     } finally {
-      // Only clear loading state for the initial call
+      // Only clear loading state and cleanup for the initial call
       if (recursionDepth === 0) {
         this.setIsLoading(false);
+
+        // Clear abort controllers
+        this.abortController = null;
+        this.toolAbortController = null;
 
         // Save session before executing Stop hooks
         await this.messageManager.saveSession();
