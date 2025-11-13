@@ -34,37 +34,31 @@ export const useInputManager = (
     message: "",
   });
 
-  // Create InputManager on mount
+  // Create InputManager on mount and update callbacks when they change
   useEffect(() => {
-    const manager = new InputManager({
-      onInputTextChange: setInputText,
-      onCursorPositionChange: setCursorPosition,
-      onFileSelectorStateChange: (show, files, query, position) => {
-        setFileSelectorState({ show, files, query, position });
-      },
-      onCommandSelectorStateChange: (show, query, position) => {
-        setCommandSelectorState({ show, query, position });
-      },
-      onBashHistorySelectorStateChange: (show, query, position) => {
-        setBashHistorySelectorState({ show, query, position });
-      },
-      onMemoryTypeSelectorStateChange: (show, message) => {
-        setMemoryTypeSelectorState({ show, message });
-      },
-      ...callbacks,
-    });
+    if (!managerRef.current) {
+      // Create InputManager on first mount
+      const manager = new InputManager({
+        onInputTextChange: setInputText,
+        onCursorPositionChange: setCursorPosition,
+        onFileSelectorStateChange: (show, files, query, position) => {
+          setFileSelectorState({ show, files, query, position });
+        },
+        onCommandSelectorStateChange: (show, query, position) => {
+          setCommandSelectorState({ show, query, position });
+        },
+        onBashHistorySelectorStateChange: (show, query, position) => {
+          setBashHistorySelectorState({ show, query, position });
+        },
+        onMemoryTypeSelectorStateChange: (show, message) => {
+          setMemoryTypeSelectorState({ show, message });
+        },
+        ...callbacks,
+      });
 
-    managerRef.current = manager;
-
-    // Cleanup on unmount
-    return () => {
-      manager.destroy();
-    };
-  }, [callbacks]);
-
-  // Update callbacks when they change
-  useEffect(() => {
-    if (managerRef.current) {
+      managerRef.current = manager;
+    } else {
+      // Update callbacks on existing manager
       managerRef.current.updateCallbacks({
         onInputTextChange: setInputText,
         onCursorPositionChange: setCursorPosition,
@@ -84,6 +78,15 @@ export const useInputManager = (
       });
     }
   }, [callbacks]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (managerRef.current) {
+        managerRef.current.destroy();
+      }
+    };
+  }, []);
 
   // Expose manager methods
   const insertTextAtCursor = useCallback(
