@@ -1,5 +1,13 @@
 import { FileItem } from "../components/FileSelector.js";
 import { searchFiles as searchFilesUtil } from "../utils/fileSearch.js";
+import { readClipboardImage } from "../utils/clipboard.js";
+import type { Key } from "ink";
+
+export interface AttachedImage {
+  id: number;
+  path: string;
+  mimeType: string;
+}
 
 export interface InputManagerCallbacks {
   onInputTextChange?: (text: string) => void;
@@ -23,11 +31,17 @@ export interface InputManagerCallbacks {
   onMemoryTypeSelectorStateChange?: (show: boolean, message: string) => void;
   onShowBashManager?: () => void;
   onShowMcpManager?: () => void;
+  onBashManagerStateChange?: (show: boolean) => void;
+  onMcpManagerStateChange?: (show: boolean) => void;
+  onImagesStateChange?: (images: AttachedImage[]) => void;
   onSendMessage?: (
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
   ) => void | Promise<void>;
   onHasSlashCommand?: (commandId: string) => boolean;
+  onSaveMemory?: (message: string, type: "project" | "user") => Promise<void>;
+  onAbortMessage?: () => void;
+  onResetHistoryNavigation?: () => void;
 }
 
 export class InputManager {
@@ -60,6 +74,27 @@ export class InputManager {
   private userInputHistory: string[] = [];
   private historyIndex: number = -1;
   private historyBuffer: string = "";
+
+  // Paste debounce state
+  private pasteDebounceTimer: NodeJS.Timeout | null = null;
+  private pasteBuffer: string = "";
+  private initialPasteCursorPosition: number = 0;
+  private isPasting: boolean = false;
+
+  // Long text compression state
+  private longTextCounter: number = 0;
+  private longTextMap: Map<string, string> = new Map();
+
+  // Image management state
+  private attachedImages: AttachedImage[] = [];
+  private imageIdCounter: number = 1;
+
+  // Additional UI state
+  private showBashManager: boolean = false;
+  private showMcpManager: boolean = false;
+
+  // Flag to prevent handleInput conflicts when selector selection occurs
+  private selectorJustUsed: boolean = false;
 
   private callbacks: InputManagerCallbacks;
 
@@ -226,10 +261,18 @@ export class InputManager {
       this.inputText = newInput;
       this.cursorPosition = newCursorPosition;
 
-      this.handleCancelFileSelect();
-
       this.callbacks.onInputTextChange?.(newInput);
       this.callbacks.onCursorPositionChange?.(newCursorPosition);
+
+      // Cancel file selector AFTER updating the input
+      this.handleCancelFileSelect();
+
+      // Set flag to prevent handleInput from processing the same Enter key
+      this.selectorJustUsed = true;
+      // Reset flag after a short delay
+      setTimeout(() => {
+        this.selectorJustUsed = false;
+      }, 0);
 
       return { newInput, newCursorPosition };
     }
@@ -317,6 +360,12 @@ export class InputManager {
 
       this.handleCancelCommandSelect();
 
+      // Set flag to prevent handleInput from processing the same Enter key
+      this.selectorJustUsed = true;
+      setTimeout(() => {
+        this.selectorJustUsed = false;
+      }, 0);
+
       this.callbacks.onInputTextChange?.(newInput);
       this.callbacks.onCursorPositionChange?.(newCursorPosition);
 
@@ -339,6 +388,12 @@ export class InputManager {
       this.cursorPosition = newCursorPosition;
 
       this.handleCancelCommandSelect();
+
+      // Set flag to prevent handleInput from processing the same Enter key
+      this.selectorJustUsed = true;
+      setTimeout(() => {
+        this.selectorJustUsed = false;
+      }, 0);
 
       this.callbacks.onInputTextChange?.(newInput);
       this.callbacks.onCursorPositionChange?.(newCursorPosition);
@@ -399,6 +454,12 @@ export class InputManager {
       this.cursorPosition = newCursorPosition;
 
       this.handleCancelBashHistorySelect();
+
+      // Set flag to prevent handleInput from processing the same Enter key
+      this.selectorJustUsed = true;
+      setTimeout(() => {
+        this.selectorJustUsed = false;
+      }, 0);
 
       this.callbacks.onInputTextChange?.(newInput);
       this.callbacks.onCursorPositionChange?.(newCursorPosition);
@@ -604,11 +665,437 @@ export class InputManager {
     }
   }
 
+  // Long text compression methods
+  generateCompressedText(originalText: string): string {
+    this.longTextCounter += 1;
+    const compressedLabel = `[LongText#${this.longTextCounter}]`;
+    this.longTextMap.set(compressedLabel, originalText);
+    return compressedLabel;
+  }
+
+  expandLongTextPlaceholders(text: string): string {
+    let expandedText = text;
+    const longTextRegex = /\[LongText#(\d+)\]/g;
+    const matches = [...text.matchAll(longTextRegex)];
+
+    for (const match of matches) {
+      const placeholder = match[0];
+      const originalText = this.longTextMap.get(placeholder);
+      if (originalText) {
+        expandedText = expandedText.replace(placeholder, originalText);
+      }
+    }
+
+    return expandedText;
+  }
+
+  clearLongTextMap(): void {
+    this.longTextMap.clear();
+  }
+
+  // Paste handling methods
+  handlePasteInput(input: string): void {
+    const inputString = input;
+
+    // Detect if it's a paste operation (input contains multiple characters or newlines)
+    const isPasteOperation =
+      inputString.length > 1 ||
+      inputString.includes("\n") ||
+      inputString.includes("\r");
+
+    if (isPasteOperation) {
+      // Start or continue the debounce handling for paste operation
+      if (!this.isPasting) {
+        // Start new paste operation
+        this.isPasting = true;
+        this.pasteBuffer = inputString;
+        this.initialPasteCursorPosition = this.cursorPosition;
+      } else {
+        // Continue paste operation, add new input to buffer
+        this.pasteBuffer += inputString;
+      }
+
+      // Clear previous timer
+      if (this.pasteDebounceTimer) {
+        clearTimeout(this.pasteDebounceTimer);
+      }
+
+      // Set new timer, support environment variable configuration
+      const pasteDebounceDelay = parseInt(
+        process.env.PASTE_DEBOUNCE_MS || "30",
+        10,
+      );
+      this.pasteDebounceTimer = setTimeout(() => {
+        // Process all paste content in buffer
+        let processedInput = this.pasteBuffer.replace(/\r/g, "\n");
+
+        // Check if long text compression is needed (over 200 characters)
+        if (processedInput.length > 200) {
+          const originalText = processedInput;
+          const compressedLabel = this.generateCompressedText(originalText);
+          processedInput = compressedLabel;
+        }
+
+        this.insertTextAtCursor(processedInput);
+        this.callbacks.onResetHistoryNavigation?.();
+
+        // Reset paste state
+        this.isPasting = false;
+        this.pasteBuffer = "";
+        this.pasteDebounceTimer = null;
+      }, pasteDebounceDelay);
+    } else {
+      // Handle single character input
+      let char = inputString;
+
+      // Check if it's Chinese exclamation mark, convert to English if at beginning
+      if (char === "！" && this.cursorPosition === 0) {
+        char = "!";
+      }
+
+      this.callbacks.onResetHistoryNavigation?.();
+      this.insertTextAtCursor(char, () => {
+        // Handle special character input - this will manage all selectors
+        this.handleSpecialCharInput(char);
+      });
+    }
+  }
+
+  // Image management methods
+  addImage(imagePath: string, mimeType: string): AttachedImage {
+    const newImage: AttachedImage = {
+      id: this.imageIdCounter,
+      path: imagePath,
+      mimeType,
+    };
+    this.attachedImages = [...this.attachedImages, newImage];
+    this.imageIdCounter++;
+    this.callbacks.onImagesStateChange?.(this.attachedImages);
+    return newImage;
+  }
+
+  removeImage(imageId: number): void {
+    this.attachedImages = this.attachedImages.filter(
+      (img) => img.id !== imageId,
+    );
+    this.callbacks.onImagesStateChange?.(this.attachedImages);
+  }
+
+  clearImages(): void {
+    this.attachedImages = [];
+    this.callbacks.onImagesStateChange?.(this.attachedImages);
+  }
+
+  getAttachedImages(): AttachedImage[] {
+    return this.attachedImages;
+  }
+
+  async handlePasteImage(): Promise<boolean> {
+    try {
+      const result = await readClipboardImage();
+
+      if (result.success && result.imagePath && result.mimeType) {
+        // Add image to manager
+        const attachedImage = this.addImage(result.imagePath, result.mimeType);
+
+        // Insert image placeholder at cursor position
+        this.insertTextAtCursor(`[Image #${attachedImage.id}]`);
+
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.warn("Failed to paste image from clipboard:", error);
+      return false;
+    }
+  }
+
+  // Bash/MCP manager state methods
+  getShowBashManager(): boolean {
+    return this.showBashManager;
+  }
+
+  setShowBashManager(show: boolean): void {
+    this.showBashManager = show;
+    this.callbacks.onBashManagerStateChange?.(show);
+  }
+
+  getShowMcpManager(): boolean {
+    return this.showMcpManager;
+  }
+
+  setShowMcpManager(show: boolean): void {
+    this.showMcpManager = show;
+    this.callbacks.onMcpManagerStateChange?.(show);
+  }
+
+  // Handle submit logic
+  async handleSubmit(
+    attachedImages: Array<{ id: number; path: string; mimeType: string }>,
+    isLoading: boolean = false,
+    isCommandRunning: boolean = false,
+  ): Promise<void> {
+    // Prevent submission during loading or command execution
+    if (isLoading || isCommandRunning) {
+      return;
+    }
+
+    if (this.inputText.trim()) {
+      const trimmedInput = this.inputText.trim();
+
+      // Check if it's a memory message (starts with # and only one line)
+      if (trimmedInput.startsWith("#") && !trimmedInput.includes("\n")) {
+        // Activate memory type selector
+        this.activateMemoryTypeSelector(trimmedInput);
+        return;
+      }
+
+      // Extract image information
+      const imageRegex = /\[Image #(\d+)\]/g;
+      const matches = [...this.inputText.matchAll(imageRegex)];
+      const referencedImages = matches
+        .map((match) => {
+          const imageId = parseInt(match[1], 10);
+          return attachedImages.find((img) => img.id === imageId);
+        })
+        .filter(
+          (img): img is { id: number; path: string; mimeType: string } =>
+            img !== undefined,
+        )
+        .map((img) => ({ path: img.path, mimeType: img.mimeType }));
+
+      // Remove image placeholders, expand long text placeholders, send message
+      let cleanContent = this.inputText.replace(imageRegex, "").trim();
+      cleanContent = this.expandLongTextPlaceholders(cleanContent);
+
+      this.callbacks.onSendMessage?.(
+        cleanContent,
+        referencedImages.length > 0 ? referencedImages : undefined,
+      );
+      this.clearInput();
+      this.callbacks.onResetHistoryNavigation?.();
+
+      // Clear long text mapping
+      this.clearLongTextMap();
+    }
+  }
+
+  // Handle selector input (when any selector is active)
+  handleSelectorInput(input: string, key: Key): boolean {
+    if (key.backspace || key.delete) {
+      if (this.cursorPosition > 0) {
+        this.deleteCharAtCursor((newInput, newCursorPosition) => {
+          // Check for special character deletion
+          this.checkForAtDeletion(newCursorPosition);
+          this.checkForSlashDeletion(newCursorPosition);
+          this.checkForExclamationDeletion(newCursorPosition);
+        });
+      }
+      return true;
+    }
+
+    // Arrow keys and Enter should be handled by selector components
+    if (key.upArrow || key.downArrow || key.return) {
+      // Let selector component handle these keys, but prevent further processing
+      // by returning true (indicating we've handled the input)
+      return true;
+    }
+
+    if (
+      input &&
+      !key.ctrl &&
+      !("alt" in key && key.alt) &&
+      !key.meta &&
+      !key.return &&
+      !key.escape &&
+      !key.leftArrow &&
+      !key.rightArrow &&
+      !("home" in key && key.home) &&
+      !("end" in key && key.end)
+    ) {
+      // Handle character input for search
+      this.insertTextAtCursor(input, () => {
+        // Special character handling is now managed by InputManager
+        this.handleSpecialCharInput(input);
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  // Handle normal input (when no selector is active)
+  async handleNormalInput(
+    input: string,
+    key: Key,
+    attachedImages: Array<{ id: number; path: string; mimeType: string }>,
+    isLoading: boolean = false,
+    isCommandRunning: boolean = false,
+    clearImages?: () => void,
+  ): Promise<boolean> {
+    if (key.return) {
+      await this.handleSubmit(attachedImages, isLoading, isCommandRunning);
+      clearImages?.();
+      return true;
+    }
+
+    if (key.escape) {
+      if (this.showFileSelector) {
+        this.handleCancelFileSelect();
+      } else if (this.showCommandSelector) {
+        this.handleCancelCommandSelect();
+      } else if (this.showBashHistorySelector) {
+        this.handleCancelBashHistorySelect();
+      }
+      return true;
+    }
+
+    if (key.backspace || key.delete) {
+      if (this.cursorPosition > 0) {
+        this.deleteCharAtCursor();
+        this.callbacks.onResetHistoryNavigation?.();
+
+        // Check if we deleted any special characters
+        const newCursorPosition = this.cursorPosition - 1;
+        this.checkForAtDeletion(newCursorPosition);
+        this.checkForSlashDeletion(newCursorPosition);
+        this.checkForExclamationDeletion(newCursorPosition);
+      }
+      return true;
+    }
+
+    if (key.leftArrow) {
+      this.moveCursorLeft();
+      return true;
+    }
+
+    if (key.rightArrow) {
+      this.moveCursorRight();
+      return true;
+    }
+
+    if (("home" in key && key.home) || (key.ctrl && input === "a")) {
+      this.moveCursorToStart();
+      return true;
+    }
+
+    if (("end" in key && key.end) || (key.ctrl && input === "e")) {
+      this.moveCursorToEnd();
+      return true;
+    }
+
+    // Handle Ctrl+V for pasting images
+    if (key.ctrl && input === "v") {
+      this.handlePasteImage().catch((error) => {
+        console.warn("Failed to handle paste image:", error);
+      });
+      return true;
+    }
+
+    // Handle up/down keys for history navigation (only when no selector is active)
+    if (
+      key.upArrow &&
+      !this.showFileSelector &&
+      !this.showCommandSelector &&
+      !this.showBashHistorySelector
+    ) {
+      this.navigateHistory("up", this.inputText);
+      return true;
+    }
+
+    if (
+      key.downArrow &&
+      !this.showFileSelector &&
+      !this.showCommandSelector &&
+      !this.showBashHistorySelector
+    ) {
+      this.navigateHistory("down", this.inputText);
+      return true;
+    }
+
+    // Handle typing input
+    if (
+      input &&
+      !key.ctrl &&
+      !("alt" in key && key.alt) &&
+      !key.meta &&
+      !key.return &&
+      !key.escape &&
+      !key.backspace &&
+      !key.delete &&
+      !key.leftArrow &&
+      !key.rightArrow &&
+      !("home" in key && key.home) &&
+      !("end" in key && key.end)
+    ) {
+      this.handlePasteInput(input);
+      return true;
+    }
+
+    return false;
+  }
+
+  // Main input handler - routes to appropriate handler based on state
+  async handleInput(
+    input: string,
+    key: Key,
+    attachedImages: Array<{ id: number; path: string; mimeType: string }>,
+    isLoading: boolean = false,
+    isCommandRunning: boolean = false,
+    clearImages?: () => void,
+  ): Promise<boolean> {
+    // If selector was just used, ignore this input to prevent conflicts
+    if (this.selectorJustUsed) {
+      return true;
+    }
+
+    // Handle interrupt request - use Esc key to interrupt AI request or command
+    if (key.escape && (isLoading || isCommandRunning)) {
+      // Unified interrupt for AI message generation and command execution
+      this.callbacks.onAbortMessage?.();
+      return true;
+    }
+
+    // Check if any selector is active
+    if (
+      this.showFileSelector ||
+      this.showCommandSelector ||
+      this.showBashHistorySelector ||
+      this.showMemoryTypeSelector ||
+      this.showBashManager ||
+      this.showMcpManager
+    ) {
+      if (
+        this.showMemoryTypeSelector ||
+        this.showBashManager ||
+        this.showMcpManager
+      ) {
+        // Memory type selector, bash manager and MCP manager don't need to handle input, handled by component itself
+        return false;
+      }
+      return this.handleSelectorInput(input, key);
+    } else {
+      return await this.handleNormalInput(
+        input,
+        key,
+        attachedImages,
+        isLoading,
+        isCommandRunning,
+        clearImages,
+      );
+    }
+  }
+
   // Cleanup method
   destroy(): void {
     if (this.fileSearchDebounceTimer) {
       clearTimeout(this.fileSearchDebounceTimer);
       this.fileSearchDebounceTimer = null;
+    }
+    if (this.pasteDebounceTimer) {
+      clearTimeout(this.pasteDebounceTimer);
+      this.pasteDebounceTimer = null;
     }
   }
 }

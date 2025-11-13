@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { Key } from "ink";
 import {
   InputManager,
   InputManagerCallbacks,
+  AttachedImage,
 } from "../managers/InputManager.js";
 import { FileItem } from "../components/FileSelector.js";
 
@@ -33,6 +35,9 @@ export const useInputManager = (
     show: false,
     message: "",
   });
+  const [showBashManager, setShowBashManager] = useState(false);
+  const [showMcpManager, setShowMcpManager] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
 
   // Create InputManager on mount and update callbacks when they change
   useEffect(() => {
@@ -53,6 +58,13 @@ export const useInputManager = (
         onMemoryTypeSelectorStateChange: (show, message) => {
           setMemoryTypeSelectorState({ show, message });
         },
+        onBashManagerStateChange: (show) => {
+          setShowBashManager(show);
+        },
+        onMcpManagerStateChange: (show) => {
+          setShowMcpManager(show);
+        },
+        onImagesStateChange: setAttachedImages,
         ...callbacks,
       });
 
@@ -74,6 +86,13 @@ export const useInputManager = (
         onMemoryTypeSelectorStateChange: (show, message) => {
           setMemoryTypeSelectorState({ show, message });
         },
+        onBashManagerStateChange: (show) => {
+          setShowBashManager(show);
+        },
+        onMcpManagerStateChange: (show) => {
+          setShowMcpManager(show);
+        },
+        onImagesStateChange: setAttachedImages,
         ...callbacks,
       });
     }
@@ -293,6 +312,9 @@ export const useInputManager = (
     exclamationPosition: bashHistorySelectorState.position,
     showMemoryTypeSelector: memoryTypeSelectorState.show,
     memoryMessage: memoryTypeSelectorState.message,
+    showBashManager,
+    showMcpManager,
+    attachedImages,
 
     // Methods
     insertTextAtCursor,
@@ -339,6 +361,77 @@ export const useInputManager = (
 
     // Special handling
     handleSpecialCharInput,
+
+    // Bash/MCP Manager
+    setShowBashManager: useCallback((show: boolean) => {
+      managerRef.current?.setShowBashManager(show);
+    }, []),
+    setShowMcpManager: useCallback((show: boolean) => {
+      managerRef.current?.setShowMcpManager(show);
+    }, []),
+
+    // Image management
+    addImage: useCallback((imagePath: string, mimeType: string) => {
+      return managerRef.current?.addImage(imagePath, mimeType);
+    }, []),
+    removeImage: useCallback((imageId: number) => {
+      managerRef.current?.removeImage(imageId);
+    }, []),
+    clearImages: useCallback(() => {
+      managerRef.current?.clearImages();
+    }, []),
+    handlePasteImage: useCallback(async () => {
+      return (await managerRef.current?.handlePasteImage()) || false;
+    }, []),
+
+    // Paste and text handling
+    handlePasteInput: useCallback((input: string) => {
+      managerRef.current?.handlePasteInput(input);
+    }, []),
+    handleSubmit: useCallback(
+      async (
+        attachedImages: Array<{ id: number; path: string; mimeType: string }>,
+        isLoading: boolean = false,
+        isCommandRunning: boolean = false,
+      ) => {
+        await managerRef.current?.handleSubmit(
+          attachedImages,
+          isLoading,
+          isCommandRunning,
+        );
+      },
+      [],
+    ),
+    expandLongTextPlaceholders: useCallback((text: string) => {
+      return managerRef.current?.expandLongTextPlaceholders(text) || text;
+    }, []),
+    clearLongTextMap: useCallback(() => {
+      managerRef.current?.clearLongTextMap();
+    }, []),
+
+    // Main input handler
+    handleInput: useCallback(
+      async (
+        input: string,
+        key: Key,
+        attachedImages: Array<{ id: number; path: string; mimeType: string }>,
+        isLoading: boolean = false,
+        isCommandRunning: boolean = false,
+        clearImages?: () => void,
+      ) => {
+        return (
+          (await managerRef.current?.handleInput(
+            input,
+            key,
+            attachedImages,
+            isLoading,
+            isCommandRunning,
+            clearImages,
+          )) || false
+        );
+      },
+      [],
+    ),
 
     // Direct state setters (for React compatibility)
     setInputText: setInputTextDirect,

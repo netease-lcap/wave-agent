@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useCallback, useEffect } from "react";
 import { Box, Text } from "ink";
-import { useInput, Key } from "ink";
+import { useInput } from "ink";
 import { FileSelector } from "./FileSelector.js";
 import { CommandSelector } from "./CommandSelector.js";
 import { BashHistorySelector } from "./BashHistorySelector.js";
@@ -8,8 +8,7 @@ import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
 import { BashShellManager } from "./BashShellManager.js";
 import { McpManager } from "./McpManager.js";
 import { useInputManager } from "../hooks/useInputManager.js";
-import { useImageManager } from "../hooks/useImageManager.js";
-import { logger } from "../utils/logger.js";
+
 import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
 
 export const INPUT_PLACEHOLDER_TEXT =
@@ -56,60 +55,60 @@ export const InputBox: React.FC<InputBoxProps> = ({
 }) => {
   // Get current working directory
   const currentWorkdir = workdir || process.cwd();
-  // Bash shell manager state
-  const [showBashManager, setShowBashManager] = useState(false);
-  // MCP manager state
-  const [showMcpManager, setShowMcpManager] = useState(false);
 
-  // Input manager with all input state and functionality
+  // Simple history navigation reset function
+  const resetHistoryNavigation = useCallback(() => {
+    // This will be handled by InputManager through callbacks
+  }, []);
+
+  // Input manager with all input state and functionality (including images)
   const {
     inputText,
     cursorPosition,
-    insertTextAtCursor,
-    deleteCharAtCursor,
     clearInput,
-    moveCursorLeft,
-    moveCursorRight,
-    moveCursorToStart,
-    moveCursorToEnd,
+    // Image management
+    attachedImages,
+    clearImages,
     // File selector
     showFileSelector,
     filteredFiles,
     fileSearchQuery: searchQuery,
     handleFileSelect: handleFileSelectorSelect,
     handleCancelFileSelect,
-    checkForAtDeletion,
     // Command selector
     showCommandSelector,
     commandSearchQuery,
     handleCommandSelect: handleCommandSelectorSelect,
     handleCommandInsert: handleCommandSelectorInsert,
     handleCancelCommandSelect,
-    checkForSlashDeletion,
     // Bash history selector
     showBashHistorySelector,
     bashHistorySearchQuery,
     handleBashHistorySelect: handleBashHistorySelectorSelect,
     handleBashHistoryExecute,
     handleCancelBashHistorySelect,
-    checkForExclamationDeletion,
     // Memory type selector
     showMemoryTypeSelector,
     memoryMessage,
-    activateMemoryTypeSelector,
     handleMemoryTypeSelect: handleMemoryTypeSelectorSelect,
     handleCancelMemoryTypeSelect,
+    // Bash/MCP Manager
+    showBashManager,
+    showMcpManager,
+    setShowBashManager,
+    setShowMcpManager,
     // Input history
     setUserInputHistory,
-    navigateHistory,
-    resetHistoryNavigation,
-    // Special handling
-    handleSpecialCharInput,
+    // Main handler
+    handleInput,
   } = useInputManager({
     onShowBashManager: () => setShowBashManager(true),
     onShowMcpManager: () => setShowMcpManager(true),
     onSendMessage: sendMessage,
     onHasSlashCommand: hasSlashCommand,
+    onSaveMemory: saveMemory,
+    onAbortMessage: abortMessage,
+    onResetHistoryNavigation: resetHistoryNavigation,
   });
 
   // Set user input history when it changes
@@ -117,422 +116,16 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setUserInputHistory(userInputHistory);
   }, [userInputHistory, setUserInputHistory]);
 
-  // Image management functionality (includes clipboard paste)
-  const { attachedImages, clearImages, handlePasteImage } =
-    useImageManager(insertTextAtCursor);
-
-  // Debounce for paste operations
-  const pasteDebounceRef = useRef<{
-    timer: NodeJS.Timeout | null;
-    buffer: string;
-    initialCursorPosition: number;
-    isPasting: boolean;
-  }>({
-    timer: null,
-    buffer: "",
-    initialCursorPosition: 0,
-    isPasting: false,
-  });
-
-  // Long text compression management
-  const longTextCounterRef = useRef<number>(0);
-  const longTextMapRef = useRef<Map<string, string>>(new Map());
-
-  const generateCompressedText = (originalText: string): string => {
-    longTextCounterRef.current += 1;
-    const compressedLabel = `[LongText#${longTextCounterRef.current}]`;
-    longTextMapRef.current.set(compressedLabel, originalText);
-    return compressedLabel;
-  };
-
-  const expandLongTextPlaceholders = (text: string): string => {
-    let expandedText = text;
-    const longTextRegex = /\[LongText#(\d+)\]/g;
-    const matches = [...text.matchAll(longTextRegex)];
-
-    for (const match of matches) {
-      const placeholder = match[0];
-      const originalText = longTextMapRef.current.get(placeholder);
-      if (originalText) {
-        expandedText = expandedText.replace(placeholder, originalText);
-      }
-    }
-
-    return expandedText;
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    const currentDebounceRef = pasteDebounceRef.current;
-    return () => {
-      if (currentDebounceRef.timer) {
-        clearTimeout(currentDebounceRef.timer);
-      }
-    };
-  }, []);
-
-  const handleSelectorInput = useCallback(
-    (input: string, key: Key) => {
-      if (key.backspace || key.delete) {
-        if (cursorPosition > 0) {
-          deleteCharAtCursor((newInput, newCursorPosition) => {
-            // Check for special character deletion
-            checkForAtDeletion(newCursorPosition);
-            checkForSlashDeletion(newCursorPosition);
-            checkForExclamationDeletion(newCursorPosition);
-          });
-        }
-        return;
-      }
-
-      // Arrow keys should be handled by selector components, no need to filter here
-      if (key.upArrow || key.downArrow) {
-        // Let selector component handle arrow key navigation
-        return;
-      }
-
-      if (
-        input &&
-        !key.ctrl &&
-        !("alt" in key && key.alt) &&
-        !key.meta &&
-        !key.return &&
-        !key.escape &&
-        !key.leftArrow &&
-        !key.rightArrow &&
-        !("home" in key && key.home) &&
-        !("end" in key && key.end)
-      ) {
-        // Handle character input for search
-        insertTextAtCursor(input, () => {
-          // Special character handling is now managed by InputManager
-          handleSpecialCharInput(input);
-        });
-      }
-    },
-    [
-      cursorPosition,
-      insertTextAtCursor,
-      deleteCharAtCursor,
-      checkForAtDeletion,
-      checkForSlashDeletion,
-      checkForExclamationDeletion,
-      handleSpecialCharInput,
-    ],
-  );
-
-  const handleNormalInput = useCallback(
-    async (input: string, key: Key) => {
-      if (key.return) {
-        // Prevent submission during loading or command execution
-        if (isLoading || isCommandRunning) {
-          return;
-        }
-
-        if (inputText.trim()) {
-          const trimmedInput = inputText.trim();
-
-          // Check if it's a memory message (starts with # and only one line)
-          if (trimmedInput.startsWith("#") && !trimmedInput.includes("\n")) {
-            // Activate memory type selector
-            activateMemoryTypeSelector(trimmedInput);
-            return;
-          }
-
-          // Extract image information
-          const imageRegex = /\[Image #(\d+)\]/g;
-          const matches = [...inputText.matchAll(imageRegex)];
-          const referencedImages = matches
-            .map((match) => {
-              const imageId = parseInt(match[1], 10);
-              return attachedImages.find((img) => img.id === imageId);
-            })
-            .filter(
-              (img): img is { id: number; path: string; mimeType: string } =>
-                img !== undefined,
-            )
-            .map((img) => ({ path: img.path, mimeType: img.mimeType }));
-
-          // Remove image placeholders, expand long text placeholders, send message
-          let cleanContent = inputText.replace(imageRegex, "").trim();
-          cleanContent = expandLongTextPlaceholders(cleanContent);
-
-          sendMessage(
-            cleanContent,
-            referencedImages.length > 0 ? referencedImages : undefined,
-          );
-          clearInput();
-          clearImages();
-          resetHistoryNavigation();
-
-          // Clear long text mapping
-          longTextMapRef.current.clear();
-        }
-        return;
-      }
-
-      if (key.escape) {
-        if (showFileSelector) {
-          handleCancelFileSelect();
-        } else if (showCommandSelector) {
-          handleCancelCommandSelect();
-        } else if (showBashHistorySelector) {
-          handleCancelBashHistorySelect();
-        }
-        return;
-      }
-
-      if (key.backspace || key.delete) {
-        if (cursorPosition > 0) {
-          deleteCharAtCursor();
-          resetHistoryNavigation();
-
-          // Check if we deleted any special characters
-          const newCursorPosition = cursorPosition - 1;
-          checkForAtDeletion(newCursorPosition);
-          checkForSlashDeletion(newCursorPosition);
-          checkForExclamationDeletion(newCursorPosition);
-        }
-        return;
-      }
-
-      if (key.leftArrow) {
-        moveCursorLeft();
-        return;
-      }
-
-      if (key.rightArrow) {
-        moveCursorRight();
-        return;
-      }
-
-      if (("home" in key && key.home) || (key.ctrl && input === "a")) {
-        moveCursorToStart();
-        return;
-      }
-
-      if (("end" in key && key.end) || (key.ctrl && input === "e")) {
-        moveCursorToEnd();
-        return;
-      }
-
-      // Handle Ctrl+V for pasting images
-      if (key.ctrl && input === "v") {
-        handlePasteImage().catch((error) => {
-          console.warn("Failed to handle paste image:", error);
-        });
-        return;
-      }
-
-      // Handle up/down keys for history navigation (only when no selector is active)
-      if (
-        key.upArrow &&
-        !showFileSelector &&
-        !showCommandSelector &&
-        !showBashHistorySelector
-      ) {
-        navigateHistory("up", inputText);
-        return;
-      }
-
-      if (
-        key.downArrow &&
-        !showFileSelector &&
-        !showCommandSelector &&
-        !showBashHistorySelector
-      ) {
-        navigateHistory("down", inputText);
-        return;
-      }
-
-      // Handle typing input
-      if (
-        input &&
-        !key.ctrl &&
-        !("alt" in key && key.alt) &&
-        !key.meta &&
-        !key.return &&
-        !key.escape &&
-        !key.backspace &&
-        !key.delete &&
-        !key.leftArrow &&
-        !key.rightArrow &&
-        !("home" in key && key.home) &&
-        !("end" in key && key.end)
-      ) {
-        const inputString = input;
-
-        // Detect if it's a paste operation (input contains multiple characters or newlines)
-        const isPasteOperation =
-          inputString.length > 1 ||
-          inputString.includes("\n") ||
-          inputString.includes("\r");
-
-        if (isPasteOperation) {
-          logger.debug("[InputBox] 🔍 Detected paste operation:", {
-            inputLength: inputString.length,
-            input:
-              inputString.substring(0, 50) +
-              (inputString.length > 50 ? "..." : ""),
-            hasNewlines:
-              inputString.includes("\n") || inputString.includes("\r"),
-          });
-
-          // Start or continue the debounce handling for paste operation
-          if (!pasteDebounceRef.current.isPasting) {
-            // Start new paste operation
-            logger.debug(
-              "[InputBox] 🚀 Starting new paste operation - initializing debounce buffer",
-            );
-            pasteDebounceRef.current.isPasting = true;
-            pasteDebounceRef.current.buffer = inputString;
-            pasteDebounceRef.current.initialCursorPosition = cursorPosition;
-          } else {
-            // Continue paste operation, add new input to buffer
-            logger.debug("[InputBox] 📝 Merging paste content to buffer:", {
-              previousBufferLength: pasteDebounceRef.current.buffer.length,
-              newInputLength: inputString.length,
-              newTotalLength:
-                pasteDebounceRef.current.buffer.length + inputString.length,
-            });
-            pasteDebounceRef.current.buffer += inputString;
-          }
-
-          // Clear previous timer
-          if (pasteDebounceRef.current.timer) {
-            logger.debug(
-              "[InputBox] ⏰ Clearing previous debounce timer, resetting paste delay",
-            );
-            clearTimeout(pasteDebounceRef.current.timer);
-          }
-
-          // Set new timer, support environment variable configuration
-          const pasteDebounceDelay = parseInt(
-            process.env.PASTE_DEBOUNCE_MS || "30",
-            10,
-          );
-          pasteDebounceRef.current.timer = setTimeout(() => {
-            logger.debug(
-              "[InputBox] ✅ Debounce complete - processing merged paste content:",
-              {
-                finalBufferLength: pasteDebounceRef.current.buffer.length,
-                content:
-                  pasteDebounceRef.current.buffer.substring(0, 100) +
-                  (pasteDebounceRef.current.buffer.length > 100 ? "..." : ""),
-              },
-            );
-
-            // Process all paste content in buffer
-            let processedInput = pasteDebounceRef.current.buffer.replace(
-              /\r/g,
-              "\n",
-            );
-
-            // Check if long text compression is needed (over 200 characters)
-            if (processedInput.length > 200) {
-              const originalText = processedInput;
-              const compressedLabel = generateCompressedText(originalText);
-              logger.debug(
-                "[InputBox] 📦 Long text compression: originalLength:",
-                originalText.length,
-                "compressedLabel:",
-                compressedLabel,
-                "preview:",
-                originalText.substring(0, 50) + "...",
-              );
-              processedInput = compressedLabel;
-            }
-
-            insertTextAtCursor(processedInput);
-            resetHistoryNavigation();
-
-            // Reset paste state
-            pasteDebounceRef.current.isPasting = false;
-            pasteDebounceRef.current.buffer = "";
-            pasteDebounceRef.current.timer = null;
-
-            logger.debug(
-              "[InputBox] 🎯 Paste debounce processing complete, state reset",
-            );
-          }, pasteDebounceDelay);
-        } else {
-          // Handle single character input
-          let char = inputString;
-
-          // Check if it's Chinese exclamation mark, convert to English if at beginning
-          if (char === "！" && cursorPosition === 0) {
-            char = "!";
-          }
-
-          resetHistoryNavigation();
-          insertTextAtCursor(char, () => {
-            // Handle special character input - this will manage all selectors
-            handleSpecialCharInput(char);
-          });
-        }
-      }
-    },
-    [
-      inputText,
-      cursorPosition,
-      sendMessage,
-      clearInput,
-      resetHistoryNavigation,
-      showFileSelector,
-      showCommandSelector,
-      showBashHistorySelector,
-      handleCancelFileSelect,
-      handleCancelCommandSelect,
-      handleCancelBashHistorySelect,
-      deleteCharAtCursor,
-      checkForAtDeletion,
-      checkForSlashDeletion,
-      checkForExclamationDeletion,
-      moveCursorLeft,
-      moveCursorRight,
-      moveCursorToStart,
-      moveCursorToEnd,
-      navigateHistory,
-      insertTextAtCursor,
+  // Use the InputManager's unified input handler
+  useInput(async (input, key) => {
+    await handleInput(
+      input,
+      key,
       attachedImages,
-      clearImages,
-      handlePasteImage,
-      activateMemoryTypeSelector,
-      handleSpecialCharInput,
       isLoading,
       isCommandRunning,
-    ],
-  );
-
-  useInput((input, key) => {
-    // Handle interrupt request - use Esc key to interrupt AI request or command
-    if (key.escape && (isLoading || isCommandRunning)) {
-      // Unified interrupt for AI message generation and command execution
-      if (typeof abortMessage === "function") {
-        abortMessage();
-      }
-      return;
-    }
-
-    // During loading or command execution, except for Esc key, other input operations continue normally
-    // but will prevent Enter submission in handleNormalInput
-
-    if (
-      showFileSelector ||
-      showCommandSelector ||
-      showBashHistorySelector ||
-      showMemoryTypeSelector ||
-      showBashManager ||
-      showMcpManager
-    ) {
-      if (showMemoryTypeSelector || showBashManager || showMcpManager) {
-        // Memory type selector, bash manager and MCP manager don't need to handle input, handled by component itself
-        return;
-      }
-      handleSelectorInput(input, key);
-    } else {
-      handleNormalInput(input, key);
-    }
+      clearImages,
+    );
   });
 
   // Handler functions for keyboard events
