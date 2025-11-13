@@ -417,10 +417,9 @@ export class Agent {
 
   /** Unified interrupt method, interrupts both AI messages and command execution */
   public abortMessage(): void {
-    this.abortAIMessage();
+    this.abortAIMessage(); // This will abort tools including Task tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
-    this.abortSubagents();
   }
 
   /** Add to input history */
@@ -438,23 +437,12 @@ export class Agent {
     this.slashCommandManager.abortCurrentCommand();
   }
 
-  /** Interrupt all subagent execution */
-  public abortSubagents(): void {
-    this.subagentManager.abortAllInstances();
-  }
-
-  /** Interrupt specific subagent execution */
-  public abortSubagent(subagentId: string): boolean {
-    return this.subagentManager.abortInstance(subagentId);
-  }
-
   /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
     await this.messageManager.saveSession();
-    this.abortAIMessage();
+    this.abortAIMessage(); // This will abort tools including Task tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
-    this.abortSubagents();
     // Cleanup background bash manager
     this.backgroundBashManager.cleanup();
     // Cleanup MCP connections

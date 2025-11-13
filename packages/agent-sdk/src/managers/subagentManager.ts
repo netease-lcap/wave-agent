@@ -203,13 +203,30 @@ export class SubagentManager {
   async executeTask(
     instance: SubagentInstance,
     prompt: string,
+    abortSignal?: AbortSignal,
   ): Promise<string> {
     try {
+      // Check if already aborted before starting
+      if (abortSignal?.aborted) {
+        throw new Error("Task was aborted before execution started");
+      }
+
       // Set status to active and update parent
       this.updateInstanceStatus(instance.subagentId, "active");
       this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
         status: "active",
       });
+
+      // Set up abort handler
+      if (abortSignal) {
+        abortSignal.addEventListener("abort", () => {
+          this.updateInstanceStatus(instance.subagentId, "aborted");
+          this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
+            status: "aborted",
+            messages: instance.messages,
+          });
+        });
+      }
 
       // Add the user's prompt as a message
       instance.messageManager.addUserMessage(prompt);
@@ -227,13 +244,34 @@ export class SubagentManager {
       }
 
       // Execute the AI request with tool restrictions
-      await instance.aiManager.sendAIMessage({
+      // The AIManager will handle abort signals through its own abort controllers
+      // We need to abort the AI execution if the external abort signal is triggered
+      const executeAI = instance.aiManager.sendAIMessage({
         allowedTools,
         model:
           instance.configuration.model !== "inherit"
             ? instance.configuration.model
             : undefined,
       });
+
+      // If we have an abort signal, race against it
+      if (abortSignal) {
+        await Promise.race([
+          executeAI,
+          new Promise<never>((_, reject) => {
+            if (abortSignal.aborted) {
+              reject(new Error("Task was aborted"));
+            }
+            abortSignal.addEventListener("abort", () => {
+              // Abort the AI execution
+              instance.aiManager.abortAIMessage();
+              reject(new Error("Task was aborted"));
+            });
+          }),
+        ]);
+      } else {
+        await executeAI;
+      }
 
       // Get the latest messages to extract the response
       const messages = instance.messageManager.getMessages();
@@ -299,52 +337,6 @@ export class SubagentManager {
   }
 
   /**
-   * Abort a running subagent instance
-   */
-  abortInstance(subagentId: string): boolean {
-    const instance = this.instances.get(subagentId);
-    if (!instance) {
-      return false;
-    }
-
-    // Only abort active or initializing instances
-    if (instance.status !== "active" && instance.status !== "initializing") {
-      return false;
-    }
-
-    try {
-      // Abort the AI manager operations
-      instance.aiManager.abortAIMessage();
-
-      // Update status
-      this.updateInstanceStatus(subagentId, "aborted");
-      this.parentMessageManager.updateSubagentBlock(subagentId, {
-        status: "aborted",
-        messages: instance.messages,
-      });
-
-      this.logger?.debug(`Aborted subagent instance: ${subagentId}`);
-      return true;
-    } catch (error) {
-      this.logger?.error(
-        `Failed to abort subagent instance ${subagentId}:`,
-        error,
-      );
-      return false;
-    }
-  }
-
-  /**
-   * Abort all active subagent instances
-   */
-  abortAllInstances(): void {
-    const activeInstances = this.getActiveInstances();
-    for (const instance of activeInstances) {
-      this.abortInstance(instance.subagentId);
-    }
-  }
-
-  /**
    * Clean up completed, errored, or aborted instances
    */
   cleanupInstance(subagentId: string): void {
@@ -373,8 +365,6 @@ export class SubagentManager {
    * Clean up all instances (for session end)
    */
   cleanup(): void {
-    // Abort all active instances before cleanup
-    this.abortAllInstances();
     this.instances.clear();
   }
 }

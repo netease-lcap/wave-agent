@@ -1,4 +1,4 @@
-import type { ToolPlugin, ToolResult } from "./types.js";
+import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import type { SubagentManager } from "../managers/subagentManager.js";
 
 /**
@@ -47,7 +47,10 @@ ${subagentList || "No subagents configured"}`;
       },
     },
 
-    execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
+    execute: async (
+      args: Record<string, unknown>,
+      context: ToolContext,
+    ): Promise<ToolResult> => {
       // Input validation
       const description = args.description as string;
       const prompt = args.prompt as string;
@@ -102,7 +105,11 @@ ${subagentList || "No subagents configured"}`;
           configuration,
           description,
         );
-        const response = await subagentManager.executeTask(instance, prompt);
+        const response = await subagentManager.executeTask(
+          instance,
+          prompt,
+          context.abortSignal,
+        );
 
         return {
           success: true,
