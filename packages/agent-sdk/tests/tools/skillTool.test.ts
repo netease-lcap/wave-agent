@@ -1,19 +1,56 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Stats } from "fs";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { createSkillTool } from "../../src/tools/skillTool.js";
 import type { Logger } from "../../src/types/index.js";
+
+// Mock fs/promises
+vi.mock("fs/promises", () => ({
+  readdir: vi.fn(),
+  stat: vi.fn(),
+}));
+
+// Mock os module
+vi.mock("os", () => ({
+  homedir: vi.fn(() => "/mock/home"),
+}));
+
+// Mock path module
+vi.mock("path", () => ({
+  join: vi.fn((...args) => args.join("/")),
+}));
+
+// Mock skill parser
+vi.mock("../../src/utils/skillParser.js", () => ({
+  parseSkillFile: vi.fn(),
+  formatSkillError: vi.fn(),
+}));
+
+import { readdir, stat } from "fs/promises";
+
+const mockReaddir = vi.mocked(readdir);
+const mockStat = vi.mocked(stat);
 
 describe("createSkillTool", () => {
   let skillManager: SkillManager;
   let mockLogger: Logger;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+
     mockLogger = {
       error: vi.fn(),
       warn: vi.fn(),
       info: vi.fn(),
       debug: vi.fn(),
     };
+
+    // Mock empty directory by default (no skills found)
+    mockReaddir.mockResolvedValue([]);
+    mockStat.mockResolvedValue({
+      isDirectory: () => false,
+      isFile: () => true,
+    } as Stats);
 
     skillManager = new SkillManager({ logger: mockLogger });
   });

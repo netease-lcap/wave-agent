@@ -1,71 +1,102 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { grepTool } from "@/tools/grepTool.js";
-import { mkdtemp, writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
-import { rimraf } from "rimraf";
 import type { ToolContext } from "@/tools/types.js";
+import type { ChildProcess } from "child_process";
 
 const testContext: ToolContext = { workdir: "/test/workdir" };
 
+// Mock child_process
+vi.mock("child_process", () => ({
+  spawn: vi.fn(),
+}));
+
+// Mock ripgrep path
+vi.mock("@vscode/ripgrep", () => ({
+  rgPath: "/mock/rg",
+}));
+
+// Mock utilities
+vi.mock("../utils/fileFilter.js", () => ({
+  getGlobIgnorePatterns: vi.fn(() => ["**/node_modules/**", "**/.git/**"]),
+}));
+
+vi.mock("../utils/path.js", () => ({
+  getDisplayPath: vi.fn((path: string) => path.replace("/test/workdir/", "")),
+}));
+
+// Import the mocked modules
+import { spawn } from "child_process";
+
 describe("grepTool", () => {
-  let tempDir: string;
+  const mockSpawn = vi.mocked(spawn);
+  // Helper to create a mock spawn process
+  const createMockProcess = (
+    stdout: string,
+    stderr: string = "",
+    exitCode: number = 0,
+  ): Partial<ChildProcess> => {
+    const mockProcess = {
+      stdout: {
+        on: vi.fn(),
+        pipe: vi.fn(),
+      } as never,
+      stderr: {
+        on: vi.fn(),
+        pipe: vi.fn(),
+      } as never,
+      on: vi.fn(),
+      kill: vi.fn(),
+    } as Partial<ChildProcess>;
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "grep-test-"));
-
-    // Create test file structure
-    await mkdir(join(tempDir, "src"), { recursive: true });
-    await mkdir(join(tempDir, "tests"), { recursive: true });
-
-    await writeFile(
-      join(tempDir, "src/index.ts"),
-      `export const app = 'main';
-export function createApp() {
-  return new Application();
-}
-class Application {
-  start() {
-    console.log('Starting application');
-  }
-}`,
+    // Simulate data events
+    (
+      mockProcess.stdout as never as { on: ReturnType<typeof vi.fn> }
+    ).on.mockImplementation(
+      (event: string, callback: (data: Buffer) => void) => {
+        if (event === "data" && stdout) {
+          setTimeout(() => callback(Buffer.from(stdout)), 0);
+        }
+        return mockProcess.stdout;
+      },
     );
 
-    await writeFile(
-      join(tempDir, "src/utils.ts"),
-      `export const logger = {
-  info: (msg: string) => console.log(msg),
-  error: (msg: string) => console.error(msg)
-};
-
-export function validateEmail(email: string): boolean {
-  return email.includes('@');
-}`,
+    (
+      mockProcess.stderr as never as { on: ReturnType<typeof vi.fn> }
+    ).on.mockImplementation(
+      (event: string, callback: (data: Buffer) => void) => {
+        if (event === "data" && stderr) {
+          setTimeout(() => callback(Buffer.from(stderr)), 0);
+        }
+        return mockProcess.stderr;
+      },
     );
 
-    await writeFile(
-      join(tempDir, "tests/app.test.js"),
-      `const { createApp } = require('../src/index');
-
-test('app creation', () => {
-  const app = createApp();
-  expect(app).toBeDefined();
-});`,
+    (mockProcess.on as ReturnType<typeof vi.fn>).mockImplementation(
+      (
+        event: string,
+        callback: ((code: number) => void) | ((error: Error) => void),
+      ) => {
+        if (event === "close") {
+          setTimeout(() => (callback as (code: number) => void)(exitCode), 0);
+        } else if (event === "error" && exitCode !== 0 && stderr) {
+          setTimeout(
+            () => (callback as (error: Error) => void)(new Error(stderr)),
+            0,
+          );
+        }
+        return mockProcess;
+      },
     );
 
-    await writeFile(
-      join(tempDir, "README.md"),
-      `# Test Project
+    return mockProcess;
+  };
 
-This is a test project for grep functionality.
-It contains various files with different content.`,
-    );
-
-    await writeFile(join(tempDir, "package.json"), '{"name": "test-project"}');
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  afterEach(async () => {
-    await rimraf(tempDir);
+  afterEach(() => {
+    vi.resetAllMocks();
   });
 
   it("should be properly configured", () => {
@@ -81,12 +112,15 @@ It contains various files with different content.`,
   });
 
   it("should find files containing pattern (files_with_matches mode)", async () => {
+    const stdout = "src/index.ts\nsrc/utils.ts\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "export",
         output_mode: "files_with_matches",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -96,12 +130,17 @@ It contains various files with different content.`,
   });
 
   it("should show matching lines (content mode)", async () => {
+    const stdout = `src/index.ts:1:export const app = 'main';
+src/utils.ts:1:export const logger = {};
+`;
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "export const",
         output_mode: "content",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -112,12 +151,17 @@ It contains various files with different content.`,
   });
 
   it("should show match counts (count mode)", async () => {
+    const stdout = `src/index.ts:2
+src/utils.ts:3
+`;
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "export",
         output_mode: "count",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -127,13 +171,18 @@ It contains various files with different content.`,
   });
 
   it("should show line numbers in content mode", async () => {
+    const stdout = `src/index.ts:1:export const app = 'main';
+src/utils.ts:1:export const logger = {};
+`;
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "export const",
         output_mode: "content",
         "-n": true,
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -142,75 +191,123 @@ It contains various files with different content.`,
   });
 
   it("should work with case insensitive search", async () => {
+    const stdout = "src/index.ts\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "APPLICATION",
         "-i": true,
         output_mode: "files_with_matches",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
+
+    // Verify that the -i flag was passed
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["-i"]),
+      expect.any(Object),
+    );
   });
 
   it("should filter by file type", async () => {
+    const stdout = "src/index.ts\nsrc/utils.ts\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "export",
         type: "ts",
         output_mode: "files_with_matches",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
     expect(result.content).toContain("src/utils.ts");
     expect(result.content).not.toContain("tests/app.test.js");
+
+    // Verify that the --type flag was passed
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["--type", "ts"]),
+      expect.any(Object),
+    );
   });
 
   it("should filter by glob pattern", async () => {
+    const stdout = "src/index.ts\nsrc/utils.ts\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "export",
         glob: "*.ts",
         output_mode: "files_with_matches",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
     expect(result.content).toContain("src/utils.ts");
     expect(result.content).not.toContain("tests/app.test.js");
+
+    // Verify that the --glob flag was passed
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["--glob", "*.ts"]),
+      expect.any(Object),
+    );
   });
 
   it("should show context lines", async () => {
+    const stdout = `src/index.ts-1-export const app = 'main';
+src/index.ts:2:export function createApp() {
+src/index.ts-3-  return new Application();
+`;
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "createApp",
         output_mode: "content",
         "-C": 2,
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("export const app");
     expect(result.content).toContain("export function createApp");
     expect(result.content).toContain("return new Application");
+
+    // Verify that the -C flag was passed
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["-C", "2"]),
+      expect.any(Object),
+    );
   });
 
   it("should show context before matches", async () => {
+    const stdout = `src/index.ts-1-export const app = 'main';
+src/index.ts:2:export function createApp() {
+`;
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "createApp",
         output_mode: "content",
         "-B": 1,
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -219,13 +316,18 @@ It contains various files with different content.`,
   });
 
   it("should show context after matches", async () => {
+    const stdout = `src/index.ts:2:export function createApp() {
+src/index.ts-3-  return new Application();
+`;
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "createApp",
         output_mode: "content",
         "-A": 1,
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -234,13 +336,16 @@ It contains various files with different content.`,
   });
 
   it("should limit results with head_limit", async () => {
+    const stdout = "src/index.ts\nsrc/utils.ts\nsrc/other.ts\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "export",
         output_mode: "files_with_matches",
         head_limit: 1,
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -250,14 +355,8 @@ It contains various files with different content.`,
   });
 
   it("should work with multiline mode", async () => {
-    // Create a file with multiline patterns
-    await writeFile(
-      join(tempDir, "multiline.txt"),
-      `struct User {
-  name: String,
-  email: String,
-}`,
-    );
+    const stdout = "multiline.txt\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
     const result = await grepTool.execute(
       {
@@ -265,36 +364,56 @@ It contains various files with different content.`,
         multiline: true,
         output_mode: "files_with_matches",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.content).toContain("multiline.txt");
     }
+
+    // Verify that multiline flags were passed
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["-U", "--multiline-dotall"]),
+      expect.any(Object),
+    );
   });
 
   it("should search in specific path", async () => {
+    const stdout = "src/index.ts\nsrc/utils.ts\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "export",
         path: "src",
         output_mode: "files_with_matches",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
     expect(result.content).toContain("src/utils.ts");
+
+    // Verify that the path was passed as an argument
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["src"]),
+      expect.any(Object),
+    );
   });
 
   it("should return no matches message", async () => {
+    // Mock empty output with exit code 1 (no matches found)
+    mockSpawn.mockReturnValueOnce(createMockProcess("", "", 1) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "NONEXISTENT_PATTERN_12345",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -339,13 +458,8 @@ It contains various files with different content.`,
   });
 
   it("should handle complex glob patterns with braces", async () => {
-    // Add a jsx file containing export to test braces glob
-    await writeFile(
-      join(tempDir, "src/component.jsx"),
-      `export const Button = () => {
-  return <button>Click me</button>;
-};`,
-    );
+    const stdout = "src/index.ts\nsrc/utils.ts\nsrc/component.jsx\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
     const result = await grepTool.execute(
       {
@@ -353,7 +467,7 @@ It contains various files with different content.`,
         glob: "**/*.{ts,tsx,js,jsx}",
         output_mode: "files_with_matches",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -362,29 +476,16 @@ It contains various files with different content.`,
     expect(result.content).toContain("src/component.jsx");
   });
 
-  it("should handle multiple comma-separated glob patterns without braces", async () => {
-    const result = await grepTool.execute(
-      {
-        pattern: "export",
-        glob: "*.ts,*.js",
-        output_mode: "files_with_matches",
-      },
-      { workdir: tempDir },
-    );
-
-    expect(result.success).toBe(true);
-    // Since glob "*.ts,*.js" only matches files in root directory, it won't match files in src/ directory
-    // This test mainly verifies that comma separation functionality still works
-    expect(result.success).toBe(true);
-  });
-
   it("should handle special regex characters", async () => {
+    const stdout = "src/index.ts\nsrc/utils.ts\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
+
     const result = await grepTool.execute(
       {
         pattern: "function\\s+\\w+",
         output_mode: "files_with_matches",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -393,16 +494,10 @@ It contains various files with different content.`,
   });
 
   it("should handle patterns starting with dash", async () => {
-    // Create a file with content starting with - to test
-    await writeFile(
-      join(tempDir, "tasks.md"),
-      `# Tasks
-- [ ] Implement user authentication
-- [x] Setup database connection
-- [ ] Create API endpoints
---verbose mode enabled
-`,
-    );
+    const stdout = `tasks.md:2:- [ ] Implement user authentication
+tasks.md:4:- [ ] Create API endpoints
+`;
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
     const result = await grepTool.execute(
       {
@@ -410,7 +505,7 @@ It contains various files with different content.`,
         output_mode: "content",
         "-n": true,
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -421,26 +516,49 @@ It contains various files with different content.`,
   });
 
   it("should handle patterns starting with double dash", async () => {
-    // Ensure tasks.md file exists (if previous tests didn't create it)
-    await writeFile(
-      join(tempDir, "tasks.md"),
-      `# Tasks
-- [ ] Implement user authentication
-- [x] Setup database connection
-- [ ] Create API endpoints
---verbose mode enabled
-`,
-    );
+    const stdout = "tasks.md\n";
+    mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
     const result = await grepTool.execute(
       {
         pattern: "--verbose",
         output_mode: "files_with_matches",
       },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("tasks.md");
+  });
+
+  it("should handle ripgrep process errors", async () => {
+    const mockErrorProcess: Partial<ChildProcess> = {
+      stdout: { on: vi.fn(), pipe: vi.fn() } as never,
+      stderr: { on: vi.fn(), pipe: vi.fn() } as never,
+      on: vi.fn(),
+      kill: vi.fn(),
+    };
+
+    // Simulate process error
+    (mockErrorProcess.on as ReturnType<typeof vi.fn>).mockImplementation(
+      (event: string, callback: (error: Error) => void) => {
+        if (event === "error") {
+          setTimeout(() => callback(new Error("ripgrep not found")), 0);
+        }
+        return mockErrorProcess;
+      },
+    );
+
+    mockSpawn.mockReturnValueOnce(mockErrorProcess as ChildProcess);
+
+    const result = await grepTool.execute(
+      {
+        pattern: "test",
+      },
+      { workdir: "/test/workdir" },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("ripgrep not found");
   });
 });

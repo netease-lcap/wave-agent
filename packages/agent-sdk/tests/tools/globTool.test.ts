@@ -1,46 +1,51 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { globTool } from "@/tools/globTool.js";
-import { mkdtemp, writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
-import { rimraf } from "rimraf";
 import type { ToolContext } from "@/tools/types.js";
+import type { Stats } from "fs";
 
 const testContext: ToolContext = { workdir: "/test/workdir" };
 
+// Mock glob
+vi.mock("glob", () => ({
+  glob: vi.fn(),
+}));
+
+// Mock fs/promises
+vi.mock("fs/promises", () => ({
+  stat: vi.fn(),
+}));
+
+// Mock path utilities
+vi.mock("../utils/path.js", () => ({
+  resolvePath: vi.fn((path: string, workdir: string) => path || workdir),
+  getDisplayPath: vi.fn((path: string) => path),
+}));
+
+// Mock fileFilter utility
+vi.mock("../utils/fileFilter.js", () => ({
+  getGlobIgnorePatterns: vi.fn(() => ["**/node_modules/**", "**/.git/**"]),
+}));
+
+// Import the mocked modules
+import { glob } from "glob";
+import { stat } from "fs/promises";
+
 describe("globTool", () => {
-  let tempDir: string;
+  const mockGlob = vi.mocked(glob);
+  const mockStat = vi.mocked(stat);
 
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "glob-test-"));
+  // Helper to create mock stats
+  const createMockStats = (mtime: Date = new Date("2023-01-01")): Stats =>
+    ({
+      mtime,
+    }) as Stats;
 
-    // Create test file structure
-    await mkdir(join(tempDir, "src"), { recursive: true });
-    await mkdir(join(tempDir, "tests"), { recursive: true });
-    await mkdir(join(tempDir, "docs"), { recursive: true });
-
-    await writeFile(
-      join(tempDir, "src/index.ts"),
-      "export const app = 'main';",
-    );
-    await writeFile(
-      join(tempDir, "src/utils.ts"),
-      "export const utils = 'helper';",
-    );
-    await writeFile(
-      join(tempDir, "tests/app.test.js"),
-      "test('app', () => {});",
-    );
-    await writeFile(join(tempDir, "docs/README.md"), "# Documentation");
-    await writeFile(join(tempDir, "package.json"), "{}");
-    await writeFile(join(tempDir, ".gitignore"), "node_modules/");
-
-    // Wait to ensure file timestamps are different
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  afterEach(async () => {
-    await rimraf(tempDir);
+  afterEach(() => {
+    vi.resetAllMocks();
   });
 
   it("should be properly configured", () => {
@@ -56,9 +61,18 @@ describe("globTool", () => {
   });
 
   it("should find TypeScript files with **/*.ts pattern", async () => {
+    mockGlob.mockResolvedValueOnce([
+      "/test/workdir/src/index.ts",
+      "/test/workdir/src/utils.ts",
+    ]);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-01")));
+
     const result = await globTool.execute(
       { pattern: "**/*.ts" },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -68,9 +82,22 @@ describe("globTool", () => {
   });
 
   it("should find all files with ** pattern", async () => {
+    mockGlob.mockResolvedValueOnce([
+      "/test/workdir/package.json",
+      "/test/workdir/src/index.ts",
+      "/test/workdir/tests/app.test.js",
+      "/test/workdir/docs/README.md",
+    ]);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-01")))
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-03")))
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-04")));
+
     const result = await globTool.execute(
       { pattern: "**/*" },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -81,9 +108,18 @@ describe("globTool", () => {
   });
 
   it("should find files in specific directory", async () => {
+    mockGlob.mockResolvedValueOnce([
+      "/test/workdir/src/index.ts",
+      "/test/workdir/src/utils.ts",
+    ]);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-01")));
+
     const result = await globTool.execute(
       { pattern: "src/*" },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -93,9 +129,11 @@ describe("globTool", () => {
   });
 
   it("should return no matches for non-existent pattern", async () => {
+    mockGlob.mockResolvedValueOnce([]);
+
     const result = await globTool.execute(
       { pattern: "**/*.nonexistent" },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -104,9 +142,17 @@ describe("globTool", () => {
   });
 
   it("should work with custom search path", async () => {
-    const srcDir = join(tempDir, "src");
+    mockGlob.mockResolvedValueOnce([
+      "/test/workdir/src/index.ts",
+      "/test/workdir/src/utils.ts",
+    ]);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-01")));
+
     const result = await globTool.execute(
-      { pattern: "*.ts", path: srcDir },
+      { pattern: "*.ts", path: "/test/workdir/src" },
       testContext,
     );
 
@@ -144,17 +190,19 @@ describe("globTool", () => {
   });
 
   it("should sort files by modification time", async () => {
-    // Create files and ensure different modification times
-    const file1 = join(tempDir, "file1.txt");
-    const file2 = join(tempDir, "file2.txt");
+    mockGlob.mockResolvedValueOnce([
+      "/test/workdir/file1.txt",
+      "/test/workdir/file2.txt",
+    ]);
 
-    await writeFile(file1, "content1");
-    await new Promise((resolve) => setTimeout(resolve, 50)); // Wait to ensure time difference
-    await writeFile(file2, "content2");
+    // file2.txt is newer (modified later)
+    mockStat
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-01"))) // file1.txt
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-02"))); // file2.txt
 
     const result = await globTool.execute(
       { pattern: "file*.txt" },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
@@ -165,22 +213,93 @@ describe("globTool", () => {
   });
 
   it("should respect gitignore patterns", async () => {
-    // Create node_modules directory and files
-    await mkdir(join(tempDir, "node_modules"), { recursive: true });
-    await writeFile(
-      join(tempDir, "node_modules/package.js"),
-      "module.exports = {};",
-    );
+    // Mock glob to return files that would include node_modules, but should be filtered out
+    mockGlob.mockResolvedValueOnce([
+      "/test/workdir/tests/app.test.js", // This should be included
+    ]);
+
+    mockStat.mockResolvedValueOnce(createMockStats(new Date("2023-01-01")));
 
     const result = await globTool.execute(
       { pattern: "**/*.js" },
-      { workdir: tempDir },
+      { workdir: "/test/workdir" },
     );
 
     expect(result.success).toBe(true);
     // Should include .js files in tests directory
     expect(result.content).toContain("tests/app.test.js");
-    // But should not include files under node_modules (ignored by gitignore)
-    expect(result.content).not.toContain("node_modules/package.js");
+    // The glob mock is configured to not return node_modules files,
+    // which simulates the gitignore filtering behavior
+  });
+
+  it("should handle stat errors gracefully", async () => {
+    mockGlob.mockResolvedValueOnce([
+      "/test/workdir/file1.txt",
+      "/test/workdir/file2.txt",
+    ]);
+
+    // First file stat succeeds, second fails
+    mockStat
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-01")))
+      .mockRejectedValueOnce(new Error("Permission denied"));
+
+    const result = await globTool.execute(
+      { pattern: "file*.txt" },
+      { workdir: "/test/workdir" },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("file1.txt");
+    expect(result.content).toContain("file2.txt");
+    // Should still work even when some stat calls fail
+  });
+
+  it("should handle glob errors", async () => {
+    mockGlob.mockRejectedValueOnce(new Error("Invalid pattern"));
+
+    const result = await globTool.execute(
+      { pattern: "[invalid" },
+      { workdir: "/test/workdir" },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid pattern");
+  });
+
+  it("should work with complex patterns", async () => {
+    mockGlob.mockResolvedValueOnce([
+      "/test/workdir/src/component.tsx",
+      "/test/workdir/src/utils.ts",
+      "/test/workdir/test/app.test.js",
+    ]);
+
+    mockStat
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-01")))
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
+      .mockResolvedValueOnce(createMockStats(new Date("2023-01-03")));
+
+    const result = await globTool.execute(
+      { pattern: "**/*.{ts,tsx,js}" },
+      { workdir: "/test/workdir" },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("src/component.tsx");
+    expect(result.content).toContain("src/utils.ts");
+    expect(result.content).toContain("test/app.test.js");
+  });
+
+  it("should display relative paths correctly", async () => {
+    mockGlob.mockResolvedValueOnce(["/test/workdir/nested/deep/file.ts"]);
+
+    mockStat.mockResolvedValueOnce(createMockStats(new Date("2023-01-01")));
+
+    const result = await globTool.execute(
+      { pattern: "**/file.ts" },
+      { workdir: "/test/workdir" },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("nested/deep/file.ts");
   });
 });

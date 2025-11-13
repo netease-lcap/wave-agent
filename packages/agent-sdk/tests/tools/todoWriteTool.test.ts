@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import { todoWriteTool } from "@/tools/todoWriteTool.js";
 import type { ToolContext } from "@/tools/types.js";
 
+// Note: This tool performs no filesystem operations - it only validates data structures in memory
+// No mocking of filesystem operations is needed for this test file
+
 const mockContext: ToolContext = {
   workdir: "/test/workdir",
   abortSignal: new AbortController().signal,
