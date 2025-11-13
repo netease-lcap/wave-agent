@@ -7,12 +7,7 @@ import { BashHistorySelector } from "./BashHistorySelector.js";
 import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
 import { BashShellManager } from "./BashShellManager.js";
 import { McpManager } from "./McpManager.js";
-import { useInputState } from "../hooks/useInputState.js";
-import { useFileSelector } from "../hooks/useFileSelector.js";
-import { useCommandSelector } from "../hooks/useCommandSelector.js";
-import { useBashHistorySelector } from "../hooks/useBashHistorySelector.js";
-import { useMemoryTypeSelector } from "../hooks/useMemoryTypeSelector.js";
-import { useInputHistory } from "../hooks/useInputHistory.js";
+import { useInputManager } from "../hooks/useInputManager.js";
 import { useImageManager } from "../hooks/useImageManager.js";
 import { logger } from "../utils/logger.js";
 import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
@@ -65,12 +60,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const [showBashManager, setShowBashManager] = useState(false);
   // MCP manager state
   const [showMcpManager, setShowMcpManager] = useState(false);
-  // Basic input state
+
+  // Input manager with all input state and functionality
   const {
     inputText,
-    setInputText,
     cursorPosition,
-    setCursorPosition,
     insertTextAtCursor,
     deleteCharAtCursor,
     clearInput,
@@ -78,67 +72,50 @@ export const InputBox: React.FC<InputBoxProps> = ({
     moveCursorRight,
     moveCursorToStart,
     moveCursorToEnd,
-  } = useInputState();
-
-  // File selector functionality
-  const {
+    // File selector
     showFileSelector,
     filteredFiles,
-    searchQuery,
-    activateFileSelector,
+    fileSearchQuery: searchQuery,
     handleFileSelect: handleFileSelectorSelect,
     handleCancelFileSelect,
-    updateSearchQuery,
     checkForAtDeletion,
-    atPosition,
-  } = useFileSelector();
-
-  // Command selector functionality
-  const {
+    // Command selector
     showCommandSelector,
     commandSearchQuery,
-    activateCommandSelector,
     handleCommandSelect: handleCommandSelectorSelect,
     handleCommandInsert: handleCommandSelectorInsert,
     handleCancelCommandSelect,
-    updateCommandSearchQuery,
     checkForSlashDeletion,
-    slashPosition,
-  } = useCommandSelector({
-    onShowBashManager: () => setShowBashManager(true),
-    onShowMcpManager: () => setShowMcpManager(true),
-    sendMessage: async (content: string) => {
-      await sendMessage(content);
-    },
-    hasSlashCommand,
-  });
-
-  // Bash history selector functionality
-  const {
+    // Bash history selector
     showBashHistorySelector,
     bashHistorySearchQuery,
-    activateBashHistorySelector,
     handleBashHistorySelect: handleBashHistorySelectorSelect,
     handleBashHistoryExecute,
     handleCancelBashHistorySelect,
-    updateBashHistorySearchQuery,
     checkForExclamationDeletion,
-    exclamationPosition,
-  } = useBashHistorySelector();
-
-  // Memory type selector functionality
-  const {
+    // Memory type selector
     showMemoryTypeSelector,
     memoryMessage,
     activateMemoryTypeSelector,
     handleMemoryTypeSelect: handleMemoryTypeSelectorSelect,
     handleCancelMemoryTypeSelect,
-  } = useMemoryTypeSelector();
-
-  // Input history functionality
-  const { resetHistoryNavigation, navigateHistory } = useInputHistory({
-    userInputHistory,
+    // Input history
+    setUserInputHistory,
+    navigateHistory,
+    resetHistoryNavigation,
+    // Special handling
+    handleSpecialCharInput,
+  } = useInputManager({
+    onShowBashManager: () => setShowBashManager(true),
+    onShowMcpManager: () => setShowMcpManager(true),
+    onSendMessage: sendMessage,
+    onHasSlashCommand: hasSlashCommand,
   });
+
+  // Set user input history when it changes
+  useEffect(() => {
+    setUserInputHistory(userInputHistory);
+  }, [userInputHistory, setUserInputHistory]);
 
   // Image management functionality (includes clipboard paste)
   const { attachedImages, clearImages, handlePasteImage } =
@@ -199,38 +176,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
       if (key.backspace || key.delete) {
         if (cursorPosition > 0) {
           deleteCharAtCursor((newInput, newCursorPosition) => {
-            // Update search query
-            if (atPosition >= 0) {
-              const queryStart = atPosition + 1;
-              const queryEnd = newCursorPosition;
-              if (queryEnd <= atPosition) {
-                // Deleted @ symbol, close file selector
-                handleCancelFileSelect();
-              } else {
-                const newQuery = newInput.substring(queryStart, queryEnd);
-                updateSearchQuery(newQuery);
-              }
-            } else if (slashPosition >= 0) {
-              const queryStart = slashPosition + 1;
-              const queryEnd = newCursorPosition;
-              if (queryEnd <= slashPosition) {
-                // Deleted / symbol, close command selector
-                handleCancelCommandSelect();
-              } else {
-                const newQuery = newInput.substring(queryStart, queryEnd);
-                updateCommandSearchQuery(newQuery);
-              }
-            } else if (exclamationPosition >= 0) {
-              const queryStart = exclamationPosition + 1;
-              const queryEnd = newCursorPosition;
-              if (queryEnd <= exclamationPosition) {
-                // Deleted ! symbol, close bash history selector
-                handleCancelBashHistorySelect();
-              } else {
-                const newQuery = newInput.substring(queryStart, queryEnd);
-                updateBashHistorySearchQuery(newQuery);
-              }
-            }
+            // Check for special character deletion
+            checkForAtDeletion(newCursorPosition);
+            checkForSlashDeletion(newCursorPosition);
+            checkForExclamationDeletion(newCursorPosition);
           });
         }
         return;
@@ -255,24 +204,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
         !("end" in key && key.end)
       ) {
         // Handle character input for search
-        insertTextAtCursor(input, (newInput, newCursorPosition) => {
-          // Update search query
-          if (atPosition >= 0) {
-            const queryStart = atPosition + 1;
-            const queryEnd = newCursorPosition;
-            const newQuery = newInput.substring(queryStart, queryEnd);
-            updateSearchQuery(newQuery);
-          } else if (slashPosition >= 0) {
-            const queryStart = slashPosition + 1;
-            const queryEnd = newCursorPosition;
-            const newQuery = newInput.substring(queryStart, queryEnd);
-            updateCommandSearchQuery(newQuery);
-          } else if (exclamationPosition >= 0) {
-            const queryStart = exclamationPosition + 1;
-            const queryEnd = newCursorPosition;
-            const newQuery = newInput.substring(queryStart, queryEnd);
-            updateBashHistorySearchQuery(newQuery);
-          }
+        insertTextAtCursor(input, () => {
+          // Special character handling is now managed by InputManager
+          handleSpecialCharInput(input);
         });
       }
     },
@@ -280,15 +214,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
       cursorPosition,
       insertTextAtCursor,
       deleteCharAtCursor,
-      atPosition,
-      slashPosition,
-      exclamationPosition,
-      handleCancelFileSelect,
-      handleCancelCommandSelect,
-      handleCancelBashHistorySelect,
-      updateSearchQuery,
-      updateCommandSearchQuery,
-      updateBashHistorySearchQuery,
+      checkForAtDeletion,
+      checkForSlashDeletion,
+      checkForExclamationDeletion,
+      handleSpecialCharInput,
     ],
   );
 
@@ -300,15 +229,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
           return;
         }
 
-        const latestInputText = await new Promise<string>((resolve) =>
-          setInputText((i: string) => {
-            resolve(i);
-            return i;
-          }),
-        );
-
-        if (latestInputText.trim()) {
-          const trimmedInput = latestInputText.trim();
+        if (inputText.trim()) {
+          const trimmedInput = inputText.trim();
 
           // Check if it's a memory message (starts with # and only one line)
           if (trimmedInput.startsWith("#") && !trimmedInput.includes("\n")) {
@@ -319,7 +241,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
           // Extract image information
           const imageRegex = /\[Image #(\d+)\]/g;
-          const matches = [...latestInputText.matchAll(imageRegex)];
+          const matches = [...inputText.matchAll(imageRegex)];
           const referencedImages = matches
             .map((match) => {
               const imageId = parseInt(match[1], 10);
@@ -332,7 +254,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
             .map((img) => ({ path: img.path, mimeType: img.mimeType }));
 
           // Remove image placeholders, expand long text placeholders, send message
-          let cleanContent = latestInputText.replace(imageRegex, "").trim();
+          let cleanContent = inputText.replace(imageRegex, "").trim();
           cleanContent = expandLongTextPlaceholders(cleanContent);
 
           sendMessage(
@@ -409,14 +331,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         !showCommandSelector &&
         !showBashHistorySelector
       ) {
-        setInputText((lastInputText) => {
-          const { newInput, newCursorPosition } = navigateHistory(
-            "up",
-            lastInputText,
-          );
-          setCursorPosition(newCursorPosition);
-          return newInput;
-        });
+        navigateHistory("up", inputText);
         return;
       }
 
@@ -426,14 +341,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         !showCommandSelector &&
         !showBashHistorySelector
       ) {
-        setInputText((lastInputText) => {
-          const { newInput, newCursorPosition } = navigateHistory(
-            "down",
-            lastInputText,
-          );
-          setCursorPosition(newCursorPosition);
-          return newInput;
-        });
+        navigateHistory("down", inputText);
         return;
       }
 
@@ -557,45 +465,15 @@ export const InputBox: React.FC<InputBoxProps> = ({
           }
 
           resetHistoryNavigation();
-          insertTextAtCursor(char, (newInputText, newCursorPosition) => {
-            // Check special characters and set corresponding selectors
-            if (char === "@") {
-              activateFileSelector(cursorPosition);
-            } else if (char === "/") {
-              activateCommandSelector(cursorPosition);
-            } else if (char === "!" && cursorPosition === 0) {
-              // ! must be the first character to trigger bash selector
-              activateBashHistorySelector(cursorPosition);
-            } else if (char === "#" && cursorPosition === 0) {
-              // # at beginning position, will be auto-detected as memory message when sent
-              logger.debug(
-                "[InputBox] 📝 Memory message detection, input starts with #",
-              );
-            } else if (showFileSelector && atPosition >= 0) {
-              // Update search query
-              const queryStart = atPosition + 1;
-              const queryEnd = newCursorPosition;
-              const newQuery = newInputText.substring(queryStart, queryEnd);
-              updateSearchQuery(newQuery);
-            } else if (showCommandSelector && slashPosition >= 0) {
-              // Update command search query
-              const queryStart = slashPosition + 1;
-              const queryEnd = newCursorPosition;
-              const newQuery = newInputText.substring(queryStart, queryEnd);
-              updateCommandSearchQuery(newQuery);
-            } else if (showBashHistorySelector && exclamationPosition >= 0) {
-              // Update bash history search query
-              const queryStart = exclamationPosition + 1;
-              const queryEnd = newCursorPosition;
-              const newQuery = newInputText.substring(queryStart, queryEnd);
-              updateBashHistorySearchQuery(newQuery);
-            }
+          insertTextAtCursor(char, () => {
+            // Handle special character input - this will manage all selectors
+            handleSpecialCharInput(char);
           });
         }
       }
     },
     [
-      // inputText,
+      inputText,
       cursorPosition,
       sendMessage,
       clearInput,
@@ -615,22 +493,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
       moveCursorToStart,
       moveCursorToEnd,
       navigateHistory,
-      setInputText,
-      setCursorPosition,
       insertTextAtCursor,
-      activateFileSelector,
-      activateCommandSelector,
-      activateBashHistorySelector,
-      atPosition,
-      slashPosition,
-      exclamationPosition,
-      updateSearchQuery,
-      updateCommandSearchQuery,
-      updateBashHistorySearchQuery,
       attachedImages,
       clearImages,
       handlePasteImage,
       activateMemoryTypeSelector,
+      handleSpecialCharInput,
       isLoading,
       isCommandRunning,
     ],
@@ -670,57 +538,23 @@ export const InputBox: React.FC<InputBoxProps> = ({
   // Handler functions for keyboard events
   const handleFileSelect = useCallback(
     (filePath: string) => {
-      setInputText((lastInputText) => {
-        const { newInput, newCursorPosition } = handleFileSelectorSelect(
-          filePath,
-          lastInputText,
-          cursorPosition,
-        );
-        setCursorPosition(newCursorPosition);
-        return newInput;
-      });
+      handleFileSelectorSelect(filePath);
     },
-    [handleFileSelectorSelect, cursorPosition, setInputText, setCursorPosition],
+    [handleFileSelectorSelect],
   );
 
   const handleCommandSelect = useCallback(
     (command: string) => {
-      setInputText((lastInputText) => {
-        const { newInput, newCursorPosition } = handleCommandSelectorSelect(
-          command,
-          lastInputText,
-          cursorPosition,
-        );
-        setCursorPosition(newCursorPosition);
-        return newInput;
-      });
+      handleCommandSelectorSelect(command);
     },
-    [
-      handleCommandSelectorSelect,
-      cursorPosition,
-      setInputText,
-      setCursorPosition,
-    ],
+    [handleCommandSelectorSelect],
   );
 
   const handleBashHistorySelect = useCallback(
     (command: string) => {
-      setInputText((lastInputText) => {
-        const { newInput, newCursorPosition } = handleBashHistorySelectorSelect(
-          command,
-          lastInputText,
-          cursorPosition,
-        );
-        setCursorPosition(newCursorPosition);
-        return newInput;
-      });
+      handleBashHistorySelectorSelect(command);
     },
-    [
-      handleBashHistorySelectorSelect,
-      cursorPosition,
-      setInputText,
-      setCursorPosition,
-    ],
+    [handleBashHistorySelectorSelect],
   );
 
   const keyboardHandleBashHistoryExecute = useCallback(
@@ -730,11 +564,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
       const bashCommand = commandToExecute.startsWith("!")
         ? commandToExecute
         : `!${commandToExecute}`;
-      setInputText("");
-      setCursorPosition(0);
+      clearInput();
       sendMessage(bashCommand);
     },
-    [handleBashHistoryExecute, setInputText, setCursorPosition, sendMessage],
+    [handleBashHistoryExecute, clearInput, sendMessage],
   );
 
   const handleMemoryTypeSelect = useCallback(
@@ -743,7 +576,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       if (currentMessage.startsWith("#")) {
         await saveMemory(currentMessage, type);
       }
-      // Call the handler function from useMemoryTypeSelector to close the selector
+      // Call the handler function to close the selector
       handleMemoryTypeSelectorSelect(type);
       // Clear input box
       clearInput();
@@ -757,22 +590,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   // Create adapter function for CommandSelector
   const handleCommandInsert = useCallback(
     (command: string) => {
-      setInputText((lastInputText) => {
-        const result = handleCommandSelectorInsert(
-          command,
-          lastInputText,
-          cursorPosition,
-        );
-        setCursorPosition(result.newCursorPosition);
-        return result.newInput;
-      });
+      handleCommandSelectorInsert(command);
     },
-    [
-      handleCommandSelectorInsert,
-      cursorPosition,
-      setInputText,
-      setCursorPosition,
-    ],
+    [handleCommandSelectorInsert],
   );
 
   // Split text into three parts: before cursor, cursor position, after cursor
