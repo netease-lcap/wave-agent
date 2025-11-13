@@ -4,9 +4,7 @@ import {
   InputBox,
   INPUT_PLACEHOLDER_TEXT,
 } from "../../src/components/InputBox.js";
-
-// Delay function
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+import { waitForText } from "../helpers/waitHelpers.js";
 
 describe("InputBox Basic Functionality", () => {
   it("should show placeholder text when empty", async () => {
@@ -19,9 +17,11 @@ describe("InputBox Basic Functionality", () => {
   it('should handle continuous input "hello"', async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
-    // Simulate continuous fast input "hello", no delay added
+    // Simulate continuous fast input "hello"
     stdin.write("hello");
-    await delay(50); // Wait for state update
+
+    // Wait for input text to appear
+    await waitForText(lastFrame, "hello");
 
     // Verify input text is displayed correctly
     expect(lastFrame()).toContain("hello");
@@ -37,8 +37,8 @@ describe("InputBox Basic Functionality", () => {
     const pastedText = "This is line 1\nThis is line 2\nThis is line 3";
     stdin.write(pastedText);
 
-    // Wait for debounce processing (30ms + extra time to ensure completion)
-    await delay(150);
+    // Wait for paste processing to complete
+    await waitForText(lastFrame, "This is line 1");
 
     // Verify text is processed correctly (newlines should be preserved or converted to spaces)
     const output = lastFrame();
@@ -58,8 +58,8 @@ describe("InputBox Basic Functionality", () => {
       "Please check @src/index.ts\nand also review\n@package.json file";
     stdin.write(complexText);
 
-    // Wait for debounce processing (30ms + extra time to ensure completion)
-    await delay(150);
+    // Wait for paste processing to complete
+    await waitForText(lastFrame, "Please check @src/index.ts");
 
     // Verify text is processed correctly
     const output = lastFrame();
@@ -81,14 +81,13 @@ describe("InputBox Basic Functionality", () => {
     const secondPaste = "(fullPath, 'utf-8');";
     stdin.write(secondPaste);
 
-    // Wait for debounce processing, continuous paste will be merged (30ms + extra time to ensure completion)
-    await delay(150);
+    // Wait for paste processing to complete - wait for the merged result
+    const expectedFullText =
+      "const originalContent = await fs.promises.readFile(fullPath, 'utf-8');";
+    await waitForText(lastFrame, expectedFullText);
 
     // Verify continuous paste is correctly merged and complete content is displayed
     const finalOutput = lastFrame();
-    const expectedFullText =
-      "const originalContent = await fs.promises.readFile(fullPath, 'utf-8');";
-
     expect(finalOutput).toContain(expectedFullText);
   });
 
@@ -106,12 +105,12 @@ describe("InputBox Basic Functionality", () => {
     stdin.write(part3);
 
     // Wait for debounce processing completion
-    await delay(140); // 30ms + extra time to ensure processing completion
+    const expectedFullText =
+      "This is the first part of a very long text that gets pasted in multiple chunks";
+    await waitForText(lastFrame, expectedFullText);
 
     // Verify final display shows complete merged content
     const finalOutput = lastFrame();
-    const expectedFullText =
-      "This is the first part of a very long text that gets pasted in multiple chunks";
     expect(finalOutput).toContain(expectedFullText);
 
     // Verify placeholder is no longer displayed
@@ -123,23 +122,23 @@ describe("InputBox Basic Functionality", () => {
 
     // Simulate character-by-character input, should display immediately
     stdin.write("h");
-    await delay(10); // Very short delay, should be able to see result
+    await waitForText(lastFrame, "h");
     expect(lastFrame()).toContain("h");
 
     stdin.write("e");
-    await delay(10);
+    await waitForText(lastFrame, "he");
     expect(lastFrame()).toContain("he");
 
     stdin.write("l");
-    await delay(10);
+    await waitForText(lastFrame, "hel");
     expect(lastFrame()).toContain("hel");
 
     stdin.write("l");
-    await delay(10);
+    await waitForText(lastFrame, "hell");
     expect(lastFrame()).toContain("hell");
 
     stdin.write("o");
-    await delay(10);
+    await waitForText(lastFrame, "hello");
     expect(lastFrame()).toContain("hello");
 
     // Verify placeholder is no longer displayed
@@ -153,8 +152,8 @@ describe("InputBox Basic Functionality", () => {
     const longText = "A".repeat(250); // 250 character long text
     stdin.write(longText);
 
-    // Wait for debounce processing completion
-    await delay(150);
+    // Wait for compression processing completion
+    await waitForText(lastFrame, "[LongText#1]");
 
     // Verify long text is compressed to [LongText#1] format
     const output = lastFrame();
@@ -168,7 +167,7 @@ describe("InputBox Basic Functionality", () => {
     // First paste of long text
     const longText1 = "First long text: " + "A".repeat(200);
     stdin.write(longText1);
-    await delay(150);
+    await waitForText(lastFrame, "[LongText#1]");
 
     let output = lastFrame();
     expect(output).toContain("[LongText#1]");
@@ -176,7 +175,7 @@ describe("InputBox Basic Functionality", () => {
     // Second paste of long text
     const longText2 = "Second long text: " + "B".repeat(200);
     stdin.write(longText2);
-    await delay(150);
+    await waitForText(lastFrame, "[LongText#2]");
 
     output = lastFrame();
     expect(output).toContain("[LongText#2]");
@@ -189,8 +188,8 @@ describe("InputBox Basic Functionality", () => {
     const shortText = "A".repeat(200); // Exactly 200 characters
     stdin.write(shortText);
 
-    // Wait for debounce processing completion
-    await delay(150);
+    // Wait for paste processing completion
+    await waitForText(lastFrame, "AAAAAAAAAA"); // Wait for beginning A characters
 
     // Verify short text will not be compressed
     const output = lastFrame();

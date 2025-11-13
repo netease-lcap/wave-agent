@@ -1,14 +1,31 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, MockedFunction } from "vitest";
 import { render } from "ink-testing-library";
 import {
   InputBox,
   INPUT_PLACEHOLDER_TEXT_PREFIX,
 } from "../../src/components/InputBox.js";
+import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers.js";
 
-// Delay function
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// Mock searchFiles to prevent timeout issues
+vi.mock("../../src/utils/fileSearch.js", () => ({
+  searchFiles: vi.fn(),
+}));
+
+import { searchFiles } from "../../src/utils/fileSearch.js";
+
+const setupSearchMock = () => {
+  const mockSearchFiles = searchFiles as MockedFunction<typeof searchFiles>;
+  mockSearchFiles.mockResolvedValue([
+    { path: "src/test1.ts", type: "file" as const },
+    { path: "src/test2.ts", type: "file" as const },
+    { path: "docs/readme.md", type: "file" as const },
+  ]);
+};
 
 describe("InputBox Cursor Display", () => {
+  beforeEach(() => {
+    setupSearchMock();
+  });
   it("should display cursor at the beginning when empty", async () => {
     const { lastFrame } = render(<InputBox />);
 
@@ -24,7 +41,7 @@ describe("InputBox Cursor Display", () => {
 
     // Input some text
     stdin.write("hello");
-    await delay(50);
+    await waitForText(lastFrame, "hello");
 
     // Cursor should be at the end
     expect(lastFrame()).toContain("hello");
@@ -35,7 +52,7 @@ describe("InputBox Cursor Display", () => {
 
     // Insert text at current position
     stdin.write("X");
-    await delay(50);
+    await waitForText(lastFrame, "helXlo");
 
     // Verify text is inserted at correct position
     expect(lastFrame()).toContain("helXlo");
@@ -46,7 +63,7 @@ describe("InputBox Cursor Display", () => {
 
     // Insert text at the end
     stdin.write("Y");
-    await delay(50);
+    await waitForText(lastFrame, "helXloY");
 
     expect(lastFrame()).toContain("helXloY");
   });
@@ -56,26 +73,24 @@ describe("InputBox Cursor Display", () => {
 
     // Input initial text
     stdin.write("abc");
-    await delay(50);
+    await waitForText(lastFrame, "abc");
 
     // Move cursor to middle (move left one position)
     stdin.write("\u001B[D"); // Left arrow
-    await delay(50);
 
     // Insert text
     stdin.write("X");
-    await delay(50);
+    await waitForText(lastFrame, "abXc");
 
     expect(lastFrame()).toContain("abXc");
 
     // Continue moving cursor to more forward position
     stdin.write("\u001B[D"); // Left arrow
     stdin.write("\u001B[D"); // Left arrow
-    await delay(50);
 
     // Insert at new position (result should be aYbXc or similar order)
     stdin.write("Y");
-    await delay(50);
+    await waitForText(lastFrame, "aYbXc");
 
     // Adjust expectation based on actual output (should be aYbXc)
     expect(lastFrame()).toContain("aYbXc");
@@ -86,9 +101,9 @@ describe("InputBox Cursor Display", () => {
 
     // Input some text, trigger file selector at middle position
     stdin.write("check ");
-    await delay(50);
+    await waitForText(lastFrame, "check ");
     stdin.write("@");
-    await delay(400); // Increase delay to wait for search completion
+    await waitForText(lastFrame, "📁 Select File");
 
     // Verify file selector displays - should show all files
     const output = lastFrame();
@@ -96,7 +111,7 @@ describe("InputBox Cursor Display", () => {
 
     // Cancel file selector
     stdin.write("\u001B"); // ESC
-    await delay(50);
+    await waitForTextToDisappear(lastFrame, "Select File");
 
     // Verify return to original text, cursor at correct position
     expect(lastFrame()).toContain("check @");
@@ -104,7 +119,7 @@ describe("InputBox Cursor Display", () => {
 
     // Continue input should be at correct position
     stdin.write(" more text");
-    await delay(50);
+    await waitForText(lastFrame, "check @ more text");
 
     expect(lastFrame()).toContain("check @ more text");
   });
@@ -121,7 +136,7 @@ describe("InputBox Cursor Display", () => {
 
     // Input a character should switch to normal mode
     stdin.write("h");
-    await delay(50);
+    await waitForText(lastFrame, "h");
 
     expect(lastFrame()).toContain("h");
     expect(lastFrame()).not.toContain(
@@ -130,7 +145,7 @@ describe("InputBox Cursor Display", () => {
 
     // Delete character should return to placeholder mode
     stdin.write("\u007F"); // Backspace
-    await delay(50);
+    await waitForText(lastFrame, INPUT_PLACEHOLDER_TEXT_PREFIX);
 
     expect(lastFrame()).toContain(INPUT_PLACEHOLDER_TEXT_PREFIX);
   });
