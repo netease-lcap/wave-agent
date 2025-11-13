@@ -14,7 +14,6 @@ This is the AI assistant's memory file, recording important information and cont
   - never access private properties directly with `(agent as any)`
 - `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
 - After modifying agent-sdk, need to build before using in code
-- After modifications, remember to use test-runner to check
 - Do not perform git commit operation if the latest user message do not mention it
 - Do not modify tsconfig unless user ask you to do that
 - While writing tests about `Agent`, always use `await Agent.create` instead of `new Agent`
