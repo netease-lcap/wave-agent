@@ -18,12 +18,6 @@ export default defineConfig(() => {
       exclude: ["node_modules", "dist"],
       // Enable retry in CI environment: failed tests will retry up to 2 times
       retry: isCI ? 2 : 0,
-      // Test environment variables: disable logger I/O operations by default to improve performance
-      env: {
-        DISABLE_LOGGER_IO: "true",
-        // Set shorter debounce time to accelerate tests
-        FILE_SELECTOR_DEBOUNCE_MS: "50",
-      },
     },
     resolve: {
       alias: {

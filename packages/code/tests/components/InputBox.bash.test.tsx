@@ -160,6 +160,7 @@ describe("InputBox Bash Functionality", () => {
 
     // Now press Enter to send as normal message
     stdin.write("\r");
+    await waitForText(lastFrame, "Type your message");
 
     expect(mockSendMessage).toHaveBeenCalled();
     const sendMessageCalls = mockSendMessage.mock.calls;

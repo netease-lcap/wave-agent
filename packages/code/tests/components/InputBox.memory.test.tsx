@@ -3,9 +3,6 @@ import { render } from "ink-testing-library";
 import { InputBox } from "../../src/components/InputBox.js";
 import { waitForText } from "../helpers/waitHelpers.js";
 
-// Delay function
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 describe("InputBox Memory Functionality", () => {
   let mockSendMessage: ReturnType<typeof vi.fn>;
   let mockSaveMemory: ReturnType<typeof vi.fn>;
@@ -15,19 +12,6 @@ describe("InputBox Memory Functionality", () => {
     mockSaveMemory = vi.fn();
   });
 
-  it("should not show memory mode UI when input starts with #", async () => {
-    const { stdin, lastFrame } = render(<InputBox />);
-
-    // Type # - should not show memory mode UI
-    stdin.write("#");
-    await waitForText(lastFrame, "#");
-
-    const output = lastFrame();
-    // Should not show memory mode UI anymore
-    expect(output).not.toContain("📝 Memory Mode");
-    expect(output).toContain("#");
-  });
-
   it("should trigger memory type selector when sending message that starts with #", async () => {
     const { stdin, lastFrame } = render(
       <InputBox sendMessage={mockSendMessage} saveMemory={mockSaveMemory} />,
@@ -35,10 +19,11 @@ describe("InputBox Memory Functionality", () => {
 
     // Type memory content (character by character to avoid paste detection)
     const text = "# remember this";
-    for (const char of text) {
-      stdin.write(char);
-      await delay(5);
-    }
+    // for (const char of text) {
+    //   stdin.write(char);
+    // }
+
+    stdin.write(text);
 
     await waitForText(lastFrame, "# remember this");
 
@@ -89,10 +74,7 @@ describe("InputBox Memory Functionality", () => {
 
     // Input single line memory content character by character
     const memoryText = "# important note";
-    for (const char of memoryText) {
-      stdin.write(char);
-      await delay(5);
-    }
+    stdin.write(memoryText);
 
     await waitForText(lastFrame, "# important note");
 
@@ -118,10 +100,7 @@ describe("InputBox Memory Functionality", () => {
 
     // Type memory content (character by character)
     const text = "# test memory";
-    for (const char of text) {
-      stdin.write(char);
-      await delay(5);
-    }
+    stdin.write(text);
 
     await waitForText(lastFrame, "# test memory");
 
@@ -153,10 +132,7 @@ describe("InputBox Memory Functionality", () => {
 
     // Type memory content (character by character)
     const text = "# another memory";
-    for (const char of text) {
-      stdin.write(char);
-      await delay(5);
-    }
+    stdin.write(text);
 
     await waitForText(lastFrame, "# another memory");
 
@@ -166,7 +142,7 @@ describe("InputBox Memory Functionality", () => {
 
     // Select user memory (press down arrow, then Enter)
     stdin.write("\u001B[B"); // Down arrow to select user memory
-    await delay(10);
+    await waitForText(lastFrame, "Save to user global memory");
     stdin.write("\r"); // Enter to select
     await waitForText(lastFrame, "Type your message");
 

@@ -22,9 +22,10 @@ export default defineConfig(() => {
       env: {
         DISABLE_LOGGER_IO: "true",
         // Set shorter debounce time to accelerate tests
-        FILE_SELECTOR_DEBOUNCE_MS: "50",
+        FILE_SELECTOR_DEBOUNCE_MS: "0",
+        PASTE_DEBOUNCE_MS: "0",
       },
-      maxWorkers: 1,
+      maxWorkers: 3,
     },
     resolve: {
       alias: {

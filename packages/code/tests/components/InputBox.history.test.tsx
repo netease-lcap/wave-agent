@@ -1,15 +1,24 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, MockedFunction } from "vitest";
 import { render } from "ink-testing-library";
 import {
   InputBox,
   INPUT_PLACEHOLDER_TEXT_PREFIX,
 } from "../../src/components/InputBox.js";
-import { waitForText } from "../helpers/waitHelpers.js";
+import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers.js";
+import { searchFiles, type FileItem } from "../../src/utils/fileSearch.js";
 
-// Delay function
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// Mock the file search utility
+vi.mock("../../src/utils/fileSearch.js", () => ({
+  searchFiles: vi.fn(),
+}));
 
 describe("InputBox History Navigation", () => {
+  let searchFilesMock: MockedFunction<typeof searchFiles>;
+
+  const setupSearchMock = (files: FileItem[]) => {
+    searchFilesMock = vi.mocked(searchFiles);
+    searchFilesMock.mockResolvedValue(files);
+  };
   it("should not navigate when no history exists", async () => {
     const renderResult = render(<InputBox userInputHistory={[]} />);
     const { stdin, lastFrame } = renderResult;
@@ -20,12 +29,12 @@ describe("InputBox History Navigation", () => {
 
     // Press up key, since there's no history, should have no change
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10);
+    await waitForText(lastFrame, "current input");
     expect(lastFrame()).toContain("current input");
 
     // Press down key, should also have no change
     stdin.write("\u001B[B"); // Down arrow
-    await delay(10);
+    await waitForText(lastFrame, "current input");
     expect(lastFrame()).toContain("current input");
   });
 
@@ -58,7 +67,7 @@ describe("InputBox History Navigation", () => {
 
     // Press up key again, should stay at earliest record (no more changes)
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10);
+    await waitForText(lastFrame, "hello world");
     expect(lastFrame()).toContain("hello world");
 
     unmount();
@@ -143,17 +152,19 @@ describe("InputBox History Navigation", () => {
 
     // Navigate to history record
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10);
+    await waitForText(lastFrame, "old message");
     expect(lastFrame()).toContain("old message");
 
     // Inputting new character should reset history navigation
     stdin.write("X");
-    await delay(10);
+    await waitForText(lastFrame, "old messageX");
     expect(lastFrame()).toContain("old messageX");
 
     // Now pressing up should show history again (because history navigation was reset)
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10);
+    // Wait for history to be shown, and ensure old messageX is no longer there
+    await waitForText(lastFrame, "old message");
+    await waitForTextToDisappear(lastFrame, "old messageX");
     expect(lastFrame()).toContain("old message");
     expect(lastFrame()).not.toContain("old messageX");
 
@@ -169,17 +180,17 @@ describe("InputBox History Navigation", () => {
 
     // Navigate to history record
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10);
+    await waitForText(lastFrame, "test history");
     expect(lastFrame()).toContain("test history");
 
     // Deleting character should reset history navigation
     stdin.write("\u007F"); // Backspace
-    await delay(10);
+    await waitForText(lastFrame, "test histor");
     expect(lastFrame()).toContain("test histor");
 
     // Pressing up again should restart history navigation
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10);
+    await waitForText(lastFrame, "test history");
     expect(lastFrame()).toContain("test history");
 
     unmount();
@@ -188,29 +199,39 @@ describe("InputBox History Navigation", () => {
   it("should not navigate history when file selector is active", async () => {
     const mockHistoryData = ["some history"];
 
+    // Setup mock for @ trigger
+    setupSearchMock([
+      { path: "src/test.ts", type: "file" },
+      { path: "package.json", type: "file" },
+    ]);
+
     const { stdin, lastFrame, unmount } = render(
       <InputBox userInputHistory={mockHistoryData} />,
     );
 
     // Input @ to trigger file selector
     stdin.write("@");
-    await delay(400);
+    await waitForText(lastFrame, "Select File");
     expect(lastFrame()).toContain("Select File");
 
     // Pressing up should be for file selector navigation, not history navigation
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10);
+    await waitForText(lastFrame, "Select File");
     expect(lastFrame()).toContain("Select File");
     expect(lastFrame()).toContain("@");
     expect(lastFrame()).not.toContain("some history");
 
     // Cancel file selector
     stdin.write("\u001B"); // ESC
-    await delay(10);
+    await waitForTextToDisappear(lastFrame, "Select File");
+
+    // Verify file selector disappears
+    expect(lastFrame()).not.toContain("Select File");
+    expect(lastFrame()).toContain("@");
 
     // Now pressing up should perform history navigation
     stdin.write("\u001B[A"); // Up arrow
-    await delay(10);
+    await waitForText(lastFrame, "some history");
     expect(lastFrame()).toContain("some history");
 
     unmount();
