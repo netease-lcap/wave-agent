@@ -300,139 +300,145 @@ export class AIManager {
       }
 
       if (toolCalls.length > 0) {
-        for (const functionToolCall of toolCalls) {
-          const toolId = functionToolCall.id || "";
-          // Execute tool
-          try {
-            // Check if already interrupted, skip tool execution if so
-            if (
-              abortController.signal.aborted ||
-              toolAbortController.signal.aborted
-            ) {
-              return;
-            }
-
-            // Safely parse tool parameters, handle tools without parameters
-            let toolArgs: Record<string, unknown> = {};
-            const argsString = functionToolCall.function?.arguments?.trim();
-
-            if (!argsString || argsString === "") {
-              // Tool without parameters, use empty object
-              toolArgs = {};
-            } else {
-              try {
-                toolArgs = JSON.parse(argsString);
-              } catch (parseError) {
-                // For non-empty but malformed JSON, still throw exception
-                const errorMessage = `Failed to parse tool arguments: ${argsString}`;
-                this.logger?.error(errorMessage, parseError);
-                throw new Error(errorMessage);
-              }
-            }
-
-            // Set tool start execution state
-            const toolName = functionToolCall.function?.name || "";
-            const compactParams = this.generateCompactParams(
-              toolName,
-              toolArgs,
-            );
-
-            this.messageManager.updateToolBlock({
-              toolId,
-              args: JSON.stringify(toolArgs, null, 2),
-              isRunning: true, // isRunning: true
-              name: toolName,
-              compactParams,
-            });
+        // Execute all tools in parallel using Promise.all
+        const toolExecutionPromises = toolCalls.map(
+          async (functionToolCall) => {
+            const toolId = functionToolCall.id || "";
 
             try {
-              // Execute PreToolUse hooks before tool execution
-              await this.executePreToolUseHooks(toolName, toolArgs);
-
-              // Create tool execution context
-              const context: ToolContext = {
-                abortSignal: toolAbortController.signal,
-                backgroundBashManager: this.backgroundBashManager,
-                workdir: this.workdir,
-              };
-
-              // Execute tool
-              const toolResult = await this.toolManager.execute(
-                functionToolCall.function?.name || "",
-                toolArgs,
-                context,
-              );
-
-              // Update message state - tool execution completed
-              this.messageManager.updateToolBlock({
-                toolId,
-                args: JSON.stringify(toolArgs, null, 2),
-                result:
-                  toolResult.content ||
-                  (toolResult.error ? `Error: ${toolResult.error}` : ""),
-                success: toolResult.success,
-                error: toolResult.error,
-                isRunning: false, // isRunning: false
-                name: toolName,
-                shortResult: toolResult.shortResult,
-                compactParams,
-              });
-
-              // If tool returns diff information, add diff block
+              // Check if already interrupted, skip tool execution if so
               if (
-                toolResult.success &&
-                toolResult.diffResult &&
-                toolResult.filePath
+                abortController.signal.aborted ||
+                toolAbortController.signal.aborted
               ) {
-                this.messageManager.addDiffBlock(
-                  toolResult.filePath,
-                  toolResult.diffResult,
-                );
+                return;
               }
 
-              // Execute PostToolUse hooks after successful tool completion
-              await this.executePostToolUseHooks(
+              // Safely parse tool parameters, handle tools without parameters
+              let toolArgs: Record<string, unknown> = {};
+              const argsString = functionToolCall.function?.arguments?.trim();
+
+              if (!argsString || argsString === "") {
+                // Tool without parameters, use empty object
+                toolArgs = {};
+              } else {
+                try {
+                  toolArgs = JSON.parse(argsString);
+                } catch (parseError) {
+                  // For non-empty but malformed JSON, still throw exception
+                  const errorMessage = `Failed to parse tool arguments: ${argsString}`;
+                  this.logger?.error(errorMessage, parseError);
+                  throw new Error(errorMessage);
+                }
+              }
+
+              // Set tool start execution state
+              const toolName = functionToolCall.function?.name || "";
+              const compactParams = this.generateCompactParams(
                 toolName,
                 toolArgs,
-                toolResult,
               );
-            } catch (toolError) {
-              const errorMessage =
-                toolError instanceof Error
-                  ? toolError.message
-                  : String(toolError);
 
               this.messageManager.updateToolBlock({
                 toolId,
                 args: JSON.stringify(toolArgs, null, 2),
-                result: `Tool execution failed: ${errorMessage}`,
-                success: false,
-                error: errorMessage,
-                isRunning: false,
+                isRunning: true, // isRunning: true
                 name: toolName,
                 compactParams,
               });
-            }
-          } catch (parseError) {
-            // Check if it's a parsing error due to interruption
-            const isAborted =
-              abortController.signal.aborted ||
-              toolAbortController.signal.aborted;
 
-            if (isAborted) {
-              // If interrupted, return directly without showing error
-              return;
-            }
+              try {
+                // Execute PreToolUse hooks before tool execution
+                await this.executePreToolUseHooks(toolName, toolArgs);
 
-            const errorMessage =
-              parseError instanceof Error
-                ? parseError.message
-                : String(parseError);
-            this.messageManager.addErrorBlock(
-              `Failed to parse tool arguments for ${functionToolCall.function?.name}: ${errorMessage}`,
-            );
-          }
-        }
+                // Create tool execution context
+                const context: ToolContext = {
+                  abortSignal: toolAbortController.signal,
+                  backgroundBashManager: this.backgroundBashManager,
+                  workdir: this.workdir,
+                };
+
+                // Execute tool
+                const toolResult = await this.toolManager.execute(
+                  functionToolCall.function?.name || "",
+                  toolArgs,
+                  context,
+                );
+
+                // Update message state - tool execution completed
+                this.messageManager.updateToolBlock({
+                  toolId,
+                  args: JSON.stringify(toolArgs, null, 2),
+                  result:
+                    toolResult.content ||
+                    (toolResult.error ? `Error: ${toolResult.error}` : ""),
+                  success: toolResult.success,
+                  error: toolResult.error,
+                  isRunning: false, // isRunning: false
+                  name: toolName,
+                  shortResult: toolResult.shortResult,
+                  compactParams,
+                });
+
+                // If tool returns diff information, add diff block
+                if (
+                  toolResult.success &&
+                  toolResult.diffResult &&
+                  toolResult.filePath
+                ) {
+                  this.messageManager.addDiffBlock(
+                    toolResult.filePath,
+                    toolResult.diffResult,
+                  );
+                }
+
+                // Execute PostToolUse hooks after successful tool completion
+                await this.executePostToolUseHooks(
+                  toolName,
+                  toolArgs,
+                  toolResult,
+                );
+              } catch (toolError) {
+                const errorMessage =
+                  toolError instanceof Error
+                    ? toolError.message
+                    : String(toolError);
+
+                this.messageManager.updateToolBlock({
+                  toolId,
+                  args: JSON.stringify(toolArgs, null, 2),
+                  result: `Tool execution failed: ${errorMessage}`,
+                  success: false,
+                  error: errorMessage,
+                  isRunning: false,
+                  name: toolName,
+                  compactParams,
+                });
+              }
+            } catch (parseError) {
+              // Check if it's a parsing error due to interruption
+              const isAborted =
+                abortController.signal.aborted ||
+                toolAbortController.signal.aborted;
+
+              if (isAborted) {
+                // If interrupted, return directly without showing error
+                return;
+              }
+
+              const errorMessage =
+                parseError instanceof Error
+                  ? parseError.message
+                  : String(parseError);
+              this.messageManager.addErrorBlock(
+                `Failed to parse tool arguments for ${functionToolCall.function?.name}: ${errorMessage}`,
+              );
+            }
+          },
+        );
+
+        // Wait for all tools to complete execution in parallel
+        await Promise.all(toolExecutionPromises);
       }
 
       // Handle token statistics and message compression
