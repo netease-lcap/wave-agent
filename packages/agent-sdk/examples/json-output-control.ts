@@ -25,6 +25,8 @@ import type {
   HookEventName,
 } from "../src/types/index.js";
 
+process.env.AIGW_MODEL = "gemini-2.5-flash";
+
 // Test JSON outputs and verification
 async function runJsonOutputControlExample() {
   console.log("\n🚀 JSON Output Control Example");

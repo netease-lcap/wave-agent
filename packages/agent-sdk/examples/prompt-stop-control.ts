@@ -26,6 +26,8 @@ import { join } from "path";
 import { mkdtemp, writeFile, chmod, rm } from "fs/promises";
 import { tmpdir } from "os";
 
+process.env.AIGW_MODEL = "gemini-2.5-flash";
+
 async function runPromptStopControlExample() {
   console.log("🔄 UserPromptSubmit and Stop Event Control Example");
   console.log("================================================");

@@ -24,6 +24,8 @@ import { join } from "path";
 import { mkdtemp, writeFile, chmod, rm } from "fs/promises";
 import { tmpdir } from "os";
 
+process.env.AIGW_MODEL = "gemini-2.5-flash";
+
 async function runPostToolUseFeedbackExample() {
   console.log("🔄 PostToolUse Feedback Integration Example");
   console.log("============================================");
