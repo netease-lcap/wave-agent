@@ -181,7 +181,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         try {
           // Display usage summary before cleanup
           const usages = agentRef.current.usages;
-          displayUsageSummary(usages);
+          const sessionFilePath = agentRef.current.sessionFilePath;
+          displayUsageSummary(usages, sessionFilePath);
         } catch {
           // Silently ignore usage summary errors during cleanup
         }

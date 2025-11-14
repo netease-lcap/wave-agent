@@ -344,6 +344,78 @@ describe("Usage Summary Utilities", () => {
         "  Operations: 1 agent calls, 0 compressions",
       );
     });
+
+    it("should display session file path when provided", () => {
+      const usages: Usage[] = [
+        {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+          model: "gpt-4",
+          operation_type: "agent",
+        },
+      ];
+      const sessionFilePath = "/path/to/session/file.json";
+
+      displayUsageSummary(usages, sessionFilePath);
+
+      expect(consoleSpy).toHaveBeenCalledWith("\nToken Usage Summary:");
+      expect(consoleSpy).toHaveBeenCalledWith("==================");
+      expect(consoleSpy).toHaveBeenCalledWith(`Session: ${sessionFilePath}`);
+      expect(consoleSpy).toHaveBeenCalledWith(); // Empty line after session
+      expect(consoleSpy).toHaveBeenCalledWith("Model: gpt-4");
+    });
+
+    it("should not display session section when no sessionFilePath provided", () => {
+      const usages: Usage[] = [
+        {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+          model: "gpt-4",
+          operation_type: "agent",
+        },
+      ];
+
+      displayUsageSummary(usages);
+
+      expect(consoleSpy).toHaveBeenCalledWith("\nToken Usage Summary:");
+      expect(consoleSpy).toHaveBeenCalledWith("==================");
+      expect(consoleSpy).not.toHaveBeenCalledWith(
+        expect.stringMatching(/^Session:/),
+      );
+      expect(consoleSpy).toHaveBeenCalledWith("Model: gpt-4");
+    });
+
+    it("should display session path with multiple models", () => {
+      const usages: Usage[] = [
+        {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+          model: "gpt-4",
+          operation_type: "agent",
+        },
+        {
+          prompt_tokens: 200,
+          completion_tokens: 100,
+          total_tokens: 300,
+          model: "gpt-3.5-turbo",
+          operation_type: "compress",
+        },
+      ];
+      const sessionFilePath = "/home/user/sessions/chat-2023-01-01.json";
+
+      displayUsageSummary(usages, sessionFilePath);
+
+      expect(consoleSpy).toHaveBeenCalledWith("\nToken Usage Summary:");
+      expect(consoleSpy).toHaveBeenCalledWith("==================");
+      expect(consoleSpy).toHaveBeenCalledWith(`Session: ${sessionFilePath}`);
+      expect(consoleSpy).toHaveBeenCalledWith(); // Empty line after session
+
+      // Should still display overall total for multiple models
+      expect(consoleSpy).toHaveBeenCalledWith("Overall Total:");
+    });
   });
 
   describe("TokenSummary type integration", () => {

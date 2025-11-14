@@ -69,8 +69,12 @@ export function calculateTokenSummary(
 /**
  * Display usage summary in a formatted way
  * @param usages Array of usage data from agent operations
+ * @param sessionFilePath Optional session file path to display
  */
-export function displayUsageSummary(usages: Usage[]): void {
+export function displayUsageSummary(
+  usages: Usage[],
+  sessionFilePath?: string,
+): void {
   if (usages.length === 0) {
     return; // No usage data to display
   }
@@ -79,6 +83,10 @@ export function displayUsageSummary(usages: Usage[]): void {
 
   console.log("\nToken Usage Summary:");
   console.log("==================");
+
+  if (sessionFilePath) {
+    console.log(`Session: ${sessionFilePath}`);
+  }
 
   let totalPrompt = 0;
   let totalCompletion = 0;
