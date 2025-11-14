@@ -83,9 +83,9 @@
 - [x] T016 [P] [US4] Implement calculateTokenSummary function in packages/code/src/utils/usageSummary.ts
 - [x] T017 [P] [US4] Implement displayUsageSummary function in packages/code/src/utils/usageSummary.ts
 - [x] T018 [US4] Add usage summary to cleanup function in packages/code/src/cli.tsx
-- [x] T019 [US4] Add usage summary to cleanup function in packages/code/src/plain-cli.ts
+- [x] T019 [US4] Add usage summary to cleanup function in packages/code/src/print-cli.ts
 
-**Checkpoint**: CLI exit summaries should work for both interactive and plain modes
+**Checkpoint**: CLI exit summaries should work for both interactive and print modes
 
 ---
 

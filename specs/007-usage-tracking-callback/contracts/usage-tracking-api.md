@@ -187,7 +187,7 @@ interface TokenSummaryDisplay {
 
 **Display Conditions**:
 - Summary shown only if session contains usage data
-- Displayed before process exit in both interactive and plain CLI modes
+- Displayed before process exit in both interactive and print CLI modes
 - Summary generation failures do not prevent exit
 - Maximum 500ms timeout for summary display
 

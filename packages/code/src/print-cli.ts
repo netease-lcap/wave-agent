@@ -2,13 +2,13 @@ import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "./utils/logger.js";
 import { displayUsageSummary } from "./utils/usageSummary.js";
 
-export interface PlainCliOptions {
+export interface PrintCliOptions {
   restoreSessionId?: string;
   continueLastSession?: boolean;
   message?: string;
 }
 
-export async function startPlainCli(options: PlainCliOptions): Promise<void> {
+export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   const { restoreSessionId, continueLastSession, message } = options;
 
   if (
@@ -17,7 +17,7 @@ export async function startPlainCli(options: PlainCliOptions): Promise<void> {
     !restoreSessionId
   ) {
     console.error(
-      "Plain mode requires a message: use --plain 'your message' or -p 'your message'",
+      "Print mode requires a message: use --print 'your message' or -p 'your message'",
     );
     process.exit(1);
   }

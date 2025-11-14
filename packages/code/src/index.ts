@@ -16,9 +16,9 @@ export async function main() {
       description: "Continue from last session",
       type: "boolean",
     })
-    .option("plain", {
+    .option("print", {
       alias: "p",
-      description: "Plain mode with message to send",
+      description: "Print response without interactive mode",
       type: "string",
     })
     .option("list-sessions", {
@@ -30,8 +30,8 @@ export async function main() {
     .example("$0", "Start CLI with default settings")
     .example("$0 --restore session_123", "Restore specific session")
     .example("$0 --continue", "Continue from last session")
-    .example("$0 --plain 'Hello'", "Send message in plain mode")
-    .example("$0 -p 'Hello'", "Send message in plain mode (short)")
+    .example("$0 --print 'Hello'", "Send message in print mode")
+    .example("$0 -p 'Hello'", "Send message in print mode (short)")
     .example("$0 --list-sessions", "List all available sessions")
     .help("h")
     .parseAsync();
@@ -69,13 +69,13 @@ export async function main() {
     }
   }
 
-  // Handle plain mode directly
-  if (argv.plain !== undefined) {
-    const { startPlainCli } = await import("./plain-cli.js");
-    return startPlainCli({
+  // Handle print mode directly
+  if (argv.print !== undefined) {
+    const { startPrintCli } = await import("./print-cli.js");
+    return startPrintCli({
       restoreSessionId: argv.restore,
       continueLastSession: argv.continue,
-      message: argv.plain,
+      message: argv.print,
     });
   }
 

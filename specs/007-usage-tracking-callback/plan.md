@@ -89,7 +89,7 @@ packages/agent-sdk/
 packages/code/
 ├── src/
 │   ├── cli.tsx                     # Add exit token summary to cleanup function
-│   ├── plain-cli.ts               # Add exit token summary to both paths
+│   ├── print-cli.ts               # Add exit token summary to both paths
 │   └── utils/
 │       └── usageSummary.ts         # New utility for token aggregation by model
 └── tests/
