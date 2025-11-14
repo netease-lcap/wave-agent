@@ -33,12 +33,14 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "wave-agent-sdk": "workspace:*",
-    "ink": "^6.0.1",
-    "react": "^19.1.0",
-    "yargs": "^17.7.2",
+    "cli-highlight": "^2.1.11",
     "diff": "^8.0.2",
-    "glob": "^11.0.3"
+    "glob": "^11.0.3",
+    "ink": "^6.0.1",
+    "marked": "^15.0.3",
+    "react": "^19.1.0",
+    "wave-agent-sdk": "workspace:*",
+    "yargs": "^17.7.2"
   },
   "devDependencies": {
     "@types/react": "^19.1.8",
