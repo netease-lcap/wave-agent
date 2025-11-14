@@ -28,8 +28,6 @@ description: Create organized, comprehensive, and efficient unit tests with Vite
 - Use `.only` and `.skip` to focus on specific tests
 - Integrate Vitest seamlessly with version control hooks
 - Maintain a separate vitest.config.js for test-specific configuration
-- Use `as unkown as` `Awaited<>` `ReturnType<>` `typeof` to simiplify data that is hard to mock
-- When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
 
 ## Quality Checklist
 
