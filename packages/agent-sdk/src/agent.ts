@@ -22,7 +22,12 @@ import type {
   ModelConfig,
   Usage,
 } from "./types/index.js";
+import type {
+  PermissionDecision,
+  PendingPermission,
+} from "./types/hooks.js";
 import { HookManager } from "./managers/hookManager.js";
+import { HookExecutor } from "./services/hookExecutor.js";
 import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
@@ -79,6 +84,7 @@ export class Agent {
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private hookManager: HookManager; // Add hooks manager instance
+  private hookExecutor: HookExecutor; // Add hook executor instance
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
   private _usages: Usage[] = []; // Usage tracking array
@@ -146,6 +152,7 @@ export class Agent {
     }); // Initialize tool registry, pass MCP manager
 
     this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
+    this.hookExecutor = new HookExecutor(); // Initialize hook executor
 
     // Initialize MessageManager
     this.messageManager = new MessageManager({
@@ -603,5 +610,32 @@ export class Agent {
   /** Get all custom commands */
   public getCustomCommands(): CustomSlashCommand[] {
     return this.slashCommandManager.getCustomCommands();
+  }
+
+  // ========== Permission Management Methods ==========
+
+  /** Get all pending permission requests */
+  public getPendingPermissions(): PendingPermission[] {
+    return this.hookExecutor.getPendingPermissions();
+  }
+
+  /** Resolve a permission request with user's decision */
+  public resolvePermissionRequest(permissionId: string, decision: PermissionDecision): void {
+    this.hookExecutor.resolvePermissionRequest(permissionId, decision);
+  }
+
+  /** Check if there are any pending permissions */
+  public isAwaitingPermission(): boolean {
+    return this.hookExecutor.isAwaitingPermission();
+  }
+
+  /** Clear all pending permissions (useful for cleanup) */
+  public clearPendingPermissions(): void {
+    this.hookExecutor.clearPendingPermissions();
+  }
+
+  /** Get permission request by ID */
+  public getPermissionRequest(permissionId: string): PendingPermission | undefined {
+    return this.hookExecutor.getPendingPermissions().find(p => p.id === permissionId);
   }
 }

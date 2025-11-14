@@ -5,21 +5,15 @@
  * enabling automated actions at specific workflow points.
  */
 
-import { join } from "path";
-import { homedir } from "os";
-
-// Session path utility (from session.ts)
-export function getSessionFilePath(sessionId: string): string {
-  const shortId = sessionId.split("_")[2] || sessionId.slice(-8);
-  return join(homedir(), ".wave", "sessions", `session_${shortId}.json`);
-}
-
 // Hook event types - trigger points in the AI workflow
 export type HookEvent =
   | "PreToolUse"
   | "PostToolUse"
   | "UserPromptSubmit"
   | "Stop";
+
+// Alias for consistency with design documents
+export type HookEventName = HookEvent;
 
 // Individual hook command configuration
 export interface HookCommand {
@@ -167,4 +161,190 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
 export interface HookEnvironment {
   WAVE_PROJECT_DIR: string; // Absolute path to project root
   [key: string]: string; // Inherit all parent process environment variables
+}
+
+// =============================================================================
+// Hook Output Methods - New Type Definitions  
+// =============================================================================
+
+// Exit code interpretation results
+export interface HookOutputResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  executionTime: number;
+  hookEvent: HookEventName;
+}
+
+// Common JSON output fields (all hook types)
+export interface BaseHookJsonOutput {
+  continue?: boolean;  // defaults to true
+  stopReason?: string; // required if continue is false
+  systemMessage?: string;
+  hookSpecificOutput?: HookSpecificOutput;
+}
+
+// Hook-specific output variants
+export type HookSpecificOutput = 
+  | PreToolUseOutput 
+  | PostToolUseOutput 
+  | UserPromptSubmitOutput 
+  | StopOutput;
+
+export interface PreToolUseOutput {
+  hookEventName: "PreToolUse";
+  permissionDecision: "allow" | "deny" | "ask";
+  permissionDecisionReason: string;
+  updatedInput?: Record<string, unknown>;
+}
+
+export interface PostToolUseOutput {
+  hookEventName: "PostToolUse";
+  decision?: "block";
+  reason?: string; // required if decision is "block"
+  additionalContext?: string;
+}
+
+export interface UserPromptSubmitOutput {
+  hookEventName: "UserPromptSubmit";
+  decision?: "block";
+  reason?: string; // required if decision is "block"
+  additionalContext?: string;
+}
+
+export interface StopOutput {
+  hookEventName: "Stop";
+  decision?: "block";
+  reason?: string; // required if decision is "block"
+}
+
+// Hook Output Parser Result Types
+export interface ParsedHookOutput {
+  source: "json" | "exitcode";
+  continue: boolean;
+  stopReason?: string;
+  systemMessage?: string;
+  hookSpecificData?: HookSpecificOutput;
+  errorMessages: string[];
+}
+
+export interface HookValidationResult {
+  valid: boolean;
+  errors: ValidationError[];
+  warnings: ValidationWarning[];
+}
+
+export interface ValidationError {
+  field: string;
+  message: string;
+  code: string;
+}
+
+export interface ValidationWarning {
+  field: string;
+  message: string;
+  suggestion?: string;
+}
+
+// Promise-Based Permission Request Types
+export interface PermissionRequest {
+  id: string;
+  toolName: string;
+  reason: string;
+  toolInput?: Record<string, unknown>;
+  
+  // Promise that UI can resolve/reject
+  resolve: (allowed: boolean) => void;
+  reject: (reason: string) => void;
+}
+
+// Permission decision from user/UI
+export interface PermissionDecision {
+  decision: "allow" | "deny";
+  shouldContinueRecursion: boolean;
+  reason?: string;
+}
+
+// Pending permission structure for management
+export interface PendingPermission {
+  id: string;
+  toolName: string;
+  reason: string;
+  originalInput: Record<string, unknown>;
+  updatedInput?: Record<string, unknown>;
+  onResolve: (decision: PermissionDecision) => void;
+  timestamp: number;
+  pauseAIRecursion: () => void;
+  resumeAIRecursion: (shouldContinue: boolean) => void;
+}
+
+// Agent Permission Management Methods
+export interface AgentPermissionMethods {
+  // Get current pending permission requests (for UI display)
+  getPendingPermissions(): PermissionRequest[];
+  
+  // Check if any permissions are pending
+  isAwaitingPermission(): boolean;
+}
+
+// Hook Permission Processing Result
+export interface HookPermissionResult {
+  shouldContinue: boolean;
+  permissionRequired: boolean;
+  permissionPromise?: Promise<boolean>; // Wait for this Promise if permission needed
+  updatedInput?: Record<string, unknown>;
+  blockReason?: string;
+}
+
+// Pre-Tool Use Permission Result
+export interface PreToolUseResult {
+  shouldProceed: boolean;
+  requiresUserPermission?: boolean; // Whether user permission is needed
+  permissionRequest?: {
+    id: string;
+    toolName: string;
+    reason: string;
+    originalInput: Record<string, unknown>;
+    updatedInput?: Record<string, unknown>;
+    onResolve: (decision: PermissionDecision) => void;
+    timestamp: number;
+    pauseAIRecursion: () => void;
+    resumeAIRecursion: (shouldContinue: boolean) => void;
+  };
+  permissionPromise?: Promise<boolean>; // If present, await this Promise
+  updatedInput?: Record<string, unknown>;
+  blockReason?: string;
+}
+
+// Hook Output Processing Error Types
+export class HookOutputError extends Error {
+  constructor(
+    message: string,
+    public code: string,
+    public hookEvent: HookEventName,
+    public originalOutput?: HookOutputResult
+  ) {
+    super(message);
+  }
+}
+
+export class HookJsonValidationError extends HookOutputError {
+  constructor(
+    message: string,
+    public validationErrors: ValidationError[],
+    hookEvent: HookEventName,
+    originalOutput?: HookOutputResult
+  ) {
+    super(message, "JSON_VALIDATION_FAILED", hookEvent, originalOutput);
+  }
+}
+
+export class HookPermissionTimeoutError extends HookOutputError {
+  constructor(
+    toolName: string,
+    public timeoutMs: number,
+    hookEvent: HookEventName = "PreToolUse"
+  ) {
+    super(`Permission request timeout for tool: ${toolName}`, "PERMISSION_TIMEOUT", hookEvent);
+  }
 }

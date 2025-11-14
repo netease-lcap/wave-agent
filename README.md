@@ -1,6 +1,6 @@
 # Wave Agent
 
-A monorepo containing AI-powered development tools built with React and modern web technologies.
+A monorepo containing AI-powered development tools built with Ink for terminal-based interfaces.
 
 ## Project Structure
 

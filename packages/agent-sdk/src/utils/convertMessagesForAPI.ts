@@ -135,6 +135,28 @@ export function convertMessagesForAPI(
         content = textBlocks.map((block) => block.content || "").join("\n");
       }
 
+      // Add warning blocks as text content for AI context
+      const warnBlocks = message.blocks.filter(
+        (block) => block.type === "warn",
+      );
+      if (warnBlocks.length > 0) {
+        const warnContent = warnBlocks
+          .map((block) => `[Warning] ${block.content}`)
+          .join("\n");
+        content = content ? `${content}\n${warnContent}` : warnContent;
+      }
+
+      // Add hook blocks as text content for AI context
+      const hookBlocks = message.blocks.filter(
+        (block) => block.type === "hook",
+      );
+      if (hookBlocks.length > 0) {
+        const hookContent = hookBlocks
+          .map((block) => `[Hook:${block.hookEvent}] ${block.content}`)
+          .join("\n");
+        content = content ? `${content}\n${hookContent}` : hookContent;
+      }
+
       // Construct tool calls from tool blocks
       if (toolBlocks.length > 0) {
         tool_calls = toolBlocks

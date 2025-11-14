@@ -14,6 +14,8 @@ import type {
   BackgroundShell,
   SlashCommand,
   Usage,
+  PermissionDecision,
+  PendingPermission,
 } from "wave-agent-sdk";
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
@@ -53,6 +55,11 @@ export interface ChatContextType {
   hasSlashCommand: (commandId: string) => boolean;
   // Usage tracking
   usages: Usage[];
+  // Permission functionality
+  pendingPermissions: PendingPermission[];
+  isAwaitingPermission: boolean;
+  resolvePermissionRequest: (permissionId: string, decision: PermissionDecision) => void;
+  clearPendingPermissions: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -97,6 +104,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Usage tracking state
   const [usages, setUsages] = useState<Usage[]>([]);
+
+  // Permission state
+  const [pendingPermissions, setPendingPermissions] = useState<PendingPermission[]>([]);
+  const [isAwaitingPermission, setIsAwaitingPermission] = useState(false);
 
   const agentRef = useRef<Agent | null>(null);
 
@@ -173,6 +184,24 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
     initializeAgent();
   }, [restoreSessionId, continueLastSession]);
+
+  // Poll for pending permissions
+  useEffect(() => {
+    const pollPermissions = () => {
+      if (agentRef.current) {
+        const pending = agentRef.current.getPendingPermissions();
+        const awaiting = agentRef.current.isAwaitingPermission();
+        
+        setPendingPermissions(pending);
+        setIsAwaitingPermission(awaiting);
+      }
+    };
+
+    // Poll every 500ms when there might be permissions
+    const interval = setInterval(pollPermissions, 500);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -294,6 +323,24 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     return agentRef.current.hasSlashCommand(commandId);
   }, []);
 
+  // Permission management functions
+  const resolvePermissionRequest = useCallback((permissionId: string, decision: PermissionDecision) => {
+    if (agentRef.current) {
+      agentRef.current.resolvePermissionRequest(permissionId, decision);
+      // Update local state
+      setPendingPermissions(agentRef.current.getPendingPermissions());
+      setIsAwaitingPermission(agentRef.current.isAwaitingPermission());
+    }
+  }, []);
+
+  const clearPendingPermissions = useCallback(() => {
+    if (agentRef.current) {
+      agentRef.current.clearPendingPermissions();
+      setPendingPermissions([]);
+      setIsAwaitingPermission(false);
+    }
+  }, []);
+
   const contextValue: ChatContextType = {
     messages,
     isLoading,
@@ -315,6 +362,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     slashCommands,
     hasSlashCommand,
     usages,
+    pendingPermissions,
+    isAwaitingPermission,
+    resolvePermissionRequest,
+    clearPendingPermissions,
   };
 
   return (

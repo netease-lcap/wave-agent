@@ -1,4 +1,4 @@
-import type { Message, Usage } from "../types/index.js";
+import type { Message, Usage, HookEventName } from "../types/index.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
@@ -584,5 +584,138 @@ export const updateSubagentBlockInMessage = (
     }
   }
 
+  return newMessages;
+};
+
+// Hook Output Message Operations
+export interface AddWarnBlockParams {
+  messages: Message[];
+  content: string;
+}
+
+export interface AddHookBlockParams {
+  messages: Message[];
+  hookEvent: HookEventName;
+  content: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Add a warning block to the latest assistant message
+ */
+export const addWarnBlockToMessage = ({
+  messages,
+  content
+}: AddWarnBlockParams): Message[] => {
+  const newMessages = [...messages];
+
+  if (newMessages.length === 0) {
+    // No messages exist, create first assistant message with warn block
+    const assistantMessage: Message = {
+      role: "assistant",
+      blocks: [
+        {
+          type: "warn",
+          content
+        }
+      ]
+    };
+    newMessages.push(assistantMessage);
+    return newMessages;
+  }
+
+  // Find the latest assistant message
+  for (let i = newMessages.length - 1; i >= 0; i--) {
+    if (newMessages[i].role === "assistant") {
+      // Add warn block to existing assistant message
+      newMessages[i] = {
+        ...newMessages[i],
+        blocks: [
+          ...newMessages[i].blocks,
+          {
+            type: "warn",
+            content
+          }
+        ]
+      };
+      return newMessages;
+    }
+  }
+
+  // No assistant message found, create new one
+  const assistantMessage: Message = {
+    role: "assistant", 
+    blocks: [
+      {
+        type: "warn",
+        content
+      }
+    ]
+  };
+  newMessages.push(assistantMessage);
+  return newMessages;
+};
+
+/**
+ * Add a hook block to the latest assistant message
+ */
+export const addHookBlockToMessage = ({
+  messages,
+  hookEvent,
+  content,
+  metadata
+}: AddHookBlockParams): Message[] => {
+  const newMessages = [...messages];
+
+  if (newMessages.length === 0) {
+    // No messages exist, create first assistant message with hook block
+    const assistantMessage: Message = {
+      role: "assistant",
+      blocks: [
+        {
+          type: "hook",
+          hookEvent,
+          content,
+          ...(metadata && { metadata })
+        }
+      ]
+    };
+    newMessages.push(assistantMessage);
+    return newMessages;
+  }
+
+  // Find the latest assistant message
+  for (let i = newMessages.length - 1; i >= 0; i--) {
+    if (newMessages[i].role === "assistant") {
+      // Add hook block to existing assistant message
+      newMessages[i] = {
+        ...newMessages[i],
+        blocks: [
+          ...newMessages[i].blocks,
+          {
+            type: "hook",
+            hookEvent,
+            content,
+            ...(metadata && { metadata })
+          }
+        ]
+      };
+      return newMessages;
+    }
+  }
+
+  // No assistant message found, create new one
+  const assistantMessage: Message = {
+    role: "assistant",
+    blocks: [
+      {
+        type: "hook",
+        hookEvent,
+        content,
+        ...(metadata && { metadata })
+      }
+    ]
+  };
+  newMessages.push(assistantMessage);
   return newMessages;
 };

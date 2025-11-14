@@ -17,9 +17,9 @@ import {
   type HookJsonInput,
   type HookConfiguration,
   type PartialHookConfiguration,
-  getSessionFilePath,
   isValidHookEvent,
 } from "../types/hooks.js";
+import { getSessionFilePath } from "./session.js";
 
 // =============================================================================
 // Hook Execution Functions
