@@ -17,9 +17,20 @@ const MessageBlockRenderer: React.FC<MessageBlockRendererProps> = ({
   block,
   isExpanded,
 }) => {
+  const truncateText = (text: string, maxLines: number): string => {
+    const lines = text.split("\n");
+    if (lines.length <= maxLines) {
+      return text;
+    }
+    return lines.slice(0, maxLines).join("\n") + "\n...";
+  };
+
   switch (block.type) {
-    case "text":
-      return <Text>{block.content}</Text>;
+    case "text": {
+      const maxLines = isExpanded ? 50 : 10;
+      const truncatedContent = truncateText(block.content, maxLines);
+      return <Text>{truncatedContent}</Text>;
+    }
 
     case "error":
       return <Text color="red">❌ Error: {block.content}</Text>;
