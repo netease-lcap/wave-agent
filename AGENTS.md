@@ -9,6 +9,9 @@ This is the AI assistant's memory file, recording important information and cont
   - test by sending real messages
   - cd to `packages/\*` and run locally with pnpm tsx
   - never access private properties directly with `(agent as any)`
+  - MUST use flash model for performance: `process.env.AIGW_MODEL = "gemini-2.5-flash";`
+  - Add flash model config at top of file after imports for 2-4x faster execution
+  - Examples without flash models may hang or timeout during AI calls
 - `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
   - Use vitest-expert to write tests
   - Testing framework is vitest
