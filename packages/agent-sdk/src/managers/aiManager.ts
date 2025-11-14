@@ -14,7 +14,15 @@ import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
-import type { ExtendedHookExecutionContext } from "../types/hooks.js";
+import type { 
+  ExtendedHookExecutionContext, 
+  PermissionDecision, 
+  PendingPermission,
+  PreToolUseOutput,
+  PostToolUseOutput,
+  StopOutput
+} from "../types/hooks.js";
+import { parseHookOutput } from "../utils/hookOutputParser.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -47,6 +55,13 @@ export class AIManager {
   private hookManager?: HookManager;
   private workdir: string;
   private systemPrompt?: string;
+
+  // Permission management
+  private pendingPermissions: Map<string, PendingPermission & {
+    toolId: string;
+    toolArgs: Record<string, unknown>;
+    compactParams?: string;
+  }> = new Map();
 
   // Configuration properties
   private gatewayConfig: GatewayConfig;
@@ -111,6 +126,163 @@ export class AIManager {
     }
 
     this.setIsLoading(false);
+  }
+
+  /**
+   * Resolve a permission request with user's decision
+   */
+  public async resolvePermissionRequest(permissionId: string, decision: PermissionDecision): Promise<boolean> {
+    const pendingPermission = this.pendingPermissions.get(permissionId);
+    if (!pendingPermission) {
+      this.logger?.warn(`Permission request ${permissionId} not found`);
+      return false;
+    }
+
+    this.logger?.info(
+      `Resolving permission ${permissionId} for tool ${pendingPermission.toolName}: ${decision.decision} (continue: ${decision.shouldContinueRecursion})`
+    );
+
+    // Call the onResolve callback
+    pendingPermission.onResolve(decision);
+
+    // Handle the permission decision
+    if (decision.decision === "allow" && decision.shouldContinueRecursion) {
+      // Permission granted, continue with tool execution
+      this.logger?.info(`Permission granted for tool ${pendingPermission.toolName}, continuing execution`);
+      
+      // Use the updated input if available, otherwise use original
+      const finalToolArgs = pendingPermission.updatedInput || pendingPermission.originalInput;
+      
+      // Continue tool execution
+      await this.continueToolExecution(
+        pendingPermission.toolId,
+        pendingPermission.toolName,
+        pendingPermission.toolArgs,
+        finalToolArgs
+      );
+    } else {
+      // Permission denied or user chose not to continue
+      this.logger?.info(`Permission denied or execution halted for tool ${pendingPermission.toolName}`);
+      
+      // Update the tool block to show denial
+      this.messageManager.updateToolBlock({
+        toolId: pendingPermission.toolId,
+        isRunning: false,
+        error: `Tool execution denied: ${decision.reason || "User denied permission"}`,
+      });
+    }
+    
+    // Remove from pending permissions
+    this.pendingPermissions.delete(permissionId);
+
+    return true;
+  }
+
+  /**
+   * Get all pending permission requests (for UI display)
+   */
+  public getPendingPermissions(): Array<PendingPermission & {
+    toolId: string;
+    toolArgs: Record<string, unknown>;
+    compactParams?: string;
+  }> {
+    return Array.from(this.pendingPermissions.values());
+  }
+
+  /**
+   * Check if any permissions are pending
+   */
+  public isAwaitingPermission(): boolean {
+    return this.pendingPermissions.size > 0;
+  }
+
+  /**
+   * Clear all pending permissions (useful for cleanup)
+   */
+  public clearPendingPermissions(): void {
+    this.pendingPermissions.clear();
+  }
+
+  /**
+   * Continue tool execution after permission is granted
+   */
+  public async continueToolExecution(
+    toolId: string,
+    toolName: string,
+    toolArgs: Record<string, unknown>,
+    finalToolArgs: Record<string, unknown>
+  ): Promise<void> {
+    // Ensure we have a tool abort controller (create a temporary one if needed for tests)
+    if (!this.toolAbortController) {
+      this.logger?.debug("Creating temporary tool abort controller for permission resolution");
+      this.toolAbortController = new AbortController();
+    }
+
+    try {
+      // Create tool execution context
+      const context: ToolContext = {
+        abortSignal: this.toolAbortController.signal,
+        backgroundBashManager: this.backgroundBashManager,
+        workdir: this.workdir,
+      };
+
+      // Execute tool with updated arguments
+      const toolResult = await this.toolManager.execute(
+        toolName,
+        finalToolArgs,
+        context,
+      );
+
+      // Update message state - tool execution completed
+      this.messageManager.updateToolBlock({
+        toolId,
+        args: JSON.stringify(toolArgs, null, 2),
+        result:
+          toolResult.content ||
+          (toolResult.error ? `Error: ${toolResult.error}` : ""),
+        success: toolResult.success,
+        error: toolResult.error,
+        isRunning: false,
+        name: toolName,
+        shortResult: toolResult.shortResult,
+        compactParams: this.generateCompactParams(toolName, toolArgs),
+      });
+
+      // If tool returns diff information, add diff block
+      if (
+        toolResult.success &&
+        toolResult.diffResult &&
+        toolResult.filePath
+      ) {
+        this.messageManager.addDiffBlock(
+          toolResult.filePath,
+          toolResult.diffResult,
+        );
+      }
+
+      // Execute PostToolUse hooks after successful tool completion
+      await this.executePostToolUseHooks(
+        toolName,
+        finalToolArgs,
+        toolResult,
+      );
+    } catch (toolError) {
+      const errorMessage =
+        toolError instanceof Error
+          ? toolError.message
+          : String(toolError);
+
+      this.messageManager.updateToolBlock({
+        toolId,
+        args: JSON.stringify(toolArgs, null, 2),
+        result: `Tool execution failed: ${errorMessage}`,
+        success: false,
+        error: errorMessage,
+        isRunning: false,
+        name: toolName,
+        compactParams: this.generateCompactParams(toolName, toolArgs),
+      });
+    }
   }
 
   // Helper method to generate compactParams
@@ -359,7 +531,38 @@ export class AIManager {
 
               try {
                 // Execute PreToolUse hooks before tool execution
-                await this.executePreToolUseHooks(toolName, toolArgs);
+                const preToolResult = await this.executePreToolUseHooks(
+                  toolName, 
+                  toolArgs, 
+                  toolId, 
+                  toolArgs, 
+                  compactParams
+                );
+
+                // Check if tool execution should proceed
+                if (!preToolResult.shouldProceed) {
+                  if (preToolResult.permissionId) {
+                    // Tool execution is awaiting user permission
+                    this.messageManager.updateToolBlock({
+                      toolId: toolId,
+                      isRunning: false,
+                      error: "Tool execution awaiting user permission",
+                    });
+                    this.logger?.info(`Tool ${toolName} awaiting user permission (ID: ${preToolResult.permissionId})`);
+                    return; // Skip tool execution but don't block the overall flow
+                  } else {
+                    // Tool execution was blocked by hook
+                    this.messageManager.updateToolBlock({
+                      toolId: toolId,
+                      isRunning: false,
+                      error: "Tool execution blocked by PreToolUse hook (exit code 2)",
+                    });
+                    return; // Skip to next tool call
+                  }
+                }
+
+                // Use updated input if provided by hook
+                const finalToolArgs = preToolResult.updatedInput || toolArgs;
 
                 // Create tool execution context
                 const context: ToolContext = {
@@ -368,10 +571,10 @@ export class AIManager {
                   workdir: this.workdir,
                 };
 
-                // Execute tool
+                // Execute tool with potentially updated arguments
                 const toolResult = await this.toolManager.execute(
                   functionToolCall.function?.name || "",
-                  toolArgs,
+                  finalToolArgs,
                   context,
                 );
 
@@ -405,7 +608,7 @@ export class AIManager {
                 // Execute PostToolUse hooks after successful tool completion
                 await this.executePostToolUseHooks(
                   toolName,
-                  toolArgs,
+                  finalToolArgs, // Use the potentially updated tool arguments
                   toolResult,
                 );
               } catch (toolError) {
@@ -505,6 +708,50 @@ export class AIManager {
 
       const results = await this.hookManager.executeHooks("Stop", context);
 
+      // Process hook output results
+      for (const result of results) {
+        // Process hook output through message manager
+        const hookOutputResult = {
+          exitCode: result.exitCode ?? 0,
+          stdout: result.stdout ?? "",
+          stderr: result.stderr ?? "",
+          executionTime: result.duration,
+          hookEvent: "Stop" as const,
+        };
+
+        // Process output for message blocks
+        this.messageManager.processHookOutput(hookOutputResult);
+
+        // Parse hook output using parseHookOutput (implements JSON precedence over exit codes)
+        const parsed = parseHookOutput(hookOutputResult);
+
+        // Check for blocking behavior from JSON or exit code
+        if (!parsed.continue) {
+          const source = parsed.source === "json" ? "JSON output" : `exit code ${result.exitCode}`;
+          const reason = parsed.stopReason || "Hook reported blocking condition";
+          this.logger?.info(`Stop hook reported blocking condition (${source}): ${reason}`);
+        }
+
+        // Handle hook-specific data for Stop
+        if (parsed.hookSpecificData && typeof parsed.hookSpecificData === 'object') {
+          const hookData = parsed.hookSpecificData as StopOutput;
+          if (hookData.decision === 'block') {
+            const blockReason = hookData.reason || "Stop hook blocked execution";
+            this.logger?.info(`Stop hook blocked execution: ${blockReason}`);
+          }
+        }
+
+        // Log validation errors if present
+        if (parsed.errorMessages && parsed.errorMessages.length > 0) {
+          this.logger?.warn(`Stop hook validation issues:`, parsed.errorMessages);
+        }
+
+        // Log system message if present
+        if (parsed.systemMessage) {
+          this.logger?.info(`Stop hook message: ${parsed.systemMessage}`);
+        }
+      }
+
       // Log hook execution results for debugging
       if (results.length > 0) {
         this.logger?.debug(
@@ -526,12 +773,16 @@ export class AIManager {
 
   /**
    * Execute PreToolUse hooks before tool execution
+   * Returns true if tool execution should proceed, false if blocked
    */
   private async executePreToolUseHooks(
     toolName: string,
     toolInput?: Record<string, unknown>,
-  ): Promise<void> {
-    if (!this.hookManager) return;
+    toolId?: string,
+    toolArgs?: Record<string, unknown>,
+    compactParams?: string,
+  ): Promise<{ shouldProceed: boolean; updatedInput?: Record<string, unknown>; permissionId?: string }> {
+    if (!this.hookManager) return { shouldProceed: true };
 
     try {
       const context: ExtendedHookExecutionContext = {
@@ -550,6 +801,101 @@ export class AIManager {
         context,
       );
 
+      // Process hook output results
+      let shouldProceed = true;
+      let updatedInput = toolInput;
+      let permissionId: string | undefined;
+
+      for (const result of results) {
+        // Process hook output through message manager
+        const hookOutputResult = {
+          exitCode: result.exitCode ?? 0,
+          stdout: result.stdout ?? "",
+          stderr: result.stderr ?? "",
+          executionTime: result.duration,
+          hookEvent: "PreToolUse" as const,
+        };
+
+        // Process output for message blocks
+        this.messageManager.processHookOutput(hookOutputResult);
+
+        // Parse hook output using parseHookOutput (implements JSON precedence over exit codes)
+        const parsed = parseHookOutput(hookOutputResult);
+
+        // Handle hook-specific data for PreToolUse (e.g., permission decisions) FIRST
+        if (parsed.hookSpecificData && typeof parsed.hookSpecificData === 'object') {
+          const hookData = parsed.hookSpecificData as PreToolUseOutput;
+          
+          // Handle permission decisions for PreToolUse hooks
+          if (hookData.hookEventName === 'PreToolUse' && hookData.permissionDecision === 'ask') {
+            // Create a permission request and return shouldProceed: false with permission ID
+            const id = `perm_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const reason = hookData.permissionDecisionReason || "Hook requires user permission";
+            
+            const pendingPermission = {
+              id,
+              toolName,
+              reason,
+              originalInput: toolInput || {},
+              updatedInput: hookData.updatedInput,
+              onResolve: (decision: PermissionDecision) => {
+                // This will be called when user makes a decision
+                // The actual resolution happens in resolvePermissionRequest
+                void decision; // Suppress unused parameter warning
+              },
+              timestamp: Date.now(),
+              pauseAIRecursion: () => {
+                // Could be used to pause AI execution flow if needed
+              },
+              resumeAIRecursion: (shouldContinue: boolean) => {
+                // Could be used to resume AI execution flow after permission
+                void shouldContinue; // Suppress unused parameter warning
+              },
+              // Store tool execution context for later resumption
+              toolId: toolId || "",
+              toolArgs: toolArgs || {},
+              compactParams,
+            };
+
+            this.pendingPermissions.set(id, pendingPermission);
+            this.logger?.info(`Permission request created for tool ${toolName}: ${reason}`);
+            
+            return { 
+              shouldProceed: false, 
+              updatedInput: hookData.updatedInput || toolInput,
+              permissionId: id
+            };
+          } else if (hookData.hookEventName === 'PreToolUse' && hookData.permissionDecision === 'deny') {
+            shouldProceed = false;
+            const reason = hookData.permissionDecisionReason || "Hook denied tool execution";
+            this.logger?.info(`Tool ${toolName} denied by PreToolUse hook: ${reason}`);
+            break;
+          } else if (hookData.hookEventName === 'PreToolUse' && hookData.permissionDecision === 'allow' && hookData.updatedInput) {
+            updatedInput = hookData.updatedInput;
+            this.logger?.debug(`Tool ${toolName} input updated by PreToolUse hook`);
+          }
+        }
+
+        // Use parsed.continue for general blocking decisions (but not for permission asks which are handled above)
+        if (!parsed.continue) {
+          shouldProceed = false;
+          const source = parsed.source === "json" ? "JSON output" : `exit code ${result.exitCode}`;
+          const reason = parsed.stopReason || "Hook requested to block execution";
+          this.logger?.info(`Tool ${toolName} blocked by PreToolUse hook (${source}): ${reason}`);
+          break;
+        }
+
+        // Log validation errors if present
+        if (parsed.errorMessages && parsed.errorMessages.length > 0) {
+          this.logger?.warn(`PreToolUse hook validation issues for ${toolName}:`, parsed.errorMessages);
+        }
+
+        // Log system message if present
+        if (parsed.systemMessage) {
+          this.logger?.info(`PreToolUse hook message: ${parsed.systemMessage}`);
+        }
+      }
+
       // Log hook execution results for debugging
       if (results.length > 0) {
         this.logger?.debug(
@@ -563,9 +909,12 @@ export class AIManager {
           })),
         );
       }
+
+      return { shouldProceed, updatedInput, permissionId };
     } catch (error) {
       // Hook execution errors should not interrupt the main workflow
       this.logger?.error("PreToolUse hook execution failed:", error);
+      return { shouldProceed: true };
     }
   }
 
@@ -596,6 +945,53 @@ export class AIManager {
         "PostToolUse",
         context,
       );
+
+      // Process hook output results
+      for (const result of results) {
+        // Process hook output through message manager
+        const hookOutputResult = {
+          exitCode: result.exitCode ?? 0,
+          stdout: result.stdout ?? "",
+          stderr: result.stderr ?? "",
+          executionTime: result.duration,
+          hookEvent: "PostToolUse" as const,
+        };
+
+        // Process output for message blocks
+        this.messageManager.processHookOutput(hookOutputResult);
+
+        // Parse hook output using parseHookOutput (implements JSON precedence over exit codes)
+        const parsed = parseHookOutput(hookOutputResult);
+
+        // Check for blocking behavior from JSON or exit code
+        if (!parsed.continue) {
+          const source = parsed.source === "json" ? "JSON output" : `exit code ${result.exitCode}`;
+          const reason = parsed.stopReason || "Hook reported blocking condition";
+          this.logger?.info(`PostToolUse hook reported blocking condition for ${toolName} (${source}): ${reason}`);
+        }
+
+        // Handle hook-specific data for PostToolUse
+        if (parsed.hookSpecificData && typeof parsed.hookSpecificData === 'object') {
+          const hookData = parsed.hookSpecificData as PostToolUseOutput;
+          if (hookData.decision === 'block') {
+            const blockReason = hookData.reason || "PostToolUse hook blocked execution";
+            this.logger?.info(`PostToolUse hook blocked execution for ${toolName}: ${blockReason}`);
+          }
+          if (hookData.additionalContext) {
+            this.logger?.debug(`PostToolUse hook additional context for ${toolName}: ${hookData.additionalContext}`);
+          }
+        }
+
+        // Log validation errors if present
+        if (parsed.errorMessages && parsed.errorMessages.length > 0) {
+          this.logger?.warn(`PostToolUse hook validation issues for ${toolName}:`, parsed.errorMessages);
+        }
+
+        // Log system message if present
+        if (parsed.systemMessage) {
+          this.logger?.info(`PostToolUse hook message: ${parsed.systemMessage}`);
+        }
+      }
 
       // Log hook execution results for debugging
       if (results.length > 0) {

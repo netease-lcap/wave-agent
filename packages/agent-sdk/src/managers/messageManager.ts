@@ -12,11 +12,13 @@ import {
   completeCommandInMessage,
   addSubagentBlockToMessage,
   updateSubagentBlockInMessage,
+  addWarnBlockToMessage,
+  addHookBlockToMessage,
   type AddSubagentBlockParams,
   type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import type { Logger, Message, Usage } from "../types/index.js";
+import type { Logger, Message, Usage, HookEventName, HookOutputResult } from "../types/index.js";
 import {
   cleanupExpiredSessions,
   getLatestSession,
@@ -66,6 +68,9 @@ export interface MessageManagerCallbacks {
   // Subagent callbacks
   onSubAgentBlockAdded?: (subagentId: string) => void;
   onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
+  // Hook output callbacks
+  onWarnMessageAdded?: (content: string, hookEvent?: HookEventName) => void;
+  onHookMessageAdded?: (hookEvent: HookEventName, content: string, metadata?: Record<string, unknown>) => void;
 }
 
 export interface MessageManagerOptions {
@@ -481,6 +486,99 @@ export class MessageManager {
       subagentMessages: updates.messages || [],
     };
     this.callbacks.onSubAgentBlockUpdated?.(params.subagentId, params.messages);
+  }
+
+  /**
+   * Add a warning message block to the latest assistant message
+   */
+  public addWarnMessage(content: string, hookEvent?: HookEventName): void {
+    const newMessages = addWarnBlockToMessage({
+      messages: this.messages,
+      content
+    });
+    this.setMessages(newMessages);
+    this.callbacks.onWarnMessageAdded?.(content, hookEvent);
+  }
+
+  /**
+   * Add a hook message block to the latest assistant message  
+   */
+  public addHookMessage(
+    hookEvent: HookEventName, 
+    content: string, 
+    metadata?: Record<string, unknown>
+  ): void {
+    const newMessages = addHookBlockToMessage({
+      messages: this.messages,
+      hookEvent,
+      content,
+      metadata
+    });
+    this.setMessages(newMessages);
+    this.callbacks.onHookMessageAdded?.(hookEvent, content, metadata);
+  }
+
+  /**
+   * Process hook output result and create appropriate message blocks
+   */
+  public processHookOutput(result: HookOutputResult): void {
+    // Import parser and process result
+    import("../utils/hookOutputParser.js").then(({ parseHookOutput }) => {
+      const parsed = parseHookOutput(result);
+      
+      // Add warning message if system message present
+      if (parsed.systemMessage) {
+        this.addWarnMessage(parsed.systemMessage, result.hookEvent);
+      }
+
+      // Add hook-specific message if hook data present
+      if (parsed.hookSpecificData) {
+        const content = this.formatHookSpecificContent(parsed.hookSpecificData);
+        this.addHookMessage(result.hookEvent, content, {
+          source: parsed.source,
+          continue: parsed.continue,
+          exitCode: result.exitCode
+        });
+      }
+
+      // Add error messages as warnings
+      parsed.errorMessages.forEach(error => {
+        this.addWarnMessage(`Hook Error: ${error}`, result.hookEvent);
+      });
+    }).catch(error => {
+      this.logger?.error("Failed to process hook output:", error);
+      this.addWarnMessage(
+        `Failed to process hook output: ${error.message}`,
+        result.hookEvent
+      );
+    });
+  }
+
+  /**
+   * Format hook-specific data into readable content
+   */
+  private formatHookSpecificContent(hookData: unknown): string {
+    switch ((hookData as Record<string, unknown>).hookEventName) {
+      case 'PreToolUse':
+        return `Permission: ${(hookData as Record<string, unknown>).permissionDecision} - ${(hookData as Record<string, unknown>).permissionDecisionReason}`;
+      case 'PostToolUse':
+        if ((hookData as Record<string, unknown>).decision === 'block') {
+          return `Blocked execution: ${(hookData as Record<string, unknown>).reason}`;
+        }
+        return `Additional context: ${(hookData as Record<string, unknown>).additionalContext || 'None'}`;
+      case 'UserPromptSubmit':
+        if ((hookData as Record<string, unknown>).decision === 'block') {
+          return `Blocked prompt: ${(hookData as Record<string, unknown>).reason}`;
+        }
+        return `Additional context: ${(hookData as Record<string, unknown>).additionalContext || 'None'}`;
+      case 'Stop':
+        if ((hookData as Record<string, unknown>).decision === 'block') {
+          return `Blocked stop: ${(hookData as Record<string, unknown>).reason}`;
+        }
+        return 'Stop event processed';
+      default:
+        return JSON.stringify(hookData);
+    }
   }
 
   /**

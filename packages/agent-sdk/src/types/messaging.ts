@@ -1,9 +1,10 @@
 /**
  * Message and communication block types
- * Dependencies: Core (Usage)
+ * Dependencies: Core (Usage), Hooks (HookEventName)
  */
 
 import type { Usage } from "./core.js";
+import type { HookEventName } from "./hooks.js";
 
 export interface Message {
   role: "user" | "assistant";
@@ -21,7 +22,9 @@ export type MessageBlock =
   | CompressBlock
   | MemoryBlock
   | CustomCommandBlock
-  | SubagentBlock;
+  | SubagentBlock
+  | WarnBlock
+  | HookBlock;
 
 export interface TextBlock {
   type: "text";
@@ -100,4 +103,17 @@ export interface SubagentBlock {
   subagentName: string;
   status: "active" | "completed" | "error" | "aborted";
   messages: Message[];
+}
+
+// New message block types for hook output
+export interface WarnBlock {
+  type: "warn";
+  content: string;
+}
+
+export interface HookBlock {
+  type: "hook";
+  hookEvent: HookEventName;
+  content: string;
+  metadata?: Record<string, unknown>;
 }
