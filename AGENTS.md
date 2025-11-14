@@ -15,6 +15,8 @@ This is the AI assistant's memory file, recording important information and cont
   - Testing framework is vitest
   - Use HookTester to test hooks
   - Use waitHelpers to wait UI change
+  - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify data that is hard to mock
+  - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
 - `packages/code/src/components` contains Ink components
 - After modifying agent-sdk, need to build before using in code
 - For type and eslint errors:
