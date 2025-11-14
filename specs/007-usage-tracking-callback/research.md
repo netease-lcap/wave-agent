@@ -73,7 +73,7 @@ interface Message {
 Usage data will be automatically included in session file saves through the existing session management system in `services/session.ts`, requiring no additional persistence logic.
 
 ### CLI Exit Handler Integration
-The CLI packages (`packages/code/src/cli.tsx` and `packages/code/src/plain-cli.ts`) already have cleanup functions that handle graceful shutdown. Token summary display will be integrated into these existing cleanup paths.
+The CLI packages (`packages/code/src/cli.tsx` and `packages/code/src/print-cli.ts`) already have cleanup functions that handle graceful shutdown. Token summary display will be integrated into these existing cleanup paths.
 
 ## Performance Considerations
 

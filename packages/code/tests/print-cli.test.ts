@@ -26,11 +26,11 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 // Mock console.error
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-import { startPlainCli } from "../src/plain-cli.js";
+import { startPrintCli } from "../src/print-cli.js";
 
-test("startPlainCli requires a message when not continuing session", async () => {
+test("startPrintCli requires a message when not continuing session", async () => {
   try {
-    await startPlainCli({ message: "" });
+    await startPrintCli({ message: "" });
   } catch (error) {
     // Expected when process.exit is called
     expect(String(error)).toContain("process.exit called");
@@ -38,12 +38,12 @@ test("startPlainCli requires a message when not continuing session", async () =>
 
   // Verify error message and exit code
   expect(consoleErrorSpy).toHaveBeenCalledWith(
-    "Plain mode requires a message: use --plain 'your message' or -p 'your message'",
+    "Print mode requires a message: use --print 'your message' or -p 'your message'",
   );
   expect(mockExit).toHaveBeenCalledWith(1);
 });
 
-test("startPlainCli sends message and exits after completion", async () => {
+test("startPrintCli sends message and exits after completion", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
@@ -55,7 +55,7 @@ test("startPlainCli sends message and exits after completion", async () => {
   const testMessage = "Hello, how are you?";
 
   try {
-    await startPlainCli({ message: testMessage });
+    await startPrintCli({ message: testMessage });
   } catch (error) {
     // Expected when process.exit is called
     expect(String(error)).toContain("process.exit called");
@@ -97,7 +97,7 @@ test("onAssistantMessageAdded outputs content", async () => {
   const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
   try {
-    await startPlainCli({ message: "test message" });
+    await startPrintCli({ message: "test message" });
   } catch (error) {
     // Expected when process.exit is called
     expect(String(error)).toContain("process.exit called");
@@ -114,7 +114,7 @@ test("onAssistantMessageAdded outputs content", async () => {
   consoleSpy.mockRestore();
 });
 
-test("startPlainCli works with continue session", async () => {
+test("startPrintCli works with continue session", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
@@ -124,7 +124,7 @@ test("startPlainCli works with continue session", async () => {
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
   try {
-    await startPlainCli({ continueLastSession: true });
+    await startPrintCli({ continueLastSession: true });
   } catch (error) {
     // Expected when process.exit is called
     expect(String(error)).toContain("process.exit called");

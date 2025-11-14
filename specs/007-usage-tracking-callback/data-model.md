@@ -228,5 +228,5 @@ Usage data flows through Agent usage array and existing session save/load mechan
 ### CLI Integration Points
 Token summary integrates with existing cleanup functions:
 - `packages/code/src/cli.tsx` - Interactive CLI cleanup
-- `packages/code/src/plain-cli.ts` - Plain mode cleanup
+- `packages/code/src/print-cli.ts` - Print mode cleanup
 - Both exit paths display summary before process termination
