@@ -141,130 +141,11 @@ exit 1
   }
 }
 
-/**
- * Interactive example for testing exit codes manually
- */
-async function runInteractiveExitCodeTest() {
-  console.log("\n🎮 Interactive Exit Code Test");
-  console.log(
-    "This function demonstrates how to create and test hooks with different exit codes.\n",
-  );
-
-  const testDir = join(tmpdir(), `wave-exit-code-test-${Date.now()}`);
-  mkdirSync(testDir, { recursive: true });
-
-  // Create simple test hooks
-  const hooks = {
-    success: `#!/bin/bash
-echo "Operation successful"
-exit 0`,
-    block: `#!/bin/bash  
-echo "Security check failed" >&2
-echo "Operation blocked for safety"
-exit 2`,
-    warning: `#!/bin/bash
-echo "Non-critical issue detected"
-echo "Proceeding with caution" >&2
-exit 1`,
-    custom: `#!/bin/bash
-echo "Custom error condition"
-echo "This should be treated as non-blocking" >&2
-exit 42`,
-  };
-
-  // Write hook files
-  Object.entries(hooks).forEach(([name, script]) => {
-    const hookPath = join(testDir, `${name}-hook.sh`);
-    writeFileSync(hookPath, script, { mode: 0o755 });
-    console.log(`📝 Created ${name} hook: ${hookPath}`);
-  });
-
-  console.log(`\n📁 Test directory: ${testDir}`);
-  console.log("\nTo test these hooks:");
-  console.log("1. Create a hooks.json configuration file");
-  console.log("2. Reference these hook scripts in your configuration");
-  console.log("3. Run Wave with hooks enabled");
-  console.log("4. Observe the different behaviors based on exit codes");
-
-  console.log("\nExpected behaviors:");
-  console.log("• Exit 0: Continue normally (success)");
-  console.log("• Exit 2: Block execution (security/critical error)");
-  console.log(
-    "• Exit 1 or other: Show warning but continue (non-blocking error)",
-  );
-}
-
-/**
- * Utility function to test hook output parsing directly
- */
-async function testHookOutputParsing() {
-  console.log("\n🔍 Hook Output Parsing Test");
-
-  const { parseHookOutput } = await import("../src/utils/hookOutputParser.js");
-
-  const testCases = [
-    {
-      name: "Success Case",
-      result: {
-        exitCode: 0,
-        stdout: "Operation completed successfully",
-        stderr: "",
-        executionTime: 150,
-        hookEvent: "PreToolUse" as const,
-      },
-    },
-    {
-      name: "Blocking Case",
-      result: {
-        exitCode: 2,
-        stdout: "",
-        stderr: "Critical security violation",
-        executionTime: 75,
-        hookEvent: "PreToolUse" as const,
-      },
-    },
-    {
-      name: "Warning Case",
-      result: {
-        exitCode: 1,
-        stdout: "Proceeding with warning",
-        stderr: "Non-critical issue detected",
-        executionTime: 200,
-        hookEvent: "PostToolUse" as const,
-      },
-    },
-    {
-      name: "Custom Exit Code",
-      result: {
-        exitCode: 42,
-        stdout: "",
-        stderr: "Custom error condition",
-        executionTime: 100,
-        hookEvent: "UserPromptSubmit" as const,
-      },
-    },
-  ];
-
-  testCases.forEach((testCase) => {
-    console.log(`\n--- ${testCase.name} ---`);
-    const parsed = parseHookOutput(testCase.result);
-    console.log(`Source: ${parsed.source}`);
-    console.log(`Continue: ${parsed.continue}`);
-    console.log(`Stop Reason: ${parsed.stopReason || "None"}`);
-    console.log(`System Message: ${parsed.systemMessage || "None"}`);
-    console.log(
-      `Error Messages: ${parsed.errorMessages.length > 0 ? parsed.errorMessages.join(", ") : "None"}`,
-    );
-  });
-}
-
 // Run the example if this file is executed directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   console.log("Exit Code Communication Example\n");
 
   runExitCodeCommunicationExample()
-    .then(() => runInteractiveExitCodeTest())
-    .then(() => testHookOutputParsing())
     .then(() => {
       console.log("\n✅ Exit Code Communication Example completed!");
       console.log(
@@ -281,8 +162,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     });
 }
 
-export {
-  runExitCodeCommunicationExample,
-  runInteractiveExitCodeTest,
-  testHookOutputParsing,
-};
+export { runExitCodeCommunicationExample };
