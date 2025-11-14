@@ -216,6 +216,10 @@ export class Agent {
     return [...this._usages]; // Return copy to prevent external modification
   }
 
+  public get sessionFilePath(): string {
+    return this.messageManager.getTranscriptPath();
+  }
+
   /**
    * Rebuild usage array from messages containing usage metadata
    * Called during session restoration to reconstruct usage tracking

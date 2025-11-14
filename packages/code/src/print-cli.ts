@@ -51,7 +51,8 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     // Display usage summary before exit
     try {
       const usages = agent.usages;
-      displayUsageSummary(usages);
+      const sessionFilePath = agent.sessionFilePath;
+      displayUsageSummary(usages, sessionFilePath);
     } catch {
       // Silently ignore usage summary errors
     }
@@ -65,7 +66,8 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       // Display usage summary even on error
       try {
         const usages = agent.usages;
-        displayUsageSummary(usages);
+        const sessionFilePath = agent.sessionFilePath;
+        displayUsageSummary(usages, sessionFilePath);
       } catch {
         // Silently ignore usage summary errors
       }
