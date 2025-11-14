@@ -8,7 +8,6 @@ import { MemoryDisplay } from "./MemoryDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
 import { SubagentBlock } from "./SubagentBlock.js";
 import { usePagination } from "../hooks/usePagination.js";
-import { MarkdownText } from "./MarkdownText.js";
 
 // Function to render a single message
 const renderMessageItem = (
@@ -42,7 +41,9 @@ const renderMessageItem = (
         {message.blocks.map((block, blockIndex) => (
           <Box key={blockIndex}>
             {block.type === "text" && block.content.trim() && (
-              <MarkdownText content={block.content} />
+              <Box>
+                <Text>{block.content}</Text>
+              </Box>
             )}
 
             {block.type === "error" && (
