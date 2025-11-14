@@ -768,11 +768,21 @@ describe("Hook Output Processing Integration", () => {
       }
 
       // Execute tool if permission allowed
-      // Mock tool execution
-      /* let toolResult = null;
+      const permissionAllowed = beforeParsed.continue;
+      let toolResult = null;
       if (permissionAllowed) {
-        toolResult = await ((toolManager.execute as unknown as (name: string, args: Record<string, unknown>, context: Record<string, unknown>) => Promise<unknown>))("read_file", { path: "/test/file.txt" }, { workdir: testWorkdir });
-      } */
+        toolResult = await vi.mocked(toolManager.execute)(
+          "read_file",
+          { path: "/test/file.txt" },
+          { workdir: testWorkdir },
+        );
+
+        // Verify tool executed successfully
+        expect(toolResult).toEqual({
+          success: true,
+          content: "File contents here...",
+        });
+      }
 
       // Execute after hooks
       const afterResults = await vi.mocked(hookManager.executeHooks)(
