@@ -1,4 +1,4 @@
-# Hook Output Methods - Quickstart
+# Hook Output Support - Quickstart
 
 **Target Audience**: SDK developers using hooks  
 **Time to Complete**: 5-10 minutes  
@@ -6,7 +6,7 @@
 
 ## Overview
 
-Hook Output Methods let your hooks control Wave's behavior through JSON output or exit codes. You can:
+Hook Output Support let your hooks control Wave's behavior through JSON output or exit codes. You can:
 - Block or allow tool execution
 - Request user confirmation 
 - Modify tool inputs

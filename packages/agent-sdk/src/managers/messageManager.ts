@@ -18,7 +18,16 @@ import {
   type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import type { Logger, Message, Usage, HookEventName, HookOutputResult } from "../types/index.js";
+import type {
+  Logger,
+  Message,
+  Usage,
+  HookEventName,
+  HookOutputResult,
+  TextBlock,
+  ImageBlock,
+  ToolBlock,
+} from "../types/index.js";
 import {
   cleanupExpiredSessions,
   getLatestSession,
@@ -70,7 +79,11 @@ export interface MessageManagerCallbacks {
   onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
   // Hook output callbacks
   onWarnMessageAdded?: (content: string, hookEvent?: HookEventName) => void;
-  onHookMessageAdded?: (hookEvent: HookEventName, content: string, metadata?: Record<string, unknown>) => void;
+  onHookMessageAdded?: (
+    hookEvent: HookEventName,
+    content: string,
+    metadata?: Record<string, unknown>,
+  ) => void;
 }
 
 export interface MessageManagerOptions {
@@ -494,25 +507,25 @@ export class MessageManager {
   public addWarnMessage(content: string, hookEvent?: HookEventName): void {
     const newMessages = addWarnBlockToMessage({
       messages: this.messages,
-      content
+      content,
     });
     this.setMessages(newMessages);
     this.callbacks.onWarnMessageAdded?.(content, hookEvent);
   }
 
   /**
-   * Add a hook message block to the latest assistant message  
+   * Add a hook message block to the latest assistant message
    */
   public addHookMessage(
-    hookEvent: HookEventName, 
-    content: string, 
-    metadata?: Record<string, unknown>
+    hookEvent: HookEventName,
+    content: string,
+    metadata?: Record<string, unknown>,
   ): void {
     const newMessages = addHookBlockToMessage({
       messages: this.messages,
       hookEvent,
       content,
-      metadata
+      metadata,
     });
     this.setMessages(newMessages);
     this.callbacks.onHookMessageAdded?.(hookEvent, content, metadata);
@@ -523,35 +536,39 @@ export class MessageManager {
    */
   public processHookOutput(result: HookOutputResult): void {
     // Import parser and process result
-    import("../utils/hookOutputParser.js").then(({ parseHookOutput }) => {
-      const parsed = parseHookOutput(result);
-      
-      // Add warning message if system message present
-      if (parsed.systemMessage) {
-        this.addWarnMessage(parsed.systemMessage, result.hookEvent);
-      }
+    import("../utils/hookOutputParser.js")
+      .then(({ parseHookOutput }) => {
+        const parsed = parseHookOutput(result);
 
-      // Add hook-specific message if hook data present
-      if (parsed.hookSpecificData) {
-        const content = this.formatHookSpecificContent(parsed.hookSpecificData);
-        this.addHookMessage(result.hookEvent, content, {
-          source: parsed.source,
-          continue: parsed.continue,
-          exitCode: result.exitCode
+        // Add warning message if system message present
+        if (parsed.systemMessage) {
+          this.addWarnMessage(parsed.systemMessage, result.hookEvent);
+        }
+
+        // Add hook-specific message if hook data present
+        if (parsed.hookSpecificData) {
+          const content = this.formatHookSpecificContent(
+            parsed.hookSpecificData,
+          );
+          this.addHookMessage(result.hookEvent, content, {
+            source: parsed.source,
+            continue: parsed.continue,
+            exitCode: result.exitCode,
+          });
+        }
+
+        // Add error messages as warnings
+        parsed.errorMessages.forEach((error) => {
+          this.addWarnMessage(`Hook Error: ${error}`, result.hookEvent);
         });
-      }
-
-      // Add error messages as warnings
-      parsed.errorMessages.forEach(error => {
-        this.addWarnMessage(`Hook Error: ${error}`, result.hookEvent);
+      })
+      .catch((error) => {
+        this.logger?.error("Failed to process hook output:", error);
+        this.addWarnMessage(
+          `Failed to process hook output: ${error.message}`,
+          result.hookEvent,
+        );
       });
-    }).catch(error => {
-      this.logger?.error("Failed to process hook output:", error);
-      this.addWarnMessage(
-        `Failed to process hook output: ${error.message}`,
-        result.hookEvent
-      );
-    });
   }
 
   /**
@@ -559,23 +576,23 @@ export class MessageManager {
    */
   private formatHookSpecificContent(hookData: unknown): string {
     switch ((hookData as Record<string, unknown>).hookEventName) {
-      case 'PreToolUse':
+      case "PreToolUse":
         return `Permission: ${(hookData as Record<string, unknown>).permissionDecision} - ${(hookData as Record<string, unknown>).permissionDecisionReason}`;
-      case 'PostToolUse':
-        if ((hookData as Record<string, unknown>).decision === 'block') {
+      case "PostToolUse":
+        if ((hookData as Record<string, unknown>).decision === "block") {
           return `Blocked execution: ${(hookData as Record<string, unknown>).reason}`;
         }
-        return `Additional context: ${(hookData as Record<string, unknown>).additionalContext || 'None'}`;
-      case 'UserPromptSubmit':
-        if ((hookData as Record<string, unknown>).decision === 'block') {
+        return `Additional context: ${(hookData as Record<string, unknown>).additionalContext || "None"}`;
+      case "UserPromptSubmit":
+        if ((hookData as Record<string, unknown>).decision === "block") {
           return `Blocked prompt: ${(hookData as Record<string, unknown>).reason}`;
         }
-        return `Additional context: ${(hookData as Record<string, unknown>).additionalContext || 'None'}`;
-      case 'Stop':
-        if ((hookData as Record<string, unknown>).decision === 'block') {
+        return `Additional context: ${(hookData as Record<string, unknown>).additionalContext || "None"}`;
+      case "Stop":
+        if ((hookData as Record<string, unknown>).decision === "block") {
           return `Blocked stop: ${(hookData as Record<string, unknown>).reason}`;
         }
-        return 'Stop event processed';
+        return "Stop event processed";
       default:
         return JSON.stringify(hookData);
     }
@@ -592,5 +609,91 @@ export class MessageManager {
       }
     }
     this.callbacks.onUsagesChange?.(usages);
+  }
+
+  /**
+   * Generic add message method for test compatibility
+   * Accepts both full Message objects and simple {role, content} objects
+   */
+  public addMessage(
+    message:
+      | Message
+      | {
+          role: "user" | "assistant";
+          content: string;
+          images?: unknown[];
+          toolCalls?: unknown[];
+          usage?: Usage;
+        },
+  ): void {
+    if (message.role === "user") {
+      if ("blocks" in message) {
+        // Full Message object - extract content from text blocks
+        const textBlocks = message.blocks.filter(
+          (block) => block.type === "text",
+        ) as TextBlock[];
+        const content = textBlocks.map((block) => block.content).join("\n");
+
+        // Extract images from image blocks
+        const imageBlocks = message.blocks.filter(
+          (block) => block.type === "image",
+        ) as ImageBlock[];
+        const images = imageBlocks
+          .flatMap((block) => block.imageUrls || [])
+          .map((url) => ({ path: url, mimeType: "image/png" }));
+
+        this.addUserMessage(content, images.length > 0 ? images : undefined);
+      } else {
+        // Simple object format
+        this.addUserMessage(
+          message.content,
+          message.images as
+            | Array<{ path: string; mimeType: string }>
+            | undefined,
+        );
+      }
+    } else if (message.role === "assistant") {
+      if ("blocks" in message) {
+        // Full Message object - extract content from text blocks
+        const textBlocks = message.blocks.filter(
+          (block) => block.type === "text",
+        ) as TextBlock[];
+        const content = textBlocks.map((block) => block.content).join("\n");
+
+        // Extract tool calls from tool blocks
+        const toolBlocks = message.blocks.filter(
+          (block) => block.type === "tool",
+        ) as ToolBlock[];
+        const toolCalls = toolBlocks.map((block) => ({
+          id: block.id || randomUUID(),
+          type: "function" as const,
+          function: {
+            name: block.name || "unknown",
+            arguments: block.parameters || "{}",
+          },
+        }));
+
+        this.addAssistantMessage(
+          content || undefined,
+          toolCalls.length > 0 ? toolCalls : undefined,
+          message.usage,
+        );
+      } else {
+        // Simple object format
+        this.addAssistantMessage(
+          message.content,
+          message.toolCalls as
+            | ChatCompletionMessageFunctionToolCall[]
+            | undefined,
+          message.usage,
+        );
+      }
+    } else {
+      // For other roles, directly add to message array (only if full Message object)
+      if ("blocks" in message) {
+        const newMessages = [...this.messages, message];
+        this.setMessages(newMessages);
+      }
+    }
   }
 }

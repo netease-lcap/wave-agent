@@ -12,23 +12,17 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { 
+import {
   HookOutputParser,
-  hookOutputParser,
   parseHookOutput,
   validateHookJsonOutput,
   hasValidJsonOutput,
   getValidationSummary,
-  formatValidationErrors
+  formatValidationErrors,
 } from "../../src/utils/hookOutputParser.js";
 import type {
   HookOutputResult,
-  ParsedHookOutput,
-  BaseHookJsonOutput,
   HookValidationResult,
-  ValidationError,
-  ValidationWarning,
-  HookEventName
 } from "../../src/types/hooks.js";
 
 describe("HookOutputParser", () => {
@@ -44,7 +38,7 @@ describe("HookOutputParser", () => {
       stdout: "",
       stderr: "",
       executionTime: 100,
-      hookEvent: "PreToolUse"
+      hookEvent: "PreToolUse",
     };
 
     it("should parse exit code 0 as success (continue=true)", () => {
@@ -52,13 +46,13 @@ describe("HookOutputParser", () => {
         ...baseResult,
         exitCode: 0,
         stdout: "Hook executed successfully",
-        stderr: ""
+        stderr: "",
       });
 
       expect(result).toEqual({
         source: "exitcode",
         continue: true,
-        errorMessages: ["Hook output: Hook executed successfully"]
+        errorMessages: ["Hook output: Hook executed successfully"],
       });
     });
 
@@ -66,14 +60,14 @@ describe("HookOutputParser", () => {
       const result = parser.parseHookOutput({
         ...baseResult,
         exitCode: 2,
-        stderr: "Blocking execution due to security concern"
+        stderr: "Blocking execution due to security concern",
       });
 
       expect(result).toEqual({
         source: "exitcode",
         continue: false,
         stopReason: "Hook requested to block execution (exit code 2)",
-        errorMessages: ["Blocking execution due to security concern"]
+        errorMessages: ["Blocking execution due to security concern"],
       });
     });
 
@@ -81,7 +75,7 @@ describe("HookOutputParser", () => {
       const result = parser.parseHookOutput({
         ...baseResult,
         exitCode: 1,
-        stderr: "Some non-blocking error occurred"
+        stderr: "Some non-blocking error occurred",
       });
 
       expect(result).toEqual({
@@ -90,8 +84,8 @@ describe("HookOutputParser", () => {
         systemMessage: "Hook completed with non-zero exit code 1",
         errorMessages: [
           "Non-blocking error: exit code 1",
-          "Some non-blocking error occurred"
-        ]
+          "Some non-blocking error occurred",
+        ],
       });
     });
 
@@ -100,7 +94,7 @@ describe("HookOutputParser", () => {
         ...baseResult,
         exitCode: 3,
         stdout: "Warning: deprecated API used",
-        stderr: "Error: configuration invalid"
+        stderr: "Error: configuration invalid",
       });
 
       expect(result).toEqual({
@@ -110,8 +104,8 @@ describe("HookOutputParser", () => {
         errorMessages: [
           "Non-blocking error: exit code 3",
           "Error: configuration invalid",
-          "Hook output: Warning: deprecated API used"
-        ]
+          "Hook output: Warning: deprecated API used",
+        ],
       });
     });
 
@@ -120,13 +114,13 @@ describe("HookOutputParser", () => {
         ...baseResult,
         exitCode: 0,
         stdout: "",
-        stderr: ""
+        stderr: "",
       });
 
       expect(result).toEqual({
         source: "exitcode",
         continue: true,
-        errorMessages: []
+        errorMessages: [],
       });
     });
 
@@ -135,25 +129,25 @@ describe("HookOutputParser", () => {
         ...baseResult,
         exitCode: 0,
         stdout: "   \n\t  ",
-        stderr: "  \n  "
+        stderr: "  \n  ",
       });
 
       expect(result).toEqual({
         source: "exitcode",
         continue: true,
-        errorMessages: []
+        errorMessages: [],
       });
     });
   });
 
   describe("JSON Extraction from Mixed Output", () => {
-    const baseResult: HookOutputResult = {
+    /* const baseResult: HookOutputResult = {
       exitCode: 0,
       stdout: "",
       stderr: "",
       executionTime: 100,
       hookEvent: "PreToolUse"
-    };
+    }; */
 
     it("should extract JSON from clean JSON-only output", () => {
       const json = '{"continue": true, "systemMessage": "All good"}';
@@ -166,18 +160,22 @@ describe("HookOutputParser", () => {
 Loading configuration...
 {"continue": true, "systemMessage": "Processing complete"}
 Done.`;
-      
+
       const extracted = parser.extractJsonFromOutput(stdout);
-      expect(extracted).toBe('{"continue": true, "systemMessage": "Processing complete"}');
+      expect(extracted).toBe(
+        '{"continue": true, "systemMessage": "Processing complete"}',
+      );
     });
 
     it("should extract JSON from mixed output with text after", () => {
       const stdout = `{"continue": false, "stopReason": "User intervention required"}
 Cleaning up temporary files...
 Hook execution completed.`;
-      
+
       const extracted = parser.extractJsonFromOutput(stdout);
-      expect(extracted).toBe('{"continue": false, "stopReason": "User intervention required"}');
+      expect(extracted).toBe(
+        '{"continue": false, "stopReason": "User intervention required"}',
+      );
     });
 
     it("should extract multiline JSON object", () => {
@@ -192,7 +190,7 @@ Hook execution completed.`;
   }
 }
 Hook completed.`;
-      
+
       const extracted = parser.extractJsonFromOutput(stdout);
       const expectedJson = `{
   "continue": true,
@@ -222,7 +220,7 @@ Hook completed.`;
     }
   }
 }`;
-      
+
       const extracted = parser.extractJsonFromOutput(stdout);
       expect(extracted).toBe(stdout.trim());
     });
@@ -256,9 +254,11 @@ Hook completed.`;
 More logging...
 {"continue": false, "systemMessage": "Second JSON"}
 End of output`;
-      
+
       const extracted = parser.extractJsonFromOutput(stdout);
-      expect(extracted).toBe('{"continue": true, "systemMessage": "First JSON"}');
+      expect(extracted).toBe(
+        '{"continue": true, "systemMessage": "First JSON"}',
+      );
     });
 
     it("should handle JSON arrays", () => {
@@ -274,14 +274,14 @@ End of output`;
       stdout: "",
       stderr: "",
       executionTime: 100,
-      hookEvent: "PreToolUse"
+      hookEvent: "PreToolUse",
     };
 
     it("should prefer valid JSON over successful exit code", () => {
       const result = parser.parseHookOutput({
         ...baseResult,
         exitCode: 0,
-        stdout: '{"continue": false, "stopReason": "JSON says stop"}'
+        stdout: '{"continue": false, "stopReason": "JSON says stop"}',
       });
 
       expect(result.source).toBe("json");
@@ -293,7 +293,8 @@ End of output`;
       const result = parser.parseHookOutput({
         ...baseResult,
         exitCode: 2,
-        stdout: '{"continue": true, "systemMessage": "JSON overrides exit code"}'
+        stdout:
+          '{"continue": true, "systemMessage": "JSON overrides exit code"}',
       });
 
       expect(result.source).toBe("json");
@@ -306,7 +307,7 @@ End of output`;
         ...baseResult,
         exitCode: 1,
         stderr: "Some error occurred",
-        stdout: '{"continue": true, "systemMessage": "Ignoring stderr error"}'
+        stdout: '{"continue": true, "systemMessage": "Ignoring stderr error"}',
       });
 
       expect(result.source).toBe("json");
@@ -314,175 +315,271 @@ End of output`;
       expect(result.systemMessage).toBe("Ignoring stderr error");
       // Should have a warning about missing PreToolUse permission decision
       expect(result.errorMessages.length).toBeGreaterThan(0);
-      expect(result.errorMessages.some(msg => msg.includes("missing permission decision"))).toBe(true);
+      expect(
+        result.errorMessages.some((msg) =>
+          msg.includes("missing permission decision"),
+        ),
+      ).toBe(true);
     });
 
     it("should fall back to exit code when JSON is invalid", () => {
       const result = parser.parseHookOutput({
         ...baseResult,
         exitCode: 2,
-        stdout: '{"invalid": json, "missing": quotes}'
+        stdout: '{"invalid": json, "missing": quotes}',
       });
 
       expect(result.source).toBe("exitcode");
       expect(result.continue).toBe(false);
-      expect(result.stopReason).toBe("Hook requested to block execution (exit code 2)");
+      expect(result.stopReason).toBe(
+        "Hook requested to block execution (exit code 2)",
+      );
     });
 
     it("should fall back to exit code when no JSON found", () => {
       const result = parser.parseHookOutput({
         ...baseResult,
         exitCode: 1,
-        stdout: "Just plain text output"
+        stdout: "Just plain text output",
       });
 
       expect(result.source).toBe("exitcode");
       expect(result.continue).toBe(true);
-      expect(result.systemMessage).toBe("Hook completed with non-zero exit code 1");
+      expect(result.systemMessage).toBe(
+        "Hook completed with non-zero exit code 1",
+      );
     });
   });
 
   describe("Common Field Validation", () => {
     it("should validate continue field correctly", () => {
       // Valid boolean values
-      expect(parser.validateJsonOutput({ continue: true }, "PreToolUse").valid).toBe(true);
-      expect(parser.validateJsonOutput({ continue: false }, "PreToolUse").valid).toBe(false); // fails because stopReason required
-      
+      expect(
+        parser.validateJsonOutput({ continue: true }, "PreToolUse").valid,
+      ).toBe(true);
+      expect(
+        parser.validateJsonOutput({ continue: false }, "PreToolUse").valid,
+      ).toBe(false); // fails because stopReason required
+
       // Invalid types
-      const result1 = parser.validateJsonOutput({ continue: "true" }, "PreToolUse");
+      const result1 = parser.validateJsonOutput(
+        { continue: "true" },
+        "PreToolUse",
+      );
       expect(result1.valid).toBe(false);
-      expect(result1.errors.some(e => e.field === "continue" && e.code === "INVALID_TYPE")).toBe(true);
-      
+      expect(
+        result1.errors.some(
+          (e) => e.field === "continue" && e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
+
       const result2 = parser.validateJsonOutput({ continue: 1 }, "PreToolUse");
       expect(result2.valid).toBe(false);
-      expect(result2.errors.some(e => e.field === "continue" && e.code === "INVALID_TYPE")).toBe(true);
+      expect(
+        result2.errors.some(
+          (e) => e.field === "continue" && e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
     });
 
     it("should validate stopReason requirement when continue is false", () => {
       // Missing stopReason when continue is false
-      const result1 = parser.validateJsonOutput({ continue: false }, "PreToolUse");
+      const result1 = parser.validateJsonOutput(
+        { continue: false },
+        "PreToolUse",
+      );
       expect(result1.valid).toBe(false);
-      expect(result1.errors.some(e => e.field === "stopReason" && e.code === "REQUIRED_FIELD")).toBe(true);
+      expect(
+        result1.errors.some(
+          (e) => e.field === "stopReason" && e.code === "REQUIRED_FIELD",
+        ),
+      ).toBe(true);
 
       // Valid stopReason when continue is false
-      const result2 = parser.validateJsonOutput({ 
-        continue: false, 
-        stopReason: "User requested stop" 
-      }, "PreToolUse");
+      const result2 = parser.validateJsonOutput(
+        {
+          continue: false,
+          stopReason: "User requested stop",
+        },
+        "PreToolUse",
+      );
       expect(result2.valid).toBe(true);
 
       // Invalid type for stopReason
-      const result3 = parser.validateJsonOutput({ 
-        continue: false, 
-        stopReason: 123 
-      }, "PreToolUse");
+      const result3 = parser.validateJsonOutput(
+        {
+          continue: false,
+          stopReason: 123,
+        },
+        "PreToolUse",
+      );
       expect(result3.valid).toBe(false);
-      expect(result3.errors.some(e => e.field === "stopReason" && e.code === "INVALID_TYPE")).toBe(true);
+      expect(
+        result3.errors.some(
+          (e) => e.field === "stopReason" && e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
 
       // Empty stopReason
-      const result4 = parser.validateJsonOutput({ 
-        continue: false, 
-        stopReason: "  " 
-      }, "PreToolUse");
+      const result4 = parser.validateJsonOutput(
+        {
+          continue: false,
+          stopReason: "  ",
+        },
+        "PreToolUse",
+      );
       expect(result4.valid).toBe(false);
-      expect(result4.errors.some(e => e.field === "stopReason" && e.code === "EMPTY_REQUIRED_FIELD")).toBe(true);
+      expect(
+        result4.errors.some(
+          (e) => e.field === "stopReason" && e.code === "EMPTY_REQUIRED_FIELD",
+        ),
+      ).toBe(true);
     });
 
     it("should warn about stopReason when continue is true", () => {
-      const result = parser.validateJsonOutput({ 
-        continue: true, 
-        stopReason: "This will be ignored" 
-      }, "PreToolUse");
-      
+      const result = parser.validateJsonOutput(
+        {
+          continue: true,
+          stopReason: "This will be ignored",
+        },
+        "PreToolUse",
+      );
+
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => w.field === "stopReason")).toBe(true);
+      expect(result.warnings.some((w) => w.field === "stopReason")).toBe(true);
     });
 
     it("should validate systemMessage field", () => {
       // Valid string
-      const result1 = parser.validateJsonOutput({ 
-        systemMessage: "Valid message" 
-      }, "PreToolUse");
+      const result1 = parser.validateJsonOutput(
+        {
+          systemMessage: "Valid message",
+        },
+        "PreToolUse",
+      );
       expect(result1.valid).toBe(true);
 
       // Invalid type
-      const result2 = parser.validateJsonOutput({ 
-        systemMessage: 123 
-      }, "PreToolUse");
+      const result2 = parser.validateJsonOutput(
+        {
+          systemMessage: 123,
+        },
+        "PreToolUse",
+      );
       expect(result2.valid).toBe(false);
-      expect(result2.errors.some(e => e.field === "systemMessage" && e.code === "INVALID_TYPE")).toBe(true);
+      expect(
+        result2.errors.some(
+          (e) => e.field === "systemMessage" && e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
 
       // Empty string warning
-      const result3 = parser.validateJsonOutput({ 
-        systemMessage: "" 
-      }, "PreToolUse");
+      const result3 = parser.validateJsonOutput(
+        {
+          systemMessage: "",
+        },
+        "PreToolUse",
+      );
       expect(result3.valid).toBe(true);
-      expect(result3.warnings.some(w => w.field === "systemMessage")).toBe(true);
+      expect(result3.warnings.some((w) => w.field === "systemMessage")).toBe(
+        true,
+      );
 
       // Very long string warning
       const longMessage = "x".repeat(1001);
-      const result4 = parser.validateJsonOutput({ 
-        systemMessage: longMessage 
-      }, "PreToolUse");
+      const result4 = parser.validateJsonOutput(
+        {
+          systemMessage: longMessage,
+        },
+        "PreToolUse",
+      );
       expect(result4.valid).toBe(true);
-      expect(result4.warnings.some(w => w.field === "systemMessage" && w.message.includes("very long"))).toBe(true);
+      expect(
+        result4.warnings.some(
+          (w) => w.field === "systemMessage" && w.message.includes("very long"),
+        ),
+      ).toBe(true);
     });
 
     it("should validate hookSpecificOutput structure", () => {
       // Valid object
-      const result1 = parser.validateJsonOutput({ 
-        hookSpecificOutput: { hookEventName: "PreToolUse" }
-      }, "PreToolUse");
+      const result1 = parser.validateJsonOutput(
+        {
+          hookSpecificOutput: { hookEventName: "PreToolUse" },
+        },
+        "PreToolUse",
+      );
       expect(result1.valid).toBe(false); // Will fail on PreToolUse specific validation but structure is ok
 
       // Valid null
-      const result2 = parser.validateJsonOutput({ 
-        hookSpecificOutput: null 
-      }, "PreToolUse");
+      const result2 = parser.validateJsonOutput(
+        {
+          hookSpecificOutput: null,
+        },
+        "PreToolUse",
+      );
       expect(result2.valid).toBe(true);
 
       // Invalid type
-      const result3 = parser.validateJsonOutput({ 
-        hookSpecificOutput: "string" 
-      }, "PreToolUse");
+      const result3 = parser.validateJsonOutput(
+        {
+          hookSpecificOutput: "string",
+        },
+        "PreToolUse",
+      );
       expect(result3.valid).toBe(false);
-      expect(result3.errors.some(e => e.field === "hookSpecificOutput" && e.code === "INVALID_TYPE")).toBe(true);
+      expect(
+        result3.errors.some(
+          (e) => e.field === "hookSpecificOutput" && e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
     });
 
     it("should warn about unknown fields", () => {
-      const result = parser.validateJsonOutput({ 
-        continue: true,
-        unknownField1: "value1",
-        unknownField2: "value2"
-      }, "PreToolUse");
-      
+      const result = parser.validateJsonOutput(
+        {
+          continue: true,
+          unknownField1: "value1",
+          unknownField2: "value2",
+        },
+        "PreToolUse",
+      );
+
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "root" && 
-        w.message.includes("unknownField1, unknownField2")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.field === "root" &&
+            w.message.includes("unknownField1, unknownField2"),
+        ),
+      ).toBe(true);
     });
 
     it("should warn about empty JSON objects", () => {
       const result = parser.validateJsonOutput({}, "PreToolUse");
-      
+
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "root" && 
-        w.message.includes("Empty JSON object")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) => w.field === "root" && w.message.includes("Empty JSON object"),
+        ),
+      ).toBe(true);
     });
 
     it("should warn about missing continue field", () => {
-      const result = parser.validateJsonOutput({ 
-        systemMessage: "No continue field provided" 
-      }, "PreToolUse");
-      
+      const result = parser.validateJsonOutput(
+        {
+          systemMessage: "No continue field provided",
+        },
+        "PreToolUse",
+      );
+
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "continue" && 
-        w.message.includes("not specified")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) => w.field === "continue" && w.message.includes("not specified"),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -492,10 +589,10 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "allow",
-          permissionDecisionReason: "Safe operation detected"
-        }
+          permissionDecisionReason: "Safe operation detected",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(validOutput, "PreToolUse");
       expect(result.valid).toBe(true);
     });
@@ -505,46 +602,52 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
           permissionDecision: "allow",
-          permissionDecisionReason: "Wrong event name"
-        }
+          permissionDecisionReason: "Wrong event name",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(invalidOutput, "PreToolUse");
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "hookSpecificOutput.hookEventName" && 
-        e.code === "EVENT_MISMATCH"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.hookEventName" &&
+            e.code === "EVENT_MISMATCH",
+        ),
+      ).toBe(true);
     });
 
     it("should require permissionDecision field", () => {
       const invalidOutput = {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
-          permissionDecisionReason: "Missing permission decision"
-        }
+          permissionDecisionReason: "Missing permission decision",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(invalidOutput, "PreToolUse");
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "hookSpecificOutput.permissionDecision" && 
-        e.code === "REQUIRED_FIELD"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.permissionDecision" &&
+            e.code === "REQUIRED_FIELD",
+        ),
+      ).toBe(true);
     });
 
     it("should validate permissionDecision values", () => {
       const validDecisions = ["allow", "deny", "ask"];
-      
+
       for (const decision of validDecisions) {
         const output = {
           hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: decision,
-            permissionDecisionReason: `Testing ${decision} decision`
-          }
+            permissionDecisionReason: `Testing ${decision} decision`,
+          },
         };
-        
+
         const result = parser.validateJsonOutput(output, "PreToolUse");
         expect(result.valid).toBe(true);
       }
@@ -554,32 +657,38 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "maybe",
-          permissionDecisionReason: "Invalid decision"
-        }
+          permissionDecisionReason: "Invalid decision",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(invalidOutput, "PreToolUse");
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "hookSpecificOutput.permissionDecision" && 
-        e.code === "INVALID_VALUE"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.permissionDecision" &&
+            e.code === "INVALID_VALUE",
+        ),
+      ).toBe(true);
     });
 
     it("should require permissionDecisionReason field", () => {
       const invalidOutput = {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
-          permissionDecision: "allow"
-        }
+          permissionDecision: "allow",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(invalidOutput, "PreToolUse");
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "hookSpecificOutput.permissionDecisionReason" && 
-        e.code === "REQUIRED_FIELD"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.permissionDecisionReason" &&
+            e.code === "REQUIRED_FIELD",
+        ),
+      ).toBe(true);
     });
 
     it("should validate permissionDecisionReason type and content", () => {
@@ -588,32 +697,44 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "allow",
-          permissionDecisionReason: 123
-        }
+          permissionDecisionReason: 123,
+        },
       };
-      
-      const result1 = parser.validateJsonOutput(invalidTypeOutput, "PreToolUse");
+
+      const result1 = parser.validateJsonOutput(
+        invalidTypeOutput,
+        "PreToolUse",
+      );
       expect(result1.valid).toBe(false);
-      expect(result1.errors.some(e => 
-        e.field === "hookSpecificOutput.permissionDecisionReason" && 
-        e.code === "INVALID_TYPE"
-      )).toBe(true);
+      expect(
+        result1.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.permissionDecisionReason" &&
+            e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
 
       // Empty string
       const emptyReasonOutput = {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "allow",
-          permissionDecisionReason: "  "
-        }
+          permissionDecisionReason: "  ",
+        },
       };
-      
-      const result2 = parser.validateJsonOutput(emptyReasonOutput, "PreToolUse");
+
+      const result2 = parser.validateJsonOutput(
+        emptyReasonOutput,
+        "PreToolUse",
+      );
       expect(result2.valid).toBe(false);
-      expect(result2.errors.some(e => 
-        e.field === "hookSpecificOutput.permissionDecisionReason" && 
-        e.code === "EMPTY_REQUIRED_FIELD"
-      )).toBe(true);
+      expect(
+        result2.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.permissionDecisionReason" &&
+            e.code === "EMPTY_REQUIRED_FIELD",
+        ),
+      ).toBe(true);
     });
 
     it("should validate optional updatedInput field", () => {
@@ -623,10 +744,10 @@ End of output`;
           hookEventName: "PreToolUse",
           permissionDecision: "allow",
           permissionDecisionReason: "Modifying input parameters",
-          updatedInput: { newParam: "value" }
-        }
+          updatedInput: { newParam: "value" },
+        },
       };
-      
+
       const result1 = parser.validateJsonOutput(validOutput, "PreToolUse");
       expect(result1.valid).toBe(true);
 
@@ -636,10 +757,10 @@ End of output`;
           hookEventName: "PreToolUse",
           permissionDecision: "allow",
           permissionDecisionReason: "No input modification needed",
-          updatedInput: null
-        }
+          updatedInput: null,
+        },
       };
-      
+
       const result2 = parser.validateJsonOutput(nullInputOutput, "PreToolUse");
       expect(result2.valid).toBe(true);
 
@@ -649,16 +770,22 @@ End of output`;
           hookEventName: "PreToolUse",
           permissionDecision: "allow",
           permissionDecisionReason: "Invalid input type",
-          updatedInput: ["not", "an", "object"]
-        }
+          updatedInput: ["not", "an", "object"],
+        },
       };
-      
-      const result3 = parser.validateJsonOutput(invalidArrayOutput, "PreToolUse");
+
+      const result3 = parser.validateJsonOutput(
+        invalidArrayOutput,
+        "PreToolUse",
+      );
       expect(result3.valid).toBe(false);
-      expect(result3.errors.some(e => 
-        e.field === "hookSpecificOutput.updatedInput" && 
-        e.code === "INVALID_TYPE"
-      )).toBe(true);
+      expect(
+        result3.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.updatedInput" &&
+            e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
 
       // Invalid type (string)
       const invalidStringOutput = {
@@ -666,16 +793,22 @@ End of output`;
           hookEventName: "PreToolUse",
           permissionDecision: "allow",
           permissionDecisionReason: "Invalid input type",
-          updatedInput: "string input"
-        }
+          updatedInput: "string input",
+        },
       };
-      
-      const result4 = parser.validateJsonOutput(invalidStringOutput, "PreToolUse");
+
+      const result4 = parser.validateJsonOutput(
+        invalidStringOutput,
+        "PreToolUse",
+      );
       expect(result4.valid).toBe(false);
-      expect(result4.errors.some(e => 
-        e.field === "hookSpecificOutput.updatedInput" && 
-        e.code === "INVALID_TYPE"
-      )).toBe(true);
+      expect(
+        result4.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.updatedInput" &&
+            e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
     });
 
     it("should warn about updatedInput when permission is denied", () => {
@@ -684,16 +817,19 @@ End of output`;
           hookEventName: "PreToolUse",
           permissionDecision: "deny",
           permissionDecisionReason: "Operation not allowed",
-          updatedInput: { unnecessary: "input" }
-        }
+          updatedInput: { unnecessary: "input" },
+        },
       };
-      
+
       const result = parser.validateJsonOutput(output, "PreToolUse");
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "hookSpecificOutput.updatedInput" && 
-        w.message.includes("ignored")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.field === "hookSpecificOutput.updatedInput" &&
+            w.message.includes("ignored"),
+        ),
+      ).toBe(true);
     });
 
     it("should warn about unknown fields in PreToolUse output", () => {
@@ -703,27 +839,33 @@ End of output`;
           permissionDecision: "allow",
           permissionDecisionReason: "Valid reason",
           unknownField: "should not be here",
-          anotherUnknown: 123
-        }
+          anotherUnknown: 123,
+        },
       };
-      
+
       const result = parser.validateJsonOutput(output, "PreToolUse");
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "hookSpecificOutput" && 
-        w.message.includes("Unknown PreToolUse fields")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.field === "hookSpecificOutput" &&
+            w.message.includes("Unknown PreToolUse fields"),
+        ),
+      ).toBe(true);
     });
 
     it("should warn about missing hookSpecificOutput for PreToolUse", () => {
       const output = { continue: true };
-      
+
       const result = parser.validateJsonOutput(output, "PreToolUse");
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "hookSpecificOutput" && 
-        w.message.includes("missing permission decision")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.field === "hookSpecificOutput" &&
+            w.message.includes("missing permission decision"),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -733,10 +875,10 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
           decision: "block",
-          reason: "Tool execution produced suspicious output"
-        }
+          reason: "Tool execution produced suspicious output",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(validOutput, "PostToolUse");
       expect(result.valid).toBe(true);
     });
@@ -745,10 +887,10 @@ End of output`;
       const validOutput = {
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          additionalContext: "Tool executed successfully"
-        }
+          additionalContext: "Tool executed successfully",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(validOutput, "PostToolUse");
       expect(result.valid).toBe(true);
     });
@@ -758,16 +900,19 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           decision: "block",
-          reason: "Wrong event name"
-        }
+          reason: "Wrong event name",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(invalidOutput, "PostToolUse");
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "hookSpecificOutput.hookEventName" && 
-        e.code === "EVENT_MISMATCH"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.hookEventName" &&
+            e.code === "EVENT_MISMATCH",
+        ),
+      ).toBe(true);
     });
 
     it("should validate decision field values", () => {
@@ -776,10 +921,10 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
           decision: "block",
-          reason: "Valid block decision"
-        }
+          reason: "Valid block decision",
+        },
       };
-      
+
       const result1 = parser.validateJsonOutput(validOutput, "PostToolUse");
       expect(result1.valid).toBe(true);
 
@@ -788,32 +933,38 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
           decision: "allow",
-          reason: "Invalid decision value"
-        }
+          reason: "Invalid decision value",
+        },
       };
-      
+
       const result2 = parser.validateJsonOutput(invalidOutput, "PostToolUse");
       expect(result2.valid).toBe(false);
-      expect(result2.errors.some(e => 
-        e.field === "hookSpecificOutput.decision" && 
-        e.code === "INVALID_VALUE"
-      )).toBe(true);
+      expect(
+        result2.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.decision" &&
+            e.code === "INVALID_VALUE",
+        ),
+      ).toBe(true);
     });
 
     it("should require reason when decision is block", () => {
       const invalidOutput = {
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          decision: "block"
-        }
+          decision: "block",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(invalidOutput, "PostToolUse");
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "hookSpecificOutput.reason" && 
-        e.code === "REQUIRED_FIELD"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.reason" &&
+            e.code === "REQUIRED_FIELD",
+        ),
+      ).toBe(true);
     });
 
     it("should validate reason type and content", () => {
@@ -822,48 +973,63 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
           decision: "block",
-          reason: 123
-        }
+          reason: 123,
+        },
       };
-      
-      const result1 = parser.validateJsonOutput(invalidTypeOutput, "PostToolUse");
+
+      const result1 = parser.validateJsonOutput(
+        invalidTypeOutput,
+        "PostToolUse",
+      );
       expect(result1.valid).toBe(false);
-      expect(result1.errors.some(e => 
-        e.field === "hookSpecificOutput.reason" && 
-        e.code === "INVALID_TYPE"
-      )).toBe(true);
+      expect(
+        result1.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.reason" &&
+            e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
 
       // Empty reason
       const emptyReasonOutput = {
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
           decision: "block",
-          reason: "  "
-        }
+          reason: "  ",
+        },
       };
-      
-      const result2 = parser.validateJsonOutput(emptyReasonOutput, "PostToolUse");
+
+      const result2 = parser.validateJsonOutput(
+        emptyReasonOutput,
+        "PostToolUse",
+      );
       expect(result2.valid).toBe(false);
-      expect(result2.errors.some(e => 
-        e.field === "hookSpecificOutput.reason" && 
-        e.code === "EMPTY_REQUIRED_FIELD"
-      )).toBe(true);
+      expect(
+        result2.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.reason" &&
+            e.code === "EMPTY_REQUIRED_FIELD",
+        ),
+      ).toBe(true);
     });
 
     it("should warn about reason without blocking decision", () => {
       const output = {
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          reason: "This reason will be ignored"
-        }
+          reason: "This reason will be ignored",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(output, "PostToolUse");
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "hookSpecificOutput.reason" && 
-        w.message.includes("ignored")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.field === "hookSpecificOutput.reason" &&
+            w.message.includes("ignored"),
+        ),
+      ).toBe(true);
     });
 
     it("should validate additionalContext field", () => {
@@ -871,10 +1037,10 @@ End of output`;
       const validOutput = {
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          additionalContext: "Tool executed in 150ms"
-        }
+          additionalContext: "Tool executed in 150ms",
+        },
       };
-      
+
       const result1 = parser.validateJsonOutput(validOutput, "PostToolUse");
       expect(result1.valid).toBe(true);
 
@@ -882,46 +1048,54 @@ End of output`;
       const invalidOutput = {
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          additionalContext: 123
-        }
+          additionalContext: 123,
+        },
       };
-      
+
       const result2 = parser.validateJsonOutput(invalidOutput, "PostToolUse");
       expect(result2.valid).toBe(false);
-      expect(result2.errors.some(e => 
-        e.field === "hookSpecificOutput.additionalContext" && 
-        e.code === "INVALID_TYPE"
-      )).toBe(true);
+      expect(
+        result2.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.additionalContext" &&
+            e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
 
       // Empty string warning
       const emptyOutput = {
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          additionalContext: ""
-        }
+          additionalContext: "",
+        },
       };
-      
+
       const result3 = parser.validateJsonOutput(emptyOutput, "PostToolUse");
       expect(result3.valid).toBe(true);
-      expect(result3.warnings.some(w => 
-        w.field === "hookSpecificOutput.additionalContext"
-      )).toBe(true);
+      expect(
+        result3.warnings.some(
+          (w) => w.field === "hookSpecificOutput.additionalContext",
+        ),
+      ).toBe(true);
     });
 
     it("should warn about unknown fields in PostToolUse output", () => {
       const output = {
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          unknownField: "should not be here"
-        }
+          unknownField: "should not be here",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(output, "PostToolUse");
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "hookSpecificOutput" && 
-        w.message.includes("Unknown PostToolUse fields")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.field === "hookSpecificOutput" &&
+            w.message.includes("Unknown PostToolUse fields"),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -931,10 +1105,10 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
           decision: "block",
-          reason: "Prompt contains potentially harmful content"
-        }
+          reason: "Prompt contains potentially harmful content",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(validOutput, "UserPromptSubmit");
       expect(result.valid).toBe(true);
     });
@@ -943,10 +1117,10 @@ End of output`;
       const validOutput = {
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
-          additionalContext: "User prompt processed successfully"
-        }
+          additionalContext: "User prompt processed successfully",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(validOutput, "UserPromptSubmit");
       expect(result.valid).toBe(true);
     });
@@ -956,16 +1130,22 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "Stop",
           decision: "block",
-          reason: "Wrong event name"
-        }
+          reason: "Wrong event name",
+        },
       };
-      
-      const result = parser.validateJsonOutput(invalidOutput, "UserPromptSubmit");
+
+      const result = parser.validateJsonOutput(
+        invalidOutput,
+        "UserPromptSubmit",
+      );
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "hookSpecificOutput.hookEventName" && 
-        e.message.includes("UserPromptSubmit")
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.hookEventName" &&
+            e.message.includes("UserPromptSubmit"),
+        ),
+      ).toBe(true);
     });
 
     it("should validate decision field (same as PostToolUse)", () => {
@@ -974,11 +1154,14 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
           decision: "block",
-          reason: "Valid block decision"
-        }
+          reason: "Valid block decision",
+        },
       };
-      
-      const result1 = parser.validateJsonOutput(validOutput, "UserPromptSubmit");
+
+      const result1 = parser.validateJsonOutput(
+        validOutput,
+        "UserPromptSubmit",
+      );
       expect(result1.valid).toBe(true);
 
       // Invalid decision value
@@ -986,32 +1169,41 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
           decision: "allow",
-          reason: "Invalid decision value"
-        }
+          reason: "Invalid decision value",
+        },
       };
-      
-      const result2 = parser.validateJsonOutput(invalidOutput, "UserPromptSubmit");
+
+      const result2 = parser.validateJsonOutput(
+        invalidOutput,
+        "UserPromptSubmit",
+      );
       expect(result2.valid).toBe(false);
-      expect(result2.errors.some(e => 
-        e.field === "hookSpecificOutput.decision" && 
-        e.code === "INVALID_VALUE"
-      )).toBe(true);
+      expect(
+        result2.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.decision" &&
+            e.code === "INVALID_VALUE",
+        ),
+      ).toBe(true);
     });
 
     it("should warn about unknown fields in UserPromptSubmit output", () => {
       const output = {
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
-          unknownField: "should not be here"
-        }
+          unknownField: "should not be here",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(output, "UserPromptSubmit");
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "hookSpecificOutput" && 
-        w.message.includes("Unknown UserPromptSubmit fields")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.field === "hookSpecificOutput" &&
+            w.message.includes("Unknown UserPromptSubmit fields"),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -1021,10 +1213,10 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "Stop",
           decision: "block",
-          reason: "Session terminated due to security violation"
-        }
+          reason: "Session terminated due to security violation",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(validOutput, "Stop");
       expect(result.valid).toBe(true);
     });
@@ -1032,10 +1224,10 @@ End of output`;
     it("should allow Stop output without decision", () => {
       const validOutput = {
         hookSpecificOutput: {
-          hookEventName: "Stop"
-        }
+          hookEventName: "Stop",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(validOutput, "Stop");
       expect(result.valid).toBe(true);
     });
@@ -1045,16 +1237,19 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
           decision: "block",
-          reason: "Wrong event name"
-        }
+          reason: "Wrong event name",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(invalidOutput, "Stop");
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "hookSpecificOutput.hookEventName" && 
-        e.message.includes("Stop")
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.hookEventName" &&
+            e.message.includes("Stop"),
+        ),
+      ).toBe(true);
     });
 
     it("should validate decision field (only block allowed)", () => {
@@ -1063,10 +1258,10 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "Stop",
           decision: "block",
-          reason: "Valid block decision"
-        }
+          reason: "Valid block decision",
+        },
       };
-      
+
       const result1 = parser.validateJsonOutput(validOutput, "Stop");
       expect(result1.valid).toBe(true);
 
@@ -1075,64 +1270,76 @@ End of output`;
         hookSpecificOutput: {
           hookEventName: "Stop",
           decision: "allow",
-          reason: "Invalid decision value"
-        }
+          reason: "Invalid decision value",
+        },
       };
-      
+
       const result2 = parser.validateJsonOutput(invalidOutput, "Stop");
       expect(result2.valid).toBe(false);
-      expect(result2.errors.some(e => 
-        e.field === "hookSpecificOutput.decision" && 
-        e.code === "INVALID_VALUE"
-      )).toBe(true);
+      expect(
+        result2.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.decision" &&
+            e.code === "INVALID_VALUE",
+        ),
+      ).toBe(true);
     });
 
     it("should require reason when decision is block", () => {
       const invalidOutput = {
         hookSpecificOutput: {
           hookEventName: "Stop",
-          decision: "block"
-        }
+          decision: "block",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(invalidOutput, "Stop");
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "hookSpecificOutput.reason" && 
-        e.code === "REQUIRED_FIELD"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) =>
+            e.field === "hookSpecificOutput.reason" &&
+            e.code === "REQUIRED_FIELD",
+        ),
+      ).toBe(true);
     });
 
     it("should not allow additionalContext in Stop output", () => {
       const output = {
         hookSpecificOutput: {
           hookEventName: "Stop",
-          additionalContext: "This field is not allowed for Stop hooks"
-        }
+          additionalContext: "This field is not allowed for Stop hooks",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(output, "Stop");
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "hookSpecificOutput" && 
-        w.message.includes("Unknown Stop fields")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.field === "hookSpecificOutput" &&
+            w.message.includes("Unknown Stop fields"),
+        ),
+      ).toBe(true);
     });
 
     it("should warn about unknown fields in Stop output", () => {
       const output = {
         hookSpecificOutput: {
           hookEventName: "Stop",
-          unknownField: "should not be here"
-        }
+          unknownField: "should not be here",
+        },
       };
-      
+
       const result = parser.validateJsonOutput(output, "Stop");
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => 
-        w.field === "hookSpecificOutput" && 
-        w.message.includes("Unknown Stop fields")
-      )).toBe(true);
+      expect(
+        result.warnings.some(
+          (w) =>
+            w.field === "hookSpecificOutput" &&
+            w.message.includes("Unknown Stop fields"),
+        ),
+      ).toBe(true);
     });
   });
 
@@ -1142,14 +1349,14 @@ End of output`;
       stdout: "",
       stderr: "",
       executionTime: 100,
-      hookEvent: "PreToolUse"
+      hookEvent: "PreToolUse",
     };
 
     it("should handle invalid JSON structure gracefully", () => {
       const result = parser.parseHookOutput({
         ...baseResult,
         exitCode: 0,
-        stdout: "not json at all"
+        stdout: "not json at all",
       });
 
       expect(result.source).toBe("exitcode");
@@ -1161,60 +1368,64 @@ End of output`;
       const result = parser.parseHookOutput({
         ...baseResult,
         exitCode: 2,
-        stdout: '{"continue": true, malformed json}'
+        stdout: '{"continue": true, malformed json}',
       });
 
       expect(result.source).toBe("exitcode");
       expect(result.continue).toBe(false);
-      expect(result.stopReason).toBe("Hook requested to block execution (exit code 2)");
+      expect(result.stopReason).toBe(
+        "Hook requested to block execution (exit code 2)",
+      );
     });
 
     it("should collect validation errors without throwing when parsing JSON", () => {
       const result = parser.parseHookOutput({
         ...baseResult,
         exitCode: 0,
-        stdout: '{"continue": "invalid", "stopReason": 123}'
+        stdout: '{"continue": "invalid", "stopReason": 123}',
       });
 
       expect(result.source).toBe("json");
       expect(result.continue).toBe(true); // Coerced from string "invalid"
       expect(result.errorMessages.length).toBeGreaterThan(0);
-      expect(result.errorMessages.some(msg => msg.includes("continue:"))).toBe(true);
+      expect(
+        result.errorMessages.some((msg) => msg.includes("continue:")),
+      ).toBe(true);
     });
 
     it("should coerce invalid continue values", () => {
       // Test string "false" coercion
       const result1 = parser.parseHookOutput({
         ...baseResult,
-        stdout: '{"continue": "false"}'
+        stdout: '{"continue": "false"}',
       });
       expect(result1.continue).toBe(false);
 
-      // Test string "true" coercion  
+      // Test string "true" coercion
       const result2 = parser.parseHookOutput({
         ...baseResult,
-        stdout: '{"continue": "true"}'
+        stdout: '{"continue": "true"}',
       });
       expect(result2.continue).toBe(true);
 
       // Test number 0 coercion
       const result3 = parser.parseHookOutput({
         ...baseResult,
-        stdout: '{"continue": 0}'
+        stdout: '{"continue": 0}',
       });
       expect(result3.continue).toBe(false);
 
       // Test number 1 coercion
       const result4 = parser.parseHookOutput({
         ...baseResult,
-        stdout: '{"continue": 1}'
+        stdout: '{"continue": 1}',
       });
       expect(result4.continue).toBe(true);
 
       // Test invalid value defaults to true
       const result5 = parser.parseHookOutput({
         ...baseResult,
-        stdout: '{"continue": "maybe"}'
+        stdout: '{"continue": "maybe"}',
       });
       expect(result5.continue).toBe(true);
     });
@@ -1222,7 +1433,7 @@ End of output`;
     it("should coerce non-string stopReason and systemMessage", () => {
       const result = parser.parseHookOutput({
         ...baseResult,
-        stdout: '{"stopReason": 123, "systemMessage": true}'
+        stdout: '{"stopReason": 123, "systemMessage": true}',
       });
 
       expect(result.stopReason).toBe("123");
@@ -1232,41 +1443,46 @@ End of output`;
     it("should add default stopReason when continue is false but no reason provided", () => {
       const result = parser.parseHookOutput({
         ...baseResult,
-        stdout: '{"continue": false}'
+        stdout: '{"continue": false}',
       });
 
       expect(result.continue).toBe(false);
-      expect(result.stopReason).toBe("Hook requested to stop execution without providing a reason");
+      expect(result.stopReason).toBe(
+        "Hook requested to stop execution without providing a reason",
+      );
     });
 
     it("should handle non-object JSON gracefully", () => {
       const result = parser.validateJsonOutput("just a string", "PreToolUse");
-      
+
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "root" && 
-        e.code === "INVALID_TYPE"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) => e.field === "root" && e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
     });
 
     it("should handle null JSON gracefully", () => {
       const result = parser.validateJsonOutput(null, "PreToolUse");
-      
+
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "root" && 
-        e.code === "INVALID_TYPE"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) => e.field === "root" && e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
     });
 
     it("should handle array JSON gracefully", () => {
       const result = parser.validateJsonOutput([1, 2, 3], "PreToolUse");
-      
+
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "root" && 
-        e.code === "INVALID_TYPE"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) => e.field === "root" && e.code === "INVALID_TYPE",
+        ),
+      ).toBe(true);
     });
 
     it("should preserve stderr messages in error output", () => {
@@ -1274,22 +1490,31 @@ End of output`;
         ...baseResult,
         exitCode: 1,
         stderr: "Critical error: database connection failed",
-        stdout: "Hook completed with warnings"
+        stdout: "Hook completed with warnings",
       });
 
-      expect(result.errorMessages).toContain("Critical error: database connection failed");
-      expect(result.errorMessages).toContain("Hook output: Hook completed with warnings");
+      expect(result.errorMessages).toContain(
+        "Critical error: database connection failed",
+      );
+      expect(result.errorMessages).toContain(
+        "Hook output: Hook completed with warnings",
+      );
     });
 
     it("should handle empty hookSpecificOutput object validation", () => {
-      const result = parser.validateJsonOutput({
-        hookSpecificOutput: {}
-      }, "PreToolUse");
+      const result = parser.validateJsonOutput(
+        {
+          hookSpecificOutput: {},
+        },
+        "PreToolUse",
+      );
 
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => 
-        e.field === "hookSpecificOutput.hookEventName"
-      )).toBe(true);
+      expect(
+        result.errors.some(
+          (e) => e.field === "hookSpecificOutput.hookEventName",
+        ),
+      ).toBe(true);
     });
   });
 
@@ -1299,14 +1524,14 @@ End of output`;
       stdout: "",
       stderr: "",
       executionTime: 100,
-      hookEvent: "PreToolUse"
+      hookEvent: "PreToolUse",
     };
 
     it("should provide basic diagnostics for empty output", () => {
       const diagnostics = parser.getDiagnostics({
         ...baseResult,
         stdout: "",
-        stderr: ""
+        stderr: "",
       });
 
       expect(diagnostics).toEqual({
@@ -1315,7 +1540,7 @@ End of output`;
         stdoutLooksLikeJson: false,
         jsonExtractable: false,
         jsonValid: false,
-        validationSummary: undefined
+        validationSummary: undefined,
       });
     });
 
@@ -1323,7 +1548,7 @@ End of output`;
       const diagnostics = parser.getDiagnostics({
         ...baseResult,
         stdout: "Some output",
-        stderr: "Some error"
+        stderr: "Some error",
       });
 
       expect(diagnostics.hasStdout).toBe(true);
@@ -1333,7 +1558,7 @@ End of output`;
     it("should detect JSON-like appearance", () => {
       const diagnostics = parser.getDiagnostics({
         ...baseResult,
-        stdout: '{"continue": true}'
+        stdout: '{"continue": true}',
       });
 
       expect(diagnostics.stdoutLooksLikeJson).toBe(true);
@@ -1344,7 +1569,7 @@ End of output`;
     it("should detect extractable but invalid JSON", () => {
       const diagnostics = parser.getDiagnostics({
         ...baseResult,
-        stdout: '{"continue": true, invalid}'
+        stdout: '{"continue": true, invalid}',
       });
 
       expect(diagnostics.stdoutLooksLikeJson).toBe(true);
@@ -1356,7 +1581,7 @@ End of output`;
       const diagnostics = parser.getDiagnostics({
         ...baseResult,
         stdout: '{"continue": true, "systemMessage": "All good"}',
-        hookEvent: "PreToolUse"
+        hookEvent: "PreToolUse",
       });
 
       expect(diagnostics.validationSummary).toBeDefined();
@@ -1367,7 +1592,7 @@ End of output`;
       const diagnostics = parser.getDiagnostics({
         ...baseResult,
         stdout: '{"continue": "invalid", "stopReason": 123}',
-        hookEvent: "PreToolUse"
+        hookEvent: "PreToolUse",
       });
 
       expect(diagnostics.jsonValid).toBe(true);
@@ -1379,7 +1604,7 @@ End of output`;
       const diagnostics = parser.getDiagnostics({
         ...baseResult,
         stdout: "   \n\t  ",
-        stderr: "  \n  "
+        stderr: "  \n  ",
       });
 
       expect(diagnostics.hasStdout).toBe(false);
@@ -1391,7 +1616,7 @@ End of output`;
         ...baseResult,
         stdout: `Starting process...
 {"continue": true}
-Process completed.`
+Process completed.`,
       });
 
       expect(diagnostics.hasStdout).toBe(true);
@@ -1408,7 +1633,7 @@ Process completed.`
           stdout: '{"continue": true}',
           stderr: "",
           executionTime: 100,
-          hookEvent: "PreToolUse"
+          hookEvent: "PreToolUse",
         };
 
         const parsed = parseHookOutput(result);
@@ -1421,7 +1646,7 @@ Process completed.`
       it("should be a convenience function for parser.validateJsonOutput", () => {
         const json = { continue: true, systemMessage: "Test" };
         const validation = validateHookJsonOutput(json, "PreToolUse");
-        
+
         expect(validation.valid).toBe(true);
         expect(validation.warnings.length).toBeGreaterThan(0); // Should have warnings about missing PreToolUse fields
       });
@@ -1455,9 +1680,9 @@ Process completed`;
         const validation: HookValidationResult = {
           valid: true,
           errors: [],
-          warnings: []
+          warnings: [],
         };
-        
+
         const summary = getValidationSummary(validation);
         expect(summary).toBe("✅ Validation passed");
       });
@@ -1466,11 +1691,15 @@ Process completed`;
         const validation: HookValidationResult = {
           valid: false,
           errors: [
-            { field: "continue", message: "Invalid type", code: "INVALID_TYPE" }
+            {
+              field: "continue",
+              message: "Invalid type",
+              code: "INVALID_TYPE",
+            },
           ],
-          warnings: []
+          warnings: [],
         };
-        
+
         const summary = getValidationSummary(validation);
         expect(summary).toBe("❌ Validation failed with 1 error(s)");
       });
@@ -1480,10 +1709,14 @@ Process completed`;
           valid: true,
           errors: [],
           warnings: [
-            { field: "continue", message: "Not specified", suggestion: "Add explicit value" }
-          ]
+            {
+              field: "continue",
+              message: "Not specified",
+              suggestion: "Add explicit value",
+            },
+          ],
         };
-        
+
         const summary = getValidationSummary(validation);
         expect(summary).toBe("✅ Validation passed, ⚠️  1 warning(s)");
       });
@@ -1492,15 +1725,25 @@ Process completed`;
         const validation: HookValidationResult = {
           valid: false,
           errors: [
-            { field: "continue", message: "Invalid type", code: "INVALID_TYPE" }
+            {
+              field: "continue",
+              message: "Invalid type",
+              code: "INVALID_TYPE",
+            },
           ],
           warnings: [
-            { field: "systemMessage", message: "Empty message", suggestion: "Provide content" }
-          ]
+            {
+              field: "systemMessage",
+              message: "Empty message",
+              suggestion: "Provide content",
+            },
+          ],
         };
-        
+
         const summary = getValidationSummary(validation);
-        expect(summary).toBe("❌ Validation failed with 1 error(s), ⚠️  1 warning(s)");
+        expect(summary).toBe(
+          "❌ Validation failed with 1 error(s), ⚠️  1 warning(s)",
+        );
       });
     });
 
@@ -1509,33 +1752,49 @@ Process completed`;
         const validation: HookValidationResult = {
           valid: false,
           errors: [
-            { field: "continue", message: "Must be boolean", code: "INVALID_TYPE" },
-            { field: "stopReason", message: "Required when continue is false", code: "REQUIRED_FIELD" }
+            {
+              field: "continue",
+              message: "Must be boolean",
+              code: "INVALID_TYPE",
+            },
+            {
+              field: "stopReason",
+              message: "Required when continue is false",
+              code: "REQUIRED_FIELD",
+            },
           ],
           warnings: [
-            { field: "systemMessage", message: "Empty message", suggestion: "Provide meaningful content" }
-          ]
+            {
+              field: "systemMessage",
+              message: "Empty message",
+              suggestion: "Provide meaningful content",
+            },
+          ],
         };
-        
+
         const formatted = formatValidationErrors(validation);
-        
+
         expect(formatted).toHaveLength(3);
-        expect(formatted[0]).toBe("Error in continue: Must be boolean (INVALID_TYPE)");
-        expect(formatted[1]).toBe("Error in stopReason: Required when continue is false (REQUIRED_FIELD)");
-        expect(formatted[2]).toBe("Warning in systemMessage: Empty message - Provide meaningful content");
+        expect(formatted[0]).toBe(
+          "Error in continue: Must be boolean (INVALID_TYPE)",
+        );
+        expect(formatted[1]).toBe(
+          "Error in stopReason: Required when continue is false (REQUIRED_FIELD)",
+        );
+        expect(formatted[2]).toBe(
+          "Warning in systemMessage: Empty message - Provide meaningful content",
+        );
       });
 
       it("should handle warnings without suggestions", () => {
         const validation: HookValidationResult = {
           valid: true,
           errors: [],
-          warnings: [
-            { field: "root", message: "Unknown fields detected" }
-          ]
+          warnings: [{ field: "root", message: "Unknown fields detected" }],
         };
-        
+
         const formatted = formatValidationErrors(validation);
-        
+
         expect(formatted).toHaveLength(1);
         expect(formatted[0]).toBe("Warning in root: Unknown fields detected");
       });
@@ -1544,9 +1803,9 @@ Process completed`;
         const validation: HookValidationResult = {
           valid: true,
           errors: [],
-          warnings: []
+          warnings: [],
         };
-        
+
         const formatted = formatValidationErrors(validation);
         expect(formatted).toHaveLength(0);
       });
@@ -1559,7 +1818,7 @@ Process completed`;
       stdout: "",
       stderr: "",
       executionTime: 100,
-      hookEvent: "PreToolUse"
+      hookEvent: "PreToolUse",
     };
 
     it("should handle complete PreToolUse workflow", () => {
@@ -1579,7 +1838,7 @@ Process completed`;
   }
 }
 Hook execution completed.`,
-        hookEvent: "PreToolUse"
+        hookEvent: "PreToolUse",
       });
 
       expect(result.source).toBe("json");
@@ -1602,13 +1861,18 @@ Hook execution completed.`,
     "additionalContext": "Found 2 potential API keys that should not be logged"
   }
 }`,
-        hookEvent: "PostToolUse"
+        hookEvent: "PostToolUse",
       });
 
       expect(result.source).toBe("json");
       expect(result.continue).toBe(false);
-      expect(result.stopReason).toBe("Tool output contains sensitive information");
-      expect(result.hookSpecificData?.decision).toBe("block");
+      expect(result.stopReason).toBe(
+        "Tool output contains sensitive information",
+      );
+      expect(
+        (result.hookSpecificData as unknown as Record<string, unknown>)
+          ?.decision,
+      ).toBe("block");
     });
 
     it("should handle validation errors with graceful degradation", () => {
@@ -1622,7 +1886,7 @@ Hook execution completed.`,
     "permissionDecision": "perhaps"
   }
 }`,
-        hookEvent: "PreToolUse"
+        hookEvent: "PreToolUse",
       });
 
       expect(result.source).toBe("json");

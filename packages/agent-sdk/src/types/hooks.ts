@@ -164,7 +164,7 @@ export interface HookEnvironment {
 }
 
 // =============================================================================
-// Hook Output Methods - New Type Definitions  
+// Hook Output Support - New Type Definitions
 // =============================================================================
 
 // Exit code interpretation results
@@ -178,17 +178,17 @@ export interface HookOutputResult {
 
 // Common JSON output fields (all hook types)
 export interface BaseHookJsonOutput {
-  continue?: boolean;  // defaults to true
+  continue?: boolean; // defaults to true
   stopReason?: string; // required if continue is false
   systemMessage?: string;
   hookSpecificOutput?: HookSpecificOutput;
 }
 
 // Hook-specific output variants
-export type HookSpecificOutput = 
-  | PreToolUseOutput 
-  | PostToolUseOutput 
-  | UserPromptSubmitOutput 
+export type HookSpecificOutput =
+  | PreToolUseOutput
+  | PostToolUseOutput
+  | UserPromptSubmitOutput
   | StopOutput;
 
 export interface PreToolUseOutput {
@@ -252,7 +252,7 @@ export interface PermissionRequest {
   toolName: string;
   reason: string;
   toolInput?: Record<string, unknown>;
-  
+
   // Promise that UI can resolve/reject
   resolve: (allowed: boolean) => void;
   reject: (reason: string) => void;
@@ -282,7 +282,7 @@ export interface PendingPermission {
 export interface AgentPermissionMethods {
   // Get current pending permission requests (for UI display)
   getPendingPermissions(): PermissionRequest[];
-  
+
   // Check if any permissions are pending
   isAwaitingPermission(): boolean;
 }
@@ -322,7 +322,7 @@ export class HookOutputError extends Error {
     message: string,
     public code: string,
     public hookEvent: HookEventName,
-    public originalOutput?: HookOutputResult
+    public originalOutput?: HookOutputResult,
   ) {
     super(message);
   }
@@ -333,7 +333,7 @@ export class HookJsonValidationError extends HookOutputError {
     message: string,
     public validationErrors: ValidationError[],
     hookEvent: HookEventName,
-    originalOutput?: HookOutputResult
+    originalOutput?: HookOutputResult,
   ) {
     super(message, "JSON_VALIDATION_FAILED", hookEvent, originalOutput);
   }
@@ -343,8 +343,12 @@ export class HookPermissionTimeoutError extends HookOutputError {
   constructor(
     toolName: string,
     public timeoutMs: number,
-    hookEvent: HookEventName = "PreToolUse"
+    hookEvent: HookEventName = "PreToolUse",
   ) {
-    super(`Permission request timeout for tool: ${toolName}`, "PERMISSION_TIMEOUT", hookEvent);
+    super(
+      `Permission request timeout for tool: ${toolName}`,
+      "PERMISSION_TIMEOUT",
+      hookEvent,
+    );
   }
 }

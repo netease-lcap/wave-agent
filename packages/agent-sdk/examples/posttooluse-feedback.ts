@@ -2,20 +2,20 @@
 
 /**
  * PostToolUse Feedback Integration Example
- * 
+ *
  * Demonstrates User Story 4: PostToolUse Feedback Integration
- * 
+ *
  * This example shows how PostToolUse hooks can provide automated feedback
  * to Wave after tools complete execution, including:
  * - Blocking decisions to prevent further execution
  * - Additional context injection for better AI understanding
  * - Validation and error handling
- * 
+ *
  * The PostToolUse hook receives tool execution details and can:
  * 1. Allow normal execution to continue (default/no output)
  * 2. Block further execution with blocking decision and reason
  * 3. Add contextual information for the AI to consider
- * 
+ *
  * Usage: pnpm tsx examples/posttooluse-feedback.ts
  */
 
@@ -163,16 +163,8 @@ esac
     console.log("📝 Created PostToolUse hook script with feedback scenarios");
 
     // Create agent with hook configuration
-    const agent = new Agent({
-      name: "PostToolUse Feedback Demo",
+    const agent = await Agent.create({
       workdir: tempDir,
-      hooks: [
-        {
-          event: "PostToolUse",
-          command: hookScript,
-          timeout: 5000,
-        },
-      ],
     });
 
     console.log("\\n🚀 Testing PostToolUse feedback scenarios...");
@@ -192,7 +184,10 @@ esac
       await agent.sendMessage("Run 'sudo rm -rf /tmp/test' using bash");
       console.log("⚠️  Dangerous bash command was not blocked (unexpected)");
     } catch (error) {
-      console.log("✅ Dangerous bash command blocked by PostToolUse hook:", error);
+      console.log(
+        "✅ Dangerous bash command blocked by PostToolUse hook:",
+        error,
+      );
     }
 
     // Test 3: File edit operation (should continue with context)
@@ -232,7 +227,6 @@ esac
     console.log("- ✅ Context injection for better AI decision making");
     console.log("- ✅ Tool-specific feedback logic");
     console.log("- ✅ JSON-based hook communication with validation");
-
   } catch (error) {
     console.error("❌ Example failed:", error);
     throw error;
@@ -240,15 +234,15 @@ esac
     // Clean up temporary directory
     try {
       await rm(tempDir, { recursive: true, force: true });
-      console.log(\`🧹 Cleaned up temporary directory: \${tempDir}\`);
+      console.log(`🧹 Cleaned up temporary directory: ${tempDir}`);
     } catch (error) {
-      console.warn(\`⚠️  Failed to clean up \${tempDir}:\`, error);
+      console.warn(`⚠️  Failed to clean up ${tempDir}:`, error);
     }
   }
 }
 
 // Run example if called directly
-if (import.meta.url === \`file://\${process.argv[1]}\`) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   runPostToolUseFeedbackExample().catch((error) => {
     console.error("PostToolUse Feedback Example failed:", error);
     process.exit(1);

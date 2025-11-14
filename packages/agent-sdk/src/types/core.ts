@@ -4,6 +4,12 @@
  */
 
 /**
+ * Agent callbacks interface - aggregates all callback interfaces
+ * Re-exported from agent.ts for backward compatibility
+ */
+export type { AgentCallbacks, AgentOptions } from "../agent.js";
+
+/**
  * Logger interface definition
  * Compatible with OpenAI package Logger interface
  */

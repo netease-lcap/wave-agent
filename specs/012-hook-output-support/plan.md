@@ -1,7 +1,7 @@
-# Implementation Plan: Hook Output Methods
+# Implementation Plan: Hook Output Support
 
-**Branch**: `012-hook-output-methods` | **Date**: 2025-11-14 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/012-hook-output-methods/spec.md`
+**Branch**: `012-hook-output-support` | **Date**: 2025-11-14 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/012-hook-output-support/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 

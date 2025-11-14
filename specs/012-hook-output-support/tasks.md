@@ -1,6 +1,6 @@
-# Tasks: Hook Output Methods
+# Tasks: Hook Output Support
 
-**Input**: Design documents from `/specs/012-hook-output-methods/`
+**Input**: Design documents from `/specs/012-hook-output-support/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
 **Tests**: Tests are OPTIONAL per project memory - only unit tests, not examples.

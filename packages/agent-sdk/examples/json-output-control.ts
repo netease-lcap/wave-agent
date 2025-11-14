@@ -2,15 +2,15 @@
 
 /**
  * User Story 2: Advanced JSON Output Control Example
- * 
+ *
  * This example demonstrates JSON output parsing with common fields that override
  * exit code behavior. Hooks can return JSON with:
- * 
+ *
  * - continue: boolean - Whether to continue processing
- * - stopReason: string - Reason for stopping (required if continue=false)  
+ * - stopReason: string - Reason for stopping (required if continue=false)
  * - systemMessage: string - Message to display to user
  * - hookSpecificOutput: object - Hook type-specific data
- * 
+ *
  * JSON output takes precedence over exit codes when valid JSON is present.
  */
 
@@ -19,7 +19,11 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { parseHookOutput } from "../src/utils/hookOutputParser.js";
-import type { HookOutputResult, AgentCallbacks } from "../src/types/index.js";
+import type {
+  HookOutputResult,
+  AgentCallbacks,
+  HookEventName,
+} from "../src/types/index.js";
 
 // Test JSON outputs and verification
 async function runJsonOutputControlExample() {
@@ -41,12 +45,12 @@ async function runJsonOutputControlExample() {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "allow",
-          permissionDecisionReason: "Operation approved via JSON"
-        }
+          permissionDecisionReason: "Operation approved via JSON",
+        },
       }),
       stderr: "",
       executionTime: 50,
-      hookEvent: "PreToolUse"
+      hookEvent: "PreToolUse",
     });
 
     // Test 2: JSON with continue=false (blocking)
@@ -60,12 +64,12 @@ async function runJsonOutputControlExample() {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "deny",
-          permissionDecisionReason: "Security policy violation detected"
-        }
+          permissionDecisionReason: "Security policy violation detected",
+        },
       }),
       stderr: "",
       executionTime: 75,
-      hookEvent: "PreToolUse"
+      hookEvent: "PreToolUse",
     });
 
     // Test 3: JSON precedence over exit code
@@ -74,15 +78,17 @@ async function runJsonOutputControlExample() {
       exitCode: 2, // Exit code says block, but JSON says continue
       stdout: JSON.stringify({
         continue: true,
-        systemMessage: "JSON overrides exit code - continuing despite exit code 2",
+        systemMessage:
+          "JSON overrides exit code - continuing despite exit code 2",
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          additionalContext: "Exit code 2 was expected but operation should continue"
-        }
+          additionalContext:
+            "Exit code 2 was expected but operation should continue",
+        },
       }),
       stderr: "Exit code 2 stderr - should be overridden by JSON",
       executionTime: 100,
-      hookEvent: "PostToolUse"
+      hookEvent: "PostToolUse",
     });
 
     // Test 4: PostToolUse JSON with blocking decision
@@ -96,12 +102,12 @@ async function runJsonOutputControlExample() {
           hookEventName: "PostToolUse",
           decision: "block",
           reason: "Manual verification required for this operation",
-          additionalContext: "Please review the changes before continuing"
-        }
+          additionalContext: "Please review the changes before continuing",
+        },
       }),
       stderr: "",
       executionTime: 30,
-      hookEvent: "PostToolUse"
+      hookEvent: "PostToolUse",
     });
 
     // Test 5: UserPromptSubmit with context injection
@@ -113,12 +119,13 @@ async function runJsonOutputControlExample() {
         systemMessage: "User prompt enhanced with additional context",
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
-          additionalContext: "Consider the following security implications when processing this request..."
-        }
+          additionalContext:
+            "Consider the following security implications when processing this request...",
+        },
       }),
       stderr: "",
       executionTime: 25,
-      hookEvent: "UserPromptSubmit"
+      hookEvent: "UserPromptSubmit",
     });
 
     // Test 6: Stop event with blocking
@@ -132,12 +139,12 @@ async function runJsonOutputControlExample() {
         hookSpecificOutput: {
           hookEventName: "Stop",
           decision: "block",
-          reason: "Critical cleanup operations are still running"
-        }
+          reason: "Critical cleanup operations are still running",
+        },
       }),
       stderr: "",
       executionTime: 15,
-      hookEvent: "Stop"
+      hookEvent: "Stop",
     });
 
     // Test 7: Malformed JSON fallback
@@ -147,7 +154,7 @@ async function runJsonOutputControlExample() {
       stdout: `{"malformed": json, "missing": quotes}`,
       stderr: "JSON parsing failed, falling back to exit code",
       executionTime: 10,
-      hookEvent: "PreToolUse"
+      hookEvent: "PreToolUse",
     });
 
     // Test 8: Mixed output with JSON
@@ -160,12 +167,11 @@ Processing file operations...
 Hook execution completed.`,
       stderr: "",
       executionTime: 120,
-      hookEvent: "PostToolUse"
+      hookEvent: "PostToolUse",
     });
 
     console.log("\n=== Agent Integration Test ===");
     await testAgentIntegration(tempDir);
-
   } finally {
     // Cleanup
     console.log(`\n🧹 Cleanup: Remove ${tempDir} manually if needed`);
@@ -186,21 +192,27 @@ Hook execution completed.`,
  */
 async function testJsonOutput(result: HookOutputResult) {
   const parsed = parseHookOutput(result);
-  
+
   console.log(`📊 Hook Event: ${result.hookEvent}`);
   console.log(`🔢 Exit Code: ${result.exitCode}`);
-  console.log(`📄 Stdout: ${result.stdout.substring(0, 100)}${result.stdout.length > 100 ? '...' : ''}`);
-  console.log(`❌ Stderr: ${result.stderr || '(none)'}`);
+  console.log(
+    `📄 Stdout: ${result.stdout.substring(0, 100)}${result.stdout.length > 100 ? "..." : ""}`,
+  );
+  console.log(`❌ Stderr: ${result.stderr || "(none)"}`);
   console.log(`⏱️  Execution Time: ${result.executionTime}ms`);
-  
+
   console.log(`\n📋 Parsed Results:`);
   console.log(`• Source: ${parsed.source}`);
   console.log(`• Continue: ${parsed.continue}`);
-  console.log(`• Stop Reason: ${parsed.stopReason || '(none)'}`);
-  console.log(`• System Message: ${parsed.systemMessage || '(none)'}`);
-  console.log(`• Hook-Specific Data: ${parsed.hookSpecificData ? 'present' : 'none'}`);
-  console.log(`• Errors: ${parsed.errorMessages.length > 0 ? parsed.errorMessages.join(', ') : 'none'}`);
-  
+  console.log(`• Stop Reason: ${parsed.stopReason || "(none)"}`);
+  console.log(`• System Message: ${parsed.systemMessage || "(none)"}`);
+  console.log(
+    `• Hook-Specific Data: ${parsed.hookSpecificData ? "present" : "none"}`,
+  );
+  console.log(
+    `• Errors: ${parsed.errorMessages.length > 0 ? parsed.errorMessages.join(", ") : "none"}`,
+  );
+
   if (parsed.hookSpecificData) {
     console.log(`\n🔧 Hook-Specific Output:`);
     console.log(JSON.stringify(parsed.hookSpecificData, null, 2));
@@ -247,10 +259,14 @@ exit 0
 
   // Create agent with JSON hook processing callbacks
   const callbacks: AgentCallbacks = {
-    onWarnMessage: (content, hookEvent) => {
-      console.log(`⚠️  Warning (${hookEvent || 'general'}): ${content}`);
+    onWarnMessageAdded: (content: string, hookEvent?: HookEventName) => {
+      console.log(`⚠️  Warning (${hookEvent || "general"}): ${content}`);
     },
-    onHookMessage: (hookEvent, content, metadata) => {
+    onHookMessageAdded: (
+      hookEvent: HookEventName,
+      content: string,
+      metadata?: Record<string, unknown>,
+    ) => {
       console.log(`🔗 Hook (${hookEvent}): ${content}`);
       if (metadata) {
         console.log(`   Metadata: ${JSON.stringify(metadata)}`);
@@ -262,24 +278,16 @@ exit 0
     const agent = await Agent.create({
       workdir: tempDir,
       callbacks,
-      hooks: [
-        {
-          command: "./json-hook.sh",
-          event: "PreToolUse",
-          matcher: "*",
-          timeout: 5000,
-        },
-      ],
     });
 
     // Suppress unused variable warning - agent is created for demonstration
     void agent;
 
     console.log("✅ Agent created with JSON hooks configuration");
-    
+
     // Simulate tool execution that would trigger the hooks
     console.log("📝 Simulating tool execution with JSON hook processing...");
-    
+
     // The hooks would be processed during actual tool execution
     // For this example, we'll demonstrate the parsing directly
     const simulatedResult: HookOutputResult = {
@@ -290,18 +298,17 @@ exit 0
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "allow",
-          permissionDecisionReason: "Integration test approved"
-        }
+          permissionDecisionReason: "Integration test approved",
+        },
       }),
       stderr: "",
       executionTime: 45,
-      hookEvent: "PreToolUse"
+      hookEvent: "PreToolUse",
     };
 
     const parsed = parseHookOutput(simulatedResult);
     console.log(`✅ JSON parsed successfully - Continue: ${parsed.continue}`);
     console.log(`📝 System message: ${parsed.systemMessage}`);
-    
   } catch (error) {
     console.error("❌ Agent integration test failed:", error);
   }
@@ -312,7 +319,9 @@ exit 0
  */
 export function testJsonHookOutput() {
   console.log("\n🧪 Interactive JSON Hook Output Test");
-  console.log("This function demonstrates how to test various JSON output scenarios.\n");
+  console.log(
+    "This function demonstrates how to test various JSON output scenarios.\n",
+  );
 
   // Test scenarios
   const scenarios = [
@@ -325,9 +334,9 @@ export function testJsonHookOutput() {
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
           permissionDecision: "deny",
-          permissionDecisionReason: "Suspicious activity detected"
-        }
-      }
+          permissionDecisionReason: "Suspicious activity detected",
+        },
+      },
     },
     {
       name: "JSON with warning message",
@@ -336,9 +345,9 @@ export function testJsonHookOutput() {
         systemMessage: "Operation allowed with warnings",
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          additionalContext: "Please review the output for potential issues"
-        }
-      }
+          additionalContext: "Please review the output for potential issues",
+        },
+      },
     },
     {
       name: "UserPromptSubmit with context",
@@ -346,10 +355,10 @@ export function testJsonHookOutput() {
         continue: true,
         hookSpecificOutput: {
           hookEventName: "UserPromptSubmit",
-          additionalContext: "User request enhanced with security context"
-        }
-      }
-    }
+          additionalContext: "User request enhanced with security context",
+        },
+      },
+    },
   ];
 
   scenarios.forEach((scenario, index) => {
@@ -359,15 +368,18 @@ export function testJsonHookOutput() {
       stdout: JSON.stringify(scenario.json),
       stderr: "",
       executionTime: 50,
-      hookEvent: scenario.json.hookSpecificOutput.hookEventName as HookEventName
+      hookEvent: scenario.json.hookSpecificOutput
+        .hookEventName as HookEventName,
     };
 
     const parsed = parseHookOutput(result);
     console.log(`Source: ${parsed.source}`);
     console.log(`Continue: ${parsed.continue}`);
-    console.log(`Stop Reason: ${parsed.stopReason || 'None'}`);
-    console.log(`System Message: ${parsed.systemMessage || 'None'}`);
-    console.log(`Errors: ${parsed.errorMessages.length > 0 ? parsed.errorMessages.join(', ') : 'None'}\n`);
+    console.log(`Stop Reason: ${parsed.stopReason || "None"}`);
+    console.log(`System Message: ${parsed.systemMessage || "None"}`);
+    console.log(
+      `Errors: ${parsed.errorMessages.length > 0 ? parsed.errorMessages.join(", ") : "None"}\n`,
+    );
   });
 
   console.log("✅ JSON Output Control testing utility completed!");

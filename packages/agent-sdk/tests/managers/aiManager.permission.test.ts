@@ -4,7 +4,7 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { HookManager } from "../../src/managers/hookManager.js";
 import type { PermissionDecision } from "../../src/types/hooks.js";
-import { parseHookOutput } from "../../src/utils/hookOutputParser.js";
+import type { Logger, GatewayConfig } from "../../src/types/index.js";
 
 // Mock dependencies
 vi.mock("../../src/services/aiService.js");
@@ -17,7 +17,7 @@ describe("AIManager Permission Integration", () => {
   let messageManager: MessageManager;
   let toolManager: ToolManager;
   let hookManager: HookManager;
-  let mockLogger: any;
+  let mockLogger: Logger;
 
   beforeEach(() => {
     // Mock logger
@@ -36,19 +36,19 @@ describe("AIManager Permission Integration", () => {
       updateToolBlock: vi.fn(),
       addDiffBlock: vi.fn(),
       saveSession: vi.fn(),
-    } as any;
+    } as unknown as MessageManager;
 
     // Mock tool manager
     toolManager = {
       getToolsConfig: vi.fn().mockReturnValue([]),
       list: vi.fn().mockReturnValue([]),
       execute: vi.fn(),
-    } as any;
+    } as unknown as ToolManager;
 
     // Mock hook manager
     hookManager = {
       executeHooks: vi.fn(),
-    } as any;
+    } as unknown as HookManager;
 
     // Create AIManager instance
     aiManager = new AIManager({
@@ -57,8 +57,15 @@ describe("AIManager Permission Integration", () => {
       hookManager,
       logger: mockLogger,
       workdir: "/test/workdir",
-      gatewayConfig: { url: "test" } as any,
-      modelConfig: { agentModel: "test", fastModel: "test" } as any,
+      gatewayConfig: {
+        url: "test",
+        apiKey: "test-key",
+        baseURL: "http://test",
+      } as GatewayConfig,
+      modelConfig: { agentModel: "test", fastModel: "test" } as {
+        agentModel: string;
+        fastModel: string;
+      },
       tokenLimit: 1000,
     });
   });
@@ -75,8 +82,8 @@ describe("AIManager Permission Integration", () => {
             hookEventName: "PreToolUse",
             permissionDecision: "ask",
             permissionDecisionReason: "Need user approval for file deletion",
-            updatedInput: { file: "/safe/path" }
-          }
+            updatedInput: { file: "/safe/path" },
+          },
         }),
         stderr: "",
         duration: 100,
@@ -86,12 +93,26 @@ describe("AIManager Permission Integration", () => {
       hookManager.executeHooks = vi.fn().mockResolvedValue([hookResult]);
 
       // Execute preToolUse hooks
-      const result = await (aiManager as any).executePreToolUseHooks(
-        "Delete", 
+      const result = await (
+        aiManager as unknown as {
+          executePreToolUseHooks: (
+            toolName: string,
+            toolInput?: Record<string, unknown>,
+            toolId?: string,
+            toolArgs?: Record<string, unknown>,
+            compactParams?: string,
+          ) => Promise<{
+            shouldProceed: boolean;
+            updatedInput?: Record<string, unknown>;
+            permissionId?: string;
+          }>;
+        }
+      ).executePreToolUseHooks(
+        "Delete",
         { file: "/dangerous/path" },
         "tool123",
         { file: "/dangerous/path" },
-        "Delete file"
+        "Delete file",
       );
 
       // Should not proceed and should have permission ID
@@ -105,7 +126,9 @@ describe("AIManager Permission Integration", () => {
 
       const pendingPermissions = aiManager.getPendingPermissions();
       expect(pendingPermissions[0].toolName).toBe("Delete");
-      expect(pendingPermissions[0].reason).toBe("Need user approval for file deletion");
+      expect(pendingPermissions[0].reason).toBe(
+        "Need user approval for file deletion",
+      );
     });
 
     it("should proceed normally when hook returns 'allow' decision", async () => {
@@ -119,8 +142,8 @@ describe("AIManager Permission Integration", () => {
             hookEventName: "PreToolUse",
             permissionDecision: "allow",
             permissionDecisionReason: "File access allowed",
-            updatedInput: { file: "/safe/path" }
-          }
+            updatedInput: { file: "/safe/path" },
+          },
         }),
         stderr: "",
         duration: 100,
@@ -130,12 +153,26 @@ describe("AIManager Permission Integration", () => {
       hookManager.executeHooks = vi.fn().mockResolvedValue([hookResult]);
 
       // Execute preToolUse hooks
-      const result = await (aiManager as any).executePreToolUseHooks(
-        "Delete", 
+      const result = await (
+        aiManager as unknown as {
+          executePreToolUseHooks: (
+            toolName: string,
+            toolInput?: Record<string, unknown>,
+            toolId?: string,
+            toolArgs?: Record<string, unknown>,
+            compactParams?: string,
+          ) => Promise<{
+            shouldProceed: boolean;
+            updatedInput?: Record<string, unknown>;
+            permissionId?: string;
+          }>;
+        }
+      ).executePreToolUseHooks(
+        "Delete",
         { file: "/dangerous/path" },
         "tool123",
         { file: "/dangerous/path" },
-        "Delete file"
+        "Delete file",
       );
 
       // Should proceed with updated input
@@ -157,8 +194,8 @@ describe("AIManager Permission Integration", () => {
           hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: "deny",
-            permissionDecisionReason: "File deletion not allowed"
-          }
+            permissionDecisionReason: "File deletion not allowed",
+          },
         }),
         stderr: "",
         duration: 100,
@@ -168,12 +205,26 @@ describe("AIManager Permission Integration", () => {
       hookManager.executeHooks = vi.fn().mockResolvedValue([hookResult]);
 
       // Execute preToolUse hooks
-      const result = await (aiManager as any).executePreToolUseHooks(
-        "Delete", 
+      const result = await (
+        aiManager as unknown as {
+          executePreToolUseHooks: (
+            toolName: string,
+            toolInput?: Record<string, unknown>,
+            toolId?: string,
+            toolArgs?: Record<string, unknown>,
+            compactParams?: string,
+          ) => Promise<{
+            shouldProceed: boolean;
+            updatedInput?: Record<string, unknown>;
+            permissionId?: string;
+          }>;
+        }
+      ).executePreToolUseHooks(
+        "Delete",
         { file: "/dangerous/path" },
         "tool123",
         { file: "/dangerous/path" },
-        "Delete file"
+        "Delete file",
       );
 
       // Should not proceed and should not have permission ID
@@ -197,8 +248,8 @@ describe("AIManager Permission Integration", () => {
             hookEventName: "PreToolUse",
             permissionDecision: "ask",
             permissionDecisionReason: "Need approval",
-            updatedInput: { safe: true }
-          }
+            updatedInput: { safe: true },
+          },
         }),
         stderr: "",
         duration: 100,
@@ -212,12 +263,26 @@ describe("AIManager Permission Integration", () => {
       });
 
       // Create permission request
-      const result = await (aiManager as any).executePreToolUseHooks(
-        "TestTool", 
+      const result = await (
+        aiManager as unknown as {
+          executePreToolUseHooks: (
+            toolName: string,
+            toolInput?: Record<string, unknown>,
+            toolId?: string,
+            toolArgs?: Record<string, unknown>,
+            compactParams?: string,
+          ) => Promise<{
+            shouldProceed: boolean;
+            updatedInput?: Record<string, unknown>;
+            permissionId?: string;
+          }>;
+        }
+      ).executePreToolUseHooks(
+        "TestTool",
         { test: true },
         "tool123",
         { test: true },
-        "Test"
+        "Test",
       );
 
       expect(result.permissionId).toBeDefined();
@@ -229,7 +294,10 @@ describe("AIManager Permission Integration", () => {
         shouldContinueRecursion: true,
       };
 
-      const resolved = await aiManager.resolvePermissionRequest(permissionId, decision);
+      const resolved = await aiManager.resolvePermissionRequest(
+        permissionId,
+        decision,
+      );
       expect(resolved).toBe(true);
 
       // Should no longer be awaiting permission
@@ -239,7 +307,7 @@ describe("AIManager Permission Integration", () => {
       expect(toolManager.execute).toHaveBeenCalledWith(
         "TestTool",
         { safe: true }, // Should use updated input
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -253,8 +321,8 @@ describe("AIManager Permission Integration", () => {
           hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: "ask",
-            permissionDecisionReason: "Need approval"
-          }
+            permissionDecisionReason: "Need approval",
+          },
         }),
         stderr: "",
         duration: 100,
@@ -264,12 +332,26 @@ describe("AIManager Permission Integration", () => {
       hookManager.executeHooks = vi.fn().mockResolvedValue([hookResult]);
 
       // Create permission request
-      const result = await (aiManager as any).executePreToolUseHooks(
-        "TestTool", 
+      const result = await (
+        aiManager as unknown as {
+          executePreToolUseHooks: (
+            toolName: string,
+            toolInput?: Record<string, unknown>,
+            toolId?: string,
+            toolArgs?: Record<string, unknown>,
+            compactParams?: string,
+          ) => Promise<{
+            shouldProceed: boolean;
+            updatedInput?: Record<string, unknown>;
+            permissionId?: string;
+          }>;
+        }
+      ).executePreToolUseHooks(
+        "TestTool",
         { test: true },
         "tool123",
         { test: true },
-        "Test"
+        "Test",
       );
 
       expect(result.permissionId).toBeDefined();
@@ -279,10 +361,13 @@ describe("AIManager Permission Integration", () => {
       const decision: PermissionDecision = {
         decision: "deny",
         shouldContinueRecursion: false,
-        reason: "User denied permission"
+        reason: "User denied permission",
       };
 
-      const resolved = await aiManager.resolvePermissionRequest(permissionId, decision);
+      const resolved = await aiManager.resolvePermissionRequest(
+        permissionId,
+        decision,
+      );
       expect(resolved).toBe(true);
 
       // Should no longer be awaiting permission
@@ -302,7 +387,10 @@ describe("AIManager Permission Integration", () => {
         shouldContinueRecursion: true,
       };
 
-      const resolved = await aiManager.resolvePermissionRequest("nonexistent", decision);
+      const resolved = await aiManager.resolvePermissionRequest(
+        "nonexistent",
+        decision,
+      );
       expect(resolved).toBe(false);
     });
   });
@@ -318,8 +406,8 @@ describe("AIManager Permission Integration", () => {
           hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: "ask",
-            permissionDecisionReason: "Test"
-          }
+            permissionDecisionReason: "Test",
+          },
         }),
         stderr: "",
         duration: 100,
@@ -328,12 +416,26 @@ describe("AIManager Permission Integration", () => {
 
       hookManager.executeHooks = vi.fn().mockResolvedValue([hookResult]);
 
-      await (aiManager as any).executePreToolUseHooks(
-        "TestTool", 
+      await (
+        aiManager as unknown as {
+          executePreToolUseHooks: (
+            toolName: string,
+            toolInput?: Record<string, unknown>,
+            toolId?: string,
+            toolArgs?: Record<string, unknown>,
+            compactParams?: string,
+          ) => Promise<{
+            shouldProceed: boolean;
+            updatedInput?: Record<string, unknown>;
+            permissionId?: string;
+          }>;
+        }
+      ).executePreToolUseHooks(
+        "TestTool",
         { test: true },
         "tool123",
         { test: true },
-        "Test"
+        "Test",
       );
 
       expect(aiManager.isAwaitingPermission()).toBe(true);
@@ -355,8 +457,8 @@ describe("AIManager Permission Integration", () => {
           hookSpecificOutput: {
             hookEventName: "PreToolUse",
             permissionDecision: "ask",
-            permissionDecisionReason: "Test"
-          }
+            permissionDecisionReason: "Test",
+          },
         }),
         stderr: "",
         duration: 100,
@@ -366,28 +468,56 @@ describe("AIManager Permission Integration", () => {
       hookManager.executeHooks = vi.fn().mockResolvedValue([hookResult]);
 
       // Create first permission
-      await (aiManager as any).executePreToolUseHooks(
-        "Tool1", 
+      await (
+        aiManager as unknown as {
+          executePreToolUseHooks: (
+            toolName: string,
+            toolInput?: Record<string, unknown>,
+            toolId?: string,
+            toolArgs?: Record<string, unknown>,
+            compactParams?: string,
+          ) => Promise<{
+            shouldProceed: boolean;
+            updatedInput?: Record<string, unknown>;
+            permissionId?: string;
+          }>;
+        }
+      ).executePreToolUseHooks(
+        "Tool1",
         { test: 1 },
         "tool1",
         { test: 1 },
-        "Test1"
+        "Test1",
       );
 
       // Create second permission
-      await (aiManager as any).executePreToolUseHooks(
-        "Tool2", 
+      await (
+        aiManager as unknown as {
+          executePreToolUseHooks: (
+            toolName: string,
+            toolInput?: Record<string, unknown>,
+            toolId?: string,
+            toolArgs?: Record<string, unknown>,
+            compactParams?: string,
+          ) => Promise<{
+            shouldProceed: boolean;
+            updatedInput?: Record<string, unknown>;
+            permissionId?: string;
+          }>;
+        }
+      ).executePreToolUseHooks(
+        "Tool2",
         { test: 2 },
         "tool2",
         { test: 2 },
-        "Test2"
+        "Test2",
       );
 
       expect(aiManager.isAwaitingPermission()).toBe(true);
       expect(aiManager.getPendingPermissions()).toHaveLength(2);
 
       const permissions = aiManager.getPendingPermissions();
-      expect(permissions.map(p => p.toolName)).toEqual(["Tool1", "Tool2"]);
+      expect(permissions.map((p) => p.toolName)).toEqual(["Tool1", "Tool2"]);
     });
   });
 });

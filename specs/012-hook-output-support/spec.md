@@ -1,6 +1,6 @@
-# Feature Specification: Hook Output Methods
+# Feature Specification: Hook Output Support
 
-**Feature Branch**: `012-hook-output-methods`  
+**Feature Branch**: `012-hook-output-support`  
 **Created**: 2025-11-14  
 **Status**: Draft  
 **Input**: User description: "refer to hooks-output.md to generate spec. both "Simple: Exit Code" and "Advanced: JSON Output" should be implemented. we have already implemented some specs about hooks, you can check them in specs dir."

@@ -1,4 +1,4 @@
-# Data Model: Hook Output Methods
+# Data Model: Hook Output Support
 
 **Date**: 2025-11-14  
 **Phase**: 1 - Design & Contracts  

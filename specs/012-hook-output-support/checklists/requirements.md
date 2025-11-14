@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Hook Output Methods
+# Specification Quality Checklist: Hook Output Support
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2025-11-14

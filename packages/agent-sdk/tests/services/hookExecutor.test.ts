@@ -32,8 +32,9 @@ import type {
   ParsedHookOutput,
   HookOutputResult,
   PermissionDecision,
-  PreToolUseResult,
   HookPermissionResult,
+  PostToolUseOutput,
+  HookEvent,
 } from "../../src/types/hooks.js";
 
 // Mock dependencies
@@ -45,8 +46,12 @@ vi.mock("../../src/utils/hookOutputParser.js", () => ({
   parseHookOutput: vi.fn(),
 }));
 
-const mockExecuteCommand = executeCommand as MockedFunction<typeof executeCommand>;
-const mockParseHookOutput = parseHookOutput as MockedFunction<typeof parseHookOutput>;
+const mockExecuteCommand = executeCommand as MockedFunction<
+  typeof executeCommand
+>;
+const mockParseHookOutput = parseHookOutput as MockedFunction<
+  typeof parseHookOutput
+>;
 
 describe("HookExecutor", () => {
   let hookExecutor: HookExecutor;
@@ -55,7 +60,7 @@ describe("HookExecutor", () => {
 
   beforeEach(() => {
     hookExecutor = new HookExecutor();
-    
+
     mockContext = {
       event: "PreToolUse",
       toolName: "testTool",
@@ -106,7 +111,7 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.executeHookWithOutput(
         "test-command",
         mockContext,
-        "PreToolUse"
+        "PreToolUse",
       );
 
       expect(result).toEqual({
@@ -117,7 +122,7 @@ describe("HookExecutor", () => {
       expect(mockExecuteCommand).toHaveBeenCalledWith(
         "test-command",
         mockContext,
-        undefined
+        undefined,
       );
 
       expect(mockParseHookOutput).toHaveBeenCalledWith({
@@ -158,13 +163,13 @@ describe("HookExecutor", () => {
         "test-command",
         mockContext,
         "PostToolUse",
-        options
+        options,
       );
 
       expect(mockExecuteCommand).toHaveBeenCalledWith(
         "test-command",
         mockContext,
-        options
+        options,
       );
     });
 
@@ -188,7 +193,7 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.executeHookWithOutput(
         "timeout-command",
         mockContext,
-        "UserPromptSubmit"
+        "UserPromptSubmit",
       );
 
       expect(mockParseHookOutput).toHaveBeenCalledWith({
@@ -224,13 +229,13 @@ describe("HookExecutor", () => {
       await hookExecutor.executeHookWithOutput(
         "basic-command",
         mockBasicContext,
-        "Stop"
+        "Stop",
       );
 
       expect(mockExecuteCommand).toHaveBeenCalledWith(
         "basic-command",
         mockBasicContext,
-        undefined
+        undefined,
       );
     });
   });
@@ -263,7 +268,7 @@ describe("HookExecutor", () => {
         "allow-command",
         mockContext,
         "testTool",
-        { param1: "value1" }
+        { param1: "value1" },
       );
 
       expect(result).toEqual({
@@ -299,7 +304,7 @@ describe("HookExecutor", () => {
         "deny-command",
         mockContext,
         "testTool",
-        { param1: "value1" }
+        { param1: "value1" },
       );
 
       expect(result).toEqual({
@@ -339,7 +344,7 @@ describe("HookExecutor", () => {
         mockContext,
         "testTool",
         { param1: "value1" },
-        permissionCallback
+        permissionCallback,
       );
 
       expect(result.shouldProceed).toBe(false);
@@ -347,8 +352,12 @@ describe("HookExecutor", () => {
       expect(result.permissionRequest).toBeDefined();
       expect(result.permissionRequest?.toolName).toBe("testTool");
       expect(result.permissionRequest?.reason).toBe("Need user confirmation");
-      expect(result.permissionRequest?.originalInput).toEqual({ param1: "value1" });
-      expect(result.permissionRequest?.updatedInput).toEqual({ param1: "modified" });
+      expect(result.permissionRequest?.originalInput).toEqual({
+        param1: "value1",
+      });
+      expect(result.permissionRequest?.updatedInput).toEqual({
+        param1: "modified",
+      });
 
       // Verify permission callback was called
       expect(permissionCallback).toHaveBeenCalledWith(
@@ -356,7 +365,7 @@ describe("HookExecutor", () => {
           toolName: "testTool",
           reason: "Need user confirmation",
           toolInput: { param1: "value1" },
-        })
+        }),
       );
 
       // Verify permission is pending
@@ -386,7 +395,7 @@ describe("HookExecutor", () => {
         "block-command",
         mockContext,
         "testTool",
-        { param1: "value1" }
+        { param1: "value1" },
       );
 
       expect(result).toEqual({
@@ -417,7 +426,7 @@ describe("HookExecutor", () => {
         "basic-command",
         mockContext,
         "testTool",
-        { param1: "value1" }
+        { param1: "value1" },
       );
 
       expect(result).toEqual({
@@ -433,7 +442,7 @@ describe("HookExecutor", () => {
         continue: true,
         hookSpecificData: {
           hookEventName: "PreToolUse",
-          permissionDecision: "unknown" as any,
+          permissionDecision: "unknown" as "allow" | "deny" | "ask",
           permissionDecisionReason: "Unknown decision",
         },
         errorMessages: [],
@@ -453,7 +462,7 @@ describe("HookExecutor", () => {
         "unknown-command",
         mockContext,
         "testTool",
-        { param1: "value1" }
+        { param1: "value1" },
       );
 
       expect(result.shouldProceed).toBe(true);
@@ -464,7 +473,7 @@ describe("HookExecutor", () => {
   describe("executeHooksWithOutput", () => {
     it("should execute multiple hooks successfully", async () => {
       const commands = ["command1", "command2", "command3"];
-      
+
       const mockResults = [
         {
           executionResult: {
@@ -522,7 +531,7 @@ describe("HookExecutor", () => {
       const results = await hookExecutor.executeHooksWithOutput(
         commands,
         mockContext,
-        "PostToolUse"
+        "PostToolUse",
       );
 
       expect(results).toEqual(mockResults);
@@ -532,13 +541,13 @@ describe("HookExecutor", () => {
         "command1",
         mockContext,
         "PostToolUse",
-        undefined
+        undefined,
       );
     });
 
     it("should stop on first failure when continueOnFailure is false", async () => {
       const commands = ["command1", "command2", "command3"];
-      
+
       const mockResults = [
         {
           executionResult: {
@@ -580,7 +589,7 @@ describe("HookExecutor", () => {
       const results = await hookExecutor.executeHooksWithOutput(
         commands,
         mockContext,
-        "PostToolUse"
+        "PostToolUse",
       );
 
       expect(results).toEqual([mockResults[0], mockResults[1]]);
@@ -590,7 +599,7 @@ describe("HookExecutor", () => {
     it("should continue on failure when continueOnFailure is true", async () => {
       const commands = ["command1", "command2", "command3"];
       const options: HookExecutionOptions = { continueOnFailure: true };
-      
+
       const mockResults = [
         {
           executionResult: {
@@ -648,7 +657,7 @@ describe("HookExecutor", () => {
         commands,
         mockContext,
         "PostToolUse",
-        options
+        options,
       );
 
       expect(results).toEqual(mockResults);
@@ -657,7 +666,7 @@ describe("HookExecutor", () => {
 
     it("should stop when hook output indicates to stop", async () => {
       const commands = ["command1", "command2", "command3"];
-      
+
       const mockResults = [
         {
           executionResult: {
@@ -699,7 +708,7 @@ describe("HookExecutor", () => {
       const results = await hookExecutor.executeHooksWithOutput(
         commands,
         mockContext,
-        "UserPromptSubmit"
+        "UserPromptSubmit",
       );
 
       expect(results).toEqual([mockResults[0], mockResults[1]]);
@@ -713,7 +722,7 @@ describe("HookExecutor", () => {
       const results = await hookExecutor.executeHooksWithOutput(
         [],
         mockContext,
-        "Stop"
+        "Stop",
       );
 
       expect(results).toEqual([]);
@@ -730,35 +739,34 @@ describe("HookExecutor", () => {
         continueOnFailure: true,
       };
 
-      vi.spyOn(hookExecutor, "executeHookWithOutput")
-        .mockResolvedValueOnce({
-          executionResult: {
-            success: true,
-            exitCode: 0,
-            stdout: "",
-            stderr: "",
-            duration: 50,
-            timedOut: false,
-          },
-          parsedOutput: {
-            source: "exitcode" as const,
-            continue: true,
-            errorMessages: [],
-          },
-        });
+      vi.spyOn(hookExecutor, "executeHookWithOutput").mockResolvedValueOnce({
+        executionResult: {
+          success: true,
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          duration: 50,
+          timedOut: false,
+        },
+        parsedOutput: {
+          source: "exitcode" as const,
+          continue: true,
+          errorMessages: [],
+        },
+      });
 
       await hookExecutor.executeHooksWithOutput(
         commands,
         mockContext,
         "PostToolUse",
-        options
+        options,
       );
 
       expect(hookExecutor.executeHookWithOutput).toHaveBeenCalledWith(
         "command1",
         mockContext,
         "PostToolUse",
-        options
+        options,
       );
     });
   });
@@ -792,7 +800,7 @@ describe("HookExecutor", () => {
           "ask-command",
           mockContext,
           "testTool",
-          { param1: "value1" }
+          { param1: "value1" },
         );
 
         const permissionId = result.permissionRequest?.id;
@@ -838,7 +846,7 @@ describe("HookExecutor", () => {
           "ask-command",
           mockContext,
           "testTool",
-          { param1: "value1" }
+          { param1: "value1" },
         );
 
         const permissionId = result.permissionRequest?.id;
@@ -901,7 +909,7 @@ describe("HookExecutor", () => {
           "ask-command-1",
           mockContext,
           "tool1",
-          { param1: "value1" }
+          { param1: "value1" },
         );
 
         // Create second permission
@@ -909,7 +917,7 @@ describe("HookExecutor", () => {
           "ask-command-2",
           { ...mockContext, toolName: "tool2" },
           "tool2",
-          { param2: "value2" }
+          { param2: "value2" },
         );
 
         const pendingPermissions = hookExecutor.getPendingPermissions();
@@ -957,7 +965,7 @@ describe("HookExecutor", () => {
           "ask-command",
           mockContext,
           "testTool",
-          { param1: "value1" }
+          { param1: "value1" },
         );
 
         expect(hookExecutor.isAwaitingPermission()).toBe(true);
@@ -996,7 +1004,7 @@ describe("HookExecutor", () => {
           "ask-command",
           mockContext,
           "testTool",
-          { param1: "value1" }
+          { param1: "value1" },
         );
 
         expect(hookExecutor.isAwaitingPermission()).toBe(true);
@@ -1019,8 +1027,8 @@ describe("HookExecutor", () => {
         hookExecutor.executeHookWithOutput(
           "failing-command",
           mockContext,
-          "PreToolUse"
-        )
+          "PreToolUse",
+        ),
       ).rejects.toThrow("Command execution failed");
 
       expect(mockParseHookOutput).not.toHaveBeenCalled();
@@ -1049,7 +1057,7 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.executeHookWithOutput(
         "timeout-command",
         mockContext,
-        "PostToolUse"
+        "PostToolUse",
       );
 
       expect(result.executionResult.timedOut).toBe(true);
@@ -1079,16 +1087,18 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.executeHookWithOutput(
         "invalid-json-command",
         mockContext,
-        "UserPromptSubmit"
+        "UserPromptSubmit",
       );
 
       expect(result.parsedOutput.source).toBe("exitcode");
-      expect(result.parsedOutput.errorMessages).toContain("Failed to parse JSON output");
+      expect(result.parsedOutput.errorMessages).toContain(
+        "Failed to parse JSON output",
+      );
     });
 
     it("should handle batch execution with errors", async () => {
       const commands = ["command1", "command2", "command3"];
-      
+
       const successResult = {
         executionResult: {
           success: true,
@@ -1129,7 +1139,7 @@ describe("HookExecutor", () => {
       const results = await hookExecutor.executeHooksWithOutput(
         commands,
         mockContext,
-        "PostToolUse"
+        "PostToolUse",
       );
 
       expect(results).toEqual([successResult, errorResult]);
@@ -1163,7 +1173,7 @@ describe("HookExecutor", () => {
         mockContext,
         "PreToolUse",
         "testTool",
-        { param1: "value1" }
+        { param1: "value1" },
       );
 
       expect(result.permissionRequired).toBe(true);
@@ -1171,7 +1181,7 @@ describe("HookExecutor", () => {
 
       // Test timeout scenario by rejecting the permission
       const permissionId = hookExecutor.getPendingPermissions()[0].id;
-      
+
       // Simulate timeout by rejecting the permission promise
       setTimeout(() => {
         const decision: PermissionDecision = {
@@ -1182,7 +1192,9 @@ describe("HookExecutor", () => {
         hookExecutor.resolvePermissionRequest(permissionId, decision);
       }, 10);
 
-      await expect(result.permissionPromise).rejects.toThrow("Permission request timed out");
+      await expect(result.permissionPromise).rejects.toThrow(
+        "Permission request timed out",
+      );
     });
 
     it("should handle malformed hook output", async () => {
@@ -1207,11 +1219,13 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.executeHookWithOutput(
         "malformed-output-command",
         mockContext,
-        "Stop"
+        "Stop",
       );
 
       expect(result.parsedOutput.source).toBe("exitcode");
-      expect(result.parsedOutput.errorMessages).toContain("Invalid JSON format in hook output");
+      expect(result.parsedOutput.errorMessages).toContain(
+        "Invalid JSON format in hook output",
+      );
     });
   });
 
@@ -1227,7 +1241,8 @@ describe("HookExecutor", () => {
       mockExecuteCommand.mockResolvedValue({
         success: true,
         exitCode: 0,
-        stdout: '{"continue": true, "systemMessage": "Hook processed successfully"}',
+        stdout:
+          '{"continue": true, "systemMessage": "Hook processed successfully"}',
         stderr: "",
         duration: 50,
         timedOut: false,
@@ -1237,7 +1252,7 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.processHookOutput(
         "general-command",
         mockContext,
-        "PostToolUse"
+        "PostToolUse",
       );
 
       expect(result).toEqual({
@@ -1274,7 +1289,7 @@ describe("HookExecutor", () => {
         mockContext,
         "PreToolUse",
         "testTool",
-        { param1: "value1" }
+        { param1: "value1" },
       );
 
       expect(result.permissionRequired).toBe(true);
@@ -1310,7 +1325,7 @@ describe("HookExecutor", () => {
         mockContext,
         "PreToolUse",
         "testTool",
-        { param1: "value1" }
+        { param1: "value1" },
       );
 
       expect(result).toEqual({
@@ -1348,7 +1363,7 @@ describe("HookExecutor", () => {
         mockContext,
         "PreToolUse",
         "testTool",
-        { param1: "value1" }
+        { param1: "value1" },
       );
 
       expect(result).toEqual({
@@ -1366,7 +1381,7 @@ describe("HookExecutor", () => {
           hookEventName: "PostToolUse",
           decision: "block",
           reason: "Post-tool validation failed",
-        } as any,
+        } as PostToolUseOutput,
         errorMessages: [],
       };
 
@@ -1383,7 +1398,7 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.processHookOutput(
         "post-tool-command",
         mockContext,
-        "PostToolUse"
+        "PostToolUse",
       );
 
       expect(result).toEqual({
@@ -1413,7 +1428,7 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.processHookOutput(
         "block-command",
         mockContext,
-        "UserPromptSubmit"
+        "UserPromptSubmit",
       );
 
       expect(result).toEqual({
@@ -1449,7 +1464,7 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.processHookOutput(
         "ask-command",
         mockContext,
-        "PreToolUse"
+        "PreToolUse",
       );
 
       // Should not create permission request without toolName
@@ -1493,18 +1508,32 @@ describe("HookExecutor", () => {
       await hookExecutor.executeHookWithOutput(
         "test-command",
         mockContext,
-        "UserPromptSubmit"
+        "UserPromptSubmit",
       );
 
-      expect(mockParseHookOutput).toHaveBeenCalledWith(expectedHookOutputResult);
+      expect(mockParseHookOutput).toHaveBeenCalledWith(
+        expectedHookOutputResult,
+      );
     });
 
     it("should handle different hook events correctly", async () => {
-      const events: Array<{ event: any; context: any }> = [
-        { event: "PreToolUse", context: mockContext },
-        { event: "PostToolUse", context: mockContext },
-        { event: "UserPromptSubmit", context: mockBasicContext },
-        { event: "Stop", context: mockBasicContext },
+      const events: Array<{
+        event: string;
+        context: HookExecutionContext | ExtendedHookExecutionContext;
+      }> = [
+        {
+          event: "PreToolUse",
+          context: mockContext as ExtendedHookExecutionContext,
+        },
+        {
+          event: "PostToolUse",
+          context: mockContext as ExtendedHookExecutionContext,
+        },
+        {
+          event: "UserPromptSubmit",
+          context: mockBasicContext as HookExecutionContext,
+        },
+        { event: "Stop", context: mockBasicContext as HookExecutionContext },
       ];
 
       for (const { event, context } of events) {
@@ -1526,13 +1555,13 @@ describe("HookExecutor", () => {
         await hookExecutor.executeHookWithOutput(
           `${event}-command`,
           context,
-          event
+          event as HookEvent,
         );
 
         expect(mockParseHookOutput).toHaveBeenCalledWith(
           expect.objectContaining({
             hookEvent: event,
-          })
+          }),
         );
       }
     });
@@ -1560,15 +1589,15 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.executeHookWithOutput(
         "warning-command",
         mockContext,
-        "PostToolUse"
+        "PostToolUse",
       );
 
       expect(result.parsedOutput.errorMessages).toHaveLength(2);
       expect(result.parsedOutput.errorMessages).toContain(
-        "Warning: Invalid field 'unknown' in JSON output"
+        "Warning: Invalid field 'unknown' in JSON output",
       );
       expect(result.parsedOutput.errorMessages).toContain(
-        "Info: Using default value for missing 'continue' field"
+        "Info: Using default value for missing 'continue' field",
       );
     });
 
@@ -1588,7 +1617,8 @@ describe("HookExecutor", () => {
       mockExecuteCommand.mockResolvedValue({
         success: true,
         exitCode: 0,
-        stdout: '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}',
+        stdout:
+          '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}}',
         stderr: "",
         duration: 50,
         timedOut: false,
@@ -1598,7 +1628,7 @@ describe("HookExecutor", () => {
       const result = await hookExecutor.executeHookWithOutput(
         "validation-command",
         mockContext,
-        "PreToolUse"
+        "PreToolUse",
       );
 
       expect(result.parsedOutput.hookSpecificData).toEqual({
@@ -1647,7 +1677,7 @@ describe("HookExecutor", () => {
         const result = await convenienceFunction(
           "test-command",
           mockContext,
-          "PostToolUse"
+          "PostToolUse",
         );
 
         expect(result).toEqual(mockResult);
@@ -1656,10 +1686,10 @@ describe("HookExecutor", () => {
 
     describe("executePreToolUseWithPermissions function", () => {
       it("should delegate to default hookExecutor instance", async () => {
-        const mockResult: PreToolUseResult = {
+        /* const mockResult: PreToolUseResult = {
           shouldProceed: true,
           requiresUserPermission: false,
-        };
+        }; */
 
         // Set up mocks to return a simple allow result
         const mockParsedOutput: ParsedHookOutput = {
@@ -1683,9 +1713,8 @@ describe("HookExecutor", () => {
         });
         mockParseHookOutput.mockReturnValue(mockParsedOutput);
 
-        const { executePreToolUseWithPermissions: convenienceFunction } = await import(
-          "../../src/services/hookExecutor.js"
-        );
+        const { executePreToolUseWithPermissions: convenienceFunction } =
+          await import("../../src/services/hookExecutor.js");
 
         const permissionCallback = vi.fn();
         const result = await convenienceFunction(
@@ -1693,7 +1722,7 @@ describe("HookExecutor", () => {
           mockContext,
           "testTool",
           { param1: "value1" },
-          permissionCallback
+          permissionCallback,
         );
 
         expect(result.shouldProceed).toBe(true);
@@ -1734,7 +1763,7 @@ describe("HookExecutor", () => {
           mockContext,
           "PostToolUse", // Use PostToolUse to avoid PreToolUse-specific logic
           "testTool",
-          { param1: "value1" }
+          { param1: "value1" },
         );
 
         expect(result).toEqual(mockResult);

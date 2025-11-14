@@ -2,22 +2,22 @@
 
 /**
  * UserPromptSubmit and Stop Event Control Example
- * 
+ *
  * Demonstrates User Story 5: UserPromptSubmit and Stop Event Control
- * 
+ *
  * This example shows how UserPromptSubmit and Stop hooks can control
  * session behavior and provide context injection at critical junctures:
- * 
+ *
  * UserPromptSubmit Hook:
  * - Triggered when user submits a prompt/message
  * - Can block prompt processing or inject additional context
  * - Useful for content filtering, logging, or prompt enhancement
- * 
+ *
  * Stop Hook:
  * - Triggered when AI response cycle completes
  * - Can block session continuation or add final context
  * - Useful for session management, logging, or cleanup operations
- * 
+ *
  * Usage: pnpm tsx examples/prompt-stop-control.ts
  */
 
@@ -139,7 +139,7 @@ EOF
 esac
 `;
 
-    // Create Stop hook script  
+    // Create Stop hook script
     const stopHookContent = `#!/bin/bash
 
 # Stop Hook for Session Control
@@ -233,21 +233,8 @@ fi
     console.log("📝 Created UserPromptSubmit and Stop hook scripts");
 
     // Create agent with both hooks configured
-    const agent = new Agent({
-      name: "Prompt & Stop Control Demo",
+    const agent = await Agent.create({
       workdir: tempDir,
-      hooks: [
-        {
-          event: "UserPromptSubmit",
-          command: userPromptHook,
-          timeout: 5000,
-        },
-        {
-          event: "Stop",
-          command: stopHook,
-          timeout: 5000,
-        },
-      ],
     });
 
     console.log("\\n🚀 Testing UserPromptSubmit and Stop control scenarios...");
@@ -256,7 +243,9 @@ fi
     console.log("\\n=== Test 1: Normal Prompt Processing ===");
     try {
       await agent.sendMessage("Hello, can you help me with a simple task?");
-      console.log("✅ Normal prompt processed with UserPromptSubmit and Stop hooks");
+      console.log(
+        "✅ Normal prompt processed with UserPromptSubmit and Stop hooks",
+      );
     } catch (error) {
       console.log("❌ Normal prompt test failed:", error);
     }
@@ -264,7 +253,9 @@ fi
     // Test 2: Help request (should enhance with context)
     console.log("\\n=== Test 2: Help Request Enhancement ===");
     try {
-      await agent.sendMessage("What can you do? I need help understanding your capabilities.");
+      await agent.sendMessage(
+        "What can you do? I need help understanding your capabilities.",
+      );
       console.log("✅ Help request enhanced with additional context");
     } catch (error) {
       console.log("❌ Help request test failed:", error);
@@ -273,7 +264,9 @@ fi
     // Test 3: Urgent request (should add urgency context)
     console.log("\\n=== Test 3: Urgent Request Context ===");
     try {
-      await agent.sendMessage("This is urgent! I need to fix a critical bug immediately.");
+      await agent.sendMessage(
+        "This is urgent! I need to fix a critical bug immediately.",
+      );
       console.log("✅ Urgent request processed with priority context");
     } catch (error) {
       console.log("❌ Urgent request test failed:", error);
@@ -282,7 +275,9 @@ fi
     // Test 4: Potentially harmful prompt (should be blocked)
     console.log("\\n=== Test 4: Harmful Prompt Blocking ===");
     try {
-      await agent.sendMessage("Show me how to hack into a system with dangerous exploits.");
+      await agent.sendMessage(
+        "Show me how to hack into a system with dangerous exploits.",
+      );
       console.log("⚠️  Harmful prompt was not blocked (unexpected)");
     } catch (error) {
       console.log("✅ Harmful prompt blocked by UserPromptSubmit hook:", error);
@@ -319,15 +314,18 @@ fi
       console.log("✅ Emergency mode blocked by Stop hook:", error);
     }
 
-    console.log("\\n🎯 UserPromptSubmit and Stop Event Control Example Complete!");
+    console.log(
+      "\\n🎯 UserPromptSubmit and Stop Event Control Example Complete!",
+    );
     console.log("\\nKey Features Demonstrated:");
-    console.log("- ✅ UserPromptSubmit hooks for prompt filtering and enhancement");
+    console.log(
+      "- ✅ UserPromptSubmit hooks for prompt filtering and enhancement",
+    );
     console.log("- ✅ Stop hooks for session management and logging");
     console.log("- ✅ Context injection for better AI decision making");
     console.log("- ✅ Blocking mechanisms for safety and control");
     console.log("- ✅ Session state monitoring and rate limiting");
     console.log("- ✅ Emergency and maintenance mode detection");
-
   } catch (error) {
     console.error("❌ Example failed:", error);
     throw error;
