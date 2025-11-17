@@ -265,6 +265,169 @@ export class HookManager implements IHookManager {
   }
 
   /**
+   * Process hook execution results and determine appropriate actions
+   * based on exit codes and hook event type
+   */
+  processHookResults(
+    event: HookEvent,
+    results: HookExecutionResult[],
+    messageManager?: {
+      addUserMessage: (content: string) => void;
+      addErrorBlock: (error: string) => void;
+      removeLastUserMessage: () => void;
+      updateToolBlock: (params: {
+        toolId: string;
+        result: string;
+        success: boolean;
+        error?: string;
+      }) => void;
+    },
+    toolId?: string,
+    originalToolResult?: string,
+  ): {
+    shouldBlock: boolean;
+    shouldContinue: boolean;
+    errorMessage?: string;
+  } {
+    if (!messageManager || results.length === 0) {
+      return { shouldBlock: false, shouldContinue: true };
+    }
+
+    // First pass: Check for any blocking errors (exit code 2)
+    // Blocking errors take precedence and stop all processing
+    for (const result of results) {
+      if (result.exitCode === 2) {
+        // Handle blocking error immediately and return
+        return this.handleBlockingError(
+          event,
+          result,
+          messageManager,
+          toolId,
+          originalToolResult,
+        );
+      }
+    }
+
+    // Second pass: Process all non-blocking results
+    for (const result of results) {
+      if (result.exitCode === undefined) {
+        continue; // Skip results without exit codes
+      }
+
+      // Handle exit code interpretation
+      if (result.exitCode === 0) {
+        // Success case - handle stdout based on hook type
+        this.handleHookSuccess(event, result, messageManager);
+      } else {
+        // Non-blocking error case (any exit code except 0 and 2)
+        this.handleNonBlockingError(result, messageManager);
+      }
+    }
+
+    return { shouldBlock: false, shouldContinue: true };
+  }
+
+  /**
+   * Handle successful hook execution (exit code 0)
+   */
+  private handleHookSuccess(
+    event: HookEvent,
+    result: HookExecutionResult,
+    messageManager: {
+      addUserMessage: (content: string) => void;
+    },
+  ): void {
+    if (event === "UserPromptSubmit" && result.stdout?.trim()) {
+      // Inject stdout as user message context for UserPromptSubmit
+      messageManager.addUserMessage(result.stdout.trim());
+    }
+    // For other hook types (PreToolUse, PostToolUse, Stop), ignore stdout
+  }
+
+  /**
+   * Handle blocking error (exit code 2) - behavior varies by hook type
+   */
+  private handleBlockingError(
+    event: HookEvent,
+    result: HookExecutionResult,
+    messageManager: {
+      addUserMessage: (content: string) => void;
+      addErrorBlock: (error: string) => void;
+      removeLastUserMessage: () => void;
+      updateToolBlock: (params: {
+        toolId: string;
+        result: string;
+        success: boolean;
+        error?: string;
+      }) => void;
+    },
+    toolId?: string,
+    originalToolResult?: string,
+  ): {
+    shouldBlock: boolean;
+    shouldContinue: boolean;
+    errorMessage?: string;
+  } {
+    const errorMessage = result.stderr?.trim() || "Hook execution failed";
+
+    switch (event) {
+      case "UserPromptSubmit":
+        // Block prompt processing, show error to user, erase prompt
+        messageManager.addErrorBlock(errorMessage);
+        messageManager.removeLastUserMessage();
+        return {
+          shouldBlock: true,
+          shouldContinue: false,
+          errorMessage,
+        };
+
+      case "PreToolUse":
+        // Show error to Wave Agent via tool block, execution continues
+        if (toolId) {
+          messageManager.updateToolBlock({
+            toolId,
+            result: errorMessage,
+            success: false,
+            error: "Hook blocked tool execution",
+          });
+        }
+        return { shouldBlock: false, shouldContinue: true };
+
+      case "PostToolUse":
+        // Show error to Wave Agent via tool block, execution continues
+        if (toolId && originalToolResult !== undefined) {
+          messageManager.updateToolBlock({
+            toolId,
+            result: `${originalToolResult}\n\nHook feedback: ${errorMessage}`,
+            success: false,
+          });
+        }
+        return { shouldBlock: false, shouldContinue: true };
+
+      case "Stop":
+        // Show error to Wave Agent via user message, execution continues
+        messageManager.addUserMessage(errorMessage);
+        return { shouldBlock: false, shouldContinue: true };
+
+      default:
+        return { shouldBlock: false, shouldContinue: true };
+    }
+  }
+
+  /**
+   * Handle non-blocking error (other exit codes)
+   */
+  private handleNonBlockingError(
+    result: HookExecutionResult,
+    messageManager: {
+      addErrorBlock: (error: string) => void;
+    },
+  ): void {
+    const errorMessage = result.stderr?.trim() || "Hook execution failed";
+    messageManager.addErrorBlock(errorMessage);
+  }
+
+  /**
    * Check if hooks are configured for an event/tool combination
    */
   hasHooks(event: HookEvent, toolName?: string): boolean {

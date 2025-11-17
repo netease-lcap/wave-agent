@@ -14,9 +14,9 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [ ] T001 Create enhanced message manager method in packages/agent-sdk/src/managers/messageManager.ts
-- [ ] T002 Create utility function in packages/agent-sdk/src/utils/messageOperations.ts
-- [ ] T003 [P] Create test directory structure in packages/agent-sdk/tests/agent/hooks-exitcode-output/
+- [x] T001 Create enhanced message manager method in packages/agent-sdk/src/managers/messageManager.ts
+- [x] T002 Create utility function in packages/agent-sdk/src/utils/messageOperations.ts
+- [x] T003 [P] Create test directory structure in packages/agent-sdk/tests/agent/hooks-exitcode-output/
 
 ---
 
@@ -26,10 +26,10 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 Implement removeLastUserMessage() method in packages/agent-sdk/src/managers/messageManager.ts
-- [ ] T005 [P] Implement removeLastUserMessage() utility function in packages/agent-sdk/src/utils/messageOperations.ts
-- [ ] T006 [P] Create hook output processing logic base structure in packages/agent-sdk/src/managers/hookManager.ts
-- [ ] T007 Setup test mocking infrastructure in packages/agent-sdk/tests/agent/hooks-exitcode-output/
+- [x] T004 Implement removeLastUserMessage() method in packages/agent-sdk/src/managers/messageManager.ts
+- [x] T005 [P] Implement removeLastUserMessage() utility function in packages/agent-sdk/src/utils/messageOperations.ts
+- [x] T006 [P] Create hook output processing logic base structure in packages/agent-sdk/src/managers/hookManager.ts
+- [x] T007 Setup test mocking infrastructure in packages/agent-sdk/tests/agent/hooks-exitcode-output/
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -45,18 +45,18 @@
 
 **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T008 [P] [US1] Create success behavior test file in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-success.test.ts
-- [ ] T009 [P] [US1] Test UserPromptSubmit success with stdout injection in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-success.test.ts
-- [ ] T010 [P] [US1] Test other hook types ignore stdout in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-success.test.ts
+- [x] T008 [P] [US1] Create success behavior test file in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-success.test.ts
+- [x] T009 [P] [US1] Test UserPromptSubmit success with stdout injection in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-success.test.ts
+- [x] T010 [P] [US1] Test other hook types ignore stdout in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-success.test.ts
 
 ### Implementation for User Story 1
 
-- [ ] T011 [P] [US1] Add UserPromptSubmit hook result processing in packages/agent-sdk/src/agent.ts
-- [ ] T012 [P] [US1] Add PreToolUse hook result processing in packages/agent-sdk/src/managers/aiManager.ts
-- [ ] T013 [P] [US1] Add PostToolUse hook result processing in packages/agent-sdk/src/managers/aiManager.ts
-- [ ] T014 [P] [US1] Add Stop hook result processing in packages/agent-sdk/src/managers/aiManager.ts
-- [ ] T015 [US1] Implement exit code 0 handling logic in packages/agent-sdk/src/managers/hookManager.ts
-- [ ] T016 [US1] Add hook success validation and error handling in packages/agent-sdk/src/agent.ts
+- [x] T011 [P] [US1] Add UserPromptSubmit hook result processing in packages/agent-sdk/src/agent.ts
+- [x] T012 [P] [US1] Add PreToolUse hook result processing in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T013 [P] [US1] Add PostToolUse hook result processing in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T014 [P] [US1] Add Stop hook result processing in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T015 [US1] Implement exit code 0 handling logic in packages/agent-sdk/src/managers/hookManager.ts
+- [x] T016 [US1] Add hook success validation and error handling in packages/agent-sdk/src/agent.ts
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -70,20 +70,20 @@
 
 ### Tests for User Story 2
 
-- [ ] T017 [P] [US2] Create blocking error test file in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-blocking-errors.test.ts
-- [ ] T018 [P] [US2] Test UserPromptSubmit blocking with prompt erasure in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-blocking-errors.test.ts
-- [ ] T019 [P] [US2] Test PreToolUse tool blocking with agent feedback in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-blocking-errors.test.ts
-- [ ] T020 [P] [US2] Test PostToolUse feedback without blocking in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-blocking-errors.test.ts
-- [ ] T021 [P] [US2] Test Stop operation blocking with agent feedback in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-blocking-errors.test.ts
+- [x] T017 [P] [US2] Create blocking error test file in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-blocking-errors.test.ts
+- [x] T018 [P] [US2] Test UserPromptSubmit blocking with prompt erasure in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-blocking-errors.test.ts
+- [x] T019 [P] [US2] Test PreToolUse tool blocking with agent feedback in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-blocking-errors.test.ts
+- [x] T020 [P] [US2] Test PostToolUse feedback without blocking in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-blocking-errors.test.ts
+- [x] T021 [P] [US2] Test Stop operation blocking with agent feedback in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-blocking-errors.test.ts
 
 ### Implementation for User Story 2
 
-- [ ] T022 [US2] Implement UserPromptSubmit exit code 2 blocking in packages/agent-sdk/src/agent.ts
-- [ ] T023 [US2] Implement PreToolUse exit code 2 processing in packages/agent-sdk/src/managers/aiManager.ts
-- [ ] T024 [US2] Implement PostToolUse exit code 2 processing in packages/agent-sdk/src/managers/aiManager.ts
-- [ ] T025 [US2] Implement Stop exit code 2 processing with AI continuation in packages/agent-sdk/src/managers/aiManager.ts
-- [ ] T026 [US2] Add exit code 2 routing logic in packages/agent-sdk/src/managers/hookManager.ts
-- [ ] T027 [US2] Integrate prompt erasure functionality in packages/agent-sdk/src/agent.ts
+- [x] T022 [US2] Implement UserPromptSubmit exit code 2 blocking in packages/agent-sdk/src/agent.ts
+- [x] T023 [US2] Implement PreToolUse exit code 2 processing in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T024 [US2] Implement PostToolUse exit code 2 processing in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T025 [US2] Implement Stop exit code 2 processing with AI continuation in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T026 [US2] Add exit code 2 routing logic in packages/agent-sdk/src/managers/hookManager.ts
+- [x] T027 [US2] Integrate prompt erasure functionality in packages/agent-sdk/src/agent.ts
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -97,16 +97,16 @@
 
 ### Tests for User Story 3
 
-- [ ] T028 [P] [US3] Create non-blocking error test file in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-non-blocking-errors.test.ts
-- [ ] T029 [P] [US3] Test non-blocking errors show to user in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-non-blocking-errors.test.ts
-- [ ] T030 [P] [US3] Test execution continues after non-blocking errors in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-non-blocking-errors.test.ts
+- [x] T028 [P] [US3] Create non-blocking error test file in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-non-blocking-errors.test.ts
+- [x] T029 [P] [US3] Test non-blocking errors show to user in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-non-blocking-errors.test.ts
+- [x] T030 [P] [US3] Test execution continues after non-blocking errors in packages/agent-sdk/tests/agent/hooks-exitcode-output/hook-non-blocking-errors.test.ts
 
 ### Implementation for User Story 3
 
-- [ ] T031 [P] [US3] Add non-blocking error handling in packages/agent-sdk/src/agent.ts
-- [ ] T032 [P] [US3] Add non-blocking error handling in packages/agent-sdk/src/managers/aiManager.ts
-- [ ] T033 [US3] Implement non-blocking exit code routing in packages/agent-sdk/src/managers/hookManager.ts
-- [ ] T034 [US3] Add error display logic for all hook types in packages/agent-sdk/src/managers/hookManager.ts
+- [x] T031 [P] [US3] Add non-blocking error handling in packages/agent-sdk/src/agent.ts
+- [x] T032 [P] [US3] Add non-blocking error handling in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T033 [US3] Implement non-blocking exit code routing in packages/agent-sdk/src/managers/hookManager.ts
+- [x] T034 [US3] Add error display logic for all hook types in packages/agent-sdk/src/managers/hookManager.ts
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -116,9 +116,9 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T035 Run type check validation: pnpm run type-check
-- [ ] T036 Run lint validation: pnpm run lint
-- [ ] T037 Build agent-sdk package: pnpm build
+- [x] T035 Run type check validation: pnpm run type-check
+- [x] T036 Run lint validation: pnpm run lint
+- [x] T037 Build agent-sdk package: pnpm build
 
 ---
 

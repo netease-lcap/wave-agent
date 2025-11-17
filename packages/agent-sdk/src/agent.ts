@@ -486,26 +486,7 @@ export class Agent {
       // Add user message to history
       this.addToInputHistory(content);
 
-      // Execute UserPromptSubmit hooks before processing the prompt
-      if (this.hookManager) {
-        try {
-          await this.hookManager.executeHooks("UserPromptSubmit", {
-            event: "UserPromptSubmit",
-            projectDir: this.workdir,
-            timestamp: new Date(),
-            // UserPromptSubmit doesn't need toolName
-            sessionId: this.sessionId,
-            transcriptPath: this.messageManager.getTranscriptPath(),
-            cwd: this.workdir,
-            userPrompt: content,
-          });
-        } catch (error) {
-          this.logger?.warn("UserPromptSubmit hooks execution failed:", error);
-          // Continue processing even if hooks fail
-        }
-      }
-
-      // Add user message, will automatically sync to UI
+      // Add user message first, will automatically sync to UI
       this.messageManager.addUserMessage(
         content,
         images?.map((img) => ({
@@ -513,6 +494,53 @@ export class Agent {
           mimeType: img.mimeType,
         })),
       );
+
+      // Execute UserPromptSubmit hooks after adding the user message
+      if (this.hookManager) {
+        try {
+          const hookResults = await this.hookManager.executeHooks(
+            "UserPromptSubmit",
+            {
+              event: "UserPromptSubmit",
+              projectDir: this.workdir,
+              timestamp: new Date(),
+              // UserPromptSubmit doesn't need toolName
+              sessionId: this.sessionId,
+              transcriptPath: this.messageManager.getTranscriptPath(),
+              cwd: this.workdir,
+              userPrompt: content,
+            },
+          );
+
+          // Process hook results and determine if we should continue
+          const processResult = this.hookManager.processHookResults(
+            "UserPromptSubmit",
+            hookResults,
+            {
+              addUserMessage: (content: string) =>
+                this.messageManager.addUserMessage(content),
+              addErrorBlock: (error: string) =>
+                this.messageManager.addErrorBlock(error),
+              removeLastUserMessage: () =>
+                this.messageManager.removeLastUserMessage(),
+              updateToolBlock: (params) =>
+                this.messageManager.updateToolBlock(params),
+            },
+          );
+
+          // If hook processing indicates we should block (exit code 2), stop here
+          if (processResult.shouldBlock) {
+            this.logger?.info(
+              "UserPromptSubmit hook blocked prompt processing with error:",
+              processResult.errorMessage,
+            );
+            return; // Don't send to AI
+          }
+        } catch (error) {
+          this.logger?.warn("UserPromptSubmit hooks execution failed:", error);
+          // Continue processing even if hooks fail
+        }
+      }
 
       // Send AI message
       await this.aiManager.sendAIMessage();
