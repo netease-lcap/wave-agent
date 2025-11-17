@@ -9,9 +9,7 @@ import type { ToolContext } from "../../src/tools/types.js";
 import type { ChildProcess } from "child_process";
 
 // Mock child_process
-vi.mock("child_process", () => ({
-  spawn: vi.fn(),
-}));
+vi.mock("child_process");
 
 // Mock logger
 vi.mock("../../utils/logger", () => ({

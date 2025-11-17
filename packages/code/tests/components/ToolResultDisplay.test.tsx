@@ -5,9 +5,7 @@ import { ToolResultDisplay } from "../../src/components/ToolResultDisplay.js";
 import type { ToolBlock } from "wave-agent-sdk";
 
 // Mock toolManager - no longer needed since we removed display fields
-vi.mock("wave-agent-sdk", () => ({
-  toolManager: {},
-}));
+vi.mock("wave-agent-sdk");
 
 describe("ToolResultDisplay Component", () => {
   beforeEach(() => {

@@ -3,7 +3,7 @@ import {
   isBinaryDocument,
   getBinaryDocumentError,
   BINARY_DOCUMENT_EXTENSIONS,
-} from "../src/utils/fileFormat.js";
+} from "../../src/utils/fileFormat.js";
 
 describe("fileFormat utilities", () => {
   describe("isBinaryDocument", () => {

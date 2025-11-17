@@ -12,9 +12,7 @@ function hasContent(
 }
 
 // Mock AI service directly in this file
-vi.mock("@/services/aiService", () => ({
-  callAgent: vi.fn(),
-}));
+vi.mock("@/services/aiService");
 
 // Get access to the mocked tool manager
 let mockToolExecute: ReturnType<typeof vi.fn>;

@@ -13,9 +13,7 @@ function hasContent(
 }
 
 // Mock AI service directly in this file
-vi.mock("@/services/aiService", () => ({
-  callAgent: vi.fn(),
-}));
+vi.mock("@/services/aiService");
 
 describe("Hook Success Behavior (User Story 1)", () => {
   let agent: Agent;

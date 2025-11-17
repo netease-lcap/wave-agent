@@ -1,9 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/agent.js";
-import { promises as fs } from "fs";
-import path from "path";
-import os from "os";
+
+// Mock fs operations
+vi.mock("fs/promises", () => ({
+  mkdtemp: vi.fn(),
+  rm: vi.fn(),
+  readFile: vi.fn(),
+  writeFile: vi.fn(),
+  access: vi.fn(),
+  mkdir: vi.fn(),
+  readdir: vi.fn(),
+  stat: vi.fn(),
+}));
+
+// Mock os module
+vi.mock("os", () => ({
+  default: {
+    homedir: vi.fn(() => "/mock/home"),
+    tmpdir: vi.fn(() => "/mock/tmp"),
+  },
+  homedir: vi.fn(() => "/mock/home"),
+  tmpdir: vi.fn(() => "/mock/tmp"),
+}));
 
 // Mock the aiService
 vi.mock("@/services/aiService", () => ({
@@ -12,14 +31,6 @@ vi.mock("@/services/aiService", () => ({
     usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
   }),
   compressMessages: vi.fn().mockResolvedValue("Compressed content"),
-}));
-
-// Mock the session service
-vi.mock("@/services/session", () => ({
-  saveSession: vi.fn().mockResolvedValue(undefined),
-  loadSession: vi.fn(() => Promise.resolve(null)),
-  getLatestSession: vi.fn(() => Promise.resolve(null)),
-  cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock memory
@@ -38,14 +49,25 @@ vi.mock("@/services/memory", () => ({
 describe("Agent User Memory Integration", () => {
   let agent: Agent;
   let mockCallbacks: AgentCallbacks;
-  let tempDir: string;
+  let mockTempDir: string;
 
   let mockCallAgent: ReturnType<typeof vi.fn>;
   let mockGetCombinedMemoryContent: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
-    // Create a temporary directory for testing
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "aimanager-test-"));
+    // Set up mock directory path
+    mockTempDir = "/mock/tmp/aimanager-test-123";
+    
+    // Setup fs mock implementations
+    const fs = await import("fs/promises");
+    vi.mocked(fs.mkdtemp).mockResolvedValue(mockTempDir);
+    vi.mocked(fs.rm).mockResolvedValue(undefined);
+    vi.mocked(fs.access).mockResolvedValue(undefined);
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.readFile).mockResolvedValue('[]');
+    vi.mocked(fs.readdir).mockResolvedValue([]);
+    vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
     // Get mock references after module imports
     const { callAgent } = await import("@/services/aiService.js");
@@ -62,7 +84,7 @@ describe("Agent User Memory Integration", () => {
     };
 
     agent = await Agent.create({
-      workdir: tempDir,
+      workdir: mockTempDir,
       callbacks: mockCallbacks,
     });
   });
@@ -72,7 +94,7 @@ describe("Agent User Memory Integration", () => {
     if (agent) {
       await agent.destroy();
     }
-    await fs.rm(tempDir, { recursive: true, force: true });
+    vi.clearAllMocks();
   });
 
   it("should read and combine project and user memory when sending AI message", async () => {
@@ -86,7 +108,7 @@ describe("Agent User Memory Integration", () => {
       await agent.destroy();
     }
     agent = await Agent.create({
-      workdir: tempDir,
+      workdir: mockTempDir,
       callbacks: mockCallbacks,
     });
 
@@ -111,7 +133,7 @@ describe("Agent User Memory Integration", () => {
       await agent.destroy();
     }
     agent = await Agent.create({
-      workdir: tempDir,
+      workdir: mockTempDir,
       callbacks: mockCallbacks,
     });
 
@@ -135,7 +157,7 @@ describe("Agent User Memory Integration", () => {
       await agent.destroy();
     }
     agent = await Agent.create({
-      workdir: tempDir,
+      workdir: mockTempDir,
       callbacks: mockCallbacks,
     });
 
@@ -159,7 +181,7 @@ describe("Agent User Memory Integration", () => {
       await agent.destroy();
     }
     agent = await Agent.create({
-      workdir: tempDir,
+      workdir: mockTempDir,
       callbacks: mockCallbacks,
     });
 
@@ -199,7 +221,7 @@ describe("Agent User Memory Integration", () => {
     ];
 
     agent = await Agent.create({
-      workdir: tempDir,
+      workdir: mockTempDir,
       messages: initialMessages,
     });
 
@@ -218,19 +240,19 @@ describe("Agent User Memory Integration", () => {
   });
 
   it("should create separate instances for different workdirs", async () => {
-    // Create temporary directories
-    const tempDir1 = await fs.mkdtemp(path.join(os.tmpdir(), "test1-"));
-    const tempDir2 = await fs.mkdtemp(path.join(os.tmpdir(), "test2-"));
+    // Set up mock directory paths  
+    const mockTempDir1 = "/mock/tmp/test1-123";
+    const mockTempDir2 = "/mock/tmp/test2-456";
 
     // Create agent for first manager
     const agent1 = await Agent.create({
-      workdir: tempDir1,
+      workdir: mockTempDir1,
       callbacks: mockCallbacks,
     });
 
     // Create agent for second manager
     const agent2 = await Agent.create({
-      workdir: tempDir2,
+      workdir: mockTempDir2,
       callbacks: mockCallbacks,
     });
 
@@ -241,7 +263,5 @@ describe("Agent User Memory Integration", () => {
     // Clean up
     await agent1.destroy();
     await agent2.destroy();
-    await fs.rm(tempDir1, { recursive: true, force: true });
-    await fs.rm(tempDir2, { recursive: true, force: true });
   });
 });

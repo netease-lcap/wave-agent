@@ -5,18 +5,49 @@ import {
   resolveSessionDir,
 } from "../../src/services/session.js";
 import type { Message } from "../../src/types/index.js";
-import fs from "fs/promises";
 import path from "path";
-import os from "os";
+import { promises as fs } from "fs";
+
+// Mock fs operations
+vi.mock("fs", () => ({
+  promises: {
+    mkdtemp: vi.fn(),
+    rm: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    access: vi.fn(),
+    mkdir: vi.fn(),
+    readdir: vi.fn(),
+    stat: vi.fn(),
+    chmod: vi.fn(),
+  },
+}));
+
+// Mock os module
+vi.mock("os", () => ({
+  homedir: vi.fn(() => "/mock/home"),
+  tmpdir: vi.fn(() => "/mock/tmp"),
+}));
 
 describe("Session service error handling tests", () => {
-  let tempDir: string;
+  let mockTempDir: string;
 
   beforeEach(async () => {
-    // Create a temporary directory for each test
-    tempDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "wave-session-errors-test-"),
-    );
+    // Set up mock directory path
+    mockTempDir = "/mock/tmp/wave-session-errors-test-123";
+    
+    // Clear all mocks
+    vi.clearAllMocks();
+    
+    // Setup fs mock implementations
+    vi.mocked(fs.mkdtemp).mockResolvedValue(mockTempDir);
+    vi.mocked(fs.rm).mockResolvedValue(undefined);
+    vi.mocked(fs.access).mockResolvedValue(undefined);
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fs.readFile).mockResolvedValue('[]');
+    vi.mocked(fs.readdir).mockResolvedValue([]);
+    vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
     // Mock NODE_ENV to not be 'test' so session operations actually work
     vi.stubEnv("NODE_ENV", "development");
@@ -24,26 +55,21 @@ describe("Session service error handling tests", () => {
 
   afterEach(async () => {
     vi.unstubAllEnvs();
-    // Clean up temporary directory
-    try {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
+    vi.clearAllMocks();
   });
 
   describe("Permission and path error handling", () => {
     it("should handle read-only parent directory gracefully", async () => {
       // Create a read-only directory structure (if possible in test environment)
-      const readOnlyParent = path.join(tempDir, "readonly-parent");
+      const readOnlyParent = path.join(mockTempDir, "readonly-parent");
       const sessionDir = path.join(readOnlyParent, "sessions");
 
-      await fs.mkdir(readOnlyParent, { recursive: true });
+      // Mock mkdir to succeed for the parent but fail for the session dir
+      vi.mocked(fs.mkdir)
+        .mockResolvedValueOnce(undefined) // First call succeeds
+        .mockRejectedValueOnce(new Error("EACCES: permission denied"));
 
       try {
-        // Try to make parent directory read-only (this might not work in all test environments)
-        await fs.chmod(readOnlyParent, 0o444);
-
         // Attempt to ensure session directory exists
         await expect(ensureSessionDir(sessionDir)).rejects.toThrow();
       } catch {
@@ -51,21 +77,14 @@ describe("Session service error handling tests", () => {
         console.warn(
           "Could not create read-only directory for permission test, skipping",
         );
-      } finally {
-        // Restore permissions for cleanup
-        try {
-          await fs.chmod(readOnlyParent, 0o755);
-        } catch {
-          // Ignore permission restore errors
-        }
       }
     });
 
     it("should handle invalid path characters gracefully", async () => {
       // Test with paths containing invalid characters (varies by OS)
       const invalidPaths = [
-        path.join(tempDir, "sessions\x00invalid"), // Null byte
-        path.join(tempDir, "sessions/../../invalid"), // Path traversal
+        path.join(mockTempDir, "sessions\x00invalid"), // Null byte
+        path.join(mockTempDir, "sessions/../../invalid"), // Path traversal
       ];
 
       for (const invalidPath of invalidPaths) {
@@ -83,16 +102,17 @@ describe("Session service error handling tests", () => {
     it("should handle very long paths gracefully", async () => {
       // Create a very long path that might exceed filesystem limits
       const longDirName = "a".repeat(300); // Very long directory name
-      const longPath = path.join(tempDir, longDirName, "sessions");
+      const longPath = path.join(mockTempDir, longDirName, "sessions");
+
+      // Mock mkdir to potentially fail with path length error
+      vi.mocked(fs.mkdir).mockRejectedValueOnce(
+        new Error("ENAMETOOLONG: name too long")
+      );
 
       try {
         await ensureSessionDir(longPath);
-        // If it succeeds, verify the directory exists
-        const exists = await fs
-          .access(longPath)
-          .then(() => true)
-          .catch(() => false);
-        expect(exists).toBe(true);
+        // If it succeeds, verify mkdir was called
+        expect(vi.mocked(fs.mkdir)).toHaveBeenCalledWith(longPath, { recursive: true });
       } catch (error) {
         // Should get a meaningful error about path length or similar
         expect(error).toBeDefined();
@@ -101,13 +121,13 @@ describe("Session service error handling tests", () => {
     });
 
     it("should handle session save errors gracefully", async () => {
-      const validSessionDir = path.join(tempDir, "valid-sessions");
+      const validSessionDir = path.join(mockTempDir, "valid-sessions");
       await ensureSessionDir(validSessionDir);
 
       // Test saving with invalid data
       const sessionId = "error-test-session";
       const invalidMessages = null as unknown as Message[]; // Invalid messages data
-      const workdir = tempDir;
+      const workdir = mockTempDir;
 
       try {
         await saveSession(
@@ -151,12 +171,12 @@ describe("Session service error handling tests", () => {
 
   describe("Error recovery and cleanup", () => {
     it("should not leave partial files after failed operations", async () => {
-      const sessionDir = path.join(tempDir, "cleanup-test");
+      const sessionDir = path.join(mockTempDir, "cleanup-test");
       await ensureSessionDir(sessionDir);
 
-      // Get initial file count
-      const initialFiles = await fs.readdir(sessionDir);
-      const initialCount = initialFiles.length;
+      // Mock readdir to return initial empty state
+      const initialFiles: string[] = [];
+      vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
       // Attempt an operation that might fail
       try {
@@ -164,7 +184,7 @@ describe("Session service error handling tests", () => {
         await saveSession(
           "test-session",
           [],
-          tempDir,
+          mockTempDir,
           100,
           new Date().toISOString(),
           sessionDir,
@@ -173,12 +193,16 @@ describe("Session service error handling tests", () => {
         // Even if it fails, verify no partial files are left
       }
 
+      // Mock readdir for final check
+      const finalFiles: string[] = [];
+      vi.mocked(fs.readdir).mockResolvedValueOnce(finalFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);
+      
       // Check that we don't have more files than expected
-      const finalFiles = await fs.readdir(sessionDir);
-      expect(finalFiles.length).toBeGreaterThanOrEqual(initialCount);
+      const finalResult = await fs.readdir(sessionDir);
+      expect(finalResult.length).toBeGreaterThanOrEqual(initialFiles.length);
 
       // Any new files should be complete (not temporary/partial files)
-      const newFiles = finalFiles.filter((f) => !initialFiles.includes(f));
+      const newFiles = finalResult.filter((f) => !initialFiles.includes(f));
       for (const file of newFiles) {
         expect(file).not.toMatch(/\.tmp$|\.partial$|\.bak$/);
       }

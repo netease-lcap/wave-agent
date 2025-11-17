@@ -9,9 +9,7 @@ import {
 import type { SkillMetadata } from "../../src/types/index.js";
 
 // Mock fs module
-vi.mock("fs", () => ({
-  readFileSync: vi.fn(),
-}));
+vi.mock("fs");
 
 const mockReadFileSync = vi.mocked(readFileSync);
 

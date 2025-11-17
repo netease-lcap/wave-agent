@@ -6,9 +6,7 @@ import type { ChildProcess } from "child_process";
 const testContext: ToolContext = { workdir: "/test/workdir" };
 
 // Mock child_process
-vi.mock("child_process", () => ({
-  spawn: vi.fn(),
-}));
+vi.mock("child_process");
 
 // Mock ripgrep path
 vi.mock("@vscode/ripgrep", () => ({

@@ -1,18 +1,50 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { saveSession, loadSession } from "../../src/services/session.js";
-import fs from "fs/promises";
 import path from "path";
-import os from "os";
+import { readdir, stat } from "fs/promises";
+
+// Mock fs operations - import as the module structure expected
+vi.mock("fs", () => ({
+  promises: {
+    mkdtemp: vi.fn(),
+    rm: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    access: vi.fn(),
+    mkdir: vi.fn(),
+    readdir: vi.fn(),
+    stat: vi.fn(),
+  },
+}));
+
+// Mock os module
+vi.mock("os", () => ({
+  homedir: vi.fn(() => "/mock/home"),
+  tmpdir: vi.fn(() => "/mock/tmp"),
+}));
 
 describe("Session service custom directory tests", () => {
-  let tempDir: string;
+  let mockTempDir: string;
   let customSessionDir: string;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "wave-session-service-test-"),
-    );
-    customSessionDir = path.join(tempDir, "custom-sessions");
+    // Set up mock directory paths
+    mockTempDir = "/mock/tmp/wave-session-service-test-123";
+    customSessionDir = path.join(mockTempDir, "custom-sessions");
+    
+    // Clear all mocks
+    vi.clearAllMocks();
+    
+    // Setup fs mock implementations using imported module
+    const { promises: fsPromises } = await import("fs");
+    vi.mocked(fsPromises.mkdtemp).mockResolvedValue(mockTempDir);
+    vi.mocked(fsPromises.rm).mockResolvedValue(undefined);
+    vi.mocked(fsPromises.access).mockResolvedValue(undefined);
+    vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fsPromises.readFile).mockResolvedValue('[]');
+    vi.mocked(fsPromises.readdir).mockResolvedValue([]);
+    vi.mocked(fsPromises.stat).mockResolvedValue({ isFile: () => true } as Awaited<ReturnType<typeof stat>>);
 
     // Mock NODE_ENV to not be 'test' so saveSession actually works
     vi.stubEnv("NODE_ENV", "development");
@@ -20,11 +52,7 @@ describe("Session service custom directory tests", () => {
 
   afterEach(async () => {
     vi.unstubAllEnvs();
-    try {
-      await fs.rm(tempDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
+    vi.clearAllMocks();
   });
 
   describe("saveSession with custom directory", () => {
@@ -46,16 +74,13 @@ describe("Session service custom directory tests", () => {
         customSessionDir,
       );
 
-      // Verify session file exists in custom directory
-      const sessionPath = path.join(
-        customSessionDir,
-        `session_${sessionId.slice(-8)}.json`,
-      );
-      const fileExists = await fs
-        .access(sessionPath)
-        .then(() => true)
-        .catch(() => false);
-      expect(fileExists).toBe(true);
+      // Verify session file would be written to custom directory
+      const { promises: fsPromises } = await import("fs");
+      expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalled();
+      const writeCall = vi.mocked(fsPromises.writeFile).mock.calls[0];
+      const sessionPath = writeCall[0] as string;
+      expect(sessionPath).toContain(customSessionDir);
+      expect(sessionPath).toMatch(/session_.*\.json$/);
     });
   });
 
@@ -69,7 +94,27 @@ describe("Session service custom directory tests", () => {
         },
       ];
 
-      // Save session first
+      // Mock readFile to return the session data for loading
+      const sessionData = {
+        id: sessionId,
+        timestamp: new Date().toISOString(),
+        version: "1.0",
+        messages,
+        metadata: {
+          workdir: process.cwd(),
+          startedAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+          latestTotalTokens: 10,
+        },
+      };
+      const { promises: fsPromises } = await import("fs");
+      vi.mocked(fsPromises.readFile).mockResolvedValueOnce(JSON.stringify(sessionData));
+      
+      // Mock readdir to return the session file
+      const sessionFileName = `session_${sessionId.slice(-8)}.json`;
+      vi.mocked(fsPromises.readdir).mockResolvedValueOnce([sessionFileName] as unknown as Awaited<ReturnType<typeof readdir>>);
+      
+      // Save session first (this will be mocked)
       await saveSession(
         sessionId,
         messages,
@@ -93,6 +138,11 @@ describe("Session service custom directory tests", () => {
     });
 
     it("should return null for non-existent session", async () => {
+      // Mock readdir to return empty array (no sessions)
+      const { promises: fsPromises } = await import("fs");
+      // Mock readFile to throw ENOENT error to simulate file not found
+      vi.mocked(fsPromises.readFile).mockRejectedValueOnce({ code: "ENOENT" });
+      
       const result = await loadSession(
         "non-existent-session",
         customSessionDir,
