@@ -1,15 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
-import { saveSession } from "@/services/session.js";
-
-// Mock the session service
-vi.mock("@/services/session", () => ({
-  saveSession: vi.fn(),
-  loadSession: vi.fn(() => Promise.resolve(null)),
-  getLatestSession: vi.fn(() => Promise.resolve(null)),
-  cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
-}));
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -29,10 +20,6 @@ describe("Agent Diff Integration Tests", () => {
   let aiServiceCallCount: number;
 
   beforeEach(async () => {
-    // Mock session service
-    const mockSaveSession = vi.mocked(saveSession);
-    mockSaveSession.mockImplementation(vi.fn());
-
     // Create mock callbacks
     const mockCallbacks = {
       onMessagesChange: vi.fn(),

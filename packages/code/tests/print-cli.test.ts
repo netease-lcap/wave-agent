@@ -2,26 +2,13 @@ import { test, expect, vi, afterEach } from "vitest";
 import { Agent } from "wave-agent-sdk";
 
 // Mock displayUsageSummary
-vi.mock("../src/utils/usageSummary.js", () => ({
-  displayUsageSummary: vi.fn(),
-}));
+vi.mock("../src/utils/usageSummary.js");
 
 // Mock the Agent SDK
-vi.mock("wave-agent-sdk", () => ({
-  Agent: {
-    create: vi.fn(),
-  },
-}));
+vi.mock("wave-agent-sdk");
 
 // Mock logger
-vi.mock("../src/utils/logger.js", () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+vi.mock("../src/utils/logger.js");
 
 // Mock process.exit
 const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
@@ -81,7 +68,7 @@ test("startPrintCli sends message and exits after completion", async () => {
   }
 
   // Verify that the Agent was created
-  expect(Agent.create).toHaveBeenCalledWith({
+  expect(vi.mocked(Agent.create)).toHaveBeenCalledWith({
     callbacks: expect.any(Object),
     restoreSessionId: undefined,
     continueLastSession: undefined,
@@ -160,7 +147,7 @@ test("startPrintCli works with continue session", async () => {
   }
 
   // Verify that the Agent was created with continue flag
-  expect(Agent.create).toHaveBeenCalledWith({
+  expect(vi.mocked(Agent.create)).toHaveBeenCalledWith({
     callbacks: expect.any(Object),
     restoreSessionId: undefined,
     continueLastSession: true,

@@ -12,23 +12,28 @@ const mockUnlinkSync = vi.hoisted(() => vi.fn());
 const mockJoin = vi.hoisted(() => vi.fn());
 const mockTmpdir = vi.hoisted(() => vi.fn());
 
+// Mock child_process with dynamic import support
 vi.mock("child_process", () => ({
   exec: mockExec,
 }));
 
+// Mock util module
 vi.mock("util", () => ({
-  promisify: vi.fn((fn) => fn),
+  promisify: vi.fn(() => mockExec),
 }));
 
+// Mock fs module
 vi.mock("fs", () => ({
   existsSync: mockExistsSync,
   unlinkSync: mockUnlinkSync,
 }));
 
+// Mock path module
 vi.mock("path", () => ({
   join: mockJoin,
 }));
 
+// Mock os module
 vi.mock("os", () => ({
   tmpdir: mockTmpdir,
 }));

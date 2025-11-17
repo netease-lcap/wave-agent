@@ -1,25 +1,48 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, rmSync, existsSync, mkdtempSync } from "fs";
-import { join } from "path";
-import { tmpdir } from "os";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { loadCustomSlashCommands } from "../../src/utils/customCommands.js";
+import * as fs from "fs";
+
+// Mock fs operations
+vi.mock("fs", () => ({
+  mkdirSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  rmSync: vi.fn(),
+  existsSync: vi.fn(() => true),
+  mkdtempSync: vi.fn(),
+  readdirSync: vi.fn(() => []),
+  readFileSync: vi.fn(() => ""),
+  statSync: vi.fn(() => ({ isFile: () => true })),
+}));
+
+// Mock os module
+vi.mock("os", () => ({
+  default: {
+    tmpdir: vi.fn(() => "/mock/tmp"),
+    homedir: vi.fn(() => "/mock/home"),
+  },
+  tmpdir: vi.fn(() => "/mock/tmp"),
+  homedir: vi.fn(() => "/mock/home"),
+}));
 
 describe("Custom Slash Commands with Description", () => {
-  let testDir: string;
-  let commandsDir: string;
+  let mockTestDir: string;
 
   beforeEach(() => {
-    // Create temporary test directory using system temp directory
-    testDir = mkdtempSync(join(tmpdir(), "wave-test-"));
-    commandsDir = join(testDir, ".wave", "commands");
-    mkdirSync(commandsDir, { recursive: true });
+    // Set up mock directory paths
+    mockTestDir = "/mock/tmp/wave-test-123";
+    
+    // Setup fs mock implementations
+    vi.mocked(fs.mkdtempSync).mockReturnValue(mockTestDir);
+    vi.mocked(fs.mkdirSync).mockReturnValue(undefined);
+    vi.mocked(fs.writeFileSync).mockReturnValue(undefined);
+    vi.mocked(fs.rmSync).mockReturnValue(undefined);
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync).mockReturnValue([]);
+    vi.mocked(fs.readFileSync).mockReturnValue("");
   });
 
   afterEach(() => {
-    // Clean up temporary directory
-    if (existsSync(testDir)) {
-      rmSync(testDir, { recursive: true, force: true });
-    }
+    vi.clearAllMocks();
   });
 
   it("should parse custom description from frontmatter", () => {
@@ -30,9 +53,12 @@ model: claude-3-5-sonnet-20241022
 
 This is a test command content.`;
 
-    writeFileSync(join(commandsDir, "test-command.md"), commandContent);
+    
+    // Mock readFileSync to return the command content
+    vi.mocked(fs.readFileSync).mockReturnValue(commandContent);
+    vi.mocked(fs.readdirSync).mockReturnValue(["test-command.md"] as unknown as ReturnType<typeof fs.readdirSync>);
 
-    const commands = loadCustomSlashCommands(testDir);
+    const commands = loadCustomSlashCommands(mockTestDir);
     const testCommand = commands.find((cmd) => cmd.name === "test-command");
 
     expect(testCommand).toBeDefined();
@@ -47,9 +73,12 @@ model: claude-3-5-sonnet-20241022
 
 This is a test command without description.`;
 
-    writeFileSync(join(commandsDir, "no-desc-command.md"), commandContent);
+    
+    // Mock readFileSync to return the command content
+    vi.mocked(fs.readFileSync).mockReturnValue(commandContent);
+    vi.mocked(fs.readdirSync).mockReturnValue(["no-desc-command.md"] as unknown as ReturnType<typeof fs.readdirSync>);
 
-    const commands = loadCustomSlashCommands(testDir);
+    const commands = loadCustomSlashCommands(mockTestDir);
     const testCommand = commands.find((cmd) => cmd.name === "no-desc-command");
 
     expect(testCommand).toBeDefined();
@@ -60,9 +89,12 @@ This is a test command without description.`;
   it("should handle commands with no frontmatter", () => {
     const commandContent = `This is a simple command without any frontmatter.`;
 
-    writeFileSync(join(commandsDir, "simple-command.md"), commandContent);
+    
+    // Mock readFileSync to return the command content
+    vi.mocked(fs.readFileSync).mockReturnValue(commandContent);
+    vi.mocked(fs.readdirSync).mockReturnValue(["simple-command.md"] as unknown as ReturnType<typeof fs.readdirSync>);
 
-    const commands = loadCustomSlashCommands(testDir);
+    const commands = loadCustomSlashCommands(mockTestDir);
     const testCommand = commands.find((cmd) => cmd.name === "simple-command");
 
     expect(testCommand).toBeDefined();

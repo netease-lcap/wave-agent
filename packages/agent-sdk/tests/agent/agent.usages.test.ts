@@ -3,14 +3,6 @@ import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import type { Usage } from "@/types/index.js";
 
-// Mock the session service
-vi.mock("@/services/session", () => ({
-  saveSession: vi.fn(),
-  loadSession: vi.fn(() => Promise.resolve(null)),
-  getLatestSession: vi.fn(() => Promise.resolve(null)),
-  cleanupExpiredSessions: vi.fn(() => Promise.resolve()),
-}));
-
 // Mock AI Service
 vi.mock("@/services/aiService");
 
