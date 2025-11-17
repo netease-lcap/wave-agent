@@ -25,6 +25,7 @@ import {
   loadMergedHooksConfig,
 } from "../services/hook.js";
 import type { Logger } from "../types/index.js";
+import type { MessageManager } from "./messageManager.js";
 
 export interface IHookManager {
   // Load configuration from settings
@@ -271,17 +272,7 @@ export class HookManager implements IHookManager {
   processHookResults(
     event: HookEvent,
     results: HookExecutionResult[],
-    messageManager?: {
-      addUserMessage: (content: string) => void;
-      addErrorBlock: (error: string) => void;
-      removeLastUserMessage: () => void;
-      updateToolBlock: (params: {
-        toolId: string;
-        result: string;
-        success: boolean;
-        error?: string;
-      }) => void;
-    },
+    messageManager?: MessageManager,
     toolId?: string,
     originalToolResult?: string,
   ): {
@@ -333,9 +324,7 @@ export class HookManager implements IHookManager {
   private handleHookSuccess(
     event: HookEvent,
     result: HookExecutionResult,
-    messageManager: {
-      addUserMessage: (content: string) => void;
-    },
+    messageManager: MessageManager,
   ): void {
     if (event === "UserPromptSubmit" && result.stdout?.trim()) {
       // Inject stdout as user message context for UserPromptSubmit
@@ -350,17 +339,7 @@ export class HookManager implements IHookManager {
   private handleBlockingError(
     event: HookEvent,
     result: HookExecutionResult,
-    messageManager: {
-      addUserMessage: (content: string) => void;
-      addErrorBlock: (error: string) => void;
-      removeLastUserMessage: () => void;
-      updateToolBlock: (params: {
-        toolId: string;
-        result: string;
-        success: boolean;
-        error?: string;
-      }) => void;
-    },
+    messageManager: MessageManager,
     toolId?: string,
     originalToolResult?: string,
   ): {
@@ -419,9 +398,7 @@ export class HookManager implements IHookManager {
    */
   private handleNonBlockingError(
     result: HookExecutionResult,
-    messageManager: {
-      addErrorBlock: (error: string) => void;
-    },
+    messageManager: MessageManager,
   ): void {
     const errorMessage = result.stderr?.trim() || "Hook execution failed";
     messageManager.addErrorBlock(errorMessage);

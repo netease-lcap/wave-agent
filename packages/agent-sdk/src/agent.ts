@@ -516,16 +516,7 @@ export class Agent {
           const processResult = this.hookManager.processHookResults(
             "UserPromptSubmit",
             hookResults,
-            {
-              addUserMessage: (content: string) =>
-                this.messageManager.addUserMessage(content),
-              addErrorBlock: (error: string) =>
-                this.messageManager.addErrorBlock(error),
-              removeLastUserMessage: () =>
-                this.messageManager.removeLastUserMessage(),
-              updateToolBlock: (params) =>
-                this.messageManager.updateToolBlock(params),
-            },
+            this.messageManager,
           );
 
           // If hook processing indicates we should block (exit code 2), stop here

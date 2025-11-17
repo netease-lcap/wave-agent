@@ -359,7 +359,13 @@ export class AIManager {
 
               try {
                 // Execute PreToolUse hooks before tool execution
-                await this.executePreToolUseHooks(toolName, toolArgs);
+                const shouldExecuteTool = await this.executePreToolUseHooks(toolName, toolArgs);
+                
+                // If PreToolUse hooks blocked execution, skip tool execution
+                if (!shouldExecuteTool) {
+                  this.logger?.info(`Tool ${toolName} execution blocked by PreToolUse hooks`);
+                  return; // Skip this tool and return from this map function
+                }
 
                 // Create tool execution context
                 const context: ToolContext = {
@@ -404,6 +410,7 @@ export class AIManager {
 
                 // Execute PostToolUse hooks after successful tool completion
                 await this.executePostToolUseHooks(
+                  toolId,
                   toolName,
                   toolArgs,
                   toolResult,
@@ -505,6 +512,11 @@ export class AIManager {
 
       const results = await this.hookManager.executeHooks("Stop", context);
 
+      // Process hook results to handle exit codes and appropriate responses
+      if (results.length > 0) {
+        this.hookManager.processHookResults("Stop", results, this.messageManager);
+      }
+
       // Log hook execution results for debugging
       if (results.length > 0) {
         this.logger?.debug(
@@ -526,12 +538,13 @@ export class AIManager {
 
   /**
    * Execute PreToolUse hooks before tool execution
+   * Returns true if hooks allow tool execution, false if blocked
    */
   private async executePreToolUseHooks(
     toolName: string,
     toolInput?: Record<string, unknown>,
-  ): Promise<void> {
-    if (!this.hookManager) return;
+  ): Promise<boolean> {
+    if (!this.hookManager) return true;
 
     try {
       const context: ExtendedHookExecutionContext = {
@@ -550,6 +563,13 @@ export class AIManager {
         context,
       );
 
+      // Process hook results to handle exit codes and determine if tool should be blocked
+      let shouldContinue = true;
+      if (results.length > 0) {
+        const processResult = this.hookManager.processHookResults("PreToolUse", results, this.messageManager);
+        shouldContinue = processResult.shouldContinue;
+      }
+
       // Log hook execution results for debugging
       if (results.length > 0) {
         this.logger?.debug(
@@ -563,9 +583,12 @@ export class AIManager {
           })),
         );
       }
+
+      return shouldContinue;
     } catch (error) {
       // Hook execution errors should not interrupt the main workflow
       this.logger?.error("PreToolUse hook execution failed:", error);
+      return true; // Allow tool execution on hook errors
     }
   }
 
@@ -573,6 +596,7 @@ export class AIManager {
    * Execute PostToolUse hooks after tool completion
    */
   private async executePostToolUseHooks(
+    toolId: string,
     toolName: string,
     toolInput?: Record<string, unknown>,
     toolResponse?: ToolResult,
@@ -596,6 +620,13 @@ export class AIManager {
         "PostToolUse",
         context,
       );
+
+      // Process hook results to handle exit codes and update tool results
+      if (results.length > 0) {
+        const originalToolResult = toolResponse?.content || "";
+        
+        this.hookManager.processHookResults("PostToolUse", results, this.messageManager, toolId, originalToolResult);
+      }
 
       // Log hook execution results for debugging
       if (results.length > 0) {

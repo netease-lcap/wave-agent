@@ -12,11 +12,21 @@ function hasContent(
 }
 
 // Import test setup to apply mocks
-import "./test-setup.js";
+import "./test-setup.ts";
 
 // Mock AI service directly in this file
 vi.mock("@/services/aiService", () => ({
   callAgent: vi.fn(),
+}));
+
+// Get access to the mocked tool manager
+let mockToolExecute: ReturnType<typeof vi.fn>;
+vi.mock("@/managers/toolManager", () => ({
+  ToolManager: vi.fn().mockImplementation(() => ({
+    execute: (mockToolExecute = vi.fn()),
+    list: vi.fn(() => []),
+    getToolsConfig: vi.fn(() => []),
+  })),
 }));
 
 describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
@@ -127,33 +137,40 @@ describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
         .hookManager;
       const mockExecuteHooks = vi.spyOn(hookManager, "executeHooks");
 
-      // Mock multiple hook executions with mixed results
-      mockExecuteHooks.mockResolvedValue([
-        {
-          success: true,
-          exitCode: 0,
-          stdout: "Context from successful hook",
-          stderr: "",
-          duration: 50,
-          timedOut: false,
-        },
-        {
-          success: false,
-          exitCode: 1,
-          stdout: "",
-          stderr: "First non-blocking error",
-          duration: 100,
-          timedOut: false,
-        },
-        {
-          success: false,
-          exitCode: 3,
-          stdout: "",
-          stderr: "Second non-blocking error",
-          duration: 75,
-          timedOut: false,
-        },
-      ]);
+      // Mock hook executions based on event type
+      mockExecuteHooks.mockImplementation(async (event) => {
+        if (event === "UserPromptSubmit") {
+          // Return mixed results only for UserPromptSubmit hooks
+          return [
+            {
+              success: true,
+              exitCode: 0,
+              stdout: "Context from successful hook",
+              stderr: "",
+              duration: 50,
+              timedOut: false,
+            },
+            {
+              success: false,
+              exitCode: 1,
+              stdout: "",
+              stderr: "First non-blocking error",
+              duration: 100,
+              timedOut: false,
+            },
+            {
+              success: false,
+              exitCode: 3,
+              stdout: "",
+              stderr: "Second non-blocking error",
+              duration: 75,
+              timedOut: false,
+            },
+          ];
+        }
+        // Return empty results for other hook events to avoid duplication
+        return [];
+      });
 
       // Mock AI service - should be called since errors are non-blocking
       const mockCallAgent = vi.mocked(aiService.callAgent);
@@ -272,26 +289,314 @@ describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
     });
   });
 
-  describe("Placeholder tests for other hook types", () => {
-    it("should handle non-blocking errors in PreToolUse hooks", async () => {
-      // This is a placeholder test since we don't have tool execution in this test
-      // In real usage, PreToolUse hooks with non-blocking exit codes would show error blocks
-      // but allow tool execution and overall agent processing to continue
-      expect(true).toBe(true); // Placeholder until tool execution tests are implemented
-    });
+  describe("PreToolUse non-blocking errors", () => {
+    it("should handle non-blocking errors in PreToolUse hooks and continue execution", async () => {
+      // Get the hook manager instance from the agent to mock its executeHooks method
+      const hookManager = (agent as unknown as { hookManager: HookManager })
+        .hookManager;
+      const mockExecuteHooks = vi.spyOn(hookManager, "executeHooks");
 
-    it("should handle non-blocking errors in PostToolUse hooks", async () => {
-      // This is a placeholder test since we don't have tool execution in this test
-      // In real usage, PostToolUse hooks with non-blocking exit codes would show error blocks
-      // but allow the overall agent execution to continue
-      expect(true).toBe(true); // Placeholder until tool execution tests are implemented
-    });
+      // Mock hook executions - return non-blocking error for PreToolUse
+      mockExecuteHooks.mockImplementation(async (event) => {
+        if (event === "PreToolUse") {
+          return [
+            {
+              success: false,
+              exitCode: 1, // Non-blocking error
+              stdout: "",
+              stderr: "PreToolUse warning: deprecated tool usage",
+              duration: 30,
+              timedOut: false,
+            },
+          ];
+        }
+        // Return empty results for other hook events
+        return [];
+      });
 
-    it("should handle non-blocking errors in Stop hooks", async () => {
-      // This is a placeholder test since we don't have Stop hook execution in this test
-      // In real usage, Stop hooks with non-blocking exit codes would show error blocks
-      // but allow the overall agent execution to continue
-      expect(true).toBe(true); // Placeholder until Stop hook execution tests are implemented
+      // Mock tool manager - should be called since PreToolUse non-blocking errors don't block execution
+      mockToolExecute.mockResolvedValue({
+        success: true,
+        content: "Tool executed successfully",
+      });
+
+      // Mock AI service to return tool calls first, then text response
+      const mockCallAgent = vi.mocked(aiService.callAgent);
+      let callCount = 0;
+      mockCallAgent.mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            content: "",
+            tool_calls: [
+              {
+                id: "tool_123",
+                type: "function" as const,
+                function: {
+                  name: "Read",
+                  arguments: '{"file_path": "/test/file.txt"}',
+                },
+              },
+            ],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 20,
+              total_tokens: 30,
+            },
+          };
+        } else {
+          return {
+            content: "Task completed",
+            tool_calls: [],
+            usage: {
+              prompt_tokens: 5,
+              completion_tokens: 10,
+              total_tokens: 15,
+            },
+          };
+        }
+      });
+
+      await agent.sendMessage("read test file");
+
+      // Verify PreToolUse hook was executed
+      expect(mockExecuteHooks).toHaveBeenCalledWith(
+        "PreToolUse",
+        expect.objectContaining({
+          event: "PreToolUse",
+          toolName: "Read",
+        }),
+      );
+
+      // Verify tool WAS executed (non-blocking errors don't prevent execution)
+      expect(mockToolExecute).toHaveBeenCalledWith(
+        "Read",
+        { file_path: "/test/file.txt" },
+        expect.any(Object), // tool context
+      );
+
+      // Verify AI was called at least twice (tool execution triggers recursive call)
+      expect(mockCallAgent).toHaveBeenCalledTimes(2);
+
+      // Should have messages and error block from non-blocking error
+      const messages = agent.messages;
+      expect(messages.length).toBeGreaterThan(0);
+      
+      // Should have user message
+      const userMessages = messages.filter((msg) => msg.role === "user");
+      expect(userMessages.length).toBeGreaterThanOrEqual(1);
+
+      // Should have assistant messages
+      const assistantMessages = messages.filter((msg) => msg.role === "assistant");
+      expect(assistantMessages.length).toBeGreaterThan(0);
+      
+      // Should have error block from non-blocking error
+      const allBlocks = assistantMessages.flatMap(msg => msg.blocks || []);
+      const errorBlocks = allBlocks.filter(block => block.type === "error");
+      expect(errorBlocks.length).toBeGreaterThanOrEqual(1);
+      const errorBlock = errorBlocks.find(block => 
+        hasContent(block) && block.content.includes("PreToolUse warning")
+      );
+      expect(errorBlock).toBeDefined();
+    });
+  });
+
+  describe("PostToolUse non-blocking errors", () => {
+    it("should handle non-blocking errors in PostToolUse hooks and continue execution", async () => {
+      // Get the hook manager instance from the agent to mock its executeHooks method
+      const hookManager = (agent as unknown as { hookManager: HookManager })
+        .hookManager;
+      const mockExecuteHooks = vi.spyOn(hookManager, "executeHooks");
+
+      // Mock hook executions - return non-blocking error for PostToolUse
+      mockExecuteHooks.mockImplementation(async (event) => {
+        if (event === "PostToolUse") {
+          return [
+            {
+              success: false,
+              exitCode: 3, // Non-blocking error
+              stdout: "",
+              stderr: "PostToolUse warning: output validation failed",
+              duration: 45,
+              timedOut: false,
+            },
+          ];
+        }
+        // Return empty results for other hook events
+        return [];
+      });
+
+      // Mock tool manager - should be called since PostToolUse runs after tool execution
+      mockToolExecute.mockResolvedValue({
+        success: true,
+        content: "File written successfully",
+      });
+
+      // Mock AI service to return tool calls first, then text response
+      const mockCallAgent = vi.mocked(aiService.callAgent);
+      let callCount = 0;
+      mockCallAgent.mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            content: "",
+            tool_calls: [
+              {
+                id: "tool_456",
+                type: "function" as const,
+                function: {
+                  name: "Write",
+                  arguments: '{"file_path": "/test/output.txt", "content": "data"}',
+                },
+              },
+            ],
+            usage: {
+              prompt_tokens: 15,
+              completion_tokens: 25,
+              total_tokens: 40,
+            },
+          };
+        } else {
+          return {
+            content: "Tool execution completed",
+            tool_calls: [],
+            usage: {
+              prompt_tokens: 8,
+              completion_tokens: 12,
+              total_tokens: 20,
+            },
+          };
+        }
+      });
+
+      await agent.sendMessage("write data to file");
+
+      // Verify tool was executed
+      expect(mockToolExecute).toHaveBeenCalledWith(
+        "Write",
+        { file_path: "/test/output.txt", content: "data" },
+        expect.any(Object), // tool context
+      );
+
+      // Verify PostToolUse hook was executed
+      expect(mockExecuteHooks).toHaveBeenCalledWith(
+        "PostToolUse",
+        expect.objectContaining({
+          event: "PostToolUse",
+          toolName: "Write",
+        }),
+      );
+
+      // Verify AI was called at least twice (tool execution triggers recursive call)
+      expect(mockCallAgent).toHaveBeenCalledTimes(2);
+
+      // Should have messages and error block from non-blocking error
+      const messages = agent.messages;
+      expect(messages.length).toBeGreaterThan(0);
+      
+      // Should have user message
+      const userMessages = messages.filter((msg) => msg.role === "user");
+      expect(userMessages).toHaveLength(1);
+
+      // Should have assistant messages
+      const assistantMessages = messages.filter((msg) => msg.role === "assistant");
+      expect(assistantMessages.length).toBeGreaterThan(0);
+      
+      // Should have error block from non-blocking error
+      const allBlocks = assistantMessages.flatMap(msg => msg.blocks || []);
+      const errorBlocks = allBlocks.filter(block => block.type === "error");
+      expect(errorBlocks.length).toBeGreaterThanOrEqual(1);
+      const errorBlock = errorBlocks.find(block => 
+        hasContent(block) && block.content.includes("PostToolUse warning")
+      );
+      expect(errorBlock).toBeDefined();
+    });
+  });
+
+  describe("Stop non-blocking errors", () => {
+    it("should handle non-blocking errors in Stop hooks and continue execution", async () => {
+      // Get the hook manager instance from the agent to mock its executeHooks method
+      const hookManager = (agent as unknown as { hookManager: HookManager })
+        .hookManager;
+      const mockExecuteHooks = vi.spyOn(hookManager, "executeHooks");
+
+      // Mock hook executions - return non-blocking error for Stop
+      mockExecuteHooks.mockImplementation(async (event) => {
+        if (event === "Stop") {
+          return [
+            {
+              success: false,
+              exitCode: 4, // Non-blocking error
+              stdout: "",
+              stderr: "Stop warning: session metrics upload failed",
+              duration: 60,
+              timedOut: false,
+            },
+          ];
+        }
+        // Return empty results for other hook events
+        return [];
+      });
+
+      // Mock AI service for simple text response (no tools = triggers Stop hooks)
+      const mockCallAgent = vi.mocked(aiService.callAgent);
+      mockCallAgent.mockResolvedValue({
+        content: "Task completed successfully",
+        tool_calls: [], // No tools = triggers Stop hooks
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 15,
+          total_tokens: 25,
+        },
+      });
+
+      await agent.sendMessage("complete task");
+
+      // Verify Stop hook was executed
+      expect(mockExecuteHooks).toHaveBeenCalledWith(
+        "Stop",
+        expect.objectContaining({
+          event: "Stop",
+        }),
+      );
+
+      // Verify AI was called
+      expect(mockCallAgent).toHaveBeenCalledTimes(1);
+
+      // Should have messages and error block from non-blocking error
+      const messages = agent.messages;
+      expect(messages.length).toBeGreaterThanOrEqual(2);
+
+      // Should have user message
+      const userMessages = messages.filter((msg) => msg.role === "user");
+      expect(userMessages.length).toBeGreaterThanOrEqual(1);
+      
+      // First user message should be the original prompt
+      const firstUserBlock = userMessages[0].blocks?.[0];
+      expect(
+        firstUserBlock && hasContent(firstUserBlock)
+          ? firstUserBlock.content
+          : undefined,
+      ).toBe("complete task");
+
+      // Should have assistant message with response
+      const assistantMessages = messages.filter((msg) => msg.role === "assistant");
+      expect(assistantMessages.length).toBeGreaterThanOrEqual(1);
+      
+      // Should have the AI response text
+      const allBlocks = assistantMessages.flatMap(msg => msg.blocks || []);
+      const hasResponseText = allBlocks.some(block => 
+        hasContent(block) && block.content.includes("Task completed successfully")
+      );
+      expect(hasResponseText).toBe(true);
+      
+      // Should have error block from non-blocking error
+      const errorBlocks = allBlocks.filter(block => block.type === "error");
+      expect(errorBlocks.length).toBeGreaterThanOrEqual(1);
+      const errorBlock = errorBlocks.find(block => 
+        hasContent(block) && block.content.includes("Stop warning")
+      );
+      expect(errorBlock).toBeDefined();
     });
   });
 });
