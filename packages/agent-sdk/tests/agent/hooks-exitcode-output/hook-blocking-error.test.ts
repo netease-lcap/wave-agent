@@ -94,7 +94,9 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       // Verify AI service was NOT called due to blocking
       expect(mockCallAgent).not.toHaveBeenCalled();
 
-      // Verify message handling: prompt should be erased, error should be shown
+      // FR-019: System MUST validate UserPromptSubmit blocking errors by checking that
+      // agent.messages does not contain the user role message and contains an ErrorBlock
+      // in the assistant message with stderr as content
       const messages = agent.messages;
 
       // Should have only an error block, no user message or assistant response
@@ -106,7 +108,7 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
         firstBlock && hasContent(firstBlock) ? firstBlock.content : undefined,
       ).toBe("Prompt validation failed: inappropriate content detected");
 
-      // No user messages should remain
+      // FR-019: Verify agent.messages does not contain the user role message
       const userMessages = messages.filter((msg) => msg.role === "user");
       expect(userMessages).toHaveLength(0);
     });
@@ -153,6 +155,10 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       // Verify AI service was NOT called due to blocking
       expect(mockCallAgent).not.toHaveBeenCalled();
 
+      // FR-019: System MUST validate UserPromptSubmit blocking errors by checking that
+      // agent.messages does not contain the user role message and contains an ErrorBlock
+      // in the assistant message with stderr as content
+
       // Should block on the first blocking error (exit code 2)
       // Original prompt should be erased, no context should be injected
       const messages = agent.messages;
@@ -190,7 +196,7 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
         return [];
       });
 
-      // Mock tool manager - may or may not be called depending on current implementation
+      // Mock tool manager - should NOT be called due to PreToolUse blocking error
       mockToolExecute.mockResolvedValue({
         success: true,
         content: "Tool executed",
@@ -244,20 +250,37 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
         }),
       );
 
-      // Verify that the agent handled the PreToolUse blocking error
-      // (The exact behavior may depend on implementation)
+      // Verify NO tool was executed due to PreToolUse blocking error
+      expect(mockToolExecute).not.toHaveBeenCalled();
+
+      // FR-017: System MUST validate PreToolUse blocking errors by checking that
+      // agent.messages includes a ToolBlock with its result field containing the stderr content
       const messages = agent.messages;
       expect(messages.length).toBeGreaterThan(0);
 
-      // Should have at least user message and some response
+      // Should have user message
       const userMessages = messages.filter((msg) => msg.role === "user");
       expect(userMessages).toHaveLength(1);
 
-      // Should have some assistant response
+      // Should have assistant response
       const assistantMessages = messages.filter(
         (msg) => msg.role === "assistant",
       );
       expect(assistantMessages.length).toBeGreaterThan(0);
+
+      // FR-017: Find ToolBlock with stderr content in result field
+      const allBlocks = assistantMessages.flatMap((msg) => msg.blocks || []);
+      const toolBlock = allBlocks.find((block) => block.type === "tool");
+
+      expect(toolBlock).toBeDefined();
+      expect(toolBlock?.type).toBe("tool");
+
+      if (toolBlock?.type === "tool") {
+        // FR-017: The result field should contain the stderr content from PreToolUse blocking error
+        expect(toolBlock.result).toContain(
+          "Tool execution blocked by security policy",
+        );
+      }
     });
   });
 
@@ -364,6 +387,30 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
         (msg) => msg.role === "assistant",
       );
       expect(assistantMessages.length).toBeGreaterThan(0);
+
+      // FR-018: System MUST validate PostToolUse error feedback by checking that
+      // agent.messages includes a ToolBlock with its result field containing both
+      // the original tool execution result and the stderr content
+      const allBlocks = assistantMessages.flatMap((msg) => msg.blocks || []);
+      const toolBlock = allBlocks.find((block) => block.type === "tool");
+
+      expect(toolBlock).toBeDefined();
+      expect(toolBlock?.type).toBe("tool");
+
+      if (toolBlock?.type === "tool") {
+        // FR-018: The result field should contain BOTH:
+        // 1. The original tool execution result: "File written successfully"
+        // 2. The stderr content from PostToolUse blocking error: "Data validation failed after tool execution"
+        expect(toolBlock.result).toContain("File written successfully");
+        expect(toolBlock.result).toContain(
+          "Data validation failed after tool execution",
+        );
+
+        // Verify the format matches expected pattern: original result + hook feedback
+        expect(toolBlock.result).toMatch(
+          /File written successfully.*Hook feedback:.*Data validation failed after tool execution/s,
+        );
+      }
     });
   });
 
@@ -417,13 +464,14 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       // Verify AI was called at least once
       expect(mockCallAgent).toHaveBeenCalledTimes(1);
 
-      // Should have messages including the Stop hook error handling
+      // FR-021: System MUST validate Stop hook blocking behavior by checking that
+      // agent.messages contains a user role message with stderr content
       const messages = agent.messages;
       expect(messages.length).toBeGreaterThanOrEqual(2);
 
-      // Should have user message
+      // Should have user messages (original prompt + Stop hook error message)
       const userMessages = messages.filter((msg) => msg.role === "user");
-      expect(userMessages.length).toBeGreaterThanOrEqual(1);
+      expect(userMessages.length).toBeGreaterThanOrEqual(2);
 
       // First user message should be the original prompt
       const firstUserBlock = userMessages[0].blocks?.[0];
@@ -432,6 +480,14 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
           ? firstUserBlock.content
           : undefined,
       ).toBe("complete task");
+
+      // FR-021: Second user message should contain the Stop hook stderr content
+      const secondUserBlock = userMessages[1].blocks?.[0];
+      expect(
+        secondUserBlock && hasContent(secondUserBlock)
+          ? secondUserBlock.content
+          : undefined,
+      ).toBe("Session cleanup failed - manual intervention required");
 
       // Should have assistant message with response
       const assistantMessages = messages.filter(

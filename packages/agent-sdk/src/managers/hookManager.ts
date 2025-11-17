@@ -277,11 +277,10 @@ export class HookManager implements IHookManager {
     originalToolResult?: string,
   ): {
     shouldBlock: boolean;
-    shouldContinue: boolean;
     errorMessage?: string;
   } {
     if (!messageManager || results.length === 0) {
-      return { shouldBlock: false, shouldContinue: true };
+      return { shouldBlock: false };
     }
 
     // First pass: Check for any blocking errors (exit code 2)
@@ -315,7 +314,7 @@ export class HookManager implements IHookManager {
       }
     }
 
-    return { shouldBlock: false, shouldContinue: true };
+    return { shouldBlock: false };
   }
 
   /**
@@ -344,7 +343,6 @@ export class HookManager implements IHookManager {
     originalToolResult?: string,
   ): {
     shouldBlock: boolean;
-    shouldContinue: boolean;
     errorMessage?: string;
   } {
     const errorMessage = result.stderr?.trim() || "Hook execution failed";
@@ -356,12 +354,11 @@ export class HookManager implements IHookManager {
         messageManager.removeLastUserMessage();
         return {
           shouldBlock: true,
-          shouldContinue: false,
           errorMessage,
         };
 
       case "PreToolUse":
-        // Show error to Wave Agent via tool block, execution continues
+        // Block tool execution and show error to Wave Agent via tool block
         if (toolId) {
           messageManager.updateToolBlock({
             toolId,
@@ -370,7 +367,7 @@ export class HookManager implements IHookManager {
             error: "Hook blocked tool execution",
           });
         }
-        return { shouldBlock: false, shouldContinue: true };
+        return { shouldBlock: true };
 
       case "PostToolUse":
         // Show error to Wave Agent via tool block, execution continues
@@ -381,15 +378,15 @@ export class HookManager implements IHookManager {
             success: false,
           });
         }
-        return { shouldBlock: false, shouldContinue: true };
+        return { shouldBlock: false };
 
       case "Stop":
         // Show error to Wave Agent via user message, execution continues
         messageManager.addUserMessage(errorMessage);
-        return { shouldBlock: false, shouldContinue: true };
+        return { shouldBlock: false };
 
       default:
-        return { shouldBlock: false, shouldContinue: true };
+        return { shouldBlock: false };
     }
   }
 
