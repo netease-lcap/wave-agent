@@ -13,15 +13,11 @@ import type {
 } from "../../src/types/hooks.js";
 
 // Mock the hook services
-vi.mock("../../src/services/hook.js", () => ({
-  executeCommand: vi.fn(),
-  executeCommands: vi.fn(),
-  isCommandSafe: vi.fn(),
-}));
+vi.mock("../../src/services/hook.js");
 
-const mockExecuteCommand = executeCommand as ReturnType<typeof vi.fn>;
-const mockExecuteCommands = executeCommands as ReturnType<typeof vi.fn>;
-const mockIsCommandSafe = isCommandSafe as ReturnType<typeof vi.fn>;
+const mockExecuteCommand = vi.mocked(executeCommand);
+const mockExecuteCommands = vi.mocked(executeCommands);
+const mockIsCommandSafe = vi.mocked(isCommandSafe);
 
 describe("HookManager", () => {
   let manager: HookManager;

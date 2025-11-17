@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as memory from "@/services/memory.js";
-import { promises as fs } from "fs";
 import path from "path";
 
 // Mock fs operations
@@ -17,9 +16,9 @@ vi.mock("fs", () => ({
 
 vi.mock("path", () => ({
   default: {
-    join: vi.fn((...args) => args.join('/')),
+    join: vi.fn((...args) => args.join("/")),
   },
-  join: vi.fn((...args) => args.join('/')),
+  join: vi.fn((...args) => args.join("/")),
 }));
 
 // Mock the logger
@@ -40,12 +39,12 @@ describe("Memory Module", () => {
   beforeEach(async () => {
     // Reset all mocks
     vi.clearAllMocks();
-    
+
     // Setup fs mock implementations
     const { promises: fsPromises } = await import("fs");
     vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
     vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
-    vi.mocked(fsPromises.readFile).mockResolvedValue('');
+    vi.mocked(fsPromises.readFile).mockResolvedValue("");
     vi.mocked(fsPromises.access).mockResolvedValue(undefined);
   });
 
@@ -75,14 +74,14 @@ describe("Memory Module", () => {
     it("should add memory to AGENTS.md file for messages starting with #", async () => {
       const mockTempDir = "/mock/temp/dir";
       const mockMemoryPath = "/mock/temp/dir/AGENTS.md";
-      
+
       // Mock path.join to return expected path
       vi.mocked(path.join).mockReturnValue(mockMemoryPath);
-      
+
       // Mock file not existing initially
       const { promises: fsPromises } = await import("fs");
       vi.mocked(fsPromises.readFile).mockRejectedValueOnce({ code: "ENOENT" });
-      
+
       // Mock writeFile success
       vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
 
@@ -93,19 +92,19 @@ describe("Memory Module", () => {
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
         mockMemoryPath,
         expect.stringContaining("# Memory"),
-        "utf-8"
+        "utf-8",
       );
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
         mockMemoryPath,
         expect.stringContaining("- Test memory message"),
-        "utf-8"
+        "utf-8",
       );
     });
 
     it("should not add memory for messages not starting with #", async () => {
       const mockTempDir = "/mock/temp/dir";
       const message = "Regular message";
-      
+
       await memory.addMemory(message, mockTempDir);
 
       // Should not call any fs operations for non-memory messages
@@ -122,18 +121,20 @@ describe("Memory Module", () => {
       vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
       vi.mocked(fsPromises.access).mockRejectedValueOnce({ code: "ENOENT" });
       vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
-      
+
       // Mock reading existing content after file creation
       vi.mocked(fsPromises.readFile)
-        .mockResolvedValueOnce(undefined as unknown as Awaited<ReturnType<typeof fs.writeFile>>) // Initial file creation
+        .mockResolvedValueOnce("") // Initial file creation - readFile returns string/Buffer, not void
         .mockResolvedValue(
-          "# User Memory\n\nThis is a user-level memory file, recording important information and context across projects.\n\n"
+          "# User Memory\n\nThis is a user-level memory file, recording important information and context across projects.\n\n",
         );
 
       const message = "#Test user memory message";
       await memory.addUserMemory(message);
 
-      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", { recursive: true });
+      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", {
+        recursive: true,
+      });
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
         "/mock/user/memory.md",
         expect.stringContaining("- Test user memory message"),
@@ -152,7 +153,9 @@ describe("Memory Module", () => {
 
       const result = await memory.getUserMemoryContent();
 
-      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", { recursive: true });
+      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", {
+        recursive: true,
+      });
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
         "/mock/user/memory.md",
         "utf-8",
@@ -171,7 +174,9 @@ describe("Memory Module", () => {
 
       await memory.ensureUserMemoryFile();
 
-      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", { recursive: true });
+      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", {
+        recursive: true,
+      });
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
         "/mock/user/memory.md",
         expect.stringContaining("# User Memory"),
@@ -188,7 +193,9 @@ describe("Memory Module", () => {
 
       await memory.ensureUserMemoryFile();
 
-      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", { recursive: true });
+      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", {
+        recursive: true,
+      });
       expect(vi.mocked(fsPromises.writeFile)).not.toHaveBeenCalled();
     });
   });

@@ -4,10 +4,7 @@ import { readFile, writeFile } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 
 // Mock fs/promises
-vi.mock("fs/promises", () => ({
-  readFile: vi.fn(),
-  writeFile: vi.fn(),
-}));
+vi.mock("fs/promises");
 
 describe("multiEditTool", () => {
   const mockContext: ToolContext = {

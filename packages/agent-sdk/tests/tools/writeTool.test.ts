@@ -6,11 +6,7 @@ import type { ToolContext } from "@/tools/types.js";
 const testContext: ToolContext = { workdir: "/test/workdir" };
 
 // Mock fs/promises
-vi.mock("fs/promises", () => ({
-  readFile: vi.fn(),
-  writeFile: vi.fn(),
-  mkdir: vi.fn(),
-}));
+vi.mock("fs/promises");
 
 describe("writeTool", () => {
   const mockContext: ToolContext = {

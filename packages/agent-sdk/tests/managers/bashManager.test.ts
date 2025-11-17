@@ -3,14 +3,10 @@ import { spawn, type ChildProcess } from "child_process";
 import { EventEmitter } from "events";
 
 // Mock child_process
-vi.mock("child_process", () => ({
-  spawn: vi.fn(),
-}));
+vi.mock("child_process");
 
 // Mock bashHistory utility
-vi.mock("@/utils/bashHistory", () => ({
-  addBashCommandToHistory: vi.fn(),
-}));
+vi.mock("@/utils/bashHistory");
 
 import { BashManager } from "@/managers/bashManager.js";
 import type { MessageManager } from "@/managers/messageManager.js";

@@ -19,20 +19,9 @@ interface MockTransport {
 }
 
 // Mock the MCP SDK
-vi.mock("@modelcontextprotocol/sdk/client/index.js", () => ({
-  Client: vi.fn(),
-}));
-
-vi.mock("@modelcontextprotocol/sdk/client/stdio.js", () => ({
-  StdioClientTransport: vi.fn(),
-}));
-
-vi.mock("fs", () => ({
-  promises: {
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-  },
-}));
+vi.mock("@modelcontextprotocol/sdk/client/index.js");
+vi.mock("@modelcontextprotocol/sdk/client/stdio.js");
+vi.mock("fs");
 
 describe("McpManager", () => {
   let mcpManager: McpManager;
