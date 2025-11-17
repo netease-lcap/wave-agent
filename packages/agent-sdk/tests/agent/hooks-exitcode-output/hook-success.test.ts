@@ -3,6 +3,7 @@ import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { HookManager } from "@/managers/hookManager.js";
 import type { MessageBlock } from "@/types/messaging.js";
+import { ToolManager } from "@/managers/toolManager.js";
 
 // Type guard helper function
 function hasContent(
@@ -10,9 +11,6 @@ function hasContent(
 ): block is MessageBlock & { content: string } {
   return "content" in block;
 }
-
-// Import test setup to apply mocks
-import "./test-setup.js";
 
 // Mock AI service directly in this file
 vi.mock("@/services/aiService", () => ({
@@ -190,7 +188,8 @@ describe("Hook Success Behavior (User Story 1)", () => {
       });
 
       // Mock tool manager to simulate tool execution
-      const toolManager = (agent as unknown as { toolManager: any }).toolManager;
+      const toolManager = (agent as unknown as { toolManager: ToolManager })
+        .toolManager;
       const mockToolExecute = vi.spyOn(toolManager, "execute");
       mockToolExecute.mockResolvedValue({
         success: true,
@@ -294,7 +293,8 @@ describe("Hook Success Behavior (User Story 1)", () => {
       });
 
       // Mock tool manager to simulate tool execution
-      const toolManager = (agent as unknown as { toolManager: any }).toolManager;
+      const toolManager = (agent as unknown as { toolManager: ToolManager })
+        .toolManager;
       const mockToolExecute = vi.spyOn(toolManager, "execute");
       mockToolExecute.mockResolvedValue({
         success: true,
@@ -316,7 +316,8 @@ describe("Hook Success Behavior (User Story 1)", () => {
                 type: "function" as const,
                 function: {
                   name: "Write",
-                  arguments: '{"file_path": "/test/output.txt", "content": "hello"}',
+                  arguments:
+                    '{"file_path": "/test/output.txt", "content": "hello"}',
                 },
               },
             ],
@@ -434,7 +435,9 @@ describe("Hook Success Behavior (User Story 1)", () => {
       ).toBe("simple request");
 
       // Should have assistant response
-      const assistantMessages = messages.filter((msg) => msg.role === "assistant");
+      const assistantMessages = messages.filter(
+        (msg) => msg.role === "assistant",
+      );
       expect(assistantMessages).toHaveLength(1);
       const responseBlock = assistantMessages[0].blocks?.[0];
       expect(

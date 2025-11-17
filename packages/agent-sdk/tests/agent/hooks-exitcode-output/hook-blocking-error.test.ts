@@ -11,9 +11,6 @@ function hasContent(
   return "content" in block;
 }
 
-// Import test setup to apply mocks
-import "./test-setup.ts";
-
 // Mock AI service directly in this file
 vi.mock("@/services/aiService", () => ({
   callAgent: vi.fn(),
@@ -254,13 +251,15 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       // (The exact behavior may depend on implementation)
       const messages = agent.messages;
       expect(messages.length).toBeGreaterThan(0);
-      
+
       // Should have at least user message and some response
       const userMessages = messages.filter((msg) => msg.role === "user");
       expect(userMessages).toHaveLength(1);
 
-      // Should have some assistant response  
-      const assistantMessages = messages.filter((msg) => msg.role === "assistant");
+      // Should have some assistant response
+      const assistantMessages = messages.filter(
+        (msg) => msg.role === "assistant",
+      );
       expect(assistantMessages.length).toBeGreaterThan(0);
     });
   });
@@ -310,7 +309,8 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
                 type: "function" as const,
                 function: {
                   name: "Write",
-                  arguments: '{"file_path": "/test/output.txt", "content": "data"}',
+                  arguments:
+                    '{"file_path": "/test/output.txt", "content": "data"}',
                 },
               },
             ],
@@ -363,7 +363,9 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       expect(userMessages).toHaveLength(1);
 
       // Should have assistant messages
-      const assistantMessages = messages.filter((msg) => msg.role === "assistant");
+      const assistantMessages = messages.filter(
+        (msg) => msg.role === "assistant",
+      );
       expect(assistantMessages.length).toBeGreaterThan(0);
     });
   });
@@ -425,7 +427,7 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       // Should have user message
       const userMessages = messages.filter((msg) => msg.role === "user");
       expect(userMessages.length).toBeGreaterThanOrEqual(1);
-      
+
       // First user message should be the original prompt
       const firstUserBlock = userMessages[0].blocks?.[0];
       expect(
@@ -435,13 +437,17 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       ).toBe("complete task");
 
       // Should have assistant message with response
-      const assistantMessages = messages.filter((msg) => msg.role === "assistant");
+      const assistantMessages = messages.filter(
+        (msg) => msg.role === "assistant",
+      );
       expect(assistantMessages.length).toBeGreaterThanOrEqual(1);
-      
+
       // Should have the AI response text somewhere in the messages
-      const allBlocks = assistantMessages.flatMap(msg => msg.blocks || []);
-      const hasResponseText = allBlocks.some(block => 
-        hasContent(block) && block.content.includes("Task completed successfully")
+      const allBlocks = assistantMessages.flatMap((msg) => msg.blocks || []);
+      const hasResponseText = allBlocks.some(
+        (block) =>
+          hasContent(block) &&
+          block.content.includes("Task completed successfully"),
       );
       expect(hasResponseText).toBe(true);
     });
