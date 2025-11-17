@@ -34,9 +34,6 @@ describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
   };
 
   beforeEach(async () => {
-    // Set flash model for performance
-    process.env.AIGW_MODEL = "gemini-2.5-flash";
-
     // Create Agent instance with required parameters
     agent = await Agent.create({
       callbacks: mockCallbacks,

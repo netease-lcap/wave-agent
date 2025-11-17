@@ -25,9 +25,6 @@ describe("Hook Success Behavior (User Story 1)", () => {
   };
 
   beforeEach(async () => {
-    // Set flash model for performance
-    process.env.AIGW_MODEL = "gemini-2.5-flash";
-
     // Create Agent instance with required parameters
     agent = await Agent.create({
       callbacks: mockCallbacks,
