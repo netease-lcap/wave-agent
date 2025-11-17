@@ -82,7 +82,9 @@ describe("Hook Success Behavior (User Story 1)", () => {
         }),
       );
 
-      // Verify context injection through message validation
+      // FR-016: System MUST validate UserPromptSubmit success by checking that
+      // agent.sendMessage() results in agent.messages containing two user role messages,
+      // where the second message contains the hook stdout content
       const messages = agent.messages;
       expect(messages).toHaveLength(3); // user message + injected context + assistant response
 
@@ -98,7 +100,7 @@ describe("Hook Success Behavior (User Story 1)", () => {
           : undefined,
       ).toBe("test prompt");
 
-      // Second user message should be injected context from hook stdout
+      // FR-016: Second user message should contain the hook stdout content
       const secondUserBlock = userMessages[1].blocks?.[0];
       expect(
         secondUserBlock && hasContent(secondUserBlock)
