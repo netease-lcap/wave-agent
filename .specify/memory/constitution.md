@@ -53,7 +53,6 @@ All code MUST pass TypeScript compilation without errors or warnings. All tests 
 
 **Testing Requirements**: 
 - Tests directory: All tests (unit and integration) with proper isolation
-- Integration tests: Use temporary directories, real file operations, cleanup after each test
 - Unit tests: Use mocking for external dependencies, fast execution
 - All new features require corresponding tests
 
@@ -70,7 +69,6 @@ All code MUST pass TypeScript compilation without errors or warnings. All tests 
 
 **Testing Strategy**:
 - Unit tests for individual functions and components (with mocking)
-- Integration tests for cross-package interactions (with temporary directories)
 - All tests must be in tests directories with proper cleanup
 - Use appropriate isolation based on test type
 
