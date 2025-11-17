@@ -586,3 +586,22 @@ export const updateSubagentBlockInMessage = (
 
   return newMessages;
 };
+
+/**
+ * Removes the last user message from the messages array
+ * Used for hook error handling when the user prompt needs to be erased
+ */
+export const removeLastUserMessage = (messages: Message[]): Message[] => {
+  const newMessages = [...messages];
+
+  // Find the index of the last user message
+  for (let i = newMessages.length - 1; i >= 0; i--) {
+    if (newMessages[i].role === "user") {
+      // Remove the user message at index i
+      newMessages.splice(i, 1);
+      break;
+    }
+  }
+
+  return newMessages;
+};

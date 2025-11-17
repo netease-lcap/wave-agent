@@ -14,8 +14,6 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { randomUUID } from "crypto";
 
-process.env.AIGW_MODEL = "gemini-2.5-flash";
-
 /**
  * Create a temporary hook configuration and script
  */

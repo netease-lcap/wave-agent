@@ -9,7 +9,6 @@ This is the AI assistant's memory file, recording important information and cont
   - test by sending real messages
   - cd to `packages/\*` and run locally with pnpm tsx
   - never access private properties directly with `(agent as any)`
-  - MUST use flash model for performance: `process.env.AIGW_MODEL = "gemini-2.5-flash";`
 - `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
   - Use vitest-expert to write tests
   - Testing framework is vitest
@@ -17,6 +16,7 @@ This is the AI assistant's memory file, recording important information and cont
   - Use waitHelpers to wait UI change
   - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify data that is hard to mock
   - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
+  - For `packages/agent-sdk/tests/agent`, mock `@/services/aiService` `@/managers/toolManager` and other services to prevent real io, refer to `packages/agent-sdk/tests/agent/agent.toolRecursion.test.ts`
 - `packages/code/src/components` contains Ink components
 - After modifying agent-sdk, need to build before using in code
 - For type and eslint errors:

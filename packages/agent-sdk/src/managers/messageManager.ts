@@ -12,6 +12,7 @@ import {
   completeCommandInMessage,
   addSubagentBlockToMessage,
   updateSubagentBlockInMessage,
+  removeLastUserMessage,
   type AddSubagentBlockParams,
   type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
@@ -494,5 +495,14 @@ export class MessageManager {
       }
     }
     this.callbacks.onUsagesChange?.(usages);
+  }
+
+  /**
+   * Remove the last user message from the conversation
+   * Used for hook error handling when the user prompt needs to be erased
+   */
+  public removeLastUserMessage(): void {
+    const newMessages = removeLastUserMessage(this.messages);
+    this.setMessages(newMessages);
   }
 }

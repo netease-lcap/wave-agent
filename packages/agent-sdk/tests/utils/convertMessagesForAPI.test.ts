@@ -107,4 +107,40 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[1].role).toBe("assistant");
     expect(apiMessages[1].content).toBe("Final response");
   });
+
+  it("should filter out ErrorBlock content to ensure user-visible only (FR-020)", () => {
+    // FR-020: System MUST ensure ErrorBlock content is not processed by
+    // convertMessagesForAPI so it remains user-visible only and is not sent to the agent
+    const messages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Test prompt" }],
+      },
+      {
+        role: "assistant",
+        blocks: [
+          { type: "error", content: "This error should NOT be sent to API" },
+          { type: "text", content: "This response should be sent to API" },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    expect(apiMessages).toHaveLength(2);
+
+    // User message should be included
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[0].content).toEqual([
+      { type: "text", text: "Test prompt" },
+    ]);
+
+    // Assistant message should only include text content, NOT error content
+    expect(apiMessages[1].role).toBe("assistant");
+    expect(apiMessages[1].content).toBe("This response should be sent to API");
+
+    // FR-020: Verify ErrorBlock content is completely excluded from API messages
+    const allApiContent = JSON.stringify(apiMessages);
+    expect(allApiContent).not.toContain("This error should NOT be sent to API");
+  });
 });
