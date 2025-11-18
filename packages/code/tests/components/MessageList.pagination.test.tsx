@@ -5,9 +5,13 @@ import { MessageList } from "../../src/components/MessageList.js";
 import type { Message } from "wave-agent-sdk";
 
 // Mock the constants module BEFORE any imports - override MESSAGES_PER_PAGE
-vi.mock("../../src/utils/constants", () => ({
-  MESSAGES_PER_PAGE: 10, // Override for testing
-}));
+vi.mock("../../src/utils/constants", async () => {
+  const actual = await vi.importActual("../../src/utils/constants");
+  return {
+    ...actual,
+    MESSAGES_PER_PAGE: 10, // Override for testing
+  };
+});
 
 // Mock useInput to prevent key handling during tests
 vi.mock("ink", async () => {
