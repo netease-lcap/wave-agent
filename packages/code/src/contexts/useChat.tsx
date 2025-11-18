@@ -13,7 +13,6 @@ import type {
   McpServerStatus,
   BackgroundShell,
   SlashCommand,
-  Usage,
 } from "wave-agent-sdk";
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
@@ -51,8 +50,6 @@ export interface ChatContextType {
   // Slash Command functionality
   slashCommands: SlashCommand[];
   hasSlashCommand: (commandId: string) => boolean;
-  // Usage tracking
-  usages: Usage[];
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -74,6 +71,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Message Display State
   const [isExpanded, setIsExpanded] = useState(false);
+  const isExpandedRef = useRef(false);
 
   // AI State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -95,15 +93,27 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // Command state
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
 
-  // Usage tracking state
-  const [usages, setUsages] = useState<Usage[]>([]);
-
   const agentRef = useRef<Agent | null>(null);
+
+  // Keep isExpandedRef in sync with isExpanded state
+  useEffect(() => {
+    isExpandedRef.current = isExpanded;
+  }, [isExpanded]);
 
   // Listen for Ctrl+O hotkey to toggle collapse/expand state
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
-      setIsExpanded((prev) => !prev);
+      setIsExpanded((prev) => {
+        const newExpanded = !prev;
+
+        // When collapsing (switching from expanded to collapsed), refresh data from agent
+        if (prev && !newExpanded && agentRef.current) {
+          setMessages(agentRef.current.messages);
+          setlatestTotalTokens(agentRef.current.latestTotalTokens);
+        }
+
+        return newExpanded;
+      });
     }
   });
 
@@ -112,7 +122,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     const initializeAgent = async () => {
       const callbacks: AgentCallbacks = {
         onMessagesChange: (newMessages) => {
-          setMessages([...newMessages]);
+          // Skip updates when in expanded mode
+          if (!isExpandedRef.current) {
+            setMessages([...newMessages]);
+          }
         },
         onServersChange: (servers) => {
           setMcpServers([...servers]);
@@ -121,7 +134,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           setSessionId(sessionId);
         },
         onLatestTotalTokensChange: (tokens) => {
-          setlatestTotalTokens(tokens);
+          // Skip updates when in expanded mode
+          if (!isExpandedRef.current) {
+            setlatestTotalTokens(tokens);
+          }
         },
         onUserInputHistoryChange: (history) => {
           setUserInputHistory([...history]);
@@ -131,9 +147,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         },
         onShellsChange: (shells) => {
           setBackgroundShells([...shells]);
-        },
-        onUsagesChange: (newUsages) => {
-          setUsages([...newUsages]);
         },
       };
 
@@ -163,9 +176,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         // Get initial commands
         const agentSlashCommands = agent.getSlashCommands?.() || [];
         setSlashCommands(agentSlashCommands);
-
-        // Get initial usages
-        setUsages(agent.usages);
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
       }
@@ -314,7 +324,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     killBackgroundShell,
     slashCommands,
     hasSlashCommand,
-    usages,
   };
 
   return (

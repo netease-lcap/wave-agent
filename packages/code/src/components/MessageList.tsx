@@ -9,7 +9,6 @@ import { MemoryDisplay } from "./MemoryDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
 import { SubagentBlock } from "./SubagentBlock.js";
 import { usePagination } from "../hooks/usePagination.js";
-import { logger } from "@/utils/logger.js";
 
 export interface MessageListProps {
   messages: Message[];
@@ -29,15 +28,6 @@ export const MessageList = React.memo(
     latestTotalTokens = 0,
     isExpanded = false,
   }: MessageListProps) => {
-    logger.debug(
-      "rerender",
-      messages.length,
-      isLoading,
-      isCommandRunning,
-      latestTotalTokens,
-      isExpanded,
-    );
-
     // Memoize the renderMessageItem function to prevent recreation on every render
     const renderMessageItem = useCallback(
       (
@@ -63,7 +53,6 @@ export const MessageList = React.memo(
             )}
 
             <Box
-              marginLeft={2}
               flexDirection="column"
               gap={1}
               marginTop={shouldShowHeader ? 1 : 0}
@@ -163,7 +152,7 @@ export const MessageList = React.memo(
     }
 
     return (
-      <Box flexDirection="column" gap={1} marginTop={1}>
+      <Box flexDirection="column" gap={1} paddingX={1}>
         {/* Message list */}
         <Box flexDirection="column" gap={1}>
           {currentMessagesWithIndex.map(({ message, originalIndex }) => {
