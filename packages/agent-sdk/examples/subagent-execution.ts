@@ -113,9 +113,19 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
       },
       // Subagent-specific callbacks to monitor subagent lifecycle
       // These callbacks are triggered when subagents are created and their state changes
-      onSubAgentBlockAdded: (subagentId: string) => {
+      onSubAgentBlockAdded: (
+        subagentId: string,
+        parameters: {
+          description: string;
+          prompt: string;
+          subagent_type: string;
+        },
+      ) => {
         console.log(`\n🤖➕ CALLBACK: Subagent created with ID: ${subagentId}`);
         console.log(`    ⏰ Timestamp: ${new Date().toISOString()}`);
+        console.log(`    📋 Task Description: ${parameters.description}`);
+        console.log(`    💬 Prompt: ${parameters.prompt}`);
+        console.log(`    🤖 Subagent Type: ${parameters.subagent_type}`);
       },
       onSubAgentBlockUpdated: (subagentId: string, messages) => {
         console.log(

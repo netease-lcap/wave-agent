@@ -21,7 +21,6 @@ export interface SubagentInstance {
   messageManager: MessageManager;
   toolManager: ToolManager;
   status: "initializing" | "active" | "completed" | "error" | "aborted";
-  taskDescription: string;
   messages: Message[];
 }
 
@@ -107,7 +106,11 @@ export class SubagentManager {
    */
   async createInstance(
     configuration: SubagentConfiguration,
-    taskDescription: string,
+    parameters: {
+      description: string;
+      prompt: string;
+      subagent_type: string;
+    },
   ): Promise<SubagentInstance> {
     if (
       !this.parentToolManager ||
@@ -177,7 +180,6 @@ export class SubagentManager {
       messageManager,
       toolManager,
       status: "initializing",
-      taskDescription,
       messages: [],
     };
 
@@ -189,6 +191,7 @@ export class SubagentManager {
       configuration.name,
       "active",
       [],
+      parameters,
     );
 
     return instance;

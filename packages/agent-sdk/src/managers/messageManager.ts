@@ -65,7 +65,14 @@ export interface MessageManagerCallbacks {
   onUpdateCommandOutputMessage?: (command: string, output: string) => void;
   onCompleteCommandMessage?: (command: string, exitCode: number) => void;
   // Subagent callbacks
-  onSubAgentBlockAdded?: (subagentId: string) => void;
+  onSubAgentBlockAdded?: (
+    subagentId: string,
+    parameters: {
+      description: string;
+      prompt: string;
+      subagent_type: string;
+    },
+  ) => void;
   onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
 }
 
@@ -449,6 +456,11 @@ export class MessageManager {
     subagentName: string,
     status: "active" | "completed" | "error" = "active",
     subagentMessages: Message[] = [],
+    parameters: {
+      description: string;
+      prompt: string;
+      subagent_type: string;
+    },
   ): void {
     const params: AddSubagentBlockParams = {
       messages: this.messages,
@@ -459,7 +471,7 @@ export class MessageManager {
     };
     const updatedMessages = addSubagentBlockToMessage(params);
     this.setMessages(updatedMessages);
-    this.callbacks.onSubAgentBlockAdded?.(params.subagentId);
+    this.callbacks.onSubAgentBlockAdded?.(params.subagentId, parameters);
   }
 
   public updateSubagentBlock(

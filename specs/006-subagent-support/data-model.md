@@ -33,8 +33,6 @@ Represents an active subagent handling a specific task.
 - `aiManager: AiManager` - Isolated AI manager instance
 - `messageManager: MessageManager` - Isolated message manager instance
 - `status: 'initializing' | 'active' | 'completed' | 'error'` - Current state
-
-- `taskDescription: string` - Original task description
 - `messages: Message[]` - Subagent conversation history
 
 **Validation Rules**:

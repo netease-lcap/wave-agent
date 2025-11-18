@@ -12,7 +12,14 @@ Extends existing `MessageManagerCallbacks` interface with subagent-specific call
 
 **Signature**:
 ```typescript
-onSubAgentBlockAdded?: (subagentId: string) => void;
+onSubAgentBlockAdded?: (
+  subagentId: string,
+  parameters: {
+    description: string;
+    prompt: string;
+    subagent_type: string;
+  }
+) => void;
 ```
 
 **Usage**: Optional callback for advanced integrations. The standard `onMessagesChange` callback is sufficient for most use cases.
@@ -49,8 +56,8 @@ onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
 ```typescript
 const messageManager = new MessageManager({
   // ... existing callbacks
-  onSubAgentBlockAdded: (subagentId) => {
-    uiState.addSubagentBlock(subagentId);
+  onSubAgentBlockAdded: (subagentId, parameters) => {
+    uiState.addSubagentBlock(subagentId, parameters);
   },
   onSubAgentBlockUpdated: (subagentId, messages) => {
     uiState.updateSubagentBlock(subagentId, messages);
@@ -122,7 +129,14 @@ const mockCallbacks = {
 
 // Test callback invocation
 await taskTool.execute(taskArgs, context);
-expect(mockCallbacks.onSubAgentBlockAdded).toHaveBeenCalledWith(expect.any(String));
+expect(mockCallbacks.onSubAgentBlockAdded).toHaveBeenCalledWith(
+  expect.any(String),
+  expect.objectContaining({
+    description: expect.any(String),
+    prompt: expect.any(String),
+    subagent_type: expect.any(String)
+  })
+);
 expect(mockCallbacks.onSubAgentBlockUpdated).toHaveBeenCalledWith(
   expect.any(String),
   expect.any(Array)
