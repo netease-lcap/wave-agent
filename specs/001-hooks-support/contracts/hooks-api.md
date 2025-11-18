@@ -69,7 +69,7 @@ interface HookExecutionOptions {
 ### Core Interface
 
 ```typescript
-interface IHookManager {
+class HookManager {
   // Load configuration from settings files
   loadConfiguration(userSettings?: WaveSettings, projectSettings?: WaveSettings): void;
   
@@ -134,7 +134,7 @@ interface IHookMatcher {
 ```typescript
 // Hook integration points in Agent class
 class Agent {
-  private hookManager: IHookManager;
+  private hookManager: HookManager;
   
   // Pre-tool execution hook
   private async executePreToolHooks(toolName: string): Promise<void>;

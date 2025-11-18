@@ -55,7 +55,7 @@ export function getHooksConfigurationInfo(workdir: string): { hasUser: boolean; 
 **Location**: `packages/agent-sdk/src/managers/hookManager.ts`
 
 ```typescript
-export interface IHookManager {
+export class HookManager {
   loadConfiguration(userHooks?: PartialHookConfiguration, projectHooks?: PartialHookConfiguration): void
   loadConfigurationFromSettings(): void
   executeHooks(event: HookEvent, context: HookExecutionContext | ExtendedHookExecutionContext): Promise<HookExecutionResult[]>
@@ -63,8 +63,6 @@ export interface IHookManager {
   validateConfiguration(config: HookConfiguration): ValidationResult
   getConfiguration(): PartialHookConfiguration | undefined
 }
-
-export class HookManager implements IHookManager
 ```
 
 **Relationships**:
