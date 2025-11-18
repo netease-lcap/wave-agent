@@ -60,11 +60,15 @@ ERROR_OUTPUT=""
 # Change to the appropriate directory and run checks
 cd "$PACKAGE_DIR"
 
-# Type check with TypeScript compiler
+# Type check with TypeScript compiler using project's type-check script
 echo "Running TypeScript check in directory: $PACKAGE_DIR" >&2
-if ! TYPE_OUTPUT=$(pnpm tsc --noEmit --skipLibCheck "$RELATIVE_FILE_PATH" 2>&1); then
-    HAS_ERRORS=true
-    ERROR_OUTPUT="$ERROR_OUTPUT\n=== TypeScript Errors ===\n$TYPE_OUTPUT"
+if ! TYPE_OUTPUT=$(pnpm run type-check 2>&1); then
+    # Filter output to only show errors related to our target file
+    FILTERED_OUTPUT=$(echo "$TYPE_OUTPUT" | grep "$RELATIVE_FILE_PATH" || true)
+    if [ -n "$FILTERED_OUTPUT" ]; then
+        HAS_ERRORS=true
+        ERROR_OUTPUT="$ERROR_OUTPUT\n=== TypeScript Errors ===\n$FILTERED_OUTPUT"
+    fi
 fi
 
 # Lint with ESLint

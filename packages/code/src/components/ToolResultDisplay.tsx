@@ -78,7 +78,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
       </Box>
 
       {/* Display shortResult in collapsed state */}
-      {!isExpanded && shortResult && (
+      {!isExpanded && shortResult && !error && (
         <Box
           paddingLeft={2}
           borderLeft
