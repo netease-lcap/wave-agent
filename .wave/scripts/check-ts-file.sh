@@ -57,7 +57,7 @@ cd "$PACKAGE_DIR"
 
 # Type check with TypeScript compiler directly on the file
 echo "Running TypeScript check in directory: $PACKAGE_DIR"
-if ! TYPE_OUTPUT=$(npx tsc --noEmit "$RELATIVE_FILE_PATH" 2>&1); then
+if ! TYPE_OUTPUT=$(pnpm run type-check 2>&1); then
     HAS_ERRORS=true
     ERROR_OUTPUT="$ERROR_OUTPUT\n=== TypeScript Errors ===\n$TYPE_OUTPUT"
 fi

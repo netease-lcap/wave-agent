@@ -42,7 +42,18 @@ const renderMessageItem = (
           <Box key={blockIndex}>
             {block.type === "text" && block.content.trim() && (
               <Box>
-                <Text>{block.content}</Text>
+                <Text>
+                  {block.customCommandContent ? (
+                    <>
+                      <Text color="cyan" bold>
+                        ⚡{" "}
+                      </Text>
+                      {block.content}
+                    </>
+                  ) : (
+                    block.content
+                  )}
+                </Text>
               </Box>
             )}
 
@@ -82,15 +93,6 @@ const renderMessageItem = (
 
             {block.type === "compress" && (
               <CompressDisplay block={block} isExpanded={isExpanded} />
-            )}
-
-            {block.type === "custom_command" && (
-              <Box>
-                <Text color="cyan" bold>
-                  ⚡
-                </Text>
-                <Text>{block.originalInput || `/${block.commandName}`}</Text>
-              </Box>
             )}
 
             {block.type === "subagent" && (
