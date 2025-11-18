@@ -115,7 +115,7 @@ async executeEventHooks(
 ## Pattern Matching API
 
 ```typescript
-interface IHookMatcher {
+class HookMatcher {
   // Test if pattern matches tool name
   matches(pattern: string, toolName: string): boolean;
   

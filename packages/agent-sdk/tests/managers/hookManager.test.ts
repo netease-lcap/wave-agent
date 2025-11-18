@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HookManager } from "../../src/managers/hookManager.js";
-import type { IHookMatcher } from "../../src/utils/hookMatcher.js";
+import type { HookMatcher } from "../../src/utils/hookMatcher.js";
 import {
   executeCommand,
   executeCommands,
@@ -21,15 +21,17 @@ const mockIsCommandSafe = vi.mocked(isCommandSafe);
 
 describe("HookManager", () => {
   let manager: HookManager;
-  let mockMatcher: IHookMatcher;
+  let mockMatcher: HookMatcher;
 
   beforeEach(() => {
     // Create mocks
     mockMatcher = {
       matches: vi.fn().mockReturnValue(true),
       isValidPattern: vi.fn().mockReturnValue(true),
-      getPatternType: vi.fn().mockReturnValue("tool"),
-    };
+      getPatternType: vi.fn().mockReturnValue("exact"),
+      getMatches: vi.fn().mockReturnValue([]),
+      compile: vi.fn().mockReturnValue(() => true),
+    } as unknown as HookMatcher;
 
     // Setup service mocks
     mockExecuteCommand.mockResolvedValue({

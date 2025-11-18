@@ -7,18 +7,7 @@
 
 import { minimatch } from "minimatch";
 
-export interface IHookMatcher {
-  // Test if pattern matches tool name
-  matches(pattern: string, toolName: string): boolean;
-
-  // Validate pattern syntax
-  isValidPattern(pattern: string): boolean;
-
-  // Get pattern type for optimization
-  getPatternType(pattern: string): "exact" | "glob" | "regex" | "alternatives";
-}
-
-export class HookMatcher implements IHookMatcher {
+export class HookMatcher {
   /**
    * Test if pattern matches tool name
    * Supports multiple matching strategies:
