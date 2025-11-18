@@ -10,6 +10,13 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "pnpm run type-check && pnpm run lint",
+        "description": "Run full type-check and lint before stopping"
+      }
     ]
   }
 }

@@ -439,14 +439,33 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
 
       // Mock AI service for simple text response (no tools = triggers Stop hooks)
       const mockCallAgent = vi.mocked(aiService.callAgent);
-      mockCallAgent.mockResolvedValue({
-        content: "Task completed successfully",
-        tool_calls: [], // No tools = triggers Stop hooks
-        usage: {
-          prompt_tokens: 10,
-          completion_tokens: 15,
-          total_tokens: 25,
-        },
+      let callCount = 0;
+      mockCallAgent.mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) {
+          // First call: normal completion that triggers Stop hooks
+          return {
+            content: "Task completed successfully",
+            tool_calls: [], // No tools = triggers Stop hooks
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 15,
+              total_tokens: 25,
+            },
+          };
+        } else {
+          // Second call: response to the Stop hook error (continuation)
+          return {
+            content:
+              "I'll address the session cleanup issue that was detected.",
+            tool_calls: [],
+            usage: {
+              prompt_tokens: 8,
+              completion_tokens: 12,
+              total_tokens: 20,
+            },
+          };
+        }
       });
 
       await agent.sendMessage("complete task");
@@ -459,8 +478,8 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
         }),
       );
 
-      // Verify AI was called at least once
-      expect(mockCallAgent).toHaveBeenCalledTimes(1);
+      // Verify AI was called 2 times (initial + continuation due to Stop hook blocking)
+      expect(mockCallAgent).toHaveBeenCalledTimes(2);
 
       // FR-021: System MUST validate Stop hook blocking behavior by checking that
       // agent.messages contains a user role message with stderr content

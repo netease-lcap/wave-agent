@@ -222,6 +222,7 @@ export class AIManager {
     } = {},
   ): Promise<void> {
     const { recursionDepth = 0, model, allowedTools } = options;
+
     // Only check isLoading for the initial call (recursionDepth === 0)
     if (recursionDepth === 0 && this.isLoading) {
       return;
@@ -477,33 +478,51 @@ export class AIManager {
         error instanceof Error ? error.message : "Unknown error occurred",
       );
     } finally {
-      // Only clear loading state and cleanup for the initial call
+      // Only execute Stop hooks for the initial call
       if (recursionDepth === 0) {
-        this.setIsLoading(false);
-
-        // Clear abort controllers
-        this.abortController = null;
-        this.toolAbortController = null;
-
-        // Save session before executing Stop hooks
-        await this.messageManager.saveSession();
-
         // Execute Stop hooks only if the operation was not aborted
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
 
         if (!isCurrentlyAborted) {
-          await this.executeStopHooks();
+          const shouldContinue = await this.executeStopHooks();
+
+          // If Stop hooks indicate we should continue (due to blocking errors),
+          // restart the AI conversation cycle
+          if (shouldContinue) {
+            this.logger?.info(
+              "Stop hooks indicate issues need fixing, continuing conversation...",
+            );
+
+            // Restart the conversation to let AI fix the issues
+            // Use recursionDepth = 1 to prevent Stop hooks from running again in continuation
+            await this.sendAIMessage({
+              recursionDepth: 1,
+              model,
+              allowedTools,
+            });
+          }
         }
+
+        // Save session after all operations (including continuation) are complete
+        await this.messageManager.saveSession();
+
+        // Clear abort controllers and loading state after all operations are complete
+        this.abortController = null;
+        this.toolAbortController = null;
+
+        // Set loading to false at the very end, after all operations including continuation
+        this.setIsLoading(false);
       }
     }
   }
 
   /**
    * Execute Stop hooks when AI response cycle completes
+   * @returns Promise<boolean> - true if should continue conversation, false if should stop
    */
-  private async executeStopHooks(): Promise<void> {
-    if (!this.hookManager) return;
+  private async executeStopHooks(): Promise<boolean> {
+    if (!this.hookManager) return false;
 
     try {
       const context: ExtendedHookExecutionContext = {
@@ -519,12 +538,22 @@ export class AIManager {
       const results = await this.hookManager.executeHooks("Stop", context);
 
       // Process hook results to handle exit codes and appropriate responses
+      let shouldContinue = false;
       if (results.length > 0) {
-        this.hookManager.processHookResults(
+        const processResult = this.hookManager.processHookResults(
           "Stop",
           results,
           this.messageManager,
         );
+
+        // If hook processing indicates we should block (exit code 2), continue conversation
+        if (processResult.shouldBlock) {
+          this.logger?.info(
+            "Stop hook blocked stopping with error:",
+            processResult.errorMessage,
+          );
+          shouldContinue = true;
+        }
       }
 
       // Log hook execution results for debugging
@@ -540,9 +569,12 @@ export class AIManager {
           })),
         );
       }
+
+      return shouldContinue;
     } catch (error) {
       // Hook execution errors should not interrupt the main workflow
       this.logger?.error("Stop hook execution failed:", error);
+      return false;
     }
   }
 

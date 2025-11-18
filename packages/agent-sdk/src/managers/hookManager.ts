@@ -381,9 +381,9 @@ export class HookManager implements IHookManager {
         return { shouldBlock: false };
 
       case "Stop":
-        // Show error to Wave Agent via user message, execution continues
+        // Show error to Wave Agent via user message and block stopping to continue conversation
         messageManager.addUserMessage(errorMessage);
-        return { shouldBlock: false };
+        return { shouldBlock: true, errorMessage };
 
       default:
         return { shouldBlock: false };
