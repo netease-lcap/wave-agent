@@ -27,7 +27,7 @@ if [[ ! "$FILE_PATH" =~ \.(ts|tsx)$ ]]; then
     exit 0
 fi
 
-echo "Checking TypeScript file: $FILE_PATH" >&2
+echo "Checking TypeScript file: $FILE_PATH"
 
 # Get absolute path to the project root
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -41,10 +41,10 @@ if [[ "$FILE_PATH" =~ packages/([^/]+)/ ]]; then
     PACKAGE_DIR="$PROJECT_ROOT/packages/$PACKAGE_NAME"
     # Extract the relative path within the package
     RELATIVE_FILE_PATH="${FILE_PATH#*packages/$PACKAGE_NAME/}"
-    echo "Detected package: $PACKAGE_NAME" >&2
+    echo "Detected package: $PACKAGE_NAME"
 else
     # If not in a package, skip checks since there's no proper configuration
-    echo "File is not in a package directory, skipping checks..." >&2
+    echo "File is not in a package directory, skipping checks..."
     exit 0
 fi
 
@@ -56,14 +56,14 @@ ERROR_OUTPUT=""
 cd "$PACKAGE_DIR"
 
 # Type check with TypeScript compiler directly on the file
-echo "Running TypeScript check in directory: $PACKAGE_DIR" >&2
+echo "Running TypeScript check in directory: $PACKAGE_DIR"
 if ! TYPE_OUTPUT=$(npx tsc --noEmit "$RELATIVE_FILE_PATH" 2>&1); then
     HAS_ERRORS=true
     ERROR_OUTPUT="$ERROR_OUTPUT\n=== TypeScript Errors ===\n$TYPE_OUTPUT"
 fi
 
 # Lint with ESLint
-echo "Running ESLint check..." >&2
+echo "Running ESLint check..."
 if ! LINT_OUTPUT=$(pnpm eslint "$RELATIVE_FILE_PATH" 2>&1); then
     HAS_ERRORS=true
     ERROR_OUTPUT="$ERROR_OUTPUT\n=== ESLint Issues ===\n$LINT_OUTPUT"
@@ -75,6 +75,6 @@ if [ "$HAS_ERRORS" = true ]; then
     echo "Fix the above type and lint errors in $FILE_PATH" >&2
     exit 2
 else
-    echo "TypeScript file $FILE_PATH passed all checks" >&2
+    echo "TypeScript file $FILE_PATH passed all checks"
     exit 0
 fi
