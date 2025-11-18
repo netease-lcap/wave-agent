@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Box, Text } from "ink";
 import { useInput } from "ink";
 import { FileSelector } from "./FileSelector.js";
@@ -60,7 +60,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const {
     inputText,
     cursorPosition,
-    clearInput,
     // Image management
     attachedImages,
     clearImages,
@@ -80,12 +79,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showBashHistorySelector,
     bashHistorySearchQuery,
     handleBashHistorySelect,
-    handleBashHistoryExecute,
     handleCancelBashHistorySelect,
     // Memory type selector
     showMemoryTypeSelector,
     memoryMessage,
-    handleMemoryTypeSelect: handleMemoryTypeSelectorSelect,
     handleCancelMemoryTypeSelect,
     // Bash/MCP Manager
     showBashManager,
@@ -94,6 +91,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowMcpManager,
     // Input history
     setUserInputHistory,
+    // Complex handlers combining multiple operations
+    handleBashHistoryExecuteAndSend,
+    handleMemoryTypeSelectAndSave,
     // Main handler
     handleInput,
     // Manager ready state
@@ -124,32 +124,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   // These methods are already memoized in useInputManager, no need to wrap again
 
-  const keyboardHandleBashHistoryExecute = useCallback(
-    (command: string) => {
-      const commandToExecute = handleBashHistoryExecute(command);
-      // Clear input box and execute command, ensure command starts with !
-      const bashCommand = commandToExecute.startsWith("!")
-        ? commandToExecute
-        : `!${commandToExecute}`;
-      clearInput();
-      sendMessage(bashCommand);
-    },
-    [handleBashHistoryExecute, clearInput, sendMessage],
-  );
-
-  const handleMemoryTypeSelect = useCallback(
-    async (type: "project" | "user") => {
-      const currentMessage = inputText.trim();
-      if (currentMessage.startsWith("#")) {
-        await saveMemory(currentMessage, type);
-      }
-      // Call the handler function to close the selector
-      handleMemoryTypeSelectorSelect(type);
-      // Clear input box
-      clearInput();
-    },
-    [inputText, saveMemory, handleMemoryTypeSelectorSelect, clearInput],
-  );
+  // These methods are already memoized in useInputManager and combine multiple operations
 
   const isPlaceholder = !inputText;
   const placeholderText = INPUT_PLACEHOLDER_TEXT;
@@ -197,7 +172,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           searchQuery={bashHistorySearchQuery}
           workdir={currentWorkdir}
           onSelect={handleBashHistorySelect}
-          onExecute={keyboardHandleBashHistoryExecute}
+          onExecute={handleBashHistoryExecuteAndSend}
           onCancel={handleCancelBashHistorySelect}
         />
       )}
@@ -205,7 +180,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       {showMemoryTypeSelector && (
         <MemoryTypeSelector
           message={memoryMessage}
-          onSelect={handleMemoryTypeSelect}
+          onSelect={handleMemoryTypeSelectAndSave}
           onCancel={handleCancelMemoryTypeSelect}
         />
       )}
