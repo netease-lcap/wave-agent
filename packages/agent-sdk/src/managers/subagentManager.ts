@@ -232,7 +232,7 @@ export class SubagentManager {
       }
 
       // Add the user's prompt as a message
-      instance.messageManager.addUserMessage(prompt);
+      instance.messageManager.addUserMessage({ content: prompt });
 
       // Create allowed tools list - always exclude Task tool to prevent subagent recursion
       let allowedTools = instance.configuration.tools;

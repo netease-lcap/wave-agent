@@ -37,8 +37,8 @@ async function setupTest() {
     workdir: tempDir, // Use workdir parameter instead of process.chdir
     callbacks: {
       // Incremental callback
-      onUserMessageAdded: (content: string) => {
-        console.log(`👤 User message: "${content}"`);
+      onUserMessageAdded: (params) => {
+        console.log(`👤 User message: "${params.content}"`);
       },
       onAssistantMessageAdded: (content, toolCalls) => {
         console.log("🤖 Assistant message started");

@@ -72,7 +72,6 @@ fi
 # Report results
 if [ "$HAS_ERRORS" = true ]; then
     echo -e "$ERROR_OUTPUT" >&2
-    echo "Fix the above type and lint errors in $FILE_PATH" >&2
     exit 2
 else
     echo "TypeScript file $FILE_PATH passed all checks"

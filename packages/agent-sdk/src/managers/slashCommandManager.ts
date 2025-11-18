@@ -261,11 +261,10 @@ export class SlashCommandManager {
       const originalInput = args
         ? `/${commandName} ${args}`
         : `/${commandName}`;
-      this.messageManager.addUserMessage(
-        originalInput,
-        undefined,
-        finalContent,
-      );
+      this.messageManager.addUserMessage({
+        content: originalInput,
+        customCommandContent: finalContent,
+      });
 
       // Execute the AI conversation with custom configuration
       await this.aiManager.sendAIMessage({

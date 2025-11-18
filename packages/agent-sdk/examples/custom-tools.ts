@@ -137,8 +137,8 @@ console.error("Favorite Number MCP Server ready");`;
   agent = await Agent.create({
     workdir: tempDir,
     callbacks: {
-      onUserMessageAdded: (content: string) => {
-        console.log(`👤 User: "${content}"`);
+      onUserMessageAdded: (params) => {
+        console.log(`👤 User: "${params.content}"`);
       },
       onAssistantMessageAdded: (content) => {
         if (content) console.log(`🤖 Assistant: ${content}`);
