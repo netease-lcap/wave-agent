@@ -11,6 +11,7 @@ export const useInputManager = (
   callbacks: Partial<InputManagerCallbacks> = {},
 ) => {
   const managerRef = useRef<InputManager | null>(null);
+  const [isManagerReady, setIsManagerReady] = useState(false);
 
   // React state that mirrors InputManager state
   const [inputText, setInputText] = useState("");
@@ -65,10 +66,13 @@ export const useInputManager = (
           setShowMcpManager(show);
         },
         onImagesStateChange: setAttachedImages,
+        onShowBashManager: () => setShowBashManager(true),
+        onShowMcpManager: () => setShowMcpManager(true),
         ...callbacks,
       });
 
       managerRef.current = manager;
+      setIsManagerReady(true);
     } else {
       // Update callbacks on existing manager
       managerRef.current.updateCallbacks({
@@ -93,6 +97,8 @@ export const useInputManager = (
           setShowMcpManager(show);
         },
         onImagesStateChange: setAttachedImages,
+        onShowBashManager: () => setShowBashManager(true),
+        onShowMcpManager: () => setShowMcpManager(true),
         ...callbacks,
       });
     }
@@ -315,6 +321,7 @@ export const useInputManager = (
     showBashManager,
     showMcpManager,
     attachedImages,
+    isManagerReady,
 
     // Methods
     insertTextAtCursor,

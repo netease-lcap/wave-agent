@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import { Box, Text } from "ink";
 import { useInput } from "ink";
 import { FileSelector } from "./FileSelector.js";
@@ -53,13 +53,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   slashCommands = [],
   hasSlashCommand = () => false,
 }) => {
-  // Get current working directory
-  const currentWorkdir = workdir || process.cwd();
-
-  // Simple history navigation reset function
-  const resetHistoryNavigation = useCallback(() => {
-    // This will be handled by InputManager through callbacks
-  }, []);
+  // Get current working directory - memoized to avoid repeated process.cwd() calls
+  const currentWorkdir = useMemo(() => workdir || process.cwd(), [workdir]);
 
   // Input manager with all input state and functionality (including images)
   const {
@@ -101,14 +96,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setUserInputHistory,
     // Main handler
     handleInput,
+    // Manager ready state
+    isManagerReady,
   } = useInputManager({
-    onShowBashManager: () => setShowBashManager(true),
-    onShowMcpManager: () => setShowMcpManager(true),
     onSendMessage: sendMessage,
     onHasSlashCommand: hasSlashCommand,
     onSaveMemory: saveMemory,
     onAbortMessage: abortMessage,
-    onResetHistoryNavigation: resetHistoryNavigation,
   });
 
   // Set user input history when it changes
@@ -197,6 +191,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   // Always show cursor, allow user to continue input during loading
   const shouldShowCursor = true;
+
+  // Only show the Box after InputManager is created on first mount
+  if (!isManagerReady) {
+    return null;
+  }
 
   return (
     <Box flexDirection="column" width={"100%"}>
