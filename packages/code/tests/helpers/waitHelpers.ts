@@ -1,3 +1,5 @@
+import { stripAnsiColors } from "wave-agent-sdk";
+
 /**
  * Generic wait function that waits for specific condition to be met
  * @param condition Condition function, returns true when condition is satisfied
@@ -58,7 +60,10 @@ export async function waitForText(
   return waitFor(
     () => {
       const frame = lastFrame();
-      return frame ? frame.includes(expectedText) : false;
+      if (!frame) return false;
+
+      const cleanFrame = stripAnsiColors(frame);
+      return cleanFrame.includes(expectedText);
     },
     {
       timeout,
@@ -89,7 +94,10 @@ export async function waitForTextToDisappear(
   return waitFor(
     () => {
       const frame = lastFrame();
-      return frame ? !frame.includes(unexpectedText) : true;
+      if (!frame) return true;
+
+      const cleanFrame = stripAnsiColors(frame);
+      return !cleanFrame.includes(unexpectedText);
     },
     {
       timeout,

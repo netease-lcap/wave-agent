@@ -19,6 +19,7 @@ export const ChatInterface: React.FC = () => {
     connectMcpServer,
     disconnectMcpServer,
     isExpanded,
+    sessionId,
     latestTotalTokens,
     slashCommands,
     hasSlashCommand,
@@ -42,6 +43,8 @@ export const ChatInterface: React.FC = () => {
       });
     }
   }, [isExpanded, messages]);
+
+  if (!sessionId) return null;
 
   return (
     <Box flexDirection="column" height="100%">
