@@ -287,24 +287,23 @@ export const addErrorBlockToMessage = ({
   error,
 }: AddErrorBlockParams): Message[] => {
   const newMessages = [...messages];
-  // Find the last assistant message
-  let assistantMessageFound = false;
-  for (let i = newMessages.length - 1; i >= 0; i--) {
-    if (newMessages[i].role === "assistant") {
-      newMessages[i].blocks = [
-        ...newMessages[i].blocks,
+
+  // Check if the last message is an assistant message
+  const lastMessage = newMessages[newMessages.length - 1];
+  if (lastMessage && lastMessage.role === "assistant") {
+    // Create a new message object with the error block added
+    newMessages[newMessages.length - 1] = {
+      ...lastMessage,
+      blocks: [
+        ...lastMessage.blocks,
         {
           type: "error",
           content: error,
         },
-      ];
-      assistantMessageFound = true;
-      break;
-    }
-  }
-
-  // If no assistant message found, create a new assistant message with only error block
-  if (!assistantMessageFound) {
+      ],
+    };
+  } else {
+    // If the last message is not an assistant message, create a new assistant message
     newMessages.push({
       role: "assistant",
       blocks: [
