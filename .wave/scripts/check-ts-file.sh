@@ -43,14 +43,9 @@ if [[ "$FILE_PATH" =~ packages/([^/]+)/ ]]; then
     RELATIVE_FILE_PATH="${FILE_PATH#*packages/$PACKAGE_NAME/}"
     echo "Detected package: $PACKAGE_NAME" >&2
 else
-    # If not in a package, use the root directory
-    PACKAGE_DIR="$PROJECT_ROOT"
-    # Convert absolute path to relative if needed
-    if [[ "$FILE_PATH" = /* ]]; then
-        RELATIVE_FILE_PATH="${FILE_PATH#$PROJECT_ROOT/}"
-    else
-        RELATIVE_FILE_PATH="$FILE_PATH"
-    fi
+    # If not in a package, skip checks since there's no proper configuration
+    echo "File is not in a package directory, skipping checks..." >&2
+    exit 0
 fi
 
 # Initialize error tracking
@@ -60,15 +55,11 @@ ERROR_OUTPUT=""
 # Change to the appropriate directory and run checks
 cd "$PACKAGE_DIR"
 
-# Type check with TypeScript compiler using project's type-check script
+# Type check with TypeScript compiler directly on the file
 echo "Running TypeScript check in directory: $PACKAGE_DIR" >&2
-if ! TYPE_OUTPUT=$(pnpm run type-check 2>&1); then
-    # Filter output to only show errors related to our target file
-    FILTERED_OUTPUT=$(echo "$TYPE_OUTPUT" | grep "$RELATIVE_FILE_PATH" || true)
-    if [ -n "$FILTERED_OUTPUT" ]; then
-        HAS_ERRORS=true
-        ERROR_OUTPUT="$ERROR_OUTPUT\n=== TypeScript Errors ===\n$FILTERED_OUTPUT"
-    fi
+if ! TYPE_OUTPUT=$(npx tsc --noEmit "$RELATIVE_FILE_PATH" 2>&1); then
+    HAS_ERRORS=true
+    ERROR_OUTPUT="$ERROR_OUTPUT\n=== TypeScript Errors ===\n$TYPE_OUTPUT"
 fi
 
 # Lint with ESLint
