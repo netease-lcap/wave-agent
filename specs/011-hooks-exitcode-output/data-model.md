@@ -63,7 +63,7 @@ Represents the processing context for interpreting hook execution results.
 2. Processing Context with event-specific behavior:
 3. Message operations with error display:
    - PreToolUse: `updateToolBlock(toolId, {result: stderr, success: false})` - shows error to Wave Agent, execution continues
-   - PostToolUse: `updateToolBlock(toolId, {result: originalResult + stderr, success: false})` - shows error to Wave Agent, execution continues
+   - PostToolUse: `addUserMessage(stderr)` - shows error to Wave Agent, allows AI to continue processing
    - UserPromptSubmit: `addErrorBlock(stderr)` + `removeLastUserMessage()` - blocks prompt processing, shows error to user, erases prompt
    - Stop: `addUserMessage(stderr)` - shows error to Wave Agent, execution continues
 

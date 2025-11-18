@@ -30,7 +30,7 @@ Hooks communicate status through exit codes, stdout, and stderr:
 | Hook Event         | Behavior                                                           |
 | ------------------ | ------------------------------------------------------------------ |
 | `PreToolUse`       | Blocks the tool call, shows stderr to Wave                       |
-| `PostToolUse`      | Shows stderr to Wave (tool already ran)                          |
+| `PostToolUse`      | Shows stderr to Wave and allows AI to continue (tool already ran) |
 | `UserPromptSubmit` | Blocks prompt processing, erases prompt, shows stderr to user only |
 | `Stop`             | Blocks stoppage, shows stderr to Wave                            |"
 
@@ -69,7 +69,7 @@ When a hook script encounters a critical error that should prevent further execu
 **Acceptance Scenarios**:
 
 1. **Given** a `PreToolUse` hook returns exit code 2 with stderr, **When** the hook completes, **Then** the tool call is blocked and `agent.messages` includes a `ToolBlock` with stderr in the result field
-2. **Given** a `PostToolUse` hook returns exit code 2 with stderr, **When** the hook completes, **Then** `agent.messages` includes a `ToolBlock` with both original tool result and stderr content
+2. **Given** a `PostToolUse` hook returns exit code 2 with stderr, **When** the hook completes, **Then** `agent.messages` includes a user role message with stderr content and AI continues processing
 3. **Given** a `UserPromptSubmit` hook returns exit code 2 with stderr, **When** the hook completes, **Then** prompt processing is blocked, prompt is erased, and `agent.messages` contains an `ErrorBlock` in assistant message with stderr content (user-visible only)
 4. **Given** a `Stop` hook returns exit code 2 with stderr, **When** the hook completes, **Then** stoppage is blocked and `agent.messages` contains a user role message with stderr content
 
@@ -109,7 +109,7 @@ When a hook script encounters a non-critical error, users need to see the error 
 - **FR-005**: System MUST ignore stdout from all non-`UserPromptSubmit` hooks regardless of exit code
 - **FR-006**: System MUST block tool execution when `PreToolUse` hook returns exit code 2
 - **FR-007**: System MUST display stderr to Wave Agent when `PreToolUse` hook returns exit code 2
-- **FR-008**: System MUST display stderr to Wave Agent when `PostToolUse` hook returns exit code 2 (without blocking since tool already executed)
+- **FR-008**: System MUST display stderr to Wave Agent via user role message when `PostToolUse` hook returns exit code 2 and allow AI to continue processing (tool already executed)
 - **FR-009**: System MUST block prompt processing when `UserPromptSubmit` hook returns exit code 2
 - **FR-010**: System MUST erase the current prompt when `UserPromptSubmit` hook returns exit code 2
 - **FR-011**: System MUST display stderr to user only (not Wave Agent) when `UserPromptSubmit` hook returns exit code 2
@@ -122,7 +122,7 @@ When a hook script encounters a non-critical error, users need to see the error 
 
 - **FR-016**: System MUST validate `UserPromptSubmit` success by checking that `agent.sendMessage()` results in `agent.messages` containing two user role messages, where the second message contains the hook stdout content
 - **FR-017**: System MUST validate `PreToolUse` blocking errors by checking that `agent.messages` includes a `ToolBlock` with its result field containing the stderr content
-- **FR-018**: System MUST validate `PostToolUse` error feedback by checking that `agent.messages` includes a `ToolBlock` with its result field containing both the original tool execution result and the stderr content
+- **FR-018**: System MUST validate `PostToolUse` error feedback by checking that `agent.messages` includes a user role message with stderr content
 - **FR-019**: System MUST validate `UserPromptSubmit` blocking errors by checking that `agent.messages` does not contain the user role message and contains an `ErrorBlock` in the assistant message with stderr as content
 - **FR-020**: System MUST ensure `ErrorBlock` content is not processed by `packages/agent-sdk/src/utils/convertMessagesForAPI.ts` so it remains user-visible only and is not sent to the agent
 - **FR-021**: System MUST validate `Stop` hook blocking behavior by checking that `agent.messages` contains a user role message with stderr content
