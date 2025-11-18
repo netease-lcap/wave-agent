@@ -8,6 +8,13 @@ import type { Message } from "../../src/types/index.js";
 import path from "path";
 import { promises as fs } from "fs";
 
+// Mock console to suppress stderr output
+const mockConsole = {
+  warn: vi.fn(),
+  error: vi.fn(),
+  log: vi.fn(),
+};
+
 // Mock fs operations
 vi.mock("fs", () => ({
   promises: {
@@ -31,8 +38,13 @@ vi.mock("os", () => ({
 
 describe("Session service error handling tests", () => {
   let mockTempDir: string;
+  let originalConsole: Console;
 
   beforeEach(async () => {
+    // Mock console to suppress stderr output
+    originalConsole = global.console;
+    global.console = mockConsole as unknown as Console;
+
     // Set up mock directory path
     mockTempDir = "/mock/tmp/wave-session-errors-test-123";
 
@@ -56,6 +68,9 @@ describe("Session service error handling tests", () => {
   });
 
   afterEach(async () => {
+    // Restore original console
+    global.console = originalConsole;
+
     vi.unstubAllEnvs();
     vi.clearAllMocks();
   });
