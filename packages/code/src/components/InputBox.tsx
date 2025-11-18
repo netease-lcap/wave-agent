@@ -74,7 +74,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showCommandSelector,
     commandSearchQuery,
     handleCommandSelect: handleCommandSelectorSelect,
-    handleCommandInsert: handleCommandSelectorInsert,
+    handleCommandInsert,
     handleCancelCommandSelect,
     // Bash history selector
     showBashHistorySelector,
@@ -174,13 +174,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const isPlaceholder = !inputText;
   const placeholderText = INPUT_PLACEHOLDER_TEXT;
 
-  // Create adapter function for CommandSelector
-  const handleCommandInsert = useCallback(
-    (command: string) => {
-      handleCommandSelectorInsert(command);
-    },
-    [handleCommandSelectorInsert],
-  );
+  // handleCommandSelectorInsert is already memoized in useInputManager, no need to wrap again
 
   // Split text into three parts: before cursor, cursor position, after cursor
   const displayText = isPlaceholder ? placeholderText : inputText;
