@@ -278,6 +278,9 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
         expect(toolBlock.result).toContain(
           "Tool execution blocked by security policy",
         );
+        // Verify that the tool parameters are preserved when hook blocks execution
+        expect(toolBlock.parameters).toContain("/test/file.txt");
+        expect(toolBlock.parameters).toContain("file_path");
       }
     });
   });

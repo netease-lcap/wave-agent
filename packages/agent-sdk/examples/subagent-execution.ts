@@ -94,7 +94,7 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
           console.log(`🔧 Running tool: ${params.name}`);
           if (params.name === "Task") {
             console.log(`🚀 Subagent task starting...`);
-            console.log(`🔍 Tool parameters:`, params.args);
+            console.log(`🔍 Tool parameters:`, params.parameters);
           }
         } else if (params.success) {
           console.log(`✅ Tool ${params.name} completed successfully`);
