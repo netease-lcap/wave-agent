@@ -127,9 +127,9 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
         console.log(`    💬 Prompt: ${parameters.prompt}`);
         console.log(`    🤖 Subagent Type: ${parameters.subagent_type}`);
       },
-      onSubAgentBlockUpdated: (subagentId: string, messages) => {
+      onSubAgentBlockUpdated: (subagentId: string, messages, status) => {
         console.log(
-          `\n🤖🔄 CALLBACK: Subagent ${subagentId} updated with ${messages.length} messages`,
+          `\n🤖🔄 CALLBACK: Subagent ${subagentId} updated with ${messages.length} messages (Status: ${status})`,
         );
         console.log(`    ⏰ Timestamp: ${new Date().toISOString()}`);
         // Log the latest message from the subagent (using Wave Agent's Message format)

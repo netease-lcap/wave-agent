@@ -73,7 +73,11 @@ export interface MessageManagerCallbacks {
       subagent_type: string;
     },
   ) => void;
-  onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
+  onSubAgentBlockUpdated?: (
+    subagentId: string,
+    messages: Message[],
+    status: "active" | "completed" | "error" | "aborted",
+  ) => void;
 }
 
 export interface MessageManagerOptions {
@@ -493,7 +497,11 @@ export class MessageManager {
       status: updates.status || "active",
       subagentMessages: updates.messages || [],
     };
-    this.callbacks.onSubAgentBlockUpdated?.(params.subagentId, params.messages);
+    this.callbacks.onSubAgentBlockUpdated?.(
+      params.subagentId,
+      params.messages,
+      params.status,
+    );
   }
 
   /**

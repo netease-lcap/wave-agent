@@ -26,11 +26,11 @@ onSubAgentBlockAdded?: (
 
 ### onSubAgentBlockUpdated
 
-**Purpose**: Notify when subagent messages change 
+**Purpose**: Notify when subagent messages or status change 
 
 **Signature**:
 ```typescript
-onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
+onSubAgentBlockUpdated?: (subagentId: string, messages: Message[], status: SubagentBlock["status"]) => void;
 ```
 
 **Usage**: Optional callback for advanced integrations. The standard `onMessagesChange` callback is sufficient for most use cases.
@@ -59,8 +59,8 @@ const messageManager = new MessageManager({
   onSubAgentBlockAdded: (subagentId, parameters) => {
     uiState.addSubagentBlock(subagentId, parameters);
   },
-  onSubAgentBlockUpdated: (subagentId, messages) => {
-    uiState.updateSubagentBlock(subagentId, messages);
+  onSubAgentBlockUpdated: (subagentId, messages, status) => {
+    uiState.updateSubagentBlock(subagentId, messages, status);
   }
 });
 ```
@@ -139,7 +139,8 @@ expect(mockCallbacks.onSubAgentBlockAdded).toHaveBeenCalledWith(
 );
 expect(mockCallbacks.onSubAgentBlockUpdated).toHaveBeenCalledWith(
   expect.any(String),
-  expect.any(Array)
+  expect.any(Array),
+  expect.stringMatching(/^(active|completed|error|aborted)$/)
 );
 ```
 

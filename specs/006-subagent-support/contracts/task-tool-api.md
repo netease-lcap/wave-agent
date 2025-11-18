@@ -121,7 +121,7 @@ interface MessageManagerCallbacks {
       subagent_type: string;
     }
   ) => void;
-  onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
+  onSubAgentBlockUpdated?: (subagentId: string, messages: Message[], status: SubagentBlock["status"]) => void;
 }
 ```
 
