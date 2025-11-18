@@ -251,21 +251,19 @@ export const InputBox: React.FC<InputBoxProps> = ({
       )}
       {showBashManager || showMcpManager || (
         <Box borderStyle="single" borderColor="gray" paddingX={1}>
-          <Box width="100%" flexDirection="row" justifyContent="space-between">
-            <Text color={isPlaceholder ? "gray" : "white"}>
-              {shouldShowCursor ? (
-                <>
-                  {beforeCursor}
-                  <Text backgroundColor="white" color="black">
-                    {atCursor}
-                  </Text>
-                  {afterCursor}
-                </>
-              ) : (
-                displayText
-              )}
-            </Text>
-          </Box>
+          <Text color={isPlaceholder ? "gray" : "white"}>
+            {shouldShowCursor ? (
+              <>
+                {beforeCursor}
+                <Text backgroundColor="white" color="black">
+                  {atCursor}
+                </Text>
+                {afterCursor}
+              </>
+            ) : (
+              displayText
+            )}
+          </Text>
         </Box>
       )}
     </Box>
