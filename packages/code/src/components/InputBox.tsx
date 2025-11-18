@@ -68,18 +68,18 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showFileSelector,
     filteredFiles,
     fileSearchQuery: searchQuery,
-    handleFileSelect: handleFileSelectorSelect,
+    handleFileSelect,
     handleCancelFileSelect,
     // Command selector
     showCommandSelector,
     commandSearchQuery,
-    handleCommandSelect: handleCommandSelectorSelect,
+    handleCommandSelect,
     handleCommandInsert,
     handleCancelCommandSelect,
     // Bash history selector
     showBashHistorySelector,
     bashHistorySearchQuery,
-    handleBashHistorySelect: handleBashHistorySelectorSelect,
+    handleBashHistorySelect,
     handleBashHistoryExecute,
     handleCancelBashHistorySelect,
     // Memory type selector
@@ -122,27 +122,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     );
   });
 
-  // Handler functions for keyboard events
-  const handleFileSelect = useCallback(
-    (filePath: string) => {
-      handleFileSelectorSelect(filePath);
-    },
-    [handleFileSelectorSelect],
-  );
-
-  const handleCommandSelect = useCallback(
-    (command: string) => {
-      handleCommandSelectorSelect(command);
-    },
-    [handleCommandSelectorSelect],
-  );
-
-  const handleBashHistorySelect = useCallback(
-    (command: string) => {
-      handleBashHistorySelectorSelect(command);
-    },
-    [handleBashHistorySelectorSelect],
-  );
+  // These methods are already memoized in useInputManager, no need to wrap again
 
   const keyboardHandleBashHistoryExecute = useCallback(
     (command: string) => {
