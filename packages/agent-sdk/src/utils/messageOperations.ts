@@ -31,17 +31,10 @@ export interface UpdateToolBlockParams {
 }
 
 // Agent specific interfaces (without messages parameter)
-export interface AgentToolBlockUpdateParams {
-  toolId: string;
-  args?: string;
-  result?: string;
-  success?: boolean;
-  error?: string;
-  isRunning?: boolean;
-  name?: string;
-  shortResult?: string;
-  compactParams?: string;
-}
+export type AgentToolBlockUpdateParams = Omit<
+  UpdateToolBlockParams,
+  "messages"
+>;
 
 export interface AddDiffBlockParams {
   messages: Message[];

@@ -66,7 +66,7 @@ describe("todoWriteTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toBe("Todo list updated: 1/3 completed");
     expect(result.shortResult).toBe(
-      "1/3 done\n[>] Fix linting errors\n[ ] Deploy to production",
+      "1/3 done\n[x] Write tests\n[>] Fix linting errors\n[ ] Deploy to production",
     );
   });
 
@@ -245,7 +245,9 @@ describe("todoWriteTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toBe("Todo list updated: 2/4 completed");
-    expect(result.shortResult).toBe("2/4 done\n[ ] Task 3 +1");
+    expect(result.shortResult).toBe(
+      "2/4 done\n[x] Task 1\n[x] Task 2\n[ ] Task 3\n[ ] Task 4",
+    );
   });
 
   it("should validate todo items thoroughly", async () => {

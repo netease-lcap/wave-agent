@@ -331,14 +331,15 @@ export class MessageManager {
   public updateToolBlock(params: AgentToolBlockUpdateParams): void {
     const newMessages = updateToolBlockInMessage({
       messages: this.messages,
-      id: params.toolId,
-      parameters: params.args || "",
+      id: params.id,
+      parameters: params.parameters,
       result: params.result,
       success: params.success,
       error: params.error,
       isRunning: params.isRunning,
       name: params.name,
       shortResult: params.shortResult,
+      images: params.images,
       compactParams: params.compactParams,
     });
     this.setMessages(newMessages);

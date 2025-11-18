@@ -51,7 +51,7 @@ async function setupTest() {
           : params.success
             ? "success"
             : "failed";
-        console.log(`🔧 Tool ${params.name || params.toolId}: ${status}`);
+        console.log(`🔧 Tool ${params.name || params.id}: ${status}`);
         if (params.result && !params.isRunning) {
           const preview = (params.shortResult || params.result)
             .slice(0, 200)

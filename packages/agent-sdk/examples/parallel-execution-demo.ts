@@ -29,7 +29,7 @@ async function demonstrateParallelExecution(): Promise<void> {
       agentModel: "gemini-2.0-flash-exp",
       callbacks: {
         onToolBlockUpdated: (params) => {
-          const { toolId, name: toolName, isRunning } = params;
+          const { id: toolId, name: toolName, isRunning } = params;
 
           if (!toolName) return;
 

@@ -352,8 +352,8 @@ export class AIManager {
               );
 
               this.messageManager.updateToolBlock({
-                toolId,
-                args: JSON.stringify(toolArgs, null, 2),
+                id: toolId,
+                parameters: JSON.stringify(toolArgs, null, 2),
                 isRunning: true, // isRunning: true
                 name: toolName,
                 compactParams,
@@ -391,8 +391,8 @@ export class AIManager {
 
                 // Update message state - tool execution completed
                 this.messageManager.updateToolBlock({
-                  toolId,
-                  args: JSON.stringify(toolArgs, null, 2),
+                  id: toolId,
+                  parameters: JSON.stringify(toolArgs, null, 2),
                   result:
                     toolResult.content ||
                     (toolResult.error ? `Error: ${toolResult.error}` : ""),
@@ -430,8 +430,8 @@ export class AIManager {
                     : String(toolError);
 
                 this.messageManager.updateToolBlock({
-                  toolId,
-                  args: JSON.stringify(toolArgs, null, 2),
+                  id: toolId,
+                  parameters: JSON.stringify(toolArgs, null, 2),
                   result: `Tool execution failed: ${errorMessage}`,
                   success: false,
                   error: errorMessage,
@@ -615,6 +615,7 @@ export class AIManager {
           results,
           this.messageManager,
           toolId, // Pass toolId for proper PreToolUse blocking error handling
+          JSON.stringify(toolInput || {}, null, 2), // Pass serialized tool parameters
         );
         shouldContinue = !processResult.shouldBlock;
       }
