@@ -77,13 +77,13 @@ export class HookManager {
 **Location**: `packages/agent-sdk/src/utils/hookMatcher.ts`
 
 ```typescript
-export interface IHookMatcher {
+export class HookMatcher {
   matches(pattern: string, toolName: string): boolean
   isValidPattern(pattern: string): boolean  
   getPatternType(pattern: string): "exact" | "glob" | "regex" | "alternatives"
 }
 
-export class HookMatcher implements IHookMatcher
+export class HookMatcher
 ```
 
 **Characteristics**:

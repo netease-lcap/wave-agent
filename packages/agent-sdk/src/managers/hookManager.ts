@@ -18,7 +18,7 @@ import {
   isValidHookEvent,
   isValidHookEventConfig,
 } from "../types/hooks.js";
-import { type IHookMatcher, HookMatcher } from "../utils/hookMatcher.js";
+import { HookMatcher } from "../utils/hookMatcher.js";
 import {
   executeCommand,
   isCommandSafe,
@@ -29,13 +29,13 @@ import type { MessageManager } from "./messageManager.js";
 
 export class HookManager {
   private configuration: PartialHookConfiguration | undefined;
-  private readonly matcher: IHookMatcher;
+  private readonly matcher: HookMatcher;
   private readonly logger?: Logger;
   private readonly workdir: string;
 
   constructor(
     workdir: string,
-    matcher: IHookMatcher = new HookMatcher(),
+    matcher: HookMatcher = new HookMatcher(),
     logger?: Logger,
   ) {
     this.workdir = workdir;
