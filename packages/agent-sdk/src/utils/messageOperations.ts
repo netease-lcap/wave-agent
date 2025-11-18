@@ -3,13 +3,17 @@ import { readFileSync } from "fs";
 import { extname } from "path";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 
-// Parameter interfaces for message operations
-export interface AddUserMessageParams {
-  messages: Message[];
+// Base user message parameters interface
+export interface UserMessageParams {
   content: string;
   images?: Array<{ path: string; mimeType: string }>;
   customCommandContent?: string;
   source?: MessageSource;
+}
+
+// Parameter interfaces for message operations
+export interface AddUserMessageParams extends UserMessageParams {
+  messages: Message[];
 }
 
 export interface UpdateToolBlockParams {

@@ -8,13 +8,10 @@ console.log("🚀 Starting Agent hi test...");
 const agent = await Agent.create({
   callbacks: {
     // Incremental callback
-    onUserMessageAdded: (
-      content: string,
-      images?: Array<{ path: string; mimeType: string }>,
-    ) => {
-      console.log(`👤 User message added: "${content}"`);
-      if (images && images.length > 0) {
-        console.log(`🖼️  With ${images.length} images`);
+    onUserMessageAdded: (params) => {
+      console.log(`👤 User message added: "${params.content}"`);
+      if (params.images && params.images.length > 0) {
+        console.log(`🖼️  With ${params.images.length} images`);
       }
     },
     onAssistantMessageAdded: (content, toolCalls) => {

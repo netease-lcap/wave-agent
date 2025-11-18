@@ -487,13 +487,13 @@ export class Agent {
       this.addToInputHistory(content);
 
       // Add user message first, will automatically sync to UI
-      this.messageManager.addUserMessage(
+      this.messageManager.addUserMessage({
         content,
-        images?.map((img) => ({
+        images: images?.map((img) => ({
           path: img.path,
           mimeType: img.mimeType,
         })),
-      );
+      });
 
       // Execute UserPromptSubmit hooks after adding the user message
       if (this.hookManager) {

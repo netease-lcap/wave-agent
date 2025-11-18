@@ -13,11 +13,12 @@ import {
   addSubagentBlockToMessage,
   updateSubagentBlockInMessage,
   removeLastUserMessage,
+  UserMessageParams,
   type AddSubagentBlockParams,
   type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import type { Logger, Message, Usage, MessageSource } from "../types/index.js";
+import type { Logger, Message, Usage } from "../types/index.js";
 import {
   cleanupExpiredSessions,
   getLatestSession,
@@ -35,10 +36,7 @@ export interface MessageManagerCallbacks {
   onUserInputHistoryChange?: (history: string[]) => void;
   onUsagesChange?: (usages: Usage[]) => void;
   // Incremental callback
-  onUserMessageAdded?: (
-    content: string,
-    images?: Array<{ path: string; mimeType: string }>,
-  ) => void;
+  onUserMessageAdded?: (params: UserMessageParams) => void;
   onAssistantMessageAdded?: (
     content?: string,
     toolCalls?: ChatCompletionMessageFunctionToolCall[],
@@ -275,21 +273,13 @@ export class MessageManager {
   }
 
   // Encapsulated message operation functions
-  public addUserMessage(
-    content: string,
-    images?: Array<{ path: string; mimeType: string }>,
-    customCommandContent?: string,
-    source?: MessageSource,
-  ): void {
+  public addUserMessage(params: UserMessageParams): void {
     const newMessages = addUserMessageToMessages({
       messages: this.messages,
-      content,
-      images,
-      customCommandContent,
-      source,
+      ...params,
     });
     this.setMessages(newMessages);
-    this.callbacks.onUserMessageAdded?.(content, images);
+    this.callbacks.onUserMessageAdded?.(params);
   }
 
   public addAssistantMessage(
