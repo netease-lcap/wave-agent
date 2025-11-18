@@ -1,7 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { writeFileSync, unlinkSync, existsSync } from "fs";
-import { join } from "path";
-import { tmpdir } from "os";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { readFileSync } from "fs";
 import {
   convertImageToBase64,
   addMemoryBlockToMessage,
@@ -12,6 +10,11 @@ import {
   addErrorBlockToMessage,
 } from "@/utils/messageOperations.js";
 import type { Message } from "@/types/index.js";
+
+// Mock fs
+vi.mock("fs", () => ({
+  readFileSync: vi.fn(),
+}));
 
 describe("addUserMessageToMessages", () => {
   it("should add user message with text content only", () => {
@@ -150,46 +153,39 @@ describe("addUserMessageToMessages", () => {
 });
 
 describe("convertImageToBase64", () => {
-  let tempImagePath: string;
-
   beforeEach(() => {
-    // Create a temporary PNG image file for testing
-    // This is binary data for a 1x1 pixel transparent PNG
-    const pngBuffer = Buffer.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
-      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-      0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
-      0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0xfc, 0xcf, 0xc0, 0x50,
-      0x0f, 0x00, 0x04, 0x85, 0x01, 0x80, 0x84, 0xa9, 0x8c, 0x21, 0x00, 0x00,
-      0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
-    ]);
-
-    tempImagePath = join(tmpdir(), `test-image-${Date.now()}.png`);
-    writeFileSync(tempImagePath, pngBuffer);
-  });
-
-  afterEach(() => {
-    // Clean up temporary file
-    if (existsSync(tempImagePath)) {
-      try {
-        unlinkSync(tempImagePath);
-      } catch {
-        // Failed to cleanup temp file - ignore error in tests
-      }
-    }
+    vi.clearAllMocks();
   });
 
   it("should convert PNG image to base64 data URL", () => {
-    const result = convertImageToBase64(tempImagePath);
+    // Mock PNG file data
+    const pngBuffer = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+      0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
+      0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0xda, 0x63, 0xfc, 0xcf, 0xc0, 0x50,
+      0x0f, 0x00, 0x04, 0x85, 0x01, 0x80, 0x84, 0xa9, 0x8c, 0x21, 0x00, 0x00,
+      0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ]);
+
+    vi.mocked(readFileSync).mockReturnValue(pngBuffer);
+
+    const result = convertImageToBase64("/test/image.png");
 
     expect(result).toMatch(/^data:image\/png;base64,/);
-    expect(result.length).toBeGreaterThan("data:image/png;base64,".length);
+    expect(readFileSync).toHaveBeenCalledWith("/test/image.png");
+
+    // Decode base64 and check if it contains PNG signature
+    const base64Data = result.split(",")[1];
+    const decoded = Buffer.from(base64Data, "base64");
+    expect(decoded.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
   });
 
   it("should handle JPEG files with correct MIME type", () => {
-    const jpegPath = tempImagePath.replace(".png", ".jpg");
-    // Copy file and rename to .jpg
-    const pngBuffer = Buffer.from([
+    // Mock JPEG file data (using same binary data but with .jpg extension)
+    const jpegBuffer = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
       0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
       0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
@@ -197,30 +193,31 @@ describe("convertImageToBase64", () => {
       0x0f, 0x00, 0x04, 0x85, 0x01, 0x80, 0x84, 0xa9, 0x8c, 0x21, 0x00, 0x00,
       0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ]);
-    writeFileSync(jpegPath, pngBuffer);
 
-    const result = convertImageToBase64(jpegPath);
+    vi.mocked(readFileSync).mockReturnValue(jpegBuffer);
+
+    const result = convertImageToBase64("/test/image.jpg");
 
     expect(result).toMatch(/^data:image\/jpeg;base64,/);
-
-    // Clean up temporary JPEG file
-    if (existsSync(jpegPath)) {
-      unlinkSync(jpegPath);
-    }
+    expect(readFileSync).toHaveBeenCalledWith("/test/image.jpg");
   });
 
   it("should handle non-existent files gracefully", () => {
-    const nonExistentPath = "/tmp/non-existent-image.png";
+    // Mock readFileSync to throw an error (simulating file not found)
+    vi.mocked(readFileSync).mockImplementation(() => {
+      throw new Error("File not found");
+    });
 
-    const result = convertImageToBase64(nonExistentPath);
+    const result = convertImageToBase64("/tmp/non-existent-image.png");
 
     // Should return empty base64 placeholder instead of throwing error
     expect(result).toBe("data:image/png;base64,");
+    expect(readFileSync).toHaveBeenCalledWith("/tmp/non-existent-image.png");
   });
 
   it("should handle files with unknown extensions", () => {
-    const unknownExtPath = tempImagePath.replace(".png", ".unknown");
-    const pngBuffer = Buffer.from([
+    // Mock file data with unknown extension
+    const unknownBuffer = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
       0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
       0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
@@ -228,17 +225,14 @@ describe("convertImageToBase64", () => {
       0x0f, 0x00, 0x04, 0x85, 0x01, 0x80, 0x84, 0xa9, 0x8c, 0x21, 0x00, 0x00,
       0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ]);
-    writeFileSync(unknownExtPath, pngBuffer);
 
-    const result = convertImageToBase64(unknownExtPath);
+    vi.mocked(readFileSync).mockReturnValue(unknownBuffer);
+
+    const result = convertImageToBase64("/test/image.unknown");
 
     // Should default to PNG MIME type
     expect(result).toMatch(/^data:image\/png;base64,/);
-
-    // Clean up temporary file
-    if (existsSync(unknownExtPath)) {
-      unlinkSync(unknownExtPath);
-    }
+    expect(readFileSync).toHaveBeenCalledWith("/test/image.unknown");
   });
 });
 
