@@ -46,7 +46,6 @@ SubagentBlock should **NOT** render these block types:
 - `command_output` blocks
 - `image` blocks  
 - `memory` blocks
-- `custom_command` blocks
 - `diff` blocks (removed per user feedback)
 
 ## Behavior

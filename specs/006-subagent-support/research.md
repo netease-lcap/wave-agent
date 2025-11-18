@@ -103,7 +103,7 @@
 - Reuses ToolResultDisplay and DiffViewer as specified
 - Implements expand/collapse with 2 messages preview / 10 messages expanded
 - Distinctive border and header styling for visual differentiation
-- No support for command_output, image, memory, custom_command blocks as specified
+- No support for command_output, image, memory blocks as specified
 
 **Alternatives considered**:
 - Modify existing MessageList directly - rejected due to component complexity

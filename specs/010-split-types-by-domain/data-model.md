@@ -64,7 +64,7 @@
 - **Purpose**: Shared foundational types used across multiple domains
 
 ### Messaging Domain  
-- **Exports**: Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, DiffBlock, CommandOutputBlock, CompressBlock, MemoryBlock, CustomCommandBlock, SubagentBlock
+- **Exports**: Message, MessageBlock, TextBlock, ErrorBlock, ToolBlock, ImageBlock, DiffBlock, CommandOutputBlock, CompressBlock, MemoryBlock, SubagentBlock, MessageSource
 - **Dependencies**: Core (for Usage type)
 - **Purpose**: Message representation and communication types
 

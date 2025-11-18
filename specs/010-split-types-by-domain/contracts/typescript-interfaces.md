@@ -70,7 +70,6 @@ export type MessageBlock =
   | CommandOutputBlock
   | CompressBlock
   | MemoryBlock
-  | CustomCommandBlock
   | SubagentBlock;
 
 export interface TextBlock {
