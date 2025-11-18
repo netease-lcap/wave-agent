@@ -147,7 +147,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   }
 
   return (
-    <Box flexDirection="column" width={"100%"}>
+    <Box flexDirection="column">
       {showFileSelector && (
         <FileSelector
           files={filteredFiles}
