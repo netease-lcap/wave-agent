@@ -8,6 +8,13 @@ import type { Message } from "../../src/types/index.js";
 import path from "path";
 import { promises as fs } from "fs";
 
+// Mock console to suppress stderr output
+const mockConsole = {
+  warn: vi.fn(),
+  error: vi.fn(),
+  log: vi.fn(),
+};
+
 // Mock fs operations
 vi.mock("fs", () => ({
   promises: {
@@ -31,29 +38,39 @@ vi.mock("os", () => ({
 
 describe("Session service error handling tests", () => {
   let mockTempDir: string;
+  let originalConsole: Console;
 
   beforeEach(async () => {
+    // Mock console to suppress stderr output
+    originalConsole = global.console;
+    global.console = mockConsole as unknown as Console;
+
     // Set up mock directory path
     mockTempDir = "/mock/tmp/wave-session-errors-test-123";
-    
+
     // Clear all mocks
     vi.clearAllMocks();
-    
+
     // Setup fs mock implementations
     vi.mocked(fs.mkdtemp).mockResolvedValue(mockTempDir);
     vi.mocked(fs.rm).mockResolvedValue(undefined);
     vi.mocked(fs.access).mockResolvedValue(undefined);
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue('[]');
+    vi.mocked(fs.readFile).mockResolvedValue("[]");
     vi.mocked(fs.readdir).mockResolvedValue([]);
-    vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+    vi.mocked(fs.stat).mockResolvedValue({
+      isFile: () => true,
+    } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
     // Mock NODE_ENV to not be 'test' so session operations actually work
     vi.stubEnv("NODE_ENV", "development");
   });
 
   afterEach(async () => {
+    // Restore original console
+    global.console = originalConsole;
+
     vi.unstubAllEnvs();
     vi.clearAllMocks();
   });
@@ -106,13 +123,15 @@ describe("Session service error handling tests", () => {
 
       // Mock mkdir to potentially fail with path length error
       vi.mocked(fs.mkdir).mockRejectedValueOnce(
-        new Error("ENAMETOOLONG: name too long")
+        new Error("ENAMETOOLONG: name too long"),
       );
 
       try {
         await ensureSessionDir(longPath);
         // If it succeeds, verify mkdir was called
-        expect(vi.mocked(fs.mkdir)).toHaveBeenCalledWith(longPath, { recursive: true });
+        expect(vi.mocked(fs.mkdir)).toHaveBeenCalledWith(longPath, {
+          recursive: true,
+        });
       } catch (error) {
         // Should get a meaningful error about path length or similar
         expect(error).toBeDefined();
@@ -176,7 +195,9 @@ describe("Session service error handling tests", () => {
 
       // Mock readdir to return initial empty state
       const initialFiles: string[] = [];
-      vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);
+      vi.mocked(fs.readdir).mockResolvedValueOnce(
+        initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>,
+      );
 
       // Attempt an operation that might fail
       try {
@@ -195,8 +216,10 @@ describe("Session service error handling tests", () => {
 
       // Mock readdir for final check
       const finalFiles: string[] = [];
-      vi.mocked(fs.readdir).mockResolvedValueOnce(finalFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);
-      
+      vi.mocked(fs.readdir).mockResolvedValueOnce(
+        finalFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>,
+      );
+
       // Check that we don't have more files than expected
       const finalResult = await fs.readdir(sessionDir);
       expect(finalResult.length).toBeGreaterThanOrEqual(initialFiles.length);

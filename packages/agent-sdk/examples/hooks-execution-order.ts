@@ -55,7 +55,7 @@ async function main() {
   };
 
   writeFileSync(
-    join(testDir, ".wave", "hooks.json"),
+    join(testDir, ".wave", "settings.json"),
     JSON.stringify({ hooks }, null, 2),
   );
 

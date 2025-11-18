@@ -244,14 +244,14 @@ export function isCommandSafe(command: string): boolean {
  * Get the user-specific hooks configuration file path
  */
 export function getUserHooksConfigPath(): string {
-  return join(homedir(), ".wave", "hooks.json");
+  return join(homedir(), ".wave", "settings.json");
 }
 
 /**
  * Get the project-specific hooks configuration file path
  */
 export function getProjectHooksConfigPath(workdir: string): string {
-  return join(workdir, ".wave", "hooks.json");
+  return join(workdir, ".wave", "settings.json");
 }
 
 /**

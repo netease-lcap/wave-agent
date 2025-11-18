@@ -122,7 +122,7 @@ expect(agent.messages[1].blocks[0].content).toContain('hook output');
 
 ```bash
 #!/bin/bash
-# .wave/hooks.json: UserPromptSubmit event
+# .wave/settings.json: UserPromptSubmit event
 
 USER_PROMPT="$1"
 
@@ -142,7 +142,7 @@ exit 0  # Success - stdout injected into context
 
 ```bash
 #!/bin/bash  
-# .wave/hooks.json: PreToolUse event with tool matcher
+# .wave/settings.json: PreToolUse event with tool matcher
 
 TOOL_NAME="$1"
 TOOL_INPUT="$2"
@@ -162,7 +162,7 @@ exit 0  # Continue with tool execution
 
 ```bash
 #!/bin/bash
-# .wave/hooks.json: PostToolUse event
+# .wave/settings.json: PostToolUse event
 
 TOOL_NAME="$1" 
 TOOL_RESULT="$2"
@@ -181,7 +181,7 @@ exit 0  # Normal completion
 
 ```bash
 #!/bin/bash
-# .wave/hooks.json: Stop event
+# .wave/settings.json: Stop event
 
 # Check if work is complete
 if [[ ! -f ".wave/session-complete" ]]; then

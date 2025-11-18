@@ -501,7 +501,7 @@ describe("Hook Services", () => {
       mockExistsSync.mockReturnValue(true);
       mockReadFileSync.mockReturnValue(JSON.stringify(testConfig, null, 2));
 
-      const configFile = "/test/test-hooks.json";
+      const configFile = "/test/test-settings.json";
       const loaded = loadHooksConfigFromFile(configFile);
       expect(loaded).toEqual(testConfig.hooks);
     });
@@ -553,7 +553,7 @@ describe("Hook Services", () => {
         // Return true only for user config path (contains home directory)
         const pathStr = path.toString();
         return (
-          pathStr.includes(".wave/hooks.json") &&
+          pathStr.includes(".wave/settings.json") &&
           pathStr.includes(process.env.HOME || "/home")
         );
       });
@@ -574,7 +574,7 @@ describe("Hook Services", () => {
       mockExistsSync.mockImplementation((path) => {
         // Return true only for project config path
         const pathStr = path.toString();
-        return pathStr.includes("/test/workdir/.wave/hooks.json");
+        return pathStr.includes("/test/workdir/.wave/settings.json");
       });
 
       mockReadFileSync.mockReturnValue(JSON.stringify(projectConfig));
