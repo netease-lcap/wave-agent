@@ -282,14 +282,14 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
     });
   });
 
-  describe("PostToolUse blocking errors (exit code 2)", () => {
-    it("should handle PostToolUse blocking errors after tool execution", async () => {
+  describe("PostToolUse errors (exit code 2)", () => {
+    it("should handle PostToolUse errors after tool execution and allow AI to continue", async () => {
       // Get the hook manager instance from the agent to mock its executeHooks method
       const hookManager = (agent as unknown as { hookManager: HookManager })
         .hookManager;
       const mockExecuteHooks = vi.spyOn(hookManager, "executeHooks");
 
-      // Mock hook executions - return blocking error only for PostToolUse
+      // Mock hook executions - return error for PostToolUse
       mockExecuteHooks.mockImplementation(async (event) => {
         if (event === "PostToolUse") {
           return [
@@ -376,9 +376,9 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       const messages = agent.messages;
       expect(messages.length).toBeGreaterThan(0);
 
-      // Should have user message
+      // Should have user message(s)
       const userMessages = messages.filter((msg) => msg.role === "user");
-      expect(userMessages).toHaveLength(1);
+      expect(userMessages.length).toBeGreaterThanOrEqual(2); // Original prompt + PostToolUse error
 
       // Should have assistant messages
       const assistantMessages = messages.filter(
@@ -387,28 +387,27 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       expect(assistantMessages.length).toBeGreaterThan(0);
 
       // FR-018: System MUST validate PostToolUse error feedback by checking that
-      // agent.messages includes a ToolBlock with its result field containing both
-      // the original tool execution result and the stderr content
-      const allBlocks = assistantMessages.flatMap((msg) => msg.blocks || []);
-      const toolBlock = allBlocks.find((block) => block.type === "tool");
+      // agent.messages includes a user role message with stderr content
 
-      expect(toolBlock).toBeDefined();
-      expect(toolBlock?.type).toBe("tool");
-
-      if (toolBlock?.type === "tool") {
-        // FR-018: The result field should contain BOTH:
-        // 1. The original tool execution result: "File written successfully"
-        // 2. The stderr content from PostToolUse blocking error: "Data validation failed after tool execution"
-        expect(toolBlock.result).toContain("File written successfully");
-        expect(toolBlock.result).toContain(
-          "Data validation failed after tool execution",
+      // FR-018: Find the user message that contains the PostToolUse stderr content
+      const hookErrorUserMessage = userMessages.find((msg) => {
+        const firstBlock = msg.blocks?.[0];
+        return (
+          firstBlock &&
+          hasContent(firstBlock) &&
+          firstBlock.content.includes(
+            "Data validation failed after tool execution",
+          )
         );
+      });
 
-        // Verify the format matches expected pattern: original result + hook feedback
-        expect(toolBlock.result).toMatch(
-          /File written successfully.*Hook feedback:.*Data validation failed after tool execution/s,
-        );
-      }
+      expect(hookErrorUserMessage).toBeDefined();
+      const hookErrorBlock = hookErrorUserMessage?.blocks?.[0];
+      expect(
+        hookErrorBlock && hasContent(hookErrorBlock)
+          ? hookErrorBlock.content
+          : undefined,
+      ).toBe("Data validation failed after tool execution");
     });
   });
 

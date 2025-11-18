@@ -61,7 +61,8 @@
 ## Decision: Error Display Routing Strategy
 
 **What was chosen**: Hook type and exit code determine error routing with event-specific blocking:
-- PreToolUse/PostToolUse errors (exit 2): Display via ToolBlock result field using `updateToolBlock` - shows to Wave Agent, execution continues
+- PreToolUse errors (exit 2): Display via ToolBlock result field using `updateToolBlock` - shows to Wave Agent, blocks tool execution
+- PostToolUse errors (exit 2): Display to agent via `addUserMessage` - shows to Wave Agent, allows AI to continue processing
 - Stop errors (exit 2): Display to agent via `addUserMessage` - shows to Wave Agent, execution continues
 - UserPromptSubmit errors (exit 2): Display to user via `addErrorBlock` - blocks prompt processing, erases prompt
 - All non-blocking errors (any hook, exit ≠0,2): Display to user via `addErrorBlock`

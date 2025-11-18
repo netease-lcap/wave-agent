@@ -248,7 +248,6 @@ export class HookManager {
     results: HookExecutionResult[],
     messageManager?: MessageManager,
     toolId?: string,
-    originalToolResult?: string,
   ): {
     shouldBlock: boolean;
     errorMessage?: string;
@@ -262,13 +261,7 @@ export class HookManager {
     for (const result of results) {
       if (result.exitCode === 2) {
         // Handle blocking error immediately and return
-        return this.handleBlockingError(
-          event,
-          result,
-          messageManager,
-          toolId,
-          originalToolResult,
-        );
+        return this.handleBlockingError(event, result, messageManager, toolId);
       }
     }
 
@@ -314,7 +307,6 @@ export class HookManager {
     result: HookExecutionResult,
     messageManager: MessageManager,
     toolId?: string,
-    originalToolResult?: string,
   ): {
     shouldBlock: boolean;
     errorMessage?: string;
@@ -344,14 +336,8 @@ export class HookManager {
         return { shouldBlock: true };
 
       case "PostToolUse":
-        // Show error to Wave Agent via tool block, execution continues
-        if (toolId && originalToolResult !== undefined) {
-          messageManager.updateToolBlock({
-            toolId,
-            result: `${originalToolResult}\n\nHook feedback: ${errorMessage}`,
-            success: false,
-          });
-        }
+        // Show error to Wave Agent via user message and allow AI to continue
+        messageManager.addUserMessage(errorMessage);
         return { shouldBlock: false };
 
       case "Stop":

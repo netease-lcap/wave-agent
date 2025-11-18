@@ -672,14 +672,11 @@ export class AIManager {
 
       // Process hook results to handle exit codes and update tool results
       if (results.length > 0) {
-        const originalToolResult = toolResponse?.content || "";
-
         this.hookManager.processHookResults(
           "PostToolUse",
           results,
           this.messageManager,
           toolId,
-          originalToolResult,
         );
       }
 
