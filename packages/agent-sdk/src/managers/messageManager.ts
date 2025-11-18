@@ -17,7 +17,7 @@ import {
   type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import type { Logger, Message, Usage } from "../types/index.js";
+import type { Logger, Message, Usage, MessageSource } from "../types/index.js";
 import {
   cleanupExpiredSessions,
   getLatestSession,
@@ -285,12 +285,14 @@ export class MessageManager {
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
     customCommandContent?: string,
+    source?: MessageSource,
   ): void {
     const newMessages = addUserMessageToMessages({
       messages: this.messages,
       content,
       images,
       customCommandContent,
+      source,
     });
     this.setMessages(newMessages);
     this.callbacks.onUserMessageAdded?.(content, images);
