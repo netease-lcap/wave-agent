@@ -101,10 +101,11 @@ ${subagentList || "No subagents configured"}`;
         }
 
         // Create subagent instance and execute task
-        const instance = await subagentManager.createInstance(
-          configuration,
+        const instance = await subagentManager.createInstance(configuration, {
           description,
-        );
+          prompt,
+          subagent_type,
+        });
         const response = await subagentManager.executeTask(
           instance,
           prompt,

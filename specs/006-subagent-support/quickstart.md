@@ -130,7 +130,14 @@ Focus on:
 ```typescript
 export interface MessageManagerCallbacks {
   // Existing callbacks...
-  onSubAgentBlockAdded?: (subagentId: string) => void;
+  onSubAgentBlockAdded?: (
+    subagentId: string,
+    parameters: {
+      description: string;
+      prompt: string;
+      subagent_type: string;
+    }
+  ) => void;
   onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
 }
 ```
@@ -191,7 +198,14 @@ Test system prompt
 
     expect(result.success).toBe(true);
     expect(result.subagentSessionId).toBeDefined();
-    expect(callbacks.onSubAgentBlockAdded).toHaveBeenCalled();
+    expect(callbacks.onSubAgentBlockAdded).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        description: expect.any(String),
+        prompt: expect.any(String),
+        subagent_type: "test-agent"
+      })
+    );
   });
 });
 ```

@@ -98,7 +98,14 @@ interface SubagentManager {
   loadConfigurations(): Promise<SubagentConfiguration[]>;
   findSubagent(name: string): Promise<SubagentConfiguration | null>;
   findBestMatch(description: string): Promise<SubagentConfiguration | null>;
-  createInstance(config: SubagentConfiguration): Promise<SubagentInstance>;
+  createInstance(
+    config: SubagentConfiguration, 
+    parameters: {
+      description: string;
+      prompt: string;
+      subagent_type: string;
+    }
+  ): Promise<SubagentInstance>;
   executeTask(instance: SubagentInstance, prompt: string): Promise<string>;
 }
 ```
@@ -106,7 +113,14 @@ interface SubagentManager {
 ### With MessageManager Callbacks
 ```typescript
 interface MessageManagerCallbacks {
-  onSubAgentBlockAdded?: (subagentId: string) => void;
+  onSubAgentBlockAdded?: (
+    subagentId: string,
+    parameters: {
+      description: string;
+      prompt: string;
+      subagent_type: string;
+    }
+  ) => void;
   onSubAgentBlockUpdated?: (subagentId: string, messages: Message[]) => void;
 }
 ```
