@@ -27,33 +27,7 @@ import {
 import type { Logger } from "../types/index.js";
 import type { MessageManager } from "./messageManager.js";
 
-export interface IHookManager {
-  // Load configuration from settings
-  loadConfiguration(
-    userHooks?: PartialHookConfiguration,
-    projectHooks?: PartialHookConfiguration,
-  ): void;
-
-  // Load configuration from filesystem settings
-  loadConfigurationFromSettings(): void;
-
-  // Execute hooks for specific event
-  executeHooks(
-    event: HookEvent,
-    context: HookExecutionContext | ExtendedHookExecutionContext,
-  ): Promise<HookExecutionResult[]>;
-
-  // Check if hooks are configured for event
-  hasHooks(event: HookEvent, toolName?: string): boolean;
-
-  // Validate hook configuration
-  validateConfiguration(config: HookConfiguration): ValidationResult;
-
-  // Get current configuration
-  getConfiguration(): PartialHookConfiguration | undefined;
-}
-
-export class HookManager implements IHookManager {
+export class HookManager {
   private configuration: PartialHookConfiguration | undefined;
   private readonly matcher: IHookMatcher;
   private readonly logger?: Logger;
