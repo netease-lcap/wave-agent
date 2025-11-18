@@ -19,4 +19,4 @@ export const LOG_FILE = path.join(DATA_DIRECTORY, "app.log");
 /**
  * Pagination related constants
  */
-export const MESSAGES_PER_PAGE = 20; // Number of messages displayed per page
+export const MESSAGES_PER_PAGE = 15; // Number of messages displayed per page
