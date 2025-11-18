@@ -40,15 +40,15 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
-  it("should convert custom command blocks to full content for API", () => {
+  it("should convert text blocks with customCommandContent for API", () => {
     const messages: Message[] = [
       {
         role: "user",
         blocks: [
           {
-            type: "custom_command",
-            commandName: "refactor",
-            content:
+            type: "text",
+            content: "/refactor",
+            customCommandContent:
               "Please refactor this function to be more efficient:\n\nfunction oldFunction() {\n  // some code\n}",
           },
         ],

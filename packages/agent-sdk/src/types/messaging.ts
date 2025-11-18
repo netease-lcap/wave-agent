@@ -20,12 +20,12 @@ export type MessageBlock =
   | CommandOutputBlock
   | CompressBlock
   | MemoryBlock
-  | CustomCommandBlock
   | SubagentBlock;
 
 export interface TextBlock {
   type: "text";
   content: string;
+  customCommandContent?: string;
 }
 
 export interface ErrorBlock {
@@ -85,13 +85,6 @@ export interface MemoryBlock {
   isSuccess: boolean;
   memoryType?: "project" | "user"; // Memory type
   storagePath?: string; // Storage path text
-}
-
-export interface CustomCommandBlock {
-  type: "custom_command";
-  commandName: string;
-  content: string; // Complete command content, used when passing to AI
-  originalInput?: string; // Original user input, used for UI display (e.g., "/fix-issue 123 high")
 }
 
 export interface SubagentBlock {

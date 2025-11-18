@@ -43,10 +43,8 @@ process.chdir(tempDir);
 
 const agent = await Agent.create({
   callbacks: {
-    onCustomCommandAdded: (commandName, content, originalInput) => {
-      console.log(`⚡ Custom command triggered: ${commandName}`);
-      console.log(`📝 Content: ${content}`);
-      if (originalInput) console.log(`🔤 Original input: ${originalInput}`);
+    onUserMessageAdded: (content) => {
+      console.log(`👤 User: ${content}`);
     },
     onAssistantMessageAdded: (content) => {
       if (content) console.log("🤖", content);

@@ -176,15 +176,7 @@ export function convertMessagesForAPI(
         if (block.type === "text" && block.content) {
           contentParts.push({
             type: "text",
-            text: block.content,
-          });
-        }
-
-        // Handle custom command blocks - pass full content as text to AI
-        if (block.type === "custom_command" && block.content) {
-          contentParts.push({
-            type: "text",
-            text: block.content,
+            text: block.customCommandContent || block.content,
           });
         }
 

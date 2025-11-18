@@ -257,14 +257,14 @@ export class SlashCommandManager {
           ? replaceBashCommandsWithOutput(processedContent, bashResults)
           : processedContent;
 
-      // Add custom command block to show the command being executed
+      // Add custom command message to show the command being executed
       const originalInput = args
         ? `/${commandName} ${args}`
         : `/${commandName}`;
-      this.messageManager.addCustomCommandMessage(
-        commandName,
-        finalContent,
+      this.messageManager.addUserMessage(
         originalInput,
+        undefined,
+        finalContent,
       );
 
       // Execute the AI conversation with custom configuration

@@ -8,12 +8,7 @@ export interface AddUserMessageParams {
   messages: Message[];
   content: string;
   images?: Array<{ path: string; mimeType: string }>;
-  customCommandBlock?: {
-    type: "custom_command";
-    commandName: string;
-    content: string;
-    originalInput?: string;
-  };
+  customCommandContent?: string;
 }
 
 export interface UpdateToolBlockParams {
@@ -138,16 +133,17 @@ export const addUserMessageToMessages = ({
   messages,
   content,
   images,
-  customCommandBlock,
+  customCommandContent,
 }: AddUserMessageParams): Message[] => {
   const blocks: Message["blocks"] = [];
 
-  // If there's a custom command block, use it instead of text content
-  if (customCommandBlock) {
-    blocks.push(customCommandBlock);
-  } else {
-    blocks.push({ type: "text", content });
-  }
+  // Create text block with optional customCommandContent
+  const textBlock = {
+    type: "text" as const,
+    content,
+    ...(customCommandContent && { customCommandContent }),
+  };
+  blocks.push(textBlock);
 
   // If there are images, add image block
   if (images && images.length > 0) {
