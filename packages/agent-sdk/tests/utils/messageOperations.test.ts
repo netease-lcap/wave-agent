@@ -9,6 +9,7 @@ import {
   updateCommandOutputInMessage,
   completeCommandInMessage,
   addUserMessageToMessages,
+  addErrorBlockToMessage,
 } from "@/utils/messageOperations.js";
 import type { Message } from "@/types/index.js";
 
@@ -684,6 +685,137 @@ describe("Command Output Message Operations", () => {
         isRunning: false,
         exitCode: 0, // Original exit code should remain
       });
+    });
+  });
+});
+
+describe("addErrorBlockToMessage", () => {
+  it("should add error block to the last assistant message", () => {
+    const initialMessages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Hello" }],
+      },
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "Hi there!" }],
+      },
+    ];
+
+    const result = addErrorBlockToMessage({
+      messages: initialMessages,
+      error: "Something went wrong",
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result[1]).toEqual({
+      role: "assistant",
+      blocks: [
+        { type: "text", content: "Hi there!" },
+        { type: "error", content: "Something went wrong" },
+      ],
+    });
+  });
+
+  it("should create new assistant message when last message is not assistant", () => {
+    const initialMessages: Message[] = [
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "Hi there!" }],
+      },
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Hello again" }],
+      },
+    ];
+
+    const result = addErrorBlockToMessage({
+      messages: initialMessages,
+      error: "Error occurred",
+    });
+
+    expect(result).toHaveLength(3);
+    expect(result[2]).toEqual({
+      role: "assistant",
+      blocks: [{ type: "error", content: "Error occurred" }],
+    });
+    // Original messages should remain unchanged
+    expect(result[0]).toEqual(initialMessages[0]);
+    expect(result[1]).toEqual(initialMessages[1]);
+  });
+
+  it("should create new assistant message when messages array is empty", () => {
+    const initialMessages: Message[] = [];
+
+    const result = addErrorBlockToMessage({
+      messages: initialMessages,
+      error: "Initial error",
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      role: "assistant",
+      blocks: [{ type: "error", content: "Initial error" }],
+    });
+  });
+
+  it("should add error block to last assistant message when multiple assistant messages exist", () => {
+    const initialMessages: Message[] = [
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "First response" }],
+      },
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Follow-up" }],
+      },
+      {
+        role: "assistant",
+        blocks: [
+          { type: "text", content: "Second response" },
+          { type: "tool", parameters: "ls" },
+        ],
+      },
+    ];
+
+    const result = addErrorBlockToMessage({
+      messages: initialMessages,
+      error: "Tool execution failed",
+    });
+
+    expect(result).toHaveLength(3);
+    expect(result[2]).toEqual({
+      role: "assistant",
+      blocks: [
+        { type: "text", content: "Second response" },
+        { type: "tool", parameters: "ls" },
+        { type: "error", content: "Tool execution failed" },
+      ],
+    });
+    // Earlier messages should remain unchanged
+    expect(result[0]).toEqual(initialMessages[0]);
+    expect(result[1]).toEqual(initialMessages[1]);
+  });
+
+  it("should not mutate original messages array", () => {
+    const initialMessages: Message[] = [
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "Original" }],
+      },
+    ];
+    const originalLength = initialMessages[0].blocks.length;
+
+    addErrorBlockToMessage({
+      messages: initialMessages,
+      error: "Test error",
+    });
+
+    // Original array should not be modified
+    expect(initialMessages[0].blocks).toHaveLength(originalLength);
+    expect(initialMessages[0].blocks[0]).toEqual({
+      type: "text",
+      content: "Original",
     });
   });
 });
