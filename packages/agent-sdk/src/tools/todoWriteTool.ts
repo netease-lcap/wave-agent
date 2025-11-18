@@ -200,18 +200,10 @@ When in doubt, use this tool. Being proactive with task management demonstrates 
           in_progress: "[>]",
           completed: "[x]",
         };
-        const inProgress = todos.filter((t) => t.status === "in_progress");
-        const pending = todos.filter((t) => t.status === "pending");
 
-        if (inProgress.length > 0) {
-          shortResult += `\n${symbols.in_progress} ${inProgress[0].content}`;
-        }
-
-        if (pending.length > 0) {
-          shortResult += `\n${symbols.pending} ${pending[0].content}`;
-          if (pending.length > 1) {
-            shortResult += ` +${pending.length - 1}`;
-          }
+        // Show all todos in the shortResult
+        for (const todo of todos) {
+          shortResult += `\n${symbols[todo.status]} ${todo.content}`;
         }
       }
 
