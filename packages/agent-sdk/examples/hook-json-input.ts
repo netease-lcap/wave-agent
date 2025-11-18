@@ -80,7 +80,7 @@ async function setupTestHooks(): Promise<{
     },
   };
 
-  const configPath = join(waveDir, "hooks.json");
+  const configPath = join(waveDir, "settings.json");
   await fs.writeFile(configPath, JSON.stringify(hookConfig, null, 2));
 
   console.log(`Created hook configuration: ${configPath}`);
