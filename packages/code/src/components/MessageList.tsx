@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { Box, Text } from "ink";
 import type { Message } from "wave-agent-sdk";
+import { MessageSource } from "wave-agent-sdk";
 import { DiffViewer } from "./DiffViewer.js";
 import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
@@ -43,16 +44,17 @@ const renderMessageItem = (
             {block.type === "text" && block.content.trim() && (
               <Box>
                 <Text>
-                  {block.customCommandContent ? (
-                    <>
-                      <Text color="cyan" bold>
-                        ⚡{" "}
-                      </Text>
-                      {block.content}
-                    </>
-                  ) : (
-                    block.content
+                  {block.customCommandContent && (
+                    <Text color="cyan" bold>
+                      ⚡{" "}
+                    </Text>
                   )}
+                  {block.source === MessageSource.HOOK && (
+                    <Text color="magenta" bold>
+                      🔗{" "}
+                    </Text>
+                  )}
+                  {block.content}
                 </Text>
               </Box>
             )}

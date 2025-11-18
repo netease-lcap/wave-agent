@@ -25,6 +25,7 @@ import {
   loadMergedHooksConfig,
 } from "../services/hook.js";
 import type { Logger } from "../types/index.js";
+import { MessageSource } from "../types/index.js";
 import type { MessageManager } from "./messageManager.js";
 
 export class HookManager {
@@ -301,7 +302,12 @@ export class HookManager {
   ): void {
     if (event === "UserPromptSubmit" && result.stdout?.trim()) {
       // Inject stdout as user message context for UserPromptSubmit
-      messageManager.addUserMessage(result.stdout.trim());
+      messageManager.addUserMessage(
+        result.stdout.trim(),
+        undefined,
+        undefined,
+        MessageSource.HOOK,
+      );
     }
     // For other hook types (PreToolUse, PostToolUse, Stop), ignore stdout
   }
@@ -346,12 +352,22 @@ export class HookManager {
 
       case "PostToolUse":
         // Show error to Wave Agent via user message and allow AI to continue
-        messageManager.addUserMessage(errorMessage);
+        messageManager.addUserMessage(
+          errorMessage,
+          undefined,
+          undefined,
+          MessageSource.HOOK,
+        );
         return { shouldBlock: false };
 
       case "Stop":
         // Show error to Wave Agent via user message and block stopping to continue conversation
-        messageManager.addUserMessage(errorMessage);
+        messageManager.addUserMessage(
+          errorMessage,
+          undefined,
+          undefined,
+          MessageSource.HOOK,
+        );
         return { shouldBlock: true, errorMessage };
 
       default:

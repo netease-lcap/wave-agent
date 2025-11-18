@@ -1,4 +1,4 @@
-import type { Message, Usage } from "../types/index.js";
+import type { Message, Usage, MessageSource } from "../types/index.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
@@ -9,6 +9,7 @@ export interface AddUserMessageParams {
   content: string;
   images?: Array<{ path: string; mimeType: string }>;
   customCommandContent?: string;
+  source?: MessageSource;
 }
 
 export interface UpdateToolBlockParams {
@@ -134,14 +135,16 @@ export const addUserMessageToMessages = ({
   content,
   images,
   customCommandContent,
+  source,
 }: AddUserMessageParams): Message[] => {
   const blocks: Message["blocks"] = [];
 
-  // Create text block with optional customCommandContent
+  // Create text block with optional customCommandContent and source
   const textBlock = {
     type: "text" as const,
     content,
     ...(customCommandContent && { customCommandContent }),
+    ...(source && { source }),
   };
   blocks.push(textBlock);
 

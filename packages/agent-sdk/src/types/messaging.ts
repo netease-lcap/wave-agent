@@ -5,6 +5,11 @@
 
 import type { Usage } from "./core.js";
 
+export enum MessageSource {
+  USER = "user",
+  HOOK = "hook",
+}
+
 export interface Message {
   role: "user" | "assistant";
   blocks: MessageBlock[];
@@ -26,6 +31,7 @@ export interface TextBlock {
   type: "text";
   content: string;
   customCommandContent?: string;
+  source?: MessageSource;
 }
 
 export interface ErrorBlock {
