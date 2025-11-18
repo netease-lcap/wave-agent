@@ -54,12 +54,6 @@ export interface MessageManagerCallbacks {
     type: "project" | "user",
     storagePath: string,
   ) => void;
-  // Custom command callback (REMOVED)
-  // onCustomCommandAdded?: (
-  //   commandName: string,
-  //   content: string,
-  //   originalInput?: string,
-  // ) => void;
   // Bash command callback
   onAddCommandOutputMessage?: (command: string) => void;
   onUpdateCommandOutputMessage?: (command: string, output: string) => void;
