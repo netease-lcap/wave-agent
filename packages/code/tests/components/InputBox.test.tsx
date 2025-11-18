@@ -16,6 +16,9 @@ describe("InputBox Smoke Tests", () => {
     it("should show placeholder text when empty", async () => {
       const { lastFrame } = render(<InputBox />);
 
+      // Wait for the component to render after InputManager initializes
+      await waitForText(lastFrame, "Type your message");
+
       // Verify placeholder text is displayed (may be wrapped)
       expect(lastFrame()).toMatch(/Type your message[\s\S]*use @ to reference/);
     });
@@ -73,6 +76,9 @@ describe("InputBox Smoke Tests", () => {
   describe("Loading State", () => {
     it("should show normal placeholder when loading", async () => {
       const { lastFrame } = render(<InputBox isLoading={true} />);
+
+      // Wait for the component to render after InputManager initializes
+      await waitForText(lastFrame, "Type your message");
       const output = lastFrame();
 
       // Should show normal placeholder and allow input even when loading
