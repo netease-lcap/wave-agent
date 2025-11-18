@@ -1,26 +1,26 @@
 # Wave Agent
 
-A monorepo containing AI-powered development tools built with React and modern web technologies.
+A monorepo containing AI-powered development tools built with Node.js and TypeScript.
 
 ## Project Structure
 
-This is a monorepo that contains multiple packages working together to provide AI-assisted development tools:
+This is a monorepo that contains multiple packages working together to provide AI-assisted development tools through a command-line interface:
 
 ### 📦 Packages
 
 #### [`packages/code`](./packages/code)
 
-CLI-based code assistant with interactive terminal interface. Provides real-time chat with AI, file browsing, and session management.
+CLI-based code assistant with interactive terminal interface built with React Ink. Provides real-time chat with AI, file browsing, and session management.
 
 - **Main Command**: `wave-code` or `wave` (short alias)
-- **Technology**: React, Ink, Node.js
+- **Technology**: Node.js, TypeScript, React Ink
 - **Features**: Interactive CLI, file browser, AI chat, session restoration
 
 #### [`packages/agent-sdk`](./packages/agent-sdk)
 
-Core SDK providing AI services, tools, and utilities used by the CLI frontend.
+Core Node.js SDK providing AI services, tools, and utilities used by the CLI frontend.
 
-- **Technology**: TypeScript, Node.js
+- **Technology**: Node.js, TypeScript
 - **Features**: AI model integration, tool system, memory management
 
 ### 🚀 Quick Start
