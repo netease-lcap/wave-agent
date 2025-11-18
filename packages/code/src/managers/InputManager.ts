@@ -635,7 +635,8 @@ export class InputManager {
   handleSpecialCharInput(char: string): void {
     if (char === "@") {
       this.activateFileSelector(this.cursorPosition - 1);
-    } else if (char === "/") {
+    } else if (char === "/" && !this.showFileSelector) {
+      // Don't activate command selector when file selector is active
       this.activateCommandSelector(this.cursorPosition - 1);
     } else if (char === "!" && this.cursorPosition === 1) {
       this.activateBashHistorySelector(0);
