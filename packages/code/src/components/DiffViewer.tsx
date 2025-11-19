@@ -42,8 +42,8 @@ const CodeHighlight = ({
 
   setOptions({
     renderer: new TerminalRenderer(
-      {}, // 默认选项
-      {}, // 空的 highlightOptions，让 cli-highlight 自动处理
+      {}, // Default options
+      {}, // Empty highlightOptions, let cli-highlight auto-handle
     ) as unknown as Parameters<typeof setOptions>[0]["renderer"],
   });
 

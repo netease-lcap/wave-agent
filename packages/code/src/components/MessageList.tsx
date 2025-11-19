@@ -25,8 +25,8 @@ export interface MessageListProps {
 const Markdown = ({ children }: { children: string }) => {
   setOptions({
     renderer: new TerminalRenderer(
-      {}, // 使用默认选项
-      {}, // 空的 highlightOptions，让 cli-highlight 自动处理语言检测
+      {}, // Use default options
+      {}, // Empty highlightOptions, let cli-highlight auto-detect language
     ) as unknown as Parameters<typeof setOptions>[0]["renderer"],
   });
   const result = parse(children);
