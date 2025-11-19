@@ -21,12 +21,13 @@ export interface MessageListProps {
   isExpanded?: boolean;
 }
 
-// Markdown component using marked-terminal
+// Markdown component using marked-terminal with syntax highlighting support
 const Markdown = ({ children }: { children: string }) => {
   setOptions({
-    renderer: new TerminalRenderer({}) as unknown as Parameters<
-      typeof setOptions
-    >[0]["renderer"],
+    renderer: new TerminalRenderer(
+      {}, // 使用默认选项
+      {}, // 空的 highlightOptions，让 cli-highlight 自动处理语言检测
+    ) as unknown as Parameters<typeof setOptions>[0]["renderer"],
   });
   const result = parse(children);
   const output = typeof result === "string" ? result.trim() : "";
