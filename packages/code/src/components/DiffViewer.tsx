@@ -1,12 +1,56 @@
 import React, { useMemo } from "react";
 import { Text, Box } from "ink";
 import { diffWords } from "diff";
+import { parse, setOptions } from "marked";
+import TerminalRenderer from "marked-terminal";
 import type { DiffBlock } from "wave-agent-sdk";
 
 interface DiffViewerProps {
   block: DiffBlock;
   isExpanded?: boolean;
 }
+
+// Check if diff is all additions (new file or only new code)
+const isAllAdditions = (
+  diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
+): boolean => {
+  return diffResult.every((part) => !part.removed);
+};
+
+// Extract all added content from diff
+const extractAddedContent = (
+  diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
+): string => {
+  return diffResult
+    .filter((part) => part.added)
+    .map((part) => part.value)
+    .join("")
+    .trim();
+};
+
+// Markdown component for syntax highlighting (reused from MessageList)
+const CodeHighlight = ({
+  children,
+  language,
+}: {
+  children: string;
+  language?: string;
+}) => {
+  const markdownContent = language
+    ? `\`\`\`${language}\n${children}\n\`\`\``
+    : `\`\`\`\n${children}\n\`\`\``;
+
+  setOptions({
+    renderer: new TerminalRenderer(
+      {}, // Default options
+      {}, // Empty highlightOptions, let cli-highlight auto-handle
+    ) as unknown as Parameters<typeof setOptions>[0]["renderer"],
+  });
+
+  const result = parse(markdownContent);
+  const output = typeof result === "string" ? result.trim() : "";
+  return <Text>{output}</Text>;
+};
 
 // Render word-level diff
 const renderWordLevelDiff = (removedLine: string, addedLine: string) => {
@@ -51,6 +95,17 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   isExpanded = false,
 }) => {
   const { diffResult } = block;
+
+  // Check if this is all additions and try syntax highlighting
+  const shouldUseSyntaxHighlighting = useMemo(() => {
+    if (!diffResult) return false;
+    return isAllAdditions(diffResult);
+  }, [diffResult]);
+
+  const addedContent = useMemo(() => {
+    if (!shouldUseSyntaxHighlighting || !diffResult) return "";
+    return extractAddedContent(diffResult);
+  }, [shouldUseSyntaxHighlighting, diffResult]);
 
   const diffLines = useMemo(() => {
     if (!diffResult) return [];
@@ -270,6 +325,26 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     );
   }
 
+  // If it's all additions and we have content, show syntax-highlighted version
+  if (shouldUseSyntaxHighlighting && addedContent.trim()) {
+    return (
+      <Box flexDirection="column">
+        <Box flexDirection="column" marginBottom={1}>
+          <Text color="green" bold>
+            📄 New file: {block.path}
+          </Text>
+          <Text color="gray" dimColor>
+            Auto-detected syntax highlighting
+          </Text>
+        </Box>
+        <Box flexDirection="column">
+          <CodeHighlight language="">{addedContent}</CodeHighlight>
+        </Box>
+      </Box>
+    );
+  }
+
+  // Fall back to traditional diff view
   return (
     <Box flexDirection="column">
       <Box flexDirection="column">
