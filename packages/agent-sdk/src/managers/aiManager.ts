@@ -282,7 +282,6 @@ export class AIManager {
 
       if (result.tool_calls) {
         for (const toolCall of result.tool_calls) {
-          this.logger?.debug("ToolCall", toolCall);
           if (toolCall.type === "function") {
             toolCalls.push(toolCall);
           }
