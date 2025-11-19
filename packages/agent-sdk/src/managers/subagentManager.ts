@@ -13,6 +13,7 @@ import {
   type MessageManagerCallbacks,
 } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
+import { HookManager } from "./hookManager.js";
 
 export interface SubagentInstance {
   subagentId: string;
@@ -32,6 +33,7 @@ export interface SubagentManagerOptions {
   gatewayConfig: GatewayConfig;
   modelConfig: ModelConfig;
   tokenLimit: number;
+  hookManager?: HookManager;
   onUsageAdded?: (usage: Usage) => void;
 }
 
@@ -46,6 +48,7 @@ export class SubagentManager {
   private gatewayConfig: GatewayConfig;
   private modelConfig: ModelConfig;
   private tokenLimit: number;
+  private hookManager?: HookManager;
   private onUsageAdded?: (usage: Usage) => void;
 
   constructor(options: SubagentManagerOptions) {
@@ -56,6 +59,7 @@ export class SubagentManager {
     this.gatewayConfig = options.gatewayConfig;
     this.modelConfig = options.modelConfig;
     this.tokenLimit = options.tokenLimit;
+    this.hookManager = options.hookManager;
     this.onUsageAdded = options.onUsageAdded;
   }
 
@@ -162,6 +166,7 @@ export class SubagentManager {
       logger: this.logger,
       workdir: this.workdir,
       systemPrompt: configuration.systemPrompt,
+      hookManager: this.hookManager,
       gatewayConfig: this.gatewayConfig,
       modelConfig: {
         ...this.modelConfig,
