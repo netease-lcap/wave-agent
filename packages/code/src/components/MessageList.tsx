@@ -52,10 +52,13 @@ export const MessageList = React.memo(
         previousMessage?: Message,
       ) => {
         const shouldShowHeader = previousMessage?.role !== message.role;
+        // Don't show header for messages with no blocks (applies to both user and assistant)
+        const shouldShowHeaderWithBlocks =
+          message.blocks.length > 0 && shouldShowHeader;
 
         return (
           <Box key={`message-${originalIndex}`} flexDirection="column">
-            {shouldShowHeader && (
+            {shouldShowHeaderWithBlocks && (
               <Box>
                 <Text color={message.role === "user" ? "cyan" : "green"} bold>
                   {message.role === "user" ? "👤 You" : "🤖 Assistant"}
@@ -70,7 +73,7 @@ export const MessageList = React.memo(
             <Box
               flexDirection="column"
               gap={1}
-              marginTop={shouldShowHeader ? 1 : 0}
+              marginTop={shouldShowHeaderWithBlocks ? 1 : 0}
             >
               {message.blocks.map((block, blockIndex) => (
                 <Box key={blockIndex}>
