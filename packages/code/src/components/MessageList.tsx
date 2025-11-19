@@ -1,5 +1,7 @@
 import React, { useMemo, useCallback } from "react";
 import { Box, Text } from "ink";
+import { parse, setOptions } from "marked";
+import TerminalRenderer from "marked-terminal";
 import type { Message } from "wave-agent-sdk";
 import { MessageSource } from "wave-agent-sdk";
 import { DiffViewer } from "./DiffViewer.js";
@@ -18,6 +20,18 @@ export interface MessageListProps {
   latestTotalTokens?: number;
   isExpanded?: boolean;
 }
+
+// Markdown component using marked-terminal
+const Markdown = ({ children }: { children: string }) => {
+  setOptions({
+    renderer: new TerminalRenderer({}) as unknown as Parameters<
+      typeof setOptions
+    >[0]["renderer"],
+  });
+  const result = parse(children);
+  const output = typeof result === "string" ? result.trim() : "";
+  return <Text>{output}</Text>;
+};
 
 export const MessageList = React.memo(
   ({
@@ -61,19 +75,17 @@ export const MessageList = React.memo(
                 <Box key={blockIndex}>
                   {block.type === "text" && block.content.trim() && (
                     <Box>
-                      <Text>
-                        {block.customCommandContent && (
-                          <Text color="cyan" bold>
-                            ⚡{" "}
-                          </Text>
-                        )}
-                        {block.source === MessageSource.HOOK && (
-                          <Text color="magenta" bold>
-                            🔗{" "}
-                          </Text>
-                        )}
-                        {block.content}
-                      </Text>
+                      {block.customCommandContent && (
+                        <Text color="cyan" bold>
+                          ⚡{" "}
+                        </Text>
+                      )}
+                      {block.source === MessageSource.HOOK && (
+                        <Text color="magenta" bold>
+                          🔗{" "}
+                        </Text>
+                      )}
+                      <Markdown>{block.content}</Markdown>
                     </Box>
                   )}
 

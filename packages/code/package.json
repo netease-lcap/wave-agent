@@ -33,14 +33,18 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "wave-agent-sdk": "workspace:*",
-    "ink": "^6.0.1",
-    "react": "^19.1.0",
-    "yargs": "^17.7.2",
+    "chalk": "^5.6.2",
     "diff": "^8.0.2",
-    "glob": "^11.0.3"
+    "glob": "^11.0.3",
+    "ink": "^6.0.1",
+    "marked": "^14.1.2",
+    "marked-terminal": "^7.3.0",
+    "react": "^19.1.0",
+    "wave-agent-sdk": "workspace:*",
+    "yargs": "^17.7.2"
   },
   "devDependencies": {
+    "@types/marked-terminal": "^6.1.1",
     "@types/react": "^19.1.8",
     "@types/yargs": "^17.0.0",
     "eslint-plugin-react": "^7.37.5",
