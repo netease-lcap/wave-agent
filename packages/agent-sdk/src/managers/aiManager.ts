@@ -328,6 +328,21 @@ export class AIManager {
         };
       }
 
+      // Set usage on the assistant message if available
+      if (usage) {
+        const messages = this.messageManager.getMessages();
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && lastMessage.role === "assistant") {
+          lastMessage.usage = usage;
+          this.messageManager.setMessages(messages);
+        }
+
+        // Notify Agent to add to usage tracking
+        if (this.callbacks?.onUsageAdded) {
+          this.callbacks.onUsageAdded(usage);
+        }
+      }
+
       // Collect tool calls for processing
       const toolCalls: ChatCompletionMessageFunctionToolCall[] = [];
       if (result.tool_calls) {
@@ -335,63 +350,6 @@ export class AIManager {
           if (toolCall.type === "function") {
             toolCalls.push(toolCall);
           }
-        }
-      }
-
-      // Update the assistant message with final tool calls and usage
-      // Content was already updated through streaming callbacks, but we need to ensure final content is set
-      const finalContent = result.content || "";
-
-      // Always update the last assistant message with final data
-      const messages = this.messageManager.getMessages();
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage && lastMessage.role === "assistant") {
-        // Ensure final content is set
-        // If there's no text block and we have content, add it
-        // If there's a text block but it's empty and we have content, update it
-        const existingTextBlock = lastMessage.blocks.find(
-          (block) => block.type === "text",
-        );
-        if (finalContent) {
-          if (!existingTextBlock) {
-            // No text block exists, add one
-            lastMessage.blocks.unshift({
-              type: "text",
-              content: finalContent,
-            });
-          } else if (!existingTextBlock.content) {
-            // Text block exists but is empty, update it
-            existingTextBlock.content = finalContent;
-          }
-          // If text block exists and has content, don't overwrite (streaming already populated it)
-        }
-
-        if (usage) {
-          lastMessage.usage = usage;
-        }
-
-        // Add tool call blocks if present
-        if (toolCalls.length > 0) {
-          for (const toolCall of toolCalls) {
-            const toolBlock = {
-              type: "tool" as const,
-              id: toolCall.id,
-              name: toolCall.function?.name || "",
-              parameters: toolCall.function?.arguments || "{}",
-              isRunning: false,
-            };
-            lastMessage.blocks.push(toolBlock);
-          }
-        }
-
-        // Always trigger message change to update UI
-        this.messageManager.setMessages(messages);
-      }
-
-      // Notify Agent to add to usage tracking
-      if (usage) {
-        if (this.callbacks?.onUsageAdded) {
-          this.callbacks.onUsageAdded(usage);
         }
       }
 
