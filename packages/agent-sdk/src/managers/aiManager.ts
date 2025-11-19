@@ -291,8 +291,10 @@ export class AIManager {
             id: toolCall.id,
             name: toolCall.name,
             parameters: toolCall.parameters,
-            parametersChunk: toolCall.parametersChunk, // Use as compact param
-            compactParams: toolCall.parametersChunk, // Direct assignment for performance
+            parametersChunk: toolCall.parametersChunk,
+            compactParams: toolCall.parametersChunk
+              ? `${toolCall.parametersChunk}...`
+              : undefined, // Add ... to show streaming
           });
         },
       });
