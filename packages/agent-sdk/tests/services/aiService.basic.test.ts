@@ -1,0 +1,180 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { CallAgentOptions } from "@/services/aiService.js";
+import type { GatewayConfig, ModelConfig } from "@/types/index.js";
+
+// Test configuration constants
+const TEST_GATEWAY_CONFIG: GatewayConfig = {
+  apiKey: "test-api-key",
+  baseURL: "http://localhost:test",
+};
+
+const TEST_MODEL_CONFIG: ModelConfig = {
+  agentModel: "claude-sonnet-4-20250514",
+  fastModel: "gemini-2.5-flash",
+};
+
+// Mock the OpenAI client
+const mockCreate = vi.fn();
+const mockOpenAI = {
+  chat: {
+    completions: {
+      create: mockCreate,
+    },
+  },
+};
+
+// Mock OpenAI constructor
+vi.mock("openai", () => ({
+  default: vi.fn().mockImplementation(() => mockOpenAI),
+}));
+
+// Mock constants
+vi.mock("@/utils/constants", () => ({
+  AGENT_MODEL_ID: "gpt-4o",
+}));
+
+// Mock environment variables
+vi.mock("process", () => ({
+  env: {
+    AIGW_TOKEN: "test-token",
+    AIGW_URL: "https://test-url.com",
+  },
+  cwd: () => "/test/cwd",
+}));
+
+describe("AI Service - Basic CallAgent", () => {
+  beforeEach(() => {
+    // Reset mock and set default behavior
+    mockCreate.mockReset();
+    mockCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: "Test response",
+          },
+        },
+      ],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        total_tokens: 30,
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("callAgent basic functionality", () => {
+    // Import the function after mocking
+    let callAgent: (
+      options: CallAgentOptions,
+    ) => Promise<import("@/services/aiService.js").CallAgentResult>;
+
+    beforeEach(async () => {
+      const aiService = await import("@/services/aiService.js");
+      callAgent = aiService.callAgent;
+    });
+
+    it("should use default system prompt when no custom systemPrompt provided", async () => {
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+
+      // Should have system message as first message
+      expect(callArgs.messages[0].role).toBe("system");
+      expect(callArgs.messages[0].content).toContain(
+        "You are an interactive CLI tool",
+      );
+      expect(callArgs.messages[0].content).toContain(
+        "Working directory: /test/workdir",
+      );
+    });
+
+    it("should use custom systemPrompt when provided", async () => {
+      const customPrompt =
+        "You are a custom AI assistant with special capabilities.";
+
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        systemPrompt: customPrompt,
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+
+      // Should have custom system message as first message
+      expect(callArgs.messages[0].role).toBe("system");
+      expect(callArgs.messages[0].content).toContain(customPrompt);
+      // Should not contain default prompt content
+      expect(callArgs.messages[0].content).not.toContain(
+        "You are an interactive CLI tool",
+      );
+    });
+
+    it("should add memory to default system prompt when no custom systemPrompt provided", async () => {
+      const memoryContent = "Important previous context and memory.";
+
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        memory: memoryContent,
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+
+      // Should have system message with memory
+      expect(callArgs.messages[0].role).toBe("system");
+      expect(callArgs.messages[0].content).toContain("## Memory Context");
+      expect(callArgs.messages[0].content).toContain(memoryContent);
+    });
+
+    it("should handle response with usage information", async () => {
+      const result = await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      expect(result.content).toBe("Test response");
+      expect(result.usage).toEqual({
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        total_tokens: 30,
+      });
+    });
+
+    it("should handle response without usage information", async () => {
+      mockCreate.mockResolvedValueOnce({
+        choices: [
+          {
+            message: {
+              content: "Test response without usage",
+            },
+          },
+        ],
+      });
+
+      const result = await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      expect(result.content).toBe("Test response without usage");
+      expect(result.usage).toBeUndefined();
+    });
+  });
+});
