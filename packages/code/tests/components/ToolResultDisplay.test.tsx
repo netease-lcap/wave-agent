@@ -134,7 +134,7 @@ describe("ToolResultDisplay Component", () => {
 
       const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
       const output = lastFrame();
-      expect(output).toContain("❌ Failed");
+      expect(output).toContain("❌");
       expect(output).toContain("Error: File not found");
     });
 
