@@ -10,56 +10,6 @@ interface DiffViewerProps {
   isExpanded?: boolean;
 }
 
-// Helper function to detect language from file extension
-const detectLanguageFromFilename = (filename: string): string => {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  const languageMap: Record<string, string> = {
-    js: "javascript",
-    jsx: "javascript",
-    ts: "typescript",
-    tsx: "typescript",
-    py: "python",
-    rb: "ruby",
-    go: "go",
-    rs: "rust",
-    java: "java",
-    cpp: "cpp",
-    c: "c",
-    cs: "csharp",
-    php: "php",
-    sh: "bash",
-    bash: "bash",
-    zsh: "bash",
-    fish: "bash",
-    yml: "yaml",
-    yaml: "yaml",
-    json: "json",
-    xml: "xml",
-    html: "html",
-    css: "css",
-    scss: "scss",
-    sass: "sass",
-    less: "less",
-    sql: "sql",
-    md: "markdown",
-    dockerfile: "dockerfile",
-    vim: "vim",
-    lua: "lua",
-    r: "r",
-    scala: "scala",
-    kotlin: "kotlin",
-    swift: "swift",
-    dart: "dart",
-    elm: "elm",
-    clj: "clojure",
-    ex: "elixir",
-    exs: "elixir",
-    erl: "erlang",
-    hrl: "erlang",
-  };
-  return languageMap[ext || ""] || "";
-};
-
 // Check if diff is all additions (new file or only new code)
 const isAllAdditions = (
   diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
@@ -156,41 +106,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     if (!shouldUseSyntaxHighlighting || !diffResult) return "";
     return extractAddedContent(diffResult);
   }, [shouldUseSyntaxHighlighting, diffResult]);
-
-  const detectedLanguage = useMemo(() => {
-    if (!shouldUseSyntaxHighlighting) return "";
-
-    // Try to detect language from filename in the diff block
-    if (block.path) {
-      return detectLanguageFromFilename(block.path);
-    }
-
-    // Fallback: try to detect from content patterns
-    const content = addedContent.toLowerCase();
-    if (
-      content.includes("function ") ||
-      content.includes("const ") ||
-      content.includes("let ")
-    ) {
-      return "javascript";
-    }
-    if (
-      content.includes("interface ") ||
-      content.includes("type ") ||
-      content.includes(": string")
-    ) {
-      return "typescript";
-    }
-    if (
-      content.includes("def ") ||
-      content.includes("import ") ||
-      content.includes("class ")
-    ) {
-      return "python";
-    }
-
-    return "";
-  }, [shouldUseSyntaxHighlighting, addedContent, block.path]);
 
   const diffLines = useMemo(() => {
     if (!diffResult) return [];
@@ -419,15 +334,11 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
             📄 New file: {block.path}
           </Text>
           <Text color="gray" dimColor>
-            {detectedLanguage
-              ? `Language: ${detectedLanguage}`
-              : "Content with syntax highlighting"}
+            Auto-detected syntax highlighting
           </Text>
         </Box>
         <Box flexDirection="column">
-          <CodeHighlight language={detectedLanguage}>
-            {addedContent}
-          </CodeHighlight>
+          <CodeHighlight language="">{addedContent}</CodeHighlight>
         </Box>
       </Box>
     );
