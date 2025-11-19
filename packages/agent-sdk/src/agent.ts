@@ -165,6 +165,7 @@ export class Agent {
       gatewayConfig,
       modelConfig,
       tokenLimit,
+      hookManager: this.hookManager,
       onUsageAdded: (usage) => this.addUsage(usage),
     });
 
