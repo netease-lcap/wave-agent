@@ -40,10 +40,11 @@ async function setupTest() {
       onUserMessageAdded: (params) => {
         console.log(`👤 User message: "${params.content}"`);
       },
-      onAssistantMessageAdded: (content, toolCalls) => {
+      onAssistantMessageAdded: () => {
         console.log("🤖 Assistant message started");
-        if (content) console.log("Content:", content);
-        if (toolCalls?.length) console.log(`Tool calls: ${toolCalls.length}`);
+      },
+      onAssistantContentUpdated: (chunk: string) => {
+        process.stdout.write(chunk);
       },
       onToolBlockUpdated: (params) => {
         const status = params.isRunning

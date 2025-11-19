@@ -26,11 +26,41 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
 
   // Setup callbacks for agent
   const callbacks: AgentCallbacks = {
-    onAssistantMessageAdded: (content?: string) => {
-      // Only output the content field, not tool calls
-      if (content) {
-        console.log(content);
+    onAssistantMessageAdded: () => {
+      // Assistant message started - no content to output yet
+      process.stdout.write("\n");
+    },
+    onAssistantContentUpdated: (chunk: string) => {
+      // FR-001: Stream content updates for real-time display - output only the new chunk
+      process.stdout.write(chunk);
+    },
+    onToolBlockUpdated: (params) => {
+      // FR-002: Tool parameter streaming - log tool parameters as they are being constructed
+      if (params.parametersChunk) {
+        logger.debug(
+          `[TOOL STREAM] ${params.name || "Unknown"}: received parameter chunk`,
+        );
+
+        // Enhanced logging for streaming parameter content (for debugging/demonstration)
+        logger.debug(
+          `[TOOL CHUNK] Latest chunk: ${params.parametersChunk.substring(0, 100)}${params.parametersChunk.length > 100 ? "..." : ""}`,
+        );
       }
+
+      // Log compact parameters for collapsed view mode demonstration
+      if (params.compactParams) {
+        logger.info(
+          `[TOOL COMPACT] ${params.name || "Unknown"}: ${params.compactParams}`,
+        );
+      }
+
+      // For demonstration: log parameter streaming progress with enhanced detail
+      const paramLength = params.parameters?.length || 0;
+      const hasChunk = params.parametersChunk ? " [+chunk]" : "";
+      const hasCompact = params.compactParams ? " [compact ready]" : "";
+      logger.debug(
+        `[TOOL PROGRESS] ${params.name || "Unknown"}: ${paramLength} chars accumulated${hasChunk}${hasCompact}`,
+      );
     },
   };
 

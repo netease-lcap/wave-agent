@@ -23,10 +23,10 @@ This is the AI assistant's memory file, recording important information and cont
 - After modifying agent-sdk, need to build before using in code
 - For type and eslint errors:
   - Don't write any types
-  - If there lots of errors, task multi typescript-expert to fix type and eslint errors.
+  - If there lots of errors, task multi typescript-expert at once to fix type and eslint errors.
   - Do not modify tsconfig unless user ask you to do that
 - While writing tests about `Agent`, always use `await Agent.create` instead of `new Agent`
 - Do not perform git commit operation unless explicitly mentioned by user
 - While implementing tasks in tasks.md:
-  - MUST mark the task off as [X] in the tasks file after you complete a task
-  - MUST task subagents to implement in parallel when possible
+  - MUST mark the task off as [X] by modifying the tasks.md after you complete a task
+  - Task multi subagents at once to implement in parallel when possible

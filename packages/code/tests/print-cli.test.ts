@@ -89,7 +89,7 @@ test("startPrintCli sends message and exits after completion", async () => {
   expect(mockExit).toHaveBeenCalledWith(0);
 });
 
-test("onAssistantMessageAdded outputs content", async () => {
+test("onAssistantMessageAdded outputs newline", async () => {
   const mockAgent = {
     sendMessage: vi.fn(),
     destroy: vi.fn(),
@@ -99,7 +99,8 @@ test("onAssistantMessageAdded outputs content", async () => {
   };
 
   interface AgentCallbacks {
-    onAssistantMessageAdded?: (content?: string) => void;
+    onAssistantMessageAdded?: () => void;
+    onAssistantContentUpdated?: (chunk: string, accumulated: string) => void;
   }
 
   let capturedCallbacks: AgentCallbacks | undefined;
@@ -108,7 +109,9 @@ test("onAssistantMessageAdded outputs content", async () => {
     return mockAgent as unknown as Agent;
   });
 
-  const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
 
   try {
     await startPrintCli({ message: "test message" });
@@ -118,14 +121,12 @@ test("onAssistantMessageAdded outputs content", async () => {
   }
 
   // Test the onAssistantMessageAdded callback
-  capturedCallbacks?.onAssistantMessageAdded?.(
-    "Hello, this is assistant content!",
-  );
+  capturedCallbacks?.onAssistantMessageAdded?.();
 
-  // Verify that console.log was called with the content
-  expect(consoleSpy).toHaveBeenCalledWith("Hello, this is assistant content!");
+  // Verify that process.stdout.write was called with newline
+  expect(stdoutSpy).toHaveBeenCalledWith("\n");
 
-  consoleSpy.mockRestore();
+  stdoutSpy.mockRestore();
 });
 
 test("startPrintCli works with continue session", async () => {

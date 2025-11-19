@@ -46,8 +46,11 @@ const agent = await Agent.create({
     onUserMessageAdded: (content) => {
       console.log(`👤 User: ${content}`);
     },
-    onAssistantMessageAdded: (content) => {
-      if (content) console.log("🤖", content);
+    onAssistantMessageAdded: () => {
+      console.log("Assistant message started");
+    },
+    onAssistantContentUpdated: (chunk: string) => {
+      process.stdout.write(chunk);
     },
     onToolBlockUpdated: (params) => {
       if (params.result) console.log(`🔧 ${params.name}:`, params.result);

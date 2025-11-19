@@ -2,10 +2,13 @@ import OpenAI from "openai";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import {
   ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionCreateParamsStreaming,
   ChatCompletionMessageParam,
   ChatCompletionFunctionTool,
+  ChatCompletionChunk,
 } from "openai/resources.js";
 import type { GatewayConfig, ModelConfig } from "../types/index.js";
+import { extractCompleteParams } from "../utils/streamingHelpers.js";
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
@@ -79,6 +82,16 @@ export interface CallAgentOptions {
   tools?: ChatCompletionFunctionTool[]; // Tool configuration
   model?: string; // Custom model
   systemPrompt?: string; // Custom system prompt
+
+  // NEW: Streaming callbacks
+  onContentUpdate?: (content: string) => void;
+  onToolUpdate?: (toolCall: {
+    id: string;
+    name: string;
+    parameters: string;
+    parametersChunk?: string;
+    extractedParams?: Record<string, string | number | boolean | null>;
+  }) => void;
 }
 
 export interface CallAgentResult {
@@ -104,6 +117,8 @@ export async function callAgent(
     tools,
     model,
     systemPrompt,
+    onContentUpdate,
+    onToolUpdate,
   } = options;
 
   try {
@@ -159,49 +174,75 @@ Today's date: ${new Date().toISOString().split("T")[0]}
       max_completion_tokens: 32768,
     });
 
+    // Determine if streaming is needed
+    const isStreaming = !!(onContentUpdate || onToolUpdate);
+
     // Prepare API call parameters
-    const createParams: ChatCompletionCreateParamsNonStreaming = {
+    const createParams = {
       ...openaiModelConfig,
       messages: openaiMessages,
-    };
+      stream: isStreaming,
+    } as
+      | ChatCompletionCreateParamsNonStreaming
+      | ChatCompletionCreateParamsStreaming;
 
     // Only add tools if they exist
     if (tools && tools.length > 0) {
       createParams.tools = tools;
     }
 
-    // Call OpenAI API (non-streaming)
-    const response = await openai.chat.completions.create(createParams, {
-      signal: abortSignal,
-    });
+    if (isStreaming) {
+      // Handle streaming response
+      const stream = await openai.chat.completions.create(
+        createParams as ChatCompletionCreateParamsStreaming,
+        {
+          signal: abortSignal,
+        },
+      );
 
-    const finalMessage = response.choices[0]?.message;
-    const totalUsage = response.usage
-      ? {
-          prompt_tokens: response.usage.prompt_tokens,
-          completion_tokens: response.usage.completion_tokens,
-          total_tokens: response.usage.total_tokens,
-        }
-      : undefined;
+      return await processStreamingResponse(
+        stream,
+        onContentUpdate,
+        onToolUpdate,
+        abortSignal,
+      );
+    } else {
+      // Handle non-streaming response
+      const response = await openai.chat.completions.create(
+        createParams as ChatCompletionCreateParamsNonStreaming,
+        {
+          signal: abortSignal,
+        },
+      );
 
-    const result: CallAgentResult = {};
+      const finalMessage = response.choices[0]?.message;
+      const totalUsage = response.usage
+        ? {
+            prompt_tokens: response.usage.prompt_tokens,
+            completion_tokens: response.usage.completion_tokens,
+            total_tokens: response.usage.total_tokens,
+          }
+        : undefined;
 
-    // Return content
-    if (finalMessage?.content) {
-      result.content = finalMessage.content;
+      const result: CallAgentResult = {};
+
+      // Return content
+      if (finalMessage?.content) {
+        result.content = finalMessage.content;
+      }
+
+      // Return tool call
+      if (finalMessage?.tool_calls && finalMessage.tool_calls.length > 0) {
+        result.tool_calls = finalMessage.tool_calls;
+      }
+
+      // Return token usage information
+      if (totalUsage) {
+        result.usage = totalUsage;
+      }
+
+      return result;
     }
-
-    // Return tool call
-    if (finalMessage?.tool_calls && finalMessage.tool_calls.length > 0) {
-      result.tool_calls = finalMessage.tool_calls;
-    }
-
-    // Return token usage information
-    if (totalUsage) {
-      result.usage = totalUsage;
-    }
-
-    return result;
   } catch (error) {
     if ((error as Error).name === "AbortError") {
       throw new Error("Request was aborted");
@@ -209,6 +250,162 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     // // logger.error("Failed to call OpenAI:", error);
     throw error;
   }
+}
+
+/**
+ * Process streaming response from OpenAI API
+ * @param stream Async iterator of chat completion chunks
+ * @param onContentUpdate Callback for content updates
+ * @param onToolUpdate Callback for tool updates
+ * @param abortSignal Optional abort signal
+ * @returns Final result with accumulated content and tool calls
+ */
+async function processStreamingResponse(
+  stream: AsyncIterable<ChatCompletionChunk>,
+  onContentUpdate?: (content: string) => void,
+  onToolUpdate?: (toolCall: {
+    id: string;
+    name: string;
+    parameters: string;
+    parametersChunk?: string;
+    extractedParams?: Record<string, string | number | boolean | null>;
+  }) => void,
+  abortSignal?: AbortSignal,
+): Promise<CallAgentResult> {
+  let accumulatedContent = "";
+  const toolCalls = new Map<
+    number,
+    {
+      id: string;
+      type: "function";
+      function: {
+        name: string;
+        arguments: string;
+      };
+    }
+  >();
+  let usage: CallAgentResult["usage"] = undefined;
+
+  try {
+    for await (const chunk of stream) {
+      // Check for abort signal
+      if (abortSignal?.aborted) {
+        throw new Error("Request was aborted");
+      }
+
+      // Check for usage information in any chunk
+      if (chunk.usage) {
+        usage = {
+          prompt_tokens: chunk.usage.prompt_tokens,
+          completion_tokens: chunk.usage.completion_tokens,
+          total_tokens: chunk.usage.total_tokens,
+        };
+      }
+
+      const delta = chunk.choices?.[0]?.delta;
+      if (!delta) {
+        continue;
+      }
+
+      // Handle content updates
+      if (delta.content) {
+        // Note: OpenAI API already handles UTF-8 character boundaries correctly in streaming,
+        // ensuring that delta.content always contains complete UTF-8 strings
+        accumulatedContent += delta.content;
+        if (onContentUpdate) {
+          onContentUpdate(accumulatedContent);
+        }
+      }
+
+      // Handle tool call updates
+      if (delta.tool_calls) {
+        for (const toolCall of delta.tool_calls) {
+          if (toolCall.function) {
+            // New tool call
+            const existingCall = toolCalls.get(toolCall.index) || {
+              id: toolCall.id as string,
+              type: "function" as const,
+              function: {
+                name: toolCall.function.name || "",
+                arguments: "",
+              },
+            };
+
+            // Update function name if provided
+            if (toolCall.function.name) {
+              existingCall.function.name = toolCall.function.name;
+            }
+
+            // Accumulate arguments
+            if (toolCall.function.arguments) {
+              existingCall.function.arguments += toolCall.function.arguments;
+            }
+
+            toolCalls.set(toolCall.index, existingCall);
+
+            // Trigger callback for tool updates with enhanced parameter streaming
+            if (
+              onToolUpdate &&
+              existingCall.function.name &&
+              existingCall.function.arguments
+            ) {
+              // Extract complete parameters for better streaming experience
+              const completeParams = extractCompleteParams(
+                existingCall.function.arguments,
+              );
+              const hasCompleteParams = Object.keys(completeParams).length > 0;
+
+              // Create the tool update object
+              const toolUpdate: {
+                id: string;
+                name: string;
+                parameters: string;
+                parametersChunk?: string;
+                extractedParams?: Record<
+                  string,
+                  string | number | boolean | null
+                >;
+              } = {
+                id: existingCall.id,
+                name: existingCall.function.name,
+                parametersChunk: toolCall.function.arguments,
+                parameters: existingCall.function.arguments,
+              };
+
+              // Only add extractedParams when there are truly complete/valid parameters
+              if (hasCompleteParams) {
+                toolUpdate.extractedParams = completeParams;
+              }
+
+              onToolUpdate(toolUpdate);
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    if ((error as Error).message === "Request was aborted") {
+      throw error;
+    }
+    throw error;
+  }
+
+  // Prepare final result
+  const result: CallAgentResult = {};
+
+  if (accumulatedContent) {
+    result.content = accumulatedContent;
+  }
+
+  if (toolCalls.size > 0) {
+    result.tool_calls = Array.from(toolCalls.values());
+  }
+
+  if (usage) {
+    result.usage = usage;
+  }
+
+  return result;
 }
 
 export interface CompressMessagesOptions {

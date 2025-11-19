@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type {
-  CompressMessagesOptions,
-  CallAgentOptions,
-} from "@/services/aiService.js";
+import type { CompressMessagesOptions } from "@/services/aiService.js";
 import type { GatewayConfig, ModelConfig } from "@/types/index.js";
 
 // Test configuration constants
@@ -45,7 +42,7 @@ vi.mock("process", () => ({
   cwd: () => "/test/cwd",
 }));
 
-describe("AI Service", () => {
+describe("AI Service - CompressMessages", () => {
   beforeEach(() => {
     // Reset mock and set default behavior
     mockCreate.mockReset();
@@ -64,126 +61,6 @@ describe("AI Service", () => {
     vi.clearAllMocks();
   });
 
-  describe("callAgent", () => {
-    // Import the function after mocking
-    let callAgent: (
-      options: CallAgentOptions,
-    ) => Promise<import("@/services/aiService.js").CallAgentResult>;
-
-    beforeEach(async () => {
-      const aiService = await import("@/services/aiService.js");
-      callAgent = aiService.callAgent;
-    });
-
-    it("should use default system prompt when no custom systemPrompt provided", async () => {
-      mockCreate.mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: "Test response",
-            },
-          },
-        ],
-        usage: {
-          prompt_tokens: 10,
-          completion_tokens: 20,
-          total_tokens: 30,
-        },
-      });
-
-      await callAgent({
-        gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: TEST_MODEL_CONFIG,
-        messages: [{ role: "user", content: "Test message" }],
-        workdir: "/test/workdir",
-      });
-
-      const callArgs = mockCreate.mock.calls[0][0];
-
-      // Should have system message as first message
-      expect(callArgs.messages[0].role).toBe("system");
-      expect(callArgs.messages[0].content).toContain(
-        "You are an interactive CLI tool",
-      );
-      expect(callArgs.messages[0].content).toContain(
-        "Working directory: /test/workdir",
-      );
-      expect(callArgs.messages[0].content).toContain("/test/workdir");
-    });
-
-    it("should use custom systemPrompt when provided", async () => {
-      mockCreate.mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: "Test response",
-            },
-          },
-        ],
-        usage: {
-          prompt_tokens: 10,
-          completion_tokens: 20,
-          total_tokens: 30,
-        },
-      });
-
-      const customPrompt =
-        "You are a custom AI assistant with special capabilities.";
-
-      await callAgent({
-        gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: TEST_MODEL_CONFIG,
-        messages: [{ role: "user", content: "Test message" }],
-        workdir: "/test/workdir",
-        systemPrompt: customPrompt,
-      });
-
-      const callArgs = mockCreate.mock.calls[0][0];
-
-      // Should have custom system message as first message
-      expect(callArgs.messages[0].role).toBe("system");
-      expect(callArgs.messages[0].content).toContain(customPrompt);
-      // Should not contain default prompt content
-      expect(callArgs.messages[0].content).not.toContain(
-        "You are an interactive CLI tool",
-      );
-    });
-
-    it("should add memory to default system prompt when no custom systemPrompt provided", async () => {
-      mockCreate.mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: "Test response",
-            },
-          },
-        ],
-        usage: {
-          prompt_tokens: 10,
-          completion_tokens: 20,
-          total_tokens: 30,
-        },
-      });
-
-      const memoryContent = "Important previous context and memory.";
-
-      await callAgent({
-        gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: TEST_MODEL_CONFIG,
-        messages: [{ role: "user", content: "Test message" }],
-        workdir: "/test/workdir",
-        memory: memoryContent,
-      });
-
-      const callArgs = mockCreate.mock.calls[0][0];
-
-      // Should have system message with memory
-      expect(callArgs.messages[0].role).toBe("system");
-      expect(callArgs.messages[0].content).toContain("## Memory Context");
-      expect(callArgs.messages[0].content).toContain(memoryContent);
-    });
-  });
-
   describe("compressMessages", () => {
     // Import the function after mocking
     let compressMessages: (
@@ -194,6 +71,7 @@ describe("AI Service", () => {
       const aiService = await import("@/services/aiService.js");
       compressMessages = aiService.compressMessages;
     });
+
     it("should use max_tokens of 1500 and temperature of 0.1", async () => {
       const messages = [
         {

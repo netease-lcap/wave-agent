@@ -55,6 +55,7 @@ export interface ToolBlock {
   success?: boolean;
   error?: string | Error;
   compactParams?: string; // Compact parameter display
+  parametersChunk?: string; // Incremental parameter updates for streaming
 }
 
 export interface ImageBlock {

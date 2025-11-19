@@ -110,6 +110,11 @@ async function demonstrateHookJsonInput(): Promise<void> {
     // Create Agent instance with hook configuration
     const agent = await Agent.create({
       workdir: hookDir,
+      callbacks: {
+        onAssistantContentUpdated: (chunk: string) => {
+          process.stdout.write(chunk);
+        },
+      },
     });
 
     console.log(`Agent created with session ID: ${agent.sessionId}`);

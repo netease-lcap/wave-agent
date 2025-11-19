@@ -17,6 +17,7 @@ export * from "./utils/path.js";
 export * from "./utils/stringUtils.js";
 export * from "./utils/customCommands.js";
 export * from "./utils/hookMatcher.js";
+export * from "./utils/streamingHelpers.js";
 
 // Export types
 export * from "./types/index.js";

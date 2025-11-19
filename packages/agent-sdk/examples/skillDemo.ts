@@ -58,10 +58,11 @@ Template Variables:
 
     const agent = await Agent.create({
       callbacks: {
-        onAssistantMessageAdded: (content) => {
-          if (content) {
-            console.log("🤖 Assistant:", content);
-          }
+        onAssistantMessageAdded: () => {
+          console.log("Assistant message started");
+        },
+        onAssistantContentUpdated: (chunk: string) => {
+          process.stdout.write(chunk);
         },
         onToolBlockUpdated: (params) => {
           if (params.result) {

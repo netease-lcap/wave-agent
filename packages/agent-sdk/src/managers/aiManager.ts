@@ -262,7 +262,10 @@ export class AIManager {
         this.workdir,
       );
 
-      // Call AI service (non-streaming)
+      // Add assistant message first (for streaming updates)
+      this.messageManager.addAssistantMessage();
+
+      // Call AI service with streaming callbacks
       const result = await callAgent({
         gatewayConfig: this.gatewayConfig,
         modelConfig: this.modelConfig,
@@ -274,18 +277,41 @@ export class AIManager {
         tools: this.getFilteredToolsConfig(allowedTools), // Pass filtered tool configuration
         model: model, // Use passed model
         systemPrompt: this.systemPrompt, // Pass custom system prompt
+        // Streaming callbacks
+        onContentUpdate: (content: string) => {
+          this.messageManager.updateCurrentMessageContent(content);
+        },
+        onToolUpdate: (toolCall) => {
+          // Extract complete parameters for compact formatting
+          let compactParams: string | undefined;
+          if (
+            toolCall.extractedParams &&
+            Object.keys(toolCall.extractedParams).length > 0
+          ) {
+            // Use the extracted complete parameters to generate compact params
+            compactParams = this.generateCompactParams(
+              toolCall.name,
+              toolCall.extractedParams,
+            );
+          }
+
+          // Handle streaming tool call updates with enhanced parameter streaming
+          this.logger?.debug("Tool streaming update:", toolCall);
+
+          // Update tool block with streaming parameters
+          this.messageManager.updateToolBlock({
+            id: toolCall.id,
+            name: toolCall.name,
+            parameters: toolCall.parameters,
+            parametersChunk: toolCall.parametersChunk,
+            compactParams: compactParams,
+          });
+        },
       });
 
-      // Collect content and tool calls
-      const content = result.content || "";
-      const toolCalls: ChatCompletionMessageFunctionToolCall[] = [];
-
-      if (result.tool_calls) {
-        for (const toolCall of result.tool_calls) {
-          if (toolCall.type === "function") {
-            toolCalls.push(toolCall);
-          }
-        }
+      // Handle result content from non-streaming mode
+      if (result.content) {
+        this.messageManager.updateCurrentMessageContent(result.content);
       }
 
       // Handle usage tracking for agent operations
@@ -300,13 +326,28 @@ export class AIManager {
         };
       }
 
-      // Add assistant message at once (including content, tool calls, and usage)
-      this.messageManager.addAssistantMessage(content, toolCalls, usage);
-
-      // Notify Agent to add to usage tracking
+      // Set usage on the assistant message if available
       if (usage) {
+        const messages = this.messageManager.getMessages();
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && lastMessage.role === "assistant") {
+          lastMessage.usage = usage;
+          this.messageManager.setMessages(messages);
+        }
+
+        // Notify Agent to add to usage tracking
         if (this.callbacks?.onUsageAdded) {
           this.callbacks.onUsageAdded(usage);
+        }
+      }
+
+      // Collect tool calls for processing
+      const toolCalls: ChatCompletionMessageFunctionToolCall[] = [];
+      if (result.tool_calls) {
+        for (const toolCall of result.tool_calls) {
+          if (toolCall.type === "function") {
+            toolCalls.push(toolCall);
+          }
         }
       }
 
