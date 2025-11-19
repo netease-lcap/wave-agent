@@ -8,10 +8,15 @@ import {
   ChatCompletionChunk,
 } from "openai/resources.js";
 import type { GatewayConfig, ModelConfig } from "../types/index.js";
-import { extractCompleteParams } from "../utils/streamingHelpers.js";
+
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
+
+/**
+ * Use parametersChunk as compact param for better performance
+ * Instead of parsing JSON, we use the raw chunk for efficient streaming
+ */
 
 /**
  * Check if a directory is a git repository
@@ -90,7 +95,6 @@ export interface CallAgentOptions {
     name: string;
     parameters: string;
     parametersChunk?: string;
-    extractedParams?: Record<string, string | number | boolean | null>;
   }) => void;
 }
 
@@ -268,7 +272,6 @@ async function processStreamingResponse(
     name: string;
     parameters: string;
     parametersChunk?: string;
-    extractedParams?: Record<string, string | number | boolean | null>;
   }) => void,
   abortSignal?: AbortSignal,
 ): Promise<CallAgentResult> {
@@ -349,35 +352,13 @@ async function processStreamingResponse(
               existingCall.function.name &&
               existingCall.function.arguments
             ) {
-              // Extract complete parameters for better streaming experience
-              const completeParams = extractCompleteParams(
-                existingCall.function.arguments,
-              );
-              const hasCompleteParams = Object.keys(completeParams).length > 0;
-
-              // Create the tool update object
-              const toolUpdate: {
-                id: string;
-                name: string;
-                parameters: string;
-                parametersChunk?: string;
-                extractedParams?: Record<
-                  string,
-                  string | number | boolean | null
-                >;
-              } = {
+              // Use parametersChunk as compact param for better performance
+              onToolUpdate({
                 id: existingCall.id,
                 name: existingCall.function.name,
-                parametersChunk: toolCall.function.arguments,
                 parameters: existingCall.function.arguments,
-              };
-
-              // Only add extractedParams when there are truly complete/valid parameters
-              if (hasCompleteParams) {
-                toolUpdate.extractedParams = completeParams;
-              }
-
-              onToolUpdate(toolUpdate);
+                parametersChunk: toolCall.function.arguments, // Compact param for performance
+              });
             }
           }
         }

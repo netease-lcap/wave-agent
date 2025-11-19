@@ -338,7 +338,7 @@ describe("Agent Tool Streaming Tests", () => {
               id: "call_lifecycle",
               name: "test_tool",
               parameters: '{"param": "value"}',
-              extractedParams: { param: "value" },
+              parametersChunk: '{"param": "value"}',
             });
           }
 

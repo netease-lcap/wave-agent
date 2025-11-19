@@ -42,15 +42,15 @@ if (choice.delta.content) {
 }
 ```
 
-### 2. Incomplete JSON Parsing for Tool Parameters
+### 2. Parameter Streaming Optimization
 
-**Decision**: Create `streamingHelpers.ts` utility with regex-based parameter extraction
+**Decision**: Use `parametersChunk` as compact parameter for optimal performance
 
 **Rationale**:
-- Simple regex patterns to extract complete key-value pairs from incomplete JSON
-- Handles string, number, boolean, and null values safely
-- Lightweight approach with predictable performance characteristics
-- Properly handles escape sequences in string values
+- Direct chunk usage eliminates computational overhead during streaming
+- No JSON parsing or regex processing in the hot path
+- Minimal memory allocation and garbage collection pressure
+- Raw streaming data is passed efficiently to downstream consumers
 
 **Alternatives Considered**:
 - Complex progressive JSON parsers → Rejected as over-engineered
