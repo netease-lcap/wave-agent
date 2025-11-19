@@ -140,8 +140,8 @@ console.error("Favorite Number MCP Server ready");`;
       onUserMessageAdded: (params) => {
         console.log(`👤 User: "${params.content}"`);
       },
-      onAssistantMessageAdded: (content) => {
-        if (content) console.log(`🤖 Assistant: ${content}`);
+      onAssistantMessageAdded: () => {
+        console.log("Assistant message started");
       },
       onToolBlockUpdated: (params) => {
         if (!params.isRunning && params.success) {

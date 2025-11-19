@@ -86,8 +86,8 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
       onUserMessageAdded: (params) => {
         console.log(`👤 User: "${params.content}"`);
       },
-      onAssistantMessageAdded: (content) => {
-        if (content) console.log(`🤖 Assistant: ${content}`);
+      onAssistantMessageAdded: () => {
+        console.log("Assistant message started");
       },
       onToolBlockUpdated: (params) => {
         if (params.isRunning) {

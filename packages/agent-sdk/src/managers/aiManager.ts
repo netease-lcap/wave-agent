@@ -262,7 +262,10 @@ export class AIManager {
         this.workdir,
       );
 
-      // Call AI service (non-streaming)
+      // Add assistant message first (for streaming updates)
+      this.messageManager.addAssistantMessage();
+
+      // Call AI service with streaming callbacks
       const result = await callAgent({
         gatewayConfig: this.gatewayConfig,
         modelConfig: this.modelConfig,
@@ -274,19 +277,44 @@ export class AIManager {
         tools: this.getFilteredToolsConfig(allowedTools), // Pass filtered tool configuration
         model: model, // Use passed model
         systemPrompt: this.systemPrompt, // Pass custom system prompt
-      });
+        // Streaming callbacks
+        onContentUpdate: (content: string) => {
+          this.messageManager.updateCurrentMessageContent(content);
+        },
+        onToolUpdate: (toolCall: {
+          id: string;
+          name: string;
+          parameters: string;
+          parametersChunk?: string;
+          completeParams?: Record<string, unknown>;
+        }) => {
+          // Handle streaming tool call updates with enhanced parameter streaming
+          this.logger?.debug("Tool streaming update:", toolCall);
 
-      // Collect content and tool calls
-      const content = result.content || "";
-      const toolCalls: ChatCompletionMessageFunctionToolCall[] = [];
-
-      if (result.tool_calls) {
-        for (const toolCall of result.tool_calls) {
-          if (toolCall.type === "function") {
-            toolCalls.push(toolCall);
+          // Extract complete parameters for compact formatting
+          let compactParams: string | undefined;
+          if (
+            toolCall.completeParams &&
+            Object.keys(toolCall.completeParams).length > 0
+          ) {
+            // Use the extracted complete parameters to generate compact params
+            compactParams = this.generateCompactParams(
+              toolCall.name,
+              toolCall.completeParams,
+            );
           }
-        }
-      }
+
+          // Use the specialized updateToolParameters method for efficient streaming updates
+          // This method is optimized for streaming and includes both view modes support
+          this.messageManager.updateToolParameters({
+            id: toolCall.id,
+            name: toolCall.name,
+            parameters: toolCall.parameters,
+            parametersChunk: toolCall.parametersChunk,
+            compactParams: compactParams,
+          });
+        },
+      });
 
       // Handle usage tracking for agent operations
       let usage: Usage | undefined;
@@ -300,8 +328,65 @@ export class AIManager {
         };
       }
 
-      // Add assistant message at once (including content, tool calls, and usage)
-      this.messageManager.addAssistantMessage(content, toolCalls, usage);
+      // Collect tool calls for processing
+      const toolCalls: ChatCompletionMessageFunctionToolCall[] = [];
+      if (result.tool_calls) {
+        for (const toolCall of result.tool_calls) {
+          if (toolCall.type === "function") {
+            toolCalls.push(toolCall);
+          }
+        }
+      }
+
+      // Update the assistant message with final tool calls and usage
+      // Content was already updated through streaming callbacks, but we need to ensure final content is set
+      const finalContent = result.content || "";
+
+      // Always update the last assistant message with final data
+      const messages = this.messageManager.getMessages();
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && lastMessage.role === "assistant") {
+        // Ensure final content is set
+        // If there's no text block and we have content, add it
+        // If there's a text block but it's empty and we have content, update it
+        const existingTextBlock = lastMessage.blocks.find(
+          (block) => block.type === "text",
+        );
+        if (finalContent) {
+          if (!existingTextBlock) {
+            // No text block exists, add one
+            lastMessage.blocks.unshift({
+              type: "text",
+              content: finalContent,
+            });
+          } else if (!existingTextBlock.content) {
+            // Text block exists but is empty, update it
+            existingTextBlock.content = finalContent;
+          }
+          // If text block exists and has content, don't overwrite (streaming already populated it)
+        }
+
+        if (usage) {
+          lastMessage.usage = usage;
+        }
+
+        // Add tool call blocks if present
+        if (toolCalls.length > 0) {
+          for (const toolCall of toolCalls) {
+            const toolBlock = {
+              type: "tool" as const,
+              id: toolCall.id,
+              name: toolCall.function?.name || "",
+              parameters: toolCall.function?.arguments || "{}",
+              isRunning: false,
+            };
+            lastMessage.blocks.push(toolBlock);
+          }
+        }
+
+        // Always trigger message change to update UI
+        this.messageManager.setMessages(messages);
+      }
 
       // Notify Agent to add to usage tracking
       if (usage) {

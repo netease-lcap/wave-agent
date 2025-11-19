@@ -14,10 +14,8 @@ const agent = await Agent.create({
         console.log(`🖼️  With ${params.images.length} images`);
       }
     },
-    onAssistantMessageAdded: (content, toolCalls) => {
-      console.log("🤖 Assistant message started");
-      console.log("Content:", content);
-      console.log("Tool calls:", toolCalls?.length || 0);
+    onAssistantMessageAdded: () => {
+      console.log("Assistant message started");
     },
     onToolBlockUpdated: (params) => {
       console.log(`🔧 Tool updated: ${JSON.stringify(params, null, 2)}`);

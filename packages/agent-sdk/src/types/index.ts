@@ -21,3 +21,10 @@ export * from "./processes.js";
 export * from "./commands.js";
 export * from "./skills.js";
 export * from "./config.js";
+
+// Streaming utilities re-export
+export {
+  extractCompleteParams,
+  getCompletedKeys,
+  StreamingToolCall,
+} from "../utils/streamingHelpers.js";

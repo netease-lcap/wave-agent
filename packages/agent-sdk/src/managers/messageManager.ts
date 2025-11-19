@@ -37,10 +37,10 @@ export interface MessageManagerCallbacks {
   onUsagesChange?: (usages: Usage[]) => void;
   // Incremental callback
   onUserMessageAdded?: (params: UserMessageParams) => void;
-  onAssistantMessageAdded?: (
-    content?: string,
-    toolCalls?: ChatCompletionMessageFunctionToolCall[],
-  ) => void;
+  // MODIFIED: Remove arguments for separation of concerns
+  onAssistantMessageAdded?: () => void;
+  // NEW: Streaming content callback - FR-001: receives chunk and accumulated content
+  onAssistantContentUpdated?: (chunk: string, accumulated: string) => void;
   onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
   onDiffBlockAdded?: (filePath: string, diffResult: string) => void;
   onErrorBlockAdded?: (error: string) => void;
@@ -294,7 +294,7 @@ export class MessageManager {
       usage,
     );
     this.setMessages(newMessages);
-    this.callbacks.onAssistantMessageAdded?.(content, toolCalls);
+    this.callbacks.onAssistantMessageAdded?.();
   }
 
   public updateToolBlock(params: AgentToolBlockUpdateParams): void {
@@ -310,9 +310,41 @@ export class MessageManager {
       shortResult: params.shortResult,
       images: params.images,
       compactParams: params.compactParams,
+      parametersChunk: params.parametersChunk,
     });
     this.setMessages(newMessages);
     this.callbacks.onToolBlockUpdated?.(params);
+  }
+
+  /**
+   * Update tool parameters in streaming mode
+   * This method is optimized for real-time parameter updates during streaming
+   */
+  public updateToolParameters(params: {
+    id: string;
+    parameters: string;
+    parametersChunk?: string;
+    name?: string;
+    compactParams?: string;
+  }): void {
+    const newMessages = updateToolBlockInMessage({
+      messages: this.messages,
+      id: params.id,
+      parameters: params.parameters,
+      parametersChunk: params.parametersChunk,
+      name: params.name,
+      compactParams: params.compactParams,
+    });
+    this.setMessages(newMessages);
+
+    // Trigger callback with streaming parameter data including compactParams for view modes
+    this.callbacks.onToolBlockUpdated?.({
+      id: params.id,
+      parameters: params.parameters,
+      parametersChunk: params.parametersChunk,
+      name: params.name,
+      compactParams: params.compactParams,
+    });
   }
 
   public addDiffBlock(
@@ -485,6 +517,53 @@ export class MessageManager {
       }
     }
     this.callbacks.onUsagesChange?.(usages);
+  }
+
+  /**
+   * Update the current assistant message content during streaming
+   * This method updates the last assistant message's content without creating a new message
+   * FR-001: Tracks and provides both chunk (new content) and accumulated (total content)
+   */
+  public updateCurrentMessageContent(newAccumulatedContent: string): void {
+    if (this.messages.length === 0) return;
+
+    const lastMessage = this.messages[this.messages.length - 1];
+    if (lastMessage.role !== "assistant") return;
+
+    // Get the current content to calculate the chunk
+    const textBlockIndex = lastMessage.blocks.findIndex(
+      (block) => block.type === "text",
+    );
+    const currentContent =
+      textBlockIndex >= 0
+        ? (
+            lastMessage.blocks[textBlockIndex] as {
+              type: "text";
+              content: string;
+            }
+          ).content || ""
+        : "";
+
+    // Calculate the chunk (new content since last update)
+    const chunk = newAccumulatedContent.slice(currentContent.length);
+
+    if (textBlockIndex >= 0) {
+      // Update existing text block
+      lastMessage.blocks[textBlockIndex] = {
+        type: "text",
+        content: newAccumulatedContent,
+      };
+    } else {
+      // Add new text block if none exists
+      lastMessage.blocks.unshift({
+        type: "text",
+        content: newAccumulatedContent,
+      });
+    }
+
+    // FR-001: Trigger callbacks with chunk and accumulated content
+    this.callbacks.onAssistantContentUpdated?.(chunk, newAccumulatedContent);
+    this.callbacks.onMessagesChange?.([...this.messages]); // Still need to notify of changes
   }
 
   /**
