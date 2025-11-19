@@ -266,12 +266,13 @@ export const updateToolBlockInMessage = ({
           if (parametersChunk !== undefined)
             toolBlock.parametersChunk = parametersChunk;
         }
-      } else if (result !== undefined) {
+      } else {
         // If existing block not found, create new one
+        // This handles cases where we're streaming tool parameters before execution
         newMessages[i].blocks.push({
           type: "tool",
           parameters: parameters,
-          result: result,
+          result: result || "",
           shortResult: shortResult,
           images: images, // Add image data
           id: id,

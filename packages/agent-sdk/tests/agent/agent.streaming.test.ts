@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
-import type { TextBlock } from "@/types/messaging.js";
+import type { TextBlock, Message } from "@/types/messaging.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -989,6 +989,108 @@ describe("Agent Streaming Integration Tests", () => {
 
       // Verify streaming was initiated
       expect(streamingStarted).toBe(true);
+    });
+
+    it("should add tool calls to agent.messages during streaming before execution completion", async () => {
+      const messageStateSnapshots: Message[][] = [];
+      let streamingCallbackExecuted = false;
+      let aiCallCount = 0;
+
+      mockCallbacks.onMessagesChange.mockImplementation((messages) => {
+        // Take a snapshot of the message state at each change
+        messageStateSnapshots.push(JSON.parse(JSON.stringify(messages)));
+      });
+
+      mockCallAgent.mockImplementation(async (options) => {
+        aiCallCount++;
+
+        if (aiCallCount === 1) {
+          if (options.onToolUpdate) {
+            // Simulate streaming tool parameter updates
+            options.onToolUpdate!({
+              id: "call_streaming",
+              name: "write_file",
+              parameters: '{"file_path":',
+            });
+
+            streamingCallbackExecuted = true;
+
+            // Complete the parameters during streaming
+            options.onToolUpdate!({
+              id: "call_streaming",
+              name: "write_file",
+              parameters: '{"file_path": "/test.txt", "content": "hello"}',
+            });
+
+            // CRITICAL: Verify tool call is added to messages DURING streaming (before execution)
+            const messagesAfterStreaming = agent.messages;
+            const assistantMessage = messagesAfterStreaming.find(
+              (m) => m.role === "assistant",
+            );
+            expect(assistantMessage).toBeDefined();
+
+            const toolBlocks = assistantMessage!.blocks.filter(
+              (b) => b.type === "tool",
+            );
+            const streamingToolBlock = toolBlocks.find(
+              (block) => "id" in block && block.id === "call_streaming",
+            );
+            // This assertion confirms tool call exists in messages during streaming
+            expect(streamingToolBlock).toBeDefined();
+            expect(streamingToolBlock).toMatchObject({
+              type: "tool",
+              id: "call_streaming",
+              name: "write_file",
+              parameters: '{"file_path": "/test.txt", "content": "hello"}',
+            });
+          }
+
+          return {
+            tool_calls: [
+              {
+                id: "call_streaming",
+                type: "function" as const,
+                index: 0,
+                function: {
+                  name: "write_file",
+                  arguments: JSON.stringify({
+                    file_path: "/test.txt",
+                    content: "hello",
+                  }),
+                },
+              },
+            ],
+          };
+        } else {
+          // Second call: response after tool execution
+          return {
+            content: "File written successfully with streaming parameters",
+          };
+        }
+      });
+
+      // Mock tool execution
+      mockToolExecute.mockImplementation(async (toolName: string) => {
+        if (toolName === "write_file") {
+          return {
+            success: true,
+            content: "File written successfully",
+            shortResult: "File created",
+          };
+        }
+        return { success: false, content: "Unknown tool" };
+      });
+
+      await agent.sendMessage("Write a test file with streaming");
+
+      // Verify streaming callback was executed
+      expect(streamingCallbackExecuted).toBe(true);
+
+      // Verify AI service was called twice (initial + recursive)
+      expect(mockCallAgent).toHaveBeenCalledTimes(2);
+
+      // Verify tool was executed - proving the streaming verification didn't break the flow
+      expect(mockToolExecute).toHaveBeenCalledTimes(1);
     });
 
     it("should maintain message state consistency during parameter streaming", async () => {
