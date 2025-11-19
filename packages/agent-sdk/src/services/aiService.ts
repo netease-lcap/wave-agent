@@ -89,6 +89,7 @@ export interface CallAgentOptions {
     id: string;
     name: string;
     parameters: string;
+    parametersChunk?: string;
     extractedParams?: Record<string, string | number | boolean | null>;
   }) => void;
 }
@@ -266,6 +267,7 @@ async function processStreamingResponse(
     id: string;
     name: string;
     parameters: string;
+    parametersChunk?: string;
     extractedParams?: Record<string, string | number | boolean | null>;
   }) => void,
   abortSignal?: AbortSignal,
@@ -358,6 +360,7 @@ async function processStreamingResponse(
                 id: string;
                 name: string;
                 parameters: string;
+                parametersChunk?: string;
                 extractedParams?: Record<
                   string,
                   string | number | boolean | null
@@ -365,6 +368,7 @@ async function processStreamingResponse(
               } = {
                 id: existingCall.id,
                 name: existingCall.function.name,
+                parametersChunk: toolCall.function.arguments,
                 parameters: existingCall.function.arguments,
               };
 

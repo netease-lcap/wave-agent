@@ -281,16 +281,7 @@ export class AIManager {
         onContentUpdate: (content: string) => {
           this.messageManager.updateCurrentMessageContent(content);
         },
-        onToolUpdate: (toolCall: {
-          id: string;
-          name: string;
-          parameters: string;
-          parametersChunk?: string;
-          extractedParams?: Record<string, unknown>;
-        }) => {
-          // Handle streaming tool call updates with enhanced parameter streaming
-          this.logger?.debug("Tool streaming update:", toolCall);
-
+        onToolUpdate: (toolCall) => {
           // Extract complete parameters for compact formatting
           let compactParams: string | undefined;
           if (
@@ -303,6 +294,9 @@ export class AIManager {
               toolCall.extractedParams,
             );
           }
+
+          // Handle streaming tool call updates with enhanced parameter streaming
+          this.logger?.debug("Tool streaming update:", toolCall);
 
           // Use the specialized updateToolParameters method for efficient streaming updates
           // This method is optimized for streaming and includes both view modes support
