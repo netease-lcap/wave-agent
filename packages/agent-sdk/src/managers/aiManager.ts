@@ -282,29 +282,17 @@ export class AIManager {
           this.messageManager.updateCurrentMessageContent(content);
         },
         onToolUpdate: (toolCall) => {
-          // Extract complete parameters for compact formatting
-          let compactParams: string | undefined;
-          if (
-            toolCall.extractedParams &&
-            Object.keys(toolCall.extractedParams).length > 0
-          ) {
-            // Use the extracted complete parameters to generate compact params
-            compactParams = this.generateCompactParams(
-              toolCall.name,
-              toolCall.extractedParams,
-            );
-          }
-
-          // Handle streaming tool call updates with enhanced parameter streaming
+          // Use parametersChunk as compact param for better performance
+          // No need to extract params or generate compact params during streaming
           this.logger?.debug("Tool streaming update:", toolCall);
 
-          // Update tool block with streaming parameters
+          // Update tool block with streaming parameters using parametersChunk as compact param
           this.messageManager.updateToolBlock({
             id: toolCall.id,
             name: toolCall.name,
             parameters: toolCall.parameters,
-            parametersChunk: toolCall.parametersChunk,
-            compactParams: compactParams,
+            parametersChunk: toolCall.parametersChunk, // Use as compact param
+            compactParams: toolCall.parametersChunk, // Direct assignment for performance
           });
         },
       });

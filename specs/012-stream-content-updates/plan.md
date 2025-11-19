@@ -84,7 +84,7 @@ packages/
 │   │   ├── types/
 │   │   │   ├── index.ts              # Update existing types for streaming callbacks
 │   │   └── utils/
-│   │       └── streamingHelpers.ts   # New: JSON parsing utilities for incomplete streams
+│   │       └── (removed streamingHelpers.ts for performance)   # Optimized: Direct parametersChunk usage
 │   └── tests/
 │       ├── managers/
 │       │   ├── messageManager.streaming.test.ts

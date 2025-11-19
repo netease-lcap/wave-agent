@@ -98,9 +98,11 @@ export async function callAgent(options: CallAgentOptions): Promise<CallAgentRes
 }
 ```
 
-#### 1.3 Create Streaming Utilities
+#### 1.3 Performance Optimization
 
-**File**: `packages/agent-sdk/src/utils/streamingHelpers.ts`
+**Optimization**: ~~`packages/agent-sdk/src/utils/streamingHelpers.ts`~~ **REMOVED FOR PERFORMANCE**
+
+Instead of complex JSON parsing utilities, we now use `parametersChunk` directly:
 
 ```typescript
 /**
@@ -160,7 +162,7 @@ export function extractStreamingParams(
 
 
 
-// Tool call accumulation using the simple extraction approach
+// Optimized tool call streaming using parametersChunk
 export function accumulateToolCall(
   delta: any, 
   existing: ChatCompletionMessageFunctionToolCall[],
@@ -169,13 +171,10 @@ export function accumulateToolCall(
   // Accumulate parameters string from delta
   const updatedParameters = /* accumulate from delta */;
   
-  // Extract complete params from partial JSON
-  const extractedParams = extractStreamingParams(updatedParameters);
+  // Use parametersChunk directly as compact param for performance
+  const parametersChunk = delta.function?.arguments || '';
   
-  // Compute compactParams using existing formatting function
-  const compactParams = generateCompactParams(extractedParams);
-  
-  // Trigger callback with computed compact params
+  // Trigger callback with optimized parameters
   onUpdate?.({
     id: /* tool call id */,
     name: /* tool name */,
@@ -380,7 +379,7 @@ describe('Agent streaming integration', () => {
 ### Phase 1 Checklist (Agent SDK)
 - [ ] Enhance MessageManagerCallbacks interface
 - [ ] Implement streaming in aiService.ts
-- [ ] Create streamingHelpers.ts utilities
+- [ ] ~~Create streamingHelpers.ts utilities~~ OPTIMIZED: Removed for performance
 - [ ] Update AIManager integration
 - [ ] Write unit tests for streaming logic
 - [ ] Run `pnpm build` and verify exports
