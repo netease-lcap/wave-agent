@@ -43,6 +43,9 @@ async function setupTest() {
       onAssistantMessageAdded: () => {
         console.log("🤖 Assistant message started");
       },
+      onAssistantContentUpdated: (chunk: string) => {
+        process.stdout.write(chunk);
+      },
       onToolBlockUpdated: (params) => {
         const status = params.isRunning
           ? "running"

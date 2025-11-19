@@ -28,6 +28,9 @@ async function demonstrateParallelExecution(): Promise<void> {
       workdir,
       agentModel: "gemini-2.0-flash-exp",
       callbacks: {
+        onAssistantContentUpdated: (chunk: string) => {
+          process.stdout.write(chunk);
+        },
         onToolBlockUpdated: (params) => {
           const { id: toolId, name: toolName, isRunning } = params;
 

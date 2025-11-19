@@ -211,6 +211,11 @@ async function demonstrateBlockingErrors(): Promise<void> {
       workdir: hookDir,
       agentModel: "gemini-2.5-flash",
       logger: console,
+      callbacks: {
+        onAssistantContentUpdated: (chunk: string) => {
+          process.stdout.write(chunk);
+        },
+      },
     });
 
     console.log(`Agent created with session ID: ${agent.sessionId}`);

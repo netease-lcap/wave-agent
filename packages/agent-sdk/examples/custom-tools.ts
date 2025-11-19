@@ -143,6 +143,9 @@ console.error("Favorite Number MCP Server ready");`;
       onAssistantMessageAdded: () => {
         console.log("Assistant message started");
       },
+      onAssistantContentUpdated: (chunk: string) => {
+        process.stdout.write(chunk);
+      },
       onToolBlockUpdated: (params) => {
         if (!params.isRunning && params.success) {
           console.log(`🔧 Tool ${params.name}: ${params.result}`);

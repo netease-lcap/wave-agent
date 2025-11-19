@@ -17,6 +17,9 @@ const agent = await Agent.create({
     onAssistantMessageAdded: () => {
       console.log("Assistant message started");
     },
+    onAssistantContentUpdated: (chunk: string) => {
+      process.stdout.write(chunk);
+    },
     onToolBlockUpdated: (params) => {
       console.log(`🔧 Tool updated: ${JSON.stringify(params, null, 2)}`);
     },
@@ -45,9 +48,9 @@ const agent = await Agent.create({
     // Messages change callback - triggered when message list changes
     // This callback can be used to update UI in real-time in frontend frameworks
     // Example: React: setMessages(messages)
-    onMessagesChange: (messages) => {
-      console.log(`📋 Messages updated: ${messages.length} total messages`);
-    },
+    // onMessagesChange: (messages) => {
+    //   console.log(`📋 Messages updated: ${messages.length} total messages`);
+    // },
   },
 });
 

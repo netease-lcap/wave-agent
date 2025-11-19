@@ -61,6 +61,9 @@ Template Variables:
         onAssistantMessageAdded: () => {
           console.log("Assistant message started");
         },
+        onAssistantContentUpdated: (chunk: string) => {
+          process.stdout.write(chunk);
+        },
         onToolBlockUpdated: (params) => {
           if (params.result) {
             console.log(`\n🛠️  Tool Result:\n${params.result}\n`);
