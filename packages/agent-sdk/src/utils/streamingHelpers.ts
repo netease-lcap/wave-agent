@@ -20,10 +20,10 @@ export function extractCompleteParams(
   const result: Record<string, string | number | boolean | null> = {};
 
   // Match complete string parameters: "key": "value" (handle escaped quotes)
-  const stringPattern = /"([^"]+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+  const completeStringPattern = /"([^"]+)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
   let match;
 
-  while ((match = stringPattern.exec(incompleteJson)) !== null) {
+  while ((match = completeStringPattern.exec(incompleteJson)) !== null) {
     const key = match[1];
     let value = match[2];
     // Handle escaped characters
@@ -34,8 +34,26 @@ export function extractCompleteParams(
     result[key] = value;
   }
 
-  // Match complete number parameters: "key": 123 or "key": 123.45
-  const numberPattern = /"([^"]+)"\s*:\s*(\d+(?:\.\d+)?)(?:\s*[,}\]\s]|$)/g;
+  // Match incomplete string parameters: "key": "value (without closing quote)
+  // This supports streaming scenarios where strings are being built incrementally
+  const incompleteStringPattern = /"([^"]+)"\s*:\s*"([^"]*)$/gm;
+  while ((match = incompleteStringPattern.exec(incompleteJson)) !== null) {
+    const key = match[1];
+    let value = match[2];
+    // Only add if not already captured as complete string
+    if (!Object.prototype.hasOwnProperty.call(result, key)) {
+      // Handle escaped characters
+      value = value
+        .replace(/\\"/g, '"')
+        .replace(/\\n/g, "\n")
+        .replace(/\\\\/g, "\\");
+      result[key] = value;
+    }
+  }
+
+  // Match complete number parameters: "key": 123 or "key": 123.45 or "key": 1.5e10
+  const numberPattern =
+    /"([^"]+)"\s*:\s*(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)(?=\s*[,}\]\s]|$)/g;
   while ((match = numberPattern.exec(incompleteJson)) !== null) {
     const key = match[1];
     const value = parseFloat(match[2]);
@@ -43,7 +61,7 @@ export function extractCompleteParams(
   }
 
   // Match complete boolean parameters: "key": true or "key": false
-  const boolPattern = /"([^"]+)"\s*:\s*(true|false)(?:\s*[,}\]\s]|$)/g;
+  const boolPattern = /"([^"]+)"\s*:\s*(true|false)(?=\s*[,}\]\s]|$)/g;
   while ((match = boolPattern.exec(incompleteJson)) !== null) {
     const key = match[1];
     const value = match[2] === "true";
@@ -51,7 +69,7 @@ export function extractCompleteParams(
   }
 
   // Match complete null parameters: "key": null
-  const nullPattern = /"([^"]+)"\s*:\s*null(?:\s*[,}\]\s]|$)/g;
+  const nullPattern = /"([^"]+)"\s*:\s*null(?=\s*[,}\]\s]|$)/g;
   while ((match = nullPattern.exec(incompleteJson)) !== null) {
     const key = match[1];
     result[key] = null;
@@ -61,20 +79,10 @@ export function extractCompleteParams(
 }
 
 /**
- * Helper function to get completed parameter keys
- * @param incompleteJson Incomplete JSON string
- * @returns Array of completed parameter keys
+ * Get the keys of completed parameters from incomplete JSON string
+ * @param incompleteJson Incomplete JSON string from streaming
+ * @returns Array of keys for completed parameters
  */
 export function getCompletedKeys(incompleteJson: string): string[] {
   return Object.keys(extractCompleteParams(incompleteJson));
-}
-
-/**
- * Interface for streaming tool call information
- */
-export interface StreamingToolCall {
-  id: string;
-  name: string;
-  parameters: string;
-  compactParams?: string;
 }

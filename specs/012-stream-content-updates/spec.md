@@ -106,5 +106,5 @@ Users can switch between collapsed and expanded view modes, where collapsed mode
 - Users typically use standard terminal emulators that support real-time text rendering
 - Content streams arrive in chronological order under normal network conditions
 - The existing message management system can be enhanced to support incremental updates through `onMessagesChange`
-- Tool parameter streams contain valid JSON or structured data that can be parsed incrementally using a new `extractCompleteParams` utility function (to be implemented) which will validate JSON completeness and extract valid parameter objects from partial streams
+- Tool parameter streams contain valid JSON or structured data that can be parsed incrementally using a new `extractStreamingParams` utility function (to be implemented) which will validate JSON completeness and extract valid parameter objects from partial streams
 - Agent SDK can manage internal message state and trigger existing callbacks for UI updates

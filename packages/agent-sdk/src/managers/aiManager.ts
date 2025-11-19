@@ -286,7 +286,7 @@ export class AIManager {
           name: string;
           parameters: string;
           parametersChunk?: string;
-          completeParams?: Record<string, unknown>;
+          extractedParams?: Record<string, unknown>;
         }) => {
           // Handle streaming tool call updates with enhanced parameter streaming
           this.logger?.debug("Tool streaming update:", toolCall);
@@ -294,13 +294,13 @@ export class AIManager {
           // Extract complete parameters for compact formatting
           let compactParams: string | undefined;
           if (
-            toolCall.completeParams &&
-            Object.keys(toolCall.completeParams).length > 0
+            toolCall.extractedParams &&
+            Object.keys(toolCall.extractedParams).length > 0
           ) {
             // Use the extracted complete parameters to generate compact params
             compactParams = this.generateCompactParams(
               toolCall.name,
-              toolCall.completeParams,
+              toolCall.extractedParams,
             );
           }
 
@@ -315,6 +315,11 @@ export class AIManager {
           });
         },
       });
+
+      // Handle result content from non-streaming mode
+      if (result.content) {
+        this.messageManager.updateCurrentMessageContent(result.content);
+      }
 
       // Handle usage tracking for agent operations
       let usage: Usage | undefined;

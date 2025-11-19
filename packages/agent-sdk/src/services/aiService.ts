@@ -89,7 +89,7 @@ export interface CallAgentOptions {
     id: string;
     name: string;
     parameters: string;
-    completeParams?: Record<string, string | number | boolean | null>;
+    extractedParams?: Record<string, string | number | boolean | null>;
   }) => void;
 }
 
@@ -266,7 +266,7 @@ async function processStreamingResponse(
     id: string;
     name: string;
     parameters: string;
-    completeParams?: Record<string, string | number | boolean | null>;
+    extractedParams?: Record<string, string | number | boolean | null>;
   }) => void,
   abortSignal?: AbortSignal,
 ): Promise<CallAgentResult> {
@@ -353,14 +353,27 @@ async function processStreamingResponse(
               );
               const hasCompleteParams = Object.keys(completeParams).length > 0;
 
-              // Always provide the raw accumulated parameters, but also indicate if we have complete params
-              onToolUpdate({
+              // Create the tool update object
+              const toolUpdate: {
+                id: string;
+                name: string;
+                parameters: string;
+                extractedParams?: Record<
+                  string,
+                  string | number | boolean | null
+                >;
+              } = {
                 id: existingCall.id,
                 name: existingCall.function.name,
                 parameters: existingCall.function.arguments,
-                // Add metadata about complete parameters for UI to use
-                ...(hasCompleteParams && { completeParams }),
-              });
+              };
+
+              // Only add extractedParams when there are truly complete/valid parameters
+              if (hasCompleteParams) {
+                toolUpdate.extractedParams = completeParams;
+              }
+
+              onToolUpdate(toolUpdate);
             }
           }
         }

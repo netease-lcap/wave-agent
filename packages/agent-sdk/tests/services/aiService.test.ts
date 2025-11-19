@@ -283,6 +283,7 @@ describe("AI Service", () => {
                 delta: {
                   tool_calls: [
                     {
+                      index: 0,
                       id: "call_123",
                       type: "function",
                       function: {
@@ -352,7 +353,7 @@ describe("AI Service", () => {
             id: "call_123",
             name: "test_tool",
             parameters: '{"param1": "value1"}',
-            completeParams: { param1: "value1" },
+            extractedParams: { param1: "value1" },
           },
         ]);
 
@@ -385,6 +386,7 @@ describe("AI Service", () => {
                 delta: {
                   tool_calls: [
                     {
+                      index: 0,
                       id: "call_456",
                       type: "function",
                       function: {
@@ -449,7 +451,7 @@ describe("AI Service", () => {
             id: "call_456",
             name: "file_read",
             parameters: '{"path": "/test/file.txt"}',
-            completeParams: { path: "/test/file.txt" },
+            extractedParams: { path: "/test/file.txt" },
           },
         ]);
 
@@ -671,6 +673,7 @@ describe("AI Service", () => {
                   delta: {
                     tool_calls: [
                       {
+                        index: 0,
                         id: "call_123",
                         type: "function",
                         function: {
@@ -772,17 +775,19 @@ describe("AI Service", () => {
               id: "call_123",
               name: "file_read",
               parameters: '{"path": "',
+              extractedParams: { path: "" },
             },
             {
               id: "call_123",
               name: "file_read",
               parameters: '{"path": "/home/user',
+              extractedParams: { path: "/home/user" },
             },
             {
               id: "call_123",
               name: "file_read",
               parameters: '{"path": "/home/user/test.txt"}',
-              completeParams: { path: "/home/user/test.txt" },
+              extractedParams: { path: "/home/user/test.txt" },
             },
           ]);
         });
@@ -796,6 +801,7 @@ describe("AI Service", () => {
                   delta: {
                     tool_calls: [
                       {
+                        index: 0,
                         id: "call_456",
                         type: "function",
                         function: {
@@ -892,26 +898,26 @@ describe("AI Service", () => {
               id: "call_456",
               name: "complex_tool",
               parameters: '{"name": "test",',
-              completeParams: { name: "test" },
+              extractedParams: { name: "test" },
             },
             {
               id: "call_456",
               name: "complex_tool",
               parameters: '{"name": "test", "count": 42,',
-              completeParams: { name: "test", count: 42 },
+              extractedParams: { name: "test", count: 42 },
             },
             {
               id: "call_456",
               name: "complex_tool",
               parameters: '{"name": "test", "count": 42, "enabled": true,',
-              completeParams: { name: "test", count: 42, enabled: true },
+              extractedParams: { name: "test", count: 42, enabled: true },
             },
             {
               id: "call_456",
               name: "complex_tool",
               parameters:
                 '{"name": "test", "count": 42, "enabled": true, "value": null}',
-              completeParams: {
+              extractedParams: {
                 name: "test",
                 count: 42,
                 enabled: true,
@@ -932,6 +938,7 @@ describe("AI Service", () => {
                     tool_calls: [
                       {
                         id: "call_read",
+                        index: 0,
                         type: "function",
                         function: {
                           name: "file_read",
@@ -951,6 +958,7 @@ describe("AI Service", () => {
                     tool_calls: [
                       {
                         id: "call_write",
+                        index: 1,
                         type: "function",
                         function: {
                           name: "file_write",
@@ -987,6 +995,7 @@ describe("AI Service", () => {
                     tool_calls: [
                       {
                         id: "call_delete",
+                        index: 2,
                         type: "function",
                         function: {
                           name: "file_delete",
@@ -1050,7 +1059,7 @@ describe("AI Service", () => {
               id: "call_read",
               name: "file_read",
               parameters: '{"path": "file1.txt"}',
-              completeParams: { path: "file1.txt" },
+              extractedParams: { path: "file1.txt" },
             },
             {
               id: "call_write",
@@ -1061,13 +1070,13 @@ describe("AI Service", () => {
               id: "call_write",
               name: "file_write",
               parameters: '{"path": "file2.txt", "content": "Hello"}',
-              completeParams: { path: "file2.txt", content: "Hello" },
+              extractedParams: { path: "file2.txt", content: "Hello" },
             },
             {
               id: "call_delete",
               name: "file_delete",
               parameters: '{"path": "temp.txt"}',
-              completeParams: { path: "temp.txt" },
+              extractedParams: { path: "temp.txt" },
             },
           ]);
         });
@@ -1111,6 +1120,7 @@ describe("AI Service", () => {
                         i === 0
                           ? {
                               id: "call_accumulate",
+                              index: 0,
                               type: "function",
                               function: {
                                 name: "file_operation",
@@ -1170,7 +1180,7 @@ describe("AI Service", () => {
             id: "call_accumulate",
             name: "file_operation",
             parameters: '{"filename": "my-document.txt", "mode": "read"}',
-            completeParams: { filename: "my-document.txt", mode: "read" },
+            extractedParams: { filename: "my-document.txt", mode: "read" },
           });
         });
 
@@ -1184,6 +1194,7 @@ describe("AI Service", () => {
                     tool_calls: [
                       {
                         id: "call_escape",
+                        index: 0,
                         type: "function",
                         function: {
                           name: "text_tool",
@@ -1263,19 +1274,20 @@ describe("AI Service", () => {
               id: "call_escape",
               name: "text_tool",
               parameters: '{"message": "Hello',
+              extractedParams: { message: "Hello" },
             },
             {
               id: "call_escape",
               name: "text_tool",
               parameters: '{"message": "Hello\\nWorld!",',
-              completeParams: { message: "Hello\nWorld!" },
+              extractedParams: { message: "Hello\nWorld!" },
             },
             {
               id: "call_escape",
               name: "text_tool",
               parameters:
                 '{"message": "Hello\\nWorld!", "quote": "He said \\"Hi\\""}',
-              completeParams: {
+              extractedParams: {
                 message: "Hello\nWorld!",
                 quote: 'He said "Hi"',
               },
@@ -1293,6 +1305,7 @@ describe("AI Service", () => {
                     tool_calls: [
                       {
                         id: "call_malformed",
+                        index: 0,
                         type: "function",
                         function: {
                           name: "test_tool",
@@ -1374,19 +1387,22 @@ describe("AI Service", () => {
               id: "call_malformed",
               name: "test_tool",
               parameters: '{"valid": "start"',
-              completeParams: { valid: "start" },
+              extractedParams: { valid: "start" },
             },
             {
               id: "call_malformed",
               name: "test_tool",
               parameters: '{"valid": "start", "incomplete": "val',
-              completeParams: { valid: "start" },
+              extractedParams: {
+                valid: "start",
+                incomplete: "val",
+              },
             },
             {
               id: "call_malformed",
               name: "test_tool",
               parameters: '{"valid": "start", "incomplete": "value"}',
-              completeParams: { valid: "start", incomplete: "value" },
+              extractedParams: { valid: "start", incomplete: "value" },
             },
           ]);
         });
@@ -1401,6 +1417,7 @@ describe("AI Service", () => {
                     tool_calls: [
                       {
                         id: "call_numbers",
+                        index: 0,
                         type: "function",
                         function: {
                           name: "math_tool",
@@ -1480,19 +1497,19 @@ describe("AI Service", () => {
               id: "call_numbers",
               name: "math_tool",
               parameters: '{"pi": 3.14159,',
-              completeParams: { pi: 3.14159 },
+              extractedParams: { pi: 3.14159 },
             },
             {
               id: "call_numbers",
               name: "math_tool",
               parameters: '{"pi": 3.14159, "temp": -273.15,',
-              completeParams: { pi: 3.14159 },
+              extractedParams: { pi: 3.14159, temp: -273.15 },
             },
             {
               id: "call_numbers",
               name: "math_tool",
               parameters: '{"pi": 3.14159, "temp": -273.15, "large": 1.5e10}',
-              completeParams: { pi: 3.14159 },
+              extractedParams: { pi: 3.14159, temp: -273.15, large: 1.5e10 },
             },
           ]);
         });
@@ -1507,6 +1524,7 @@ describe("AI Service", () => {
                     tool_calls: [
                       {
                         id: "call_nested",
+                        index: 0,
                         type: "function",
                         function: {
                           name: "data_tool",
@@ -1607,20 +1625,20 @@ describe("AI Service", () => {
               id: "call_nested",
               name: "data_tool",
               parameters: '{"config": {"host": "localhost",',
-              completeParams: { host: "localhost" },
+              extractedParams: { host: "localhost" },
             },
             {
               id: "call_nested",
               name: "data_tool",
               parameters: '{"config": {"host": "localhost", "port": 8080},',
-              completeParams: { host: "localhost", port: 8080 },
+              extractedParams: { host: "localhost", port: 8080 },
             },
             {
               id: "call_nested",
               name: "data_tool",
               parameters:
                 '{"config": {"host": "localhost", "port": 8080}, "tags": ["dev", "test"]}',
-              completeParams: { host: "localhost", port: 8080 },
+              extractedParams: { host: "localhost", port: 8080 },
             },
           ]);
         });
@@ -1640,6 +1658,7 @@ describe("AI Service", () => {
                     tool_calls: [
                       {
                         id: "call_extract",
+                        index: 0,
                         type: "function",
                         function: {
                           name: "extract_tool",

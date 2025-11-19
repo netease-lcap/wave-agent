@@ -647,7 +647,7 @@ describe("Agent Streaming Integration Tests", () => {
       );
     });
 
-    it("should integrate tool parameter streaming with extractCompleteParams helper", async () => {
+    it("should integrate tool parameter streaming with extractStreamingParams helper", async () => {
       const receivedUpdates: {
         id: string;
         name: string;
@@ -660,7 +660,7 @@ describe("Agent Streaming Integration Tests", () => {
 
         if (aiCallCount === 1) {
           if (options.onToolUpdate) {
-            // Simulate partial parameter streaming that would need extractCompleteParams
+            // Simulate partial parameter streaming that would need extractStreamingParams
             const incompleteUpdates = [
               '{"file_path": "/test/fi',
               '{"file_path": "/test/file.txt", "content"',
@@ -703,7 +703,7 @@ describe("Agent Streaming Integration Tests", () => {
         }
       });
 
-      // Mock tool execution for extractCompleteParams test
+      // Mock tool execution for extractStreamingParams test
       mockToolExecute.mockImplementation(async (toolName: string) => {
         if (toolName === "write_file") {
           return {

@@ -108,7 +108,7 @@ export async function callAgent(options: CallAgentOptions): Promise<CallAgentRes
  * @param incompleteJson Incomplete JSON string from streaming
  * @returns Valid JSON object containing complete parameters
  */
-export function extractCompleteParams(
+export function extractStreamingParams(
   incompleteJson: string,
 ): Record<string, string | number | boolean | null> {
   if (!incompleteJson || typeof incompleteJson !== "string") {
@@ -158,10 +158,7 @@ export function extractCompleteParams(
   return result;
 }
 
-// Helper function to get completed parameter keys
-export function getCompletedKeys(incompleteJson: string): string[] {
-  return Object.keys(extractCompleteParams(incompleteJson));
-}
+
 
 // Tool call accumulation using the simple extraction approach
 export function accumulateToolCall(
@@ -173,17 +170,17 @@ export function accumulateToolCall(
   const updatedParameters = /* accumulate from delta */;
   
   // Extract complete params from partial JSON
-  const completeParams = extractCompleteParams(updatedParameters);
+  const extractedParams = extractStreamingParams(updatedParameters);
   
   // Compute compactParams using existing formatting function
-  const compactParams = generateCompactParams(completeParams);
+  const compactParams = generateCompactParams(extractedParams);
   
   // Trigger callback with computed compact params
   onUpdate?.({
     id: /* tool call id */,
     name: /* tool name */,
     parameters: updatedParameters,
-    compactParams: compactParams, // Computed by extractCompleteParams + generateCompactParams
+    compactParams: compactParams, // Computed by extractStreamingParams + generateCompactParams
   });
 }
 ```

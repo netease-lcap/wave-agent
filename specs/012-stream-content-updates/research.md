@@ -60,7 +60,7 @@ if (choice.delta.content) {
 **Implementation Approach**:
 ```typescript
 // Extract complete parameters using targeted regex patterns
-export function extractCompleteParams(
+export function extractStreamingParams(
   incompleteJson: string,
 ): Record<string, string | number | boolean | null> {
   // Use separate patterns for each data type:

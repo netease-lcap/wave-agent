@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  extractCompleteParams,
-  getCompletedKeys,
-} from "../../src/utils/streamingHelpers.js";
+import { extractCompleteParams } from "../../src/utils/streamingHelpers.js";
 
 describe("extractCompleteParams", () => {
   describe("string parameters", () => {
@@ -35,12 +32,13 @@ describe("extractCompleteParams", () => {
       });
     });
 
-    it("should ignore incomplete string parameters", () => {
+    it("should include incomplete string parameters", () => {
       const json = '{"complete": "value", "incomplete": "unfinished';
       const result = extractCompleteParams(json);
 
       expect(result).toEqual({
         complete: "value",
+        incomplete: "unfinished",
       });
     });
   });
@@ -131,6 +129,7 @@ describe("extractCompleteParams", () => {
         age: 30,
         active: true,
         data: null,
+        incomplete: "unfinished",
       });
     });
 
@@ -196,29 +195,12 @@ describe("extractCompleteParams", () => {
       const results = stages.map(extractCompleteParams);
 
       expect(results[0]).toEqual({});
-      expect(results[1]).toEqual({});
+      expect(results[1]).toEqual({ name: "Jo" });
       expect(results[2]).toEqual({ name: "John" });
       expect(results[3]).toEqual({ name: "John" });
       expect(results[4]).toEqual({ name: "John", age: 2 }); // Shows partial progress
       expect(results[5]).toEqual({ name: "John", age: 25 });
       expect(results[6]).toEqual({ name: "John", age: 25 });
     });
-  });
-});
-
-describe("getCompletedKeys", () => {
-  it("should return keys of completed parameters", () => {
-    const json = '{"name": "John", "age": 25, "incomplete": "unfinished';
-    const keys = getCompletedKeys(json);
-
-    expect(keys).toEqual(expect.arrayContaining(["name", "age"]));
-    expect(keys).not.toContain("incomplete");
-  });
-
-  it("should return empty array for no complete parameters", () => {
-    const json = '{"incomplete": "unfinished';
-    const keys = getCompletedKeys(json);
-
-    expect(keys).toEqual([]);
   });
 });

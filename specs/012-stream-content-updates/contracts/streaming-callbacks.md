@@ -59,8 +59,8 @@ interface AgentToolBlockUpdateParams {
 **Enhanced Behavior**:
 - Called for each parameter chunk received during streaming
 - `parameters` contains accumulated partial JSON string
-- `compactParams` computed by: `this.generateCompactParams(extractCompleteParams(parameters))`
-  - `extractCompleteParams()` extracts complete key-value pairs from partial JSON
+- `compactParams` computed by: `this.generateCompactParams(extractStreamingParams(parameters))`
+  - `extractStreamingParams()` extracts complete key-value pairs from partial JSON
   - `generateCompactParams()` formats them using existing compact display logic
 - Agent SDK manages streaming state internally
 

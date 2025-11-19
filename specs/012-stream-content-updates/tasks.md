@@ -28,8 +28,8 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [X] T004 Implement extractCompleteParams utility function in packages/agent-sdk/src/utils/streamingHelpers.ts
-- [X] T005 [P] Write unit tests for extractCompleteParams in packages/agent-sdk/tests/utils/streamingHelpers.test.ts
+- [X] T004 Implement extractStreamingParams utility function in packages/agent-sdk/src/utils/streamingHelpers.ts
+- [X] T005 [P] Write unit tests for extractStreamingParams in packages/agent-sdk/tests/utils/streamingHelpers.test.ts
 - [X] T006 Enhance MessageManagerCallbacks interface in packages/agent-sdk/src/managers/messageManager.ts
 - [X] T007 [P] Enhance CallAgentOptions interface in packages/agent-sdk/src/services/aiService.ts  
 - [X] T008 [P] Add streaming type definitions in packages/agent-sdk/src/types/index.ts
