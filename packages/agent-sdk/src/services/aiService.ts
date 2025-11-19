@@ -272,7 +272,7 @@ async function processStreamingResponse(
 ): Promise<CallAgentResult> {
   let accumulatedContent = "";
   const toolCalls = new Map<
-    string,
+    number,
     {
       id: string;
       type: "function";
@@ -318,10 +318,10 @@ async function processStreamingResponse(
       // Handle tool call updates
       if (delta.tool_calls) {
         for (const toolCall of delta.tool_calls) {
-          if (toolCall.id && toolCall.type && toolCall.function) {
+          if (toolCall.function) {
             // New tool call
-            const existingCall = toolCalls.get(toolCall.id) || {
-              id: toolCall.id,
+            const existingCall = toolCalls.get(toolCall.index) || {
+              id: toolCall.id as string,
               type: "function" as const,
               function: {
                 name: toolCall.function.name || "",
@@ -339,7 +339,7 @@ async function processStreamingResponse(
               existingCall.function.arguments += toolCall.function.arguments;
             }
 
-            toolCalls.set(toolCall.id, existingCall);
+            toolCalls.set(toolCall.index, existingCall);
 
             // Trigger callback for tool updates with enhanced parameter streaming
             if (
@@ -361,42 +361,6 @@ async function processStreamingResponse(
                 // Add metadata about complete parameters for UI to use
                 ...(hasCompleteParams && { completeParams }),
               });
-            }
-          } else if (toolCall.index !== undefined) {
-            // Update existing tool call by index (find by index)
-            const toolCallEntries = Array.from(toolCalls.entries());
-            if (toolCall.index < toolCallEntries.length) {
-              const [toolId, existingCall] = toolCallEntries[toolCall.index];
-
-              // Accumulate arguments
-              if (toolCall.function?.arguments) {
-                existingCall.function.arguments += toolCall.function.arguments;
-              }
-
-              toolCalls.set(toolId, existingCall);
-
-              // Trigger callback for tool updates with enhanced parameter streaming
-              if (
-                onToolUpdate &&
-                existingCall.function.name &&
-                existingCall.function.arguments
-              ) {
-                // Extract complete parameters for better streaming experience
-                const completeParams = extractCompleteParams(
-                  existingCall.function.arguments,
-                );
-                const hasCompleteParams =
-                  Object.keys(completeParams).length > 0;
-
-                // Always provide the raw accumulated parameters, but also indicate if we have complete params
-                onToolUpdate({
-                  id: existingCall.id,
-                  name: existingCall.function.name,
-                  parameters: existingCall.function.arguments,
-                  // Add metadata about complete parameters for UI to use
-                  ...(hasCompleteParams && { completeParams }),
-                });
-              }
             }
           }
         }
