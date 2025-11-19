@@ -21,7 +21,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
 
     const output = lastFrame();
     // Should display compactParams obtained from attributes
-    expect(output).toContain('(example.ts: "useState")');
+    expect(output).toContain('example.ts: "useState"');
   });
 
   it("should not show compactParams when not provided in attributes", () => {
@@ -39,8 +39,8 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
 
     const output = lastFrame();
     // Should not display compactParams
-    expect(output).not.toContain("(");
-    expect(output).not.toContain(")");
+    expect(output).toContain("🔧 test_tool");
+    expect(output).not.toContain('"some"');
   });
 
   it("should handle empty compactParams gracefully", () => {
@@ -61,7 +61,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     const output = lastFrame();
     // Should render normally, without displaying compactParams
     expect(output).toContain("test_tool");
-    expect(output).not.toContain("(");
+    expect(output).not.toContain('"some"');
   });
 
   it("should not show compactParams in expanded mode", () => {
@@ -80,8 +80,12 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     );
 
     const output = lastFrame();
-    // Should not display compactParams in expanded mode
-    expect(output).not.toContain('(test.ts: "function")');
+    // Should not display compactParams in expanded mode (only in collapsed)
+    expect(output).toContain("Parameters:");
+    // CompactParams should not be shown in expanded mode
+    const lines = output?.split("\n") || [];
+    const toolLine = lines.find((line) => line.includes("🔧"));
+    expect(toolLine).not.toContain('test.ts: "function"');
   });
 
   it("should handle undefined compactParams", () => {
@@ -102,6 +106,6 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     const output = lastFrame();
     // Should render normally, without displaying compactParams
     expect(output).toContain("test_tool");
-    expect(output).not.toContain("(");
+    expect(output).not.toContain('"some"');
   });
 });

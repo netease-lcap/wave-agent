@@ -27,7 +27,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   const getStatusText = () => {
     if (isRunning) return "🔄";
     if (success) return "";
-    if (error || success === false) return "❌ Failed";
+    if (error || success === false) return "❌";
     return ""; // Don't display text for unknown state
   };
 
@@ -70,7 +70,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
         <Text color="white">{toolName}</Text>
         {/* Display compactParams in collapsed state */}
         {!isExpanded && compactParams && (
-          <Text color="gray"> ({compactParams})</Text>
+          <Text color="gray"> {compactParams}</Text>
         )}
         <Text color={getStatusColor()}> {getStatusText()}</Text>
         {/* Display image indicator */}
