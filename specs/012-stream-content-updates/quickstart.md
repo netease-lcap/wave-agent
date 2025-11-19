@@ -204,7 +204,7 @@ export class AIManager {
       },
       onToolUpdate: (toolCall) => {
         // Update tool parameters and trigger callbacks
-        this.messageManager.updateToolParameters(toolCall);
+        this.messageManager.updateToolBlock(toolCall);
       },
     });
   }
@@ -229,7 +229,7 @@ export class MessageManager {
     }
   }
   
-  updateToolParameters(toolCall: StreamingToolCall): void {
+  updateToolBlock(toolCall: StreamingToolCall): void {
     // Update tool block parameters
     const toolBlock = this.findToolBlock(toolCall.id);
     if (toolBlock) {

@@ -298,9 +298,8 @@ export class AIManager {
           // Handle streaming tool call updates with enhanced parameter streaming
           this.logger?.debug("Tool streaming update:", toolCall);
 
-          // Use the specialized updateToolParameters method for efficient streaming updates
-          // This method is optimized for streaming and includes both view modes support
-          this.messageManager.updateToolParameters({
+          // Update tool block with streaming parameters
+          this.messageManager.updateToolBlock({
             id: toolCall.id,
             name: toolCall.name,
             parameters: toolCall.parameters,

@@ -316,37 +316,6 @@ export class MessageManager {
     this.callbacks.onToolBlockUpdated?.(params);
   }
 
-  /**
-   * Update tool parameters in streaming mode
-   * This method is optimized for real-time parameter updates during streaming
-   */
-  public updateToolParameters(params: {
-    id: string;
-    parameters: string;
-    parametersChunk?: string;
-    name?: string;
-    compactParams?: string;
-  }): void {
-    const newMessages = updateToolBlockInMessage({
-      messages: this.messages,
-      id: params.id,
-      parameters: params.parameters,
-      parametersChunk: params.parametersChunk,
-      name: params.name,
-      compactParams: params.compactParams,
-    });
-    this.setMessages(newMessages);
-
-    // Trigger callback with streaming parameter data including compactParams for view modes
-    this.callbacks.onToolBlockUpdated?.({
-      id: params.id,
-      parameters: params.parameters,
-      parametersChunk: params.parametersChunk,
-      name: params.name,
-      compactParams: params.compactParams,
-    });
-  }
-
   public addDiffBlock(
     filePath: string,
     diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,

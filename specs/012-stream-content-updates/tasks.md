@@ -82,7 +82,7 @@
 
 - [X] T021 [US2] Add parametersChunk field to AgentToolBlockUpdateParams interface in packages/agent-sdk/src/utils/messageOperations.ts
 - [X] T022 [US2] Implement tool call parameter streaming in callAgent function in packages/agent-sdk/src/services/aiService.ts
-- [X] T023 [US2] Add updateToolParameters method to MessageManager in packages/agent-sdk/src/managers/messageManager.ts
+- [X] T023 [US2] Use updateToolBlock method for streaming parameters in MessageManager in packages/agent-sdk/src/managers/messageManager.ts
 - [X] T024 [US2] Enhance onToolBlockUpdated callback for streaming parameters in packages/agent-sdk/src/managers/messageManager.ts
 - [X] T025 [US2] Integrate tool parameter streaming in AIManager.sendAIMessage using existing generateCompactParams to compute compactParams for streaming updates and include in onToolBlockUpdated callback data for both view modes in packages/agent-sdk/src/managers/aiManager.ts
 - [X] T026 [US2] Build agent-sdk and verify tool streaming exports
