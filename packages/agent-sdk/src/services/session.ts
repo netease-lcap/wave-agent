@@ -58,10 +58,12 @@ export async function ensureSessionDir(sessionDir?: string): Promise<void> {
 export function getSessionFilePath(
   sessionId: string,
   sessionDir?: string,
+  prefix?: string,
 ): string {
   const shortId = sessionId.split("_")[2] || sessionId.slice(-8);
   const resolvedDir = resolveSessionDir(sessionDir);
-  return join(resolvedDir, `session_${shortId}.json`);
+  const filePrefix = prefix || "session";
+  return join(resolvedDir, `${filePrefix}_${shortId}.json`);
 }
 
 /**
@@ -85,6 +87,7 @@ function filterDiffBlocks(messages: Message[]): Message[] {
  * @param latestTotalTokens - Total tokens used in the session
  * @param startedAt - ISO timestamp when session started (defaults to current time)
  * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
+ * @param prefix - Optional custom prefix for session files (defaults to "session")
  * @throws {Error} When session cannot be saved due to permission or disk space issues
  */
 export async function saveSession(
@@ -94,6 +97,7 @@ export async function saveSession(
   latestTotalTokens: number = 0,
   startedAt?: string,
   sessionDir?: string,
+  prefix?: string,
 ): Promise<void> {
   // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
@@ -124,7 +128,7 @@ export async function saveSession(
     },
   };
 
-  const filePath = getSessionFilePath(sessionId, sessionDir);
+  const filePath = getSessionFilePath(sessionId, sessionDir, prefix);
   try {
     await fs.writeFile(filePath, JSON.stringify(sessionData, null, 2), "utf-8");
   } catch (error) {
@@ -137,14 +141,16 @@ export async function saveSession(
  *
  * @param sessionId - Unique identifier for the session to load
  * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
+ * @param prefix - Optional custom prefix for session files (defaults to "session")
  * @returns Promise that resolves to session data or null if session doesn't exist
  * @throws {Error} When session exists but cannot be read or contains invalid data
  */
 export async function loadSession(
   sessionId: string,
   sessionDir?: string,
+  prefix?: string,
 ): Promise<SessionData | null> {
-  const filePath = getSessionFilePath(sessionId, sessionDir);
+  const filePath = getSessionFilePath(sessionId, sessionDir, prefix);
 
   try {
     const content = await fs.readFile(filePath, "utf-8");
@@ -169,14 +175,16 @@ export async function loadSession(
  *
  * @param workdir - Working directory to find the most recent session for
  * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
+ * @param prefix - Optional custom prefix for session files (defaults to "session")
  * @returns Promise that resolves to the most recent session data or null if no sessions exist
  * @throws {Error} When session directory cannot be accessed or session data is corrupted
  */
 export async function getLatestSession(
   workdir: string,
   sessionDir?: string,
+  prefix?: string,
 ): Promise<SessionData | null> {
-  const sessions = await listSessions(workdir, false, sessionDir);
+  const sessions = await listSessions(workdir, false, sessionDir, prefix);
   if (sessions.length === 0) {
     return null;
   }
@@ -187,7 +195,7 @@ export async function getLatestSession(
       new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime(),
   )[0];
 
-  return loadSession(latestSession.id, sessionDir);
+  return loadSession(latestSession.id, sessionDir, prefix);
 }
 
 /**
@@ -196,6 +204,7 @@ export async function getLatestSession(
  * @param workdir - Working directory to filter sessions by
  * @param includeAllWorkdirs - If true, returns sessions from all working directories
  * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
+ * @param prefix - Optional custom prefix for session files (defaults to "session")
  * @returns Promise that resolves to array of session metadata objects
  * @throws {Error} When session directory cannot be accessed or read
  */
@@ -203,6 +212,7 @@ export async function listSessions(
   workdir: string,
   includeAllWorkdirs = false,
   sessionDir?: string,
+  prefix?: string,
 ): Promise<SessionMetadata[]> {
   try {
     await ensureSessionDir(sessionDir);
@@ -210,9 +220,10 @@ export async function listSessions(
     const files = await fs.readdir(resolvedDir);
 
     const sessions: SessionMetadata[] = [];
+    const filePrefix = prefix || "session";
 
     for (const file of files) {
-      if (!file.startsWith("session_") || !file.endsWith(".json")) {
+      if (!file.startsWith(`${filePrefix}_`) || !file.endsWith(".json")) {
         continue;
       }
 
@@ -254,14 +265,16 @@ export async function listSessions(
  *
  * @param sessionId - Unique identifier for the session to delete
  * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
+ * @param prefix - Optional custom prefix for session files (defaults to "session")
  * @returns Promise that resolves to true if session was deleted, false if it didn't exist
  * @throws {Error} When session exists but cannot be deleted due to permission issues
  */
 export async function deleteSession(
   sessionId: string,
   sessionDir?: string,
+  prefix?: string,
 ): Promise<boolean> {
-  const filePath = getSessionFilePath(sessionId, sessionDir);
+  const filePath = getSessionFilePath(sessionId, sessionDir, prefix);
 
   try {
     await fs.unlink(filePath);
@@ -279,19 +292,21 @@ export async function deleteSession(
  *
  * @param workdir - Working directory to clean up sessions for
  * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
+ * @param prefix - Optional custom prefix for session files (defaults to "session")
  * @returns Promise that resolves to the number of sessions that were deleted
  * @throws {Error} When session directory cannot be accessed or sessions cannot be deleted
  */
 export async function cleanupExpiredSessions(
   workdir: string,
   sessionDir?: string,
+  prefix?: string,
 ): Promise<number> {
   // Do not perform cleanup operations in test environment
   if (process.env.NODE_ENV === "test") {
     return 0;
   }
 
-  const sessions = await listSessions(workdir, true, sessionDir);
+  const sessions = await listSessions(workdir, true, sessionDir, prefix);
   const now = new Date();
   const maxAge = MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // Convert to milliseconds
 
@@ -302,7 +317,7 @@ export async function cleanupExpiredSessions(
 
     if (sessionAge > maxAge) {
       try {
-        await deleteSession(session.id, sessionDir);
+        await deleteSession(session.id, sessionDir, prefix);
         deletedCount++;
       } catch {
         // Skip failed deletions and continue processing other sessions
@@ -319,13 +334,15 @@ export async function cleanupExpiredSessions(
  *
  * @param sessionId - Unique identifier for the session to check
  * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
+ * @param prefix - Optional custom prefix for session files (defaults to "session")
  * @returns Promise that resolves to true if session exists, false otherwise
  */
 export async function sessionExists(
   sessionId: string,
   sessionDir?: string,
+  prefix?: string,
 ): Promise<boolean> {
-  const filePath = getSessionFilePath(sessionId, sessionDir);
+  const filePath = getSessionFilePath(sessionId, sessionDir, prefix);
 
   try {
     await fs.access(filePath);
