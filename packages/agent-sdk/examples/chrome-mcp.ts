@@ -47,22 +47,17 @@ async function setupTest() {
         process.stdout.write(chunk);
       },
       onToolBlockUpdated: (params) => {
-        const status = params.isRunning
-          ? "running"
-          : params.success
-            ? "success"
-            : "failed";
-        console.log(`🔧 Tool ${params.name || params.id}: ${status}`);
-        if (params.result && !params.isRunning) {
-          const preview = (params.shortResult || params.result)
-            .slice(0, 200)
-            .replace(/\n/g, "\\n");
-          console.log(
-            `   Result: "${preview}${params.result.length > 200 ? "..." : ""}"`,
-          );
+        if (params.stage === "start") {
+          console.log("Tool started", {
+            id: params.id,
+            name: params.name,
+          });
         }
+        process.stdout.write(params.parametersChunk || "\n");
         if (params.error) {
-          console.log(`   ❌ Error: ${params.error}`);
+          console.error("❌ Error:\n" + params.error);
+        } else if (params.result) {
+          console.log("Result:\n" + params.result.slice(-200, 0));
         }
       },
       onErrorBlockAdded: (error: string) => {

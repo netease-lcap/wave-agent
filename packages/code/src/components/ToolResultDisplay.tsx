@@ -11,21 +11,21 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   block,
   isExpanded = false,
 }) => {
-  const { parameters, result, compactParams, isRunning, success, error, name } =
+  const { parameters, result, compactParams, stage, success, error, name } =
     block;
 
   // Directly use compactParams
   // (no change needed as we destructured it above)
 
   const getStatusColor = () => {
-    if (isRunning) return "yellow";
+    if (stage === "running") return "yellow";
     if (success) return "green";
     if (error || success === false) return "red";
     return "gray"; // Unknown state or no state information
   };
 
   const getStatusText = () => {
-    if (isRunning) return "🔄";
+    if (stage === "running") return "🔄";
     if (success) return "";
     if (error || success === false) return "❌";
     return ""; // Don't display text for unknown state

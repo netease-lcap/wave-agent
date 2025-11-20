@@ -293,6 +293,7 @@ export class AIManager {
             parameters: toolCall.parameters,
             parametersChunk: toolCall.parametersChunk,
             compactParams: toolCall.parameters?.split("\n").pop()?.slice(-30),
+            stage: toolCall.stage || "streaming", // Default to streaming if stage not provided
           });
         },
       });
@@ -376,19 +377,18 @@ export class AIManager {
                 }
               }
 
-              // Set tool start execution state
               const toolName = functionToolCall.function?.name || "";
               const compactParams = this.generateCompactParams(
                 toolName,
                 toolArgs,
               );
 
+              // Emit running stage for non-streaming tool calls (tool execution about to start)
               this.messageManager.updateToolBlock({
                 id: toolId,
-                parameters: JSON.stringify(toolArgs, null, 2),
-                isRunning: true, // isRunning: true
+                stage: "running",
                 name: toolName,
-                compactParams,
+                parameters: "", // Empty parameters for running stage
               });
 
               try {
@@ -430,7 +430,7 @@ export class AIManager {
                     (toolResult.error ? `Error: ${toolResult.error}` : ""),
                   success: toolResult.success,
                   error: toolResult.error,
-                  isRunning: false, // isRunning: false
+                  stage: "end",
                   name: toolName,
                   shortResult: toolResult.shortResult,
                   compactParams,
@@ -467,7 +467,7 @@ export class AIManager {
                   result: `Tool execution failed: ${errorMessage}`,
                   success: false,
                   error: errorMessage,
-                  isRunning: false,
+                  stage: "end",
                   name: toolName,
                   compactParams,
                 });

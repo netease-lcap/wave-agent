@@ -23,7 +23,14 @@ export interface UpdateToolBlockParams {
   result?: string;
   success?: boolean;
   error?: string;
-  isRunning?: boolean;
+  /**
+   * Tool execution stage:
+   * - 'start': Tool call initiated during AI streaming
+   * - 'streaming': Tool parameters being received incrementally
+   * - 'running': Tool execution in progress
+   * - 'end': Tool execution completed with final result
+   */
+  stage: "start" | "streaming" | "running" | "end";
   name?: string;
   shortResult?: string;
   images?: Array<{ data: string; mediaType?: string }>;
@@ -193,7 +200,7 @@ export const addAssistantMessageToMessages = (
         result: "",
         id: toolCall.id || "",
         name: toolCall.function?.name || "",
-        isRunning: false,
+        stage: "start",
       });
     });
   }
@@ -238,7 +245,7 @@ export const updateToolBlockInMessage = ({
   result,
   success,
   error,
-  isRunning,
+  stage,
   name,
   shortResult,
   images,
@@ -262,7 +269,7 @@ export const updateToolBlockInMessage = ({
           toolBlock.images = images; // Add image data update
           if (success !== undefined) toolBlock.success = success;
           if (error !== undefined) toolBlock.error = error;
-          if (isRunning !== undefined) toolBlock.isRunning = isRunning;
+          if (stage !== undefined) toolBlock.stage = stage;
           if (compactParams !== undefined)
             toolBlock.compactParams = compactParams;
           if (parametersChunk !== undefined)
@@ -281,7 +288,7 @@ export const updateToolBlockInMessage = ({
           name: name || "unknown",
           success: success,
           error: error,
-          isRunning: isRunning ?? false,
+          stage: stage ?? "start",
           compactParams: compactParams,
           parametersChunk: parametersChunk,
         });

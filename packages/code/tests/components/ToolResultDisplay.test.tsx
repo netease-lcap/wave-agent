@@ -17,7 +17,7 @@ describe("ToolResultDisplay Component", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
         name: "read_file",
-
+        stage: "end",
         success: true,
         parameters: JSON.stringify({
           target_file: "src/test.ts",
@@ -48,7 +48,7 @@ describe("ToolResultDisplay Component", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
         name: "read_file",
-
+        stage: "end",
         success: true,
         parameters: JSON.stringify({
           target_file: "src/test.ts",
@@ -77,7 +77,7 @@ describe("ToolResultDisplay Component", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
         name: "read_file",
-
+        stage: "end",
         success: true,
         parameters: JSON.stringify({
           target_file: "src/test.ts",
@@ -100,7 +100,7 @@ describe("ToolResultDisplay Component", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
         name: "some_tool",
-
+        stage: "end",
         success: true,
         parameters: JSON.stringify({
           param1: "value1",
@@ -125,7 +125,7 @@ describe("ToolResultDisplay Component", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
         name: "test_tool",
-
+        stage: "end",
         success: false,
 
         error: "File not found",
@@ -143,7 +143,7 @@ describe("ToolResultDisplay Component", () => {
         type: "tool",
         name: "test_tool",
 
-        isRunning: true,
+        stage: "running",
         parameters: "{}",
       };
 
@@ -158,7 +158,7 @@ describe("ToolResultDisplay Component", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
         name: "screenshot_tool",
-
+        stage: "end",
         success: true,
         parameters: JSON.stringify({ action: "capture" }),
         result: "Screenshot captured successfully",
@@ -182,7 +182,7 @@ describe("ToolResultDisplay Component", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
         name: "multi_screenshot_tool",
-
+        stage: "end",
         success: true,
         parameters: JSON.stringify({ count: 3 }),
         result: "Multiple screenshots captured",
@@ -204,7 +204,7 @@ describe("ToolResultDisplay Component", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
         name: "text_tool",
-
+        stage: "end",
         success: true,
         parameters: JSON.stringify({ action: "process" }),
         result: "Text processing completed",
@@ -221,7 +221,7 @@ describe("ToolResultDisplay Component", () => {
       const toolBlock: ToolBlock = {
         type: "tool",
         name: "empty_images_tool",
-
+        stage: "end",
         success: true,
         parameters: JSON.stringify({ action: "test" }),
         result: "Tool executed",
@@ -240,7 +240,7 @@ describe("ToolResultDisplay Component", () => {
         type: "tool",
         name: "screenshot_tool",
 
-        isRunning: true,
+        stage: "running",
         parameters: JSON.stringify({ action: "capture" }),
         images: [{ data: "image_data", mediaType: "image/png" }],
       };

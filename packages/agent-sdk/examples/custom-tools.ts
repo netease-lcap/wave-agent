@@ -147,7 +147,7 @@ console.error("Favorite Number MCP Server ready");`;
         process.stdout.write(chunk);
       },
       onToolBlockUpdated: (params) => {
-        if (!params.isRunning && params.success) {
+        if (params.stage === "end" && params.success) {
           console.log(`🔧 Tool ${params.name}: ${params.result}`);
         }
       },

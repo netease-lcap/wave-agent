@@ -52,7 +52,14 @@ export interface ToolBlock {
   }>;
   id?: string;
   name?: string;
-  isRunning?: boolean; // Mark if tool is actually executing
+  /**
+   * Tool execution stage:
+   * - 'start': Tool call initiated (from AI service streaming)
+   * - 'streaming': Tool parameters being streamed (from AI service)
+   * - 'running': Tool execution in progress (from AI manager)
+   * - 'end': Tool execution completed (from AI manager)
+   */
+  stage: "start" | "streaming" | "running" | "end";
   success?: boolean;
   error?: string | Error;
   compactParams?: string; // Compact parameter display

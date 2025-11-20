@@ -344,6 +344,7 @@ export class HookManager {
             result: errorMessage,
             success: false,
             error: "Hook blocked tool execution",
+            stage: "end", // Hook blocking results in end stage with error
           });
         }
         return { shouldBlock: true };

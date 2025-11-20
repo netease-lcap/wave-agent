@@ -32,11 +32,11 @@ async function demonstrateParallelExecution(): Promise<void> {
           process.stdout.write(chunk);
         },
         onToolBlockUpdated: (params) => {
-          const { id: toolId, name: toolName, isRunning } = params;
+          const { id: toolId, name: toolName, stage } = params;
 
           if (!toolName) return;
 
-          if (isRunning) {
+          if (stage === "running") {
             // Tool started
             console.log(
               `🔧 Tool ${toolName} (${toolId}) started at ${new Date().toLocaleTimeString()}`,
@@ -51,7 +51,7 @@ async function demonstrateParallelExecution(): Promise<void> {
               toolName,
               startTime: Date.now(),
             });
-          } else {
+          } else if (stage === "end") {
             // Tool completed
             const tracker = toolExecutions.get(toolId);
             if (tracker && tracker.startTime) {

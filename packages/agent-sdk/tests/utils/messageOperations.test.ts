@@ -767,7 +767,7 @@ describe("addErrorBlockToMessage", () => {
         role: "assistant",
         blocks: [
           { type: "text", content: "Second response" },
-          { type: "tool", parameters: "ls" },
+          { type: "tool", parameters: "ls", stage: "end" },
         ],
       },
     ];
@@ -782,7 +782,7 @@ describe("addErrorBlockToMessage", () => {
       role: "assistant",
       blocks: [
         { type: "text", content: "Second response" },
-        { type: "tool", parameters: "ls" },
+        { type: "tool", parameters: "ls", stage: "end" },
         { type: "error", content: "Tool execution failed" },
       ],
     });
