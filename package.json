@@ -10,6 +10,7 @@
   "scripts": {
     "wave": "packages/code/bin/wave-code.js",
     "wave:debug": "LOG_LEVEL=DEBUG packages/code/bin/wave-code.js",
+    "watch": "pnpm -r --parallel watch",
     "build": "pnpm -r build",
     "type-check": "pnpm -r type-check",
     "test": "pnpm -r test",
