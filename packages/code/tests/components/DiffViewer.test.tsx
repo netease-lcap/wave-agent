@@ -104,11 +104,16 @@ describe("DiffViewer", () => {
       const block: DiffBlock = {
         type: "diff",
         path: "test.txt",
-        diffResult: [{ value: "added line\n", added: true, removed: false }],
+        diffResult: [
+          { value: "added line 1\n", added: true, removed: false },
+          { value: "added line 2\n", added: true, removed: false },
+          { value: "added line 3\n", added: true, removed: false },
+          { value: "added line 4\n", added: true, removed: false },
+        ],
       };
 
       const { lastFrame } = render(<DiffViewer block={block} />);
-      expect(lastFrame()).toContain("added line");
+      expect(lastFrame()).toContain("added line 1");
       expect(lastFrame()).not.toContain("+ added line");
       expect(lastFrame()).not.toContain("📄 New file");
     });
@@ -164,6 +169,7 @@ describe("DiffViewer", () => {
         diffResult: [
           { value: "function hello() {\n", added: true, removed: false },
           { value: "  console.log('Hello');\n", added: true, removed: false },
+          { value: "  return 'Hello';\n", added: true, removed: false },
           { value: "}\n", added: true, removed: false },
         ],
       };
