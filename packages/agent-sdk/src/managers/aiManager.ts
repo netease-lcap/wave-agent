@@ -292,7 +292,7 @@ export class AIManager {
             name: toolCall.name,
             parameters: toolCall.parameters,
             parametersChunk: toolCall.parametersChunk,
-            compactParams: toolCall.parametersChunk,
+            compactParams: toolCall.parameters?.split("\n").pop()?.slice(-30),
           });
         },
       });
