@@ -117,7 +117,7 @@ export class AIManager {
   private generateCompactParams(
     toolName: string,
     toolArgs: Record<string, unknown>,
-  ): string | undefined {
+  ): string {
     try {
       const toolPlugin = this.toolManager
         .list()
@@ -131,7 +131,7 @@ export class AIManager {
     } catch (error) {
       this.logger?.warn("Failed to generate compactParams", error);
     }
-    return undefined;
+    return "";
   }
 
   // Private method to handle token statistics and message compression
@@ -292,7 +292,7 @@ export class AIManager {
             name: toolCall.name,
             parameters: toolCall.parameters,
             parametersChunk: toolCall.parametersChunk,
-            compactParams: toolCall.parameters?.slice(-20), // Show last 20 chars of streaming toolCall.parameters
+            compactParams: toolCall.parametersChunk,
           });
         },
       });
