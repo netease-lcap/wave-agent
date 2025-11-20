@@ -297,6 +297,10 @@ export class AIManager {
         },
       });
 
+      if (result.metadata && Object.keys(result.metadata).length > 0) {
+        this.messageManager.mergeAssistantMetadata(result.metadata);
+      }
+
       // Handle result content from non-streaming mode
       if (result.content) {
         this.messageManager.updateCurrentMessageContent(result.content);
