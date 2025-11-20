@@ -292,7 +292,7 @@ export class AIManager {
             name: toolCall.name,
             parameters: toolCall.parameters,
             parametersChunk: toolCall.parametersChunk,
-            compactParams: toolCall.parametersChunk?.slice(-20), // Show last 20 chars of streaming toolCall.parameters
+            compactParams: toolCall.parameters?.slice(-20), // Show last 20 chars of streaming toolCall.parameters
           });
         },
       });
