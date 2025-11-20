@@ -70,6 +70,26 @@ export interface MessageManagerCallbacks {
     messages: Message[],
     status: "active" | "completed" | "error" | "aborted",
   ) => void;
+
+  // Granular subagent message callbacks (015-subagent-message-callbacks)
+  /** Triggered when subagent adds user message */
+  onSubagentUserMessageAdded?: (
+    subagentId: string,
+    params: UserMessageParams,
+  ) => void;
+  /** Triggered when subagent creates assistant message */
+  onSubagentAssistantMessageAdded?: (subagentId: string) => void;
+  /** Triggered during subagent content streaming updates */
+  onSubagentAssistantContentUpdated?: (
+    subagentId: string,
+    chunk: string,
+    accumulated: string,
+  ) => void;
+  /** Triggered when subagent tool block is updated */
+  onSubagentToolBlockUpdated?: (
+    subagentId: string,
+    params: AgentToolBlockUpdateParams,
+  ) => void;
 }
 
 export interface MessageManagerOptions {
@@ -83,6 +103,13 @@ export interface MessageManagerOptions {
    * @default join(homedir(), ".wave", "sessions")
    */
   sessionDir?: string;
+
+  // Subagent context for callback forwarding (015-subagent-message-callbacks)
+  /**
+   * Subagent ID when this MessageManager is used within a subagent
+   * Enables subagent-specific callback invocations
+   */
+  subagentId?: string;
 }
 
 export class MessageManager {
@@ -96,6 +123,7 @@ export class MessageManager {
   private logger?: Logger; // Add optional logger property
   private callbacks: MessageManagerCallbacks;
   private sessionDir?: string; // Add session directory property
+  private subagentId?: string; // Add subagent ID for callback context
 
   constructor(options: MessageManagerOptions) {
     this.sessionId = randomUUID();
@@ -107,6 +135,7 @@ export class MessageManager {
     this.callbacks = options.callbacks;
     this.logger = options.logger;
     this.sessionDir = options.sessionDir;
+    this.subagentId = options.subagentId; // Store subagent ID for callback context
   }
 
   // Getter methods
@@ -280,6 +309,19 @@ export class MessageManager {
     });
     this.setMessages(newMessages);
     this.callbacks.onUserMessageAdded?.(params);
+
+    // Invoke subagent-specific callback if this is a subagent MessageManager
+    if (this.subagentId !== undefined) {
+      try {
+        this.callbacks.onSubagentUserMessageAdded?.(this.subagentId, params);
+      } catch (error) {
+        // Log error but don't throw to prevent breaking the main flow
+        this.logger?.warn?.(
+          "Error in onSubagentUserMessageAdded callback:",
+          error,
+        );
+      }
+    }
   }
 
   public addAssistantMessage(
@@ -303,6 +345,19 @@ export class MessageManager {
     );
     this.setMessages(newMessages);
     this.callbacks.onAssistantMessageAdded?.();
+
+    // Invoke subagent-specific callback if this is a subagent MessageManager
+    if (this.subagentId !== undefined) {
+      try {
+        this.callbacks.onSubagentAssistantMessageAdded?.(this.subagentId);
+      } catch (error) {
+        // Log error but don't throw to prevent breaking the main flow
+        this.logger?.warn?.(
+          "Error in onSubagentAssistantMessageAdded callback:",
+          error,
+        );
+      }
+    }
   }
 
   public mergeAssistantMetadata(metadata: Record<string, unknown>): void {
@@ -353,6 +408,19 @@ export class MessageManager {
     });
     this.setMessages(newMessages);
     this.callbacks.onToolBlockUpdated?.(params);
+
+    // Invoke subagent-specific callback if this is a subagent MessageManager
+    if (this.subagentId !== undefined) {
+      try {
+        this.callbacks.onSubagentToolBlockUpdated?.(this.subagentId, params);
+      } catch (error) {
+        // Log error but don't throw to prevent breaking the main flow
+        this.logger?.warn?.(
+          "Error in onSubagentToolBlockUpdated callback:",
+          error,
+        );
+      }
+    }
   }
 
   public addDiffBlock(
@@ -571,6 +639,24 @@ export class MessageManager {
 
     // FR-001: Trigger callbacks with chunk and accumulated content
     this.callbacks.onAssistantContentUpdated?.(chunk, newAccumulatedContent);
+
+    // Invoke subagent-specific callback if this is a subagent MessageManager
+    if (this.subagentId !== undefined) {
+      try {
+        this.callbacks.onSubagentAssistantContentUpdated?.(
+          this.subagentId,
+          chunk,
+          newAccumulatedContent,
+        );
+      } catch (error) {
+        // Log error but don't throw to prevent breaking the main flow
+        this.logger?.warn?.(
+          "Error in onSubagentAssistantContentUpdated callback:",
+          error,
+        );
+      }
+    }
+
     this.callbacks.onMessagesChange?.([...this.messages]); // Still need to notify of changes
   }
 

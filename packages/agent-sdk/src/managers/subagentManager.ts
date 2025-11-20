@@ -29,6 +29,7 @@ export interface SubagentManagerOptions {
   workdir: string;
   parentToolManager: ToolManager;
   parentMessageManager: MessageManager;
+  parentCallbacks?: MessageManagerCallbacks; // Added for subagent callback forwarding
   logger?: Logger;
   gatewayConfig: GatewayConfig;
   modelConfig: ModelConfig;
@@ -44,6 +45,7 @@ export class SubagentManager {
   private workdir: string;
   private parentToolManager: ToolManager;
   private parentMessageManager: MessageManager;
+  private parentCallbacks?: MessageManagerCallbacks; // Added for subagent callback forwarding
   private logger?: Logger;
   private gatewayConfig: GatewayConfig;
   private modelConfig: ModelConfig;
@@ -55,6 +57,7 @@ export class SubagentManager {
     this.workdir = options.workdir;
     this.parentToolManager = options.parentToolManager;
     this.parentMessageManager = options.parentMessageManager;
+    this.parentCallbacks = options.parentCallbacks; // Store parent callbacks
     this.logger = options.logger;
     this.gatewayConfig = options.gatewayConfig;
     this.modelConfig = options.modelConfig;
@@ -142,12 +145,54 @@ export class SubagentManager {
           });
         }
       },
+
+      // Forward subagent-specific callbacks to parent (015-subagent-message-callbacks)
+      onSubagentUserMessageAdded: this.parentCallbacks
+        ?.onSubagentUserMessageAdded
+        ? (subagentIdParam, params) => {
+            this.parentCallbacks?.onSubagentUserMessageAdded?.(
+              subagentIdParam,
+              params,
+            );
+          }
+        : undefined,
+
+      onSubagentAssistantMessageAdded: this.parentCallbacks
+        ?.onSubagentAssistantMessageAdded
+        ? (subagentIdParam) => {
+            this.parentCallbacks?.onSubagentAssistantMessageAdded?.(
+              subagentIdParam,
+            );
+          }
+        : undefined,
+
+      onSubagentAssistantContentUpdated: this.parentCallbacks
+        ?.onSubagentAssistantContentUpdated
+        ? (subagentIdParam, chunk, accumulated) => {
+            this.parentCallbacks?.onSubagentAssistantContentUpdated?.(
+              subagentIdParam,
+              chunk,
+              accumulated,
+            );
+          }
+        : undefined,
+
+      onSubagentToolBlockUpdated: this.parentCallbacks
+        ?.onSubagentToolBlockUpdated
+        ? (subagentIdParam, params) => {
+            this.parentCallbacks?.onSubagentToolBlockUpdated?.(
+              subagentIdParam,
+              params,
+            );
+          }
+        : undefined,
     };
 
     const messageManager = new MessageManager({
       callbacks: subagentCallbacks,
       workdir: this.workdir,
       logger: this.logger,
+      subagentId: subagentId, // Pass subagentId for callback context
     });
 
     // Use the parent tool manager directly - tool restrictions will be handled by allowedTools parameter
