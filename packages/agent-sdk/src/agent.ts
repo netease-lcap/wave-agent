@@ -161,6 +161,7 @@ export class Agent {
       workdir: this.workdir,
       parentToolManager: this.toolManager,
       parentMessageManager: this.messageManager,
+      parentCallbacks: callbacks, // Pass parent callbacks for subagent forwarding
       logger: this.logger,
       gatewayConfig,
       modelConfig,
