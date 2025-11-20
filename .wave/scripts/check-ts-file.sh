@@ -21,6 +21,12 @@ if [ -z "$FILE_PATH" ] || [ "$FILE_PATH" = "null" ]; then
     exit 0
 fi
 
+# Check if file exists
+if [ ! -f "$FILE_PATH" ]; then
+    # File does not exist, exit silently
+    exit 0
+fi
+
 # Check if this is a TypeScript/TSX file
 if [[ ! "$FILE_PATH" =~ \.(ts|tsx)$ ]]; then
     # Not a TypeScript file, exit silently
