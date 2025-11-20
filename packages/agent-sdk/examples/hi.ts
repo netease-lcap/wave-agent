@@ -29,7 +29,7 @@ const agent = await Agent.create({
       if (params.error) {
         console.error("❌ Error:\n" + params.error);
       } else if (params.result) {
-        console.log("Result:\n" + params.result.slice(-500, 0));
+        console.log("Result:\n" + params.result.slice(-500));
       }
     },
     onDiffBlockAdded: (filePath: string) => {
