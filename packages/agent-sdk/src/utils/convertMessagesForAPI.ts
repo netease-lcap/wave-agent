@@ -163,6 +163,7 @@ export function convertMessagesForAPI(
           role: "assistant",
           content,
           tool_calls,
+          ...(message.metadata ? { ...message.metadata } : {}),
         };
 
         recentMessages.unshift(assistantMessage);

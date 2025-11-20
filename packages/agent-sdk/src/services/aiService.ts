@@ -106,6 +106,7 @@ export interface CallAgentResult {
     completion_tokens: number;
     total_tokens: number;
   };
+  metadata?: Record<string, unknown>;
 }
 
 export async function callAgent(
@@ -230,17 +231,34 @@ Today's date: ${new Date().toISOString().split("T")[0]}
 
       const result: CallAgentResult = {};
 
-      // Return content
-      if (finalMessage?.content) {
-        result.content = finalMessage.content;
+      if (finalMessage) {
+        const {
+          content: finalContent,
+          tool_calls: finalToolCalls,
+          ...otherFields
+        } = finalMessage;
+
+        if (typeof finalContent === "string" && finalContent.length > 0) {
+          result.content = finalContent;
+        }
+
+        if (Array.isArray(finalToolCalls) && finalToolCalls.length > 0) {
+          result.tool_calls = finalToolCalls;
+        }
+
+        if (Object.keys(otherFields).length > 0) {
+          const metadata: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(otherFields)) {
+            if (value !== undefined) {
+              metadata[key] = value;
+            }
+          }
+          if (Object.keys(metadata).length > 0) {
+            result.metadata = metadata;
+          }
+        }
       }
 
-      // Return tool call
-      if (finalMessage?.tool_calls && finalMessage.tool_calls.length > 0) {
-        result.tool_calls = finalMessage.tool_calls;
-      }
-
-      // Return token usage information
       if (totalUsage) {
         result.usage = totalUsage;
       }
@@ -287,6 +305,7 @@ async function processStreamingResponse(
       };
     }
   >();
+  const additionalDeltaFields: Record<string, unknown> = {};
   let usage: CallAgentResult["usage"] = undefined;
 
   try {
@@ -310,56 +329,74 @@ async function processStreamingResponse(
         continue;
       }
 
-      // Handle content updates
-      if (delta.content) {
+      const {
+        content,
+        tool_calls: toolCallUpdates,
+        ...deltaMetadata
+      } = delta as unknown as {
+        content?: string;
+        tool_calls?: ChatCompletionChunk.Choice.Delta.ToolCall[];
+        [key: string]: unknown;
+      };
+
+      if (Object.keys(deltaMetadata).length > 0) {
+        Object.assign(additionalDeltaFields, deltaMetadata);
+      }
+
+      if (typeof content === "string" && content.length > 0) {
         // Note: OpenAI API already handles UTF-8 character boundaries correctly in streaming,
         // ensuring that delta.content always contains complete UTF-8 strings
-        accumulatedContent += delta.content;
+        accumulatedContent += content;
         if (onContentUpdate) {
           onContentUpdate(accumulatedContent);
         }
       }
 
-      // Handle tool call updates
-      if (delta.tool_calls) {
-        for (const toolCall of delta.tool_calls) {
-          if (toolCall.function) {
-            // New tool call
-            const existingCall = toolCalls.get(toolCall.index) || {
-              id: toolCall.id as string,
-              type: "function" as const,
-              function: {
-                name: toolCall.function.name || "",
-                arguments: "",
-              },
-            };
+      if (Array.isArray(toolCallUpdates)) {
+        for (const rawToolCall of toolCallUpdates) {
+          const toolCallDelta =
+            rawToolCall as ChatCompletionChunk.Choice.Delta.ToolCall;
 
-            // Update function name if provided
-            if (toolCall.function.name) {
-              existingCall.function.name = toolCall.function.name;
-            }
+          if (!toolCallDelta.function) {
+            continue;
+          }
 
-            // Accumulate arguments
-            if (toolCall.function.arguments) {
-              existingCall.function.arguments += toolCall.function.arguments;
-            }
+          const functionDelta = toolCallDelta.function;
+          const index = toolCallDelta.index ?? 0;
+          const callId = toolCallDelta.id ?? `tool_${index}`;
 
-            toolCalls.set(toolCall.index, existingCall);
+          const existingCall = toolCalls.get(index) || {
+            id: callId,
+            type: "function" as const,
+            function: {
+              name: functionDelta.name || "",
+              arguments: "",
+            },
+          };
 
-            // Trigger callback for tool updates with enhanced parameter streaming
-            if (
-              onToolUpdate &&
-              existingCall.function.name &&
-              existingCall.function.arguments
-            ) {
-              // Use parametersChunk as compact param for better performance
-              onToolUpdate({
-                id: existingCall.id,
-                name: existingCall.function.name,
-                parameters: existingCall.function.arguments,
-                parametersChunk: toolCall.function.arguments, // Compact param for performance
-              });
-            }
+          existingCall.id = callId;
+
+          if (functionDelta.name) {
+            existingCall.function.name = functionDelta.name;
+          }
+
+          if (functionDelta.arguments) {
+            existingCall.function.arguments += functionDelta.arguments;
+          }
+
+          toolCalls.set(index, existingCall);
+
+          if (
+            onToolUpdate &&
+            existingCall.function.name &&
+            existingCall.function.arguments
+          ) {
+            onToolUpdate({
+              id: existingCall.id,
+              name: existingCall.function.name,
+              parameters: existingCall.function.arguments,
+              parametersChunk: functionDelta.arguments,
+            });
           }
         }
       }
@@ -384,6 +421,18 @@ async function processStreamingResponse(
 
   if (usage) {
     result.usage = usage;
+  }
+
+  if (Object.keys(additionalDeltaFields).length > 0) {
+    result.metadata = {};
+    for (const [key, value] of Object.entries(additionalDeltaFields)) {
+      if (value !== undefined) {
+        result.metadata[key] = value;
+      }
+    }
+    if (Object.keys(result.metadata).length === 0) {
+      delete result.metadata;
+    }
   }
 
   return result;

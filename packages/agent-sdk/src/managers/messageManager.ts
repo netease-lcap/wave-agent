@@ -286,15 +286,54 @@ export class MessageManager {
     content?: string,
     toolCalls?: ChatCompletionMessageFunctionToolCall[],
     usage?: Usage,
+    metadata?: Record<string, unknown>,
   ): void {
+    const metadataRecord = metadata
+      ? Object.fromEntries(
+          Object.entries(metadata).filter(([, value]) => value !== undefined),
+        )
+      : undefined;
+
     const newMessages = addAssistantMessageToMessages(
       this.messages,
       content,
       toolCalls,
       usage,
+      metadataRecord,
     );
     this.setMessages(newMessages);
     this.callbacks.onAssistantMessageAdded?.();
+  }
+
+  public mergeAssistantMetadata(metadata: Record<string, unknown>): void {
+    if (!metadata || Object.keys(metadata).length === 0) {
+      return;
+    }
+
+    const newMessages = [...this.messages];
+    for (let i = newMessages.length - 1; i >= 0; i--) {
+      const message = newMessages[i];
+      if (message.role === "assistant") {
+        const mergedMetadata = {
+          ...(message.metadata || {}),
+        } as Record<string, unknown>;
+
+        for (const [key, value] of Object.entries(metadata)) {
+          if (value === undefined) {
+            continue;
+          }
+          mergedMetadata[key] = value;
+        }
+
+        if (Object.keys(mergedMetadata).length === 0) {
+          return;
+        }
+
+        message.metadata = mergedMetadata;
+        this.setMessages(newMessages);
+        return;
+      }
+    }
   }
 
   public updateToolBlock(params: AgentToolBlockUpdateParams): void {
