@@ -296,17 +296,14 @@ async function processStreamingResponse(
   abortSignal?: AbortSignal,
 ): Promise<CallAgentResult> {
   let accumulatedContent = "";
-  const toolCalls = new Map<
-    number,
-    {
-      id: string;
-      type: "function";
-      function: {
-        name: string;
-        arguments: string;
-      };
-    }
-  >();
+  const toolCalls: {
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }[] = [];
   const additionalDeltaFields: Record<string, unknown> = {};
   let usage: CallAgentResult["usage"] = undefined;
 
@@ -364,17 +361,31 @@ async function processStreamingResponse(
           }
 
           const functionDelta = toolCallDelta.function;
-          const index = toolCallDelta.index;
-          const callId = toolCallDelta.id ?? `tool_${index}`;
 
-          const existingCall = toolCalls.get(index) || {
-            id: callId,
-            type: "function" as const,
-            function: {
-              name: functionDelta.name || "",
-              arguments: "",
-            },
-          };
+          let existingCall;
+          let isNew = false;
+
+          if (toolCallDelta.id) {
+            existingCall = toolCalls.find((t) => t.id === toolCallDelta.id);
+            if (!existingCall) {
+              existingCall = {
+                id: toolCallDelta.id,
+                type: "function" as const,
+                function: {
+                  name: functionDelta.name || "",
+                  arguments: "",
+                },
+              };
+              toolCalls.push(existingCall);
+              isNew = true;
+            }
+          } else {
+            existingCall = toolCalls[toolCalls.length - 1];
+          }
+
+          if (!existingCall) {
+            continue;
+          }
 
           if (functionDelta.name) {
             existingCall.function.name = functionDelta.name;
@@ -384,7 +395,7 @@ async function processStreamingResponse(
             existingCall.function.arguments += functionDelta.arguments;
 
             // Emit start stage with empty parameters when first chunk arrives
-            if (onToolUpdate && !toolCalls.has(index)) {
+            if (onToolUpdate && isNew) {
               onToolUpdate({
                 id: existingCall.id,
                 name: existingCall.function.name || "",
@@ -394,8 +405,6 @@ async function processStreamingResponse(
               });
             }
           }
-
-          toolCalls.set(index, existingCall);
 
           // Emit streaming updates for all chunks with actual content (including first chunk)
           if (
@@ -429,8 +438,8 @@ async function processStreamingResponse(
     result.content = accumulatedContent;
   }
 
-  if (toolCalls.size > 0) {
-    result.tool_calls = Array.from(toolCalls.values());
+  if (toolCalls.length > 0) {
+    result.tool_calls = toolCalls;
   }
 
   if (usage) {
