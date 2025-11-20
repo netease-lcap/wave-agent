@@ -57,7 +57,11 @@ async function setupTest() {
         if (params.error) {
           console.error("❌ Error:\n" + params.error);
         } else if (params.result) {
-          console.log("Result:\n" + params.result.slice(-200, 0));
+          console.log(
+            "Result:\n" +
+              params.result.slice(0, 200) +
+              (params.result.length > 200 ? "..." : ""),
+          );
         }
       },
       onErrorBlockAdded: (error: string) => {
