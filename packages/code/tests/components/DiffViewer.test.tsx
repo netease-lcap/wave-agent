@@ -100,7 +100,7 @@ describe("DiffViewer", () => {
   });
 
   describe("Diff rendering", () => {
-    it("should show new file with syntax highlighting when all additions", () => {
+    it("should show syntax highlighted content for new files", () => {
       const block: DiffBlock = {
         type: "diff",
         path: "test.txt",
@@ -108,9 +108,9 @@ describe("DiffViewer", () => {
       };
 
       const { lastFrame } = render(<DiffViewer block={block} />);
-      expect(lastFrame()).toContain("📄 New file: test.txt");
-      expect(lastFrame()).toContain("Auto-detected syntax highlighting");
       expect(lastFrame()).toContain("added line");
+      expect(lastFrame()).not.toContain("+ added line");
+      expect(lastFrame()).not.toContain("📄 New file");
     });
 
     it("should show added lines with + prefix when mixed with other changes", () => {
@@ -157,7 +157,7 @@ describe("DiffViewer", () => {
       expect(lastFrame()).not.toContain("📄 New file:");
     });
 
-    it("should handle mixed additions and unchanged lines with syntax highlighting", () => {
+    it("should show syntax highlighted content when only additions are present", () => {
       const block: DiffBlock = {
         type: "diff",
         path: "newfile.js",
@@ -169,12 +169,11 @@ describe("DiffViewer", () => {
       };
 
       const { lastFrame } = render(<DiffViewer block={block} />);
-      expect(lastFrame()).toContain("📄 New file: newfile.js");
-      expect(lastFrame()).toContain("Auto-detected syntax highlighting");
       expect(lastFrame()).toContain("function hello()");
       expect(lastFrame()).toContain("console.log");
       // Should NOT show traditional diff format
       expect(lastFrame()).not.toContain("+ function hello()");
+      expect(lastFrame()).not.toContain("📄 New file");
     });
 
     it("should not use syntax highlighting when there are removals", () => {
