@@ -28,6 +28,19 @@ const extractAddedContent = (
     .trim();
 };
 
+const countAddedLines = (
+  diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
+): number => {
+  return diffResult.reduce((total, part) => {
+    if (!part.added) return total;
+    const lines = part.value.split("\n");
+    if (lines[lines.length - 1] === "") {
+      lines.pop();
+    }
+    return total + lines.length;
+  }, 0);
+};
+
 // Markdown component for syntax highlighting (reused from MessageList)
 const CodeHighlight = ({
   children,
@@ -99,7 +112,8 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   // Check if this is all additions and try syntax highlighting
   const shouldUseSyntaxHighlighting = useMemo(() => {
     if (!diffResult) return false;
-    return isAllAdditions(diffResult);
+    if (!isAllAdditions(diffResult)) return false;
+    return countAddedLines(diffResult) > 3;
   }, [diffResult]);
 
   const addedContent = useMemo(() => {
