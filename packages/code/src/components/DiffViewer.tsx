@@ -329,17 +329,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
   if (shouldUseSyntaxHighlighting && addedContent.trim()) {
     return (
       <Box flexDirection="column">
-        <Box flexDirection="column" marginBottom={1}>
-          <Text color="green" bold>
-            📄 New file: {block.path}
-          </Text>
-          <Text color="gray" dimColor>
-            Auto-detected syntax highlighting
-          </Text>
-        </Box>
-        <Box flexDirection="column">
-          <CodeHighlight language="">{addedContent}</CodeHighlight>
-        </Box>
+        <CodeHighlight language="">{addedContent}</CodeHighlight>
       </Box>
     );
   }
