@@ -3,15 +3,46 @@ import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import type { McpTool, McpServerStatus } from "../types/index.js";
 
 /**
+ * Recursively clean schema to remove unsupported fields
+ */
+function cleanSchema(schema: unknown): unknown {
+  if (typeof schema !== "object" || schema === null) {
+    return schema;
+  }
+
+  if (Array.isArray(schema)) {
+    return schema.map(cleanSchema);
+  }
+
+  const newSchema: Record<string, unknown> = {};
+  const obj = schema as Record<string, unknown>;
+
+  for (const key in obj) {
+    // Remove $schema as OpenAI API doesn't accept it
+    // Remove exclusiveMinimum/exclusiveMaximum as some models (e.g. Gemini) don't support them
+    if (
+      key === "$schema" ||
+      key === "exclusiveMinimum" ||
+      key === "exclusiveMaximum"
+    ) {
+      continue;
+    }
+    newSchema[key] = cleanSchema(obj[key]);
+  }
+  return newSchema;
+}
+
+/**
  * Convert MCP tool to OpenAI function tool format
  */
 export function mcpToolToOpenAITool(
   mcpTool: McpTool,
   serverName: string,
 ): ChatCompletionFunctionTool {
-  // Remove $schema field if it exists, as OpenAI API doesn't accept it
-  const cleanInputSchema = { ...mcpTool.inputSchema };
-  delete cleanInputSchema.$schema;
+  const cleanInputSchema = cleanSchema(mcpTool.inputSchema) as Record<
+    string,
+    unknown
+  >;
 
   return {
     type: "function",
