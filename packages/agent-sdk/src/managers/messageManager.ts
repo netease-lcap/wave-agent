@@ -344,7 +344,7 @@ export class MessageManager {
       result: params.result,
       success: params.success,
       error: params.error,
-      isRunning: params.isRunning,
+      stage: params.stage,
       name: params.name,
       shortResult: params.shortResult,
       images: params.images,

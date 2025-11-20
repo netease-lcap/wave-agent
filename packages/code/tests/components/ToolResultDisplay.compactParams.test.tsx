@@ -13,6 +13,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
       success: true,
 
       compactParams: 'example.ts: "useState"',
+      stage: "end",
     };
 
     const { lastFrame } = render(
@@ -31,6 +32,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
       name: "test_tool",
 
       success: true,
+      stage: "end",
     };
 
     const { lastFrame } = render(
@@ -52,6 +54,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
       success: true,
 
       compactParams: "",
+      stage: "end",
     };
 
     const { lastFrame } = render(
@@ -73,6 +76,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
       success: true,
 
       compactParams: 'test.ts: "function"',
+      stage: "end",
     };
 
     const { lastFrame } = render(
@@ -97,6 +101,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
       success: true,
 
       compactParams: undefined,
+      stage: "end",
     };
 
     const { lastFrame } = render(

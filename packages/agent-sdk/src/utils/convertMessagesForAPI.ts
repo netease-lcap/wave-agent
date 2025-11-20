@@ -75,8 +75,8 @@ export function convertMessagesForAPI(
 
       if (toolBlocks.length > 0) {
         toolBlocks.forEach((toolBlock) => {
-          // Only add completed tool blocks (i.e., not running)
-          if (toolBlock.id && !toolBlock.isRunning) {
+          // Only add completed tool blocks (i.e., stage is 'end')
+          if (toolBlock.id && toolBlock.stage === "end") {
             completedToolIds.add(toolBlock.id);
 
             // Check for image data

@@ -93,8 +93,10 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
         process.stdout.write(chunk);
       },
       onToolBlockUpdated: (params) => {
-        if (params.isRunning) {
-          console.log(`🔧 Running tool: ${params.name}`);
+        if (params.stage === "running") {
+          console.log(
+            `🔧 Running tool: ${params.name} (stage: ${params.stage})`,
+          );
           if (params.name === "Task") {
             console.log(`🚀 Subagent task starting...`);
             console.log(`🔍 Tool parameters:`, params.parameters);
@@ -107,11 +109,8 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
           if (params.result) {
             console.log(`📋 Result: ${params.result}`);
           }
-        } else {
-          console.log(`❌ Tool ${params.name} failed`);
-          if (params.error) {
-            console.log(`🚨 Error: ${params.error}`);
-          }
+        } else if (params.error) {
+          console.log(`🚨 Error: ${params.error}`);
         }
       },
       // Subagent-specific callbacks to monitor subagent lifecycle

@@ -2,7 +2,6 @@
 
 import { Agent } from "../src/agent.js";
 
-let streamingToolId = "";
 // Create Agent instance, listen to all available callbacks
 const agent = await Agent.create({
   callbacks: {
@@ -20,8 +19,7 @@ const agent = await Agent.create({
       process.stdout.write(chunk);
     },
     onToolBlockUpdated: (params) => {
-      if (params.id !== streamingToolId) {
-        streamingToolId = params.id;
+      if (params.stage === "start") {
         console.log("Tool started", {
           id: params.id,
           name: params.name,
@@ -31,7 +29,7 @@ const agent = await Agent.create({
       if (params.error) {
         console.error("❌ Error:\n" + params.error);
       } else if (params.result) {
-        console.log("Result:\n" + params.result);
+        console.log("Result:\n" + params.result.slice(-500, 0));
       }
     },
     onDiffBlockAdded: (filePath: string) => {

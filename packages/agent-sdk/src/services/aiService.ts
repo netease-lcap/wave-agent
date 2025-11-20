@@ -95,6 +95,7 @@ export interface CallAgentOptions {
     name: string;
     parameters: string;
     parametersChunk?: string;
+    stage?: "start" | "streaming" | "running" | "end";
   }) => void;
 }
 
@@ -290,6 +291,7 @@ async function processStreamingResponse(
     name: string;
     parameters: string;
     parametersChunk?: string;
+    stage?: "start" | "streaming" | "running" | "end";
   }) => void,
   abortSignal?: AbortSignal,
 ): Promise<CallAgentResult> {
@@ -380,20 +382,34 @@ async function processStreamingResponse(
 
           if (functionDelta.arguments) {
             existingCall.function.arguments += functionDelta.arguments;
+
+            // Emit start stage with empty parameters when first chunk arrives
+            if (onToolUpdate && !toolCalls.has(index)) {
+              onToolUpdate({
+                id: existingCall.id,
+                name: existingCall.function.name || "",
+                parameters: "", // Empty parameters for start stage
+                parametersChunk: "", // Empty chunk for start stage
+                stage: "start", // First chunk triggers start stage
+              });
+            }
           }
 
           toolCalls.set(index, existingCall);
 
+          // Emit streaming updates for all chunks with actual content (including first chunk)
           if (
             onToolUpdate &&
             existingCall.function.name &&
-            existingCall.function.arguments
+            functionDelta.arguments &&
+            functionDelta.arguments.length > 0 // Only emit streaming for chunks with actual content
           ) {
             onToolUpdate({
               id: existingCall.id,
               name: existingCall.function.name,
               parameters: existingCall.function.arguments,
               parametersChunk: functionDelta.arguments,
+              stage: "streaming",
             });
           }
         }
