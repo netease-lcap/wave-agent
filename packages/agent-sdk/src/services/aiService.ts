@@ -362,7 +362,7 @@ async function processStreamingResponse(
           }
 
           const functionDelta = toolCallDelta.function;
-          const index = toolCallDelta.index ?? 0;
+          const index = toolCallDelta.index;
           const callId = toolCallDelta.id ?? `tool_${index}`;
 
           const existingCall = toolCalls.get(index) || {
@@ -373,8 +373,6 @@ async function processStreamingResponse(
               arguments: "",
             },
           };
-
-          existingCall.id = callId;
 
           if (functionDelta.name) {
             existingCall.function.name = functionDelta.name;

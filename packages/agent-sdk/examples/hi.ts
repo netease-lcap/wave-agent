@@ -2,8 +2,7 @@
 
 import { Agent } from "../src/agent.js";
 
-console.log("🚀 Starting Agent hi test...");
-
+let streamingToolId = "";
 // Create Agent instance, listen to all available callbacks
 const agent = await Agent.create({
   callbacks: {
@@ -21,7 +20,19 @@ const agent = await Agent.create({
       process.stdout.write(chunk);
     },
     onToolBlockUpdated: (params) => {
-      console.log(`🔧 Tool updated: ${JSON.stringify(params, null, 2)}`);
+      if (params.id !== streamingToolId) {
+        streamingToolId = params.id;
+        console.log("Tool started", {
+          id: params.id,
+          name: params.name,
+        });
+      }
+      process.stdout.write(params.parametersChunk || "\n");
+      if (params.error) {
+        console.error("❌ Error:\n" + params.error);
+      } else if (params.result) {
+        console.log("Result:\n" + params.result);
+      }
     },
     onDiffBlockAdded: (filePath: string) => {
       console.log(`📄 Diff block added for: ${filePath}`);
@@ -57,10 +68,7 @@ const agent = await Agent.create({
 async function main() {
   // agent is already created at the top level
   try {
-    console.log("\n💬 Sending 'hi' message to AI...\n");
-
-    // Send "hi" message
-    await agent.sendMessage("hi");
+    await agent.sendMessage("hi, demo LS tool");
 
     // Get current state
     console.log("\n📊 Final state:");
