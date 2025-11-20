@@ -66,7 +66,7 @@ const agent = await Agent.create({
 async function main() {
   // agent is already created at the top level
   try {
-    await agent.sendMessage("hi, demo LS tool");
+    await agent.sendMessage("hi, demo tools");
 
     // Get current state
     console.log("\n📊 Final state:");
