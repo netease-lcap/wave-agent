@@ -317,6 +317,7 @@ export class SubagentManager {
       // The AIManager will handle abort signals through its own abort controllers
       // We need to abort the AI execution if the external abort signal is triggered
       const executeAI = instance.aiManager.sendAIMessage({
+        parentMessageManager: this.parentMessageManager,
         allowedTools,
         model:
           instance.configuration.model !== "inherit"
