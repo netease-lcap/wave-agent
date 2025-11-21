@@ -523,14 +523,12 @@ export interface AddSubagentBlockParams {
   subagentId: string;
   subagentName: string;
   status: "active" | "completed" | "error" | "aborted";
-  subagentMessages?: Message[];
 }
 
 export interface UpdateSubagentBlockParams {
   messages: Message[];
   subagentId: string;
   status: "active" | "completed" | "error" | "aborted";
-  subagentMessages: Message[];
 }
 
 export const addSubagentBlockToMessage = ({
@@ -538,7 +536,6 @@ export const addSubagentBlockToMessage = ({
   subagentId,
   subagentName,
   status,
-  subagentMessages = [],
 }: AddSubagentBlockParams): Message[] => {
   const newMessages = [...messages];
 
@@ -560,7 +557,6 @@ export const addSubagentBlockToMessage = ({
     subagentId,
     subagentName,
     status,
-    messages: subagentMessages,
   });
 
   return newMessages;
@@ -571,7 +567,6 @@ export const updateSubagentBlockInMessage = (
   subagentId: string,
   updates: Partial<{
     status: "active" | "completed" | "error" | "aborted";
-    messages: Message[];
   }>,
 ): Message[] => {
   const newMessages = [...messages];
@@ -584,9 +579,6 @@ export const updateSubagentBlockInMessage = (
         if (block.type === "subagent" && block.subagentId === subagentId) {
           if (updates.status !== undefined) {
             block.status = updates.status;
-          }
-          if (updates.messages !== undefined) {
-            block.messages = updates.messages;
           }
           return newMessages;
         }

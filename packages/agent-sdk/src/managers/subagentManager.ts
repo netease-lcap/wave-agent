@@ -39,6 +39,8 @@ export interface SubagentManagerCallbacks {
     subagentId: string,
     params: AgentToolBlockUpdateParams,
   ) => void;
+  /** Triggered when subagent messages change */
+  onSubagentMessagesChange?: (subagentId: string, messages: Message[]) => void;
 }
 
 export interface SubagentInstance {
@@ -197,10 +199,10 @@ export class SubagentManager {
         const instance = this.instances.get(subagentId);
         if (instance) {
           instance.messages = messages;
-          // Update parent's subagent block with latest messages
-          this.parentMessageManager.updateSubagentBlock(subagentId, {
-            messages: messages,
-          });
+          // Forward subagent message changes to parent via callbacks
+          if (this.callbacks?.onSubagentMessagesChange) {
+            this.callbacks.onSubagentMessagesChange(subagentId, messages);
+          }
         }
       },
     };
@@ -256,7 +258,6 @@ export class SubagentManager {
       subagentId,
       configuration.name,
       "active",
-      [],
       parameters,
     );
 
@@ -292,7 +293,6 @@ export class SubagentManager {
           this.updateInstanceStatus(instance.subagentId, "aborted");
           this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
             status: "aborted",
-            messages: instance.messages,
           });
         });
       }
@@ -358,11 +358,10 @@ export class SubagentManager {
       );
       const response = textBlocks.map((block) => block.content).join("\n");
 
-      // Update status to completed and update parent with final messages
+      // Update status to completed and update parent
       this.updateInstanceStatus(instance.subagentId, "completed");
       this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
         status: "completed",
-        messages: messages,
       });
 
       return response || "Task completed with no text response";

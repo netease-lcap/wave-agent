@@ -27,6 +27,8 @@
 - ✅ SubagentManager refactored to use `callbacks: SubagentManagerCallbacks` instead of `parentCallbacks`
 - ✅ AgentCallbacks extended to include SubagentManagerCallbacks
 - ✅ All subagent callbacks properly forward events with subagentId parameter
+- ✅ Messages removed from SubagentBlock type, handled via onSubagentMessagesChange callback
+- ✅ UI layer updated to use callback-based message state management
 - ✅ Test suite updated to reflect new architecture
 
 **Architecture Improvement**: Created clean separation between MessageManager and SubagentManager callback responsibilities

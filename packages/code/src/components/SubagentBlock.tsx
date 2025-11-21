@@ -6,6 +6,7 @@ import type {
   MessageBlock,
 } from "wave-agent-sdk";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
+import { useChat } from "../contexts/useChat.js";
 
 // Component to render individual message blocks
 interface MessageBlockRendererProps {
@@ -52,6 +53,11 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
   block,
   isExpanded = false,
 }) => {
+  const { subagentMessages } = useChat();
+
+  // Get messages for this subagent from context
+  const messages = subagentMessages[block.subagentId] || [];
+
   // Status indicator mapping
   const getStatusIndicator = (status: SubagentBlockType["status"]) => {
     switch (status) {
@@ -72,8 +78,8 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
 
   // Determine how many messages to show
   const messagesToShow = isExpanded
-    ? block.messages.slice(-10) // Up to 10 most recent when expanded
-    : block.messages.slice(-2); // Up to 2 most recent when collapsed
+    ? messages.slice(-10) // Up to 10 most recent when expanded
+    : messages.slice(-2); // Up to 2 most recent when collapsed
 
   return (
     <Box
@@ -100,7 +106,7 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
 
         {!isExpanded && (
           <Text color="gray" dimColor>
-            {block.messages.length} messages
+            {messages.length} messages
           </Text>
         )}
       </Box>
@@ -126,10 +132,10 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
       )}
 
       {/* Show truncation indicator if there are more messages */}
-      {!isExpanded && block.messages.length > 2 && (
+      {!isExpanded && messages.length > 2 && (
         <Box marginTop={1}>
           <Text color="gray" dimColor>
-            ... and {block.messages.length - 2} more messages (Ctrl+O to expand)
+            ... and {messages.length - 2} more messages (Ctrl+O to expand)
           </Text>
         </Box>
       )}

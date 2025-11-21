@@ -7,7 +7,7 @@
 
 ## Summary
 
-Add granular message callbacks for subagents through dedicated SubagentManagerCallbacks interface. Implemented via architectural refactoring that moved subagent callback responsibility from MessageManager to SubagentManager for cleaner separation of concerns.
+Add granular message callbacks for subagents through dedicated SubagentManagerCallbacks interface. Implemented via architectural refactoring that moved subagent callback responsibility from MessageManager to SubagentManager for cleaner separation of concerns. Extended to remove messages from SubagentBlock type and manage them via callbacks in UI layer.
 
 ## Technical Context
 

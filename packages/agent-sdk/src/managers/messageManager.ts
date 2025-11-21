@@ -67,7 +67,6 @@ export interface MessageManagerCallbacks {
   ) => void;
   onSubAgentBlockUpdated?: (
     subagentId: string,
-    messages: Message[],
     status: "active" | "completed" | "error" | "aborted",
   ) => void;
 }
@@ -475,7 +474,6 @@ export class MessageManager {
     subagentId: string,
     subagentName: string,
     status: "active" | "completed" | "error" = "active",
-    subagentMessages: Message[] = [],
     parameters: {
       description: string;
       prompt: string;
@@ -487,7 +485,6 @@ export class MessageManager {
       subagentId,
       subagentName,
       status,
-      subagentMessages,
     };
     const updatedMessages = addSubagentBlockToMessage(params);
     this.setMessages(updatedMessages);
@@ -498,7 +495,6 @@ export class MessageManager {
     subagentId: string,
     updates: Partial<{
       status: "active" | "completed" | "error" | "aborted";
-      messages: Message[];
     }>,
   ): void {
     const updatedMessages = updateSubagentBlockInMessage(
@@ -511,13 +507,8 @@ export class MessageManager {
       messages: this.messages,
       subagentId,
       status: updates.status || "active",
-      subagentMessages: updates.messages || [],
     };
-    this.callbacks.onSubAgentBlockUpdated?.(
-      params.subagentId,
-      params.messages,
-      params.status,
-    );
+    this.callbacks.onSubAgentBlockUpdated?.(params.subagentId, params.status);
   }
 
   /**
