@@ -4,7 +4,10 @@ import {
 } from "./managers/messageManager.js";
 import { AIManager } from "./managers/aiManager.js";
 import { ToolManager } from "./managers/toolManager.js";
-import { SubagentManager } from "./managers/subagentManager.js";
+import {
+  SubagentManager,
+  type SubagentManagerCallbacks,
+} from "./managers/subagentManager.js";
 import * as memory from "./services/memory.js";
 import { McpManager, type McpManagerCallbacks } from "./managers/mcpManager.js";
 import { BashManager } from "./managers/bashManager.js";
@@ -65,7 +68,8 @@ export interface AgentOptions {
 export interface AgentCallbacks
   extends MessageManagerCallbacks,
     BackgroundBashManagerCallbacks,
-    McpManagerCallbacks {}
+    McpManagerCallbacks,
+    SubagentManagerCallbacks {}
 
 export class Agent {
   private messageManager: MessageManager;
@@ -161,7 +165,14 @@ export class Agent {
       workdir: this.workdir,
       parentToolManager: this.toolManager,
       parentMessageManager: this.messageManager,
-      parentCallbacks: callbacks, // Pass parent callbacks for subagent forwarding
+      callbacks: {
+        onSubagentUserMessageAdded: callbacks.onSubagentUserMessageAdded,
+        onSubagentAssistantMessageAdded:
+          callbacks.onSubagentAssistantMessageAdded,
+        onSubagentAssistantContentUpdated:
+          callbacks.onSubagentAssistantContentUpdated,
+        onSubagentToolBlockUpdated: callbacks.onSubagentToolBlockUpdated,
+      }, // Pass subagent callbacks for forwarding
       logger: this.logger,
       gatewayConfig,
       modelConfig,

@@ -2,66 +2,22 @@
  * TypeScript Interface Definitions
  * 
  * **Package**: agent-sdk
- * **Target File**: src/managers/messageManager.ts (lines 32-73)
+ * **Target File**: src/managers/subagentManager.ts
  * **Feature**: 015-subagent-message-callbacks
  */
 
 // ============================================================================
-// EXTENDED MESSAGE MANAGER CALLBACKS
+// SUBAGENT MANAGER CALLBACKS (NEW DEDICATED INTERFACE)
 // ============================================================================
 
 /**
- * Extended MessageManagerCallbacks interface with subagent-specific callbacks
+ * Dedicated SubagentManagerCallbacks interface for subagent-specific events
  * 
- * **Location**: packages/agent-sdk/src/managers/messageManager.ts
- * **Extension Strategy**: Add new optional callbacks to existing interface
- * **Compatibility**: 100% backward compatible - only additive changes
+ * **Location**: packages/agent-sdk/src/managers/subagentManager.ts
+ * **Architecture**: Separate from MessageManagerCallbacks for clean separation of concerns
+ * **Compatibility**: AgentCallbacks extends this interface for end-to-end integration
  */
-export interface MessageManagerCallbacks {
-  // ============================================================================
-  // EXISTING CALLBACKS (unchanged - for reference only)
-  // ============================================================================
-  
-  onMessagesChange?: (messages: Message[]) => void;
-  onSessionIdChange?: (sessionId: string) => void;
-  onLatestTotalTokensChange?: (latestTotalTokens: number) => void;
-  onUserInputHistoryChange?: (history: string[]) => void;
-  onUsagesChange?: (usages: Usage[]) => void;
-  onUserMessageAdded?: (params: UserMessageParams) => void;
-  onAssistantMessageAdded?: () => void;
-  onAssistantContentUpdated?: (chunk: string, accumulated: string) => void;
-  onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
-  onDiffBlockAdded?: (filePath: string, diffResult: string) => void;
-  onErrorBlockAdded?: (error: string) => void;
-  onCompressBlockAdded?: (insertIndex: number, content: string) => void;
-  onCompressionStateChange?: (isCompressing: boolean) => void;
-  onMemoryBlockAdded?: (
-    content: string,
-    success: boolean,
-    type: "project" | "user",
-    storagePath: string,
-  ) => void;
-  onAddCommandOutputMessage?: (command: string) => void;
-  onUpdateCommandOutputMessage?: (command: string, output: string) => void;
-  onCompleteCommandMessage?: (command: string, exitCode: number) => void;
-  onSubAgentBlockAdded?: (
-    subagentId: string,
-    parameters: {
-      description: string;
-      prompt: string;
-      subagent_type: string;
-    },
-  ) => void;
-  onSubAgentBlockUpdated?: (
-    subagentId: string,
-    messages: Message[],
-    status: "active" | "completed" | "error" | "aborted",
-  ) => void;
-  
-  // ============================================================================
-  // NEW SUBAGENT-SPECIFIC CALLBACKS (additive extension)
-  // ============================================================================
-  
+export interface SubagentManagerCallbacks {
   /**
    * Triggered when subagent adds user message
    * @param subagentId - Unique identifier for the subagent instance
@@ -103,14 +59,17 @@ export interface MessageManagerCallbacks {
 // ============================================================================
 
 /**
- * Message manager options interface (unchanged)
- * Automatically supports extended callback interface
+ * SubagentManager options interface
  */
-export interface MessageManagerOptions {
-  callbacks: MessageManagerCallbacks;
-  workdir: string;
-  logger?: Logger;
-  sessionDir?: string;
+export interface SubagentManagerOptions {
+  callbacks?: SubagentManagerCallbacks;
+}
+
+/**
+ * Agent callbacks interface extends SubagentManagerCallbacks for end-to-end integration
+ */
+export interface AgentCallbacks extends SubagentManagerCallbacks {
+  // Other agent-specific callbacks...
 }
 
 // ============================================================================
@@ -118,21 +77,20 @@ export interface MessageManagerOptions {
 // ============================================================================
 
 /**
- * Integration Points:
+ * Architecture Changes:
  * 
- * 1. **MessageManager Methods**:
- *    - addUserMessage() → onSubagentUserMessageAdded
- *    - addAssistantMessage() → onSubagentAssistantMessageAdded  
- *    - updateCurrentMessageContent() → onSubagentAssistantContentUpdated
- *    - updateToolBlock() → onSubagentToolBlockUpdated
+ * 1. **SubagentManager**:
+ *    - Uses `callbacks: SubagentManagerCallbacks` instead of `parentCallbacks`
+ *    - Owns callback responsibility for subagent events
+ *    - Forwards callbacks with subagentId context
  * 
- * 2. **SubagentManager Integration**:
- *    - createInstance() method creates callback forwarding
- *    - Forwards parent callbacks with subagentId context
- *    - Uses existing subagentCallbacks parameter pattern
+ * 2. **Agent Integration**:
+ *    - AgentCallbacks extends SubagentManagerCallbacks
+ *    - Agent passes callbacks to SubagentManager
+ *    - End-to-end callback flow maintained
  * 
- * 3. **Backward Compatibility**:
- *    - All new callbacks are optional (using ?: syntax)
- *    - Existing callbacks unchanged
- *    - No breaking changes to API surface
+ * 3. **Architectural Benefits**:
+ *    - Clean separation between MessageManager and SubagentManager
+ *    - Dedicated interfaces for each manager's responsibilities
+ *    - No breaking changes to existing API surface
  */

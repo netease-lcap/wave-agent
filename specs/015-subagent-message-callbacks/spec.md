@@ -2,8 +2,34 @@
 
 **Feature Branch**: `015-subagent-message-callbacks`  
 **Created**: 2025-11-20  
-**Status**: Draft  
+**Status**: Completed  
 **Input**: User description: "subagent messages callback is full messages, i want to add user added assistant added content updated tool updated callbacks for subagent"
+
+## Implementation Summary
+
+This feature has been successfully implemented through an architectural refactoring that moved subagent-specific callbacks from `MessageManager` to `SubagentManager`, creating a cleaner separation of concerns.
+
+### Key Changes Made
+
+1. **Created SubagentManagerCallbacks Interface**: New interface specifically for subagent events:
+   - `onSubagentUserMessageAdded`
+   - `onSubagentAssistantMessageAdded` 
+   - `onSubagentAssistantContentUpdated`
+   - `onSubagentToolBlockUpdated`
+
+2. **Refactored SubagentManager**: 
+   - Removed `parentCallbacks` property in favor of `callbacks: SubagentManagerCallbacks`
+   - Updated `createInstance` method to forward callbacks through the new system
+   - Each subagent now properly forwards events with `subagentId` parameter
+
+3. **Extended Agent Interface**:
+   - `AgentCallbacks` now extends `SubagentManagerCallbacks`
+   - Agent instantiation updated to pass callbacks to SubagentManager correctly
+
+4. **Updated Test Suite**:
+   - Removed obsolete tests from MessageManager for subagent callbacks
+   - Updated SubagentManager tests to reflect new callback ownership
+   - All 669 unit tests pass, confirming functionality
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -89,6 +115,7 @@ Developers need to monitor when subagents use tools to implement detailed activi
 
 ### Key Entities *(include if feature involves data)*
 
-- **SubagentCallbacks**: New callback interface containing granular subagent-specific event handlers
-- **SubagentMessageEvents**: Event parameters that include subagent ID and relevant message/content data
-- **CallbackManager**: Component responsible for forwarding subagent events to parent callback handlers
+- **SubagentManagerCallbacks**: New callback interface containing granular subagent-specific event handlers (separate from MessageManagerCallbacks)
+- **SubagentMessageEvents**: Event parameters that include subagent ID and relevant message/content data  
+- **SubagentManager**: Component responsible for forwarding subagent events to parent callback handlers through its own callback system
+- **AgentCallbacks**: Extended to include SubagentManagerCallbacks for end-to-end callback support

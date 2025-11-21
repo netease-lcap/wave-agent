@@ -6,53 +6,45 @@
 
 ## Overview
 
-This feature adds simple subagent-specific callbacks to track individual message events from subagents without modifying any existing functionality.
+This feature adds dedicated subagent-specific callbacks through a new SubagentManagerCallbacks interface, providing clean architectural separation between main agent and subagent event handling.
 
 ## Key Benefits
 
-- **Zero Breaking Changes**: All existing callbacks work exactly the same
-- **Simple Addition**: Just add new optional subagent callbacks alongside existing ones
-- **Clean Separation**: Main agent events vs subagent events clearly separated
-- **Easy Migration**: Start using new callbacks when you need them
+- **Clean Architecture**: Dedicated SubagentManagerCallbacks interface separate from MessageManagerCallbacks
+- **Zero Breaking Changes**: All existing functionality preserved
+- **Type Safety**: Full TypeScript support with dedicated interfaces
+- **Easy Integration**: AgentCallbacks extends SubagentManagerCallbacks for seamless usage
 
 ## Basic Usage
 
-### Step 1: Using Existing Callbacks (No Changes)
-
-Your existing code continues to work exactly as before:
+### Step 1: Using Agent with Subagent Callbacks
 
 ```typescript
-const messageManager = new MessageManager({
+import { Agent } from 'wave-agent-sdk';
+
+const agent = await Agent.create({
   callbacks: {
-    onUserMessageAdded: (params) => {
-      console.log('User message:', params.content);
+    // Subagent-specific callbacks (AgentCallbacks extends SubagentManagerCallbacks)
+    onSubagentUserMessageAdded: (subagentId, params) => {
+      console.log(`Subagent ${subagentId} received: ${params.content}`);
     },
-    onAssistantContentUpdated: (chunk, accumulated) => {
-      updateUI(accumulated);
+    
+    onSubagentAssistantContentUpdated: (subagentId, chunk, accumulated) => {
+      updateSubagentUI(subagentId, accumulated);
     }
   }
 });
 ```
 
-### Step 2: Add Subagent Callbacks (Optional)
-
-Add new subagent-specific callbacks alongside existing ones:
+### Step 2: Direct SubagentManager Usage
 
 ```typescript
-const messageManager = new MessageManager({
+import { SubagentManager } from 'wave-agent-sdk';
+
+const subagentManager = new SubagentManager({
   callbacks: {
-    // Existing callbacks - handle main agent events
-    onUserMessageAdded: (params) => {
-      console.log('Main agent message:', params.content);
-    },
-    
-    // New callbacks - handle subagent events
     onSubagentUserMessageAdded: (subagentId, params) => {
-      console.log(`Subagent ${subagentId} message:`, params.content);
-    },
-    
-    onSubagentAssistantContentUpdated: (subagentId, chunk, accumulated) => {
-      updateSubagentUI(subagentId, accumulated);
+      console.log(`Direct: ${subagentId} - ${params.content}`);
     }
   }
 });

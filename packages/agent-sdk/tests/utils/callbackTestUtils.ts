@@ -5,6 +5,7 @@
 
 import { vi, expect } from "vitest";
 import type { MessageManagerCallbacks } from "../../src/managers/messageManager.js";
+import type { SubagentManagerCallbacks } from "../../src/managers/subagentManager.js";
 
 /**
  * Creates mock callbacks for testing subagent functionality
@@ -30,11 +31,7 @@ export function createMockCallbacks(): MessageManagerCallbacks {
     onCompleteCommandMessage: vi.fn(),
     onSubAgentBlockAdded: vi.fn(),
     onSubAgentBlockUpdated: vi.fn(),
-    // Subagent-specific callbacks (015-subagent-message-callbacks)
-    onSubagentUserMessageAdded: vi.fn(),
-    onSubagentAssistantMessageAdded: vi.fn(),
-    onSubagentAssistantContentUpdated: vi.fn(),
-    onSubagentToolBlockUpdated: vi.fn(),
+    // Note: Subagent-specific callbacks have been moved to SubagentManagerCallbacks
   };
 }
 
@@ -52,11 +49,7 @@ export function createErrorThrowingCallbacks(): MessageManagerCallbacks {
     onAssistantMessageAdded: errorCallback,
     onAssistantContentUpdated: errorCallback,
     onToolBlockUpdated: errorCallback,
-    // Error callbacks for subagent-specific callbacks
-    onSubagentUserMessageAdded: errorCallback,
-    onSubagentAssistantMessageAdded: errorCallback,
-    onSubagentAssistantContentUpdated: errorCallback,
-    onSubagentToolBlockUpdated: errorCallback,
+    // Note: Subagent-specific error callbacks have been moved to SubagentManagerCallbacks
   };
 }
 
@@ -149,18 +142,28 @@ export function createCallbackTestContext(): CallbackTestContext {
 /**
  * Creates mock callbacks specifically for subagent callback testing
  */
-export function createMockSubagentCallbacks(): Pick<
-  MessageManagerCallbacks,
-  | "onSubagentUserMessageAdded"
-  | "onSubagentAssistantMessageAdded"
-  | "onSubagentAssistantContentUpdated"
-  | "onSubagentToolBlockUpdated"
-> {
+export function createMockSubagentCallbacks(): SubagentManagerCallbacks {
   return {
     onSubagentUserMessageAdded: vi.fn(),
     onSubagentAssistantMessageAdded: vi.fn(),
     onSubagentAssistantContentUpdated: vi.fn(),
     onSubagentToolBlockUpdated: vi.fn(),
+  };
+}
+
+/**
+ * Creates error-throwing subagent callbacks for testing error handling
+ */
+export function createErrorThrowingSubagentCallbacks(): SubagentManagerCallbacks {
+  const errorCallback = vi.fn().mockImplementation(() => {
+    throw new Error("Mock subagent callback error");
+  });
+
+  return {
+    onSubagentUserMessageAdded: errorCallback,
+    onSubagentAssistantMessageAdded: errorCallback,
+    onSubagentAssistantContentUpdated: errorCallback,
+    onSubagentToolBlockUpdated: errorCallback,
   };
 }
 
@@ -179,9 +182,9 @@ export function verifySubagentCallback(
  * Creates a test context specifically for subagent callback testing
  */
 export function createSubagentCallbackTestContext(): {
-  mockCallbacks: ReturnType<typeof createMockSubagentCallbacks>;
+  mockCallbacks: SubagentManagerCallbacks;
   verifyCallback: (
-    name: keyof ReturnType<typeof createMockSubagentCallbacks>,
+    name: keyof SubagentManagerCallbacks,
     subagentId: string,
     ...params: unknown[]
   ) => void;

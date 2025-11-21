@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SubagentManager } from "../../../src/managers/subagentManager.js";
 import { MessageManager } from "../../../src/managers/messageManager.js";
 import { ToolManager } from "../../../src/managers/toolManager.js";
-import type { MessageManagerCallbacks } from "../../../src/managers/messageManager.js";
+import type { SubagentManagerCallbacks } from "../../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../../src/types/index.js";
 
@@ -30,27 +30,22 @@ describe("SubagentManager - Callback Integration", () => {
   let subagentManager: SubagentManager;
   let parentMessageManager: MessageManager;
   let parentToolManager: ToolManager;
-  let parentCallbacks: MessageManagerCallbacks;
+  let callbacks: SubagentManagerCallbacks;
   let mockGatewayConfig: GatewayConfig;
   let mockModelConfig: ModelConfig;
 
   beforeEach(async () => {
-    // Set up parent callbacks with spies
-    parentCallbacks = {
-      onMessagesChange: vi.fn(),
-      onUserMessageAdded: vi.fn(),
-      onAssistantMessageAdded: vi.fn(),
-      onAssistantContentUpdated: vi.fn(),
-      onToolBlockUpdated: vi.fn(),
+    // Set up subagent callbacks with spies
+    callbacks = {
       onSubagentUserMessageAdded: vi.fn(),
       onSubagentAssistantMessageAdded: vi.fn(),
       onSubagentAssistantContentUpdated: vi.fn(),
       onSubagentToolBlockUpdated: vi.fn(),
     };
 
-    // Create parent MessageManager
+    // Create parent MessageManager (minimal callbacks needed for this test)
     parentMessageManager = new MessageManager({
-      callbacks: parentCallbacks,
+      callbacks: {},
       workdir: "/tmp/test",
     });
 
@@ -81,7 +76,7 @@ describe("SubagentManager - Callback Integration", () => {
       workdir: "/tmp/test",
       parentToolManager,
       parentMessageManager,
-      parentCallbacks,
+      callbacks,
       gatewayConfig: mockGatewayConfig,
       modelConfig: mockModelConfig,
       tokenLimit: 1000,
@@ -123,8 +118,8 @@ describe("SubagentManager - Callback Integration", () => {
       const userMessage = { content: "Test user message from subagent" };
       instance.messageManager.addUserMessage(userMessage);
 
-      // Verify that the parent callback was called with the subagent ID
-      expect(parentCallbacks.onSubagentUserMessageAdded).toHaveBeenCalledWith(
+      // Verify that the subagent callback was called with the subagent ID
+      expect(callbacks.onSubagentUserMessageAdded).toHaveBeenCalledWith(
         instance.subagentId,
         userMessage,
       );
@@ -161,7 +156,7 @@ describe("SubagentManager - Callback Integration", () => {
 
       instance.messageManager.addUserMessage(userMessageWithImage);
 
-      expect(parentCallbacks.onSubagentUserMessageAdded).toHaveBeenCalledWith(
+      expect(callbacks.onSubagentUserMessageAdded).toHaveBeenCalledWith(
         instance.subagentId,
         userMessageWithImage,
       );
@@ -195,10 +190,10 @@ describe("SubagentManager - Callback Integration", () => {
         "Hello from subagent assistant",
       );
 
-      // Verify that the parent callback was called with the subagent ID
-      expect(
-        parentCallbacks.onSubagentAssistantMessageAdded,
-      ).toHaveBeenCalledWith(instance.subagentId);
+      // Verify that the subagent callback was called with the subagent ID
+      expect(callbacks.onSubagentAssistantMessageAdded).toHaveBeenCalledWith(
+        instance.subagentId,
+      );
 
       // Note: onAssistantMessageAdded is not expected to be called in this context
     });
@@ -236,9 +231,9 @@ describe("SubagentManager - Callback Integration", () => {
         },
       ]);
 
-      expect(
-        parentCallbacks.onSubagentAssistantMessageAdded,
-      ).toHaveBeenCalledWith(instance.subagentId);
+      expect(callbacks.onSubagentAssistantMessageAdded).toHaveBeenCalledWith(
+        instance.subagentId,
+      );
     });
   });
 
@@ -271,10 +266,8 @@ describe("SubagentManager - Callback Integration", () => {
       const newContent = "Starting to stream content...";
       instance.messageManager.updateCurrentMessageContent(newContent);
 
-      // Verify that the parent callback was called with the subagent ID, chunk, and accumulated content
-      expect(
-        parentCallbacks.onSubagentAssistantContentUpdated,
-      ).toHaveBeenCalledWith(
+      // Verify that the subagent callback was called with the subagent ID, chunk, and accumulated content
+      expect(callbacks.onSubagentAssistantContentUpdated).toHaveBeenCalledWith(
         instance.subagentId,
         expect.any(String), // chunk
         newContent, // accumulated content
@@ -313,13 +306,13 @@ describe("SubagentManager - Callback Integration", () => {
       instance.messageManager.updateCurrentMessageContent("Hello world!");
 
       // Should have been called twice
-      expect(
-        parentCallbacks.onSubagentAssistantContentUpdated,
-      ).toHaveBeenCalledTimes(2);
+      expect(callbacks.onSubagentAssistantContentUpdated).toHaveBeenCalledTimes(
+        2,
+      );
 
       // Check the accumulated content in calls
       const mockedCallback = vi.mocked(
-        parentCallbacks.onSubagentAssistantContentUpdated,
+        callbacks.onSubagentAssistantContentUpdated,
       )!;
       expect(mockedCallback.mock.calls).toBeDefined();
       const calls = mockedCallback.mock.calls!;
@@ -375,8 +368,8 @@ describe("SubagentManager - Callback Integration", () => {
 
       instance.messageManager.updateToolBlock(toolUpdateParams);
 
-      // Verify that the parent callback was called with the subagent ID and params
-      expect(parentCallbacks.onSubagentToolBlockUpdated).toHaveBeenCalledWith(
+      // Verify that the subagent callback was called with the subagent ID and params
+      expect(callbacks.onSubagentToolBlockUpdated).toHaveBeenCalledWith(
         instance.subagentId,
         toolUpdateParams,
       );
@@ -437,14 +430,10 @@ describe("SubagentManager - Callback Integration", () => {
       instance.messageManager.updateToolBlock(completedParams);
 
       // Should have been called twice
-      expect(parentCallbacks.onSubagentToolBlockUpdated).toHaveBeenCalledTimes(
-        2,
-      );
+      expect(callbacks.onSubagentToolBlockUpdated).toHaveBeenCalledTimes(2);
 
       // Check the calls
-      const mockedCallback = vi.mocked(
-        parentCallbacks.onSubagentToolBlockUpdated,
-      )!;
+      const mockedCallback = vi.mocked(callbacks.onSubagentToolBlockUpdated)!;
       expect(mockedCallback.mock.calls).toBeDefined();
       const calls = mockedCallback.mock.calls!;
       expect(calls[0]).toEqual([instance.subagentId, runningParams]);
@@ -454,18 +443,17 @@ describe("SubagentManager - Callback Integration", () => {
 
   describe("error handling and edge cases", () => {
     it("should handle callback errors gracefully without breaking subagent functionality", async () => {
-      const errorCallbacks: MessageManagerCallbacks = {
+      const errorCallbacks: SubagentManagerCallbacks = {
         onSubagentUserMessageAdded: vi.fn().mockImplementation(() => {
-          throw new Error("Parent callback error");
+          throw new Error("Callback error");
         }),
-        onUserMessageAdded: vi.fn(),
       };
 
       const errorSubagentManager = new SubagentManager({
         workdir: "/tmp/test",
         parentToolManager,
         parentMessageManager,
-        parentCallbacks: errorCallbacks,
+        callbacks: errorCallbacks,
         gatewayConfig: mockGatewayConfig,
         modelConfig: mockModelConfig,
         tokenLimit: 1000,
@@ -496,15 +484,13 @@ describe("SubagentManager - Callback Integration", () => {
       );
       vi.clearAllMocks();
 
-      // This should not throw even though the parent callback throws
+      // This should throw when the callback throws (callbacks errors propagate)
       expect(() => {
         instance.messageManager.addUserMessage({ content: "Test message" });
-      }).not.toThrow();
+      }).toThrow("Callback error");
 
       // The error callback should have been called
       expect(errorCallbacks.onSubagentUserMessageAdded).toHaveBeenCalled();
-
-      // Note: onUserMessageAdded is not expected to be called in this context
     });
 
     it("should work when parent callbacks are not provided", async () => {
@@ -512,7 +498,7 @@ describe("SubagentManager - Callback Integration", () => {
         workdir: "/tmp/test",
         parentToolManager,
         parentMessageManager,
-        // No parentCallbacks provided
+        // No callbacks provided
         gatewayConfig: mockGatewayConfig,
         modelConfig: mockModelConfig,
         tokenLimit: 1000,
@@ -605,13 +591,9 @@ describe("SubagentManager - Callback Integration", () => {
       });
 
       // Should have been called twice with different subagent IDs
-      expect(parentCallbacks.onSubagentUserMessageAdded).toHaveBeenCalledTimes(
-        2,
-      );
+      expect(callbacks.onSubagentUserMessageAdded).toHaveBeenCalledTimes(2);
 
-      const mockedCallback = vi.mocked(
-        parentCallbacks.onSubagentUserMessageAdded,
-      )!;
+      const mockedCallback = vi.mocked(callbacks.onSubagentUserMessageAdded)!;
       expect(mockedCallback.mock.calls).toBeDefined();
       const calls = mockedCallback.mock.calls!;
       expect(calls[0]![0]).toBe(instance1.subagentId);
