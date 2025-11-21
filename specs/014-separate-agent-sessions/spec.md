@@ -2,7 +2,7 @@
 
 **Feature Branch**: `014-separate-agent-sessions`
 **Created**: 2025-11-20
-**Status**: Draft
+**Status**: Implemented
 **Input**: User description: "packages/agent-sdk/src/managers/subagentManager.ts has many message manager, packages/agent-sdk/src/managers/messageManager.ts can save session, packages/agent-sdk/src/agent.ts also has message manager, when saving session, i would like agent and subagent have different session file name"
 
 ## User Scenarios & Testing *(mandatory)*

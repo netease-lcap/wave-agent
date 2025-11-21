@@ -1,13 +1,12 @@
-# Implementation Plan: [FEATURE]
+# Implementation Plan: Separate Agent Sessions
 
-**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
-**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
-
-**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
+**Branch**: `014-separate-agent-sessions` | **Date**: 2025-11-20 | **Spec**: [link](spec.md)
+**Input**: Feature specification from `/specs/014-separate-agent-sessions/spec.md`
+**Status**: Implemented
 
 ## Summary
 
-[Extract from feature spec: primary requirement + technical approach from research]
+Enable agent and subagent sessions to be saved with different filename patterns by adding session prefix support to MessageManager and configuring SubagentManager to use a distinct prefix (`subagent_session_`).
 
 ## Technical Context
 

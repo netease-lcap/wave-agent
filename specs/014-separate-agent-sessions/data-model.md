@@ -1,10 +1,12 @@
 # Data Model: Separate Agent Sessions
 
+**Status**: Implemented
+
 ## Entities
 
 ### MessageManager Configuration
 
-The `MessageManager` configuration will be extended to support session prefixes.
+The `MessageManager` configuration has been extended to support session prefixes.
 
 ```typescript
 interface MessageManagerOptions {
@@ -13,9 +15,8 @@ interface MessageManagerOptions {
   logger?: Logger;
   sessionDir?: string;
   /**
-   * Prefix for the session file name.
+   * Custom session filename prefix
    * @default "session"
-   * @example "subagent_session"
    */
   sessionPrefix?: string;
 }
@@ -23,7 +24,7 @@ interface MessageManagerOptions {
 
 ### Session Service Signatures
 
-The session service functions will be updated to support prefixes.
+The session service functions have been updated to support prefixes.
 
 ```typescript
 /**
@@ -32,7 +33,7 @@ The session service functions will be updated to support prefixes.
 function getSessionFilePath(
   sessionId: string, 
   sessionDir?: string, 
-  prefix: string = "session"
+  prefix?: string
 ): string
 
 /**
@@ -45,7 +46,7 @@ function saveSession(
   latestTotalTokens: number = 0,
   startedAt?: string,
   sessionDir?: string,
-  prefix: string = "session"
+  prefix?: string
 ): Promise<void>
 ```
 

@@ -24,13 +24,13 @@
 
 ### MessageManager Updates
 
-- [ ] T006 [P] [US1] Update `MessageManager` tests to verify `sessionPrefix` configuration in `packages/agent-sdk/tests/managers/messageManager.test.ts`
-- [ ] T007 [US1] Update `MessageManager` interface and class to support `sessionPrefix` in `packages/agent-sdk/src/managers/messageManager.ts`
+- [X] T006 [P] [US1] Update `MessageManager` tests to verify `sessionPrefix` configuration in `packages/agent-sdk/tests/managers/messageManager.test.ts`
+- [X] T007 [US1] Update `MessageManager` interface and class to support `sessionPrefix` in `packages/agent-sdk/src/managers/messageManager.ts`
 
 ### SubagentManager Updates
 
-- [ ] T008 [P] [US1] Update `SubagentManager` tests to verify subagent creation uses correct session prefix in `packages/agent-sdk/tests/managers/subagentManager.test.ts`
-- [ ] T009 [US1] Update `SubagentManager` to initialize subagent `MessageManager` with `subagent_session` prefix in `packages/agent-sdk/src/managers/subagentManager.ts`
+- [X] T008 [P] [US1] Update `SubagentManager` tests to verify subagent creation uses correct session prefix in `packages/agent-sdk/tests/managers/subagentManager.sessions.test.ts`
+- [X] T009 [US1] Update `SubagentManager` to initialize subagent `MessageManager` with `subagent_session` prefix in `packages/agent-sdk/src/managers/subagentManager.ts`
 
 ### Verification
 
