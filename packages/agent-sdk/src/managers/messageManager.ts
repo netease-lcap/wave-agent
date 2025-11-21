@@ -82,6 +82,13 @@ export interface MessageManagerOptions {
    * @default join(homedir(), ".wave", "sessions")
    */
   sessionDir?: string;
+
+  // New: Optional session filename prefix
+  /**
+   * Custom session filename prefix
+   * @default "session"
+   */
+  sessionPrefix?: string;
 }
 
 export class MessageManager {
@@ -95,6 +102,7 @@ export class MessageManager {
   private logger?: Logger; // Add optional logger property
   private callbacks: MessageManagerCallbacks;
   private sessionDir?: string; // Add session directory property
+  private sessionPrefix?: string; // Add session prefix property
 
   constructor(options: MessageManagerOptions) {
     this.sessionId = randomUUID();
@@ -106,6 +114,7 @@ export class MessageManager {
     this.callbacks = options.callbacks;
     this.logger = options.logger;
     this.sessionDir = options.sessionDir;
+    this.sessionPrefix = options.sessionPrefix;
   }
 
   // Getter methods
@@ -126,7 +135,11 @@ export class MessageManager {
   }
 
   public getTranscriptPath(): string {
-    return getSessionFilePath(this.sessionId, this.sessionDir);
+    return getSessionFilePath(
+      this.sessionId,
+      this.sessionDir,
+      this.sessionPrefix,
+    );
   }
 
   // Setter methods, will trigger callbacks
@@ -154,6 +167,7 @@ export class MessageManager {
         this.latestTotalTokens,
         this.sessionStartTime,
         this.sessionDir,
+        this.sessionPrefix,
       );
     } catch (error) {
       this.logger?.error("Failed to save session:", error);
@@ -169,7 +183,11 @@ export class MessageManager {
   ): Promise<void> {
     // Clean up expired sessions first
     try {
-      await cleanupExpiredSessions(this.workdir, this.sessionDir);
+      await cleanupExpiredSessions(
+        this.workdir,
+        this.sessionDir,
+        this.sessionPrefix,
+      );
     } catch (error) {
       this.logger?.warn("Failed to cleanup expired sessions:", error);
     }
@@ -182,7 +200,11 @@ export class MessageManager {
       let sessionToRestore: SessionData | null = null;
 
       if (restoreSessionId) {
-        sessionToRestore = await loadSession(restoreSessionId, this.sessionDir);
+        sessionToRestore = await loadSession(
+          restoreSessionId,
+          this.sessionDir,
+          this.sessionPrefix,
+        );
         if (!sessionToRestore) {
           console.error(`Session not found: ${restoreSessionId}`);
           process.exit(1);
@@ -191,6 +213,7 @@ export class MessageManager {
         sessionToRestore = await getLatestSession(
           this.workdir,
           this.sessionDir,
+          this.sessionPrefix,
         );
         if (!sessionToRestore) {
           console.error(
