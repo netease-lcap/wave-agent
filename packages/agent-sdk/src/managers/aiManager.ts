@@ -512,8 +512,18 @@ export class AIManager {
         error instanceof Error ? error.message : "Unknown error occurred",
       );
     } finally {
-      // Only execute Stop hooks for the initial call
+      // Only execute cleanup and hooks for the initial call
       if (recursionDepth === 0) {
+        // Set loading to false first
+        this.setIsLoading(false);
+
+        // Clear abort controllers
+        this.abortController = null;
+        this.toolAbortController = null;
+
+        // Save session after cleanup
+        await this.messageManager.saveSession();
+
         // Execute Stop hooks only if the operation was not aborted
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
@@ -529,24 +539,14 @@ export class AIManager {
             );
 
             // Restart the conversation to let AI fix the issues
-            // Use recursionDepth = 1 to prevent Stop hooks from running again in continuation
+            // Use recursionDepth = 0 to set loading false again for continuation
             await this.sendAIMessage({
-              recursionDepth: 1,
+              recursionDepth: 0,
               model,
               allowedTools,
             });
           }
         }
-
-        // Save session after all operations (including continuation) are complete
-        await this.messageManager.saveSession();
-
-        // Clear abort controllers and loading state after all operations are complete
-        this.abortController = null;
-        this.toolAbortController = null;
-
-        // Set loading to false at the very end, after all operations including continuation
-        this.setIsLoading(false);
       }
     }
   }

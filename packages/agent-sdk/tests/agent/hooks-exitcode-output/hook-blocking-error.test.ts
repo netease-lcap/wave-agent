@@ -421,19 +421,36 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
         .hookManager;
       const mockExecuteHooks = vi.spyOn(hookManager, "executeHooks");
 
-      // Mock hook executions - return blocking error only for Stop
+      // Mock hook executions - return blocking error only for first Stop call
+      let stopHookCallCount = 0;
       mockExecuteHooks.mockImplementation(async (event) => {
         if (event === "Stop") {
-          return [
-            {
-              success: false,
-              exitCode: 2,
-              stdout: "",
-              stderr: "Session cleanup failed - manual intervention required",
-              duration: 60,
-              timedOut: false,
-            },
-          ];
+          stopHookCallCount++;
+          if (stopHookCallCount === 1) {
+            // First Stop call: return blocking error
+            return [
+              {
+                success: false,
+                exitCode: 2,
+                stdout: "",
+                stderr: "Session cleanup failed - manual intervention required",
+                duration: 60,
+                timedOut: false,
+              },
+            ];
+          } else {
+            // Subsequent Stop calls: return successful result
+            return [
+              {
+                success: true,
+                exitCode: 0,
+                stdout: "Session cleanup completed successfully",
+                stderr: "",
+                duration: 30,
+                timedOut: false,
+              },
+            ];
+          }
         }
         // Return empty results for other hook events
         return [];
