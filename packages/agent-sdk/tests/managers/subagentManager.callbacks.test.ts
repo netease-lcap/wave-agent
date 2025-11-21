@@ -4,21 +4,21 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { SubagentManager } from "../../../src/managers/subagentManager.js";
-import { MessageManager } from "../../../src/managers/messageManager.js";
-import { ToolManager } from "../../../src/managers/toolManager.js";
-import type { SubagentManagerCallbacks } from "../../../src/managers/subagentManager.js";
-import type { SubagentConfiguration } from "../../../src/utils/subagentParser.js";
-import type { GatewayConfig, ModelConfig } from "../../../src/types/index.js";
+import { SubagentManager } from "../../src/managers/subagentManager.js";
+import { MessageManager } from "../../src/managers/messageManager.js";
+import { ToolManager } from "../../src/managers/toolManager.js";
+import type { SubagentManagerCallbacks } from "../../src/managers/subagentManager.js";
+import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
+import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 
 // Mock the subagent parser module
-vi.mock("../../../src/utils/subagentParser.js", () => ({
+vi.mock("../../src/utils/subagentParser.js", () => ({
   loadSubagentConfigurations: vi.fn().mockResolvedValue([]),
   findSubagentByName: vi.fn().mockResolvedValue(null),
 }));
 
 // Mock the AI service
-vi.mock("../../../src/services/aiService.js", () => ({
+vi.mock("../../src/services/aiService.js", () => ({
   sendAIMessage: vi.fn().mockResolvedValue({
     content: "Mock AI response",
     toolCalls: [],
@@ -57,7 +57,7 @@ describe("SubagentManager - Callback Integration", () => {
 
     parentToolManager = new ToolManager({
       mcpManager:
-        mockMcpManager as unknown as import("../../../src/managers/mcpManager.js").McpManager,
+        mockMcpManager as unknown as import("../../src/managers/mcpManager.js").McpManager,
     });
 
     // Mock configurations
