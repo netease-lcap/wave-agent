@@ -6,7 +6,7 @@
 
 ## Overview
 
-This feature adds dedicated subagent-specific callbacks through a new SubagentManagerCallbacks interface, providing clean architectural separation between main agent and subagent event handling.
+This feature adds dedicated subagent-specific callbacks through a new SubagentManagerCallbacks interface, providing clean architectural separation between main agent and subagent event handling. Messages are managed via callbacks rather than stored in SubagentBlock properties.
 
 ## Key Benefits
 

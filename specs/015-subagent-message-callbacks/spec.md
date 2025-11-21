@@ -16,17 +16,27 @@ This feature has been successfully implemented through an architectural refactor
    - `onSubagentAssistantMessageAdded` 
    - `onSubagentAssistantContentUpdated`
    - `onSubagentToolBlockUpdated`
+   - `onSubagentMessagesChange` (added for message state management)
 
 2. **Refactored SubagentManager**: 
    - Removed `parentCallbacks` property in favor of `callbacks: SubagentManagerCallbacks`
    - Updated `createInstance` method to forward callbacks through the new system
    - Each subagent now properly forwards events with `subagentId` parameter
+   - Messages removed from `SubagentBlock` type, handled via callbacks instead
 
-3. **Extended Agent Interface**:
+3. **Removed Messages from SubagentBlock**:
+   - `SubagentBlock` interface no longer contains `messages` field
+   - `updateSubagentBlock` function no longer accepts `messages` parameter
+   - Subagent messages now managed through dedicated callback system
+
+4. **Updated UI Layer**:
+   - `useChat` context now maintains `subagentMessages` state via callbacks
+   - `SubagentBlock` component reads messages from context instead of block properties
+   - Cleaner separation between message storage and UI display
    - `AgentCallbacks` now extends `SubagentManagerCallbacks`
    - Agent instantiation updated to pass callbacks to SubagentManager correctly
 
-4. **Updated Test Suite**:
+6. **Updated Test Suite**:
    - Removed obsolete tests from MessageManager for subagent callbacks
    - Updated SubagentManager tests to reflect new callback ownership
    - All 669 unit tests pass, confirming functionality

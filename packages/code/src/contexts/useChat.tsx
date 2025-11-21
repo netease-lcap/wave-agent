@@ -50,6 +50,8 @@ export interface ChatContextType {
   // Slash Command functionality
   slashCommands: SlashCommand[];
   hasSlashCommand: (commandId: string) => boolean;
+  // Subagent messages
+  subagentMessages: Record<string, Message[]>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -92,6 +94,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Command state
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
+
+  // Subagent messages state
+  const [subagentMessages, setSubagentMessages] = useState<
+    Record<string, Message[]>
+  >({});
 
   const agentRef = useRef<Agent | null>(null);
 
@@ -147,6 +154,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
         },
         onShellsChange: (shells) => {
           setBackgroundShells([...shells]);
+        },
+        onSubagentMessagesChange: (subagentId, messages) => {
+          // Skip updates when in expanded mode
+          if (!isExpandedRef.current) {
+            setSubagentMessages((prev) => ({
+              ...prev,
+              [subagentId]: [...messages],
+            }));
+          }
         },
       };
 
@@ -324,6 +340,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     killBackgroundShell,
     slashCommands,
     hasSlashCommand,
+    subagentMessages,
   };
 
   return (

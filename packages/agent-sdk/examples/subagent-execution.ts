@@ -78,7 +78,6 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
               console.log(`   - Subagent ID: ${block.subagentId}`);
               console.log(`   - Subagent Name: ${block.subagentName}`);
               console.log(`   - Status: ${block.status}`);
-              console.log(`   - Messages: ${block.messages.length}`);
             }
           });
         });
@@ -129,44 +128,14 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
         console.log(`    💬 Prompt: ${parameters.prompt}`);
         console.log(`    🤖 Subagent Type: ${parameters.subagent_type}`);
       },
-      onSubAgentBlockUpdated: (subagentId: string, messages, status) => {
+      onSubAgentBlockUpdated: (
+        subagentId: string,
+        status: "active" | "completed" | "error" | "aborted",
+      ) => {
         console.log(
-          `\n🤖🔄 CALLBACK: Subagent ${subagentId} updated with ${messages.length} messages (Status: ${status})`,
+          `\n🤖🔄 CALLBACK: Subagent ${subagentId} updated (Status: ${status})`,
         );
         console.log(`    ⏰ Timestamp: ${new Date().toISOString()}`);
-        // Log the latest message from the subagent (using Wave Agent's Message format)
-        const latestMessage = messages[messages.length - 1];
-        if (
-          latestMessage &&
-          latestMessage.role === "assistant" &&
-          latestMessage.blocks
-        ) {
-          // Find text blocks in the message
-          const textBlocks = latestMessage.blocks.filter(
-            (block) => block.type === "text",
-          );
-          if (textBlocks.length > 0) {
-            const content = textBlocks
-              .map((block) => ("content" in block ? block.content : ""))
-              .join(" ");
-            if (content) {
-              console.log(
-                `    🤖💬 Subagent response: ${content.substring(0, 150)}${content.length > 150 ? "..." : ""}`,
-              );
-            }
-          }
-          // Log tool blocks if any
-          const toolBlocks = latestMessage.blocks.filter(
-            (block) => block.type === "tool",
-          );
-          if (toolBlocks.length > 0) {
-            toolBlocks.forEach((toolBlock, index) => {
-              const toolName =
-                "name" in toolBlock ? toolBlock.name || "unknown" : "unknown";
-              console.log(`    🔧 Tool call ${index + 1}: ${toolName}`);
-            });
-          }
-        }
         console.log(""); // Add spacing
       },
     },
