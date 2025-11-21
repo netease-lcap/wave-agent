@@ -1,12 +1,12 @@
 # Subagent Message Callbacks API Contract
 
 **Package**: agent-sdk  
-**File**: `src/managers/messageManager.ts`  
-**Interface**: MessageManagerCallbacks (Extended)
+**File**: `src/managers/subagentManager.ts`  
+**Interface**: SubagentManagerCallbacks (New)
 
-## Interface Extension
+## Interface Definition
 
-Extends existing `MessageManagerCallbacks` interface with granular subagent-specific callbacks to track individual message events from subagents.
+Creates dedicated `SubagentManagerCallbacks` interface for subagent-specific callbacks, separate from MessageManagerCallbacks to provide clean architectural separation.
 
 ## New Callback Definitions
 
@@ -117,13 +117,7 @@ onSubagentToolBlockUpdated?: (
 
 ### Basic Subagent Monitoring
 ```typescript
-const callbacks: MessageManagerCallbacks = {
-  // Existing main agent callbacks (unchanged)
-  onUserMessageAdded: (params) => {
-    console.log('Main agent message:', params.content);
-  },
-  
-  // New subagent-specific callbacks
+const callbacks: SubagentManagerCallbacks = {
   onSubagentUserMessageAdded: (subagentId, params) => {
     console.log(`[${subagentId}] User: ${params.content}`);
   },
@@ -136,6 +130,11 @@ const callbacks: MessageManagerCallbacks = {
     showSubagentToolProgress(subagentId, params.name, params.stage);
   }
 };
+
+// Pass to Agent which forwards to SubagentManager
+const agent = await Agent.create({
+  callbacks: callbacks, // AgentCallbacks extends SubagentManagerCallbacks
+});
 ```
 
 ### Multi-Agent UI Implementation

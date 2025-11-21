@@ -1,13 +1,13 @@
 # Implementation Plan: Subagent Message Callbacks
 
-**Branch**: `015-subagent-message-callbacks` | **Date**: 2025-11-20 | **Spec**: [spec.md](./spec.md)
+**Branch**: `015-subagent-message-callbacks` | **Date**: 2025-11-20 | **Status**: ✅ Completed | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/015-subagent-message-callbacks/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
 ## Summary
 
-Add simple granular message callbacks for subagents to enable basic tracking of individual message events (user messages, assistant messages, content streaming, tool usage) at the subagent level. This extends the existing callback system in MessageManager with straightforward callback forwarding, focusing on core functionality without complex error handling or performance monitoring.
+Add granular message callbacks for subagents through dedicated SubagentManagerCallbacks interface. Implemented via architectural refactoring that moved subagent callback responsibility from MessageManager to SubagentManager for cleaner separation of concerns.
 
 ## Technical Context
 
@@ -61,27 +61,23 @@ specs/[###-feature]/
 ### Source Code (repository root)
 
 ```
-# Existing Wave Agent monorepo structure - this feature extends existing files
+# Implemented Wave Agent monorepo structure
 packages/
 ├── agent-sdk/
 │   ├── src/
 │   │   ├── managers/
-│   │   │   ├── messageManager.ts     # MODIFY: Add new subagent callback interfaces to existing MessageManagerCallbacks
-│   │   │   └── subagentManager.ts    # MODIFY: Update existing callback forwarding in createInstance()
-│   │   └── utils/
-│   │       └── messageOperations.ts # REVIEW: Ensure callback propagation
+│   │   │   ├── messageManager.ts     # Unchanged - no subagent callbacks added here
+│   │   │   └── subagentManager.ts    # ✅ MODIFIED: Uses SubagentManagerCallbacks interface  
+│   │   └── agent.ts                  # ✅ MODIFIED: AgentCallbacks extends SubagentManagerCallbacks
 │   └── tests/
 │       └── managers/
-│           ├── messageManager/       # CREATE: New test organization
-│           │   └── subagentCallbacks.test.ts  # CREATE: TDD test file
-│           └── subagentManager/      # CREATE: New test organization  
-│               └── callbackIntegration.test.ts # CREATE: Integration tests
+│           └── subagentManager/      # ✅ UPDATED: Tests reflect new callback ownership
 └── code/
     └── src/
         └── components/              # FUTURE: UI components may use new callbacks
 ```
 
-**Structure Decision**: This is a library extension within the existing monorepo. All changes are contained within the `agent-sdk` package, following the established manager pattern. No new packages required - we extend existing MessageManager and SubagentManager classes with new callback interfaces while maintaining backward compatibility.
+**Architecture Decision**: Created dedicated SubagentManagerCallbacks interface instead of extending MessageManagerCallbacks, providing cleaner separation between main agent and subagent callback responsibilities.
 
 
 

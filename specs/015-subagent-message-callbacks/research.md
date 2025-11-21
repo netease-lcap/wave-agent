@@ -2,47 +2,49 @@
 
 **Feature**: 015-subagent-message-callbacks  
 **Date**: 2025-11-20  
-**Status**: Complete
+**Status**: ✅ Completed
 
 ## Research Overview
 
 This research phase investigated simple TypeScript patterns for adding basic subagent message callbacks to the Wave Agent system while maintaining 100% backward compatibility.
 
-## Decision 1: Simple Additive Callback Pattern
+## Decision 1: Dedicated SubagentManagerCallbacks Interface
 
-**Decision**: Add New Subagent-Specific Callbacks Only
+**Decision**: Create separate SubagentManagerCallbacks interface instead of extending MessageManagerCallbacks
 
 **Rationale**: 
-- Maintains complete backward compatibility by never modifying existing callback signatures
-- Provides clean dedicated subagent callbacks for new functionality
-- No complex context parameters or smart dispatch logic needed
-- Straightforward implementation without advanced features
+- Cleaner architectural separation between MessageManager and SubagentManager responsibilities
+- Avoids mixing main agent callbacks with subagent-specific callbacks
+- SubagentManager owns its callback system independently
+- AgentCallbacks extends SubagentManagerCallbacks for end-to-end integration
 
 **Alternatives Considered**:
 - Adding context parameters to existing callbacks (rejected: modifies existing signatures)
 - Hybrid approach with both patterns (rejected: unnecessary complexity)
 
-## Decision 2: Simple Interface Extension
+## Decision 2: SubagentManager Callback Ownership
 
-**Decision**: Pure Additive Interface Extension
+**Decision**: SubagentManager uses `callbacks: SubagentManagerCallbacks` instead of `parentCallbacks`
 
 **Rationale**:
-- Extends `MessageManagerCallbacks` with new optional subagent-specific callbacks only
-- Existing callbacks work exactly as before with zero changes
-- Simple parallel callback system for subagent events
-- Maintains full TypeScript type inference
+- SubagentManager owns its callback responsibilities rather than forwarding to MessageManager
+- Cleaner separation of concerns between manager classes
+- Maintains full TypeScript type safety with dedicated interfaces
+- Eliminates callback forwarding complexity
 
 **Implementation Pattern**:
 ```typescript
-// Extended interface (backward compatible)
-interface MessageManagerCallbacks {
-  // Existing callbacks (unchanged)
-  onUserMessageAdded?: (params: UserMessageParams) => void;
-  onAssistantContentUpdated?: (chunk: string, accumulated: string) => void;
-  
-  // New subagent callbacks
+// New SubagentManager interface
+interface SubagentManagerOptions {
+  callbacks?: SubagentManagerCallbacks;
+}
+
+// Dedicated subagent callbacks
+interface SubagentManagerCallbacks {
   onSubagentUserMessageAdded?: (subagentId: string, params: UserMessageParams) => void;
+  onSubagentAssistantMessageAdded?: (subagentId: string) => void;
   onSubagentAssistantContentUpdated?: (subagentId: string, chunk: string, accumulated: string) => void;
+  onSubagentToolBlockUpdated?: (subagentId: string, params: AgentToolBlockUpdateParams) => void;
 }
 ```
 
@@ -87,15 +89,15 @@ cleanupInstance(subagentId: string): void {
 
 ## Integration Points
 
-### MessageManager Changes
-- Extend `MessageManagerCallbacks` interface with basic subagent callbacks
-- Add simple context parameter to existing callback executions
-- Direct callback execution without smart dispatch
-
 ### SubagentManager Changes
-- Create simple callback forwarding for each subagent instance
-- Forward callbacks with subagentId context
-- Use existing cleanup methods
+- Created SubagentManagerCallbacks interface with dedicated subagent callback definitions
+- Refactored SubagentManager to use `callbacks: SubagentManagerCallbacks` instead of `parentCallbacks`
+- Callback forwarding with subagentId context through dedicated callback system
+
+### Agent Integration Changes
+- Extended AgentCallbacks to include SubagentManagerCallbacks for end-to-end callback support
+- Agent class passes subagent callbacks to SubagentManager through new interface
+- Maintains backward compatibility while enabling subagent-specific event handling
 
 ### Type System Changes
 - Add basic subagent callback types to `types/index.ts`
