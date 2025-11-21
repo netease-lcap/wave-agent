@@ -19,6 +19,7 @@ import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
+import type { ToolBlock } from "../types/messaging.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 
 export interface AIManagerCallbacks {
@@ -258,9 +259,15 @@ export class AIManager {
       recursionDepth?: number;
       model?: string;
       allowedTools?: string[];
+      parentMessageManager?: MessageManager;
     } = {},
   ): Promise<void> {
-    const { recursionDepth = 0, model, allowedTools } = options;
+    const {
+      recursionDepth = 0,
+      model,
+      allowedTools,
+      parentMessageManager,
+    } = options;
 
     // Only check isLoading for the initial call (recursionDepth === 0)
     if (recursionDepth === 0 && this.isLoading) {
@@ -293,10 +300,26 @@ export class AIManager {
       this.setIsLoading(true);
     }
 
+    const messagesSource = this.messageManager.getMessages();
+    const parentMessagesSource = parentMessageManager?.getMessages?.() || [];
+    const recentParentMessagesSource = parentMessagesSource.filter((item) => {
+      const { role, blocks = [] } = item;
+
+      const notUser = role !== "user";
+      const notSubagent = blocks.every(
+        (current) => current.type !== "subagent",
+      );
+      const notTodo = blocks.every(
+        (current) => (current as ToolBlock).name !== "TodoWrite",
+      );
+
+      return notUser && notSubagent && notTodo;
+    });
+
+    messagesSource.splice(1, 0, ...recentParentMessagesSource);
+
     // Get recent message history
-    const recentMessages = convertMessagesForAPI(
-      this.messageManager.getMessages(),
-    );
+    const recentMessages = convertMessagesForAPI(messagesSource);
 
     try {
       // Get combined memory content
@@ -565,6 +588,7 @@ export class AIManager {
             recursionDepth: recursionDepth + 1,
             model,
             allowedTools,
+            parentMessageManager,
           });
         }
       }
@@ -604,6 +628,7 @@ export class AIManager {
               recursionDepth: 0,
               model,
               allowedTools,
+              parentMessageManager,
             });
           }
         }
