@@ -4,6 +4,7 @@ import * as aiService from "@/services/aiService.js";
 import { Message } from "@/types/index.js";
 import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
+import { MessageManager } from "@/managers/messageManager.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -494,5 +495,74 @@ describe("Agent Message Compression Tests", () => {
         text: "Second message after compression",
       },
     ]);
+  });
+
+  it("should save session before compression to preserve original messages", async () => {
+    // Create message history with enough messages to trigger compression
+    const messages = generateMessages(8);
+
+    // Add a new user message to trigger AI call
+    const newUserMessage: Message = {
+      role: "user",
+      blocks: [
+        {
+          type: "text",
+          content: "Please optimize the component performance",
+        },
+      ],
+    };
+
+    // Recreate Agent and pass in message history
+    await agent.destroy();
+    agent = await Agent.create({
+      messages: [...messages, newUserMessage],
+    });
+
+    // Track saveSession calls
+    const saveSessionSpy = vi.spyOn(
+      (agent as unknown as { messageManager: MessageManager }).messageManager,
+      "saveSession",
+    );
+
+    // Mock AI service
+    const mockCallAgent = vi.mocked(aiService.callAgent);
+    const mockCompressMessages = vi.mocked(aiService.compressMessages);
+
+    mockCallAgent.mockImplementation(async () => {
+      // Return high token usage to trigger compression
+      return {
+        content: "I understand your request. Let me help you with that.",
+        usage: {
+          prompt_tokens: 50000,
+          completion_tokens: 20000,
+          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // Exceed default limit to trigger compression
+        },
+      };
+    });
+
+    mockCompressMessages.mockImplementation(async () => {
+      return {
+        content:
+          "Compressed content: Previous conversations involved multiple task requests and corresponding processing.",
+      };
+    });
+
+    // Call sendMessage to trigger AI call (this will trigger compression)
+    await agent.sendMessage("Test message");
+
+    // Verify saveSession was called at least twice:
+    // 1. Before compression (to preserve original messages)
+    // 2. At the end of sendAIMessage (normal session save)
+    expect(saveSessionSpy).toHaveBeenCalledTimes(2);
+
+    // Verify the order: saveSession should be called before compressMessages
+    const saveSessionCalls = saveSessionSpy.mock.invocationCallOrder;
+    const compressMessagesCalls = mockCompressMessages.mock.invocationCallOrder;
+
+    // At least one saveSession call should happen before compression
+    expect(saveSessionCalls[0]).toBeLessThan(compressMessagesCalls[0]);
+
+    // Verify compression function was called
+    expect(mockCompressMessages).toHaveBeenCalledTimes(1);
   });
 });

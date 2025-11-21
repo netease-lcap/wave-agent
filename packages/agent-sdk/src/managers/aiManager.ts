@@ -160,6 +160,9 @@ export class AIManager {
       if (messagesToCompress.length > 0) {
         const recentChatMessages = convertMessagesForAPI(messagesToCompress);
 
+        // Save session before compression to preserve original messages
+        await this.messageManager.saveSession();
+
         this.setIsCompressing(true);
         try {
           const compressionResult = await compressMessages({
