@@ -388,7 +388,9 @@ export class AIManager {
                 id: toolId,
                 stage: "running",
                 name: toolName,
-                parameters: "", // Empty parameters for running stage
+                compactParams,
+                parameters: argsString,
+                parametersChunk: "",
               });
 
               try {
@@ -424,7 +426,7 @@ export class AIManager {
                 // Update message state - tool execution completed
                 this.messageManager.updateToolBlock({
                   id: toolId,
-                  parameters: JSON.stringify(toolArgs, null, 2),
+                  parameters: argsString,
                   result:
                     toolResult.content ||
                     (toolResult.error ? `Error: ${toolResult.error}` : ""),
@@ -433,7 +435,6 @@ export class AIManager {
                   stage: "end",
                   name: toolName,
                   shortResult: toolResult.shortResult,
-                  compactParams,
                 });
 
                 // If tool returns diff information, add diff block
