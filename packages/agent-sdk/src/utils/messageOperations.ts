@@ -1,4 +1,5 @@
-import type { Message, Usage, MessageSource } from "../types/index.js";
+import type { Message, Usage } from "../types/index.js";
+import { MessageSource } from "../types/index.js";
 import type { SubagentConfiguration } from "./subagentParser.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
@@ -83,17 +84,18 @@ export interface CompleteCommandParams {
 
 /**
  * Extract text content from user messages in the messages array
+ * Excludes messages with source HOOK to prevent hook-generated content from entering user history
  */
 export const extractUserInputHistory = (messages: Message[]): string[] => {
   return messages
     .filter((message) => message.role === "user")
     .map((message) => {
-      // Extract all text block content and merge
+      // Extract text block content, excluding HOOK-sourced blocks
       const textBlocks = message.blocks.filter(
-        (block) => block.type === "text",
+        (block) => block.type === "text" && block.source !== MessageSource.HOOK,
       );
       return textBlocks
-        .map((block) => block.content)
+        .map((block) => (block as { content: string }).content)
         .join(" ")
         .trim();
     })
