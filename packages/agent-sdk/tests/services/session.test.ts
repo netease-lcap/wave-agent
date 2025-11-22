@@ -68,13 +68,12 @@ describe("Session Service", () => {
 
   const mockSessionData: SessionData = {
     id: mockSessionId,
-    timestamp: "2024-01-01T00:00:00.000Z",
     version: "1.0.0",
     messages: mockMessages,
     metadata: {
       workdir: mockWorkdir,
-      startedAt: "2024-01-01T00:00:00.000Z",
-      lastActiveAt: "2024-01-01T00:00:00.000Z",
+      startedAt: "2024-01-01T10:00:00.000Z", // Earlier time - when session started
+      lastActiveAt: "2024-01-01T10:30:00.000Z", // Same as timestamp
       latestTotalTokens: 100,
     },
   };

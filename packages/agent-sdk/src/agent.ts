@@ -29,6 +29,8 @@ import { HookManager } from "./managers/hookManager.js";
 import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
+import { loadSession } from "./services/session.js";
+import type { SubagentConfiguration } from "./utils/subagentParser.js";
 
 /**
  * Configuration options for Agent instances
@@ -414,6 +416,88 @@ export class Agent {
       );
       // Rebuild usage array from restored messages
       this.rebuildUsageFromMessages();
+
+      // After main session is restored, restore any associated subagent sessions
+      await this.restoreSubagentSessions();
+    }
+  }
+
+  /**
+   * Restore subagent sessions associated with the current main session
+   * This method is called after the main session is restored to load any subagent sessions
+   */
+  private async restoreSubagentSessions(): Promise<void> {
+    try {
+      // Only attempt to restore subagent sessions if we have messages (session was restored)
+      if (this.messages.length === 0) {
+        return;
+      }
+
+      // Extract sessionId -> subagentId mapping from SubagentBlocks
+      const subagentBlockMap = new Map<
+        string,
+        { subagentId: string; configuration: SubagentConfiguration }
+      >(); // sessionId -> { subagentId, configuration }
+
+      for (const message of this.messages) {
+        if (message.role === "assistant" && message.blocks) {
+          for (const block of message.blocks) {
+            if (
+              block.type === "subagent" &&
+              block.sessionId &&
+              block.subagentId &&
+              block.configuration
+            ) {
+              subagentBlockMap.set(block.sessionId, {
+                subagentId: block.subagentId,
+                configuration: block.configuration,
+              });
+            }
+          }
+        }
+      }
+
+      if (subagentBlockMap.size === 0) {
+        return; // No subagent blocks found
+      }
+
+      // Load subagent sessions using sessionIds
+      const subagentSessions = [];
+      for (const [sessionId, blockData] of subagentBlockMap) {
+        try {
+          const sessionData = await loadSession(
+            sessionId,
+            this.messageManager.getSessionDir(),
+            "subagent_session",
+          );
+          if (sessionData) {
+            subagentSessions.push({
+              sessionData,
+              subagentId: blockData.subagentId, // Use the subagentId from SubagentBlock
+              configuration: blockData.configuration, // Include configuration
+            });
+          }
+        } catch (error) {
+          this.logger?.warn(
+            `Failed to load subagent session ${sessionId}:`,
+            error,
+          );
+        }
+      }
+
+      if (subagentSessions.length > 0) {
+        this.logger?.debug(
+          `Found ${subagentSessions.length} subagent sessions to restore`,
+        );
+
+        // Restore subagent sessions through the SubagentManager
+        await this.subagentManager.restoreSubagentSessions(subagentSessions);
+
+        this.logger?.debug("Subagent sessions restored successfully");
+      }
+    } catch (error) {
+      this.logger?.warn("Failed to restore subagent sessions:", error);
+      // Don't throw error to prevent app startup failure
     }
   }
 

@@ -183,7 +183,6 @@ describe("SubagentManager - Session Functionality", () => {
       // Mock loadSession to return a valid session
       mockLoadSession.mockResolvedValueOnce({
         id: "test-session-id",
-        timestamp: "2024-01-01T00:00:00.000Z",
         version: "1.0.0",
         messages: [],
         metadata: {

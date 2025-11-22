@@ -156,6 +156,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           setBackgroundShells([...shells]);
         },
         onSubagentMessagesChange: (subagentId, messages) => {
+          logger.debug(subagentId);
           // Skip updates when in expanded mode
           if (!isExpandedRef.current) {
             setSubagentMessages((prev) => ({

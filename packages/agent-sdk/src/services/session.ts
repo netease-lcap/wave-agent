@@ -5,7 +5,6 @@ import type { Message } from "../types/index.js";
 
 export interface SessionData {
   id: string;
-  timestamp: string;
   version: string;
   messages: Message[];
   metadata: {
@@ -18,7 +17,6 @@ export interface SessionData {
 
 export interface SessionMetadata {
   id: string;
-  timestamp: string;
   workdir: string;
   startedAt: string;
   lastActiveAt: string;
@@ -117,7 +115,6 @@ export async function saveSession(
   const now = new Date().toISOString();
   const sessionData: SessionData = {
     id: sessionId,
-    timestamp: now,
     version: VERSION,
     messages: filteredMessages,
     metadata: {
@@ -239,7 +236,6 @@ export async function listSessions(
 
         sessions.push({
           id: sessionData.id,
-          timestamp: sessionData.timestamp,
           workdir: sessionData.metadata.workdir,
           startedAt: sessionData.metadata.startedAt,
           lastActiveAt: sessionData.metadata.lastActiveAt,

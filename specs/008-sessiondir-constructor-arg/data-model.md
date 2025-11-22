@@ -60,7 +60,6 @@
 
 **Fields**:
 - `id: string` - Session identifier
-- `timestamp: string` - Creation timestamp  
 - `version: string` - Session format version
 - `messages: Message[]` - Conversation messages
 - `metadata: SessionMetadata` - Session metadata
@@ -75,7 +74,6 @@
 
 **Fields**:
 - `id: string` - Session identifier
-- `timestamp: string` - Creation timestamp
 - `workdir: string` - Working directory when session created
 - `startedAt: string` - Session start time
 - `lastActiveAt: string` - Last activity time
