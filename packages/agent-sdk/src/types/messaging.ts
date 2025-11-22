@@ -4,6 +4,7 @@
  */
 
 import type { Usage } from "./core.js";
+import type { SubagentConfiguration } from "../utils/subagentParser.js";
 
 export enum MessageSource {
   USER = "user",
@@ -107,4 +108,6 @@ export interface SubagentBlock {
   subagentId: string;
   subagentName: string;
   status: "active" | "completed" | "error" | "aborted";
+  sessionId: string;
+  configuration: SubagentConfiguration;
 }

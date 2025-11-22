@@ -7,11 +7,9 @@ import type {
   ModelConfig,
   Usage,
 } from "../types/index.js";
+import type { SessionData } from "../services/session.js";
 import { AIManager } from "./aiManager.js";
-import {
-  MessageManager,
-  type MessageManagerCallbacks,
-} from "./messageManager.js";
+import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
 import { HookManager } from "./hookManager.js";
 import {
@@ -161,51 +159,7 @@ export class SubagentManager {
     const subagentId = randomUUID();
 
     // Create isolated MessageManager for the subagent
-    const subagentCallbacks: MessageManagerCallbacks = {
-      onUserMessageAdded: (params: UserMessageParams) => {
-        // Forward user message events to parent via SubagentManager callbacks
-        if (this.callbacks?.onSubagentUserMessageAdded) {
-          this.callbacks.onSubagentUserMessageAdded(subagentId, params);
-        }
-      },
-
-      onAssistantMessageAdded: () => {
-        // Forward assistant message events to parent via SubagentManager callbacks
-        if (this.callbacks?.onSubagentAssistantMessageAdded) {
-          this.callbacks.onSubagentAssistantMessageAdded(subagentId);
-        }
-      },
-
-      onAssistantContentUpdated: (chunk: string, accumulated: string) => {
-        // Forward assistant content updates to parent via SubagentManager callbacks
-        if (this.callbacks?.onSubagentAssistantContentUpdated) {
-          this.callbacks.onSubagentAssistantContentUpdated(
-            subagentId,
-            chunk,
-            accumulated,
-          );
-        }
-      },
-
-      onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
-        // Forward tool block updates to parent via SubagentManager callbacks
-        if (this.callbacks?.onSubagentToolBlockUpdated) {
-          this.callbacks.onSubagentToolBlockUpdated(subagentId, params);
-        }
-      },
-
-      // These callbacks will be handled by the parent agent
-      onMessagesChange: (messages: Message[]) => {
-        const instance = this.instances.get(subagentId);
-        if (instance) {
-          instance.messages = messages;
-          // Forward subagent message changes to parent via callbacks
-          if (this.callbacks?.onSubagentMessagesChange) {
-            this.callbacks.onSubagentMessagesChange(subagentId, messages);
-          }
-        }
-      },
-    };
+    const subagentCallbacks = this.createSubagentCallbacks(subagentId);
 
     const messageManager = new MessageManager({
       callbacks: subagentCallbacks,
@@ -258,6 +212,8 @@ export class SubagentManager {
     this.parentMessageManager.addSubagentBlock(
       subagentId,
       configuration.name,
+      messageManager.getSessionId(),
+      configuration,
       "active",
       parameters,
     );
@@ -435,5 +391,156 @@ export class SubagentManager {
    */
   cleanup(): void {
     this.instances.clear();
+  }
+
+  /**
+   * Restore subagent instances from saved session data
+   * This method is called during agent initialization to restore previous subagent states
+   */
+  async restoreSubagentSessions(
+    subagentSessions: Array<{
+      sessionData: SessionData;
+      subagentId: string;
+      configuration: SubagentConfiguration;
+    }>,
+  ): Promise<void> {
+    for (const { sessionData, subagentId, configuration } of subagentSessions) {
+      try {
+        // Use the configuration from the SubagentBlock
+
+        // Create the subagent instance without executing - just restore the state
+
+        // Create MessageManager for the restored subagent
+        const subagentCallbacks = this.createSubagentCallbacks(subagentId);
+        const messageManager = new MessageManager({
+          callbacks: subagentCallbacks,
+          workdir: this.workdir,
+          logger: this.logger,
+          sessionPrefix: "subagent_session",
+        });
+
+        // Use the parent tool manager
+        const toolManager = this.parentToolManager;
+
+        // Determine model to use
+        const modelToUse =
+          configuration.model && configuration.model !== "inherit"
+            ? configuration.model
+            : this.modelConfig.agentModel;
+
+        // Create AIManager for the restored subagent
+        const aiManager = new AIManager({
+          messageManager,
+          toolManager,
+          logger: this.logger,
+          workdir: this.workdir,
+          systemPrompt: configuration.systemPrompt,
+          hookManager: this.hookManager,
+          gatewayConfig: this.gatewayConfig,
+          modelConfig: {
+            ...this.modelConfig,
+            agentModel: modelToUse,
+          },
+          tokenLimit: this.tokenLimit,
+          callbacks: {
+            onUsageAdded: this.onUsageAdded,
+          },
+        });
+
+        // Create restored instance
+        const instance: SubagentInstance = {
+          subagentId,
+          configuration,
+          aiManager,
+          messageManager,
+          toolManager,
+          status: "completed", // Restored sessions are considered completed
+          messages: sessionData.messages,
+        };
+
+        // IMPORTANT: Store instance in map BEFORE calling setMessages
+        // This ensures the callback can find the instance
+        this.instances.set(subagentId, instance);
+
+        // Now restore the session data including sessionId, which will trigger the callback chain
+        const sessionDataObj = {
+          id: sessionData.id,
+          messages: sessionData.messages,
+          version: "1.0.0",
+          metadata: {
+            workdir: this.workdir,
+            startedAt: new Date().toISOString(),
+            lastActiveAt: new Date().toISOString(),
+            latestTotalTokens: 0,
+          },
+        };
+        messageManager.initializeFromSession(sessionDataObj);
+      } catch (error) {
+        this.logger?.warn(
+          `Failed to restore subagent session ${subagentId}:`,
+          error,
+        );
+        // Continue with other sessions even if one fails
+      }
+    }
+  }
+
+  /**
+   * Create subagent callbacks for a specific subagent ID
+   * Extracted to reuse in both create and restore flows
+   */
+  private createSubagentCallbacks(subagentId: string) {
+    return {
+      onUserMessageAdded: (params: UserMessageParams) => {
+        // Forward user message events to parent via SubagentManager callbacks
+        if (this.callbacks?.onSubagentUserMessageAdded) {
+          this.callbacks.onSubagentUserMessageAdded(subagentId, params);
+        }
+      },
+
+      onAssistantMessageAdded: () => {
+        // Forward assistant message events to parent via SubagentManager callbacks
+        if (this.callbacks?.onSubagentAssistantMessageAdded) {
+          this.callbacks.onSubagentAssistantMessageAdded(subagentId);
+        }
+      },
+
+      onAssistantContentUpdated: (chunk: string, accumulated: string) => {
+        // Forward assistant content updates to parent via SubagentManager callbacks
+        if (this.callbacks?.onSubagentAssistantContentUpdated) {
+          this.callbacks.onSubagentAssistantContentUpdated(
+            subagentId,
+            chunk,
+            accumulated,
+          );
+        }
+      },
+
+      onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
+        // Forward tool block updates to parent via SubagentManager callbacks
+        if (this.callbacks?.onSubagentToolBlockUpdated) {
+          this.callbacks.onSubagentToolBlockUpdated(subagentId, params);
+        }
+      },
+
+      // These callbacks will be handled by the parent agent
+      onMessagesChange: (messages: Message[]) => {
+        const instance = this.instances.get(subagentId);
+        if (instance) {
+          instance.messages = messages;
+          // Forward subagent message changes to parent via callbacks
+          if (this.callbacks?.onSubagentMessagesChange) {
+            this.callbacks.onSubagentMessagesChange(subagentId, messages);
+          }
+        }
+      },
+
+      onSessionIdChange: (newSessionId: string) => {
+        // Update the subagent block with the new session ID
+        this.parentMessageManager.updateSubagentBlock(subagentId, {
+          sessionId: newSessionId,
+        });
+      },
+    };
   }
 }

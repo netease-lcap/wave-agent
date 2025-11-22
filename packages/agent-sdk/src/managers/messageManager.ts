@@ -18,6 +18,7 @@ import {
   type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
+import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { Logger, Message, Usage } from "../types/index.js";
 import {
   cleanupExpiredSessions,
@@ -134,6 +135,14 @@ export class MessageManager {
     return [...this.userInputHistory];
   }
 
+  public getSessionStartTime(): string {
+    return this.sessionStartTime;
+  }
+
+  public getSessionDir(): string | undefined {
+    return this.sessionDir;
+  }
+
   public getTranscriptPath(): string {
     return getSessionFilePath(
       this.sessionId,
@@ -227,11 +236,7 @@ export class MessageManager {
         console.log(`Restoring session: ${sessionToRestore.id}`);
 
         // Initialize from session data
-        this.initializeFromSession(
-          sessionToRestore.id,
-          sessionToRestore.messages,
-          sessionToRestore.metadata.latestTotalTokens,
-        );
+        this.initializeFromSession(sessionToRestore);
       }
     } catch (error) {
       console.error("Failed to restore session:", error);
@@ -263,17 +268,16 @@ export class MessageManager {
   }
 
   // Initialize state from session data
-  public initializeFromSession(
-    sessionId: string,
-    messages: Message[],
-    latestTotalTokens: number,
-  ): void {
-    this.setSessionId(sessionId);
-    this.setMessages([...messages]);
-    this.setlatestTotalTokens(latestTotalTokens);
+  public initializeFromSession(sessionData: SessionData): void {
+    this.setSessionId(sessionData.id);
+    this.setMessages([...sessionData.messages]);
+    this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
+
+    // Restore the original session start time
+    this.sessionStartTime = sessionData.metadata.startedAt;
 
     // Extract user input history from session messages
-    this.setUserInputHistory(extractUserInputHistory(messages));
+    this.setUserInputHistory(extractUserInputHistory(sessionData.messages));
   }
 
   // Add to input history
@@ -496,6 +500,8 @@ export class MessageManager {
   public addSubagentBlock(
     subagentId: string,
     subagentName: string,
+    sessionId: string,
+    configuration: SubagentConfiguration,
     status: "active" | "completed" | "error" = "active",
     parameters: {
       description: string;
@@ -507,7 +513,9 @@ export class MessageManager {
       messages: this.messages,
       subagentId,
       subagentName,
+      sessionId,
       status,
+      configuration,
     };
     const updatedMessages = addSubagentBlockToMessage(params);
     this.setMessages(updatedMessages);
@@ -518,6 +526,7 @@ export class MessageManager {
     subagentId: string,
     updates: Partial<{
       status: "active" | "completed" | "error" | "aborted";
+      sessionId: string;
     }>,
   ): void {
     const updatedMessages = updateSubagentBlockInMessage(

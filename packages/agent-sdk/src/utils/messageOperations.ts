@@ -1,4 +1,5 @@
 import type { Message, Usage, MessageSource } from "../types/index.js";
+import type { SubagentConfiguration } from "./subagentParser.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
@@ -523,12 +524,15 @@ export interface AddSubagentBlockParams {
   subagentId: string;
   subagentName: string;
   status: "active" | "completed" | "error" | "aborted";
+  sessionId: string;
+  configuration: SubagentConfiguration;
 }
 
 export interface UpdateSubagentBlockParams {
   messages: Message[];
   subagentId: string;
   status: "active" | "completed" | "error" | "aborted";
+  sessionId?: string;
 }
 
 export const addSubagentBlockToMessage = ({
@@ -536,6 +540,8 @@ export const addSubagentBlockToMessage = ({
   subagentId,
   subagentName,
   status,
+  sessionId,
+  configuration,
 }: AddSubagentBlockParams): Message[] => {
   const newMessages = [...messages];
 
@@ -557,6 +563,8 @@ export const addSubagentBlockToMessage = ({
     subagentId,
     subagentName,
     status,
+    sessionId,
+    configuration,
   });
 
   return newMessages;
@@ -567,6 +575,7 @@ export const updateSubagentBlockInMessage = (
   subagentId: string,
   updates: Partial<{
     status: "active" | "completed" | "error" | "aborted";
+    sessionId: string;
   }>,
 ): Message[] => {
   const newMessages = [...messages];
@@ -579,6 +588,9 @@ export const updateSubagentBlockInMessage = (
         if (block.type === "subagent" && block.subagentId === subagentId) {
           if (updates.status !== undefined) {
             block.status = updates.status;
+          }
+          if (updates.sessionId !== undefined) {
+            block.sessionId = updates.sessionId;
           }
           return newMessages;
         }

@@ -98,15 +98,15 @@ describe("Agent sessionDir integration tests", () => {
     // Reset all mocks
     vi.clearAllMocks();
 
-    // Create a valid session data structure
+    // Create a valid session data structure with realistic timestamps
     const mockSessionData = {
       id: "session-123",
-      timestamp: new Date().toISOString(),
+      version: "1.0.0",
       messages: [],
       metadata: {
         workdir: process.cwd(),
-        startedAt: new Date().toISOString(),
-        lastActiveAt: new Date().toISOString(),
+        startedAt: "2024-01-01T10:00:00.000Z", // Earlier time - when session started
+        lastActiveAt: "2024-01-01T10:30:00.000Z", // Same as timestamp
         latestTotalTokens: 0,
       },
     };
