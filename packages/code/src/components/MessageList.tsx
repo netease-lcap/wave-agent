@@ -1,6 +1,6 @@
 import React, { useMemo, useCallback } from "react";
 import { Box, Text } from "ink";
-import { parse, setOptions } from "marked";
+import { marked } from "marked";
 import TerminalRenderer from "marked-terminal";
 import type { Message } from "wave-agent-sdk";
 import { MessageSource } from "wave-agent-sdk";
@@ -21,17 +21,22 @@ export interface MessageListProps {
   isExpanded?: boolean;
 }
 
-// Markdown component using marked-terminal with syntax highlighting support
+// Markdown component using marked-terminal with proper unescape option
 const Markdown = ({ children }: { children: string }) => {
-  setOptions({
-    renderer: new TerminalRenderer(
-      {}, // Use default options
-      {}, // Empty highlightOptions, let cli-highlight auto-detect language
-    ) as unknown as Parameters<typeof setOptions>[0]["renderer"],
-  });
-  const result = parse(children);
-  const output = typeof result === "string" ? result.trim() : "";
-  return <Text>{output}</Text>;
+  const result = useMemo(() => {
+    // Configure marked with TerminalRenderer using default options
+    marked.setOptions({
+      renderer: new TerminalRenderer({
+        // Use official unescape option to handle HTML entities
+        unescape: true,
+      }),
+    });
+
+    const output = marked(children);
+    return typeof output === "string" ? output.trim() : "";
+  }, [children]);
+
+  return <Text>{result}</Text>;
 };
 
 export const MessageList = React.memo(
