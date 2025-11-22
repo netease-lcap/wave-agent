@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { Agent } from "../src/agent.js";
+import { Message } from "../src/types/messaging.js";
 
 /**
  * Simple subagent functionality test using proper agent.sendMessage() interface
@@ -136,6 +137,22 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
           `\n🤖🔄 CALLBACK: Subagent ${subagentId} updated (Status: ${status})`,
         );
         console.log(`    ⏰ Timestamp: ${new Date().toISOString()}`);
+        console.log(""); // Add spacing
+      },
+      // This is the critical callback that should be called when subagent messages change
+      onSubagentMessagesChange: (subagentId: string, messages: Message[]) => {
+        console.log(
+          `\n🤖💬 CALLBACK: Subagent ${subagentId} messages updated! Count: ${messages.length}`,
+        );
+        console.log(`    ⏰ Timestamp: ${new Date().toISOString()}`);
+        if (messages.length > 0) {
+          const latestMessages = messages.slice(-2).map((m) => ({
+            role: m.role,
+            blocks: m.blocks.length,
+            firstBlockType: m.blocks[0]?.type,
+          }));
+          console.log(`    📋 Latest messages:`, latestMessages);
+        }
         console.log(""); // Add spacing
       },
     },
