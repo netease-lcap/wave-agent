@@ -102,12 +102,6 @@ export const addBashCommandToHistory = (
   workdir: string,
 ): void => {
   try {
-    // Filter system-generated commands, do not add to history
-    if (command.startsWith("git add . && git commit -m")) {
-      // logger.debug("Skipping system-generated command:", { command, workdir });
-      return;
-    }
-
     const history = loadBashHistory();
     const timestamp = Date.now();
 
