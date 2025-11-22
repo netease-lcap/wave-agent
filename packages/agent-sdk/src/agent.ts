@@ -172,6 +172,7 @@ export class Agent {
         onSubagentAssistantContentUpdated:
           callbacks.onSubagentAssistantContentUpdated,
         onSubagentToolBlockUpdated: callbacks.onSubagentToolBlockUpdated,
+        onSubagentMessagesChange: callbacks.onSubagentMessagesChange,
       }, // Pass subagent callbacks for forwarding
       logger: this.logger,
       gatewayConfig,
