@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto";
 import {
   addAssistantMessageToMessages,
   updateToolBlockInMessage,
@@ -20,15 +19,18 @@ import {
 } from "../utils/messageOperations.js";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { Logger, Message, Usage } from "../types/index.js";
+import { join } from "path";
+import { homedir } from "os";
 import {
-  cleanupExpiredSessions,
-  getLatestSession,
-  loadSession,
-  saveSession,
+  cleanupExpiredSessionsFromJsonl,
+  getLatestSessionFromJsonl,
+  loadSessionFromJsonl,
+  appendMessages,
+  generateSessionId,
   SessionData,
-  getSessionFilePath,
 } from "../services/session.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
+import { pathEncoder } from "../utils/pathEncoder.js";
 
 export interface MessageManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
@@ -104,9 +106,11 @@ export class MessageManager {
   private callbacks: MessageManagerCallbacks;
   private sessionDir?: string; // Add session directory property
   private sessionPrefix?: string; // Add session prefix property
+  private transcriptPath: string; // Cached transcript path
+  private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
 
   constructor(options: MessageManagerOptions) {
-    this.sessionId = randomUUID();
+    this.sessionId = generateSessionId();
     this.messages = [];
     this.latestTotalTokens = 0;
     this.userInputHistory = [];
@@ -116,6 +120,10 @@ export class MessageManager {
     this.logger = options.logger;
     this.sessionDir = options.sessionDir;
     this.sessionPrefix = options.sessionPrefix;
+    this.savedMessageCount = 0; // Initialize saved message count tracker
+
+    // Compute and cache the transcript path
+    this.transcriptPath = this.computeTranscriptPath();
   }
 
   // Getter methods
@@ -139,22 +147,38 @@ export class MessageManager {
     return this.sessionStartTime;
   }
 
+  public getWorkdir(): string {
+    return this.workdir;
+  }
+
   public getSessionDir(): string | undefined {
     return this.sessionDir;
   }
 
   public getTranscriptPath(): string {
-    return getSessionFilePath(
-      this.sessionId,
-      this.sessionDir,
-      this.sessionPrefix,
-    );
+    return this.transcriptPath;
+  }
+
+  /**
+   * Compute the transcript path using PathEncoder
+   * Called during construction and when sessionId changes
+   */
+  private computeTranscriptPath(): string {
+    // Use PathEncoder for robust cross-platform path encoding
+    const encodedWorkdir = pathEncoder.encodeSync(this.workdir);
+
+    const sessionDir = this.sessionDir || join(homedir(), ".wave", "projects");
+    return join(sessionDir, encodedWorkdir, `${this.sessionId}.jsonl`);
   }
 
   // Setter methods, will trigger callbacks
   public setSessionId(sessionId: string): void {
     if (this.sessionId !== sessionId) {
       this.sessionId = sessionId;
+      // Reset saved message count for new session
+      this.savedMessageCount = 0;
+      // Recompute transcript path since session ID changed
+      this.transcriptPath = this.computeTranscriptPath();
       this.callbacks.onSessionIdChange?.(sessionId);
     }
   }
@@ -169,15 +193,24 @@ export class MessageManager {
    */
   public async saveSession(): Promise<void> {
     try {
-      await saveSession(
+      // Only save messages that haven't been saved yet
+      const unsavedMessages = this.messages.slice(this.savedMessageCount);
+
+      if (unsavedMessages.length === 0) {
+        // No new messages to save
+        return;
+      }
+
+      // Use JSONL format for new sessions
+      await appendMessages(
         this.sessionId,
-        this.messages,
+        unsavedMessages, // Only append new messages
         this.workdir,
-        this.latestTotalTokens,
-        this.sessionStartTime,
         this.sessionDir,
-        this.sessionPrefix,
       );
+
+      // Update the saved message count
+      this.savedMessageCount = this.messages.length;
     } catch (error) {
       this.logger?.error("Failed to save session:", error);
     }
@@ -192,11 +225,7 @@ export class MessageManager {
   ): Promise<void> {
     // Clean up expired sessions first
     try {
-      await cleanupExpiredSessions(
-        this.workdir,
-        this.sessionDir,
-        this.sessionPrefix,
-      );
+      await cleanupExpiredSessionsFromJsonl(this.workdir, this.sessionDir);
     } catch (error) {
       this.logger?.warn("Failed to cleanup expired sessions:", error);
     }
@@ -209,20 +238,21 @@ export class MessageManager {
       let sessionToRestore: SessionData | null = null;
 
       if (restoreSessionId) {
-        sessionToRestore = await loadSession(
+        // Use only JSONL format - no legacy support
+        sessionToRestore = await loadSessionFromJsonl(
           restoreSessionId,
+          this.workdir,
           this.sessionDir,
-          this.sessionPrefix,
         );
         if (!sessionToRestore) {
           console.error(`Session not found: ${restoreSessionId}`);
           process.exit(1);
         }
       } else if (continueLastSession) {
-        sessionToRestore = await getLatestSession(
+        // Use only JSONL format - no legacy support
+        sessionToRestore = await getLatestSessionFromJsonl(
           this.workdir,
           this.sessionDir,
-          this.sessionPrefix,
         );
         if (!sessionToRestore) {
           console.error(
@@ -262,9 +292,10 @@ export class MessageManager {
   public clearMessages(): void {
     this.setMessages([]);
     this.setUserInputHistory([]);
-    this.setSessionId(randomUUID());
+    this.setSessionId(generateSessionId());
     this.setlatestTotalTokens(0);
     this.sessionStartTime = new Date().toISOString();
+    this.savedMessageCount = 0; // Reset saved message count
   }
 
   // Initialize state from session data
@@ -278,6 +309,10 @@ export class MessageManager {
 
     // Extract user input history from session messages
     this.setUserInputHistory(extractUserInputHistory(sessionData.messages));
+
+    // Set saved message count to the number of loaded messages since they're already saved
+    // This must be done after setSessionId which resets it to 0
+    this.savedMessageCount = sessionData.messages.length;
   }
 
   // Add to input history
@@ -440,7 +475,7 @@ export class MessageManager {
     ];
 
     // Update sessionId
-    this.setSessionId(randomUUID());
+    this.setSessionId(generateSessionId());
 
     // Set new message list
     this.setMessages(newMessages);

@@ -19,9 +19,11 @@ vi.mock("os", () => ({
   default: {
     homedir: vi.fn(() => "/mock/home"),
     tmpdir: vi.fn(() => "/mock/tmp"),
+    platform: vi.fn(() => "linux"),
   },
   homedir: vi.fn(() => "/mock/home"),
   tmpdir: vi.fn(() => "/mock/tmp"),
+  platform: vi.fn(() => "linux"),
 }));
 
 // Mock the aiService
@@ -57,7 +59,7 @@ describe("Agent User Memory Integration", () => {
   beforeEach(async () => {
     // Set up mock directory path
     mockTempDir = "/mock/tmp/aimanager-test-123";
-    
+
     // Setup fs mock implementations
     const fs = await import("fs/promises");
     vi.mocked(fs.mkdtemp).mockResolvedValue(mockTempDir);
@@ -65,9 +67,11 @@ describe("Agent User Memory Integration", () => {
     vi.mocked(fs.access).mockResolvedValue(undefined);
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue('[]');
+    vi.mocked(fs.readFile).mockResolvedValue("[]");
     vi.mocked(fs.readdir).mockResolvedValue([]);
-    vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+    vi.mocked(fs.stat).mockResolvedValue({
+      isFile: () => true,
+    } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
     // Get mock references after module imports
     const { callAgent } = await import("@/services/aiService.js");
@@ -240,7 +244,7 @@ describe("Agent User Memory Integration", () => {
   });
 
   it("should create separate instances for different workdirs", async () => {
-    // Set up mock directory paths  
+    // Set up mock directory paths
     const mockTempDir1 = "/mock/tmp/test1-123";
     const mockTempDir2 = "/mock/tmp/test2-456";
 

@@ -1,11 +1,13 @@
 import { promises as fs } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { v6 as uuidv6 } from "uuid";
 import type { Message } from "../types/index.js";
+import { PathEncoder } from "../utils/pathEncoder.js";
+import { JsonlHandler, type SessionMessage } from "../services/jsonlHandler.js";
 
 export interface SessionData {
   id: string;
-  version: string;
   messages: Message[];
   metadata: {
     workdir: string;
@@ -23,9 +25,16 @@ export interface SessionMetadata {
   latestTotalTokens: number;
 }
 
+/**
+ * Generate a new UUIDv6-based session ID
+ * @returns UUIDv6 string for time-ordered sessions
+ */
+export function generateSessionId(): string {
+  return uuidv6();
+}
+
 // Constants
-const SESSION_DIR = join(homedir(), ".wave", "sessions");
-const VERSION = "1.0.0";
+const SESSION_DIR = join(homedir(), ".wave", "projects");
 const MAX_SESSION_AGE_DAYS = 30;
 
 /**
@@ -51,51 +60,38 @@ export async function ensureSessionDir(sessionDir?: string): Promise<void> {
 }
 
 /**
- * Generate session file path
- */
-export function getSessionFilePath(
-  sessionId: string,
-  sessionDir?: string,
-  prefix?: string,
-): string {
-  const shortId = sessionId.split("_")[2] || sessionId.slice(-8);
-  const resolvedDir = resolveSessionDir(sessionDir);
-  const filePrefix = prefix || "session";
-  return join(resolvedDir, `${filePrefix}_${shortId}.json`);
-}
-
-/**
- * Filter out diff blocks from messages to avoid saving unimportant data
- */
-function filterDiffBlocks(messages: Message[]): Message[] {
-  return messages
-    .map((message) => ({
-      ...message,
-      blocks: message.blocks.filter((block) => block.type !== "diff"),
-    }))
-    .filter((message) => message.blocks.length > 0);
-}
-
-/**
- * Save session data to storage
- *
- * @param sessionId - Unique identifier for the session
- * @param messages - Array of messages to save
+ * Generate session file path using project-based directory structure
+ * @param sessionId - UUIDv6 session identifier
  * @param workdir - Working directory for the session
- * @param latestTotalTokens - Total tokens used in the session
- * @param startedAt - ISO timestamp when session started (defaults to current time)
- * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
- * @param prefix - Optional custom prefix for session files (defaults to "session")
- * @throws {Error} When session cannot be saved due to permission or disk space issues
+ * @param sessionDir - Optional custom session directory
+ * @returns Promise resolving to full file path for the session JSONL file
  */
-export async function saveSession(
+export async function getSessionFilePath(
   sessionId: string,
-  messages: Message[],
   workdir: string,
-  latestTotalTokens: number = 0,
-  startedAt?: string,
   sessionDir?: string,
-  prefix?: string,
+): Promise<string> {
+  const encoder = new PathEncoder();
+  const projectDir = await encoder.createProjectDirectory(
+    workdir,
+    resolveSessionDir(sessionDir),
+  );
+  return join(projectDir.encodedPath, `${sessionId}.jsonl`);
+}
+
+/**
+ * Append messages to session using JSONL format (new approach)
+ *
+ * @param sessionId - UUIDv6 session identifier
+ * @param newMessages - Array of messages to append
+ * @param workdir - Working directory for the session
+ * @param sessionDir - Optional custom directory for session storage
+ */
+export async function appendMessages(
+  sessionId: string,
+  newMessages: Message[],
+  workdir: string,
+  sessionDir?: string,
 ): Promise<void> {
   // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
@@ -103,177 +99,286 @@ export async function saveSession(
   }
 
   // Do not save if there are no messages
-  if (messages.length === 0) {
+  if (newMessages.length === 0) {
     return;
   }
 
-  await ensureSessionDir(sessionDir);
+  const jsonlHandler = new JsonlHandler();
+  const filePath = await getSessionFilePath(sessionId, workdir, sessionDir);
 
-  // Filter out diff blocks before saving
-  const filteredMessages = filterDiffBlocks(messages);
+  const messagesWithTimestamp: SessionMessage[] = newMessages.map((msg) => ({
+    ...msg,
+    timestamp: new Date().toISOString(),
+  }));
 
-  const now = new Date().toISOString();
-  const sessionData: SessionData = {
-    id: sessionId,
-    version: VERSION,
-    messages: filteredMessages,
-    metadata: {
-      workdir: workdir,
-      startedAt: startedAt || now,
-      lastActiveAt: now,
-      latestTotalTokens,
-    },
-  };
-
-  const filePath = getSessionFilePath(sessionId, sessionDir, prefix);
-  try {
-    await fs.writeFile(filePath, JSON.stringify(sessionData, null, 2), "utf-8");
-  } catch (error) {
-    throw new Error(`Failed to save session ${sessionId}: ${error}`);
-  }
+  await jsonlHandler.append(filePath, messagesWithTimestamp, { atomic: false });
 }
 
 /**
- * Load session data from storage
+ * Load session data from JSONL file (new approach)
  *
- * @param sessionId - Unique identifier for the session to load
- * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
- * @param prefix - Optional custom prefix for session files (defaults to "session")
+ * @param sessionId - UUIDv6 session identifier
+ * @param workdir - Working directory for the session
+ * @param sessionDir - Optional custom directory for session storage
  * @returns Promise that resolves to session data or null if session doesn't exist
- * @throws {Error} When session exists but cannot be read or contains invalid data
  */
-export async function loadSession(
+export async function loadSessionFromJsonl(
   sessionId: string,
+  workdir: string,
   sessionDir?: string,
-  prefix?: string,
 ): Promise<SessionData | null> {
-  const filePath = getSessionFilePath(sessionId, sessionDir, prefix);
-
   try {
-    const content = await fs.readFile(filePath, "utf-8");
-    const sessionData = JSON.parse(content) as SessionData;
+    const jsonlHandler = new JsonlHandler();
+    const filePath = await getSessionFilePath(sessionId, workdir, sessionDir);
 
-    // Validate session data format
-    if (!sessionData.id || !sessionData.messages || !sessionData.metadata) {
-      throw new Error("Invalid session data format");
+    const messages = await jsonlHandler.read(filePath);
+
+    if (messages.length === 0) {
+      return null;
     }
+
+    // Extract metadata from messages
+    const firstMessage = messages[0];
+    const lastMessage = messages[messages.length - 1];
+
+    const sessionData: SessionData = {
+      id: sessionId,
+      messages: messages.map((msg) => {
+        // Remove timestamp property for backward compatibility
+        const { timestamp: _ignored, ...messageWithoutTimestamp } = msg;
+        void _ignored; // Use the variable to avoid eslint error
+        return messageWithoutTimestamp;
+      }),
+      metadata: {
+        workdir,
+        startedAt: firstMessage.timestamp,
+        lastActiveAt: lastMessage.timestamp,
+        latestTotalTokens: lastMessage.usage?.total_tokens || 0,
+      },
+    };
 
     return sessionData;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Check if the underlying error is ENOENT (file doesn't exist)
+    if (
+      errorMessage.includes("ENOENT") ||
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
       return null; // Session file does not exist
     }
+
+    // Check for JSON parsing errors (corrupted files)
+    if (
+      errorMessage.includes("Invalid JSON") ||
+      errorMessage.includes("Unexpected token")
+    ) {
+      return null; // Treat corrupted files as non-existent
+    }
+
     throw new Error(`Failed to load session ${sessionId}: ${error}`);
   }
 }
 
 /**
- * Get the most recent session for a specific working directory
+ * Get the most recent session for a specific working directory (new JSONL approach)
  *
  * @param workdir - Working directory to find the most recent session for
- * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
- * @param prefix - Optional custom prefix for session files (defaults to "session")
+ * @param sessionDir - Optional custom directory for session storage
  * @returns Promise that resolves to the most recent session data or null if no sessions exist
- * @throws {Error} When session directory cannot be accessed or session data is corrupted
  */
-export async function getLatestSession(
+export async function getLatestSessionFromJsonl(
   workdir: string,
   sessionDir?: string,
-  prefix?: string,
 ): Promise<SessionData | null> {
-  const sessions = await listSessions(workdir, false, sessionDir, prefix);
+  const sessions = await listSessionsFromJsonl(workdir, false, sessionDir);
   if (sessions.length === 0) {
     return null;
   }
 
-  // Sort by last active time, return the latest
-  const latestSession = sessions.sort(
-    (a, b) =>
-      new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime(),
-  )[0];
-
-  return loadSession(latestSession.id, sessionDir, prefix);
+  // UUIDv6 sessions are naturally time-ordered, so we can sort by ID
+  const latestSession = sessions.sort((a, b) => b.id.localeCompare(a.id))[0];
+  return loadSessionFromJsonl(latestSession.id, workdir, sessionDir);
 }
 
 /**
- * List all sessions for a specific working directory or across all working directories
+ * List all sessions for a specific working directory (convenience wrapper)
  *
  * @param workdir - Working directory to filter sessions by
- * @param includeAllWorkdirs - If true, returns sessions from all working directories
- * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
- * @param prefix - Optional custom prefix for session files (defaults to "session")
  * @returns Promise that resolves to array of session metadata objects
- * @throws {Error} When session directory cannot be accessed or read
  */
 export async function listSessions(
   workdir: string,
+): Promise<SessionMetadata[]> {
+  return listSessionsFromJsonl(workdir, false);
+}
+
+/**
+ * List all sessions for a specific working directory using JSONL format (new approach)
+ *
+ * @param workdir - Working directory to filter sessions by
+ * @param includeAllWorkdirs - If true, returns sessions from all working directories
+ * @param sessionDir - Optional custom directory for session storage
+ * @returns Promise that resolves to array of session metadata objects
+ */
+export async function listSessionsFromJsonl(
+  workdir: string,
   includeAllWorkdirs = false,
   sessionDir?: string,
-  prefix?: string,
 ): Promise<SessionMetadata[]> {
   try {
-    await ensureSessionDir(sessionDir);
-    const resolvedDir = resolveSessionDir(sessionDir);
-    const files = await fs.readdir(resolvedDir);
+    const encoder = new PathEncoder();
+    const baseDir = resolveSessionDir(sessionDir);
 
-    const sessions: SessionMetadata[] = [];
-    const filePrefix = prefix || "session";
+    // If not including all workdirs, just scan the specific project directory
+    if (!includeAllWorkdirs) {
+      const projectDir = await encoder.createProjectDirectory(workdir, baseDir);
+      const files = await fs.readdir(projectDir.encodedPath);
 
-    for (const file of files) {
-      if (!file.startsWith(`${filePrefix}_`) || !file.endsWith(".json")) {
-        continue;
-      }
+      const sessions: SessionMetadata[] = [];
 
-      try {
-        const filePath = join(resolvedDir, file);
-        const content = await fs.readFile(filePath, "utf-8");
-        const sessionData = JSON.parse(content) as SessionData;
-
-        // Only return sessions for the current working directory, unless includeAllWorkdirs is true
-        if (!includeAllWorkdirs && sessionData.metadata.workdir !== workdir) {
+      for (const file of files) {
+        if (!file.endsWith(".jsonl")) {
           continue;
         }
 
-        sessions.push({
-          id: sessionData.id,
-          workdir: sessionData.metadata.workdir,
-          startedAt: sessionData.metadata.startedAt,
-          lastActiveAt: sessionData.metadata.lastActiveAt,
-          latestTotalTokens: sessionData.metadata.latestTotalTokens,
-        });
-      } catch {
-        // Skip corrupted session files and continue processing others
-        continue;
+        const sessionId = file.replace(".jsonl", "");
+        try {
+          const jsonlHandler = new JsonlHandler();
+          const filePath = join(projectDir.encodedPath, file);
+          const messages = await jsonlHandler.read(filePath, { limit: 1 });
+          const lastMessages = await jsonlHandler.read(filePath, {
+            limit: 1,
+            startFromEnd: true,
+          });
+
+          if (messages.length > 0 && lastMessages.length > 0) {
+            const firstMessage = messages[0];
+            const lastMessage = lastMessages[0];
+
+            sessions.push({
+              id: sessionId,
+              workdir,
+              startedAt: firstMessage.timestamp,
+              lastActiveAt: lastMessage.timestamp,
+              latestTotalTokens: lastMessage.usage?.total_tokens || 0,
+            });
+          }
+        } catch {
+          // Skip corrupted session files
+          continue;
+        }
       }
+
+      // UUIDv6 is time-ordered, so we can sort by ID (newest first)
+      return sessions.sort((a, b) => b.id.localeCompare(a.id));
     }
 
-    return sessions.sort(
-      (a, b) =>
-        new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime(),
-    );
+    // For all workdirs, scan all project directories
+    const sessions: SessionMetadata[] = [];
+    try {
+      const projectDirs = await fs.readdir(baseDir);
+
+      for (const projectDirName of projectDirs) {
+        const projectPath = join(baseDir, projectDirName);
+        const stat = await fs.stat(projectPath);
+
+        if (!stat.isDirectory()) {
+          continue;
+        }
+
+        const files = await fs.readdir(projectPath);
+
+        for (const file of files) {
+          if (!file.endsWith(".jsonl")) {
+            continue;
+          }
+
+          const sessionId = file.replace(".jsonl", "");
+          try {
+            const jsonlHandler = new JsonlHandler();
+            const filePath = join(projectPath, file);
+            const messages = await jsonlHandler.read(filePath, { limit: 1 });
+            const lastMessages = await jsonlHandler.read(filePath, {
+              limit: 1,
+              startFromEnd: true,
+            });
+
+            if (messages.length > 0 && lastMessages.length > 0) {
+              const firstMessage = messages[0];
+              const lastMessage = lastMessages[0];
+
+              // Try to decode the workdir from the directory name
+              let sessionWorkdir = workdir;
+              try {
+                const decoder = new PathEncoder();
+                const decoded = await decoder.decode(projectDirName);
+                if (decoded) {
+                  sessionWorkdir = decoded;
+                }
+              } catch {
+                // Use original if decoding fails
+              }
+
+              sessions.push({
+                id: sessionId,
+                workdir: sessionWorkdir,
+                startedAt: firstMessage.timestamp,
+                lastActiveAt: lastMessage.timestamp,
+                latestTotalTokens: lastMessage.usage?.total_tokens || 0,
+              });
+            }
+          } catch {
+            // Skip corrupted session files
+            continue;
+          }
+        }
+      }
+    } catch {
+      // If base directory doesn't exist, return empty array
+      return [];
+    }
+
+    // UUIDv6 is time-ordered, so we can sort by ID (newest first)
+    return sessions.sort((a, b) => b.id.localeCompare(a.id));
   } catch (error) {
     throw new Error(`Failed to list sessions: ${error}`);
   }
 }
 
 /**
- * Delete a session from storage
+ * Delete a session from JSONL storage (new approach)
  *
- * @param sessionId - Unique identifier for the session to delete
- * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
- * @param prefix - Optional custom prefix for session files (defaults to "session")
+ * @param sessionId - UUIDv6 session identifier
+ * @param workdir - Working directory for the session
+ * @param sessionDir - Optional custom directory for session storage
  * @returns Promise that resolves to true if session was deleted, false if it didn't exist
- * @throws {Error} When session exists but cannot be deleted due to permission issues
  */
-export async function deleteSession(
+export async function deleteSessionFromJsonl(
   sessionId: string,
+  workdir: string,
   sessionDir?: string,
-  prefix?: string,
 ): Promise<boolean> {
-  const filePath = getSessionFilePath(sessionId, sessionDir, prefix);
-
   try {
+    const filePath = await getSessionFilePath(sessionId, workdir, sessionDir);
     await fs.unlink(filePath);
+
+    // Try to clean up empty project directory
+    const encoder = new PathEncoder();
+    const projectDir = await encoder.createProjectDirectory(
+      workdir,
+      resolveSessionDir(sessionDir),
+    );
+    try {
+      const files = await fs.readdir(projectDir.encodedPath);
+      if (files.length === 0) {
+        await fs.rmdir(projectDir.encodedPath);
+      }
+    } catch {
+      // Ignore errors if directory is not empty or can't be removed
+    }
+
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -284,25 +389,22 @@ export async function deleteSession(
 }
 
 /**
- * Clean up expired sessions older than the configured maximum age
+ * Clean up expired sessions older than the configured maximum age (new JSONL approach)
  *
  * @param workdir - Working directory to clean up sessions for
- * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
- * @param prefix - Optional custom prefix for session files (defaults to "session")
+ * @param sessionDir - Optional custom directory for session storage
  * @returns Promise that resolves to the number of sessions that were deleted
- * @throws {Error} When session directory cannot be accessed or sessions cannot be deleted
  */
-export async function cleanupExpiredSessions(
+export async function cleanupExpiredSessionsFromJsonl(
   workdir: string,
   sessionDir?: string,
-  prefix?: string,
 ): Promise<number> {
   // Do not perform cleanup operations in test environment
   if (process.env.NODE_ENV === "test") {
     return 0;
   }
 
-  const sessions = await listSessions(workdir, true, sessionDir, prefix);
+  const sessions = await listSessionsFromJsonl(workdir, true, sessionDir);
   const now = new Date();
   const maxAge = MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // Convert to milliseconds
 
@@ -313,7 +415,7 @@ export async function cleanupExpiredSessions(
 
     if (sessionAge > maxAge) {
       try {
-        await deleteSession(session.id, sessionDir, prefix);
+        await deleteSessionFromJsonl(session.id, session.workdir, sessionDir);
         deletedCount++;
       } catch {
         // Skip failed deletions and continue processing other sessions
@@ -322,25 +424,67 @@ export async function cleanupExpiredSessions(
     }
   }
 
+  // Clean up empty project directories after deletion
+  await cleanupEmptyProjectDirectories(sessionDir);
+
   return deletedCount;
 }
 
 /**
- * Check if a session exists in storage
+ * Clean up empty project directories in the session directory
  *
- * @param sessionId - Unique identifier for the session to check
- * @param sessionDir - Optional custom directory for session storage (defaults to ~/.wave/sessions/)
- * @param prefix - Optional custom prefix for session files (defaults to "session")
- * @returns Promise that resolves to true if session exists, false otherwise
+ * @param sessionDir - Optional custom directory for session storage
  */
-export async function sessionExists(
-  sessionId: string,
+export async function cleanupEmptyProjectDirectories(
   sessionDir?: string,
-  prefix?: string,
-): Promise<boolean> {
-  const filePath = getSessionFilePath(sessionId, sessionDir, prefix);
+): Promise<void> {
+  // Do not perform cleanup operations in test environment
+  if (process.env.NODE_ENV === "test") {
+    return;
+  }
 
   try {
+    const baseDir = resolveSessionDir(sessionDir);
+    const projectDirs = await fs.readdir(baseDir);
+
+    for (const projectDirName of projectDirs) {
+      const projectPath = join(baseDir, projectDirName);
+      const stat = await fs.stat(projectPath);
+
+      if (stat.isDirectory()) {
+        try {
+          const files = await fs.readdir(projectPath);
+
+          // If directory is empty, remove it
+          if (files.length === 0) {
+            await fs.rmdir(projectPath);
+          }
+        } catch {
+          // Skip errors for directories we can't read or remove
+          continue;
+        }
+      }
+    }
+  } catch {
+    // Ignore errors if base directory doesn't exist or can't be accessed
+  }
+}
+
+/**
+ * Check if a session exists in JSONL storage (new approach)
+ *
+ * @param sessionId - UUIDv6 session identifier
+ * @param workdir - Working directory for the session
+ * @param sessionDir - Optional custom directory for session storage
+ * @returns Promise that resolves to true if session exists, false otherwise
+ */
+export async function sessionExistsInJsonl(
+  sessionId: string,
+  workdir: string,
+  sessionDir?: string,
+): Promise<boolean> {
+  try {
+    const filePath = await getSessionFilePath(sessionId, workdir, sessionDir);
     await fs.access(filePath);
     return true;
   } catch {

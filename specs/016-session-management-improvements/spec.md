@@ -80,7 +80,7 @@ As a Wave agent user working in directories with special characters or deep path
 - How does the system handle working directories that are symbolic links? → Resolve to target paths before encoding
 - What occurs when multiple sessions are created simultaneously in the same working directory? → Allow multiple sessions with different UUIDs in same project directory
 - How are existing sessions handled during the transition? → No backward compatibility needed - clean break to new system
-- What happens when the encoded directory name would exceed filesystem limits?
+- What happens when the encoded directory name would exceed filesystem limits? → Truncate to 200 characters and append SHA-256 hash suffix (format: `truncated-path-[first-8-chars-of-hash]`) where hash input is the complete original encoded path before truncation, ensuring uniqueness while staying within filesystem constraints
 
 ## Requirements *(mandatory)*
 
@@ -89,7 +89,7 @@ As a Wave agent user working in directories with special characters or deep path
 - **FR-001**: System MUST change the default session storage directory from `~/.wave/sessions` to `~/.wave/projects`
 - **FR-002**: System MUST create subdirectories under `~/.wave/projects` based on the encoded working directory path
 - **FR-003**: System MUST encode working directory paths by replacing forward slashes with hyphens (e.g., `/home/user/project` becomes `-home-user-project`), resolving symbolic links to their target paths before encoding
-- **FR-004**: System MUST encode special characters in directory paths to ensure valid filesystem directory names (spaces become underscores, etc.) and limit encoded directory names to 200 characters with hash suffix for longer paths
+- **FR-004**: System MUST encode special characters in directory paths using the following complete mapping to ensure valid filesystem directory names: spaces→underscores, forward slashes→hyphens, backslashes→hyphens, colons→dashes, asterisks→stars, question marks→q-marks, single quotes→sq-quote, double quotes→dq-quote, less than→lt, greater than→gt, pipe→p-pipe, semicolons→semicol, ampersands→amp, percent→pct, at symbols→at-sign. Any unlisted special characters MUST be percent-encoded (e.g., `#` becomes `%23`). System MUST limit encoded directory names to 200 characters with SHA-256 hash suffix for longer paths (format: `truncated-path-[first-8-chars-of-hash]`) where the hash input is the complete original encoded path before truncation
 - **FR-005**: System MUST generate session file names using UUIDv6 format without any prefix and use JSONL format for efficient message appending (e.g., `01234567-89ab-6cde-f012-3456789abcde.jsonl`)
 - **FR-010**: System MUST store each message as a separate line in JSONL format with only timestamp metadata, eliminating session-level metadata (id, version, workdir) for streamlined data structure
 - **FR-012**: System MUST append messages to JSONL session files during each recursion of `sendAIMessage()`, specifically in the `finally` block to ensure messages are saved regardless of success or failure

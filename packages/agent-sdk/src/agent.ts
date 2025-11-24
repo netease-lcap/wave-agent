@@ -29,7 +29,7 @@ import { HookManager } from "./managers/hookManager.js";
 import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
-import { loadSession } from "./services/session.js";
+import { loadSessionFromJsonl } from "./services/session.js";
 import type { SubagentConfiguration } from "./utils/subagentParser.js";
 
 /**
@@ -465,10 +465,10 @@ export class Agent {
       const subagentSessions = [];
       for (const [sessionId, blockData] of subagentBlockMap) {
         try {
-          const sessionData = await loadSession(
+          const sessionData = await loadSessionFromJsonl(
             sessionId,
+            this.messageManager.getWorkdir(),
             this.messageManager.getSessionDir(),
-            "subagent_session",
           );
           if (sessionData) {
             subagentSessions.push({

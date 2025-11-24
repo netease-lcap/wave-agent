@@ -11,7 +11,7 @@ Improve Wave agent session management by:
 1. Changing default session directory from `~/.wave/sessions` to `~/.wave/projects` with project-based subdirectories
 2. Switching from JSON to JSONL format with UUIDv6 filenames for better performance
 3. Implementing working directory path encoding for reliable cross-platform storage
-4. Adding message-level persistence during AI recursion for improved reliability
+4. Adding message-level persistence during AI recursion in `sendAIMessage()` finally block for improved reliability and guaranteed message saving regardless of success or failure
 
 ## Technical Context
 
