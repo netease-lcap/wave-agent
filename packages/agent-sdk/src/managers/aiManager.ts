@@ -14,7 +14,12 @@ import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
-import type { ToolBlock } from "../types/messaging.js";
+import type {
+  Message,
+  MessageBlock,
+  ToolBlock,
+  TextBlock,
+} from "../types/messaging.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 
 export interface AIManagerCallbacks {
@@ -37,6 +42,13 @@ export interface AIManagerOptions {
   tokenLimit: number;
 }
 
+interface SendAIMessageOptions {
+  recursionDepth?: number;
+  model?: string;
+  allowedTools?: string[];
+  parentMessageManager?: MessageManager;
+}
+
 export class AIManager {
   public isLoading: boolean = false;
   private abortController: AbortController | null = null;
@@ -48,6 +60,7 @@ export class AIManager {
   private hookManager?: HookManager;
   private workdir: string;
   private systemPrompt?: string;
+  private messageStore: WeakMap<Message, SendAIMessageOptions> = new WeakMap();
 
   // Configuration properties
   private gatewayConfig: GatewayConfig;
@@ -215,14 +228,44 @@ export class AIManager {
     }
   }
 
+  beforeSendAIMessage(
+    options: SendAIMessageOptions = {},
+  ): SendAIMessageOptions {
+    const { recursionDepth } = options;
+
+    if (recursionDepth) {
+      return options;
+    }
+
+    const messages = this.messageManager.getMessages() || [];
+    const prefixMessages = messages.slice(0, -1).reverse();
+    const lastMessage = messages[messages.length - 1];
+
+    const isCommandBlock = (item: MessageBlock) =>
+      (item as TextBlock)?.customCommandContent;
+    const isCommandMessage = (message: Message) =>
+      message?.blocks?.some(isCommandBlock);
+
+    if (!lastMessage) {
+      return options;
+    }
+
+    if (isCommandMessage(lastMessage)) {
+      this.messageStore.set(lastMessage, options);
+      return options;
+    }
+
+    const found = prefixMessages.find(isCommandMessage);
+    const got = found && this.messageStore.get(found);
+
+    return got ? { ...got, ...options } : options;
+  }
+
   public async sendAIMessage(
-    options: {
-      recursionDepth?: number;
-      model?: string;
-      allowedTools?: string[];
-      parentMessageManager?: MessageManager;
-    } = {},
+    options: SendAIMessageOptions = {},
   ): Promise<void> {
+    options = this.beforeSendAIMessage(options);
+
     const {
       recursionDepth = 0,
       model,
