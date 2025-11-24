@@ -46,20 +46,31 @@ describe("AI Service - Basic CallAgent", () => {
   beforeEach(() => {
     // Reset mock and set default behavior
     mockCreate.mockReset();
-    mockCreate.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: "Test response",
+    // Mock withResponse() method
+    const mockWithResponse = vi.fn().mockResolvedValue({
+      data: {
+        choices: [
+          {
+            message: {
+              content: "Test response",
+            },
+            finish_reason: "stop",
           },
+        ],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 20,
+          total_tokens: 30,
         },
-      ],
-      usage: {
-        prompt_tokens: 10,
-        completion_tokens: 20,
-        total_tokens: 30,
+      },
+      response: {
+        headers: new Map([
+          ["x-request-id", "req-12345"],
+          ["content-type", "application/json"],
+        ]),
       },
     });
+    mockCreate.mockReturnValue({ withResponse: mockWithResponse });
   });
 
   afterEach(() => {
@@ -156,15 +167,22 @@ describe("AI Service - Basic CallAgent", () => {
     });
 
     it("should handle response without usage information", async () => {
-      mockCreate.mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: "Test response without usage",
+      const mockWithResponse = vi.fn().mockResolvedValue({
+        data: {
+          choices: [
+            {
+              message: {
+                content: "Test response without usage",
+              },
+              finish_reason: "length",
             },
-          },
-        ],
+          ],
+        },
+        response: {
+          headers: new Map([["x-request-id", "req-67890"]]),
+        },
       });
+      mockCreate.mockReturnValue({ withResponse: mockWithResponse });
 
       const result = await callAgent({
         gatewayConfig: TEST_GATEWAY_CONFIG,
@@ -175,6 +193,104 @@ describe("AI Service - Basic CallAgent", () => {
 
       expect(result.content).toBe("Test response without usage");
       expect(result.usage).toBeUndefined();
+      expect(result.finish_reason).toBe("length");
+      expect(result.response_headers).toEqual({
+        "x-request-id": "req-67890",
+      });
+    });
+
+    it("should include finish_reason and response_headers in result", async () => {
+      const result = await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      expect(result.content).toBe("Test response");
+      expect(result.finish_reason).toBe("stop");
+      expect(result.response_headers).toEqual({
+        "x-request-id": "req-12345",
+        "content-type": "application/json",
+      });
+      expect(result.usage).toEqual({
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        total_tokens: 30,
+      });
+    });
+
+    it("should handle different finish_reason values", async () => {
+      const mockWithResponse = vi.fn().mockResolvedValue({
+        data: {
+          choices: [
+            {
+              message: {
+                content: null,
+                tool_calls: [
+                  {
+                    id: "call_123",
+                    type: "function",
+                    function: {
+                      name: "test_tool",
+                      arguments: '{"arg": "value"}',
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+        },
+        response: {
+          headers: new Map([["x-request-id", "req-tool-call"]]),
+        },
+      });
+      mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+      const result = await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      expect(result.finish_reason).toBe("tool_calls");
+      expect(result.tool_calls).toHaveLength(1);
+      expect(result.tool_calls?.[0].type).toBe("function");
+      if (result.tool_calls?.[0].type === "function") {
+        expect(result.tool_calls[0].function.name).toBe("test_tool");
+      }
+    });
+
+    it("should handle response with empty headers", async () => {
+      const mockWithResponse = vi.fn().mockResolvedValue({
+        data: {
+          choices: [
+            {
+              message: {
+                content: "Test response",
+              },
+              finish_reason: "stop",
+            },
+          ],
+        },
+        response: {
+          headers: new Map(),
+        },
+      });
+      mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+      const result = await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      expect(result.content).toBe("Test response");
+      expect(result.finish_reason).toBe("stop");
+      expect(result.response_headers).toBeUndefined();
     });
   });
 });
