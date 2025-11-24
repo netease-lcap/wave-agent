@@ -107,6 +107,14 @@ export interface CallAgentResult {
     completion_tokens: number;
     total_tokens: number;
   };
+  finish_reason?:
+    | "stop"
+    | "length"
+    | "tool_calls"
+    | "content_filter"
+    | "function_call"
+    | null;
+  response_headers?: Record<string, string>;
   metadata?: Record<string, unknown>;
 }
 
@@ -199,29 +207,42 @@ Today's date: ${new Date().toISOString().split("T")[0]}
 
     if (isStreaming) {
       // Handle streaming response
-      const stream = await openai.chat.completions.create(
-        createParams as ChatCompletionCreateParamsStreaming,
-        {
+      const { data: stream, response } = await openai.chat.completions
+        .create(createParams as ChatCompletionCreateParamsStreaming, {
           signal: abortSignal,
-        },
-      );
+        })
+        .withResponse();
+
+      // Extract response headers
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
 
       return await processStreamingResponse(
         stream,
         onContentUpdate,
         onToolUpdate,
         abortSignal,
+        responseHeaders,
       );
     } else {
       // Handle non-streaming response
-      const response = await openai.chat.completions.create(
-        createParams as ChatCompletionCreateParamsNonStreaming,
-        {
-          signal: abortSignal,
-        },
-      );
+      const { data: response, response: rawResponse } =
+        await openai.chat.completions
+          .create(createParams as ChatCompletionCreateParamsNonStreaming, {
+            signal: abortSignal,
+          })
+          .withResponse();
+
+      // Extract response headers
+      const responseHeaders: Record<string, string> = {};
+      rawResponse.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
 
       const finalMessage = response.choices[0]?.message;
+      const finishReason = response.choices[0]?.finish_reason || null;
       const totalUsage = response.usage
         ? {
             prompt_tokens: response.usage.prompt_tokens,
@@ -264,6 +285,14 @@ Today's date: ${new Date().toISOString().split("T")[0]}
         result.usage = totalUsage;
       }
 
+      if (finishReason) {
+        result.finish_reason = finishReason;
+      }
+
+      if (Object.keys(responseHeaders).length > 0) {
+        result.response_headers = responseHeaders;
+      }
+
       return result;
     }
   } catch (error) {
@@ -281,6 +310,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
  * @param onContentUpdate Callback for content updates
  * @param onToolUpdate Callback for tool updates
  * @param abortSignal Optional abort signal
+ * @param responseHeaders Response headers from the initial request
  * @returns Final result with accumulated content and tool calls
  */
 async function processStreamingResponse(
@@ -294,6 +324,7 @@ async function processStreamingResponse(
     stage?: "start" | "streaming" | "running" | "end";
   }) => void,
   abortSignal?: AbortSignal,
+  responseHeaders?: Record<string, string>,
 ): Promise<CallAgentResult> {
   let accumulatedContent = "";
   const toolCalls: {
@@ -306,6 +337,7 @@ async function processStreamingResponse(
   }[] = [];
   const additionalDeltaFields: Record<string, unknown> = {};
   let usage: CallAgentResult["usage"] = undefined;
+  let finishReason: CallAgentResult["finish_reason"] = null;
 
   try {
     for await (const chunk of stream) {
@@ -323,7 +355,13 @@ async function processStreamingResponse(
         };
       }
 
-      const delta = chunk.choices?.[0]?.delta;
+      // Check for finish_reason in the choice
+      const choice = chunk.choices?.[0];
+      if (choice?.finish_reason) {
+        finishReason = choice.finish_reason;
+      }
+
+      const delta = choice?.delta;
       if (!delta) {
         continue;
       }
@@ -444,6 +482,14 @@ async function processStreamingResponse(
 
   if (usage) {
     result.usage = usage;
+  }
+
+  if (finishReason) {
+    result.finish_reason = finishReason;
+  }
+
+  if (responseHeaders && Object.keys(responseHeaders).length > 0) {
+    result.response_headers = responseHeaders;
   }
 
   if (Object.keys(additionalDeltaFields).length > 0) {

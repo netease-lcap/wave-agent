@@ -77,16 +77,23 @@ describe("AI Service - Streaming", () => {
           choices: [
             {
               delta: { content: " world" },
+              finish_reason: "stop",
             },
           ],
         };
       })();
 
-      mockCreate.mockResolvedValueOnce(mockStream);
+      const mockWithResponse = vi.fn().mockResolvedValue({
+        data: mockStream,
+        response: {
+          headers: new Map([["x-request-id", "req-stream-123"]]),
+        },
+      });
+      mockCreate.mockReturnValue({ withResponse: mockWithResponse });
 
       const contentUpdates: string[] = [];
 
-      await callAgent({
+      const result = await callAgent({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
@@ -99,6 +106,12 @@ describe("AI Service - Streaming", () => {
       // Should call create with stream: true
       const callArgs = mockCreate.mock.calls[0][0];
       expect(callArgs.stream).toBe(true);
+      // Should include response headers
+      expect(result.response_headers).toEqual({
+        "x-request-id": "req-stream-123",
+      });
+      // Should include finish_reason
+      expect(result.finish_reason).toBe("stop");
     });
 
     it("should accumulate content from multiple chunks with onContentUpdate", async () => {
@@ -127,7 +140,14 @@ describe("AI Service - Streaming", () => {
         };
       })();
 
-      mockCreate.mockResolvedValueOnce(mockStream);
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: mockStream,
+          response: {
+            headers: new Map(),
+          },
+        }),
+      });
 
       const contentUpdates: string[] = [];
 
@@ -186,7 +206,14 @@ describe("AI Service - Streaming", () => {
         };
       })();
 
-      mockCreate.mockResolvedValueOnce(mockStream);
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: mockStream,
+          response: {
+            headers: new Map(),
+          },
+        }),
+      });
 
       const contentUpdates: string[] = [];
       const toolUpdates: Array<{
@@ -253,7 +280,14 @@ describe("AI Service - Streaming", () => {
         throw new Error("Streaming error occurred");
       })();
 
-      mockCreate.mockResolvedValueOnce(mockStream);
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: mockStream,
+          response: {
+            headers: new Map(),
+          },
+        }),
+      });
 
       const contentUpdates: string[] = [];
 
@@ -296,7 +330,14 @@ describe("AI Service - Streaming", () => {
         };
       })();
 
-      mockCreate.mockResolvedValueOnce(mockStream);
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: mockStream,
+          response: {
+            headers: new Map(),
+          },
+        }),
+      });
 
       const contentUpdates: string[] = [];
 
@@ -341,7 +382,14 @@ describe("AI Service - Streaming", () => {
         };
       })();
 
-      mockCreate.mockResolvedValueOnce(mockStream);
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: mockStream,
+          response: {
+            headers: new Map(),
+          },
+        }),
+      });
 
       const contentUpdates: string[] = [];
 
@@ -386,7 +434,14 @@ describe("AI Service - Streaming", () => {
         };
       })();
 
-      mockCreate.mockResolvedValueOnce(mockStream);
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: mockStream,
+          response: {
+            headers: new Map(),
+          },
+        }),
+      });
 
       const result = await callAgent({
         gatewayConfig: TEST_GATEWAY_CONFIG,
@@ -405,19 +460,27 @@ describe("AI Service - Streaming", () => {
     });
 
     it("should default to non-streaming when no streaming callbacks provided", async () => {
-      mockCreate.mockResolvedValueOnce({
-        choices: [
-          {
-            message: {
-              content: "Non-streaming response",
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: {
+            choices: [
+              {
+                message: {
+                  content: "Non-streaming response",
+                },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 20,
+              total_tokens: 30,
             },
           },
-        ],
-        usage: {
-          prompt_tokens: 10,
-          completion_tokens: 20,
-          total_tokens: 30,
-        },
+          response: {
+            headers: new Map([["x-request-id", "req-non-stream"]]),
+          },
+        }),
       });
 
       await callAgent({
