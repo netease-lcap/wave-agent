@@ -102,6 +102,7 @@ export class MessageManager {
   private userInputHistory: string[];
   private sessionStartTime: string;
   private workdir: string;
+  private encodedWorkdir: string; // Cached encoded workdir
   private logger?: Logger; // Add optional logger property
   private callbacks: MessageManagerCallbacks;
   private sessionDir?: string; // Add session directory property
@@ -116,6 +117,7 @@ export class MessageManager {
     this.userInputHistory = [];
     this.sessionStartTime = new Date().toISOString();
     this.workdir = options.workdir;
+    this.encodedWorkdir = pathEncoder.encodeSync(this.workdir); // Cache encoded workdir
     this.callbacks = options.callbacks;
     this.logger = options.logger;
     this.sessionDir = options.sessionDir;
@@ -160,15 +162,12 @@ export class MessageManager {
   }
 
   /**
-   * Compute the transcript path using PathEncoder
+   * Compute the transcript path using cached encoded workdir
    * Called during construction and when sessionId changes
    */
   private computeTranscriptPath(): string {
-    // Use PathEncoder for robust cross-platform path encoding
-    const encodedWorkdir = pathEncoder.encodeSync(this.workdir);
-
     const sessionDir = this.sessionDir || join(homedir(), ".wave", "projects");
-    return join(sessionDir, encodedWorkdir, `${this.sessionId}.jsonl`);
+    return join(sessionDir, this.encodedWorkdir, `${this.sessionId}.jsonl`);
   }
 
   // Setter methods, will trigger callbacks
