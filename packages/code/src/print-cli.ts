@@ -47,13 +47,6 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
         );
       }
 
-      // Log compact parameters for collapsed view mode demonstration
-      if (params.compactParams) {
-        logger.info(
-          `[TOOL COMPACT] ${params.name || "Unknown"}: ${params.compactParams}`,
-        );
-      }
-
       // For demonstration: log parameter streaming progress with enhanced detail
       const paramLength = params.parameters?.length || 0;
       const hasChunk = params.parametersChunk ? " [+chunk]" : "";
