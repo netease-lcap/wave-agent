@@ -203,7 +203,7 @@ export class HookManager {
               `[HookManager] Command ${commandIndex + 1} completed successfully in ${result.duration}ms`,
             );
           } else {
-            this.logger?.warn(
+            this.logger?.debug(
               `[HookManager] Command ${commandIndex + 1} failed in ${result.duration}ms (exit code: ${result.exitCode}, timed out: ${result.timedOut})`,
             );
           }
