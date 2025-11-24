@@ -301,6 +301,19 @@ export class AIManager {
         },
       });
 
+      // Log finish reason and response headers if available
+      if (result.finish_reason) {
+        this.logger?.debug(
+          `AI response finished with reason: ${result.finish_reason}`,
+        );
+      }
+      if (
+        result.response_headers &&
+        Object.keys(result.response_headers).length > 0
+      ) {
+        this.logger?.debug("AI response headers:", result.response_headers);
+      }
+
       if (result.metadata && Object.keys(result.metadata).length > 0) {
         this.messageManager.mergeAssistantMetadata(result.metadata);
       }
@@ -353,137 +366,153 @@ export class AIManager {
           async (functionToolCall) => {
             const toolId = functionToolCall.id || "";
 
-            try {
-              // Check if already interrupted, skip tool execution if so
-              if (
-                abortController.signal.aborted ||
-                toolAbortController.signal.aborted
-              ) {
-                return;
-              }
+            // Check if already interrupted, skip tool execution if so
+            if (
+              abortController.signal.aborted ||
+              toolAbortController.signal.aborted
+            ) {
+              return;
+            }
 
-              // Safely parse tool parameters, handle tools without parameters
-              let toolArgs: Record<string, unknown> = {};
-              const argsString = functionToolCall.function?.arguments?.trim();
+            const toolName = functionToolCall.function?.name || "";
+            // Safely parse tool parameters, handle tools without parameters
+            let toolArgs: Record<string, unknown> = {};
+            const argsString = functionToolCall.function?.arguments?.trim();
 
-              if (!argsString || argsString === "") {
-                // Tool without parameters, use empty object
-                toolArgs = {};
-              } else {
-                try {
-                  toolArgs = JSON.parse(argsString);
-                } catch (parseError) {
-                  // For non-empty but malformed JSON, still throw exception
-                  const errorMessage = `Failed to parse tool arguments: ${argsString}`;
-                  this.logger?.error(errorMessage, parseError);
-                  throw new Error(errorMessage);
-                }
-              }
-
-              const toolName = functionToolCall.function?.name || "";
-              const compactParams = this.generateCompactParams(
-                toolName,
-                toolArgs,
-              );
-
-              // Emit running stage for non-streaming tool calls (tool execution about to start)
-              this.messageManager.updateToolBlock({
-                id: toolId,
-                stage: "running",
-                name: toolName,
-                compactParams,
-                parameters: argsString,
-                parametersChunk: "",
-              });
-
+            if (!argsString || argsString === "") {
+              // Tool without parameters, use empty object
+              toolArgs = {};
+            } else {
               try {
-                // Execute PreToolUse hooks before tool execution
-                const shouldExecuteTool = await this.executePreToolUseHooks(
-                  toolName,
-                  toolArgs,
-                  toolId,
-                );
-
-                // If PreToolUse hooks blocked execution, skip tool execution
-                if (!shouldExecuteTool) {
-                  this.logger?.info(
-                    `Tool ${toolName} execution blocked by PreToolUse hooks`,
+                toolArgs = JSON.parse(argsString);
+              } catch (parseError) {
+                // For non-empty but malformed JSON, still throw exception
+                const errorMessage = `Failed to parse tool arguments: ${argsString}`;
+                this.logger?.error(errorMessage, parseError);
+                // Log finish reason and response headers for debugging malformed tool calls
+                if (result.finish_reason) {
+                  this.logger?.error(
+                    `AI response finish_reason: ${result.finish_reason}`,
                   );
-                  return; // Skip this tool and return from this map function
+                }
+                if (
+                  result.response_headers &&
+                  Object.keys(result.response_headers).length > 0
+                ) {
+                  this.logger?.error(
+                    "AI response headers:",
+                    result.response_headers,
+                  );
                 }
 
-                // Create tool execution context
-                const context: ToolContext = {
-                  abortSignal: toolAbortController.signal,
-                  backgroundBashManager: this.backgroundBashManager,
-                  workdir: this.workdir,
-                };
-
-                // Execute tool
-                const toolResult = await this.toolManager.execute(
-                  functionToolCall.function?.name || "",
-                  toolArgs,
-                  context,
-                );
-
-                // Update message state - tool execution completed
                 this.messageManager.updateToolBlock({
                   id: toolId,
                   parameters: argsString,
-                  result:
-                    toolResult.content ||
-                    (toolResult.error ? `Error: ${toolResult.error}` : ""),
-                  success: toolResult.success,
-                  error: toolResult.error,
-                  stage: "end",
-                  name: toolName,
-                  shortResult: toolResult.shortResult,
-                });
-
-                // If tool returns diff information, add diff block
-                if (
-                  toolResult.success &&
-                  toolResult.diffResult &&
-                  toolResult.filePath
-                ) {
-                  this.messageManager.addDiffBlock(
-                    toolResult.filePath,
-                    toolResult.diffResult,
-                  );
-                }
-
-                // Execute PostToolUse hooks after successful tool completion
-                await this.executePostToolUseHooks(
-                  toolId,
-                  toolName,
-                  toolArgs,
-                  toolResult,
-                );
-              } catch (toolError) {
-                const errorMessage =
-                  toolError instanceof Error
-                    ? toolError.message
-                    : String(toolError);
-
-                this.messageManager.updateToolBlock({
-                  id: toolId,
-                  parameters: JSON.stringify(toolArgs, null, 2),
                   result: `Tool execution failed: ${errorMessage}`,
                   success: false,
-                  error: errorMessage,
+                  error: `${errorMessage}\nAI response finish_reason: ${result.finish_reason}\nAI response headers:, ${JSON.stringify(result.response_headers)}`,
                   stage: "end",
                   name: toolName,
-                  compactParams,
+                  compactParams: "",
                 });
+                return;
               }
-            } catch (parseError) {
-              const errorMessage =
-                parseError instanceof Error
-                  ? parseError.message
-                  : String(parseError);
-              this.messageManager.addErrorBlock(
-                `Failed to parse tool arguments for ${functionToolCall.function?.name}: ${errorMessage}`,
+            }
+
+            const compactParams = this.generateCompactParams(
+              toolName,
+              toolArgs,
+            );
+
+            // Emit running stage for non-streaming tool calls (tool execution about to start)
+            this.messageManager.updateToolBlock({
+              id: toolId,
+              stage: "running",
+              name: toolName,
+              compactParams,
+              parameters: argsString,
+              parametersChunk: "",
+            });
+
+            try {
+              // Execute PreToolUse hooks before tool execution
+              const shouldExecuteTool = await this.executePreToolUseHooks(
+                toolName,
+                toolArgs,
+                toolId,
               );
+
+              // If PreToolUse hooks blocked execution, skip tool execution
+              if (!shouldExecuteTool) {
+                this.logger?.info(
+                  `Tool ${toolName} execution blocked by PreToolUse hooks`,
+                );
+                return; // Skip this tool and return from this map function
+              }
+
+              // Create tool execution context
+              const context: ToolContext = {
+                abortSignal: toolAbortController.signal,
+                backgroundBashManager: this.backgroundBashManager,
+                workdir: this.workdir,
+              };
+
+              // Execute tool
+              const toolResult = await this.toolManager.execute(
+                functionToolCall.function?.name || "",
+                toolArgs,
+                context,
+              );
+
+              // Update message state - tool execution completed
+              this.messageManager.updateToolBlock({
+                id: toolId,
+                parameters: argsString,
+                result:
+                  toolResult.content ||
+                  (toolResult.error ? `Error: ${toolResult.error}` : ""),
+                success: toolResult.success,
+                error: toolResult.error,
+                stage: "end",
+                name: toolName,
+                shortResult: toolResult.shortResult,
+              });
+
+              // If tool returns diff information, add diff block
+              if (
+                toolResult.success &&
+                toolResult.diffResult &&
+                toolResult.filePath
+              ) {
+                this.messageManager.addDiffBlock(
+                  toolResult.filePath,
+                  toolResult.diffResult,
+                );
+              }
+
+              // Execute PostToolUse hooks after successful tool completion
+              await this.executePostToolUseHooks(
+                toolId,
+                toolName,
+                toolArgs,
+                toolResult,
+              );
+            } catch (toolError) {
+              const errorMessage =
+                toolError instanceof Error
+                  ? toolError.message
+                  : String(toolError);
+
+              this.messageManager.updateToolBlock({
+                id: toolId,
+                parameters: JSON.stringify(toolArgs, null, 2),
+                result: `Tool execution failed: ${errorMessage}`,
+                success: false,
+                error: errorMessage,
+                stage: "end",
+                name: toolName,
+                compactParams,
+              });
             }
           },
         );
