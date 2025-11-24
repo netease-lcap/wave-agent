@@ -4,6 +4,7 @@ import type { SubagentInstance } from "../../src/managers/subagentManager.js";
 import { promises as fs } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { v6 as uuidv6 } from "uuid";
 
 // Mock dependencies to prevent real I/O operations
 vi.mock("@/services/aiService", () => ({
@@ -15,6 +16,18 @@ vi.mock("@/managers/toolManager", () => ({
     list: vi.fn(() => []),
     initializeBuiltInTools: vi.fn(),
   })),
+}));
+
+// Mock session service functions
+vi.mock("../../src/services/session.js", () => ({
+  generateSessionId: vi.fn(),
+  loadSessionFromJsonl: vi.fn(),
+  appendMessages: vi.fn(),
+  getLatestSessionFromJsonl: vi.fn(),
+  listSessionsFromJsonl: vi.fn(),
+  deleteSessionFromJsonl: vi.fn(),
+  sessionExistsInJsonl: vi.fn(),
+  cleanupExpiredSessionsFromJsonl: vi.fn(),
 }));
 
 // Type for accessing private members in tests
@@ -33,6 +46,9 @@ describe("Agent - Subagent Session Restoration", () => {
     // Create temporary directories for testing
     testWorkdir = await fs.mkdtemp(join(tmpdir(), "wave-agent-test-"));
     testSessionDir = await fs.mkdtemp(join(tmpdir(), "wave-sessions-test-"));
+
+    // Reset all mocks before each test
+    vi.clearAllMocks();
   });
 
   afterEach(async () => {
@@ -46,14 +62,19 @@ describe("Agent - Subagent Session Restoration", () => {
   });
 
   it("should discover and restore subagent sessions when main session is loaded", async () => {
-    const mainSessionId = "main_session_12345678";
+    const mainSessionId = uuidv6();
     const subagentId = "subagent_87654321";
+    const subagentSessionId = uuidv6();
 
-    // Create mock main session with subagent block
+    // Import and mock the session functions
+    const { loadSessionFromJsonl } = await import(
+      "../../src/services/session.js"
+    );
+    const mockLoadSessionFromJsonl = vi.mocked(loadSessionFromJsonl);
+
+    // Create mock main session data
     const mainSessionData = {
       id: mainSessionId,
-      timestamp: new Date().toISOString(),
-      version: "1.0.0",
       messages: [
         {
           role: "user" as const,
@@ -76,13 +97,13 @@ describe("Agent - Subagent Session Restoration", () => {
               subagentId: subagentId,
               subagentName: "test-subagent",
               status: "completed" as const,
-              sessionId: subagentId, // Use subagentId as sessionId for the mock
+              sessionId: subagentSessionId, // Use separate session ID for subagent
               configuration: {
                 name: "test-subagent",
                 systemPrompt: "You are a test subagent",
                 description: "Test subagent for restoration",
                 filePath: "test-subagent.md",
-                scope: "project",
+                scope: "project" as const,
                 priority: 1,
               },
             },
@@ -97,11 +118,9 @@ describe("Agent - Subagent Session Restoration", () => {
       },
     };
 
-    // Create mock subagent session
+    // Create mock subagent session data
     const subagentSessionData = {
-      id: subagentId,
-      timestamp: new Date().toISOString(),
-      version: "1.0.0",
+      id: subagentSessionId,
       messages: [
         {
           role: "user" as const,
@@ -130,23 +149,10 @@ describe("Agent - Subagent Session Restoration", () => {
       },
     };
 
-    // Save mock sessions to files
-    const mainSessionFile = join(testSessionDir, `session_12345678.json`);
-    const subagentSessionFile = join(
-      testSessionDir,
-      `subagent_session_87654321.json`,
-    );
-
-    await fs.writeFile(
-      mainSessionFile,
-      JSON.stringify(mainSessionData, null, 2),
-      "utf-8",
-    );
-    await fs.writeFile(
-      subagentSessionFile,
-      JSON.stringify(subagentSessionData, null, 2),
-      "utf-8",
-    );
+    // Mock session loading - main session first, then subagent session
+    mockLoadSessionFromJsonl
+      .mockResolvedValueOnce(mainSessionData) // First call for main session
+      .mockResolvedValueOnce(subagentSessionData); // Second call for subagent session
 
     // Mock callback to verify UI callback is triggered
     const mockSubagentMessagesChange = vi.fn();
@@ -174,6 +180,8 @@ describe("Agent - Subagent Session Restoration", () => {
     const subagentInstance =
       agentWithPrivates.subagentManager.getInstance(subagentId);
 
+    // Check if subagent instance was created and restored
+    expect(subagentInstance).not.toBeNull();
     if (subagentInstance) {
       expect(subagentInstance.subagentId).toBe(subagentId);
       expect(subagentInstance.status).toBe("completed");
@@ -213,18 +221,38 @@ describe("Agent - Subagent Session Restoration", () => {
       ]),
     );
 
+    // Verify that loadSessionFromJsonl was called for both sessions
+    expect(mockLoadSessionFromJsonl).toHaveBeenCalledTimes(2);
+    expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
+      1,
+      mainSessionId,
+      testWorkdir,
+      testSessionDir,
+    );
+    expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
+      2,
+      subagentSessionId,
+      testWorkdir,
+      testSessionDir,
+    );
+
     await agent.destroy();
   });
 
   it("should handle missing subagent session files gracefully", async () => {
-    const mainSessionId = "main_session_98765432";
+    const mainSessionId = uuidv6();
     const missingSubagentId = "missing_subagent_12345678";
+    const missingSubagentSessionId = uuidv6();
+
+    // Import and mock the session functions
+    const { loadSessionFromJsonl } = await import(
+      "../../src/services/session.js"
+    );
+    const mockLoadSessionFromJsonl = vi.mocked(loadSessionFromJsonl);
 
     // Create mock main session with reference to non-existent subagent
     const mainSessionData = {
       id: mainSessionId,
-      timestamp: new Date().toISOString(),
-      version: "1.0.0",
       messages: [
         {
           role: "user" as const,
@@ -243,6 +271,15 @@ describe("Agent - Subagent Session Restoration", () => {
               subagentId: missingSubagentId,
               subagentName: "missing-subagent",
               status: "completed" as const,
+              sessionId: missingSubagentSessionId,
+              configuration: {
+                name: "missing-subagent",
+                systemPrompt: "You are a missing subagent",
+                description: "Missing subagent for testing",
+                filePath: "missing-subagent.md",
+                scope: "project" as const,
+                priority: 1,
+              },
             },
           ],
         },
@@ -255,13 +292,10 @@ describe("Agent - Subagent Session Restoration", () => {
       },
     };
 
-    // Save only main session (subagent session file is missing)
-    const mainSessionFile = join(testSessionDir, `session_98765432.json`);
-    await fs.writeFile(
-      mainSessionFile,
-      JSON.stringify(mainSessionData, null, 2),
-      "utf-8",
-    );
+    // Mock session loading - main session succeeds, subagent session fails (returns null)
+    mockLoadSessionFromJsonl
+      .mockResolvedValueOnce(mainSessionData) // First call for main session
+      .mockResolvedValueOnce(null); // Second call for subagent session - not found
 
     // Agent creation should succeed even with missing subagent session
     const agent = await Agent.create({
@@ -276,16 +310,37 @@ describe("Agent - Subagent Session Restoration", () => {
     expect(agent.messages).toHaveLength(2);
     expect(agent.sessionId).toBe(mainSessionId);
 
-    // Missing subagent should not cause any issues
+    // Missing subagent should not cause any issues - subagent manager should handle gracefully
     const agentWithPrivates = agent as unknown as AgentWithPrivates;
     const subagentInstance =
       agentWithPrivates.subagentManager.getInstance(missingSubagentId);
     expect(subagentInstance).toBeNull();
 
+    // Verify that loadSessionFromJsonl was called for both sessions
+    expect(mockLoadSessionFromJsonl).toHaveBeenCalledTimes(2);
+    expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
+      1,
+      mainSessionId,
+      testWorkdir,
+      testSessionDir,
+    );
+    expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
+      2,
+      missingSubagentSessionId,
+      testWorkdir,
+      testSessionDir,
+    );
+
     await agent.destroy();
   });
 
   it("should not attempt subagent restoration when no session is restored", async () => {
+    // Import and mock the session functions
+    const { loadSessionFromJsonl } = await import(
+      "../../src/services/session.js"
+    );
+    const mockLoadSessionFromJsonl = vi.mocked(loadSessionFromJsonl);
+
     // Create agent without session restoration
     const agent = await Agent.create({
       apiKey: "test-key",
@@ -302,6 +357,9 @@ describe("Agent - Subagent Session Restoration", () => {
     const activeInstances =
       agentWithPrivates.subagentManager.getActiveInstances();
     expect(activeInstances).toHaveLength(0);
+
+    // Verify that loadSessionFromJsonl was never called (no session to restore)
+    expect(mockLoadSessionFromJsonl).toHaveBeenCalledTimes(0);
 
     await agent.destroy();
   });

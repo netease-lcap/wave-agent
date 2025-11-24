@@ -544,6 +544,9 @@ export class AIManager {
         error instanceof Error ? error.message : "Unknown error occurred",
       );
     } finally {
+      // Save session after each recursion to ensure message persistence (FR-012)
+      await this.messageManager.saveSession();
+
       // Only execute cleanup and hooks for the initial call
       if (recursionDepth === 0) {
         // Set loading to false first
@@ -552,9 +555,6 @@ export class AIManager {
         // Clear abort controllers
         this.abortController = null;
         this.toolAbortController = null;
-
-        // Save session after cleanup
-        await this.messageManager.saveSession();
 
         // Execute Stop hooks only if the operation was not aborted
         const isCurrentlyAborted =

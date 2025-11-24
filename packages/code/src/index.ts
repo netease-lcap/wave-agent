@@ -1,7 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import { listSessions } from "wave-agent-sdk";
+import { listSessions, getSessionFilePath } from "wave-agent-sdk";
 
 // Export main function for external use
 export async function main() {
@@ -53,9 +53,11 @@ export async function main() {
       for (const session of sessions) {
         const startedAt = new Date(session.startedAt).toLocaleString();
         const lastActiveAt = new Date(session.lastActiveAt).toLocaleString();
+        const filePath = await getSessionFilePath(session.id, session.workdir);
 
         console.log(`ID: ${session.id}`);
         console.log(`  Workdir: ${session.workdir}`);
+        console.log(`  File Path: ${filePath}`);
         console.log(`  Started: ${startedAt}`);
         console.log(`  Last Active: ${lastActiveAt}`);
         console.log(`  Last Message Tokens: ${session.latestTotalTokens}`);

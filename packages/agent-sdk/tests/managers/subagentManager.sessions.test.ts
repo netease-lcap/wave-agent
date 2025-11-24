@@ -1,6 +1,6 @@
 /**
  * @file Tests for SubagentManager session functionality
- * Tests that subagents use the correct session prefix and session handling
+ * Tests that subagents have proper session isolation
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -25,10 +25,16 @@ vi.mock("../../src/services/aiService.js", () => ({
   }),
 }));
 
-// Mock the session service
+// Mock the session service with new functions
 vi.mock("../../src/services/session.js", () => ({
-  saveSession: vi.fn().mockResolvedValue(undefined),
-  loadSession: vi.fn().mockResolvedValue(null),
+  generateSessionId: vi.fn().mockImplementation(() => {
+    // Generate a mock UUIDv6 format for testing
+    const timestamp = Date.now().toString(16).padStart(12, "0");
+    const random = Math.random().toString(16).substring(2, 14);
+    return `${timestamp.substring(0, 8)}-${timestamp.substring(8, 12)}-6${random.substring(0, 3)}-a${random.substring(3, 6)}-${random.substring(6, 18).padEnd(12, "0")}`;
+  }),
+  appendMessages: vi.fn().mockResolvedValue(undefined),
+  loadSessionFromJsonl: vi.fn().mockResolvedValue(null),
   getLatestSession: vi.fn().mockResolvedValue(null),
   listSessions: vi.fn().mockResolvedValue([]),
   deleteSession: vi.fn().mockResolvedValue(true),
@@ -36,10 +42,11 @@ vi.mock("../../src/services/session.js", () => ({
   sessionExists: vi.fn().mockResolvedValue(false),
   getSessionFilePath: vi
     .fn()
-    .mockImplementation((sessionId, sessionDir, prefix) => {
-      const shortId = sessionId.split("_")[2] || sessionId.slice(-8);
-      const filePrefix = prefix || "session";
-      return `/mock/path/${filePrefix}_${shortId}.json`;
+    .mockImplementation((sessionId, workdir, sessionDir) => {
+      const baseDir =
+        sessionDir ||
+        `${workdir}/.wave/projects/encoded-${encodeURIComponent(workdir)}`;
+      return `${baseDir}/${sessionId}.jsonl`;
     }),
 }));
 
@@ -97,8 +104,8 @@ describe("SubagentManager - Session Functionality", () => {
     vi.clearAllMocks();
   });
 
-  describe("Session Prefix Configuration", () => {
-    it("should create subagent MessageManager with 'subagent_session' prefix", async () => {
+  describe("Session Path Structure", () => {
+    it("should create subagent MessageManager with JSONL session files", async () => {
       const mockConfiguration: SubagentConfiguration = {
         name: "test-subagent",
         description: "Test subagent",
@@ -124,15 +131,17 @@ describe("SubagentManager - Session Functionality", () => {
       // Get the transcript path from the subagent's message manager
       const transcriptPath = instance.messageManager.getTranscriptPath();
 
-      // Verify that the path contains 'subagent_session' prefix
-      expect(transcriptPath).toContain("subagent_session_");
-      expect(transcriptPath).not.toContain("/session_");
-      expect(transcriptPath).toMatch(/subagent_session_[a-zA-Z0-9]+\.json$/);
+      // Verify that the path uses JSONL extension and UUIDv6 format
+      expect(transcriptPath).toMatch(/\.jsonl$/);
+      expect(transcriptPath).toMatch(
+        /[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jsonl$/,
+      );
+      expect(transcriptPath).toContain("/.wave/projects/");
     });
 
-    it("should save subagent sessions with subagent_session prefix", async () => {
-      const { saveSession } = await import("../../src/services/session.js");
-      const mockSaveSession = vi.mocked(saveSession);
+    it("should save subagent sessions using appendMessages function", async () => {
+      const { appendMessages } = await import("../../src/services/session.js");
+      const mockAppendMessages = vi.mocked(appendMessages);
 
       const mockConfiguration: SubagentConfiguration = {
         name: "test-subagent",
@@ -164,26 +173,26 @@ describe("SubagentManager - Session Functionality", () => {
       // Save the session
       await instance.messageManager.saveSession();
 
-      // Verify that saveSession was called with the correct prefix
-      expect(mockSaveSession).toHaveBeenCalledWith(
-        expect.any(String), // sessionId
+      // Verify that appendMessages was called with the correct parameters
+      expect(mockAppendMessages).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        ), // UUIDv6 sessionId
         expect.any(Array), // messages
         "/tmp/test", // workdir
-        0, // latestTotalTokens
-        expect.any(String), // startedAt
         undefined, // sessionDir
-        "subagent_session", // prefix
       );
     });
 
-    it("should handle session restoration with subagent_session prefix", async () => {
-      const { loadSession } = await import("../../src/services/session.js");
-      const mockLoadSession = vi.mocked(loadSession);
+    it("should handle session restoration using loadSessionFromJsonl function", async () => {
+      const { loadSessionFromJsonl } = await import(
+        "../../src/services/session.js"
+      );
+      const mockLoadSessionFromJsonl = vi.mocked(loadSessionFromJsonl);
 
-      // Mock loadSession to return a valid session
-      mockLoadSession.mockResolvedValueOnce({
-        id: "test-session-id",
-        version: "1.0.0",
+      // Mock loadSessionFromJsonl to return a valid session
+      mockLoadSessionFromJsonl.mockResolvedValueOnce({
+        id: "01234567-89ab-6cde-f012-3456789abcde",
         messages: [],
         metadata: {
           workdir: "/tmp/test",
@@ -217,15 +226,15 @@ describe("SubagentManager - Session Functionality", () => {
 
       // Trigger session restoration
       await instance.messageManager.handleSessionRestoration(
-        "test-session-id",
+        "01234567-89ab-6cde-f012-3456789abcde",
         false,
       );
 
-      // Verify that loadSession was called with the correct prefix
-      expect(mockLoadSession).toHaveBeenCalledWith(
-        "test-session-id",
+      // Verify that loadSessionFromJsonl was called with the correct parameters
+      expect(mockLoadSessionFromJsonl).toHaveBeenCalledWith(
+        "01234567-89ab-6cde-f012-3456789abcde",
+        "/tmp/test", // workdir
         undefined, // sessionDir
-        "subagent_session", // prefix
       );
     });
   });
@@ -263,17 +272,132 @@ describe("SubagentManager - Session Functionality", () => {
       const path1 = instance1.messageManager.getTranscriptPath();
       const path2 = instance2.messageManager.getTranscriptPath();
 
-      // Verify that both use subagent_session prefix
-      expect(path1).toContain("subagent_session_");
-      expect(path2).toContain("subagent_session_");
+      // Verify that both use JSONL extension
+      expect(path1).toMatch(/\.jsonl$/);
+      expect(path2).toMatch(/\.jsonl$/);
 
-      // Verify that they have different session IDs
+      // Verify that they have different file paths
       expect(path1).not.toBe(path2);
 
       // Verify that session IDs are different
-      expect(instance1.messageManager.getSessionId()).not.toBe(
-        instance2.messageManager.getSessionId(),
+      const sessionId1 = instance1.messageManager.getSessionId();
+      const sessionId2 = instance2.messageManager.getSessionId();
+
+      expect(sessionId1).not.toBe(sessionId2);
+
+      // Verify both session IDs are valid UUIDv6 format
+      expect(sessionId1).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
       );
+      expect(sessionId2).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    });
+
+    it("should use project-based directory structure for session storage", async () => {
+      const { appendMessages } = await import("../../src/services/session.js");
+      const mockAppendMessages = vi.mocked(appendMessages);
+
+      const mockConfiguration: SubagentConfiguration = {
+        name: "test-subagent",
+        description: "Test subagent",
+        systemPrompt: "You are a test subagent",
+        tools: ["Read", "Write"],
+        filePath: "/tmp/test-subagent.json",
+        scope: "project",
+        priority: 1,
+      };
+
+      const parameters = {
+        description: "Test task",
+        prompt: "Test prompt",
+        subagent_type: "test-subagent",
+      };
+
+      // Create subagent instance
+      const instance = await subagentManager.createInstance(
+        mockConfiguration,
+        parameters,
+      );
+
+      // Add a message to trigger session operations
+      instance.messageManager.addUserMessage({
+        content: "Test message",
+      });
+
+      // Save the session to trigger appendMessages call
+      await instance.messageManager.saveSession();
+
+      // Verify that appendMessages was called with correct parameters
+      expect(mockAppendMessages).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        ), // UUIDv6 sessionId
+        expect.any(Array), // messages
+        "/tmp/test", // workdir
+        undefined, // sessionDir
+      );
+    });
+
+    it("should handle multiple subagents with different session files", async () => {
+      const { appendMessages } = await import("../../src/services/session.js");
+      const mockAppendMessages = vi.mocked(appendMessages);
+
+      const mockConfiguration: SubagentConfiguration = {
+        name: "test-subagent",
+        description: "Test subagent",
+        systemPrompt: "You are a test subagent",
+        tools: ["Read", "Write"],
+        filePath: "/tmp/test-subagent.json",
+        scope: "project",
+        priority: 1,
+      };
+
+      const parameters = {
+        description: "Test task",
+        prompt: "Test prompt",
+        subagent_type: "test-subagent",
+      };
+
+      // Create multiple subagent instances
+      const instance1 = await subagentManager.createInstance(
+        mockConfiguration,
+        parameters,
+      );
+
+      const instance2 = await subagentManager.createInstance(
+        mockConfiguration,
+        parameters,
+      );
+
+      // Add messages and save sessions for both instances
+      instance1.messageManager.addUserMessage({ content: "Message 1" });
+      instance2.messageManager.addUserMessage({ content: "Message 2" });
+
+      await instance1.messageManager.saveSession();
+      await instance2.messageManager.saveSession();
+
+      // Verify appendMessages was called for both instances with different session IDs
+      expect(mockAppendMessages).toHaveBeenCalledTimes(2);
+
+      const calls = mockAppendMessages.mock.calls;
+      const sessionId1 = calls[0][0];
+      const sessionId2 = calls[1][0];
+
+      // Verify session IDs are different
+      expect(sessionId1).not.toBe(sessionId2);
+
+      // Verify both are valid UUIDv6 format
+      expect(sessionId1).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      expect(sessionId2).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+
+      // Verify both use the same workdir
+      expect(calls[0][2]).toBe("/tmp/test");
+      expect(calls[1][2]).toBe("/tmp/test");
     });
   });
 });
