@@ -48,7 +48,7 @@ As a Wave agent user, I need session files to have cleaner, more standardized na
 
 **Why this priority**: Improves file system cleanliness and provides better UUID generation, but is secondary to the organizational improvements.
 
-**Independent Test**: Can be tested by creating new sessions and verifying files are named with UUIDv6 format without prefixes (e.g., `01234567-89ab-6cde-f012-3456789abcde.json`).
+**Independent Test**: Can be tested by creating new sessions and verifying files are named with UUIDv6 format without prefixes (e.g., `01234567-89ab-6cde-f012-3456789abcde.jsonl`).
 
 **Acceptance Scenarios**:
 

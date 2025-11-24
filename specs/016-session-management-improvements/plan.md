@@ -22,7 +22,7 @@ Improve Wave agent session management by:
 -->
 
 **Language/Version**: TypeScript 5.9+ with Node.js 16+  
-**Primary Dependencies**: Node.js fs/promises, crypto.randomUUID, path utilities  
+**Primary Dependencies**: Node.js fs/promises, uuid@latest (for UUIDv6), path utilities, crypto (for hash generation)  
 **Storage**: Local filesystem - JSONL files in hierarchical directory structure  
 **Testing**: Vitest with mocking for unit tests, real filesystem operations for integration tests  
 **Target Platform**: Cross-platform Node.js CLI application

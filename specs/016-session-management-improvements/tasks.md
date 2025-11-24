@@ -30,7 +30,7 @@
 
 - [ ] T004 [P] Update session directory constants in packages/code/src/utils/constants.ts
 - [ ] T005 [P] Create session interface types in packages/agent-sdk/src/types/index.ts
-- [ ] T006 Build agent-sdk package after foundational changes
+- [ ] T006 Build agent-sdk package after foundational changes using `pnpm build` in packages/agent-sdk/
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -142,6 +142,9 @@
 - [ ] T040 Update session cleanup operations to work with new directory structure in packages/agent-sdk/src/services/session.ts
 - [ ] T041 [P] Verify error handling and recovery across all session operations
 - [ ] T042 Performance validation against current implementation benchmarks
+- [ ] T043 [P] [FR-008] Update session cleanup operations for new directory structure in packages/agent-sdk/src/services/session.ts
+- [ ] T044 [P] [FR-009] Verify all existing session functionality (save, load, list, delete) works with new organization in packages/agent-sdk/tests/services/session.test.ts
+- [ ] T045 [FR-009] Add integration test for complete session lifecycle with new format in packages/agent-sdk/tests/services/session.test.ts
 
 ---
 
@@ -162,6 +165,7 @@
 - **User Story 1 (P1)**: Can start after Foundational (Phase 2) - No dependencies on other stories
 - **User Story 2 (P2)**: Can start after Foundational (Phase 2) - Integrates with US1 session service but independently testable
 - **User Story 3 (P3)**: Can start after Foundational (Phase 2) - Enhances US1 path encoding but independently testable
+- **Session Cleanup (FR-008/FR-009)**: Can start after any user story is complete - validates existing functionality preservation
 
 ### Within Each User Story
 
