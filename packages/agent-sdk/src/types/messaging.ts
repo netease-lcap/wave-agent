@@ -93,6 +93,7 @@ export interface CommandOutputBlock {
 export interface CompressBlock {
   type: "compress";
   content: string;
+  sessionId: string;
 }
 
 export interface MemoryBlock {

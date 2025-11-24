@@ -9,6 +9,7 @@ describe("CompressDisplay", () => {
     const block: CompressBlock = {
       type: "compress",
       content: "This is compressed content\nwith multiple lines\nof text",
+      sessionId: "test-session-id",
     };
 
     const { lastFrame } = render(
@@ -28,6 +29,7 @@ describe("CompressDisplay", () => {
     const block: CompressBlock = {
       type: "compress",
       content: longContent,
+      sessionId: "test-session-id",
     };
 
     const { lastFrame } = render(
@@ -47,6 +49,7 @@ describe("CompressDisplay", () => {
     const block: CompressBlock = {
       type: "compress",
       content: longContent,
+      sessionId: "test-session-id",
     };
 
     const { lastFrame } = render(

@@ -460,6 +460,7 @@ export class MessageManager {
         {
           type: "compress",
           content: compressedContent,
+          sessionId: this.sessionId,
         },
       ],
     };

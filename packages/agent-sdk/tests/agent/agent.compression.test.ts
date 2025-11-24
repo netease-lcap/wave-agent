@@ -249,6 +249,7 @@ describe("Agent Message Compression Tests", () => {
           {
             type: "compress",
             content: "Compressed content: Contains summary of first 6 messages",
+            sessionId: "test-session-id",
           },
         ],
       },
@@ -451,6 +452,7 @@ describe("Agent Message Compression Tests", () => {
     const compressBlock = eighthLastMessage.blocks[0] as {
       type: "compress";
       content: string;
+      sessionId: string;
     };
     expect(compressBlock.content).toBe(
       "Compressed content: This contains summary information of previous multi-round conversations.",
