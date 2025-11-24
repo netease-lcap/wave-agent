@@ -110,16 +110,18 @@ describe("Agent - Abort Handling", () => {
     // Execute the test
     await agent.sendMessage("Test message");
 
-    // Check that error message is added to the conversation when not aborted
+    // Check that error message is added to the tool block when not aborted
     const messages = agent.messages;
-    const errorBlocks = messages.flatMap((msg) =>
-      msg.blocks.filter((block) => block.type === "error"),
+    const toolBlocks = messages.flatMap((msg) =>
+      msg.blocks.filter((block) => block.type === "tool"),
     );
-    const hasParseError = errorBlocks.some((block) =>
-      (block as ErrorBlock).content?.includes(
-        "Failed to parse tool arguments for search_replace",
-      ),
-    );
+    const hasParseError = toolBlocks.some((block) => {
+      const errorMsg =
+        typeof block.error === "string"
+          ? block.error
+          : block.error?.message || "";
+      return errorMsg.includes("Failed to parse tool arguments");
+    });
     expect(hasParseError).toBe(true);
 
     // Verify tool execute was not called due to JSON parse error
