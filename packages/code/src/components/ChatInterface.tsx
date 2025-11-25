@@ -35,7 +35,7 @@ export const ChatInterface: React.FC = () => {
         isCompressing={isCompressing}
         latestTotalTokens={latestTotalTokens}
         isExpanded={isExpanded}
-        key={Number(isExpanded)}
+        key={String(isExpanded) + sessionId}
       />
 
       {!isExpanded && (
