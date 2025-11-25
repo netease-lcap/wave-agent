@@ -51,7 +51,6 @@ export interface SessionMetadataV2 {
 // Session creation options
 export interface SessionCreationOptions {
   workdir: string;
-  sessionDir?: string;
   generateId?: boolean; // Default true, for testing override
   initialMessages?: SessionMessage[];
 }
@@ -69,7 +68,6 @@ export interface SessionListFilter {
 // Session loading options
 export interface SessionLoadOptions {
   sessionId: string;
-  sessionDir?: string;
   streaming?: boolean; // Default false
   messageLimit?: number; // For partial loading
 }
@@ -78,7 +76,6 @@ export interface SessionLoadOptions {
 export interface MessageAppendOptions {
   sessionId: string;
   messages: SessionMessage[];
-  sessionDir?: string;
   autoFlush?: boolean; // Default true
 }
 
@@ -87,7 +84,6 @@ export interface SessionCleanupOptions {
   workdir?: string;
   maxAge: number; // Days
   dryRun?: boolean;
-  sessionDir?: string;
 }
 
 // New session data format for JSONL

@@ -35,19 +35,24 @@ vi.mock("../../src/services/session.js", () => ({
   }),
   appendMessages: vi.fn().mockResolvedValue(undefined),
   loadSessionFromJsonl: vi.fn().mockResolvedValue(null),
-  getLatestSession: vi.fn().mockResolvedValue(null),
+  getLatestSessionFromJsonl: vi.fn().mockResolvedValue(null),
   listSessions: vi.fn().mockResolvedValue([]),
-  deleteSession: vi.fn().mockResolvedValue(true),
-  cleanupExpiredSessions: vi.fn().mockResolvedValue(0),
-  sessionExists: vi.fn().mockResolvedValue(false),
+  listSessionsFromJsonl: vi.fn().mockResolvedValue([]),
+  deleteSessionFromJsonl: vi.fn().mockResolvedValue(true),
+  cleanupExpiredSessionsFromJsonl: vi.fn().mockResolvedValue(0),
+  sessionExistsInJsonl: vi.fn().mockResolvedValue(false),
   getSessionFilePath: vi
     .fn()
-    .mockImplementation((sessionId, workdir, sessionDir) => {
-      const baseDir =
-        sessionDir ||
-        `${workdir}/.wave/projects/encoded-${encodeURIComponent(workdir)}`;
+    .mockImplementation((sessionId, workdir, isSubagent) => {
+      const baseDir = `/mock/session/dir/encoded-${encodeURIComponent(workdir)}`;
+      if (isSubagent) {
+        return `${baseDir}/subagent/${sessionId}.jsonl`;
+      }
       return `${baseDir}/${sessionId}.jsonl`;
     }),
+  ensureSessionDir: vi.fn().mockResolvedValue(undefined),
+  cleanupEmptyProjectDirectories: vi.fn().mockResolvedValue(undefined),
+  SESSION_DIR: "/mock/session/dir",
 }));
 
 describe("SubagentManager - Session Functionality", () => {
@@ -136,7 +141,7 @@ describe("SubagentManager - Session Functionality", () => {
       expect(transcriptPath).toMatch(
         /[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jsonl$/,
       );
-      expect(transcriptPath).toContain("/.wave/projects/");
+      expect(transcriptPath).toContain("/mock/session/dir/");
     });
 
     it("should save subagent sessions using appendMessages function", async () => {
@@ -180,7 +185,6 @@ describe("SubagentManager - Session Functionality", () => {
         ), // UUIDv6 sessionId
         expect.any(Array), // messages
         "/tmp/test", // workdir
-        undefined, // sessionDir
         true, // isSubagent
       );
     });
@@ -235,7 +239,6 @@ describe("SubagentManager - Session Functionality", () => {
       expect(mockLoadSessionFromJsonl).toHaveBeenCalledWith(
         "01234567-89ab-6cde-f012-3456789abcde",
         "/tmp/test", // workdir
-        undefined, // sessionDir
         true, // isSubagent
       );
     });
@@ -337,7 +340,6 @@ describe("SubagentManager - Session Functionality", () => {
         ), // UUIDv6 sessionId
         expect.any(Array), // messages
         "/tmp/test", // workdir
-        undefined, // sessionDir
         true, // isSubagent
       );
     });
