@@ -1000,7 +1000,6 @@ describe("Session Management", () => {
       const sessionData = await loadSessionFromJsonl(
         subagentSessionId,
         testWorkdir,
-
         true, // isSubagent = true
       );
 
