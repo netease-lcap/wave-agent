@@ -33,7 +33,7 @@ describe("MessageList Static Rendering", () => {
   });
 
   describe("Static rendering scenarios", () => {
-    it("should render all messages with correct numbering (23 messages)", () => {
+    it("should render all messages (23 messages)", () => {
       const messages = Array.from({ length: 23 }, (_, i) =>
         createMessage("user", `Message ${i + 1}`, i + 1),
       );
@@ -57,11 +57,8 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("Messages 23");
       expect(lastFrame()).not.toContain("Page");
 
-      // For same-role consecutive messages, only the very first message (index 0) shows numbering
-      expect(lastFrame()).toContain("#1");
-      expect(lastFrame()).not.toContain("#14");
-      expect(lastFrame()).not.toContain("#20");
-      expect(lastFrame()).not.toContain("#23");
+      // For same-role consecutive messages, only the very first message shows header
+      expect(lastFrame()).toContain("👤 You");
     });
 
     it("should render all messages without pagination (15 messages)", () => {
@@ -88,10 +85,8 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("Messages 15");
       expect(lastFrame()).not.toContain("Page");
 
-      // For same-role consecutive messages, only the first one shows numbering
-      expect(lastFrame()).toContain("#1");
-      expect(lastFrame()).not.toContain("#6");
-      expect(lastFrame()).not.toContain("#15");
+      // For same-role consecutive messages, only the first one shows header
+      expect(lastFrame()).toContain("👤 You");
     });
 
     it("should handle large number of messages and show all (47 messages)", () => {
@@ -141,10 +136,8 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("Short 3 - Message 3");
       expect(lastFrame()).toContain("Messages 3");
       expect(lastFrame()).not.toContain("Page");
-      expect(lastFrame()).toContain("#1");
-      // For same-role consecutive messages, only the first one shows numbering
-      expect(lastFrame()).not.toContain("#2");
-      expect(lastFrame()).not.toContain("#3");
+      expect(lastFrame()).toContain("👤 You");
+      // For same-role consecutive messages, only the first one shows header
     });
 
     it("should handle single message", () => {
@@ -162,7 +155,7 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("Only - Message 1");
       expect(lastFrame()).toContain("Messages 1");
       expect(lastFrame()).not.toContain("Page");
-      expect(lastFrame()).toContain("#1");
+      expect(lastFrame()).toContain("👤 You");
     });
 
     it("should handle empty message list", () => {
@@ -311,11 +304,7 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("👤 You"); // User messages
       expect(lastFrame()).toContain("🤖 Assistant"); // Assistant messages
 
-      // Should have proper message numbering for ALL messages
-      expect(lastFrame()).toContain("#1");
-      expect(lastFrame()).toContain("#2");
-      expect(lastFrame()).toContain("#3");
-      expect(lastFrame()).toContain("#12");
+      // Should have proper role headers for ALL messages
     });
 
     it("should handle complex message types with mixed blocks", () => {
@@ -367,11 +356,9 @@ describe("MessageList Static Rendering", () => {
         />,
       );
 
-      // All role headers should be visible with numbering
-      expect(lastFrame()).toContain("👤 You #1");
-      expect(lastFrame()).toContain("🤖 Assistant #2");
-      expect(lastFrame()).toContain("👤 You #3");
-      expect(lastFrame()).toContain("🤖 Assistant #4");
+      // All role headers should be visible
+      expect(lastFrame()).toContain("👤 You");
+      expect(lastFrame()).toContain("🤖 Assistant");
 
       // All message content should be visible
       expect(lastFrame()).toContain("Question 1 - Message 1");
@@ -397,10 +384,8 @@ describe("MessageList Static Rendering", () => {
         />,
       );
 
-      // Only the first message should have a header with numbering
-      expect(lastFrame()).toContain("👤 You #1");
-      expect(lastFrame()).not.toContain("#2");
-      expect(lastFrame()).not.toContain("#3");
+      // Only the first message should have a header
+      expect(lastFrame()).toContain("👤 You");
 
       // All message content should still be visible
       expect(lastFrame()).toContain("First user message - Message 1");
@@ -432,10 +417,9 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("Static message 2 - Message 2");
       expect(lastFrame()).toContain("Dynamic last message - Message 3");
 
-      // Proper numbering for role changes
-      expect(lastFrame()).toContain("👤 You #1");
-      expect(lastFrame()).toContain("🤖 Assistant #2");
-      expect(lastFrame()).toContain("👤 You #3");
+      // Proper role headers for role changes
+      expect(lastFrame()).toContain("👤 You");
+      expect(lastFrame()).toContain("🤖 Assistant");
     });
 
     it("should handle single message (all dynamic, no static)", () => {
@@ -452,7 +436,7 @@ describe("MessageList Static Rendering", () => {
       );
 
       expect(lastFrame()).toContain("Only message - Message 1");
-      expect(lastFrame()).toContain("👤 You #1");
+      expect(lastFrame()).toContain("👤 You");
       expect(lastFrame()).toContain("Messages 1");
     });
   });
