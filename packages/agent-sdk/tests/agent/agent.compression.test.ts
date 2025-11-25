@@ -45,7 +45,7 @@ describe("Agent Message Compression Tests", () => {
     return messages;
   };
 
-  it("should trigger compression when token usage exceeds 64k", async () => {
+  it("should trigger compression when token usage exceeds 96k", async () => {
     // Create message history with enough messages (generate 8 pairs of messages, total 16)
     const messages = generateMessages(8);
 
@@ -98,7 +98,7 @@ describe("Agent Message Compression Tests", () => {
     // Verify AI service was called
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
 
-    // Verify compression function was called (because token usage exceeded 64k)
+    // Verify compression function was called (because token usage exceeded 96k)
     expect(compressMessagesCalled).toBe(true);
     expect(mockCompressMessages).toHaveBeenCalledTimes(1);
 
@@ -410,7 +410,7 @@ describe("Agent Message Compression Tests", () => {
           usage: {
             prompt_tokens: 50000,
             completion_tokens: 20000,
-            total_tokens: 70000, // Exceeds 64000 to trigger compression
+            total_tokens: 102000, // Exceeds 96000 to trigger compression
           },
         };
       } else {
