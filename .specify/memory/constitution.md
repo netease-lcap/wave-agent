@@ -23,7 +23,7 @@ All code MUST be written in TypeScript with strict type checking enabled. No `an
 **Rationale**: Type safety prevents runtime errors and improves developer experience in an AI-assisted development environment.
 
 ### III. Test Alignment
-Test file organization MUST follow logical patterns for discoverability. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. All tests (unit and integration) MUST be in `packages/*/tests` directories. Integration tests use temporary directories and real file operations; unit tests use mocking for external dependencies. Tests MUST be written following TDD principles where tests are written before implementation.
+Test file organization MUST follow logical patterns for discoverability. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. All tests MUST be in `packages/*/tests` directories. Tests MUST be written following TDD principles where tests are written before implementation.
 
 **Rationale**: Flexible test organization enables both predictable discovery and manageable test suites for complex modules. TDD ensures comprehensive test coverage and better design decisions.
 
@@ -48,7 +48,7 @@ Package source code MUST follow established patterns for maintainability and dis
 **Rationale**: Consistent source code organization enables developers to quickly locate and understand code purpose, reducing cognitive load and improving maintainability.
 
 ### VIII. Test-Driven Development
-All new functionality MUST follow TDD workflow: Red (write failing test), Green (minimal implementation), Refactor (improve code while maintaining tests). Tests MUST be written before implementation begins. Test names MUST clearly describe behavior using "should" statements. Each test MUST focus on a single responsibility. Test isolation MUST be maintained - no test should depend on another test's state. Mock external dependencies in unit tests to ensure fast execution and reliable outcomes.
+All new functionality MUST follow TDD workflow: Red (write failing test), Green (minimal implementation), Refactor (improve code while maintaining tests). Tests MUST be written before implementation begins. Test names MUST clearly describe behavior using "should" statements. Each test MUST focus on a single responsibility. Test isolation MUST be maintained - no test should depend on another test's state. Mock external dependencies in tests to ensure fast execution and reliable outcomes.
 
 **Rationale**: TDD ensures comprehensive test coverage, promotes better API design, catches regressions early, and provides living documentation of system behavior through executable specifications.
 
@@ -57,8 +57,6 @@ All new functionality MUST follow TDD workflow: Red (write failing test), Green 
 All code MUST pass TypeScript compilation without errors or warnings. All tests MUST pass before merging. Code MUST follow the established linting and formatting rules enforced by ESLint and Prettier. Quality gates (type-check and lint) MUST be run and pass after every modification.
 
 **Testing Requirements**: 
-- Tests directory: All tests (unit and integration) with proper isolation
-- Unit tests: Use mocking for external dependencies, fast execution
 - All new features require corresponding tests following TDD workflow
 - TDD cycle: Write failing test → Make test pass → Refactor if needed
 - Test coverage: Aim for comprehensive behavior coverage, not just line coverage
@@ -84,8 +82,6 @@ All code MUST pass TypeScript compilation without errors or warnings. All tests 
 6. Commit with clear, descriptive messages
 
 **Testing Strategy**:
-- Unit tests for individual functions and components (with mocking)
-- Integration tests for user workflows and system interactions
 - All tests must be in tests directories with proper cleanup
 - Use appropriate isolation based on test type
 - Follow TDD Red-Green-Refactor cycle consistently
