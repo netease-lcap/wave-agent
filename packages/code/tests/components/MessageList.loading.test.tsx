@@ -111,30 +111,4 @@ describe("MessageList Loading State", () => {
     expect(output).not.toContain("💭 AI is thinking...");
     expect(output).not.toContain("Command is running...");
   });
-
-  it("should not show loading UI when isExpanded is true", () => {
-    const messages = [
-      createMessage("user", "Hello"),
-      createMessage("assistant", "Hi there!"),
-    ];
-
-    const { lastFrame } = render(
-      <MessageList
-        messages={messages}
-        isLoading={true}
-        isCommandRunning={true}
-        latestTotalTokens={1000}
-        isExpanded={true} // Expanded state
-      />,
-    );
-    const output = lastFrame();
-
-    // In expanded state, should not show loading related UI
-    expect(output).not.toContain("💭 AI is thinking...");
-    expect(output).not.toContain("Command is running...");
-
-    // But should show message content
-    expect(output).toContain("Hello");
-    expect(output).toContain("Hi there!");
-  });
 });

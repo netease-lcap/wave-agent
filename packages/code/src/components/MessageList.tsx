@@ -61,8 +61,7 @@ export const MessageList = React.memo(
           />
         </Box>
 
-        {/* Loading state display - only show in non-expanded state */}
-        {!isExpanded && (isLoading || isCommandRunning || isCompressing) && (
+        {(isLoading || isCommandRunning || isCompressing) && (
           <Box flexDirection="column" gap={1}>
             {isLoading && (
               <Box>

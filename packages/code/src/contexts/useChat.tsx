@@ -73,7 +73,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   // Message Display State
   const [isExpanded, setIsExpanded] = useState(false);
-  const isExpandedRef = useRef(false);
 
   // AI State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -102,11 +101,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
   const agentRef = useRef<Agent | null>(null);
 
-  // Keep isExpandedRef in sync with isExpanded state
-  useEffect(() => {
-    isExpandedRef.current = isExpanded;
-  }, [isExpanded]);
-
   // Listen for Ctrl+O hotkey to toggle collapse/expand state
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
@@ -129,10 +123,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     const initializeAgent = async () => {
       const callbacks: AgentCallbacks = {
         onMessagesChange: (newMessages) => {
-          // Skip updates when in expanded mode
-          if (!isExpandedRef.current) {
-            setMessages([...newMessages]);
-          }
+          setMessages([...newMessages]);
         },
         onServersChange: (servers) => {
           setMcpServers([...servers]);
@@ -141,10 +132,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           setSessionId(sessionId);
         },
         onLatestTotalTokensChange: (tokens) => {
-          // Skip updates when in expanded mode
-          if (!isExpandedRef.current) {
-            setlatestTotalTokens(tokens);
-          }
+          setlatestTotalTokens(tokens);
         },
         onUserInputHistoryChange: (history) => {
           setUserInputHistory([...history]);
@@ -156,14 +144,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           setBackgroundShells([...shells]);
         },
         onSubagentMessagesChange: (subagentId, messages) => {
-          logger.debug(subagentId);
-          // Skip updates when in expanded mode
-          if (!isExpandedRef.current) {
-            setSubagentMessages((prev) => ({
-              ...prev,
-              [subagentId]: [...messages],
-            }));
-          }
+          setSubagentMessages((prev) => ({
+            ...prev,
+            [subagentId]: [...messages],
+          }));
         },
       };
 
