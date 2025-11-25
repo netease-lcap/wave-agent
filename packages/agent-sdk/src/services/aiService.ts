@@ -185,7 +185,6 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     // Get model configuration - use injected modelConfig with optional override
     const openaiModelConfig = getModelConfig(model || modelConfig.agentModel, {
       temperature: 0,
-      max_completion_tokens: 32768,
     });
 
     // Determine if streaming is needed
