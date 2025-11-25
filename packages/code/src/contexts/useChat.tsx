@@ -104,16 +104,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
   // Listen for Ctrl+O hotkey to toggle collapse/expand state
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
-      setIsExpanded((prev) => {
-        const newExpanded = !prev;
-
-        // When collapsing (switching from expanded to collapsed), refresh data from agent
-        if (prev && !newExpanded && agentRef.current) {
-          setMessages(agentRef.current.messages);
-          setlatestTotalTokens(agentRef.current.latestTotalTokens);
-        }
-
-        return newExpanded;
+      // Clear terminal screen when expanded state changes
+      process.stdout.write("\x1Bc", () => {
+        setIsExpanded((prev) => {
+          const newExpanded = !prev;
+          return newExpanded;
+        });
       });
     }
   });
