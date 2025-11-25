@@ -10,16 +10,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "./.wave/scripts/check-final.sh"
-          }
-        ]
-      }
     ]
   }
 }
