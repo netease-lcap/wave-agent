@@ -215,12 +215,14 @@ describe("Agent - Subagent Session Restoration", () => {
       mainSessionId,
       testWorkdir,
       testSessionDir,
+      undefined,
     );
     expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
       2,
       subagentSessionId,
       testWorkdir,
       testSessionDir,
+      true,
     );
 
     await agent.destroy();
@@ -310,12 +312,14 @@ describe("Agent - Subagent Session Restoration", () => {
       mainSessionId,
       testWorkdir,
       testSessionDir,
+      undefined,
     );
     expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
       2,
       missingSubagentSessionId,
       testWorkdir,
       testSessionDir,
+      true,
     );
 
     await agent.destroy();
