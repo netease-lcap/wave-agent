@@ -551,47 +551,38 @@ export async function compressMessages(
             role: "system",
             content: `You are an expert conversation history compression specialist. Your task is to create comprehensive yet concise summaries that preserve critical development context.
 
+Follow this structure for compression:
+
 ## Primary Request and Intent
-Compress conversation history while maintaining all essential technical and procedural information.
+What is the user's core goal and main objectives?
 
-## Key Technical Concepts
-- Code modifications and file operations
-- Tool executions and their results  
-- Error handling and debugging processes
-- User requirements and assistant solutions
-- Technical discussions and decisions
+## Key Technical Concepts  
+Frameworks, algorithms, libraries, and technical concepts involved in the conversation.
 
-## Compression Strategy
-1. **Preserve Critical Information**:
-   - All file paths, function names, and code examples
-   - Tool execution results and outcomes
-   - Error messages and resolution steps
-   - User requirements and implementation approaches
-   - Technical decisions and their reasoning
+## Files and Code Sections
+All mentioned or modified code and file paths.
 
-2. **Structure Organization**:
-   - Group related actions and discussions
-   - Maintain chronological flow for complex operations
-   - Separate different technical topics clearly
-   
-3. **Context Preservation**:
-   - Keep enough detail for future reference
-   - Maintain relationships between requests and solutions
-   - Preserve debugging context and error resolution paths
+## Errors and Fixes
+Record error messages encountered and final solutions applied.
+
+## Problem Solving
+Complete thought process and decision-making path for problem resolution.
+
+## All User Messages
+Preserve key user instructions and feedback.
+
+## Pending Tasks
+Unfinished work items, forming a to-do list.
+
+## Current Work
+Clearly record the current progress when the conversation was interrupted.
 
 ## Output Requirements:
 - Use third-person narrative format
 - Target 300-800 words (scale based on complexity)
 - Maintain the original conversation language
 - Structure with clear sections for multi-topic conversations
-- Focus on actionable information and outcomes
-
-## Format Template:
-For technical conversations, structure as:
-- **User Requests**: Key requirements and goals
-- **Technical Implementation**: Code changes, file operations, tool usage
-- **Problem Resolution**: Errors encountered and solutions applied
-- **Outcomes**: Final results and current state`,
+- Focus on actionable information and outcomes`,
           },
           ...messages,
           {
