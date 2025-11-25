@@ -259,9 +259,12 @@ export const useInputManager = (
     managerRef.current?.activateMemoryTypeSelector(message);
   }, []);
 
-  const handleMemoryTypeSelect = useCallback((type: "project" | "user") => {
-    managerRef.current?.handleMemoryTypeSelect(type);
-  }, []);
+  const handleMemoryTypeSelect = useCallback(
+    async (type: "project" | "user") => {
+      await managerRef.current?.handleMemoryTypeSelect(type);
+    },
+    [],
+  );
 
   const handleCancelMemoryTypeSelect = useCallback(() => {
     managerRef.current?.handleCancelMemoryTypeSelect();
@@ -303,33 +306,9 @@ export const useInputManager = (
   }, []);
 
   // Complex handlers that combine multiple operations
-  const handleBashHistoryExecuteAndSend = useCallback(
-    (command: string) => {
-      const commandToExecute =
-        managerRef.current?.handleBashHistoryExecute(command) || command;
-      // Clear input box and execute command, ensure command starts with !
-      const bashCommand = commandToExecute.startsWith("!")
-        ? commandToExecute
-        : `!${commandToExecute}`;
-      managerRef.current?.clearInput();
-      callbacks.onSendMessage?.(bashCommand);
-    },
-    [callbacks],
-  );
-
-  const handleMemoryTypeSelectAndSave = useCallback(
-    async (type: "project" | "user") => {
-      const currentMessage = inputText.trim();
-      if (currentMessage.startsWith("#")) {
-        await callbacks.onSaveMemory?.(currentMessage, type);
-      }
-      // Call the handler function to close the selector
-      managerRef.current?.handleMemoryTypeSelect(type);
-      // Clear input box
-      managerRef.current?.clearInput();
-    },
-    [inputText, callbacks],
-  );
+  const handleBashHistoryExecuteAndSend = useCallback((command: string) => {
+    managerRef.current?.handleBashHistoryExecuteAndSend(command);
+  }, []);
 
   return {
     // State
@@ -447,7 +426,6 @@ export const useInputManager = (
 
     // Complex handlers combining multiple operations
     handleBashHistoryExecuteAndSend,
-    handleMemoryTypeSelectAndSave,
 
     // Main input handler
     handleInput: useCallback(
