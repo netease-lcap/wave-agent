@@ -10,7 +10,6 @@ export interface MessageListProps {
   isCompressing?: boolean;
   latestTotalTokens?: number;
   isExpanded?: boolean;
-  sessionId?: string;
 }
 
 export const MessageList = React.memo(
@@ -21,7 +20,6 @@ export const MessageList = React.memo(
     isCompressing = false,
     latestTotalTokens = 0,
     isExpanded = false,
-    sessionId,
   }: MessageListProps) => {
     // Empty message state
     if (messages.length === 0) {
@@ -106,16 +104,6 @@ export const MessageList = React.memo(
                         {" "}
                         tokens
                       </Text>
-                    </>
-                  )}
-                  {sessionId && (
-                    <>
-                      <Text color="gray" dimColor>
-                        {" "}
-                        |{" "}
-                      </Text>
-                      <Text color="cyan">Session: </Text>
-                      <Text color="gray">{sessionId.slice(0, 8)}...</Text>
                     </>
                   )}
                 </Text>
