@@ -487,6 +487,16 @@ export class InputManager {
     return command; // Return command to execute
   }
 
+  handleBashHistoryExecuteAndSend(command: string): void {
+    const commandToExecute = this.handleBashHistoryExecute(command);
+    // Clear input box and execute command, ensure command starts with !
+    const bashCommand = commandToExecute.startsWith("!")
+      ? commandToExecute
+      : `!${commandToExecute}`;
+    this.clearInput();
+    this.callbacks.onSendMessage?.(bashCommand);
+  }
+
   checkForExclamationDeletion(cursorPosition: number): boolean {
     if (
       this.showBashHistorySelector &&
@@ -506,13 +516,18 @@ export class InputManager {
     this.callbacks.onMemoryTypeSelectorStateChange?.(true, message);
   }
 
-  handleMemoryTypeSelect(type: "project" | "user"): void {
-    // Note: type parameter will be used in future for different handling logic
-    console.debug(`Memory type selected: ${type}`);
+  async handleMemoryTypeSelect(type: "project" | "user"): Promise<void> {
+    const currentMessage = this.inputText.trim();
+    if (currentMessage.startsWith("#")) {
+      await this.callbacks.onSaveMemory?.(currentMessage, type);
+    }
+    // Close the selector
     this.showMemoryTypeSelector = false;
     this.memoryMessage = "";
-
     this.callbacks.onMemoryTypeSelectorStateChange?.(false, "");
+
+    // Clear input box
+    this.clearInput();
   }
 
   handleCancelMemoryTypeSelect(): void {

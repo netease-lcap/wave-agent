@@ -83,6 +83,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // Memory type selector
     showMemoryTypeSelector,
     memoryMessage,
+    handleMemoryTypeSelect,
     handleCancelMemoryTypeSelect,
     // Bash/MCP Manager
     showBashManager,
@@ -93,7 +94,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setUserInputHistory,
     // Complex handlers combining multiple operations
     handleBashHistoryExecuteAndSend,
-    handleMemoryTypeSelectAndSave,
     // Main handler
     handleInput,
     // Manager ready state
@@ -180,7 +180,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       {showMemoryTypeSelector && (
         <MemoryTypeSelector
           message={memoryMessage}
-          onSelect={handleMemoryTypeSelectAndSave}
+          onSelect={handleMemoryTypeSelect}
           onCancel={handleCancelMemoryTypeSelect}
         />
       )}
