@@ -29,7 +29,7 @@ export const USER_MEMORY_FILE = path.join(DATA_DIRECTORY, "user-memory.md");
 /**
  * AI related constants
  */
-export const DEFAULT_TOKEN_LIMIT = 64000; // Default token limit
+export const DEFAULT_TOKEN_LIMIT = 96000; // Default token limit
 
 /**
  * @deprecated These constants are now legacy. Use ModelConfig through Agent constructor instead.
