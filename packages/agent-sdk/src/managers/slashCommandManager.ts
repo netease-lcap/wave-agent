@@ -52,9 +52,12 @@ export class SlashCommandManager {
     this.registerCommand({
       id: "clear",
       name: "clear",
-      description: "Clear the chat session",
+      description: "Clear the chat session and terminal",
       handler: () => {
+        // Clear chat messages
         this.messageManager.clearMessages();
+        // Clear terminal screen
+        process.stdout.write("\x1Bc");
       },
     });
   }
