@@ -66,6 +66,9 @@ export const MessageList = React.memo(
             {isLoading && (
               <Box>
                 <Text color="yellow">💭 AI is thinking... </Text>
+                <Text color="gray" dimColor>
+                  |{" "}
+                </Text>
                 <Text color="red" bold>
                   Esc
                 </Text>
