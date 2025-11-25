@@ -18,7 +18,7 @@ This is the AI assistant's memory file, recording important information and cont
     - `vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);`
     - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`
   - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
-  - For `packages/agent-sdk/tests/agent`, mock `@/services/aiService` `@/managers/toolManager` and other services to prevent real io, refer to `packages/agent-sdk/tests/agent/agent.toolRecursion.test.ts`
+  - No `mkdtemp`
 - `packages/code/src/components` contains Ink components
 - After modifying agent-sdk, need to build before using in code
 - For type and eslint errors:
