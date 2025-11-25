@@ -4,12 +4,14 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
 import type { Message } from "wave-agent-sdk";
 
-// Mock usePagination hook using vi.hoisted
-const mockUsePagination = vi.hoisted(() => vi.fn());
-
-vi.mock("../../src/hooks/usePagination", () => ({
-  usePagination: mockUsePagination,
-}));
+// Mock useInput to prevent key handling during tests
+vi.mock("ink", async () => {
+  const actual = await vi.importActual("ink");
+  return {
+    ...actual,
+    useInput: vi.fn(),
+  };
+});
 
 describe("MessageList Component", () => {
   const createMessage = (
@@ -27,24 +29,7 @@ describe("MessageList Component", () => {
   });
 
   beforeEach(() => {
-    // Reset mock pagination hook with default values
-    mockUsePagination.mockReturnValue({
-      displayInfo: {
-        currentPage: 1,
-        totalPages: 1,
-        startIndex: 0,
-        endIndex: 1,
-        messagesPerPage: 5,
-      },
-      manualPage: null,
-      setManualPage: vi.fn(),
-      goToPage: vi.fn(),
-      goToPrevPage: vi.fn(),
-      goToNextPage: vi.fn(),
-      goToFirstPage: vi.fn(),
-      goToLastPage: vi.fn(),
-    });
-    vi.clearAllMocks();
+    // Clear any potential state
   });
 
   describe("Empty state", () => {
@@ -82,23 +67,6 @@ describe("MessageList Component", () => {
     });
 
     it("should render multiple messages", () => {
-      mockUsePagination.mockReturnValue({
-        displayInfo: {
-          currentPage: 1,
-          totalPages: 1,
-          startIndex: 0,
-          endIndex: 2,
-          messagesPerPage: 5,
-        },
-        manualPage: null,
-        setManualPage: vi.fn(),
-        goToPage: vi.fn(),
-        goToPrevPage: vi.fn(),
-        goToNextPage: vi.fn(),
-        goToFirstPage: vi.fn(),
-        goToLastPage: vi.fn(),
-      });
-
       const messages = [
         createMessage("user", "Hello", 1),
         createMessage("assistant", "Hi there", 2),
@@ -140,23 +108,6 @@ describe("MessageList Component", () => {
     });
 
     it("should render message numbers correctly", () => {
-      mockUsePagination.mockReturnValue({
-        displayInfo: {
-          currentPage: 1,
-          totalPages: 1,
-          startIndex: 0,
-          endIndex: 2,
-          messagesPerPage: 5,
-        },
-        manualPage: null,
-        setManualPage: vi.fn(),
-        goToPage: vi.fn(),
-        goToPrevPage: vi.fn(),
-        goToNextPage: vi.fn(),
-        goToFirstPage: vi.fn(),
-        goToLastPage: vi.fn(),
-      });
-
       const messages = [
         createMessage("user", "First", 1),
         createMessage("assistant", "Second", 2),
