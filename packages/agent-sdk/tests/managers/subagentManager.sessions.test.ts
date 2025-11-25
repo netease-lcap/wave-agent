@@ -181,6 +181,7 @@ describe("SubagentManager - Session Functionality", () => {
         expect.any(Array), // messages
         "/tmp/test", // workdir
         undefined, // sessionDir
+        true, // isSubagent
       );
     });
 
@@ -235,6 +236,7 @@ describe("SubagentManager - Session Functionality", () => {
         "01234567-89ab-6cde-f012-3456789abcde",
         "/tmp/test", // workdir
         undefined, // sessionDir
+        true, // isSubagent
       );
     });
   });
@@ -336,6 +338,7 @@ describe("SubagentManager - Session Functionality", () => {
         expect.any(Array), // messages
         "/tmp/test", // workdir
         undefined, // sessionDir
+        true, // isSubagent
       );
     });
 

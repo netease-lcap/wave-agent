@@ -72,7 +72,7 @@ describe("AI Service - CompressMessages", () => {
       compressMessages = aiService.compressMessages;
     });
 
-    it("should use max_tokens of 1500 and temperature of 0.1", async () => {
+    it("should use max_tokens of 2048 and temperature of 0.1", async () => {
       const messages = [
         {
           role: "user" as const,
@@ -95,7 +95,7 @@ describe("AI Service - CompressMessages", () => {
       // Verify model configuration
       expect(callArgs.model).toBe(TEST_MODEL_CONFIG.fastModel);
       expect(callArgs.temperature).toBe(0.1);
-      expect(callArgs.max_tokens).toBe(1500);
+      expect(callArgs.max_tokens).toBe(2048);
       expect(callArgs.stream).toBe(false);
     });
 
@@ -126,7 +126,7 @@ describe("AI Service - CompressMessages", () => {
       expect(callArgs.messages[2].role).toBe("assistant");
       expect(callArgs.messages[3].role).toBe("user");
       expect(callArgs.messages[3].content).toContain(
-        "Please compress this conversation",
+        "Please create a detailed summary of the conversation so far.",
       );
     });
 
