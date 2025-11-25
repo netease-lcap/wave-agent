@@ -35,7 +35,9 @@ describe("SlashCommandManager", () => {
       const clearCommand = commands.find((cmd) => cmd.id === "clear");
       expect(clearCommand).toBeDefined();
       expect(clearCommand?.name).toBe("clear");
-      expect(clearCommand?.description).toBe("Clear the chat session");
+      expect(clearCommand?.description).toBe(
+        "Clear the chat session and terminal",
+      );
     });
 
     it("should be able to check if clear command exists", () => {
