@@ -63,7 +63,6 @@ describe("MessageList Component", () => {
 
       expect(lastFrame()).toContain("👤 You");
       expect(lastFrame()).toContain("Hello - Message 1");
-      expect(lastFrame()).toContain("#1");
     });
 
     it("should render multiple messages", () => {
@@ -107,7 +106,7 @@ describe("MessageList Component", () => {
       expect(lastFrame()).toContain("❌ Error: Something went wrong");
     });
 
-    it("should render message numbers correctly", () => {
+    it("should render role headers correctly", () => {
       const messages = [
         createMessage("user", "First", 1),
         createMessage("assistant", "Second", 2),
@@ -122,8 +121,8 @@ describe("MessageList Component", () => {
         />,
       );
 
-      expect(lastFrame()).toContain("👤 You #1");
-      expect(lastFrame()).toContain("🤖 Assistant #2");
+      expect(lastFrame()).toContain("👤 You");
+      expect(lastFrame()).toContain("🤖 Assistant");
       expect(lastFrame()).toContain("First - Message 1");
       expect(lastFrame()).toContain("Second - Message 2");
     });

@@ -1,15 +1,7 @@
-import React, { useMemo, useCallback } from "react";
+import React from "react";
 import { Box, Text, Static } from "ink";
-import { marked } from "marked";
-import TerminalRenderer from "marked-terminal";
 import type { Message } from "wave-agent-sdk";
-import { MessageSource } from "wave-agent-sdk";
-import { DiffViewer } from "./DiffViewer.js";
-import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
-import { ToolResultDisplay } from "./ToolResultDisplay.js";
-import { MemoryDisplay } from "./MemoryDisplay.js";
-import { CompressDisplay } from "./CompressDisplay.js";
-import { SubagentBlock } from "./SubagentBlock.js";
+import { MessageItem } from "./MessageItem.js";
 
 export interface MessageListProps {
   messages: Message[];
@@ -20,24 +12,6 @@ export interface MessageListProps {
   isExpanded?: boolean;
 }
 
-// Markdown component using marked-terminal with proper unescape option
-const Markdown = ({ children }: { children: string }) => {
-  const result = useMemo(() => {
-    // Configure marked with TerminalRenderer using default options
-    marked.setOptions({
-      renderer: new TerminalRenderer({
-        // Use official unescape option to handle HTML entities
-        unescape: true,
-      }),
-    });
-
-    const output = marked(children);
-    return typeof output === "string" ? output.trim() : "";
-  }, [children]);
-
-  return <Text>{result}</Text>;
-};
-
 export const MessageList = React.memo(
   ({
     messages,
@@ -47,120 +21,6 @@ export const MessageList = React.memo(
     latestTotalTokens = 0,
     isExpanded = false,
   }: MessageListProps) => {
-    // Memoize the renderMessageItem function to prevent recreation on every render
-    const renderMessageItem = useCallback(
-      (
-        message: Message,
-        originalIndex: number,
-        isExpanded: boolean,
-        previousMessage?: Message,
-      ) => {
-        const shouldShowHeader = previousMessage?.role !== message.role;
-        // Don't show header for messages with no blocks (applies to both user and assistant)
-        const shouldShowHeaderWithBlocks =
-          message.blocks.length > 0 && shouldShowHeader;
-
-        return (
-          <Box key={`message-${originalIndex}`} flexDirection="column" gap={1}>
-            {shouldShowHeaderWithBlocks && (
-              <Box>
-                <Text color={message.role === "user" ? "cyan" : "green"} bold>
-                  {message.role === "user" ? "👤 You" : "🤖 Assistant"}
-                  <Text color="gray" dimColor>
-                    {" "}
-                    #{originalIndex + 1}
-                  </Text>
-                </Text>
-              </Box>
-            )}
-
-            <Box flexDirection="column" gap={1}>
-              {message.blocks.map((block, blockIndex) => (
-                <Box key={blockIndex}>
-                  {block.type === "text" && block.content.trim() && (
-                    <Box>
-                      {block.customCommandContent && (
-                        <Text color="cyan" bold>
-                          ⚡{" "}
-                        </Text>
-                      )}
-                      {block.source === MessageSource.HOOK && (
-                        <Text color="magenta" bold>
-                          🔗{" "}
-                        </Text>
-                      )}
-                      <Markdown>{block.content}</Markdown>
-                    </Box>
-                  )}
-
-                  {block.type === "error" && (
-                    <Box>
-                      <Text color="red">❌ Error: {block.content}</Text>
-                    </Box>
-                  )}
-
-                  {block.type === "diff" && (
-                    <DiffViewer block={block} isExpanded={isExpanded} />
-                  )}
-
-                  {block.type === "command_output" && (
-                    <CommandOutputDisplay
-                      block={block}
-                      isExpanded={isExpanded}
-                    />
-                  )}
-
-                  {block.type === "tool" && (
-                    <ToolResultDisplay block={block} isExpanded={isExpanded} />
-                  )}
-
-                  {block.type === "image" && (
-                    <Box>
-                      <Text color="magenta" bold>
-                        📷 Image
-                      </Text>
-                      {block.imageUrls && block.imageUrls.length > 0 && (
-                        <Text color="gray" dimColor>
-                          {" "}
-                          ({block.imageUrls.length})
-                        </Text>
-                      )}
-                    </Box>
-                  )}
-
-                  {block.type === "memory" && <MemoryDisplay block={block} />}
-
-                  {block.type === "compress" && (
-                    <CompressDisplay block={block} isExpanded={isExpanded} />
-                  )}
-
-                  {block.type === "subagent" && (
-                    <SubagentBlock block={block} isExpanded={isExpanded} />
-                  )}
-                </Box>
-              ))}
-            </Box>
-          </Box>
-        );
-      },
-      [],
-    );
-    // Split messages into static (all except last) and dynamic (last message)
-    const staticMessages = useMemo(() => {
-      return messages.slice(0, -1).map((message, index) => ({
-        message,
-        originalIndex: index,
-      }));
-    }, [messages]);
-
-    const lastMessage = useMemo(() => {
-      if (messages.length === 0) return null;
-      return {
-        message: messages[messages.length - 1],
-        originalIndex: messages.length - 1,
-      };
-    }, [messages]);
-
     // Empty message state
     if (messages.length === 0) {
       return (
@@ -171,41 +31,35 @@ export const MessageList = React.memo(
     }
 
     return (
-      <Box flexDirection="column" gap={1} paddingX={1}>
+      <Box flexDirection="column" paddingX={1} gap={1}>
         {/* Static messages (all except last) */}
-        {staticMessages.length > 0 && (
-          <Static items={staticMessages}>
-            {({ message, originalIndex }) => {
-              // Get previous message
-              const previousMessage =
-                originalIndex > 0 ? messages[originalIndex - 1] : undefined;
-              return renderMessageItem(
-                message,
-                originalIndex,
-                isExpanded,
-                previousMessage,
-              );
-            }}
-          </Static>
-        )}
+        <Static items={messages.slice(0, -1)}>
+          {(message, key) => {
+            // Get previous message
+            const previousMessage = key > 0 ? messages[key - 1] : undefined;
+            return (
+              <MessageItem
+                key={key}
+                message={message}
+                shouldShowHeader={previousMessage?.role !== message.role}
+                isExpanded={isExpanded}
+              />
+            );
+          }}
+        </Static>
 
         {/* Last message (dynamic) */}
-        {lastMessage && (
-          <Box flexDirection="column" gap={1}>
-            {(() => {
-              const previousMessage =
-                lastMessage.originalIndex > 0
-                  ? messages[lastMessage.originalIndex - 1]
-                  : undefined;
-              return renderMessageItem(
-                lastMessage.message,
-                lastMessage.originalIndex,
-                isExpanded,
-                previousMessage,
-              );
-            })()}
-          </Box>
-        )}
+        <Box marginTop={-1}>
+          <MessageItem
+            key={messages.length - 1}
+            message={messages[messages.length - 1]}
+            shouldShowHeader={
+              messages[messages.length - 2]?.role !==
+              messages[messages.length - 1].role
+            }
+            isExpanded={isExpanded}
+          />
+        </Box>
 
         {/* Loading state display - only show in non-expanded state */}
         {!isExpanded && (isLoading || isCommandRunning || isCompressing) && (
