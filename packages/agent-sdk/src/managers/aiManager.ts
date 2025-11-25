@@ -387,30 +387,15 @@ export class AIManager {
                 toolArgs = JSON.parse(argsString);
               } catch (parseError) {
                 // For non-empty but malformed JSON, still throw exception
-                const errorMessage = `Failed to parse tool arguments: ${argsString}`;
-                this.logger?.error(errorMessage, parseError);
-                // Log finish reason and response headers for debugging malformed tool calls
-                if (result.finish_reason) {
-                  this.logger?.error(
-                    `AI response finish_reason: ${result.finish_reason}`,
-                  );
-                }
-                if (
-                  result.response_headers &&
-                  Object.keys(result.response_headers).length > 0
-                ) {
-                  this.logger?.error(
-                    "AI response headers:",
-                    result.response_headers,
-                  );
-                }
-
+                const errorMessage = `Failed to parse tool arguments, finish_reason: ${result.finish_reason}`;
+                const fullErrorMessage = `${errorMessage}\nAI response headers:, ${JSON.stringify(result.response_headers)}`;
+                this.logger?.error(fullErrorMessage, parseError);
                 this.messageManager.updateToolBlock({
                   id: toolId,
                   parameters: argsString,
-                  result: `Tool execution failed: ${errorMessage}`,
+                  result: errorMessage,
                   success: false,
-                  error: `${errorMessage}\nAI response finish_reason: ${result.finish_reason}\nAI response headers:, ${JSON.stringify(result.response_headers)}`,
+                  error: fullErrorMessage,
                   stage: "end",
                   name: toolName,
                   compactParams: "",
