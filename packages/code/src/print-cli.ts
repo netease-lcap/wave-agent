@@ -1,5 +1,4 @@
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
-import { logger } from "./utils/logger.js";
 import { displayUsageSummary } from "./utils/usageSummary.js";
 
 export interface PrintCliOptions {
@@ -34,26 +33,43 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       // FR-001: Stream content updates for real-time display - output only the new chunk
       process.stdout.write(chunk);
     },
-    onToolBlockUpdated: (params) => {
-      // FR-002: Tool parameter streaming - log tool parameters as they are being constructed
-      if (params.parametersChunk) {
-        logger.debug(
-          `[TOOL STREAM] ${params.name || "Unknown"}: received parameter chunk`,
-        );
 
-        // Enhanced logging for streaming parameter content (for debugging/demonstration)
-        logger.debug(
-          `[TOOL CHUNK] Latest chunk: ${params.parametersChunk.substring(0, 100)}${params.parametersChunk.length > 100 ? "..." : ""}`,
-        );
-      }
-
-      // For demonstration: log parameter streaming progress with enhanced detail
-      const paramLength = params.parameters?.length || 0;
-      const hasChunk = params.parametersChunk ? " [+chunk]" : "";
-      const hasCompact = params.compactParams ? " [compact ready]" : "";
-      logger.debug(
-        `[TOOL PROGRESS] ${params.name || "Unknown"}: ${paramLength} chars accumulated${hasChunk}${hasCompact}`,
+    // Subagent block callbacks
+    onSubAgentBlockAdded: (subagentId: string, parameters) => {
+      // Display subagent creation with indentation
+      process.stdout.write(
+        `\n🤖 Subagent [${parameters.subagent_type}]: ${parameters.description}\n`,
       );
+    },
+    onSubAgentBlockUpdated: (subagentId: string, status) => {
+      // Display subagent status updates
+      const statusIconMap = {
+        active: "🔄",
+        completed: "✅",
+        error: "❌",
+        aborted: "⚠️",
+      } as const;
+
+      const statusIcon = statusIconMap[status] ?? "🔄";
+      process.stdout.write(`   ${statusIcon} Subagent status: ${status}\n`);
+    },
+    // Subagent message callbacks
+    onSubagentAssistantMessageAdded: () => {
+      // Subagent assistant message started - add indentation
+      process.stdout.write("\n   ");
+    },
+    onSubagentAssistantContentUpdated: (_subagentId: string, chunk: string) => {
+      // Stream subagent content with indentation - output only the new chunk
+      process.stdout.write(chunk);
+    },
+    onSubagentUserMessageAdded: (_subagentId: string, params) => {
+      // Display subagent user messages with indentation
+      process.stdout.write(`\n   👤 User: ${params.content}\n`);
+    },
+    // Error block callback
+    onErrorBlockAdded: (error: string) => {
+      // Display error blocks with distinct formatting
+      process.stdout.write(`\n❌ Error: ${error}\n`);
     },
   };
 
@@ -63,7 +79,6 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       callbacks,
       restoreSessionId,
       continueLastSession,
-      logger,
     });
 
     // Send message if provided and not empty
