@@ -975,5 +975,123 @@ describe("Session Management", () => {
       expect(sessions).toHaveLength(1);
       expect(sessions[0].id).toBe(sessionId);
     });
+
+    it("should only list sessions from main directory (not subagent directory)", async () => {
+      const mainSessionId = uuidv6();
+
+      const messages = [
+        {
+          role: "user" as const,
+          blocks: [{ type: "text" as const, content: "Hello" }],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      // Mock directory structure: only main directory files should be found
+      // Subagent sessions would be in subagent/ subdirectory which readdir won't see
+      const mainFile = `${mainSessionId}.jsonl`;
+
+      const { readdir } = await import("fs/promises");
+      vi.mocked(readdir).mockResolvedValueOnce([
+        mainFile,
+        "other-file.txt", // Non-JSONL file to test filtering
+      ] as unknown as Awaited<ReturnType<typeof readdir>>);
+
+      // Mock readFile for main session only
+      mockJsonlHandler.read
+        .mockResolvedValueOnce([messages[0]]) // First read (limit: 1)
+        .mockResolvedValueOnce([messages[0]]); // Second read (startFromEnd: true)
+
+      const sessions = await listSessionsFromJsonl(testWorkdir, false, tempDir);
+
+      // Should only return the main session
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].id).toBe(mainSessionId);
+
+      // Verify that only main session was processed
+      expect(mockJsonlHandler.read).toHaveBeenCalledTimes(2);
+    });
+
+    it("should handle getLatestSessionFromJsonl with directory separation", async () => {
+      const olderMainSessionId = uuidv6();
+      const newerMainSessionId = uuidv6();
+
+      const messages = [
+        {
+          role: "user" as const,
+          blocks: [{ type: "text" as const, content: "Hello" }],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      // Create files - subagent sessions would be in separate directory
+      const files = [
+        `${olderMainSessionId}.jsonl`,
+        `${newerMainSessionId}.jsonl`,
+      ];
+
+      const { readdir } = await import("fs/promises");
+      vi.mocked(readdir).mockResolvedValueOnce(
+        files as unknown as Awaited<ReturnType<typeof readdir>>,
+      );
+
+      // Mock readFile for main sessions only
+      mockJsonlHandler.read
+        .mockResolvedValueOnce([messages[0]]) // First read for older session
+        .mockResolvedValueOnce([messages[0]]) // Second read for older session
+        .mockResolvedValueOnce([messages[0]]) // First read for newer session
+        .mockResolvedValueOnce([messages[0]]) // Second read for newer session
+        .mockResolvedValueOnce([messages[0]]); // Load the latest session
+
+      const latestSession = await getLatestSessionFromJsonl(
+        testWorkdir,
+        tempDir,
+      );
+
+      expect(latestSession).not.toBeNull();
+      expect(latestSession?.id).toBe(newerMainSessionId);
+
+      // Should have called read 5 times: 2 for each main session (4 total) + 1 for loading the latest
+      expect(mockJsonlHandler.read).toHaveBeenCalledTimes(5);
+    });
+
+    it("should support loading subagent sessions with isSubagent parameter", async () => {
+      const subagentSessionId = uuidv6();
+
+      const messages = [
+        {
+          role: "user" as const,
+          blocks: [{ type: "text" as const, content: "Hello from subagent" }],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      // Mock readFile for subagent session
+      mockJsonlHandler.read.mockResolvedValueOnce([
+        { ...messages[0], timestamp: new Date().toISOString() },
+      ]);
+
+      const sessionData = await loadSessionFromJsonl(
+        subagentSessionId,
+        testWorkdir,
+        tempDir,
+        true, // isSubagent = true
+      );
+
+      expect(sessionData).not.toBeNull();
+      expect(sessionData?.id).toBe(subagentSessionId);
+      expect(sessionData?.messages).toHaveLength(1);
+
+      const firstBlock = sessionData?.messages[0].blocks[0];
+      expect(firstBlock?.type).toBe("text");
+      if (firstBlock?.type === "text") {
+        expect(firstBlock.content).toBe("Hello from subagent");
+      }
+
+      // Verify that the JsonlHandler was called with the correct path
+      expect(mockJsonlHandler.read).toHaveBeenCalledWith(
+        expect.stringContaining("subagent"),
+      );
+    });
   });
 });
