@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, Static } from "ink";
 import { marked } from "marked";
 import TerminalRenderer from "marked-terminal";
 import type { Message } from "wave-agent-sdk";
@@ -10,7 +10,6 @@ import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
 import { SubagentBlock } from "./SubagentBlock.js";
-import { usePagination } from "../hooks/usePagination.js";
 
 export interface MessageListProps {
   messages: Message[];
@@ -150,18 +149,21 @@ export const MessageList = React.memo(
       },
       [],
     );
-    // Use original messages for pagination calculation
-    const { displayInfo } = usePagination(messages);
+    // Split messages into static (all except last) and dynamic (last message)
+    const staticMessages = useMemo(() => {
+      return messages.slice(0, -1).map((message, index) => ({
+        message,
+        originalIndex: index,
+      }));
+    }, [messages]);
 
-    // Get current page messages while preserving original index information
-    const currentMessagesWithIndex = useMemo(() => {
-      return messages
-        .slice(displayInfo.startIndex, displayInfo.endIndex)
-        .map((message, index) => ({
-          message,
-          originalIndex: displayInfo.startIndex + index,
-        }));
-    }, [messages, displayInfo.startIndex, displayInfo.endIndex]);
+    const lastMessage = useMemo(() => {
+      if (messages.length === 0) return null;
+      return {
+        message: messages[messages.length - 1],
+        originalIndex: messages.length - 1,
+      };
+    }, [messages]);
 
     // Empty message state
     if (messages.length === 0) {
@@ -174,20 +176,40 @@ export const MessageList = React.memo(
 
     return (
       <Box flexDirection="column" gap={1} paddingX={1}>
-        {/* Message list */}
-        <Box flexDirection="column" gap={1}>
-          {currentMessagesWithIndex.map(({ message, originalIndex }) => {
-            // Get previous message
-            const previousMessage =
-              originalIndex > 0 ? messages[originalIndex - 1] : undefined;
-            return renderMessageItem(
-              message,
-              originalIndex,
-              isExpanded,
-              previousMessage,
-            );
-          })}
-        </Box>
+        {/* Static messages (all except last) */}
+        {staticMessages.length > 0 && (
+          <Static items={staticMessages}>
+            {({ message, originalIndex }) => {
+              // Get previous message
+              const previousMessage =
+                originalIndex > 0 ? messages[originalIndex - 1] : undefined;
+              return renderMessageItem(
+                message,
+                originalIndex,
+                isExpanded,
+                previousMessage,
+              );
+            }}
+          </Static>
+        )}
+
+        {/* Last message (dynamic) */}
+        {lastMessage && (
+          <Box flexDirection="column" gap={1}>
+            {(() => {
+              const previousMessage =
+                lastMessage.originalIndex > 0
+                  ? messages[lastMessage.originalIndex - 1]
+                  : undefined;
+              return renderMessageItem(
+                lastMessage.message,
+                lastMessage.originalIndex,
+                isExpanded,
+                previousMessage,
+              );
+            })()}
+          </Box>
+        )}
 
         {/* Loading state display - only show in non-expanded state */}
         {!isExpanded && (isLoading || isCommandRunning || isCompressing) && (
@@ -229,14 +251,7 @@ export const MessageList = React.memo(
           <Box>
             <Box justifyContent="space-between" width="100%">
               <Box>
-                <Text color="gray">
-                  Messages {messages.length} Page {displayInfo.currentPage}/
-                  {displayInfo.totalPages}
-                </Text>
-                <Text color="gray" dimColor>
-                  {" "}
-                  ← <Text color="cyan">Ctrl+U/D</Text> Navigate
-                </Text>
+                <Text color="gray">Messages {messages.length}</Text>
               </Box>
               <Text color="gray" dimColor>
                 <Text color="cyan">Ctrl+O</Text> Toggle{" "}
