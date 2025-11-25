@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { v6 as uuidv6 } from "uuid";
+import { join } from "path";
+import { homedir } from "os";
 
 // Mock fs and fs/promises completely
 vi.mock("fs", () => ({
@@ -68,6 +70,7 @@ import type { Message } from "@/types/index.js";
 describe("Session Management", () => {
   let tempDir: string;
   let testWorkdir: string;
+  const SESSION_DIR = join(homedir(), ".wave", "projects");
   let mockJsonlHandler: {
     read: ReturnType<typeof vi.fn>;
     append: ReturnType<typeof vi.fn>;
@@ -225,11 +228,7 @@ describe("Session Management", () => {
   describe("T017: Integration test for session file naming", () => {
     it("should create session files with clean UUIDv6 names", async () => {
       const sessionId = generateSessionId();
-      const filePath = await getSessionFilePath(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      const filePath = await getSessionFilePath(sessionId, testWorkdir);
 
       expect(filePath).toContain(`${sessionId}.jsonl`);
       // The session ID itself should not have session- or wave- prefixes
@@ -242,22 +241,14 @@ describe("Session Management", () => {
 
     it("should use .jsonl file extension", async () => {
       const sessionId = generateSessionId();
-      const filePath = await getSessionFilePath(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      const filePath = await getSessionFilePath(sessionId, testWorkdir);
 
       expect(filePath.endsWith(".jsonl")).toBe(true);
     });
 
     it("should create files in correct project directory structure", async () => {
       const sessionId = generateSessionId();
-      const filePath = await getSessionFilePath(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      const filePath = await getSessionFilePath(sessionId, testWorkdir);
 
       // Should be in tempDir/encoded-workdir/sessionId.jsonl format
       expect(filePath).toContain(tempDir);
@@ -280,7 +271,7 @@ describe("Session Management", () => {
 
       for (const workdir of Object.values(specialWorkdirs)) {
         const sessionId = generateSessionId();
-        const filePath = await getSessionFilePath(sessionId, workdir, tempDir);
+        const filePath = await getSessionFilePath(sessionId, workdir);
 
         expect(filePath).toContain(tempDir);
         expect(filePath.endsWith(`${sessionId}.jsonl`)).toBe(true);
@@ -318,13 +309,13 @@ describe("Session Management", () => {
       const sessionId = generateSessionId();
       const messages = createTestMessages();
 
-      await appendMessages(sessionId, messages, testWorkdir, tempDir);
+      await appendMessages(sessionId, messages, testWorkdir);
 
       // Verify that JsonlHandler.append was called
       expect(mockJsonlHandler.append).toHaveBeenCalled();
       expect(mockPathEncoder.createProjectDirectory).toHaveBeenCalledWith(
         testWorkdir,
-        tempDir,
+        SESSION_DIR,
       );
     });
 
@@ -340,11 +331,7 @@ describe("Session Management", () => {
 
       mockJsonlHandler.read.mockResolvedValue(messagesWithTimestamp);
 
-      const sessionData = await loadSessionFromJsonl(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      const sessionData = await loadSessionFromJsonl(sessionId, testWorkdir);
 
       expect(sessionData).toBeTruthy();
       expect(sessionData!.id).toBe(sessionId);
@@ -353,7 +340,7 @@ describe("Session Management", () => {
       expect(sessionData!.metadata.latestTotalTokens).toBe(15);
       expect(mockPathEncoder.createProjectDirectory).toHaveBeenCalledWith(
         testWorkdir,
-        tempDir,
+        SESSION_DIR,
       );
       expect(mockJsonlHandler.read).toHaveBeenCalled();
     });
@@ -367,11 +354,7 @@ describe("Session Management", () => {
       );
 
       const sessionId = generateSessionId();
-      const sessionData = await loadSessionFromJsonl(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      const sessionData = await loadSessionFromJsonl(sessionId, testWorkdir);
 
       expect(sessionData).toBeNull();
     });
@@ -405,7 +388,7 @@ describe("Session Management", () => {
           messagesWithTimestamp[messagesWithTimestamp.length - 1],
         ]); // Fourth call for second session
 
-      const sessions = await listSessionsFromJsonl(testWorkdir, false, tempDir);
+      const sessions = await listSessionsFromJsonl(testWorkdir, false);
 
       expect(sessions).toHaveLength(2);
       expect(sessions.map((s) => s.id)).toContain(session1Id);
@@ -455,10 +438,7 @@ describe("Session Management", () => {
         ]) // Second session, startFromEnd: true
         .mockResolvedValueOnce(messagesWithTimestamp); // Load full session data for latest
 
-      const latestSession = await getLatestSessionFromJsonl(
-        testWorkdir,
-        tempDir,
-      );
+      const latestSession = await getLatestSessionFromJsonl(testWorkdir);
 
       expect(latestSession).toBeTruthy();
       expect(latestSession!.id).toBe(session2Id); // More recent UUID
@@ -470,20 +450,16 @@ describe("Session Management", () => {
 
       // First check - file doesn't exist
       vi.mocked(fs.access).mockRejectedValueOnce(new Error("File not found"));
-      expect(await sessionExistsInJsonl(sessionId, testWorkdir, tempDir)).toBe(
-        false,
-      );
+      expect(await sessionExistsInJsonl(sessionId, testWorkdir)).toBe(false);
 
       // Second check - file exists
       vi.mocked(fs.access).mockResolvedValueOnce(undefined);
-      expect(await sessionExistsInJsonl(sessionId, testWorkdir, tempDir)).toBe(
-        true,
-      );
+      expect(await sessionExistsInJsonl(sessionId, testWorkdir)).toBe(true);
 
       // Verify PathEncoder was used
       expect(mockPathEncoder.createProjectDirectory).toHaveBeenCalledWith(
         testWorkdir,
-        tempDir,
+        SESSION_DIR,
       );
     });
 
@@ -498,18 +474,12 @@ describe("Session Management", () => {
       ); // Empty directory after deletion
       vi.mocked(fs.rmdir).mockResolvedValue(undefined);
 
-      const deleted = await deleteSessionFromJsonl(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      const deleted = await deleteSessionFromJsonl(sessionId, testWorkdir);
       expect(deleted).toBe(true);
 
       // Mock fs.access for sessionExistsInJsonl to return false (file deleted)
       vi.mocked(fs.access).mockRejectedValueOnce(new Error("File not found"));
-      expect(await sessionExistsInJsonl(sessionId, testWorkdir, tempDir)).toBe(
-        false,
-      );
+      expect(await sessionExistsInJsonl(sessionId, testWorkdir)).toBe(false);
     });
 
     it("should return false when deleting non-existent session", async () => {
@@ -521,21 +491,14 @@ describe("Session Management", () => {
         Object.assign(new Error("File not found"), { code: "ENOENT" }),
       );
 
-      const deleted = await deleteSessionFromJsonl(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      const deleted = await deleteSessionFromJsonl(sessionId, testWorkdir);
 
       expect(deleted).toBe(false);
     });
 
     it("should cleanup expired sessions", async () => {
       // Since cleanup is disabled in test environment, it should return 0
-      const deletedCount = await cleanupExpiredSessionsFromJsonl(
-        testWorkdir,
-        tempDir,
-      );
+      const deletedCount = await cleanupExpiredSessionsFromJsonl(testWorkdir);
 
       // Should be 0 since cleanup is disabled in test environment
       expect(deletedCount).toBe(0);
@@ -544,7 +507,7 @@ describe("Session Management", () => {
     it("should handle empty messages array gracefully", async () => {
       const sessionId = generateSessionId();
 
-      await appendMessages(sessionId, [], testWorkdir, tempDir);
+      await appendMessages(sessionId, [], testWorkdir);
 
       // JsonlHandler.append should not be called for empty messages
       expect(mockJsonlHandler.append).not.toHaveBeenCalled();
@@ -558,11 +521,7 @@ describe("Session Management", () => {
         new Error("Invalid JSON content"),
       );
 
-      const sessionData = await loadSessionFromJsonl(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      const sessionData = await loadSessionFromJsonl(sessionId, testWorkdir);
       expect(sessionData).toBeNull();
     });
   });
@@ -614,7 +573,7 @@ describe("Session Management", () => {
         },
       ];
 
-      await appendMessages(sessionId, initialMessages, testWorkdir, tempDir);
+      await appendMessages(sessionId, initialMessages, testWorkdir);
       expect(mockJsonlHandler.append).toHaveBeenCalledTimes(1);
 
       // 2. Load session data back
@@ -624,11 +583,7 @@ describe("Session Management", () => {
       }));
       mockJsonlHandler.read.mockResolvedValueOnce(messagesWithTimestamp);
 
-      let sessionData = await loadSessionFromJsonl(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      let sessionData = await loadSessionFromJsonl(sessionId, testWorkdir);
       expect(sessionData).toBeTruthy();
       expect(sessionData!.messages).toHaveLength(2);
       expect(sessionData!.metadata.latestTotalTokens).toBe(8);
@@ -646,7 +601,7 @@ describe("Session Management", () => {
         },
       ];
 
-      await appendMessages(sessionId, additionalMessages, testWorkdir, tempDir);
+      await appendMessages(sessionId, additionalMessages, testWorkdir);
       expect(mockJsonlHandler.append).toHaveBeenCalledTimes(2);
 
       // 4. Load updated session
@@ -659,7 +614,7 @@ describe("Session Management", () => {
       }));
       mockJsonlHandler.read.mockResolvedValueOnce(allMessagesWithTimestamp);
 
-      sessionData = await loadSessionFromJsonl(sessionId, testWorkdir, tempDir);
+      sessionData = await loadSessionFromJsonl(sessionId, testWorkdir);
       expect(sessionData!.messages).toHaveLength(4);
       expect(sessionData!.metadata.latestTotalTokens).toBe(17);
 
@@ -673,7 +628,7 @@ describe("Session Management", () => {
           allMessagesWithTimestamp[allMessagesWithTimestamp.length - 1],
         ]); // Last message
 
-      const sessions = await listSessionsFromJsonl(testWorkdir, false, tempDir);
+      const sessions = await listSessionsFromJsonl(testWorkdir, false);
       expect(sessions.some((s) => s.id === sessionId)).toBe(true);
 
       // 6. Get latest session returns our session (if it's the most recent)
@@ -687,42 +642,29 @@ describe("Session Management", () => {
         ]) // Last message for listing
         .mockResolvedValueOnce(allMessagesWithTimestamp); // Full session data
 
-      const latestSession = await getLatestSessionFromJsonl(
-        testWorkdir,
-        tempDir,
-      );
+      const latestSession = await getLatestSessionFromJsonl(testWorkdir);
       expect(latestSession!.id).toBe(sessionId);
 
       // 7. Delete the session
-      const deleted = await deleteSessionFromJsonl(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      const deleted = await deleteSessionFromJsonl(sessionId, testWorkdir);
       expect(deleted).toBe(true);
 
       // 8. Session no longer exists
-      expect(await sessionExistsInJsonl(sessionId, testWorkdir, tempDir)).toBe(
-        false,
-      );
+      expect(await sessionExistsInJsonl(sessionId, testWorkdir)).toBe(false);
 
       mockJsonlHandler.read.mockRejectedValueOnce(
         Object.assign(new Error("ENOENT: no such file or directory"), {
           code: "ENOENT",
         }),
       );
-      sessionData = await loadSessionFromJsonl(sessionId, testWorkdir, tempDir);
+      sessionData = await loadSessionFromJsonl(sessionId, testWorkdir);
       expect(sessionData).toBeNull();
 
       // 9. Session no longer appears in listings
       vi.mocked(fs.readdir).mockResolvedValueOnce(
         [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
       );
-      const finalSessions = await listSessionsFromJsonl(
-        testWorkdir,
-        false,
-        tempDir,
-      );
+      const finalSessions = await listSessionsFromJsonl(testWorkdir, false);
       expect(finalSessions.some((s) => s.id === sessionId)).toBe(false);
     });
 
@@ -754,8 +696,8 @@ describe("Session Management", () => {
       );
 
       // Create sessions in different workdirs
-      await appendMessages(session1Id, messages, workdir1, tempDir);
-      await appendMessages(session2Id, messages, workdir2, tempDir);
+      await appendMessages(session1Id, messages, workdir1);
+      await appendMessages(session2Id, messages, workdir2);
 
       // Mock readdir to return files based on the requested directory path
       vi.mocked(fs.readdir).mockImplementation(async (dirPath) => {
@@ -791,8 +733,8 @@ describe("Session Management", () => {
         ]); // session2, startFromEnd: true
 
       // Each workdir should only see its own sessions
-      const sessions1 = await listSessionsFromJsonl(workdir1, false, tempDir);
-      const sessions2 = await listSessionsFromJsonl(workdir2, false, tempDir);
+      const sessions1 = await listSessionsFromJsonl(workdir1, false);
+      const sessions2 = await listSessionsFromJsonl(workdir2, false);
 
       expect(sessions1).toHaveLength(1);
       expect(sessions1[0].id).toBe(session1Id);
@@ -835,7 +777,7 @@ describe("Session Management", () => {
           messagesWithTimestamp[messagesWithTimestamp.length - 1],
         ]); // session2, startFromEnd: true
 
-      const allSessions = await listSessionsFromJsonl(workdir1, true, tempDir);
+      const allSessions = await listSessionsFromJsonl(workdir1, true);
       expect(allSessions).toHaveLength(2);
     });
 
@@ -864,12 +806,7 @@ describe("Session Management", () => {
         },
       ];
 
-      await appendMessages(
-        sessionId,
-        messagesWithMetadata,
-        testWorkdir,
-        tempDir,
-      );
+      await appendMessages(sessionId, messagesWithMetadata, testWorkdir);
 
       // Mock JsonlHandler.read to return messages with metadata and timestamps
       const messagesWithTimestamp = messagesWithMetadata.map((msg) => ({
@@ -879,11 +816,7 @@ describe("Session Management", () => {
 
       mockJsonlHandler.read.mockResolvedValue(messagesWithTimestamp);
 
-      const sessionData = await loadSessionFromJsonl(
-        sessionId,
-        testWorkdir,
-        tempDir,
-      );
+      const sessionData = await loadSessionFromJsonl(sessionId, testWorkdir);
 
       expect(sessionData!.messages[0].metadata).toEqual({
         userAgent: "test",
@@ -923,11 +856,7 @@ describe("Session Management", () => {
         [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
       );
 
-      const sessions = await listSessionsFromJsonl(
-        nonExistentPath,
-        false,
-        tempDir,
-      );
+      const sessions = await listSessionsFromJsonl(nonExistentPath, false);
       expect(sessions).toEqual([]);
     });
 
@@ -939,7 +868,7 @@ describe("Session Management", () => {
         [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
       );
 
-      const sessions = await listSessionsFromJsonl(testWorkdir, false, tempDir);
+      const sessions = await listSessionsFromJsonl(testWorkdir, false);
       expect(sessions).toEqual([]);
     });
 
@@ -969,9 +898,9 @@ describe("Session Management", () => {
           messagesWithTimestamp[messagesWithTimestamp.length - 1],
         ]); // Last message
 
-      await appendMessages(sessionId, messages, testWorkdir, tempDir);
+      await appendMessages(sessionId, messages, testWorkdir);
 
-      const sessions = await listSessionsFromJsonl(testWorkdir, false, tempDir);
+      const sessions = await listSessionsFromJsonl(testWorkdir, false);
       expect(sessions).toHaveLength(1);
       expect(sessions[0].id).toBe(sessionId);
     });
@@ -1002,7 +931,7 @@ describe("Session Management", () => {
         .mockResolvedValueOnce([messages[0]]) // First read (limit: 1)
         .mockResolvedValueOnce([messages[0]]); // Second read (startFromEnd: true)
 
-      const sessions = await listSessionsFromJsonl(testWorkdir, false, tempDir);
+      const sessions = await listSessionsFromJsonl(testWorkdir, false);
 
       // Should only return the main session
       expect(sessions).toHaveLength(1);
@@ -1043,10 +972,7 @@ describe("Session Management", () => {
         .mockResolvedValueOnce([messages[0]]) // Second read for newer session
         .mockResolvedValueOnce([messages[0]]); // Load the latest session
 
-      const latestSession = await getLatestSessionFromJsonl(
-        testWorkdir,
-        tempDir,
-      );
+      const latestSession = await getLatestSessionFromJsonl(testWorkdir);
 
       expect(latestSession).not.toBeNull();
       expect(latestSession?.id).toBe(newerMainSessionId);
@@ -1074,7 +1000,7 @@ describe("Session Management", () => {
       const sessionData = await loadSessionFromJsonl(
         subagentSessionId,
         testWorkdir,
-        tempDir,
+
         true, // isSubagent = true
       );
 

@@ -20,7 +20,6 @@ import {
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { Logger, Message, Usage } from "../types/index.js";
 import { join } from "path";
-import { homedir } from "os";
 import {
   cleanupExpiredSessionsFromJsonl,
   getLatestSessionFromJsonl,
@@ -28,6 +27,7 @@ import {
   appendMessages,
   generateSessionId,
   SessionData,
+  SESSION_DIR,
 } from "../services/session.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
@@ -79,13 +79,6 @@ export interface MessageManagerOptions {
   workdir: string;
   logger?: Logger;
 
-  // New: Optional session directory override
-  /**
-   * Custom session directory path
-   * @default join(homedir(), ".wave", "sessions")
-   */
-  sessionDir?: string;
-
   // Flag to indicate this is a subagent session
   /**
    * If true, session files will be saved in a subagent/ subdirectory
@@ -105,7 +98,6 @@ export class MessageManager {
   private encodedWorkdir: string; // Cached encoded workdir
   private logger?: Logger; // Add optional logger property
   private callbacks: MessageManagerCallbacks;
-  private sessionDir?: string; // Add session directory property
   private isSubagent?: boolean; // Flag for subagent sessions
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
@@ -120,7 +112,6 @@ export class MessageManager {
     this.encodedWorkdir = pathEncoder.encodeSync(this.workdir); // Cache encoded workdir
     this.callbacks = options.callbacks;
     this.logger = options.logger;
-    this.sessionDir = options.sessionDir;
     this.isSubagent = options.isSubagent;
     this.savedMessageCount = 0; // Initialize saved message count tracker
 
@@ -153,8 +144,8 @@ export class MessageManager {
     return this.workdir;
   }
 
-  public getSessionDir(): string | undefined {
-    return this.sessionDir;
+  public getSessionDir(): string {
+    return SESSION_DIR;
   }
 
   public getTranscriptPath(): string {
@@ -166,8 +157,7 @@ export class MessageManager {
    * Called during construction and when sessionId changes
    */
   private computeTranscriptPath(): string {
-    const sessionDir = this.sessionDir || join(homedir(), ".wave", "projects");
-    const baseDir = join(sessionDir, this.encodedWorkdir);
+    const baseDir = join(SESSION_DIR, this.encodedWorkdir);
 
     if (this.isSubagent) {
       // Store subagent sessions in a subdirectory
@@ -213,7 +203,6 @@ export class MessageManager {
         this.sessionId,
         unsavedMessages, // Only append new messages
         this.workdir,
-        this.sessionDir,
         this.isSubagent,
       );
 
@@ -233,7 +222,7 @@ export class MessageManager {
   ): Promise<void> {
     // Clean up expired sessions first
     try {
-      await cleanupExpiredSessionsFromJsonl(this.workdir, this.sessionDir);
+      await cleanupExpiredSessionsFromJsonl(this.workdir);
     } catch (error) {
       this.logger?.warn("Failed to cleanup expired sessions:", error);
     }
@@ -250,7 +239,6 @@ export class MessageManager {
         sessionToRestore = await loadSessionFromJsonl(
           restoreSessionId,
           this.workdir,
-          this.sessionDir,
           this.isSubagent,
         );
         if (!sessionToRestore) {
@@ -259,10 +247,7 @@ export class MessageManager {
         }
       } else if (continueLastSession) {
         // Use only JSONL format - no legacy support
-        sessionToRestore = await getLatestSessionFromJsonl(
-          this.workdir,
-          this.sessionDir,
-        );
+        sessionToRestore = await getLatestSessionFromJsonl(this.workdir);
         if (!sessionToRestore) {
           console.error(
             `No previous session found for workdir: ${this.workdir}`,

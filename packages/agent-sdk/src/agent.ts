@@ -57,14 +57,6 @@ export interface AgentOptions {
   workdir?: string;
   /**Optional custom system prompt - if provided, replaces default system prompt */
   systemPrompt?: string;
-
-  // New: Session directory configuration
-  /**
-   * Optional custom directory for session file storage
-   * @default join(homedir(), ".wave", "sessions")
-   * @example "/path/to/custom/sessions"
-   */
-  sessionDir?: string;
 }
 
 export interface AgentCallbacks
@@ -102,16 +94,9 @@ export class Agent {
    * Agent.create() to maintain API consistency.
    *
    * @param options - Configuration options for the Agent instance
-   * @param options.sessionDir - Optional custom directory for session storage
    */
   private constructor(options: AgentOptions) {
-    const {
-      callbacks = {},
-      logger,
-      workdir,
-      systemPrompt,
-      sessionDir,
-    } = options;
+    const { callbacks = {}, logger, workdir, systemPrompt } = options;
 
     // Resolve configuration from constructor args and environment variables
     const gatewayConfig = configResolver.resolveGatewayConfig(
@@ -158,7 +143,6 @@ export class Agent {
       callbacks,
       workdir: this.workdir,
       logger: this.logger,
-      sessionDir,
     });
 
     // Initialize subagent manager with all dependencies in constructor
@@ -319,9 +303,6 @@ export class Agent {
    * @param options - Configuration options for the Agent instance
    * @param options.apiKey - API key for the AI service (or set WAVE_API_KEY env var)
    * @param options.baseURL - Base URL for the AI service (or set WAVE_BASE_URL env var)
-   * @param options.sessionDir - Optional custom directory for session file storage.
-   *   If not provided, defaults to ~/.wave/sessions/. Can be relative or absolute path.
-   *   Examples: "./app-sessions", "/var/myapp/sessions", "~/Documents/sessions"
    * @param options.callbacks - Optional callbacks for various Agent events
    * @param options.restoreSessionId - Optional session ID to restore from
    * @param options.continueLastSession - Whether to continue the last session automatically
@@ -333,17 +314,10 @@ export class Agent {
    *
    * @example
    * ```typescript
-   * // Basic usage with default session directory
+   * // Basic usage
    * const agent = await Agent.create({
    *   apiKey: 'your-api-key',
    *   baseURL: 'https://api.example.com'
-   * });
-   *
-   * // Custom session directory
-   * const agent = await Agent.create({
-   *   apiKey: 'your-api-key',
-   *   baseURL: 'https://api.example.com',
-   *   sessionDir: './app-sessions'
    * });
    * ```
    */
@@ -468,7 +442,6 @@ export class Agent {
           const sessionData = await loadSessionFromJsonl(
             sessionId,
             this.messageManager.getWorkdir(),
-            this.messageManager.getSessionDir(),
             true, // isSubagent = true for subagent sessions
           );
           if (sessionData) {

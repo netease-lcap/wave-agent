@@ -25,6 +25,11 @@ vi.mock("../../src/services/session.js", () => ({
   deleteSessionFromJsonl: vi.fn(),
   sessionExistsInJsonl: vi.fn(),
   cleanupExpiredSessionsFromJsonl: vi.fn(),
+  getSessionFilePath: vi.fn(),
+  ensureSessionDir: vi.fn(),
+  listSessions: vi.fn(),
+  cleanupEmptyProjectDirectories: vi.fn(),
+  SESSION_DIR: "/mock/session/dir",
 }));
 
 // Type for accessing private members in tests
@@ -37,12 +42,10 @@ interface AgentWithPrivates {
 
 describe("Agent - Subagent Session Restoration", () => {
   let testWorkdir: string;
-  let testSessionDir: string;
 
   beforeEach(() => {
     // Use mock directory paths instead of creating real directories
     testWorkdir = "/mock/test/workdir";
-    testSessionDir = "/mock/test/sessions";
 
     // Reset all mocks before each test
     vi.clearAllMocks();
@@ -150,7 +153,6 @@ describe("Agent - Subagent Session Restoration", () => {
       baseURL: "https://test.com",
       restoreSessionId: mainSessionId,
       workdir: testWorkdir,
-      sessionDir: testSessionDir,
       callbacks: {
         onSubagentMessagesChange: mockSubagentMessagesChange,
       },
@@ -214,14 +216,13 @@ describe("Agent - Subagent Session Restoration", () => {
       1,
       mainSessionId,
       testWorkdir,
-      testSessionDir,
       undefined,
     );
     expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
       2,
       subagentSessionId,
       testWorkdir,
-      testSessionDir,
+
       true,
     );
 
@@ -292,7 +293,6 @@ describe("Agent - Subagent Session Restoration", () => {
       baseURL: "https://test.com",
       restoreSessionId: mainSessionId,
       workdir: testWorkdir,
-      sessionDir: testSessionDir,
     });
 
     // Main session should still be restored
@@ -311,14 +311,13 @@ describe("Agent - Subagent Session Restoration", () => {
       1,
       mainSessionId,
       testWorkdir,
-      testSessionDir,
       undefined,
     );
     expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
       2,
       missingSubagentSessionId,
       testWorkdir,
-      testSessionDir,
+
       true,
     );
 
@@ -337,7 +336,6 @@ describe("Agent - Subagent Session Restoration", () => {
       apiKey: "test-key",
       baseURL: "https://test.com",
       workdir: testWorkdir,
-      sessionDir: testSessionDir,
     });
 
     // Should have no messages (new session)
