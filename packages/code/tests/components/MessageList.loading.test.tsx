@@ -35,7 +35,7 @@ describe("MessageList Loading State", () => {
     const output = lastFrame();
 
     // Should show the loading message without tokens (tokens are now in Messages row)
-    expect(output).toContain("💭 AI is thinking... Esc to abort");
+    expect(output).toContain("💭 AI is thinking... | Esc to abort");
 
     // Should show token count in the Messages row at the bottom
     expect(output).toContain("Messages 2 | 1,000 tokens");
@@ -158,7 +158,7 @@ describe("MessageList Loading State", () => {
     const output = lastFrame();
 
     // Should show both loading and command running messages
-    expect(output).toContain("💭 AI is thinking... Esc to abort");
+    expect(output).toContain("💭 AI is thinking... | Esc to abort");
     expect(output).toContain("Command is running...");
 
     // Should show token count in the Messages row
