@@ -10,6 +10,7 @@ export interface MessageListProps {
   isCompressing?: boolean;
   latestTotalTokens?: number;
   isExpanded?: boolean;
+  sessionId?: string;
 }
 
 export const MessageList = React.memo(
@@ -20,6 +21,7 @@ export const MessageList = React.memo(
     isCompressing = false,
     latestTotalTokens = 0,
     isExpanded = false,
+    sessionId,
   }: MessageListProps) => {
     // Empty message state
     if (messages.length === 0) {
@@ -66,17 +68,6 @@ export const MessageList = React.memo(
             {isLoading && (
               <Box>
                 <Text color="yellow">💭 AI is thinking... </Text>
-                <Text color="gray" dimColor>
-                  {" "}
-                  |{" "}
-                </Text>
-                <Text color="blue" bold>
-                  {latestTotalTokens.toLocaleString()}
-                </Text>
-                <Text color="gray" dimColor>
-                  {" "}
-                  tokens |{" "}
-                </Text>
                 <Text color="red" bold>
                   Esc
                 </Text>
@@ -100,7 +91,34 @@ export const MessageList = React.memo(
           <Box>
             <Box justifyContent="space-between" width="100%">
               <Box>
-                <Text color="gray">Messages {messages.length}</Text>
+                <Text color="gray">
+                  Messages {messages.length}
+                  {latestTotalTokens > 0 && (
+                    <>
+                      <Text color="gray" dimColor>
+                        {" "}
+                        |{" "}
+                      </Text>
+                      <Text color="blue" bold>
+                        {latestTotalTokens.toLocaleString()}
+                      </Text>
+                      <Text color="gray" dimColor>
+                        {" "}
+                        tokens
+                      </Text>
+                    </>
+                  )}
+                  {sessionId && (
+                    <>
+                      <Text color="gray" dimColor>
+                        {" "}
+                        |{" "}
+                      </Text>
+                      <Text color="cyan">Session: </Text>
+                      <Text color="gray">{sessionId.slice(0, 8)}...</Text>
+                    </>
+                  )}
+                </Text>
               </Box>
               <Text color="gray" dimColor>
                 <Text color="cyan">Ctrl+O</Text> Toggle{" "}
