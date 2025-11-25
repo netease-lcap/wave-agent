@@ -5,7 +5,6 @@ import path from "path";
 // Mock fs operations
 vi.mock("fs", () => ({
   promises: {
-    mkdtemp: vi.fn(),
     rm: vi.fn(),
     readFile: vi.fn(),
     writeFile: vi.fn(),
