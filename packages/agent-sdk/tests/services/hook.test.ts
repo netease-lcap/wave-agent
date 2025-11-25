@@ -662,5 +662,91 @@ describe("Hook Services", () => {
       expect(parsedInput.cwd).toBe("/test/cwd");
       expect(parsedInput.hook_event_name).toBe("PostToolUse");
     });
+
+    it("should include subagent_type in JSON input when executed by subagent", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const subagentContext = {
+        ...mockContext,
+        sessionId: "subagent-session-456",
+        transcriptPath: "/path/to/subagent-transcript.md",
+        cwd: "/test/cwd",
+        subagentType: "typescript-expert", // Include subagent type
+      };
+
+      const resultPromise = executeCommand("echo test", subagentContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(stdinData).toBeTruthy();
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.session_id).toBe("subagent-session-456");
+      expect(parsedInput.transcript_path).toBe(
+        "/path/to/subagent-transcript.md",
+      );
+      expect(parsedInput.cwd).toBe("/test/cwd");
+      expect(parsedInput.hook_event_name).toBe("PostToolUse");
+      expect(parsedInput.subagent_type).toBe("typescript-expert"); // Verify subagent_type is included
+    });
+
+    it("should not include subagent_type in JSON input when executed by main agent", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const mainAgentContext = {
+        ...mockContext,
+        sessionId: "main-session-789",
+        transcriptPath: "/path/to/main-transcript.md",
+        cwd: "/test/cwd",
+        // No subagentType field - this is from main agent
+      };
+
+      const resultPromise = executeCommand("echo test", mainAgentContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(stdinData).toBeTruthy();
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.session_id).toBe("main-session-789");
+      expect(parsedInput.transcript_path).toBe("/path/to/main-transcript.md");
+      expect(parsedInput.cwd).toBe("/test/cwd");
+      expect(parsedInput.hook_event_name).toBe("PostToolUse");
+      expect(parsedInput.subagent_type).toBeUndefined(); // Verify subagent_type is not included
+    });
   });
 });

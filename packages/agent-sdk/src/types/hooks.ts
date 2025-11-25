@@ -151,6 +151,7 @@ export interface HookJsonInput {
   tool_input?: unknown; // Present for PreToolUse, PostToolUse
   tool_response?: unknown; // Present for PostToolUse only
   user_prompt?: string; // Present for UserPromptSubmit only
+  subagent_type?: string; // Present when hook is executed by a subagent
 }
 
 // Extended context interface for passing additional data to hook executor
@@ -161,6 +162,7 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   toolInput?: unknown; // Tool input parameters (PreToolUse/PostToolUse)
   toolResponse?: unknown; // Tool execution result (PostToolUse only)
   userPrompt?: string; // User prompt text (UserPromptSubmit only)
+  subagentType?: string; // Subagent type when hook is executed by a subagent
 }
 
 // Environment variables injected into hook processes

@@ -30,6 +30,7 @@ export interface AIManagerOptions {
   callbacks?: AIManagerCallbacks;
   workdir: string;
   systemPrompt?: string;
+  subagentType?: string; // Optional subagent type for hook context
   // Resolved configuration
   gatewayConfig: GatewayConfig;
   modelConfig: ModelConfig;
@@ -47,6 +48,7 @@ export class AIManager {
   private hookManager?: HookManager;
   private workdir: string;
   private systemPrompt?: string;
+  private subagentType?: string; // Store subagent type for hook context
 
   // Configuration properties
   private gatewayConfig: GatewayConfig;
@@ -61,6 +63,7 @@ export class AIManager {
     this.logger = options.logger;
     this.workdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
+    this.subagentType = options.subagentType; // Store subagent type
     this.callbacks = options.callbacks ?? {};
 
     // Store resolved configuration
@@ -583,6 +586,7 @@ export class AIManager {
         sessionId: this.messageManager.getSessionId(),
         transcriptPath: this.messageManager.getTranscriptPath(),
         cwd: this.workdir,
+        subagentType: this.subagentType, // Include subagent type in hook context
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
       };
 
@@ -650,6 +654,7 @@ export class AIManager {
         transcriptPath: this.messageManager.getTranscriptPath(),
         cwd: this.workdir,
         toolInput,
+        subagentType: this.subagentType, // Include subagent type in hook context
       };
 
       const results = await this.hookManager.executeHooks(
@@ -714,6 +719,7 @@ export class AIManager {
         cwd: this.workdir,
         toolInput,
         toolResponse,
+        subagentType: this.subagentType, // Include subagent type in hook context
       };
 
       const results = await this.hookManager.executeHooks(
