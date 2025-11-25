@@ -5,11 +5,8 @@ import {
   InputBox,
   INPUT_PLACEHOLDER_TEXT,
 } from "../../src/components/InputBox.js";
-import { waitForText } from "../helpers/waitHelpers.js";
+import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers.js";
 import type { SlashCommand } from "wave-agent-sdk";
-
-// Delay function
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("InputBox Smoke Tests", () => {
   describe("Basic Functionality", () => {
@@ -125,15 +122,14 @@ describe("InputBox Smoke Tests", () => {
 
       // Step 1: Input "/" to activate command selector
       stdin.write("/");
-      await delay(50);
+      await waitForText(lastFrame, "Command Selector");
 
       const afterSlashFrame = lastFrame();
-      expect(afterSlashFrame).toContain("Command Selector");
-      expect(afterSlashFrame).toContain("git-commit");
+      expect(afterSlashFrame).toContain("docs");
 
       // Step 2: Input "git" to filter commands
       stdin.write("git");
-      await delay(50);
+      await waitForTextToDisappear(lastFrame, "docs");
 
       const filteredFrame = lastFrame();
       expect(filteredFrame).toContain("git-commit");
@@ -141,7 +137,7 @@ describe("InputBox Smoke Tests", () => {
 
       // Step 3: Press Enter to select and execute command
       stdin.write("\r");
-      await delay(100);
+      await waitForTextToDisappear(lastFrame, "Command Selector");
 
       // Step 4: Verify command is executed and input is cleared
       expect(mockHasSlashCommand).toHaveBeenCalledWith("git-commit");
@@ -166,22 +162,17 @@ describe("InputBox Smoke Tests", () => {
 
       // Input complete command directly
       stdin.write("/git-commit some arguments");
-      await delay(50);
-
-      expect(lastFrame()).toContain("/git-commit some arguments");
+      await waitForText(lastFrame, "/git-commit some arguments");
 
       // Press Enter to send
       stdin.write("\r");
-      await delay(100);
+      await waitForText(lastFrame, "Type your message");
 
       // Verify sent as message
       expect(mockSendMessage).toHaveBeenCalledWith(
         "/git-commit some arguments",
         undefined,
       );
-
-      // Verify input box is cleared
-      expect(lastFrame()).toContain("Type your message");
     });
   });
 });
