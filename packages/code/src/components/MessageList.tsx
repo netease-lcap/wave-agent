@@ -61,7 +61,7 @@ export const MessageList = React.memo(
           message.blocks.length > 0 && shouldShowHeader;
 
         return (
-          <Box key={`message-${originalIndex}`} flexDirection="column">
+          <Box key={`message-${originalIndex}`} flexDirection="column" gap={1}>
             {shouldShowHeaderWithBlocks && (
               <Box>
                 <Text color={message.role === "user" ? "cyan" : "green"} bold>
@@ -74,11 +74,7 @@ export const MessageList = React.memo(
               </Box>
             )}
 
-            <Box
-              flexDirection="column"
-              gap={1}
-              marginTop={shouldShowHeaderWithBlocks ? 1 : 0}
-            >
+            <Box flexDirection="column" gap={1}>
               {message.blocks.map((block, blockIndex) => (
                 <Box key={blockIndex}>
                   {block.type === "text" && block.content.trim() && (
