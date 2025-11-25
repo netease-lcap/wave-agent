@@ -61,6 +61,11 @@ function buildHookJsonInput(
     jsonInput.user_prompt = context.userPrompt;
   }
 
+  // Add subagent_type if present
+  if (context.subagentType !== undefined) {
+    jsonInput.subagent_type = context.subagentType;
+  }
+
   return jsonInput;
 }
 

@@ -49,6 +49,7 @@ export interface SubagentInstance {
   toolManager: ToolManager;
   status: "initializing" | "active" | "completed" | "error" | "aborted";
   messages: Message[];
+  subagentType: string; // Store the subagent type for hook context
 }
 
 export interface SubagentManagerOptions {
@@ -184,6 +185,7 @@ export class SubagentManager {
       logger: this.logger,
       workdir: this.workdir,
       systemPrompt: configuration.systemPrompt,
+      subagentType: parameters.subagent_type, // Pass subagent type for hook context
       hookManager: this.hookManager,
       gatewayConfig: this.gatewayConfig,
       modelConfig: {
@@ -204,6 +206,7 @@ export class SubagentManager {
       toolManager,
       status: "initializing",
       messages: [],
+      subagentType: parameters.subagent_type, // Store the subagent type
     };
 
     this.instances.set(subagentId, instance);
@@ -435,6 +438,7 @@ export class SubagentManager {
           logger: this.logger,
           workdir: this.workdir,
           systemPrompt: configuration.systemPrompt,
+          subagentType: configuration.name, // Use configuration name as subagent type for restored instances
           hookManager: this.hookManager,
           gatewayConfig: this.gatewayConfig,
           modelConfig: {
@@ -456,6 +460,7 @@ export class SubagentManager {
           toolManager,
           status: "completed", // Restored sessions are considered completed
           messages: sessionData.messages,
+          subagentType: configuration.name, // Use configuration name as subagent type for restored instances
         };
 
         // IMPORTANT: Store instance in map BEFORE calling setMessages
