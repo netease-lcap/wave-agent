@@ -1,9 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "../../src/agent.js";
 import type { SubagentInstance } from "../../src/managers/subagentManager.js";
-import { promises as fs } from "fs";
-import { join } from "path";
-import { tmpdir } from "os";
 import { v6 as uuidv6 } from "uuid";
 
 // Mock dependencies to prevent real I/O operations
@@ -42,23 +39,13 @@ describe("Agent - Subagent Session Restoration", () => {
   let testWorkdir: string;
   let testSessionDir: string;
 
-  beforeEach(async () => {
-    // Create temporary directories for testing
-    testWorkdir = await fs.mkdtemp(join(tmpdir(), "wave-agent-test-"));
-    testSessionDir = await fs.mkdtemp(join(tmpdir(), "wave-sessions-test-"));
+  beforeEach(() => {
+    // Use mock directory paths instead of creating real directories
+    testWorkdir = "/mock/test/workdir";
+    testSessionDir = "/mock/test/sessions";
 
     // Reset all mocks before each test
     vi.clearAllMocks();
-  });
-
-  afterEach(async () => {
-    // Clean up test directories
-    try {
-      await fs.rm(testWorkdir, { recursive: true });
-      await fs.rm(testSessionDir, { recursive: true });
-    } catch {
-      // Ignore cleanup errors
-    }
   });
 
   it("should discover and restore subagent sessions when main session is loaded", async () => {

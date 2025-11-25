@@ -8,7 +8,6 @@ vi.mock("fs", () => ({
   writeFileSync: vi.fn(),
   rmSync: vi.fn(),
   existsSync: vi.fn(() => true),
-  mkdtempSync: vi.fn(),
   readdirSync: vi.fn(() => []),
   readFileSync: vi.fn(() => ""),
   statSync: vi.fn(() => ({ isFile: () => true })),
@@ -30,9 +29,8 @@ describe("Custom Slash Commands with Description", () => {
   beforeEach(() => {
     // Set up mock directory paths
     mockTestDir = "/mock/tmp/wave-test-123";
-    
+
     // Setup fs mock implementations
-    vi.mocked(fs.mkdtempSync).mockReturnValue(mockTestDir);
     vi.mocked(fs.mkdirSync).mockReturnValue(undefined);
     vi.mocked(fs.writeFileSync).mockReturnValue(undefined);
     vi.mocked(fs.rmSync).mockReturnValue(undefined);
@@ -53,10 +51,11 @@ model: claude-3-5-sonnet-20241022
 
 This is a test command content.`;
 
-    
     // Mock readFileSync to return the command content
     vi.mocked(fs.readFileSync).mockReturnValue(commandContent);
-    vi.mocked(fs.readdirSync).mockReturnValue(["test-command.md"] as unknown as ReturnType<typeof fs.readdirSync>);
+    vi.mocked(fs.readdirSync).mockReturnValue([
+      "test-command.md",
+    ] as unknown as ReturnType<typeof fs.readdirSync>);
 
     const commands = loadCustomSlashCommands(mockTestDir);
     const testCommand = commands.find((cmd) => cmd.name === "test-command");
@@ -73,10 +72,11 @@ model: claude-3-5-sonnet-20241022
 
 This is a test command without description.`;
 
-    
     // Mock readFileSync to return the command content
     vi.mocked(fs.readFileSync).mockReturnValue(commandContent);
-    vi.mocked(fs.readdirSync).mockReturnValue(["no-desc-command.md"] as unknown as ReturnType<typeof fs.readdirSync>);
+    vi.mocked(fs.readdirSync).mockReturnValue([
+      "no-desc-command.md",
+    ] as unknown as ReturnType<typeof fs.readdirSync>);
 
     const commands = loadCustomSlashCommands(mockTestDir);
     const testCommand = commands.find((cmd) => cmd.name === "no-desc-command");
@@ -89,10 +89,11 @@ This is a test command without description.`;
   it("should handle commands with no frontmatter", () => {
     const commandContent = `This is a simple command without any frontmatter.`;
 
-    
     // Mock readFileSync to return the command content
     vi.mocked(fs.readFileSync).mockReturnValue(commandContent);
-    vi.mocked(fs.readdirSync).mockReturnValue(["simple-command.md"] as unknown as ReturnType<typeof fs.readdirSync>);
+    vi.mocked(fs.readdirSync).mockReturnValue([
+      "simple-command.md",
+    ] as unknown as ReturnType<typeof fs.readdirSync>);
 
     const commands = loadCustomSlashCommands(mockTestDir);
     const testCommand = commands.find((cmd) => cmd.name === "simple-command");

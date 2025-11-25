@@ -4,7 +4,6 @@ import type { AgentCallbacks } from "@/agent.js";
 
 // Mock fs operations
 vi.mock("fs/promises", () => ({
-  mkdtemp: vi.fn(),
   rm: vi.fn(),
   readFile: vi.fn(),
   writeFile: vi.fn(),
@@ -62,7 +61,6 @@ describe("Agent User Memory Integration", () => {
 
     // Setup fs mock implementations
     const fs = await import("fs/promises");
-    vi.mocked(fs.mkdtemp).mockResolvedValue(mockTempDir);
     vi.mocked(fs.rm).mockResolvedValue(undefined);
     vi.mocked(fs.access).mockResolvedValue(undefined);
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
