@@ -48,9 +48,15 @@ describe("JsonlHandler.append()", () => {
     await handler.append("/test/file.jsonl", [message], { atomic: false });
 
     expect(mockAppendFile).toHaveBeenCalledOnce();
+    // Expect timestamp-first format
+    const expectedMessage = {
+      timestamp: message.timestamp,
+      role: message.role,
+      blocks: message.blocks,
+    };
     expect(mockAppendFile).toHaveBeenCalledWith(
       "/test/file.jsonl",
-      JSON.stringify(message) + "\n",
+      JSON.stringify(expectedMessage) + "\n",
       "utf8",
     );
   });
@@ -64,8 +70,22 @@ describe("JsonlHandler.append()", () => {
     await handler.append("/test/file.jsonl", messages, { atomic: false });
 
     expect(mockAppendFile).toHaveBeenCalledOnce();
+    // Expect timestamp-first format for both messages
+    const expectedMessage1 = {
+      timestamp: messages[0].timestamp,
+      role: messages[0].role,
+      blocks: messages[0].blocks,
+    };
+    const expectedMessage2 = {
+      timestamp: messages[1].timestamp,
+      role: messages[1].role,
+      blocks: messages[1].blocks,
+    };
     const expectedContent =
-      JSON.stringify(messages[0]) + "\n" + JSON.stringify(messages[1]) + "\n";
+      JSON.stringify(expectedMessage1) +
+      "\n" +
+      JSON.stringify(expectedMessage2) +
+      "\n";
     expect(mockAppendFile).toHaveBeenCalledWith(
       "/test/file.jsonl",
       expectedContent,
@@ -117,9 +137,17 @@ describe("JsonlHandler.append()", () => {
       atomic: false,
     });
 
+    // Expect timestamp-first format
+    const expectedMessage = {
+      timestamp: complexMessage.timestamp,
+      role: complexMessage.role,
+      blocks: complexMessage.blocks,
+      usage: complexMessage.usage,
+      metadata: complexMessage.metadata,
+    };
     expect(mockAppendFile).toHaveBeenCalledWith(
       "/test/file.jsonl",
-      JSON.stringify(complexMessage) + "\n",
+      JSON.stringify(expectedMessage) + "\n",
       "utf8",
     );
   });
