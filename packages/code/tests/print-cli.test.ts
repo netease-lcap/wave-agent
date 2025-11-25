@@ -7,9 +7,6 @@ vi.mock("../src/utils/usageSummary.js");
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
 
-// Mock logger
-vi.mock("../src/utils/logger.js");
-
 // Mock process.exit
 const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
   throw new Error("process.exit called");
@@ -72,7 +69,6 @@ test("startPrintCli sends message and exits after completion", async () => {
     callbacks: expect.any(Object),
     restoreSessionId: undefined,
     continueLastSession: undefined,
-    logger: expect.any(Object),
   });
 
   // Verify that sendMessage was called with the correct message
@@ -152,7 +148,6 @@ test("startPrintCli works with continue session", async () => {
     callbacks: expect.any(Object),
     restoreSessionId: undefined,
     continueLastSession: true,
-    logger: expect.any(Object),
   });
 
   // Verify that sendMessage was NOT called (no message provided)
@@ -248,6 +243,91 @@ test("startPrintCli handles sendMessage errors and displays usage summary", asyn
   expect(mockAgent.destroy).toHaveBeenCalled();
   expect(mockExit).toHaveBeenCalledWith(1);
 
+  consoleErrorSpy.mockRestore();
+});
+
+test("subagent content callbacks output correctly", async () => {
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    abortMessage: vi.fn(),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+
+  let capturedCallbacks:
+    | Record<string, (...args: unknown[]) => void>
+    | undefined;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    capturedCallbacks = options.callbacks as Record<
+      string,
+      (...args: unknown[]) => void
+    >;
+    return mockAgent as unknown as Agent;
+  });
+
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+
+  // Mock console.error to suppress stderr output
+  const consoleErrorSpy = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
+  try {
+    await startPrintCli({ message: "test message" });
+  } catch (error) {
+    // Expected when process.exit is called
+    expect(String(error)).toContain("process.exit called");
+  }
+
+  // Test onSubagentAssistantMessageAdded callback (starts subagent response)
+  capturedCallbacks?.onSubagentAssistantMessageAdded?.("test-subagent-123");
+  expect(stdoutSpy).toHaveBeenCalledWith("\n   ");
+
+  // Test onSubagentAssistantContentUpdated callback (streams subagent content)
+  capturedCallbacks?.onSubagentAssistantContentUpdated?.(
+    "test-subagent-123",
+    "Hello from subagent",
+  );
+  expect(stdoutSpy).toHaveBeenCalledWith("Hello from subagent");
+
+  // Test onSubAgentBlockAdded callback
+  capturedCallbacks?.onSubAgentBlockAdded?.("test-subagent-123", {
+    subagent_type: "typescript-expert",
+    description: "Fix TypeScript errors",
+  });
+  expect(stdoutSpy).toHaveBeenCalledWith(
+    "\n🤖 Subagent [typescript-expert]: Fix TypeScript errors\n",
+  );
+
+  // Test onSubAgentBlockUpdated callback with different statuses
+  capturedCallbacks?.onSubAgentBlockUpdated?.("test-subagent-123", "active");
+  expect(stdoutSpy).toHaveBeenCalledWith("   🔄 Subagent status: active\n");
+
+  capturedCallbacks?.onSubAgentBlockUpdated?.("test-subagent-123", "completed");
+  expect(stdoutSpy).toHaveBeenCalledWith("   ✅ Subagent status: completed\n");
+
+  capturedCallbacks?.onSubAgentBlockUpdated?.("test-subagent-123", "error");
+  expect(stdoutSpy).toHaveBeenCalledWith("   ❌ Subagent status: error\n");
+
+  capturedCallbacks?.onSubAgentBlockUpdated?.("test-subagent-123", "aborted");
+  expect(stdoutSpy).toHaveBeenCalledWith("   ⚠️ Subagent status: aborted\n");
+
+  // Test onSubagentUserMessageAdded callback
+  capturedCallbacks?.onSubagentUserMessageAdded?.("test-subagent-123", {
+    content: "Please fix this code",
+  });
+  expect(stdoutSpy).toHaveBeenCalledWith(
+    "\n   👤 User: Please fix this code\n",
+  );
+
+  // Test onErrorBlockAdded callback
+  capturedCallbacks?.onErrorBlockAdded?.("Something went wrong");
+  expect(stdoutSpy).toHaveBeenCalledWith("\n❌ Error: Something went wrong\n");
+
+  stdoutSpy.mockRestore();
   consoleErrorSpy.mockRestore();
 });
 
