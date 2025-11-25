@@ -83,7 +83,10 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
 
   return (
     <Box
-      borderStyle="round"
+      borderRight={false}
+      borderTop={false}
+      borderBottom={false}
+      borderStyle="classic"
       borderColor="magenta"
       paddingX={1}
       paddingY={0}
@@ -91,11 +94,7 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
       marginBottom={1}
     >
       {/* Header Section */}
-      <Box
-        flexDirection="row"
-        justifyContent="space-between"
-        alignItems="center"
-      >
+      <Box flexDirection="row" gap={1}>
         <Box flexDirection="row" alignItems="center">
           <Text color="cyan">🤖 {block.subagentName}</Text>
           <Text color={statusInfo.color} dimColor={false}>
