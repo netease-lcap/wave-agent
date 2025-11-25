@@ -176,9 +176,11 @@ export class JsonlHandler {
 
     // Convert messages to JSONL lines
     const lines = messages.map((message) => {
+      const { timestamp: existingTimestamp, ...messageWithoutTimestamp } =
+        message;
       const messageWithTimestamp = {
-        ...message,
-        timestamp: message.timestamp || new Date().toISOString(),
+        timestamp: existingTimestamp || new Date().toISOString(),
+        ...messageWithoutTimestamp,
       };
 
       return opts.pretty

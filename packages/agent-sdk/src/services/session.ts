@@ -107,8 +107,8 @@ export async function appendMessages(
   const filePath = await getSessionFilePath(sessionId, workdir, sessionDir);
 
   const messagesWithTimestamp: SessionMessage[] = newMessages.map((msg) => ({
-    ...msg,
     timestamp: new Date().toISOString(),
+    ...msg,
   }));
 
   await jsonlHandler.append(filePath, messagesWithTimestamp, { atomic: false });
