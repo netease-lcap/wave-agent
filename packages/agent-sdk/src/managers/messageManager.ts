@@ -86,12 +86,12 @@ export interface MessageManagerOptions {
    */
   sessionDir?: string;
 
-  // New: Optional session filename prefix
+  // Flag to indicate this is a subagent session
   /**
-   * Custom session filename prefix
-   * @default "session"
+   * If true, session files will be saved in a subagent/ subdirectory
+   * @default false
    */
-  sessionPrefix?: string;
+  isSubagent?: boolean;
 }
 
 export class MessageManager {
@@ -106,7 +106,7 @@ export class MessageManager {
   private logger?: Logger; // Add optional logger property
   private callbacks: MessageManagerCallbacks;
   private sessionDir?: string; // Add session directory property
-  private sessionPrefix?: string; // Add session prefix property
+  private isSubagent?: boolean; // Flag for subagent sessions
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
 
@@ -121,7 +121,7 @@ export class MessageManager {
     this.callbacks = options.callbacks;
     this.logger = options.logger;
     this.sessionDir = options.sessionDir;
-    this.sessionPrefix = options.sessionPrefix;
+    this.isSubagent = options.isSubagent;
     this.savedMessageCount = 0; // Initialize saved message count tracker
 
     // Compute and cache the transcript path
@@ -167,7 +167,15 @@ export class MessageManager {
    */
   private computeTranscriptPath(): string {
     const sessionDir = this.sessionDir || join(homedir(), ".wave", "projects");
-    return join(sessionDir, this.encodedWorkdir, `${this.sessionId}.jsonl`);
+    const baseDir = join(sessionDir, this.encodedWorkdir);
+
+    if (this.isSubagent) {
+      // Store subagent sessions in a subdirectory
+      return join(baseDir, "subagent", `${this.sessionId}.jsonl`);
+    } else {
+      // Store main sessions in the root directory
+      return join(baseDir, `${this.sessionId}.jsonl`);
+    }
   }
 
   // Setter methods, will trigger callbacks
@@ -206,6 +214,7 @@ export class MessageManager {
         unsavedMessages, // Only append new messages
         this.workdir,
         this.sessionDir,
+        this.isSubagent,
       );
 
       // Update the saved message count
@@ -242,6 +251,7 @@ export class MessageManager {
           restoreSessionId,
           this.workdir,
           this.sessionDir,
+          this.isSubagent,
         );
         if (!sessionToRestore) {
           console.error(`Session not found: ${restoreSessionId}`);

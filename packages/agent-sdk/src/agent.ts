@@ -469,6 +469,7 @@ export class Agent {
             sessionId,
             this.messageManager.getWorkdir(),
             this.messageManager.getSessionDir(),
+            true, // isSubagent = true for subagent sessions
           );
           if (sessionData) {
             subagentSessions.push({

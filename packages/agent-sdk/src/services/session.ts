@@ -70,13 +70,21 @@ export async function getSessionFilePath(
   sessionId: string,
   workdir: string,
   sessionDir?: string,
+  isSubagent?: boolean,
 ): Promise<string> {
   const encoder = new PathEncoder();
   const projectDir = await encoder.createProjectDirectory(
     workdir,
     resolveSessionDir(sessionDir),
   );
-  return join(projectDir.encodedPath, `${sessionId}.jsonl`);
+
+  if (isSubagent) {
+    // For subagent sessions, add subagent/ subdirectory
+    return join(projectDir.encodedPath, "subagent", `${sessionId}.jsonl`);
+  } else {
+    // For main sessions, use the root directory
+    return join(projectDir.encodedPath, `${sessionId}.jsonl`);
+  }
 }
 
 /**
@@ -86,12 +94,14 @@ export async function getSessionFilePath(
  * @param newMessages - Array of messages to append
  * @param workdir - Working directory for the session
  * @param sessionDir - Optional custom directory for session storage
+ * @param isSubagent - Whether this is a subagent session
  */
 export async function appendMessages(
   sessionId: string,
   newMessages: Message[],
   workdir: string,
   sessionDir?: string,
+  isSubagent?: boolean,
 ): Promise<void> {
   // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
@@ -104,7 +114,12 @@ export async function appendMessages(
   }
 
   const jsonlHandler = new JsonlHandler();
-  const filePath = await getSessionFilePath(sessionId, workdir, sessionDir);
+  const filePath = await getSessionFilePath(
+    sessionId,
+    workdir,
+    sessionDir,
+    isSubagent,
+  );
 
   const messagesWithTimestamp: SessionMessage[] = newMessages.map((msg) => ({
     ...msg,
@@ -126,10 +141,16 @@ export async function loadSessionFromJsonl(
   sessionId: string,
   workdir: string,
   sessionDir?: string,
+  isSubagent?: boolean,
 ): Promise<SessionData | null> {
   try {
     const jsonlHandler = new JsonlHandler();
-    const filePath = await getSessionFilePath(sessionId, workdir, sessionDir);
+    const filePath = await getSessionFilePath(
+      sessionId,
+      workdir,
+      sessionDir,
+      isSubagent,
+    );
 
     const messages = await jsonlHandler.read(filePath);
 
