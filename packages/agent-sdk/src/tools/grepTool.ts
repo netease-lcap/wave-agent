@@ -180,37 +180,7 @@ export const grepTool: ToolPlugin = {
       }
 
       // Add search pattern - use -e parameter to avoid patterns starting with - being mistaken as command line options
-      // Handle common regex pattern issues for ripgrep compatibility
-      let processedPattern = pattern;
-
-      // First, handle over-escaped patterns (like \\{ which should be \{)
-      processedPattern = processedPattern.replace(/\\\\([{}])/g, "\\$1"); // Convert \\{ to \{ and \\} to \}
-
-      // Handle literal braces - escape braces that are likely meant to be literal
-      // This handles common cases like "} else {" or "interface{}"
-      processedPattern = processedPattern.replace(/(?<!\\)\{(?!\d)/g, "\\{"); // Escape { not followed by digit (not a quantifier)
-      processedPattern = processedPattern.replace(
-        /(?<!\\)\}(?!\s*[+*?])/g,
-        "\\}",
-      ); // Escape } not followed by quantifier operators
-
-      // Fix common regex escaping issues
-      // Handle remaining double backslash sequences that might cause parse errors
-      processedPattern = processedPattern.replace(/\\{4}/g, "\\\\"); // Convert quadruple backslashes to double
-
-      // Handle unrecognized escape sequences by making them literal
-      processedPattern = processedPattern.replace(
-        /\\([^\\dDwWsSbBnrtfvaxuUAZzGQEcCpPXO0-9{}()[\]|*+?.^$])/g,
-        (match, char) => {
-          // For unrecognized escape sequences, make them literal
-          if (char === "/") {
-            return "/"; // Forward slash doesn't need escaping in ripgrep
-          }
-          return "\\" + char; // Keep the escape for recognized sequences
-        },
-      );
-
-      rgArgs.push("-e", processedPattern);
+      rgArgs.push("-e", pattern);
 
       // Add search path
       if (searchPath) {
@@ -223,42 +193,6 @@ export const grepTool: ToolPlugin = {
 
       if (result.error && result.exitCode !== 1) {
         // rg returns 1 for no matches, not an error
-        // Handle regex parse errors with helpful suggestions
-        if (result.stderr.includes("regex parse error")) {
-          const suggestions = [];
-
-          if (pattern.includes("\\\\")) {
-            suggestions.push(
-              "Try using single backslashes instead of double backslashes for literal characters",
-            );
-          }
-
-          if (pattern.includes("/")) {
-            suggestions.push(
-              "Forward slashes don't need escaping in ripgrep - try removing backslashes before /",
-            );
-          }
-
-          if (pattern.includes("\\{") || pattern.includes("\\}")) {
-            suggestions.push(
-              "For literal braces, try using \\\\{ and \\\\} or put the pattern in quotes",
-            );
-          }
-
-          let errorMsg = `Regex pattern error: ${result.stderr}`;
-          if (suggestions.length > 0) {
-            errorMsg += "\n\nSuggestions:\n- " + suggestions.join("\n- ");
-          }
-          errorMsg += `\n\nOriginal pattern: ${pattern}`;
-          errorMsg += `\nProcessed pattern: ${processedPattern}`;
-
-          return {
-            success: false,
-            content: "",
-            error: errorMsg,
-          };
-        }
-
         return {
           success: false,
           content: "",
