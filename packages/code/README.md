@@ -51,8 +51,8 @@ export LOG_FILE="/path/to/your/logfile.log"
 # Maximum log file size (optional, defaults to 10MB)
 export LOG_MAX_FILE_SIZE="10485760"
 
-# Token limit (optional, defaults to 64000)
-export TOKEN_LIMIT="64000"
+# Token limit (optional, defaults to 96000)
+export TOKEN_LIMIT="96000"
 
 ```
 

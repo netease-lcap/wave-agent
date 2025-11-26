@@ -89,7 +89,7 @@ describe("AIManager", () => {
       workdir: "/test/workdir",
       gatewayConfig: mockGatewayConfig,
       modelConfig: mockModelConfig,
-      tokenLimit: 64000,
+      tokenLimit: 96000,
     });
   });
 
