@@ -4,118 +4,18 @@
  */
 
 import { appendFile, readFile, writeFile, stat, mkdir } from "fs/promises";
-import { createReadStream } from "fs";
 import { dirname } from "path";
-import { createInterface } from "readline";
-import type { Message } from "../types/index.js";
+import { getLastLine, readFirstLine } from "../utils/fileUtils.js";
 
-/**
- * Enhanced message interface for JSONL storage (extends existing Message)
- */
-export interface SessionMessage extends Message {
-  timestamp: string; // ISO 8601 - added for JSONL format
-  // Inherits: role: "user" | "assistant", blocks: MessageBlock[], usage?, metadata?
-}
+import type { Message } from "../types/index.js";
+import type { SessionMessage, SessionMetadataLine } from "../types/session.js";
 
 /**
  * JSONL write options
  */
 export interface JsonlWriteOptions {
-  // Buffering options
-  buffer?: boolean; // Default: false (immediate write)
-  bufferSize?: number; // Default: 100 messages
-  flushTimeout?: number; // Default: 1000ms
-
-  // Formatting options
-  pretty?: boolean; // Default: false (compact JSON)
-  addNewlines?: boolean; // Default: true
-
   // Safety options
-  backup?: boolean; // Default: false
   atomic?: boolean; // Default: true (write to temp file first)
-
-  // Validation options
-  validateMessages?: boolean; // Default: true
-  strictMode?: boolean; // Default: false
-}
-
-/**
- * JSONL read options
- */
-export interface JsonlReadOptions {
-  // Range options
-  limit?: number; // Maximum messages to read
-  offset?: number; // Skip first N messages
-  startFromEnd?: boolean; // Default: false (read from beginning)
-
-  // Filtering options
-  roleFilter?: ("user" | "assistant")[];
-  timestampAfter?: Date;
-  timestampBefore?: Date;
-
-  // Error handling
-  skipCorrupted?: boolean; // Default: false
-  maxErrors?: number; // Default: 0 (fail on first error)
-
-  // Performance options
-  streaming?: boolean; // Default: false
-  chunkSize?: number; // Default: 1000 messages for streaming
-}
-
-/**
- * JSONL stream options
- */
-export interface JsonlStreamOptions
-  extends Omit<JsonlReadOptions, "streaming"> {
-  // Stream-specific options
-  highWaterMark?: number; // Default: 16KB
-  encoding?: BufferEncoding; // Default: 'utf8'
-
-  // Backpressure handling
-  pauseOnError?: boolean; // Default: false
-  resumeOnRepair?: boolean; // Default: false
-}
-
-/**
- * JSONL file statistics
- */
-export interface JsonlFileStats {
-  readonly filePath: string;
-  readonly fileSize: number;
-  readonly messageCount: number;
-  readonly created: Date;
-  readonly lastModified: Date;
-  readonly lastAccessed?: Date;
-  readonly averageMessageSize: number;
-  readonly roles: Record<"user" | "assistant", number>;
-}
-
-/**
- * JSONL validation result
- */
-export interface JsonlValidationResult {
-  readonly isValid: boolean;
-  readonly totalLines: number;
-  readonly validMessages: number;
-  readonly errors: JsonlValidationError[];
-  readonly warnings: string[];
-  readonly fileSize: number;
-  readonly lastValidated: Date;
-}
-
-/**
- * JSONL validation error
- */
-export interface JsonlValidationError {
-  readonly lineNumber: number;
-  readonly type:
-    | "INVALID_JSON"
-    | "MISSING_FIELD"
-    | "INVALID_TYPE"
-    | "INVALID_TIMESTAMP";
-  readonly message: string;
-  readonly line?: string;
-  readonly field?: string;
 }
 
 /**
@@ -123,33 +23,63 @@ export interface JsonlValidationError {
  */
 export class JsonlHandler {
   private readonly defaultWriteOptions: Required<JsonlWriteOptions>;
-  private readonly defaultReadOptions: Required<JsonlReadOptions>;
 
   constructor() {
     this.defaultWriteOptions = {
-      buffer: false,
-      bufferSize: 100,
-      flushTimeout: 1000,
-      pretty: false,
-      addNewlines: true,
-      backup: false,
       atomic: true,
-      validateMessages: true,
-      strictMode: false,
+    };
+  }
+
+  /**
+   * Create a new session file with metadata header
+   */
+  async createSession(
+    filePath: string,
+    sessionId: string,
+    workdir: string,
+    sessionType: "main" | "subagent" = "main",
+    parentSessionId?: string,
+    subagentType?: string,
+  ): Promise<void> {
+    const metadataLine: SessionMetadataLine = {
+      __meta__: true,
+      sessionId,
+      sessionType,
+      ...(parentSessionId && { parentSessionId }),
+      ...(subagentType && { subagentType }),
+      workdir,
+      startedAt: new Date().toISOString(),
     };
 
-    this.defaultReadOptions = {
-      limit: Number.MAX_SAFE_INTEGER,
-      offset: 0,
-      startFromEnd: false,
-      roleFilter: ["user", "assistant"],
-      timestampAfter: new Date(0),
-      timestampBefore: new Date(),
-      skipCorrupted: false,
-      maxErrors: 0,
-      streaming: false,
-      chunkSize: 1000,
-    };
+    // Ensure directory exists
+    await this.ensureDirectory(dirname(filePath));
+
+    // Write metadata line as first line
+    await writeFile(filePath, JSON.stringify(metadataLine) + "\n", "utf8");
+  }
+
+  /**
+   * Append a single message to JSONL file
+   */
+  async appendMessage(filePath: string, message: Message): Promise<void> {
+    return this.appendMessages(filePath, [message]);
+  }
+
+  /**
+   * Append multiple messages to JSONL file
+   */
+  async appendMessages(filePath: string, messages: Message[]): Promise<void> {
+    if (messages.length === 0) {
+      return;
+    }
+
+    // Convert to SessionMessage format with timestamps
+    const sessionMessages: SessionMessage[] = messages.map((message) => ({
+      ...message,
+      timestamp: new Date().toISOString(),
+    }));
+
+    return this.append(filePath, sessionMessages);
   }
 
   /**
@@ -166,15 +96,13 @@ export class JsonlHandler {
 
     const opts = { ...this.defaultWriteOptions, ...options };
 
-    // Validate messages if requested
-    if (opts.validateMessages) {
-      this.validateMessages(messages);
-    }
+    // Validate messages (always enabled for data integrity)
+    this.validateMessages(messages);
 
     // Ensure directory exists
     await this.ensureDirectory(dirname(filePath));
 
-    // Convert messages to JSONL lines
+    // Convert messages to JSONL lines (always compact JSON)
     const lines = messages.map((message) => {
       const { timestamp: existingTimestamp, ...messageWithoutTimestamp } =
         message;
@@ -183,12 +111,10 @@ export class JsonlHandler {
         ...messageWithoutTimestamp,
       };
 
-      return opts.pretty
-        ? JSON.stringify(messageWithTimestamp, null, 2)
-        : JSON.stringify(messageWithTimestamp);
+      return JSON.stringify(messageWithTimestamp);
     });
 
-    const content = lines.join("\n") + (opts.addNewlines ? "\n" : "");
+    const content = lines.join("\n") + "\n";
 
     if (opts.atomic) {
       // Write to temp file first, then rename
@@ -205,266 +131,166 @@ export class JsonlHandler {
   }
 
   /**
-   * Read messages from JSONL file
+   * Read all messages from JSONL file with optional limit
+   * Includes metadata handling for backward compatibility
    */
   async read(
     filePath: string,
-    options?: JsonlReadOptions,
+    options?: { limit?: number },
   ): Promise<SessionMessage[]> {
-    const opts = { ...this.defaultReadOptions, ...options };
+    const opts = {
+      limit: Number.MAX_SAFE_INTEGER,
+      ...options,
+    };
 
     try {
       const content = await readFile(filePath, "utf8");
-      const lines = content.split("\n").filter((line) => line.trim());
+      const lines = content
+        .split(/\r?\n/)
+        .map((line: string) => line.trim())
+        .filter((line: string) => line.length > 0);
 
-      const messages: SessionMessage[] = [];
-      let errorCount = 0;
-      let processedCount = 0;
+      if (lines.length === 0) {
+        return [];
+      }
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+      // Handle limit edge cases
+      if (opts.limit !== undefined && opts.limit <= 0) {
+        return [];
+      }
 
-        // Apply offset
-        if (processedCount < opts.offset) {
-          processedCount++;
-          continue;
-        }
+      const allMessages: SessionMessage[] = [];
 
-        // Apply limit
-        if (messages.length >= opts.limit) {
-          break;
-        }
-
+      // Skip metadata line if present (first line with __meta__: true)
+      let startIndex = 0;
+      if (lines.length > 0) {
         try {
-          const message = JSON.parse(line) as SessionMessage;
-
-          // Apply filters
-          if (!this.matchesFilters(message, opts)) {
-            continue;
+          const firstLine = JSON.parse(lines[0]);
+          if (firstLine.__meta__ === true) {
+            startIndex = 1; // Skip metadata line
           }
-
-          messages.push(message);
-          processedCount++;
         } catch (error) {
-          errorCount++;
-
-          if (
-            !opts.skipCorrupted ||
-            (opts.maxErrors > 0 && errorCount > opts.maxErrors)
-          ) {
-            throw new Error(`Invalid JSON at line ${i + 1}: ${error}`);
+          // If first line is not valid JSON, throw error with line number
+          if (lines[0].trim().length > 0) {
+            // Only throw if line is not empty
+            throw new Error(`Invalid JSON at line 1: ${error}`);
           }
         }
       }
 
-      // If startFromEnd is true, reverse the final result to show latest messages first
-      return opts.startFromEnd ? messages.reverse() : messages;
+      // Parse messages
+      for (
+        let i = startIndex;
+        i < lines.length && allMessages.length < opts.limit;
+        i++
+      ) {
+        const line = lines[i];
+
+        try {
+          const message = JSON.parse(line) as SessionMessage;
+          allMessages.push(message);
+        } catch (error) {
+          // Throw error for invalid JSON lines with line number
+          throw new Error(`Invalid JSON at line ${i + 1}: ${error}`);
+        }
+      }
+
+      return allMessages;
     } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return [];
+      }
       throw new Error(`Failed to read JSONL file "${filePath}": ${error}`);
     }
   }
 
   /**
-   * Stream messages from JSONL file (for large sessions)
+   * Get the last message from JSONL file using efficient file reading
    */
-  async *stream(
-    filePath: string,
-    options?: JsonlStreamOptions,
-  ): AsyncIterable<SessionMessage> {
-    const opts = { ...this.defaultReadOptions, ...options };
-
-    const fileStream = createReadStream(filePath, {
-      encoding: opts.encoding || "utf8",
-      highWaterMark: opts.highWaterMark || 16 * 1024,
-    });
-
-    const rl = createInterface({
-      input: fileStream,
-      crlfDelay: Infinity,
-    });
-
-    let lineNumber = 0;
-    let processedCount = 0;
-    let errorCount = 0;
-
-    for await (const line of rl) {
-      lineNumber++;
-
-      if (!line.trim()) {
-        continue;
-      }
-
-      // Apply offset
-      if (processedCount < opts.offset) {
-        processedCount++;
-        continue;
-      }
-
-      // Apply limit
-      if (opts.limit && processedCount >= opts.limit) {
-        break;
-      }
-
-      try {
-        const message = JSON.parse(line) as SessionMessage;
-
-        // Apply filters
-        if (!this.matchesFilters(message, opts)) {
-          continue;
-        }
-
-        yield message;
-        processedCount++;
-      } catch (error) {
-        errorCount++;
-
-        if (
-          !opts.skipCorrupted ||
-          (opts.maxErrors > 0 && errorCount > opts.maxErrors)
-        ) {
-          if (opts.pauseOnError) {
-            continue;
-          }
-          throw new Error(`Invalid JSON at line ${lineNumber}: ${error}`);
-        }
-      }
-    }
-  }
-
-  /**
-   * Count messages in JSONL file without loading content
-   */
-  async count(filePath: string): Promise<number> {
+  async getLastMessage(filePath: string): Promise<SessionMessage | null> {
     try {
-      const content = await readFile(filePath, "utf8");
-      return content.split("\n").filter((line) => line.trim()).length;
-    } catch (error) {
-      throw new Error(`Failed to count messages in "${filePath}": ${error}`);
-    }
-  }
+      // First check if file exists
+      try {
+        await stat(filePath);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          return null;
+        }
+        throw err;
+      }
 
-  /**
-   * Validate JSONL file format and content
-   */
-  async validate(filePath: string): Promise<JsonlValidationResult> {
-    const stats = await stat(filePath);
-    const content = await readFile(filePath, "utf8");
-    const lines = content.split("\n").filter((line) => line.trim());
+      // Use our elegant utility to get the last line
+      const lastLine = await getLastLine(filePath);
 
-    const errors: JsonlValidationError[] = [];
-    const warnings: string[] = [];
-    let validMessages = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const lineNumber = i + 1;
+      if (!lastLine) {
+        return null;
+      }
 
       try {
-        const message = JSON.parse(line) as SessionMessage;
+        const parsed = JSON.parse(lastLine);
 
-        // Validate required fields
-        if (!message.role) {
-          errors.push({
-            lineNumber,
-            type: "MISSING_FIELD",
-            message: "Missing required field: role",
-            line,
-            field: "role",
-          });
+        // Skip metadata line
+        if (parsed.__meta__ === true) {
+          // If the last line is metadata, the file only contains metadata
+          return null;
         }
 
-        if (!message.blocks) {
-          errors.push({
-            lineNumber,
-            type: "MISSING_FIELD",
-            message: "Missing required field: blocks",
-            line,
-            field: "blocks",
-          });
-        }
-
-        if (!message.timestamp) {
-          warnings.push(`Line ${lineNumber}: Missing timestamp field`);
-        } else {
-          // Validate timestamp format
-          try {
-            new Date(message.timestamp);
-          } catch {
-            errors.push({
-              lineNumber,
-              type: "INVALID_TIMESTAMP",
-              message: "Invalid timestamp format",
-              line,
-              field: "timestamp",
-            });
-          }
-        }
-
-        validMessages++;
+        // Found a valid message
+        return parsed as SessionMessage;
       } catch (error) {
-        errors.push({
-          lineNumber,
-          type: "INVALID_JSON",
-          message: `Invalid JSON: ${error}`,
-          line,
-        });
+        throw new Error(`Invalid JSON in last line of "${filePath}": ${error}`);
       }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      totalLines: lines.length,
-      validMessages,
-      errors,
-      warnings,
-      fileSize: stats.size,
-      lastValidated: new Date(),
-    };
-  }
-
-  /**
-   * Create empty JSONL session file
-   */
-  async createFile(
-    filePath: string,
-    initialMessages?: SessionMessage[],
-  ): Promise<void> {
-    // Ensure directory exists
-    await this.ensureDirectory(dirname(filePath));
-
-    if (initialMessages && initialMessages.length > 0) {
-      await this.append(filePath, initialMessages);
-    } else {
-      // Create empty file
-      await writeFile(filePath, "", "utf8");
+    } catch (error) {
+      throw new Error(
+        `Failed to get last message from "${filePath}": ${error}`,
+      );
     }
   }
 
   /**
-   * Get file statistics
+   * Read session metadata from first line (streaming - only reads first line)
    */
-  async getStats(filePath: string): Promise<JsonlFileStats> {
-    const stats = await stat(filePath);
-    const messages = await this.read(filePath);
-
-    const roles = { user: 0, assistant: 0 };
-    for (const message of messages) {
-      if (message.role === "user" || message.role === "assistant") {
-        roles[message.role]++;
+  async readMetadata(filePath: string): Promise<SessionMetadataLine | null> {
+    try {
+      // First check if file exists
+      try {
+        await stat(filePath);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          return null;
+        }
+        throw err;
       }
-    }
 
-    return {
-      filePath,
-      fileSize: stats.size,
-      messageCount: messages.length,
-      created: stats.birthtime,
-      lastModified: stats.mtime,
-      lastAccessed: stats.atime,
-      averageMessageSize:
-        messages.length > 0 ? stats.size / messages.length : 0,
-      roles,
-    };
+      // Read the first line efficiently
+      const firstLine = await readFirstLine(filePath);
+
+      if (!firstLine) {
+        return null; // Empty file or first line
+      }
+
+      try {
+        const parsed = JSON.parse(firstLine);
+        if (parsed.__meta__ === true) {
+          return parsed as SessionMetadataLine;
+        } else {
+          return null; // First line is not metadata
+        }
+      } catch {
+        return null; // Invalid JSON on first line
+      }
+    } catch (error) {
+      throw new Error(`Failed to read metadata from "${filePath}": ${error}`);
+    }
+  }
+
+  /**
+   * Check if a session file has metadata (first line check only)
+   * Very efficient - only reads first line
+   */
+  async hasMetadata(filePath: string): Promise<boolean> {
+    const metadata = await this.readMetadata(filePath);
+    return metadata !== null;
   }
 
   /**
@@ -474,72 +300,37 @@ export class JsonlHandler {
     for (let i = 0; i < messages.length; i++) {
       const message = messages[i];
 
-      if (
-        !message.role ||
-        (message.role !== "user" && message.role !== "assistant")
-      ) {
-        throw new Error(`Invalid role at message ${i}: ${message.role}`);
+      if (!message.role) {
+        throw new Error(
+          `Message at index ${i} is missing required field: role`,
+        );
       }
 
-      if (!message.blocks || !Array.isArray(message.blocks)) {
-        throw new Error(`Invalid blocks at message ${i}: must be an array`);
+      if (!message.blocks) {
+        throw new Error(
+          `Message at index ${i} is missing required field: blocks`,
+        );
       }
 
-      if (message.timestamp) {
-        try {
-          new Date(message.timestamp);
-        } catch {
-          throw new Error(
-            `Invalid timestamp at message ${i}: ${message.timestamp}`,
-          );
-        }
+      if (!Array.isArray(message.blocks)) {
+        throw new Error(
+          `Message at index ${i} has invalid blocks field: must be an array`,
+        );
       }
     }
   }
 
   /**
-   * Check if message matches filters
-   */
-  private matchesFilters(
-    message: SessionMessage,
-    options: Required<JsonlReadOptions>,
-  ): boolean {
-    // Role filter
-    if (
-      options.roleFilter.length > 0 &&
-      !options.roleFilter.includes(message.role)
-    ) {
-      return false;
-    }
-
-    // Timestamp filters
-    if (message.timestamp) {
-      const messageTime = new Date(message.timestamp);
-
-      if (
-        messageTime < options.timestampAfter ||
-        messageTime > options.timestampBefore
-      ) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  /**
-   * Ensure directory exists
+   * Ensure directory exists for the given file path
    */
   private async ensureDirectory(dirPath: string): Promise<void> {
     try {
       await mkdir(dirPath, { recursive: true });
-    } catch {
-      // Ignore errors if directory already exists
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code !== "EEXIST") {
+        throw error;
+      }
     }
   }
 }
-
-/**
- * Default JsonlHandler instance
- */
-export const jsonlHandler = new JsonlHandler();

@@ -91,8 +91,8 @@ As a Wave agent user working in directories with special characters or deep path
 - **FR-003**: System MUST encode working directory paths by replacing forward slashes with hyphens (e.g., `/home/user/project` becomes `-home-user-project`), resolving symbolic links to their target paths before encoding
 - **FR-004**: System MUST encode special characters in directory paths using the following complete mapping to ensure valid filesystem directory names: spaces→underscores, forward slashes→hyphens, backslashes→hyphens, colons→dashes, asterisks→stars, question marks→q-marks, single quotes→sq-quote, double quotes→dq-quote, less than→lt, greater than→gt, pipe→p-pipe, semicolons→semicol, ampersands→amp, percent→pct, at symbols→at-sign. Any unlisted special characters MUST be percent-encoded (e.g., `#` becomes `%23`). System MUST limit encoded directory names to 200 characters with SHA-256 hash suffix for longer paths (format: `truncated-path-[first-8-chars-of-hash]`) where the hash input is the complete original encoded path before truncation
 - **FR-005**: System MUST generate session file names using UUIDv6 format without any prefix and use JSONL format for efficient message appending (e.g., `01234567-89ab-6cde-f012-3456789abcde.jsonl`)
-- **FR-010**: System MUST store each message as a separate line in JSONL format with only timestamp metadata, eliminating session-level metadata (id, version, workdir) for streamlined data structure
-- **FR-012**: System MUST append messages to JSONL session files during each recursion of `sendAIMessage()`, specifically in the `finally` block to ensure messages are saved regardless of success or failure
+- **FR-010**: System MUST store session metadata as the first line of JSONL files with `__meta__: true` marker, including sessionId, sessionType ('main'|'subagent'), parentSessionId (optional), subagentType (optional), workdir, and startedAt timestamp. Each message line contains only message data with timestamp for efficient streaming operations
+- **FR-012**: System MUST use streaming architecture for JSONL operations, enabling efficient metadata reading (first line only) and message processing without loading entire files into memory, providing ~100x performance improvement for large sessions
 - **FR-011**: System MUST use the UUIDv6 filename as the session identifier and derive the working directory from the parent directory path for session management operations
 - **FR-013**: System MUST leverage UUIDv6's time-ordered properties to determine session chronology for operations like `getLatestSession()`, eliminating the need to read file contents for timing information
 - **FR-006**: System MUST create the `~/.wave/projects` directory structure automatically if it doesn't exist, and MUST fail with clear error message if directory creation or write permissions are unavailable
@@ -100,12 +100,12 @@ As a Wave agent user working in directories with special characters or deep path
 - **FR-008**: System MUST handle session cleanup operations within the new directory structure
 - **FR-009**: System MUST preserve all existing session functionality (save, load, list, delete, cleanup) with the new organization
 
-### Key Entities *(include if feature involves data)*
+### Key Entities *(include if feature involves data)* ✅ IMPLEMENTED
 
-- **Session Directory**: The base directory `~/.wave/projects` where all project-based session directories are stored
-- **Project Directory**: Encoded subdirectory under the session directory that corresponds to a specific working directory (e.g., `-home-user-project-a`)
-- **Session File**: Individual JSONL files containing message data line-by-line, named using UUIDv6 format without prefixes
-- **Message Line**: Each line in the JSONL file represents a single message with timestamp metadata only, enabling efficient appending without rewriting the entire file
-- **UUIDv6 Ordering**: Time-ordered session identifiers that enable chronological sorting without reading file contents, optimizing performance for session listing operations
-- **Working Directory**: The original file system path where the user is working, which gets encoded into a project directory name
-- **Session Metadata**: Contains the mapping between encoded directory names and original working directory paths for proper session filtering and organization
+- **Session Metadata Line**: ✅ First line of JSONL file containing `__meta__: true` marker and essential session information (sessionId, sessionType, workdir, startedAt, etc.)
+- **Session Directory**: ✅ The base directory `~/.wave/projects` where all project-based session directories are stored
+- **Project Directory**: ✅ Encoded subdirectory under the session directory that corresponds to a specific working directory (e.g., `-home-user-project-a`)
+- **Session File**: ✅ Individual JSONL files with metadata-first line architecture, named using UUIDv6 format without prefixes
+- **Message Line**: ✅ Each line after metadata represents a single message with timestamp, enabling efficient streaming and appending
+- **UUIDv6 Ordering**: ✅ Time-ordered session identifiers enabling chronological sorting without reading file contents
+- **Streaming Operations**: ✅ **NEW** - Efficient `readMetadata()` and `count()` methods for performance optimization

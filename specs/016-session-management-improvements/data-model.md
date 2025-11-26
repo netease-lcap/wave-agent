@@ -1,102 +1,38 @@
 # Data Model: Session Management Improvements
 
-**Date**: 2025-11-24  
-**Status**: Design Phase  
+**Date**: 2025-11-26  
+**Status**: ✅ IMPLEMENTED - SIMPLIFIED
 
 ## Overview
 
-This document defines the data entities and their relationships for the improved session management system. The new model emphasizes JSONL format, UUIDv6 identifiers, and project-based organization.
+This document defines the essential data entities for the improved session management system. **Focuses on core functionality that's actually being used** - removed unused complexity to maintain clean, maintainable codebase.
 
-## Core Entities
+## Core Entities (IMPLEMENTED)
 
-### 1. Session Directory
+### 1. Session Metadata Line (First Line)
 
-The base directory structure that organizes all project-based sessions.
+The first line of each JSONL file containing essential session metadata.
 
-**Entity**: `SessionDirectory`
+**Entity**: `SessionMetadataLine`
 
 **Fields**:
-- **basePath**: `string` - Base path `~/.wave/projects`
-- **exists**: `boolean` - Whether directory exists on filesystem
-- **permissions**: `'read' | 'write' | 'readwrite' | 'none'` - Access permissions
+- **__meta__**: `true` - Special marker to identify metadata line
+- **sessionId**: `string` - UUIDv6 session identifier
+- **sessionType**: `'main' | 'subagent'` - Type of session for agent hierarchy
+- **parentSessionId**: `string?` - Parent session ID for subagents only
+- **subagentType**: `string?` - Subagent type identifier for subagents only (e.g., 'typescript-expert')
+- **workdir**: `string` - Original working directory path
+- **startedAt**: `string` - ISO 8601 session start timestamp
 
-**Relationships**:
-- Contains multiple `ProjectDirectory` entities
-- Managed by session service configuration
-
-**Validation Rules**:
-- Base path must be absolute and accessible
-- Directory must be writable for session creation
-- Auto-created if missing with proper permissions
+**Purpose**:
+- Enables metadata-first JSONL architecture
+- Allows efficient metadata reading without loading all messages
+- Supports session hierarchy (main/subagent) through metadata
+- Eliminates need for file-path-based session type detection
 
 ---
 
-### 2. Project Directory
-
-Encoded subdirectory representing a specific working directory for session isolation.
-
-**Entity**: `ProjectDirectory`
-
-**Fields**:
-- **originalPath**: `string` - Original working directory path (e.g., `/home/user/project-a`)
-- **encodedName**: `string` - Filesystem-safe directory name (e.g., `-home-user-project-a`)
-- **encodedPath**: `string` - Full path to encoded directory (e.g., `~/.wave/projects/-home-user-project-a`)
-- **pathHash**: `string?` - SHA-256 hash for collision resolution (when needed)
-- **isSymbolicLink**: `boolean` - Whether original path was a symbolic link
-
-**Relationships**:
-- Belongs to one `SessionDirectory`
-- Contains multiple `SessionFile` entities
-- Maps to one unique working directory
-
-**Validation Rules**:
-- `originalPath` must be absolute and resolved (no symbolic links)
-- `encodedName` must be filesystem-safe (alphanumeric, hyphens, underscores only)
-- `encodedName` maximum length: 200 characters
-- `pathHash` required when `encodedName` would exceed length limit or cause collision
-
-**State Transitions**:
-- Creation: `originalPath` → resolve symlinks → encode → validate → create directory
-- Lookup: `encodedName` → find existing directory → map back to `originalPath`
-
----
-
-### 3. Session File
-
-Individual JSONL files containing message data for a specific conversation session.
-
-**Entity**: `SessionFile`
-
-**Fields**:
-- **sessionId**: `string` - UUIDv6 identifier (also used as filename without extension)
-- **filePath**: `string` - Full path to JSONL file (e.g., `/home/user/.wave/projects/-home-user-project-a/01234567-89ab-6cde-f012-3456789abcde.jsonl`)
-- **workdir**: `string` - Original working directory (derived from parent `ProjectDirectory`)
-- **messageCount**: `number` - Total number of messages in session
-- **fileSize**: `number` - File size in bytes
-- **createdAt**: `Date` - Session creation timestamp (derived from UUIDv6)
-- **lastModified**: `Date` - File last modification timestamp
-
-**Relationships**:
-- Belongs to one `ProjectDirectory`
-- Contains multiple `SessionMessage` entities
-- Identified by UUIDv6 for time-ordering
-
-**Validation Rules**:
-- `sessionId` must be valid UUIDv6 format
-- `filePath` must end with `.jsonl` extension
-- `sessionId` must match filename (without extension)
-- File must exist and be readable
-- `messageCount` must be non-negative
-
-**State Transitions**:
-- Creation: Generate UUIDv6 → create empty JSONL file → add initial messages
-- Loading: Read JSONL line-by-line → parse each message → construct session
-- Updating: Append new messages as JSONL lines → update metadata
-- Deletion: Remove file → cleanup empty project directories
-
----
-
-### 4. Message Line
+### 2. Session Message (JSONL Lines)
 
 Individual lines in JSONL files representing discrete messages with timestamps.
 
@@ -109,120 +45,104 @@ Individual lines in JSONL files representing discrete messages with timestamps.
 - **usage**: `Usage?` - Usage data for AI operations (from Message interface, assistant messages only)
 - **metadata**: `Record<string, unknown>?` - Additional metadata from AI responses (from Message interface)
 
-**Relationships**:
-- Belongs to one `SessionFile`
-- Represents one line in JSONL format
-- Extends existing `Message` interface with timestamp for JSONL storage
-
-**Validation Rules**:
-- `role` must be valid enumerated value
-- `blocks` must contain at least one block for user messages
-- `timestamp` must be valid ISO 8601 format
-- `blocks` must be valid array (can be empty)
-- Each line must be valid JSON
-
-**JSONL Format**:
-```json
-{"role":"user","blocks":[{"type":"text","content":"Hello"}],"timestamp":"2024-11-24T06:23:16.633Z"}
-{"role":"assistant","blocks":[{"type":"text","content":"Hi there"}],"timestamp":"2024-11-24T06:23:17.145Z","usage":{"inputTokens":5,"outputTokens":3}}
-```
+**Purpose**:
+- Extends existing Wave message format with timestamp for JSONL storage
+- Maintains compatibility with existing message processing
+- Enables temporal ordering and session activity tracking
 
 ---
 
-### 5. Session Metadata
+### 3. Session Metadata (Derived)
 
-Derived metadata about sessions used for listing and management operations.
+Runtime metadata about sessions used for listing and management operations.
 
-**Entity**: `SessionMetadata`
+**Entity**: `SessionMetadata` (defined in `services/session.ts`)
 
 **Fields**:
 - **id**: `string` - UUIDv6 session identifier
-- **workdir**: `string` - Original working directory path
-- **startedAt**: `Date` - Session start time (derived from UUIDv6)
-- **lastActiveAt**: `Date` - Last message timestamp (from file modification time)
-- **messageCount**: `number` - Total number of messages
-- **fileSize**: `number` - JSONL file size in bytes
+- **sessionType**: `'main' | 'subagent'` - Type of session (from metadata line)
+- **parentSessionId**: `string?` - Parent session ID (from metadata line, subagents only)
+- **subagentType**: `string?` - Subagent type (from metadata line, subagents only)
+- **workdir**: `string` - Original working directory path (from metadata line)
+- **startedAt**: `Date` - Session start time (from metadata line)
+- **lastActiveAt**: `Date` - Last message timestamp (derived from last message line)
+- **latestTotalTokens**: `number` - Total token usage (derived from last assistant message with usage)
 
-**Relationships**:
-- Derived from `SessionFile` and `SessionMessage` entities
-- Used for session listing and filtering operations
-- Maps to session performance metrics
-
-**Validation Rules**:
-- `id` must be valid UUIDv6
-- `startedAt` must be <= `lastActiveAt`
-- `messageCount` must be >= 0
-- `fileSize` must be >= 0
+**Purpose**:
+- Derived from JSONL file content for efficient session listing
+- Used by session management APIs
+- Combines metadata line data with derived statistics
 
 ---
 
-## Entity Relationships Diagram
+### 4. Session Data (Runtime)
 
-```
-SessionDirectory (1)
-    └── ProjectDirectory (N)
-        ├── originalPath: /home/user/project-a
-        ├── encodedName: -home-user-project-a
-        └── SessionFile (N)
-            ├── sessionId: UUIDv6
-            ├── filePath: .../project-a/uuid.jsonl
-            └── SessionMessage (N)
-                ├── role: user|assistant
-                ├── blocks: MessageBlock[]
-                ├── timestamp: ISO8601
-                ├── usage?: Usage
-                └── metadata?: Record<string, unknown>
-```
+Complete session data structure used by the agent system.
 
-**Notes**:
-- Path encoding/decoding is handled algorithmically, no persistent mapping needed
-- Session discovery uses filesystem scanning of `~/.wave/projects/` directory
-- Original working directory paths are derived from encoded folder names on-demand
+**Entity**: `SessionData` (defined in `services/session.ts`)
 
-## Migration Considerations
+**Fields**:
+- **id**: `string` - UUIDv6 session identifier
+- **messages**: `Message[]` - Array of messages (timestamps removed for compatibility)
+- **metadata**: Object containing:
+  - **workdir**: `string` - Working directory
+  - **startedAt**: `string` - Session start timestamp
+  - **lastActiveAt**: `string` - Last activity timestamp
+  - **latestTotalTokens**: `number` - Total token usage
 
-### From Current JSON Format
+**Purpose**:
+- Provides backward compatibility with existing agent code
+- Bridges JSONL storage format with runtime message processing
+- Maintains existing Agent API contracts
 
-**Current Structure**:
-```typescript
-interface SessionData {
-  id: string;
-  version: string;
-  messages: Message[];
-  metadata: {
-    workdir: string;
-    startedAt: string;
-    lastActiveAt: string;
-    latestTotalTokens: number;
-  };
-}
-```
+## Architecture Principles ✅
 
-**Migration Strategy**:
-1. **Clean Break**: No automatic conversion (performance benefits justify)
-2. **New Structure**: Each message becomes a JSONL line with timestamp
-3. **Metadata Elimination**: Remove session-level metadata, derive from UUIDv6 and file system
-4. **Token Tracking**: Move token usage to separate tracking system if needed
+### **1. Metadata-First Design**
+- Session metadata stored as first line with `__meta__: true` marker
+- Enables efficient metadata access without reading entire file
+- Supports streaming operations for large sessions
 
-### Backward Compatibility
+### **2. Streaming Operations**
+- `readMetadata()` - reads only first line
+- Memory-efficient processing for large session files
 
-**Design Decision**: No backward compatibility for session data
-- **Rationale**: Performance improvements and architectural benefits outweigh compatibility costs
-- **User Impact**: Previous sessions remain accessible in `~/.wave/sessions` but not integrated
-- **Alternative**: Manual export tool could be created if needed
+### **3. UUIDv6 Time Ordering**
+- Session IDs are UUIDv6 for natural time-based sorting
+- No need for separate creation timestamps
+- Enables efficient "latest session" operations
 
-## Performance Characteristics
+### **4. Project-Based Organization**
+- Sessions organized by working directory using PathEncoder
+- Encoded directory names for filesystem safety
+- Isolated session storage per project
+
+## Removed Complexity ❌
+
+The following entities were **removed** as they were never used in the actual implementation:
+
+- ❌ **SessionFile** - File operations handled directly with paths
+- ❌ **SessionDirectory** - Directory operations handled by utilities  
+- ❌ **ProjectDirectory** - PathEncoder defines its own interface
+- ❌ **SessionMetadataV2** - Replaced by working SessionMetadata
+- ❌ **SessionCreationOptions** - Functions use direct parameters
+- ❌ **SessionListFilter** - Functions use simple workdir parameter
+- ❌ **SessionLoadOptions** - Functions use direct parameters
+- ❌ **MessageAppendOptions** - Functions use direct parameters
+- ❌ **SessionCleanupOptions** - Functions use direct parameters
+- ❌ **SessionDataV2** - Replaced by working SessionData
+
+## Performance Characteristics ✅
 
 ### Time Complexity
 - **Session Creation**: O(1) - Direct file creation with UUIDv6
 - **Message Append**: O(1) - JSONL line append operation
-- **Session Listing**: O(n log n) - Directory scan + UUIDv6 sort
-- **Latest Session**: O(n) - Directory scan, no file I/O needed
+- **Metadata Access**: O(1) - First line only streaming read
+- **Session Listing**: O(n) - Directory scan + metadata reads
 - **Session Loading**: O(m) - Stream processing, where m = message count
 
 ### Space Complexity
 - **Memory Usage**: O(1) for streaming operations, O(m) for full session loading
 - **Disk Usage**: Linear with message count, no duplication overhead
-- **Directory Structure**: O(p) where p = number of unique project directories
+- **Directory Structure**: Efficiently encoded project paths
 
-This data model provides the foundation for a performant, scalable session management system that maintains compatibility with existing Wave agent message structures while enabling significant performance improvements through JSONL format and UUIDv6 organization.
+This simplified data model focuses on **core functionality that's actually being used** while maintaining all essential capabilities for session management! 🚀

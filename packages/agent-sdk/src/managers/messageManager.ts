@@ -25,6 +25,7 @@ import {
   getLatestSessionFromJsonl,
   loadSessionFromJsonl,
   appendMessages,
+  createSession,
   generateSessionId,
   SessionData,
   SESSION_DIR,
@@ -78,13 +79,9 @@ export interface MessageManagerOptions {
   callbacks: MessageManagerCallbacks;
   workdir: string;
   logger?: Logger;
-
-  // Flag to indicate this is a subagent session
-  /**
-   * If true, session files will be saved in a subagent/ subdirectory
-   * @default false
-   */
-  isSubagent?: boolean;
+  sessionType?: "main" | "subagent";
+  parentSessionId?: string;
+  subagentType?: string;
 }
 
 export class MessageManager {
@@ -98,9 +95,11 @@ export class MessageManager {
   private encodedWorkdir: string; // Cached encoded workdir
   private logger?: Logger; // Add optional logger property
   private callbacks: MessageManagerCallbacks;
-  private isSubagent?: boolean; // Flag for subagent sessions
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
+  private sessionType: "main" | "subagent";
+  private parentSessionId?: string;
+  private subagentType?: string;
 
   constructor(options: MessageManagerOptions) {
     this.sessionId = generateSessionId();
@@ -112,8 +111,10 @@ export class MessageManager {
     this.encodedWorkdir = pathEncoder.encodeSync(this.workdir); // Cache encoded workdir
     this.callbacks = options.callbacks;
     this.logger = options.logger;
-    this.isSubagent = options.isSubagent;
     this.savedMessageCount = 0; // Initialize saved message count tracker
+    this.sessionType = options.sessionType || "main";
+    this.parentSessionId = options.parentSessionId;
+    this.subagentType = options.subagentType;
 
     // Compute and cache the transcript path
     this.transcriptPath = this.computeTranscriptPath();
@@ -159,13 +160,9 @@ export class MessageManager {
   private computeTranscriptPath(): string {
     const baseDir = join(SESSION_DIR, this.encodedWorkdir);
 
-    if (this.isSubagent) {
-      // Store subagent sessions in a subdirectory
-      return join(baseDir, "subagent", `${this.sessionId}.jsonl`);
-    } else {
-      // Store main sessions in the root directory
-      return join(baseDir, `${this.sessionId}.jsonl`);
-    }
+    // All sessions now go in the same directory
+    // Session type is determined by metadata, not file path
+    return join(baseDir, `${this.sessionId}.jsonl`);
   }
 
   // Setter methods, will trigger callbacks
@@ -177,6 +174,23 @@ export class MessageManager {
       // Recompute transcript path since session ID changed
       this.transcriptPath = this.computeTranscriptPath();
       this.callbacks.onSessionIdChange?.(sessionId);
+    }
+  }
+
+  /**
+   * Create session if needed (async helper)
+   */
+  private async createSessionIfNeeded(): Promise<void> {
+    try {
+      await createSession(
+        this.sessionId,
+        this.workdir,
+        this.sessionType,
+        this.parentSessionId,
+        this.subagentType,
+      );
+    } catch (error) {
+      this.logger?.error("Failed to create session:", error);
     }
   }
 
@@ -198,12 +212,17 @@ export class MessageManager {
         return;
       }
 
+      // Create session if needed (only when we have messages to save)
+      if (this.savedMessageCount === 0) {
+        // This is the first time saving messages, so create the session
+        await this.createSessionIfNeeded();
+      }
+
       // Use JSONL format for new sessions
       await appendMessages(
         this.sessionId,
         unsavedMessages, // Only append new messages
         this.workdir,
-        this.isSubagent,
       );
 
       // Update the saved message count
@@ -239,7 +258,6 @@ export class MessageManager {
         sessionToRestore = await loadSessionFromJsonl(
           restoreSessionId,
           this.workdir,
-          this.isSubagent,
         );
         if (!sessionToRestore) {
           console.error(`Session not found: ${restoreSessionId}`);

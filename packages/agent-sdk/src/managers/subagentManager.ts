@@ -166,7 +166,9 @@ export class SubagentManager {
       callbacks: subagentCallbacks,
       workdir: this.workdir,
       logger: this.logger,
-      isSubagent: true,
+      sessionType: "subagent",
+      parentSessionId: this.parentMessageManager.getSessionId(),
+      subagentType: parameters.subagent_type,
     });
 
     // Use the parent tool manager directly - tool restrictions will be handled by allowedTools parameter
@@ -419,7 +421,9 @@ export class SubagentManager {
           callbacks: subagentCallbacks,
           workdir: this.workdir,
           logger: this.logger,
-          isSubagent: true,
+          sessionType: "subagent",
+          parentSessionId: this.parentMessageManager.getSessionId(),
+          subagentType: configuration.name, // Use configuration name for restored sessions
         });
 
         // Use the parent tool manager

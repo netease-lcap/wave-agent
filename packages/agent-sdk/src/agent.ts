@@ -442,7 +442,6 @@ export class Agent {
           const sessionData = await loadSessionFromJsonl(
             sessionId,
             this.messageManager.getWorkdir(),
-            true, // isSubagent = true for subagent sessions
           );
           if (sessionData) {
             subagentSessions.push({

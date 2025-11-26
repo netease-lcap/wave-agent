@@ -8,10 +8,12 @@
 ## Summary
 
 Improve Wave agent session management by:
-1. Changing default session directory from `~/.wave/sessions` to `~/.wave/projects` with project-based subdirectories
-2. Switching from JSON to JSONL format with UUIDv6 filenames for better performance
-3. Implementing working directory path encoding for reliable cross-platform storage
-4. Adding message-level persistence during AI recursion in `sendAIMessage()` finally block for improved reliability and guaranteed message saving regardless of success or failure
+1. **✅ IMPLEMENTED**: Changing default session directory from `~/.wave/sessions` to `~/.wave/projects` with project-based subdirectories
+2. **✅ IMPLEMENTED**: Switching from JSON to JSONL format with UUIDv6 filenames for better performance
+3. **✅ IMPLEMENTED**: Session metadata stored in first line of JSONL file for efficient access
+4. **✅ IMPLEMENTED**: Streaming JSONL reading for memory efficiency and performance
+5. **✅ IMPLEMENTED**: Removal of `isSubagent` parameter and unused complexity - focusing on core functionality
+6. **✅ IMPLEMENTED**: Working directory path encoding for reliable cross-platform storage
 
 ## Technical Context
 
@@ -87,25 +89,34 @@ packages/
 ├── agent-sdk/
 │   ├── src/
 │   │   ├── services/
-│   │   │   └── session.ts          # MODIFIED: Core session management logic
+│   │   │   ├── session.ts          # ✅ MODIFIED: Core session management logic with metadata support
+│   │   │   └── jsonlHandler.ts     # ✅ MODIFIED: Streaming JSONL operations, removed unused options
 │   │   ├── managers/
-│   │   │   ├── messageManager.ts   # MODIFIED: Session integration points
-│   │   │   └── aiManager.ts        # MODIFIED: Message persistence in recursion
-│   │   ├── utils/
-│   │   │   └── pathEncoder.ts      # NEW: Directory path encoding utilities
+│   │   │   ├── messageManager.ts   # ✅ MODIFIED: Simplified without isSubagent parameter
+│   │   │   └── subagentManager.ts  # ✅ MODIFIED: Updated for new session management
+│   │   ├── agent.ts                # ✅ MODIFIED: Removed isSubagent usage
 │   │   └── types/
-│   │       └── index.ts           # MODIFIED: Updated session interfaces
+│   │       └── index.ts           # ✅ MODIFIED: Updated session interfaces with metadata
+│   ├── examples/
+│   │   ├── metadata-reading-performance.ts  # ✅ NEW: Performance demonstration
+│   │   └── tail-reverse-reading.ts         # ✅ NEW: Streaming examples
 │   └── tests/
 │       └── services/
-│           ├── session.test.ts     # MODIFIED: Enhanced session tests
-│           └── pathEncoder.test.ts # NEW: Path encoding tests
+│           ├── session.test.ts     # ✅ MODIFIED: Enhanced session tests
+│           ├── jsonlHandler.test.ts # ✅ MODIFIED: Updated for streaming
+│           └── managers/
+│               └── subagentManager.sessions.test.ts # ✅ MODIFIED: Updated tests
 └── code/
     └── src/
         └── utils/
             └── constants.ts        # MODIFIED: Update session directory constants
 ```
 
-**Structure Decision**: Existing monorepo structure maintained. Changes focused on agent-sdk package with minimal impact on code package. Session management logic centralized in services layer following established patterns.
+**Structure Decision**: ✅ **COMPLETED** - Existing monorepo structure maintained. Changes focused on agent-sdk package with significant simplification:
+- **Removed unused complexity**: `isSubagent` parameter eliminated from all functions
+- **Core functionality focus**: JsonlHandler cleaned up (~170 lines of unused code removed)
+- **Streaming architecture**: Efficient metadata reading without loading entire files
+- **Metadata-first design**: Session metadata stored as first line in JSONL files
 
 ## Phase 0: Research & Clarifications
 

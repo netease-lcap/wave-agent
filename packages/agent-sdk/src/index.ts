@@ -3,6 +3,7 @@ export * from "./services/aiService.js";
 export * from "./services/memory.js";
 export * from "./services/session.js";
 export * from "./services/hook.js";
+export * from "./services/jsonlHandler.js";
 
 // Export main agent
 export * from "./agent.js";
