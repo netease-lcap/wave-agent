@@ -911,8 +911,8 @@ export class InputManager {
       return true;
     }
 
-    // Arrow keys and Enter should be handled by selector components
-    if (key.upArrow || key.downArrow || key.return) {
+    // Arrow keys, Enter and Tab should be handled by selector components
+    if (key.upArrow || key.downArrow || key.return || key.tab) {
       // Let selector component handle these keys, but prevent further processing
       // by returning true (indicating we've handled the input)
       return true;
@@ -924,6 +924,7 @@ export class InputManager {
       !("alt" in key && key.alt) &&
       !key.meta &&
       !key.return &&
+      !key.tab &&
       !key.escape &&
       !key.leftArrow &&
       !key.rightArrow &&

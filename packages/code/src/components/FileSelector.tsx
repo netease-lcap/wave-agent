@@ -22,7 +22,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   useInput((input, key) => {
-    if (key.return) {
+    if (key.return || key.tab) {
       if (files.length > 0 && selectedIndex < files.length) {
         onSelect(files[selectedIndex].path);
       }
@@ -126,7 +126,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
 
       <Box marginTop={1}>
         <Text dimColor>
-          Use ↑↓ to navigate, Enter to select, Escape to cancel
+          Use ↑↓ to navigate, Enter/Tab to select, Escape to cancel
         </Text>
         <Text dimColor>
           File {selectedIndex + 1} of {files.length}
