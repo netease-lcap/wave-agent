@@ -30,13 +30,35 @@ export const MessageList = React.memo(
       );
     }
 
+    // Limit messages when expanded to prevent long rendering times
+    const maxExpandedMessages = 20;
+    const shouldLimitMessages =
+      isExpanded && messages.length > maxExpandedMessages;
+    const displayMessages = shouldLimitMessages
+      ? messages.slice(-maxExpandedMessages)
+      : messages;
+    const omittedCount = shouldLimitMessages
+      ? messages.length - maxExpandedMessages
+      : 0;
+
     return (
       <Box flexDirection="column" paddingX={1} gap={1}>
+        {/* Show omitted message count when limiting */}
+        {omittedCount > 0 && (
+          <Box>
+            <Text color="gray" dimColor>
+              ... {omittedCount} earlier message{omittedCount !== 1 ? "s" : ""}{" "}
+              omitted (showing latest {maxExpandedMessages})
+            </Text>
+          </Box>
+        )}
+
         {/* Static messages (all except last) */}
-        <Static items={messages.slice(0, -1)}>
+        <Static items={displayMessages.slice(0, -1)}>
           {(message, key) => {
             // Get previous message
-            const previousMessage = key > 0 ? messages[key - 1] : undefined;
+            const previousMessage =
+              key > 0 ? displayMessages[key - 1] : undefined;
             return (
               <MessageItem
                 key={key}
@@ -51,11 +73,11 @@ export const MessageList = React.memo(
         {/* Last message (dynamic) */}
         <Box marginTop={-1}>
           <MessageItem
-            key={messages.length - 1}
-            message={messages[messages.length - 1]}
+            key={displayMessages.length - 1}
+            message={displayMessages[displayMessages.length - 1]}
             shouldShowHeader={
-              messages[messages.length - 2]?.role !==
-              messages[messages.length - 1].role
+              displayMessages[displayMessages.length - 2]?.role !==
+              displayMessages[displayMessages.length - 1].role
             }
             isExpanded={isExpanded}
           />
