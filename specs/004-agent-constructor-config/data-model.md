@@ -13,7 +13,7 @@ Extended interface for Agent constructor parameters.
 - `baseURL?: string` - Gateway endpoint URL (optional, fallback to AIGW_URL)
 - `agentModel?: string` - Model ID for main operations (optional, fallback to AIGW_MODEL)
 - `fastModel?: string` - Model ID for fast operations (optional, fallback to AIGW_FAST_MODEL)
-- `tokenLimit?: number` - Token limit for compression (optional, fallback to TOKEN_LIMIT, default: 64000)
+- `tokenLimit?: number` - Token limit for compression (optional, fallback to TOKEN_LIMIT, default: 96000)
 - `callbacks?: AgentCallbacks` - Existing callback handlers
 - `restoreSessionId?: string` - Existing session restoration
 - `continueLastSession?: boolean` - Existing session continuation
@@ -83,7 +83,7 @@ Configuration values resolved in this order:
    - `process.env.TOKEN_LIMIT` → `tokenLimit`
 
 3. **Built-in Defaults** (lowest precedence)
-   - Token limit: 64000
+   - Token limit: 96000
    - Agent model: "claude-sonnet-4-20250514"
    - Fast model: "gemini-2.5-flash"
 

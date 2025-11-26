@@ -25,7 +25,7 @@ const agent = await Agent.create({
   workdir: './project'
   // apiKey: uses AIGW_TOKEN
   // baseURL: uses AIGW_URL  
-  // tokenLimit: uses TOKEN_LIMIT or defaults to 64000
+  // tokenLimit: uses TOKEN_LIMIT or defaults to 96000
   // models: use AIGW_MODEL, AIGW_FAST_MODEL or built-in defaults
 });
 ```
@@ -156,7 +156,7 @@ const agent = await Agent.create({
     ? 'claude-sonnet-4-20250514'
     : 'gemini-2.5-flash', // Cheaper model for development
   fastModel: 'gemini-2.5-flash',
-  tokenLimit: process.env.NODE_ENV === 'production' ? 64000 : 10000,
+  tokenLimit: process.env.NODE_ENV === 'production' ? 96000 : 10000,
   workdir: process.cwd(),
   logger: customLogger
 });

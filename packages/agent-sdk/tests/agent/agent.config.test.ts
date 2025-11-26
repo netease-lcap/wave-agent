@@ -125,7 +125,7 @@ describe("Agent Configuration", () => {
     it("should throw error for non-integer tokenLimit", async () => {
       await expect(
         Agent.create({
-          tokenLimit: 64000.5,
+          tokenLimit: 96000.5,
         }),
       ).rejects.toThrow(/integer/);
     });

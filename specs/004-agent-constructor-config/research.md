@@ -120,6 +120,6 @@ function validateGatewayConfig(apiKey?: string, baseURL?: string): void {
 - `tokenLimit` ↔ `process.env.TOKEN_LIMIT`
 
 **Built-in Defaults**:
-- Token limit: 64000
+- Token limit: 96000
 - Agent model: "claude-sonnet-4-20250514"
 - Fast model: "gemini-2.5-flash"

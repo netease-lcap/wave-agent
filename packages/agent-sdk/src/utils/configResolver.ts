@@ -9,6 +9,7 @@ import {
   ConfigurationError,
   CONFIG_ERRORS,
 } from "../types/index.js";
+import { DEFAULT_TOKEN_LIMIT } from "./constants.js";
 
 export class ConfigResolver {
   /**
@@ -110,8 +111,6 @@ export class ConfigResolver {
    * @returns Resolved token limit
    */
   static resolveTokenLimit(constructorLimit?: number): number {
-    const DEFAULT_TOKEN_LIMIT = 64000;
-
     // If constructor value provided, use it
     if (constructorLimit !== undefined) {
       return constructorLimit;

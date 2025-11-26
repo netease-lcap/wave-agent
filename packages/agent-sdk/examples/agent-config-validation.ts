@@ -72,7 +72,7 @@ async function validateAgentConfiguration() {
   // Set some environment variables
   process.env.AIGW_URL = "https://env-gateway.com";
   process.env.AIGW_FAST_MODEL = "env-fast-model";
-  process.env.TOKEN_LIMIT = "64000";
+  process.env.TOKEN_LIMIT = "96000";
 
   try {
     const agent = await Agent.create({
@@ -241,7 +241,7 @@ async function validateAgentConfiguration() {
           ? "claude-sonnet-4-20250514"
           : "gemini-2.5-flash",
       fastModel: "gemini-2.5-flash",
-      tokenLimit: process.env.NODE_ENV === "production" ? 64000 : 10000,
+      tokenLimit: process.env.NODE_ENV === "production" ? 96000 : 10000,
       workdir: process.cwd(),
     });
     // Verify advanced configuration works
