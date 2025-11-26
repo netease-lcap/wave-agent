@@ -646,6 +646,29 @@ export class InputManager {
     };
   }
 
+  // Update search queries for active selectors
+  private updateSearchQueriesForActiveSelectors(
+    inputText: string,
+    cursorPosition: number,
+  ): void {
+    if (this.showFileSelector && this.atPosition >= 0) {
+      const queryStart = this.atPosition + 1;
+      const queryEnd = cursorPosition;
+      const newQuery = inputText.substring(queryStart, queryEnd);
+      this.updateFileSearchQuery(newQuery);
+    } else if (this.showCommandSelector && this.slashPosition >= 0) {
+      const queryStart = this.slashPosition + 1;
+      const queryEnd = cursorPosition;
+      const newQuery = inputText.substring(queryStart, queryEnd);
+      this.updateCommandSearchQuery(newQuery);
+    } else if (this.showBashHistorySelector && this.exclamationPosition >= 0) {
+      const queryStart = this.exclamationPosition + 1;
+      const queryEnd = cursorPosition;
+      const newQuery = inputText.substring(queryStart, queryEnd);
+      this.updateBashHistorySearchQuery(newQuery);
+    }
+  }
+
   // Handle special character input that might trigger selectors
   handleSpecialCharInput(char: string): void {
     if (char === "@") {
@@ -659,25 +682,10 @@ export class InputManager {
       // Memory message detection will be handled in submit
     } else {
       // Update search queries for active selectors
-      if (this.showFileSelector && this.atPosition >= 0) {
-        const queryStart = this.atPosition + 1;
-        const queryEnd = this.cursorPosition;
-        const newQuery = this.inputText.substring(queryStart, queryEnd);
-        this.updateFileSearchQuery(newQuery);
-      } else if (this.showCommandSelector && this.slashPosition >= 0) {
-        const queryStart = this.slashPosition + 1;
-        const queryEnd = this.cursorPosition;
-        const newQuery = this.inputText.substring(queryStart, queryEnd);
-        this.updateCommandSearchQuery(newQuery);
-      } else if (
-        this.showBashHistorySelector &&
-        this.exclamationPosition >= 0
-      ) {
-        const queryStart = this.exclamationPosition + 1;
-        const queryEnd = this.cursorPosition;
-        const newQuery = this.inputText.substring(queryStart, queryEnd);
-        this.updateBashHistorySearchQuery(newQuery);
-      }
+      this.updateSearchQueriesForActiveSelectors(
+        this.inputText,
+        this.cursorPosition,
+      );
     }
   }
 
@@ -906,6 +914,12 @@ export class InputManager {
           this.checkForAtDeletion(newCursorPosition);
           this.checkForSlashDeletion(newCursorPosition);
           this.checkForExclamationDeletion(newCursorPosition);
+
+          // Update search queries using the same logic as character input
+          this.updateSearchQueriesForActiveSelectors(
+            newInput,
+            newCursorPosition,
+          );
         });
       }
       return true;
