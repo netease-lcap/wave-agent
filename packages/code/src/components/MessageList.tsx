@@ -41,6 +41,15 @@ export const MessageList = React.memo(
       ? messages.length - maxExpandedMessages
       : 0;
 
+    // Compute which messages to render statically vs dynamically
+    const staticMessages = isLoading
+      ? displayMessages.slice(0, -1)
+      : displayMessages;
+    const dynamicMessages =
+      isLoading && displayMessages.length > 0
+        ? [displayMessages[displayMessages.length - 1]]
+        : [];
+
     return (
       <Box flexDirection="column" paddingX={1} gap={1}>
         {/* Show omitted message count when limiting */}
@@ -53,12 +62,12 @@ export const MessageList = React.memo(
           </Box>
         )}
 
-        {/* Static messages (all except last) */}
-        <Static items={displayMessages.slice(0, -1)}>
+        {/* Static messages */}
+        <Static items={staticMessages}>
           {(message, key) => {
             // Get previous message
             const previousMessage =
-              key > 0 ? displayMessages[key - 1] : undefined;
+              key > 0 ? staticMessages[key - 1] : undefined;
             return (
               <MessageItem
                 key={key}
@@ -70,18 +79,21 @@ export const MessageList = React.memo(
           }}
         </Static>
 
-        {/* Last message (dynamic) */}
-        <Box marginTop={-1}>
-          <MessageItem
-            key={displayMessages.length - 1}
-            message={displayMessages[displayMessages.length - 1]}
-            shouldShowHeader={
-              displayMessages[displayMessages.length - 2]?.role !==
-              displayMessages[displayMessages.length - 1].role
-            }
-            isExpanded={isExpanded}
-          />
-        </Box>
+        {/* Dynamic messages */}
+        {dynamicMessages.map((message, index) => {
+          const messageIndex = staticMessages.length + index;
+          const previousMessage =
+            messageIndex > 0 ? displayMessages[messageIndex - 1] : undefined;
+          return (
+            <Box key={`dynamic-${index}`} marginTop={-1}>
+              <MessageItem
+                message={message}
+                shouldShowHeader={previousMessage?.role !== message.role}
+                isExpanded={isExpanded}
+              />
+            </Box>
+          );
+        })}
 
         {(isLoading || isCommandRunning || isCompressing) && (
           <Box flexDirection="column" gap={1}>
