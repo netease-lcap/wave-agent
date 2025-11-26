@@ -41,15 +41,10 @@ vi.mock("../../src/services/session.js", () => ({
   deleteSessionFromJsonl: vi.fn().mockResolvedValue(true),
   cleanupExpiredSessionsFromJsonl: vi.fn().mockResolvedValue(0),
   sessionExistsInJsonl: vi.fn().mockResolvedValue(false),
-  getSessionFilePath: vi
-    .fn()
-    .mockImplementation((sessionId, workdir, isSubagent) => {
-      const baseDir = `/mock/session/dir/encoded-${encodeURIComponent(workdir)}`;
-      if (isSubagent) {
-        return `${baseDir}/subagent/${sessionId}.jsonl`;
-      }
-      return `${baseDir}/${sessionId}.jsonl`;
-    }),
+  getSessionFilePath: vi.fn().mockImplementation((sessionId, workdir) => {
+    const baseDir = `/mock/session/dir/encoded-${encodeURIComponent(workdir)}`;
+    return `${baseDir}/${sessionId}.jsonl`;
+  }),
   ensureSessionDir: vi.fn().mockResolvedValue(undefined),
   cleanupEmptyProjectDirectories: vi.fn().mockResolvedValue(undefined),
   SESSION_DIR: "/mock/session/dir",
@@ -185,7 +180,6 @@ describe("SubagentManager - Session Functionality", () => {
         ), // UUIDv6 sessionId
         expect.any(Array), // messages
         "/tmp/test", // workdir
-        true, // isSubagent
       );
     });
 
@@ -239,7 +233,6 @@ describe("SubagentManager - Session Functionality", () => {
       expect(mockLoadSessionFromJsonl).toHaveBeenCalledWith(
         "01234567-89ab-6cde-f012-3456789abcde",
         "/tmp/test", // workdir
-        true, // isSubagent
       );
     });
   });
@@ -340,7 +333,6 @@ describe("SubagentManager - Session Functionality", () => {
         ), // UUIDv6 sessionId
         expect.any(Array), // messages
         "/tmp/test", // workdir
-        true, // isSubagent
       );
     });
 

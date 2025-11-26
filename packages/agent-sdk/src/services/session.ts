@@ -3,8 +3,9 @@ import { join } from "path";
 import { homedir } from "os";
 import { v6 as uuidv6 } from "uuid";
 import type { Message } from "../types/index.js";
+import type { SessionMessage } from "../types/session.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
-import { JsonlHandler, type SessionMessage } from "../services/jsonlHandler.js";
+import { JsonlHandler } from "../services/jsonlHandler.js";
 
 export interface SessionData {
   id: string;
@@ -19,9 +20,12 @@ export interface SessionData {
 
 export interface SessionMetadata {
   id: string;
+  sessionType: "main" | "subagent";
+  parentSessionId?: string;
+  subagentType?: string;
   workdir: string;
-  startedAt: string;
-  lastActiveAt: string;
+  startedAt: Date;
+  lastActiveAt: Date;
   latestTotalTokens: number;
 }
 
@@ -50,6 +54,7 @@ export async function ensureSessionDir(): Promise<void> {
 
 /**
  * Generate session file path using project-based directory structure
+ * Note: With metadata-based approach, we no longer need separate subagent directories
  * @param sessionId - UUIDv6 session identifier
  * @param workdir - Working directory for the session
  * @returns Promise resolving to full file path for the session JSONL file
@@ -57,18 +62,40 @@ export async function ensureSessionDir(): Promise<void> {
 export async function getSessionFilePath(
   sessionId: string,
   workdir: string,
-  isSubagent?: boolean,
 ): Promise<string> {
   const encoder = new PathEncoder();
   const projectDir = await encoder.createProjectDirectory(workdir, SESSION_DIR);
 
-  if (isSubagent) {
-    // For subagent sessions, add subagent/ subdirectory
-    return join(projectDir.encodedPath, "subagent", `${sessionId}.jsonl`);
-  } else {
-    // For main sessions, use the root directory
-    return join(projectDir.encodedPath, `${sessionId}.jsonl`);
-  }
+  // All sessions (main and subagent) now go in the same directory
+  // Session type is determined by metadata, not file path
+  return join(projectDir.encodedPath, `${sessionId}.jsonl`);
+}
+
+/**
+ * Create a new session with metadata
+ * @param sessionId - UUIDv6 session identifier
+ * @param workdir - Working directory for the session
+ * @param sessionType - Type of session ('main' or 'subagent')
+ * @param parentSessionId - Parent session ID for subagent sessions
+ * @param subagentType - Type of subagent for subagent sessions
+ */
+export async function createSession(
+  sessionId: string,
+  workdir: string,
+  sessionType: "main" | "subagent" = "main",
+  parentSessionId?: string,
+  subagentType?: string,
+): Promise<void> {
+  const jsonlHandler = new JsonlHandler();
+  const filePath = await getSessionFilePath(sessionId, workdir);
+  await jsonlHandler.createSession(
+    filePath,
+    sessionId,
+    workdir,
+    sessionType,
+    parentSessionId,
+    subagentType,
+  );
 }
 
 /**
@@ -77,13 +104,11 @@ export async function getSessionFilePath(
  * @param sessionId - UUIDv6 session identifier
  * @param newMessages - Array of messages to append
  * @param workdir - Working directory for the session
- * @param isSubagent - Whether this is a subagent session
  */
 export async function appendMessages(
   sessionId: string,
   newMessages: Message[],
   workdir: string,
-  isSubagent?: boolean,
 ): Promise<void> {
   // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
@@ -96,7 +121,22 @@ export async function appendMessages(
   }
 
   const jsonlHandler = new JsonlHandler();
-  const filePath = await getSessionFilePath(sessionId, workdir, isSubagent);
+  const filePath = await getSessionFilePath(sessionId, workdir);
+
+  // Check if session file exists, throw error if it doesn't
+  try {
+    await fs.access(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      // File doesn't exist, throw error - sessions must be created explicitly
+      throw new Error(
+        `Session file not found: ${sessionId}. Use createSession() to create a new session first.`,
+      );
+    } else {
+      // Some other error accessing the file, re-throw it
+      throw error;
+    }
+  }
 
   const messagesWithTimestamp: SessionMessage[] = newMessages.map((msg) => ({
     timestamp: new Date().toISOString(),
@@ -116,11 +156,10 @@ export async function appendMessages(
 export async function loadSessionFromJsonl(
   sessionId: string,
   workdir: string,
-  isSubagent?: boolean,
 ): Promise<SessionData | null> {
   try {
     const jsonlHandler = new JsonlHandler();
-    const filePath = await getSessionFilePath(sessionId, workdir, isSubagent);
+    const filePath = await getSessionFilePath(sessionId, workdir);
 
     const messages = await jsonlHandler.read(filePath);
 
@@ -174,6 +213,7 @@ export async function loadSessionFromJsonl(
 
 /**
  * Get the most recent session for a specific working directory (new JSONL approach)
+ * Only returns main sessions, skips subagent sessions
  *
  * @param workdir - Working directory to find the most recent session for
  * @returns Promise that resolves to the most recent session data or null if no sessions exist
@@ -181,7 +221,8 @@ export async function loadSessionFromJsonl(
 export async function getLatestSessionFromJsonl(
   workdir: string,
 ): Promise<SessionData | null> {
-  const sessions = await listSessionsFromJsonl(workdir, false);
+  const sessions = await listSessionsFromJsonl(workdir, false); // Uses default includeSubagentSessions = false
+
   if (sessions.length === 0) {
     return null;
   }
@@ -193,6 +234,7 @@ export async function getLatestSessionFromJsonl(
 
 /**
  * List all sessions for a specific working directory (convenience wrapper)
+ * Only returns main sessions, skips subagent sessions
  *
  * @param workdir - Working directory to filter sessions by
  * @returns Promise that resolves to array of session metadata objects
@@ -200,7 +242,7 @@ export async function getLatestSessionFromJsonl(
 export async function listSessions(
   workdir: string,
 ): Promise<SessionMetadata[]> {
-  return listSessionsFromJsonl(workdir, false);
+  return listSessionsFromJsonl(workdir, false); // Uses default includeSubagentSessions = false
 }
 
 /**
@@ -208,11 +250,13 @@ export async function listSessions(
  *
  * @param workdir - Working directory to filter sessions by
  * @param includeAllWorkdirs - If true, returns sessions from all working directories
+ * @param includeSubagentSessions - If true, includes subagent sessions (default: false for user-facing operations)
  * @returns Promise that resolves to array of session metadata objects
  */
 export async function listSessionsFromJsonl(
   workdir: string,
   includeAllWorkdirs = false,
+  includeSubagentSessions = false,
 ): Promise<SessionMetadata[]> {
   try {
     const encoder = new PathEncoder();
@@ -234,23 +278,44 @@ export async function listSessionsFromJsonl(
         try {
           const jsonlHandler = new JsonlHandler();
           const filePath = join(projectDir.encodedPath, file);
-          const messages = await jsonlHandler.read(filePath, { limit: 1 });
-          const lastMessages = await jsonlHandler.read(filePath, {
-            limit: 1,
-            startFromEnd: true,
-          });
 
-          if (messages.length > 0 && lastMessages.length > 0) {
-            const firstMessage = messages[0];
-            const lastMessage = lastMessages[0];
+          // Try to read metadata first (efficient O(1) operation)
+          const metadata = await jsonlHandler.readMetadata(filePath);
+          if (metadata) {
+            // Use metadata for efficient session listing
+
+            // For lastActiveAt and latestTotalTokens, we need the last message
+            const lastMessage = await jsonlHandler.getLastMessage(filePath);
 
             sessions.push({
               id: sessionId,
-              workdir,
-              startedAt: firstMessage.timestamp,
-              lastActiveAt: lastMessage.timestamp,
-              latestTotalTokens: lastMessage.usage?.total_tokens || 0,
+              sessionType: metadata.sessionType,
+              parentSessionId: metadata.parentSessionId,
+              subagentType: metadata.subagentType,
+              workdir: metadata.workdir,
+              startedAt: new Date(metadata.startedAt),
+              lastActiveAt: lastMessage
+                ? new Date(lastMessage.timestamp)
+                : new Date(metadata.startedAt),
+              latestTotalTokens: lastMessage?.usage?.total_tokens || 0,
             });
+          } else {
+            // Fallback for legacy sessions without metadata
+            const messages = await jsonlHandler.read(filePath, { limit: 1 });
+            const lastMessage = await jsonlHandler.getLastMessage(filePath);
+
+            if (messages.length > 0 && lastMessage) {
+              const firstMessage = messages[0];
+
+              sessions.push({
+                id: sessionId,
+                sessionType: "main", // Default for existing sessions
+                workdir,
+                startedAt: new Date(firstMessage.timestamp),
+                lastActiveAt: new Date(lastMessage.timestamp),
+                latestTotalTokens: lastMessage.usage?.total_tokens || 0,
+              });
+            }
           }
         } catch {
           // Skip corrupted session files
@@ -259,7 +324,16 @@ export async function listSessionsFromJsonl(
       }
 
       // UUIDv6 is time-ordered, so we can sort by ID (newest first)
-      return sessions.sort((a, b) => b.id.localeCompare(a.id));
+      const sortedSessions = sessions.sort((a, b) => b.id.localeCompare(a.id));
+
+      // Filter out subagent sessions if requested
+      if (!includeSubagentSessions) {
+        return sortedSessions.filter(
+          (session) => session.sessionType === "main",
+        );
+      }
+
+      return sortedSessions;
     }
 
     // For all workdirs, scan all project directories
@@ -286,35 +360,56 @@ export async function listSessionsFromJsonl(
           try {
             const jsonlHandler = new JsonlHandler();
             const filePath = join(projectPath, file);
-            const messages = await jsonlHandler.read(filePath, { limit: 1 });
-            const lastMessages = await jsonlHandler.read(filePath, {
-              limit: 1,
-              startFromEnd: true,
-            });
 
-            if (messages.length > 0 && lastMessages.length > 0) {
-              const firstMessage = messages[0];
-              const lastMessage = lastMessages[0];
+            // Try to read metadata first (efficient O(1) operation)
+            const metadata = await jsonlHandler.readMetadata(filePath);
+            if (metadata) {
+              // Use metadata for efficient session listing
 
-              // Try to decode the workdir from the directory name
-              let sessionWorkdir = workdir;
-              try {
-                const decoder = new PathEncoder();
-                const decoded = await decoder.decode(projectDirName);
-                if (decoded) {
-                  sessionWorkdir = decoded;
-                }
-              } catch {
-                // Use original if decoding fails
-              }
+              // For lastActiveAt and latestTotalTokens, we need the last message
+              const lastMessage = await jsonlHandler.getLastMessage(filePath);
 
               sessions.push({
                 id: sessionId,
-                workdir: sessionWorkdir,
-                startedAt: firstMessage.timestamp,
-                lastActiveAt: lastMessage.timestamp,
-                latestTotalTokens: lastMessage.usage?.total_tokens || 0,
+                sessionType: metadata.sessionType,
+                parentSessionId: metadata.parentSessionId,
+                subagentType: metadata.subagentType,
+                workdir: metadata.workdir,
+                startedAt: new Date(metadata.startedAt),
+                lastActiveAt: lastMessage
+                  ? new Date(lastMessage.timestamp)
+                  : new Date(metadata.startedAt),
+                latestTotalTokens: lastMessage?.usage?.total_tokens || 0,
               });
+            } else {
+              // Fallback for legacy sessions without metadata
+              const messages = await jsonlHandler.read(filePath, { limit: 1 });
+              const lastMessage = await jsonlHandler.getLastMessage(filePath);
+
+              if (messages.length > 0 && lastMessage) {
+                const firstMessage = messages[0];
+
+                // Try to decode the workdir from the directory name
+                let sessionWorkdir = workdir;
+                try {
+                  const decoder = new PathEncoder();
+                  const decoded = await decoder.decode(projectDirName);
+                  if (decoded) {
+                    sessionWorkdir = decoded;
+                  }
+                } catch {
+                  // Use original if decoding fails
+                }
+
+                sessions.push({
+                  id: sessionId,
+                  sessionType: "main", // Default for existing sessions
+                  workdir: sessionWorkdir,
+                  startedAt: new Date(firstMessage.timestamp),
+                  lastActiveAt: new Date(lastMessage.timestamp),
+                  latestTotalTokens: lastMessage.usage?.total_tokens || 0,
+                });
+              }
             }
           } catch {
             // Skip corrupted session files
@@ -328,7 +423,14 @@ export async function listSessionsFromJsonl(
     }
 
     // UUIDv6 is time-ordered, so we can sort by ID (newest first)
-    return sessions.sort((a, b) => b.id.localeCompare(a.id));
+    const sortedSessions = sessions.sort((a, b) => b.id.localeCompare(a.id));
+
+    // Filter out subagent sessions if requested
+    if (!includeSubagentSessions) {
+      return sortedSessions.filter((session) => session.sessionType === "main");
+    }
+
+    return sortedSessions;
   } catch (error) {
     throw new Error(`Failed to list sessions: ${error}`);
   }
@@ -387,7 +489,7 @@ export async function cleanupExpiredSessionsFromJsonl(
     return 0;
   }
 
-  const sessions = await listSessionsFromJsonl(workdir, true);
+  const sessions = await listSessionsFromJsonl(workdir, true, true); // Include subagent sessions for cleanup
   const now = new Date();
   const maxAge = MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // Convert to milliseconds
 

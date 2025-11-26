@@ -31,3 +31,4 @@ This is the AI assistant's memory file, recording important information and cont
   - MUST mark the task off as [X] by modifying the tasks.md after you complete a task
   - Task multi subagents at once to implement in parallel when possible
 - Before make any spec or plan, research the codebase to ensure you have a comprehensive understanding of user requirements
+- Focus on core functionality that's actually being used - remove unused options, methods, and interfaces to keep code lean and maintainable

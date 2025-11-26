@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   JsonlHandler,
-  type JsonlReadOptions,
-  type SessionMessage,
+  type JsonlWriteOptions,
 } from "@/services/jsonlHandler.js";
+import type { SessionMessage, SessionMetadataLine } from "@/types/session.js";
 import type { TextBlock } from "@/types/messaging.js";
 
 // Mock fs/promises
@@ -11,11 +11,21 @@ vi.mock("fs/promises", () => ({
   appendFile: vi.fn(),
   readFile: vi.fn(),
   stat: vi.fn(),
+  writeFile: vi.fn(),
+  mkdir: vi.fn(),
+  rename: vi.fn(),
+}));
+
+// Mock fileUtils
+vi.mock("@/utils/fileUtils.js", () => ({
+  getLastLine: vi.fn(),
+  readFirstLine: vi.fn(),
 }));
 
 describe("JsonlHandler.append()", () => {
   let handler: JsonlHandler;
   let mockAppendFile: ReturnType<typeof vi.fn>;
+  let mockWriteFile: ReturnType<typeof vi.fn>;
 
   const createMessage = (
     content: string,
@@ -33,6 +43,7 @@ describe("JsonlHandler.append()", () => {
     // Get the mocked functions
     const fsPromises = await import("fs/promises");
     mockAppendFile = vi.mocked(fsPromises.appendFile);
+    mockWriteFile = vi.mocked(fsPromises.writeFile);
 
     // Create fresh handler instance
     handler = new JsonlHandler();
@@ -59,6 +70,27 @@ describe("JsonlHandler.append()", () => {
       JSON.stringify(expectedMessage) + "\n",
       "utf8",
     );
+  });
+
+  it("should use atomic write when atomic option is true", async () => {
+    const message = createMessage("Test message");
+    const options: JsonlWriteOptions = { atomic: true };
+
+    await handler.append("/test/file.jsonl", [message], options);
+
+    // When atomic is true, it should use writeFile instead of appendFile
+    expect(mockWriteFile).toHaveBeenCalled();
+    expect(mockAppendFile).not.toHaveBeenCalled();
+  });
+
+  it("should use direct append when atomic option is false", async () => {
+    const message = createMessage("Test message");
+    const options: JsonlWriteOptions = { atomic: false };
+
+    await handler.append("/test/file.jsonl", [message], options);
+
+    expect(mockAppendFile).toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
   });
 
   it("should append multiple messages to JSONL file", async () => {
@@ -262,7 +294,7 @@ describe("JsonlHandler.read()", () => {
       const jsonlContent = createJsonlContent(messages);
       mockReadFile.mockResolvedValue(jsonlContent);
 
-      const options: JsonlReadOptions = { limit: 2 };
+      const options = { limit: 2 };
       const result = await handler.read("/test/file.jsonl", options);
 
       expect(result).toHaveLength(2);
@@ -275,7 +307,7 @@ describe("JsonlHandler.read()", () => {
       const jsonlContent = createJsonlContent(messages);
       mockReadFile.mockResolvedValue(jsonlContent);
 
-      const options: JsonlReadOptions = { limit: 10 };
+      const options = { limit: 10 };
       const result = await handler.read("/test/file.jsonl", options);
 
       expect(result).toHaveLength(1);
@@ -287,7 +319,7 @@ describe("JsonlHandler.read()", () => {
       const jsonlContent = createJsonlContent(messages);
       mockReadFile.mockResolvedValue(jsonlContent);
 
-      const options: JsonlReadOptions = { limit: 0 };
+      const options = { limit: 0 };
       const result = await handler.read("/test/file.jsonl", options);
 
       expect(result).toHaveLength(0);
@@ -298,50 +330,10 @@ describe("JsonlHandler.read()", () => {
       const jsonlContent = createJsonlContent(messages);
       mockReadFile.mockResolvedValue(jsonlContent);
 
-      const options: JsonlReadOptions = { limit: -5 };
+      const options = { limit: -5 };
       const result = await handler.read("/test/file.jsonl", options);
 
       expect(result).toHaveLength(0);
-    });
-  });
-
-  describe("StartFromEnd option", () => {
-    it("should read from end when startFromEnd is true", async () => {
-      const messages = [
-        createSampleMessage("user", "First message"),
-        createSampleMessage("assistant", "Second message"),
-        createSampleMessage("user", "Third message"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options: JsonlReadOptions = { startFromEnd: true };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(3);
-      // When startFromEnd is true, messages should be reversed
-      expect((result[0].blocks[0] as TextBlock).content).toBe("Third message");
-      expect((result[1].blocks[0] as TextBlock).content).toBe("Second message");
-      expect((result[2].blocks[0] as TextBlock).content).toBe("First message");
-    });
-
-    it("should combine startFromEnd with limit to get latest N messages", async () => {
-      const messages = [
-        createSampleMessage("user", "Message 1"),
-        createSampleMessage("assistant", "Message 2"),
-        createSampleMessage("user", "Message 3"),
-        createSampleMessage("assistant", "Message 4"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options: JsonlReadOptions = { startFromEnd: true, limit: 2 };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(2);
-      // Should get first 2 messages, then reverse them
-      expect((result[0].blocks[0] as TextBlock).content).toBe("Message 2");
-      expect((result[1].blocks[0] as TextBlock).content).toBe("Message 1");
     });
   });
 
@@ -374,39 +366,6 @@ invalid json line
       await expect(handler.read("/test/invalid.jsonl")).rejects.toThrow(
         "Invalid JSON at line 2",
       );
-    });
-
-    it("should skip malformed JSON lines when skipCorrupted is true", async () => {
-      const mixedContent = `{"role":"user","blocks":[{"type":"text","content":"Valid 1"}],"timestamp":"2024-01-01T00:00:00.000Z"}
-invalid json line
-{"role":"assistant","blocks":[{"type":"text","content":"Valid 2"}],"timestamp":"2024-01-01T00:01:00.000Z"}
-another invalid line
-{"role":"user","blocks":[{"type":"text","content":"Valid 3"}],"timestamp":"2024-01-01T00:02:00.000Z"}`;
-
-      mockReadFile.mockResolvedValue(mixedContent);
-
-      const options: JsonlReadOptions = { skipCorrupted: true };
-      const result = await handler.read("/test/mixed.jsonl", options);
-
-      expect(result).toHaveLength(3);
-      expect((result[0].blocks[0] as TextBlock).content).toBe("Valid 1");
-      expect((result[1].blocks[0] as TextBlock).content).toBe("Valid 2");
-      expect((result[2].blocks[0] as TextBlock).content).toBe("Valid 3");
-    });
-
-    it("should respect maxErrors limit", async () => {
-      const mixedContent = `{"role":"user","blocks":[{"type":"text","content":"Valid"}],"timestamp":"2024-01-01T00:00:00.000Z"}
-invalid line 1
-invalid line 2
-invalid line 3`;
-
-      mockReadFile.mockResolvedValue(mixedContent);
-
-      const options: JsonlReadOptions = { skipCorrupted: true, maxErrors: 2 };
-
-      await expect(
-        handler.read("/test/toomanyerrors.jsonl", options),
-      ).rejects.toThrow("Invalid JSON at line 4");
     });
 
     it("should handle empty lines in file gracefully", async () => {
@@ -510,109 +469,6 @@ invalid line 3`;
     });
   });
 
-  describe("Offset parameter", () => {
-    it("should skip messages with offset parameter", async () => {
-      const messages = [
-        createSampleMessage("user", "Message 1"),
-        createSampleMessage("assistant", "Message 2"),
-        createSampleMessage("user", "Message 3"),
-        createSampleMessage("assistant", "Message 4"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options: JsonlReadOptions = { offset: 2 };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(2);
-      expect((result[0].blocks[0] as TextBlock).content).toBe("Message 3");
-      expect((result[1].blocks[0] as TextBlock).content).toBe("Message 4");
-    });
-
-    it("should combine offset and limit", async () => {
-      const messages = [
-        createSampleMessage("user", "Message 1"),
-        createSampleMessage("assistant", "Message 2"),
-        createSampleMessage("user", "Message 3"),
-        createSampleMessage("assistant", "Message 4"),
-        createSampleMessage("user", "Message 5"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options: JsonlReadOptions = { offset: 1, limit: 2 };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(2);
-      expect((result[0].blocks[0] as TextBlock).content).toBe("Message 2");
-      expect((result[1].blocks[0] as TextBlock).content).toBe("Message 3");
-    });
-
-    it("should handle offset larger than file", async () => {
-      const messages = [createSampleMessage("user", "Only message")];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options: JsonlReadOptions = { offset: 10 };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(0);
-    });
-  });
-
-  describe("Filter options", () => {
-    it("should filter by role", async () => {
-      const messages = [
-        createSampleMessage("user", "User message 1"),
-        createSampleMessage("assistant", "Assistant message"),
-        createSampleMessage("user", "User message 2"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options: JsonlReadOptions = { roleFilter: ["user"] };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(2);
-      expect((result[0].blocks[0] as TextBlock).content).toBe("User message 1");
-      expect((result[1].blocks[0] as TextBlock).content).toBe("User message 2");
-    });
-
-    it("should filter by timestamp range", async () => {
-      const messages = [
-        createSampleMessage("user", "Message 1", "2024-01-01T00:00:00.000Z"),
-        createSampleMessage("user", "Message 2", "2024-01-02T00:00:00.000Z"),
-        createSampleMessage("user", "Message 3", "2024-01-03T00:00:00.000Z"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options: JsonlReadOptions = {
-        timestampAfter: new Date("2024-01-01T12:00:00.000Z"),
-        timestampBefore: new Date("2024-01-02T12:00:00.000Z"),
-      };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(1);
-      expect((result[0].blocks[0] as TextBlock).content).toBe("Message 2");
-    });
-
-    it("should handle empty roleFilter array", async () => {
-      const messages = [
-        createSampleMessage("user", "User message"),
-        createSampleMessage("assistant", "Assistant message"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options: JsonlReadOptions = { roleFilter: [] };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      // Empty roleFilter means no role filtering (accept all)
-      expect(result).toHaveLength(2);
-    });
-  });
-
   describe("Edge cases and performance", () => {
     it("should handle very large message content", async () => {
       const largeContent = "x".repeat(100000); // 100KB content
@@ -689,83 +545,145 @@ invalid line 3`;
       expect((result[1].blocks[0] as TextBlock).content).toBe("Message 2");
     });
   });
+});
 
-  describe("Complex option combinations", () => {
-    it("should combine all options correctly", async () => {
-      const messages = [
-        createSampleMessage("user", "User 1", "2024-01-01T00:00:00.000Z"),
-        createSampleMessage(
-          "assistant",
-          "Assistant 1",
-          "2024-01-02T00:00:00.000Z",
-        ),
-        createSampleMessage("user", "User 2", "2024-01-03T00:00:00.000Z"),
-        createSampleMessage(
-          "assistant",
-          "Assistant 2",
-          "2024-01-04T00:00:00.000Z",
-        ),
-        createSampleMessage("user", "User 3", "2024-01-05T00:00:00.000Z"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
+describe("JsonlHandler.readMetadata()", () => {
+  let handler: JsonlHandler;
+  let mockStat: ReturnType<typeof vi.fn>;
+  let mockReadFirstLine: ReturnType<typeof vi.fn>;
 
-      const options: JsonlReadOptions = {
-        roleFilter: ["user"],
-        limit: 2,
-        offset: 1,
-        startFromEnd: true,
-        timestampAfter: new Date("2024-01-01T00:00:00.000Z"),
-        timestampBefore: new Date("2024-01-06T00:00:00.000Z"),
-      };
+  beforeEach(async () => {
+    vi.clearAllMocks();
 
-      const result = await handler.read("/test/complex.jsonl", options);
+    const fsPromises = await import("fs/promises");
+    const fileUtils = await import("@/utils/fileUtils.js");
 
-      expect(result).toHaveLength(2);
-      // Should filter by role, then apply offset/limit, then reverse
-      expect((result[0].blocks[0] as TextBlock).content).toBe("User 3");
-      expect((result[1].blocks[0] as TextBlock).content).toBe("User 2");
-    });
+    mockStat = vi.mocked(fsPromises.stat);
+    mockReadFirstLine = vi.mocked(fileUtils.readFirstLine);
 
-    it("should handle options that result in no matches", async () => {
-      const messages = [
-        createSampleMessage("user", "Message", "2024-01-01T00:00:00.000Z"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
+    mockStat.mockResolvedValue({
+      size: 1024,
+    } as unknown as Awaited<ReturnType<typeof fsPromises.stat>>);
 
-      const options: JsonlReadOptions = {
-        roleFilter: ["assistant"], // No assistant messages
-      };
+    handler = new JsonlHandler();
+  });
 
-      const result = await handler.read("/test/noMatches.jsonl", options);
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
-      expect(result).toHaveLength(0);
-    });
+  it("should read metadata from first line", async () => {
+    const metadata: SessionMetadataLine = {
+      __meta__: true,
+      sessionId: "test-session",
+      sessionType: "main",
+      workdir: "/test/workdir",
+      startedAt: "2024-01-01T00:00:00.000Z",
+    };
 
-    it("should handle startFromEnd with offset and limit", async () => {
-      const messages = [
-        createSampleMessage("user", "Message 1"),
-        createSampleMessage("user", "Message 2"),
-        createSampleMessage("user", "Message 3"),
-        createSampleMessage("user", "Message 4"),
-        createSampleMessage("user", "Message 5"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
+    mockReadFirstLine.mockResolvedValue(JSON.stringify(metadata));
 
-      const options: JsonlReadOptions = {
-        offset: 1,
-        limit: 2,
-        startFromEnd: true,
-      };
+    const result = await handler.readMetadata("/test/file.jsonl");
 
-      const result = await handler.read("/test/complex2.jsonl", options);
+    expect(result).toEqual(metadata);
+    expect(mockReadFirstLine).toHaveBeenCalledWith("/test/file.jsonl");
+  });
 
-      expect(result).toHaveLength(2);
-      // Should apply offset/limit first (get messages 2,3), then reverse
-      expect((result[0].blocks[0] as TextBlock).content).toBe("Message 3");
-      expect((result[1].blocks[0] as TextBlock).content).toBe("Message 2");
-    });
+  it("should return null for non-existent file", async () => {
+    mockStat.mockRejectedValue({ code: "ENOENT" });
+
+    const result = await handler.readMetadata("/test/nonexistent.jsonl");
+
+    expect(result).toBeNull();
+  });
+
+  it("should return null when first line is not metadata", async () => {
+    const regularMessage = {
+      role: "user",
+      blocks: [{ type: "text", content: "Regular message" }],
+      timestamp: "2024-01-01T00:00:00.000Z",
+    };
+
+    mockReadFirstLine.mockResolvedValue(JSON.stringify(regularMessage));
+
+    const result = await handler.readMetadata("/test/file.jsonl");
+
+    expect(result).toBeNull();
+    expect(mockReadFirstLine).toHaveBeenCalledWith("/test/file.jsonl");
+  });
+
+  it("should return null for invalid JSON on first line", async () => {
+    mockReadFirstLine.mockResolvedValue("invalid json");
+
+    const result = await handler.readMetadata("/test/file.jsonl");
+
+    expect(result).toBeNull();
+    expect(mockReadFirstLine).toHaveBeenCalledWith("/test/file.jsonl");
+  });
+});
+
+describe("JsonlHandler.hasMetadata()", () => {
+  let handler: JsonlHandler;
+  let mockStat: ReturnType<typeof vi.fn>;
+  let mockReadFirstLine: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    const fsPromises = await import("fs/promises");
+    const fileUtils = await import("@/utils/fileUtils.js");
+
+    mockStat = vi.mocked(fsPromises.stat);
+    mockReadFirstLine = vi.mocked(fileUtils.readFirstLine);
+
+    mockStat.mockResolvedValue({
+      size: 1024,
+    } as unknown as Awaited<ReturnType<typeof fsPromises.stat>>);
+
+    handler = new JsonlHandler();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("should return true when file has metadata", async () => {
+    const metadata = {
+      __meta__: true,
+      sessionId: "test-session",
+      sessionType: "main",
+      workdir: "/test/workdir",
+      startedAt: "2024-01-01T00:00:00.000Z",
+    };
+
+    mockReadFirstLine.mockResolvedValue(JSON.stringify(metadata));
+
+    const result = await handler.hasMetadata("/test/file.jsonl");
+
+    expect(result).toBe(true);
+    expect(mockReadFirstLine).toHaveBeenCalledWith("/test/file.jsonl");
+  });
+
+  it("should return false when file has no metadata", async () => {
+    const regularMessage = {
+      role: "user",
+      blocks: [{ type: "text", content: "Regular message" }],
+      timestamp: "2024-01-01T00:00:00.000Z",
+    };
+
+    mockReadFirstLine.mockResolvedValue(JSON.stringify(regularMessage));
+
+    const result = await handler.hasMetadata("/test/file.jsonl");
+
+    expect(result).toBe(false);
+    expect(mockReadFirstLine).toHaveBeenCalledWith("/test/file.jsonl");
+  });
+
+  it("should return false for non-existent file", async () => {
+    mockStat.mockRejectedValue({ code: "ENOENT" });
+
+    const result = await handler.hasMetadata("/test/nonexistent.jsonl");
+
+    expect(result).toBe(false);
   });
 });

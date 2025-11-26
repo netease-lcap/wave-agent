@@ -3,46 +3,35 @@ import { v6 as uuidv6 } from "uuid";
 import { join } from "path";
 import { homedir } from "os";
 
-// Mock fs and fs/promises completely
+// Mock fs/promises (used by session.ts)
 vi.mock("fs", () => ({
   promises: {
     access: vi.fn(),
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-    appendFile: vi.fn(),
     mkdir: vi.fn(),
     readdir: vi.fn(),
-    rm: vi.fn(),
     stat: vi.fn(),
-    realpath: vi
-      .fn()
-      .mockImplementation((path: string) => Promise.resolve(path)),
     unlink: vi.fn(),
     rmdir: vi.fn(),
-    rename: vi.fn(),
   },
 }));
 
 vi.mock("fs/promises", () => ({
   access: vi.fn(),
-  readFile: vi.fn(),
-  writeFile: vi.fn(),
-  appendFile: vi.fn(),
   mkdir: vi.fn(),
   readdir: vi.fn(),
-  rm: vi.fn(),
   stat: vi.fn(),
-  realpath: vi.fn().mockImplementation((path: string) => Promise.resolve(path)),
   unlink: vi.fn(),
   rmdir: vi.fn(),
-  rename: vi.fn(),
 }));
 
-// Mock JsonlHandler
+// Mock JsonlHandler (used by session.ts)
 vi.mock("@/services/jsonlHandler.js", () => ({
   JsonlHandler: vi.fn(() => ({
     read: vi.fn(),
     append: vi.fn(),
+    readMetadata: vi.fn(),
+    getLastMessage: vi.fn(),
+    createSession: vi.fn(),
   })),
 }));
 
@@ -56,6 +45,7 @@ vi.mock("@/utils/pathEncoder.js", () => ({
 
 import {
   generateSessionId,
+  createSession,
   appendMessages,
   loadSessionFromJsonl,
   listSessionsFromJsonl,
@@ -74,6 +64,9 @@ describe("Session Management", () => {
   let mockJsonlHandler: {
     read: ReturnType<typeof vi.fn>;
     append: ReturnType<typeof vi.fn>;
+    readMetadata: ReturnType<typeof vi.fn>;
+    getLastMessage: ReturnType<typeof vi.fn>;
+    createSession: ReturnType<typeof vi.fn>;
   };
   let mockPathEncoder: {
     createProjectDirectory: ReturnType<typeof vi.fn>;
@@ -94,6 +87,9 @@ describe("Session Management", () => {
     mockJsonlHandler = {
       read: vi.fn(),
       append: vi.fn(),
+      readMetadata: vi.fn().mockResolvedValue(null), // Default: no metadata (legacy sessions)
+      getLastMessage: vi.fn().mockResolvedValue(null), // Default: no last message
+      createSession: vi.fn().mockResolvedValue(undefined), // Default: successful session creation
     };
 
     mockPathEncoder = {
@@ -129,34 +125,18 @@ describe("Session Management", () => {
     vi.mocked(fs.promises.access).mockImplementation(
       vi.mocked(fsPromises.access),
     );
-    vi.mocked(fs.promises.readFile).mockImplementation(
-      vi.mocked(fsPromises.readFile),
-    );
-    vi.mocked(fs.promises.writeFile).mockImplementation(
-      vi.mocked(fsPromises.writeFile),
-    );
-    vi.mocked(fs.promises.appendFile).mockImplementation(
-      vi.mocked(fsPromises.appendFile),
-    );
     vi.mocked(fs.promises.mkdir).mockImplementation(
       vi.mocked(fsPromises.mkdir),
     );
     vi.mocked(fs.promises.readdir).mockImplementation(
       vi.mocked(fsPromises.readdir),
     );
-    vi.mocked(fs.promises.rm).mockImplementation(vi.mocked(fsPromises.rm));
     vi.mocked(fs.promises.stat).mockImplementation(vi.mocked(fsPromises.stat));
-    vi.mocked(fs.promises.realpath).mockImplementation(
-      vi.mocked(fsPromises.realpath),
-    );
     vi.mocked(fs.promises.unlink).mockImplementation(
       vi.mocked(fsPromises.unlink),
     );
     vi.mocked(fs.promises.rmdir).mockImplementation(
       vi.mocked(fsPromises.rmdir),
-    );
-    vi.mocked(fs.promises.rename).mockImplementation(
-      vi.mocked(fsPromises.rename),
     );
   });
 
@@ -372,21 +352,28 @@ describe("Session Management", () => {
         "not-a-session.txt", // Should be ignored
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-      // Mock JsonlHandler.read for both limit and startFromEnd calls
+      // Create messages with timestamps
       const messagesWithTimestamp = messages.map((msg) => ({
         ...msg,
         timestamp: new Date().toISOString(),
       }));
 
+      // Mock readMetadata to return null (legacy sessions without metadata)
+      mockJsonlHandler.readMetadata.mockResolvedValue(null);
+
+      // Mock read for fallback (legacy sessions)
       mockJsonlHandler.read
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // First call with { limit: 1 }
-        .mockResolvedValueOnce([
+        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // First session - first message
+        .mockResolvedValueOnce([messagesWithTimestamp[0]]); // Second session - first message
+
+      // Mock getLastMessage for getting last messages
+      mockJsonlHandler.getLastMessage
+        .mockResolvedValueOnce(
           messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ]) // Second call with { limit: 1, startFromEnd: true }
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // Third call for second session
-        .mockResolvedValueOnce([
+        ) // First session - last message
+        .mockResolvedValueOnce(
           messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ]); // Fourth call for second session
+        ); // Second session - last message
 
       const sessions = await listSessionsFromJsonl(testWorkdir, false);
 
@@ -397,14 +384,10 @@ describe("Session Management", () => {
       // Should be sorted by ID (newest first for UUIDv6)
       expect(sessions[0].id > sessions[1].id).toBe(true);
 
-      // Verify JsonlHandler.read was called with correct options
-      expect(mockJsonlHandler.read).toHaveBeenCalledWith(expect.any(String), {
-        limit: 1,
-      });
-      expect(mockJsonlHandler.read).toHaveBeenCalledWith(expect.any(String), {
-        limit: 1,
-        startFromEnd: true,
-      });
+      // Verify that readMetadata was called
+      expect(mockJsonlHandler.readMetadata).toHaveBeenCalled();
+      // Verify that getLastMessage was called for legacy sessions
+      expect(mockJsonlHandler.getLastMessage).toHaveBeenCalled();
     });
 
     it("should get latest session", async () => {
@@ -421,22 +404,29 @@ describe("Session Management", () => {
         `${session2Id}.jsonl`,
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-      // Mock JsonlHandler.read for listing sessions (4 calls total)
+      // Create messages with timestamps
       const messagesWithTimestamp = messages.map((msg) => ({
         ...msg,
         timestamp: new Date().toISOString(),
       }));
 
+      // Mock readMetadata to return null (legacy sessions)
+      mockJsonlHandler.readMetadata.mockResolvedValue(null);
+
+      // Mock read for legacy sessions (first message)
       mockJsonlHandler.read
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // First session, limit: 1
-        .mockResolvedValueOnce([
-          messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ]) // First session, startFromEnd: true
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // Second session, limit: 1
-        .mockResolvedValueOnce([
-          messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ]) // Second session, startFromEnd: true
+        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // First session - first message
+        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // Second session - first message
         .mockResolvedValueOnce(messagesWithTimestamp); // Load full session data for latest
+
+      // Mock getLastMessage for last messages
+      mockJsonlHandler.getLastMessage
+        .mockResolvedValueOnce(
+          messagesWithTimestamp[messagesWithTimestamp.length - 1],
+        ) // First session - last message
+        .mockResolvedValueOnce(
+          messagesWithTimestamp[messagesWithTimestamp.length - 1],
+        ); // Second session - last message
 
       const latestSession = await getLatestSessionFromJsonl(testWorkdir);
 
@@ -532,7 +522,25 @@ describe("Session Management", () => {
       const sessionId = generateSessionId();
       const mockFileSystem = new Map<string, string>();
 
-      // Mock all file operations
+      // Mock fs.access to track session existence
+      const deletedFiles = new Set<string>();
+      vi.mocked(fs.access).mockImplementation(async (path) => {
+        const pathStr = path.toString();
+        if (deletedFiles.has(pathStr)) {
+          throw new Error("ENOENT: no such file or directory");
+        }
+        return Promise.resolve();
+      });
+
+      // Mock fs.unlink to track deleted files
+      vi.mocked(fs.unlink).mockImplementation(async (path) => {
+        const pathStr = path.toString();
+        deletedFiles.add(pathStr);
+        mockFileSystem.delete(pathStr);
+        return Promise.resolve();
+      });
+
+      // Mock fs.readdir
       vi.mocked(fs.readdir).mockImplementation(async () => {
         const files = Array.from(mockFileSystem.keys())
           .filter((path) => path.endsWith(".jsonl"))
@@ -541,20 +549,6 @@ describe("Session Management", () => {
         return Promise.resolve(
           files as unknown as Awaited<ReturnType<typeof fs.readdir>>,
         );
-      });
-
-      vi.mocked(fs.unlink).mockImplementation(async (path) => {
-        const pathStr = path.toString();
-        mockFileSystem.delete(pathStr);
-        return Promise.resolve();
-      });
-
-      vi.mocked(fs.access).mockImplementation(async (path) => {
-        const pathStr = path.toString();
-        if (mockFileSystem.has(pathStr)) {
-          return Promise.resolve();
-        }
-        throw new Error("File not found");
       });
 
       vi.mocked(fs.readdir).mockResolvedValue([]);
@@ -573,6 +567,8 @@ describe("Session Management", () => {
         },
       ];
 
+      // Create the session first
+      await createSession(sessionId, testWorkdir);
       await appendMessages(sessionId, initialMessages, testWorkdir);
       expect(mockJsonlHandler.append).toHaveBeenCalledTimes(1);
 
@@ -622,11 +618,19 @@ describe("Session Management", () => {
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         `${sessionId}.jsonl`,
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
-      mockJsonlHandler.read
-        .mockResolvedValueOnce([allMessagesWithTimestamp[0]]) // First message
-        .mockResolvedValueOnce([
-          allMessagesWithTimestamp[allMessagesWithTimestamp.length - 1],
-        ]); // Last message
+
+      // Mock readMetadata to return null (legacy session)
+      mockJsonlHandler.readMetadata.mockResolvedValueOnce(null);
+
+      // Mock read for legacy sessions (first message)
+      mockJsonlHandler.read.mockResolvedValueOnce([
+        allMessagesWithTimestamp[0],
+      ]);
+
+      // Mock getLastMessage for last message
+      mockJsonlHandler.getLastMessage.mockResolvedValueOnce(
+        allMessagesWithTimestamp[allMessagesWithTimestamp.length - 1],
+      );
 
       const sessions = await listSessionsFromJsonl(testWorkdir, false);
       expect(sessions.some((s) => s.id === sessionId)).toBe(true);
@@ -635,12 +639,19 @@ describe("Session Management", () => {
       vi.mocked(fs.readdir).mockResolvedValueOnce([
         `${sessionId}.jsonl`,
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
+
+      // Mock readMetadata to return null (legacy session)
+      mockJsonlHandler.readMetadata.mockResolvedValueOnce(null);
+
+      // Mock read for legacy sessions (first message)
       mockJsonlHandler.read
         .mockResolvedValueOnce([allMessagesWithTimestamp[0]]) // First message for listing
-        .mockResolvedValueOnce([
-          allMessagesWithTimestamp[allMessagesWithTimestamp.length - 1],
-        ]) // Last message for listing
         .mockResolvedValueOnce(allMessagesWithTimestamp); // Full session data
+
+      // Mock getLastMessage for last message
+      mockJsonlHandler.getLastMessage.mockResolvedValueOnce(
+        allMessagesWithTimestamp[allMessagesWithTimestamp.length - 1],
+      );
 
       const latestSession = await getLatestSessionFromJsonl(testWorkdir);
       expect(latestSession!.id).toBe(sessionId);
@@ -683,6 +694,9 @@ describe("Session Management", () => {
         },
       ];
 
+      // Mock fs.access to always succeed (session files exist after creation)
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+
       // Set up different PathEncoder responses for different workdirs
       mockPathEncoder.createProjectDirectory.mockImplementation(
         async (workdir: string, baseDir: string) => ({
@@ -696,6 +710,8 @@ describe("Session Management", () => {
       );
 
       // Create sessions in different workdirs
+      await createSession(session1Id, workdir1);
+      await createSession(session2Id, workdir2);
       await appendMessages(session1Id, messages, workdir1);
       await appendMessages(session2Id, messages, workdir2);
 
@@ -722,15 +738,22 @@ describe("Session Management", () => {
         timestamp: new Date().toISOString(),
       }));
 
+      // Mock readMetadata to return null for legacy sessions
+      mockJsonlHandler.readMetadata.mockResolvedValue(null);
+
+      // Mock read for legacy sessions (first messages)
       mockJsonlHandler.read
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // session1, limit: 1
-        .mockResolvedValueOnce([
+        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // session1, first message
+        .mockResolvedValueOnce([messagesWithTimestamp[0]]); // session2, first message
+
+      // Mock getLastMessage for last messages
+      mockJsonlHandler.getLastMessage
+        .mockResolvedValueOnce(
           messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ]) // session1, startFromEnd: true
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // session2, limit: 1
-        .mockResolvedValueOnce([
+        ) // session1, last message
+        .mockResolvedValueOnce(
           messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ]); // session2, startFromEnd: true
+        ); // session2, last message
 
       // Each workdir should only see its own sessions
       const sessions1 = await listSessionsFromJsonl(workdir1, false);
@@ -767,22 +790,33 @@ describe("Session Management", () => {
         .mockResolvedValueOnce(workdir1)
         .mockResolvedValueOnce(workdir2);
 
+      // Mock readMetadata for includeAllWorkdirs call
+      mockJsonlHandler.readMetadata.mockResolvedValue(null);
+
+      // Mock read for legacy sessions (first messages)
       mockJsonlHandler.read
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // session1, limit: 1
-        .mockResolvedValueOnce([
+        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // session1, first message
+        .mockResolvedValueOnce([messagesWithTimestamp[0]]); // session2, first message
+
+      // Mock getLastMessage for last messages
+      mockJsonlHandler.getLastMessage
+        .mockResolvedValueOnce(
           messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ]) // session1, startFromEnd: true
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // session2, limit: 1
-        .mockResolvedValueOnce([
+        ) // session1, last message
+        .mockResolvedValueOnce(
           messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ]); // session2, startFromEnd: true
+        ); // session2, last message
 
       const allSessions = await listSessionsFromJsonl(workdir1, true);
       expect(allSessions).toHaveLength(2);
     });
 
     it("should preserve message metadata through lifecycle", async () => {
+      const fs = await import("fs/promises");
       const sessionId = generateSessionId();
+
+      // Mock fs.access to always succeed (session files exist after creation)
+      vi.mocked(fs.access).mockResolvedValue(undefined);
 
       const messagesWithMetadata: Message[] = [
         {
@@ -806,6 +840,7 @@ describe("Session Management", () => {
         },
       ];
 
+      await createSession(sessionId, testWorkdir);
       await appendMessages(sessionId, messagesWithMetadata, testWorkdir);
 
       // Mock JsonlHandler.read to return messages with metadata and timestamps
@@ -875,6 +910,10 @@ describe("Session Management", () => {
     it("should skip non-jsonl files in project directory", async () => {
       const fs = await import("fs/promises");
       const sessionId = generateSessionId();
+
+      // Mock fs.access to always succeed (session files exist after creation)
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+
       const messages: Message[] = [
         { role: "user", blocks: [{ type: "text", content: "test" }] },
       ];
@@ -886,18 +925,24 @@ describe("Session Management", () => {
         "config.json",
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-      // Mock JsonlHandler.read for the valid session file
+      // Mock JsonlHandler for the valid session file
       const messagesWithTimestamp = messages.map((msg) => ({
         ...msg,
         timestamp: new Date().toISOString(),
       }));
 
-      mockJsonlHandler.read
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // First message
-        .mockResolvedValueOnce([
-          messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ]); // Last message
+      // Mock readMetadata to return null (legacy session)
+      mockJsonlHandler.readMetadata.mockResolvedValueOnce(null);
 
+      // Mock read for legacy sessions (first message)
+      mockJsonlHandler.read.mockResolvedValueOnce([messagesWithTimestamp[0]]);
+
+      // Mock getLastMessage for last message
+      mockJsonlHandler.getLastMessage.mockResolvedValueOnce(
+        messagesWithTimestamp[messagesWithTimestamp.length - 1],
+      );
+
+      await createSession(sessionId, testWorkdir);
       await appendMessages(sessionId, messages, testWorkdir);
 
       const sessions = await listSessionsFromJsonl(testWorkdir, false);
@@ -926,10 +971,14 @@ describe("Session Management", () => {
         "other-file.txt", // Non-JSONL file to test filtering
       ] as unknown as Awaited<ReturnType<typeof readdir>>);
 
-      // Mock readFile for main session only
-      mockJsonlHandler.read
-        .mockResolvedValueOnce([messages[0]]) // First read (limit: 1)
-        .mockResolvedValueOnce([messages[0]]); // Second read (startFromEnd: true)
+      // Mock readMetadata to return null (legacy session)
+      mockJsonlHandler.readMetadata.mockResolvedValueOnce(null);
+
+      // Mock read for main session (first message)
+      mockJsonlHandler.read.mockResolvedValueOnce([messages[0]]);
+
+      // Mock getLastMessage for main session (last message)
+      mockJsonlHandler.getLastMessage.mockResolvedValueOnce(messages[0]);
 
       const sessions = await listSessionsFromJsonl(testWorkdir, false);
 
@@ -937,8 +986,10 @@ describe("Session Management", () => {
       expect(sessions).toHaveLength(1);
       expect(sessions[0].id).toBe(mainSessionId);
 
-      // Verify that only main session was processed
-      expect(mockJsonlHandler.read).toHaveBeenCalledTimes(2);
+      // Verify that methods were called correctly
+      expect(mockJsonlHandler.readMetadata).toHaveBeenCalledTimes(1);
+      expect(mockJsonlHandler.read).toHaveBeenCalledTimes(1);
+      expect(mockJsonlHandler.getLastMessage).toHaveBeenCalledTimes(1);
     });
 
     it("should handle getLatestSessionFromJsonl with directory separation", async () => {
@@ -964,24 +1015,34 @@ describe("Session Management", () => {
         files as unknown as Awaited<ReturnType<typeof readdir>>,
       );
 
-      // Mock readFile for main sessions only
+      // Mock readMetadata to return null (legacy sessions)
+      mockJsonlHandler.readMetadata.mockResolvedValue(null);
+
+      // Mock read for main sessions (first messages) + loading the latest session
       mockJsonlHandler.read
         .mockResolvedValueOnce([messages[0]]) // First read for older session
-        .mockResolvedValueOnce([messages[0]]) // Second read for older session
         .mockResolvedValueOnce([messages[0]]) // First read for newer session
-        .mockResolvedValueOnce([messages[0]]) // Second read for newer session
         .mockResolvedValueOnce([messages[0]]); // Load the latest session
+
+      // Mock getLastMessage for main sessions (last messages)
+      mockJsonlHandler.getLastMessage
+        .mockResolvedValueOnce(messages[0]) // Last message for older session
+        .mockResolvedValueOnce(messages[0]); // Last message for newer session
 
       const latestSession = await getLatestSessionFromJsonl(testWorkdir);
 
       expect(latestSession).not.toBeNull();
       expect(latestSession?.id).toBe(newerMainSessionId);
 
-      // Should have called read 5 times: 2 for each main session (4 total) + 1 for loading the latest
-      expect(mockJsonlHandler.read).toHaveBeenCalledTimes(5);
+      // Should have called readMetadata 2 times (once per session)
+      expect(mockJsonlHandler.readMetadata).toHaveBeenCalledTimes(2);
+      // Should have called read 3 times (first message for each session + loading latest)
+      expect(mockJsonlHandler.read).toHaveBeenCalledTimes(3);
+      // Should have called getLastMessage 2 times (once per session)
+      expect(mockJsonlHandler.getLastMessage).toHaveBeenCalledTimes(2);
     });
 
-    it("should support loading subagent sessions with isSubagent parameter", async () => {
+    it("should support loading subagent sessions", async () => {
       const subagentSessionId = uuidv6();
 
       const messages = [
@@ -1000,8 +1061,6 @@ describe("Session Management", () => {
       const sessionData = await loadSessionFromJsonl(
         subagentSessionId,
         testWorkdir,
-
-        true, // isSubagent = true
       );
 
       expect(sessionData).not.toBeNull();
@@ -1015,8 +1074,9 @@ describe("Session Management", () => {
       }
 
       // Verify that the JsonlHandler was called with the correct path
+      // Note: With metadata-based approach, subagent sessions no longer use separate directories
       expect(mockJsonlHandler.read).toHaveBeenCalledWith(
-        expect.stringContaining("subagent"),
+        expect.stringMatching(/\.jsonl$/),
       );
     });
   });
