@@ -7,7 +7,17 @@ export interface PrintCliOptions {
   message?: string;
 }
 
+function displayTimingInfo(startTime: Date): void {
+  const endTime = new Date();
+  const duration = endTime.getTime() - startTime.getTime();
+
+  process.stdout.write(`\n\n📅 Start time: ${startTime.toISOString()}\n`);
+  process.stdout.write(`📅 End time: ${endTime.toISOString()}\n`);
+  process.stdout.write(`⏱️  Duration: ${duration}ms\n`);
+}
+
 export async function startPrintCli(options: PrintCliOptions): Promise<void> {
+  const startTime = new Date();
   const { restoreSessionId, continueLastSession, message } = options;
 
   if (
@@ -95,6 +105,9 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       // Silently ignore usage summary errors
     }
 
+    // Display timing information
+    displayTimingInfo(startTime);
+
     // Destroy agent and exit after sendMessage completes
     agent.destroy();
     process.exit(0);
@@ -109,6 +122,10 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       } catch {
         // Silently ignore usage summary errors
       }
+
+      // Display timing information even on error
+      displayTimingInfo(startTime);
+
       agent.destroy();
     }
     process.exit(1);
