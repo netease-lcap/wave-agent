@@ -125,7 +125,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           setMcpServers([...servers]);
         },
         onSessionIdChange: (sessionId) => {
-          setSessionId(sessionId);
+          process.stdout.write("\x1Bc", () => {
+            setSessionId(sessionId);
+          });
         },
         onLatestTotalTokensChange: (tokens) => {
           setlatestTotalTokens(tokens);
