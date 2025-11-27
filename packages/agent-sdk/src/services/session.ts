@@ -279,11 +279,9 @@ export async function listSessionsFromJsonl(
           const jsonlHandler = new JsonlHandler();
           const filePath = join(projectDir.encodedPath, file);
 
-          // Try to read metadata first (efficient O(1) operation)
+          // Read metadata (efficient O(1) operation)
           const metadata = await jsonlHandler.readMetadata(filePath);
           if (metadata) {
-            // Use metadata for efficient session listing
-
             // For lastActiveAt and latestTotalTokens, we need the last message
             const lastMessage = await jsonlHandler.getLastMessage(filePath);
 
@@ -299,23 +297,6 @@ export async function listSessionsFromJsonl(
                 : new Date(metadata.startedAt),
               latestTotalTokens: lastMessage?.usage?.total_tokens || 0,
             });
-          } else {
-            // Fallback for legacy sessions without metadata
-            const messages = await jsonlHandler.read(filePath, { limit: 1 });
-            const lastMessage = await jsonlHandler.getLastMessage(filePath);
-
-            if (messages.length > 0 && lastMessage) {
-              const firstMessage = messages[0];
-
-              sessions.push({
-                id: sessionId,
-                sessionType: "main", // Default for existing sessions
-                workdir,
-                startedAt: new Date(firstMessage.timestamp),
-                lastActiveAt: new Date(lastMessage.timestamp),
-                latestTotalTokens: lastMessage.usage?.total_tokens || 0,
-              });
-            }
           }
         } catch {
           // Skip corrupted session files
@@ -361,11 +342,9 @@ export async function listSessionsFromJsonl(
             const jsonlHandler = new JsonlHandler();
             const filePath = join(projectPath, file);
 
-            // Try to read metadata first (efficient O(1) operation)
+            // Read metadata (efficient O(1) operation)
             const metadata = await jsonlHandler.readMetadata(filePath);
             if (metadata) {
-              // Use metadata for efficient session listing
-
               // For lastActiveAt and latestTotalTokens, we need the last message
               const lastMessage = await jsonlHandler.getLastMessage(filePath);
 
@@ -381,32 +360,6 @@ export async function listSessionsFromJsonl(
                   : new Date(metadata.startedAt),
                 latestTotalTokens: lastMessage?.usage?.total_tokens || 0,
               });
-            } else {
-              // Fallback for legacy sessions without metadata
-              const messages = await jsonlHandler.read(filePath, { limit: 1 });
-              const lastMessage = await jsonlHandler.getLastMessage(filePath);
-
-              if (messages.length > 0 && lastMessage) {
-                const firstMessage = messages[0];
-
-                // Decode the project directory to get workdir
-                const encoder = new PathEncoder();
-                const projectWorkdir = await encoder.decode(projectDirName);
-
-                // Skip if we can't decode the project directory
-                if (!projectWorkdir) {
-                  continue;
-                }
-
-                sessions.push({
-                  id: sessionId,
-                  sessionType: "main", // Default for existing sessions
-                  workdir: projectWorkdir,
-                  startedAt: new Date(firstMessage.timestamp),
-                  lastActiveAt: new Date(lastMessage.timestamp),
-                  latestTotalTokens: lastMessage.usage?.total_tokens || 0,
-                });
-              }
             }
           } catch {
             // Skip corrupted session files
