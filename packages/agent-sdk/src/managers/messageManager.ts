@@ -240,11 +240,9 @@ export class MessageManager {
     continueLastSession?: boolean,
   ): Promise<void> {
     // Clean up expired sessions first
-    try {
-      await cleanupExpiredSessionsFromJsonl(this.workdir);
-    } catch (error) {
+    cleanupExpiredSessionsFromJsonl(this.workdir).catch((error) => {
       this.logger?.warn("Failed to cleanup expired sessions:", error);
-    }
+    });
 
     if (!restoreSessionId && !continueLastSession) {
       return;
