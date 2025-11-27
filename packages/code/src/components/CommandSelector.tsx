@@ -41,7 +41,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
   const filteredCommands = allCommands.filter(
     (command) =>
       !searchQuery ||
-      command.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      command.id.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   useInput((input, key) => {
@@ -50,7 +50,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
         filteredCommands.length > 0 &&
         selectedIndex < filteredCommands.length
       ) {
-        const selectedCommand = filteredCommands[selectedIndex].name;
+        const selectedCommand = filteredCommands[selectedIndex].id;
         onSelect(selectedCommand);
       }
       return;
@@ -61,7 +61,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
         filteredCommands.length > 0 &&
         selectedIndex < filteredCommands.length
       ) {
-        const selectedCommand = filteredCommands[selectedIndex].name;
+        const selectedCommand = filteredCommands[selectedIndex].id;
         onInsert(selectedCommand);
       }
       return;
@@ -116,12 +116,12 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       </Box>
 
       {filteredCommands.map((command, index) => (
-        <Box key={command.name} flexDirection="column">
+        <Box key={command.id} flexDirection="column">
           <Text
             color={index === selectedIndex ? "black" : "white"}
             backgroundColor={index === selectedIndex ? "magenta" : undefined}
           >
-            {index === selectedIndex ? "▶ " : "  "}/{command.name}
+            {index === selectedIndex ? "▶ " : "  "}/{command.id}
           </Text>
           {index === selectedIndex && (
             <Box marginLeft={4}>

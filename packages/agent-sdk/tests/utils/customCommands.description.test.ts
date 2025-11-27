@@ -37,6 +37,10 @@ describe("Custom Slash Commands with Description", () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readdirSync).mockReturnValue([]);
     vi.mocked(fs.readFileSync).mockReturnValue("");
+    vi.mocked(fs.statSync).mockReturnValue({
+      isFile: () => true,
+      isDirectory: () => false,
+    } as unknown as ReturnType<typeof fs.statSync>);
   });
 
   afterEach(() => {

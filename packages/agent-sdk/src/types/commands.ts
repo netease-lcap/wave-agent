@@ -23,4 +23,10 @@ export interface CustomSlashCommand {
   filePath: string;
   content: string;
   config?: CustomSlashCommandConfig;
+
+  // Nested command support
+  namespace?: string; // Parent directory for nested commands (e.g., "openspec")
+  isNested: boolean; // Whether command is in a subdirectory
+  depth: number; // 0 = root, 1 = nested
+  segments: string[]; // Path components for ID generation (e.g., ["openspec", "apply"])
 }
