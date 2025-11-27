@@ -42,11 +42,12 @@ export const MessageList = React.memo(
       : 0;
 
     // Compute which messages to render statically vs dynamically
-    const staticMessages = isLoading
+    const shouldRenderLastDynamic = isLoading || isCommandRunning;
+    const staticMessages = shouldRenderLastDynamic
       ? displayMessages.slice(0, -1)
       : displayMessages;
     const dynamicMessages =
-      isLoading && displayMessages.length > 0
+      shouldRenderLastDynamic && displayMessages.length > 0
         ? [displayMessages[displayMessages.length - 1]]
         : [];
 
