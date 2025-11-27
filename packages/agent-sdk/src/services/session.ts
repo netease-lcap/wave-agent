@@ -39,7 +39,7 @@ export function generateSessionId(): string {
 
 // Constants
 export const SESSION_DIR = join(homedir(), ".wave", "projects");
-const MAX_SESSION_AGE_DAYS = 30;
+const MAX_SESSION_AGE_DAYS = 14;
 
 /**
  * Ensure session directory exists
@@ -389,22 +389,19 @@ export async function listSessionsFromJsonl(
               if (messages.length > 0 && lastMessage) {
                 const firstMessage = messages[0];
 
-                // Try to decode the workdir from the directory name
-                let sessionWorkdir = workdir;
-                try {
-                  const decoder = new PathEncoder();
-                  const decoded = await decoder.decode(projectDirName);
-                  if (decoded) {
-                    sessionWorkdir = decoded;
-                  }
-                } catch {
-                  // Use original if decoding fails
+                // Decode the project directory to get workdir
+                const encoder = new PathEncoder();
+                const projectWorkdir = await encoder.decode(projectDirName);
+
+                // Skip if we can't decode the project directory
+                if (!projectWorkdir) {
+                  continue;
                 }
 
                 sessions.push({
                   id: sessionId,
                   sessionType: "main", // Default for existing sessions
-                  workdir: sessionWorkdir,
+                  workdir: projectWorkdir,
                   startedAt: new Date(firstMessage.timestamp),
                   lastActiveAt: new Date(lastMessage.timestamp),
                   latestTotalTokens: lastMessage.usage?.total_tokens || 0,
@@ -476,7 +473,7 @@ export async function deleteSessionFromJsonl(
 }
 
 /**
- * Clean up expired sessions older than the configured maximum age (new JSONL approach)
+ * Clean up expired sessions older than 14 days based on file modification time
  *
  * @param workdir - Working directory to clean up sessions for
  * @returns Promise that resolves to the number of sessions that were deleted
@@ -489,30 +486,54 @@ export async function cleanupExpiredSessionsFromJsonl(
     return 0;
   }
 
-  const sessions = await listSessionsFromJsonl(workdir, true, true); // Include subagent sessions for cleanup
-  const now = new Date();
-  const maxAge = MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // Convert to milliseconds
+  try {
+    const encoder = new PathEncoder();
+    const projectDir = await encoder.createProjectDirectory(
+      workdir,
+      SESSION_DIR,
+    );
+    const files = await fs.readdir(projectDir.encodedPath);
 
-  let deletedCount = 0;
+    const now = new Date();
+    const maxAge = MAX_SESSION_AGE_DAYS * 24 * 60 * 60 * 1000; // Convert to milliseconds
+    let deletedCount = 0;
 
-  for (const session of sessions) {
-    const sessionAge = now.getTime() - new Date(session.lastActiveAt).getTime();
+    for (const file of files) {
+      if (!file.endsWith(".jsonl")) {
+        continue;
+      }
 
-    if (sessionAge > maxAge) {
+      const filePath = join(projectDir.encodedPath, file);
+
       try {
-        await deleteSessionFromJsonl(session.id, session.workdir);
-        deletedCount++;
+        const stat = await fs.stat(filePath);
+        const fileAge = now.getTime() - stat.mtime.getTime();
+
+        if (fileAge > maxAge) {
+          await fs.unlink(filePath);
+          deletedCount++;
+        }
       } catch {
-        // Skip failed deletions and continue processing other sessions
+        // Skip failed operations and continue processing other files
         continue;
       }
     }
+
+    // Clean up empty project directory if no files remain
+    try {
+      const remainingFiles = await fs.readdir(projectDir.encodedPath);
+      if (remainingFiles.length === 0) {
+        await fs.rmdir(projectDir.encodedPath);
+      }
+    } catch {
+      // Ignore errors if directory is not empty or can't be removed
+    }
+
+    return deletedCount;
+  } catch {
+    // Return 0 if project directory doesn't exist or can't be accessed
+    return 0;
   }
-
-  // Clean up empty project directories after deletion
-  await cleanupEmptyProjectDirectories();
-
-  return deletedCount;
 }
 
 /**

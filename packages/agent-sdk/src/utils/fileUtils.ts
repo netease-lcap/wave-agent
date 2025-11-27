@@ -46,7 +46,7 @@ export async function getLastLine(filePath: string): Promise<string> {
 
   try {
     // Use tail with multiple lines to handle cases where the last line might be empty
-    const { stdout } = await execAsync(`tail -n 10 "${filePath}"`);
+    const { stdout } = await execAsync(`tail -n 3 "${filePath}"`);
     const lines = stdout.split(/\r?\n/);
 
     // Find the first non-empty line working backwards
