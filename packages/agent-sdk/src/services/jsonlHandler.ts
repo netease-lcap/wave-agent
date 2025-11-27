@@ -131,18 +131,10 @@ export class JsonlHandler {
   }
 
   /**
-   * Read all messages from JSONL file with optional limit
+   * Read all messages from JSONL file
    * Includes metadata handling for backward compatibility
    */
-  async read(
-    filePath: string,
-    options?: { limit?: number },
-  ): Promise<SessionMessage[]> {
-    const opts = {
-      limit: Number.MAX_SAFE_INTEGER,
-      ...options,
-    };
-
+  async read(filePath: string): Promise<SessionMessage[]> {
     try {
       const content = await readFile(filePath, "utf8");
       const lines = content
@@ -151,11 +143,6 @@ export class JsonlHandler {
         .filter((line: string) => line.length > 0);
 
       if (lines.length === 0) {
-        return [];
-      }
-
-      // Handle limit edge cases
-      if (opts.limit !== undefined && opts.limit <= 0) {
         return [];
       }
 
@@ -178,12 +165,8 @@ export class JsonlHandler {
         }
       }
 
-      // Parse messages
-      for (
-        let i = startIndex;
-        i < lines.length && allMessages.length < opts.limit;
-        i++
-      ) {
+      // Parse all messages
+      for (let i = startIndex; i < lines.length; i++) {
         const line = lines[i];
 
         try {

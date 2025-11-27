@@ -284,59 +284,6 @@ describe("JsonlHandler.read()", () => {
     });
   });
 
-  describe("Limit parameter", () => {
-    it("should respect limit parameter", async () => {
-      const messages = [
-        createSampleMessage("user", "Message 1"),
-        createSampleMessage("assistant", "Message 2"),
-        createSampleMessage("user", "Message 3"),
-      ];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options = { limit: 2 };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(2);
-      expect((result[0].blocks[0] as TextBlock).content).toBe("Message 1");
-      expect((result[1].blocks[0] as TextBlock).content).toBe("Message 2");
-    });
-
-    it("should handle limit larger than available messages", async () => {
-      const messages = [createSampleMessage("user", "Only message")];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options = { limit: 10 };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(1);
-      expect((result[0].blocks[0] as TextBlock).content).toBe("Only message");
-    });
-
-    it("should handle limit of 0", async () => {
-      const messages = [createSampleMessage("user", "Message")];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options = { limit: 0 };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(0);
-    });
-
-    it("should handle negative limit gracefully", async () => {
-      const messages = [createSampleMessage("user", "Message")];
-      const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
-
-      const options = { limit: -5 };
-      const result = await handler.read("/test/file.jsonl", options);
-
-      expect(result).toHaveLength(0);
-    });
-  });
-
   describe("Error handling", () => {
     it("should handle non-existent file gracefully", async () => {
       mockReadFile.mockRejectedValue(

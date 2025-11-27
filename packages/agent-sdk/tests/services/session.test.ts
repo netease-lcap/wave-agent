@@ -87,7 +87,7 @@ describe("Session Management", () => {
     mockJsonlHandler = {
       read: vi.fn(),
       append: vi.fn(),
-      readMetadata: vi.fn().mockResolvedValue(null), // Default: no metadata (legacy sessions)
+      readMetadata: vi.fn(), // Mock will be set up per test
       getLastMessage: vi.fn().mockResolvedValue(null), // Default: no last message
       createSession: vi.fn().mockResolvedValue(undefined), // Default: successful session creation
     };
@@ -358,13 +358,24 @@ describe("Session Management", () => {
         timestamp: new Date().toISOString(),
       }));
 
-      // Mock readMetadata to return null (legacy sessions without metadata)
-      mockJsonlHandler.readMetadata.mockResolvedValue(null);
-
-      // Mock read for fallback (legacy sessions)
-      mockJsonlHandler.read
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // First session - first message
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]); // Second session - first message
+      // Mock readMetadata to return metadata (modern sessions)
+      const metadata1 = {
+        __meta__: true as const,
+        sessionId: session1Id,
+        sessionType: "main" as const,
+        workdir: testWorkdir,
+        startedAt: new Date().toISOString(),
+      };
+      const metadata2 = {
+        __meta__: true as const,
+        sessionId: session2Id,
+        sessionType: "main" as const,
+        workdir: testWorkdir,
+        startedAt: new Date().toISOString(),
+      };
+      mockJsonlHandler.readMetadata
+        .mockResolvedValueOnce(metadata1) // First session
+        .mockResolvedValueOnce(metadata2); // Second session
 
       // Mock getLastMessage for getting last messages
       mockJsonlHandler.getLastMessage
@@ -386,7 +397,7 @@ describe("Session Management", () => {
 
       // Verify that readMetadata was called
       expect(mockJsonlHandler.readMetadata).toHaveBeenCalled();
-      // Verify that getLastMessage was called for legacy sessions
+      // Verify that getLastMessage was called for session metadata
       expect(mockJsonlHandler.getLastMessage).toHaveBeenCalled();
     });
 
@@ -410,14 +421,25 @@ describe("Session Management", () => {
         timestamp: new Date().toISOString(),
       }));
 
-      // Mock readMetadata to return null (legacy sessions)
-      mockJsonlHandler.readMetadata.mockResolvedValue(null);
-
-      // Mock read for legacy sessions (first message)
-      mockJsonlHandler.read
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // First session - first message
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // Second session - first message
-        .mockResolvedValueOnce(messagesWithTimestamp); // Load full session data for latest
+      // Mock readMetadata to return metadata (modern sessions)
+      const metadata1 = {
+        __meta__: true as const,
+        sessionId: session1Id,
+        sessionType: "main" as const,
+        workdir: testWorkdir,
+        startedAt: new Date().toISOString(),
+      };
+      const metadata2 = {
+        __meta__: true as const,
+        sessionId: session2Id,
+        sessionType: "main" as const,
+        workdir: testWorkdir,
+        startedAt: new Date().toISOString(),
+      };
+      mockJsonlHandler.readMetadata
+        .mockResolvedValueOnce(metadata1) // First session
+        .mockResolvedValueOnce(metadata2) // Second session
+        .mockResolvedValueOnce(metadata2); // Load full session data for latest
 
       // Mock getLastMessage for last messages
       mockJsonlHandler.getLastMessage
@@ -428,6 +450,8 @@ describe("Session Management", () => {
           messagesWithTimestamp[messagesWithTimestamp.length - 1],
         ); // Second session - last message
 
+      // Mock read for loadSessionFromJsonl (used by getLatestSessionFromJsonl)
+      mockJsonlHandler.read.mockResolvedValueOnce(messagesWithTimestamp);
       const latestSession = await getLatestSessionFromJsonl(testWorkdir);
 
       expect(latestSession).toBeTruthy();
@@ -619,13 +643,15 @@ describe("Session Management", () => {
         `${sessionId}.jsonl`,
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-      // Mock readMetadata to return null (legacy session)
-      mockJsonlHandler.readMetadata.mockResolvedValueOnce(null);
-
-      // Mock read for legacy sessions (first message)
-      mockJsonlHandler.read.mockResolvedValueOnce([
-        allMessagesWithTimestamp[0],
-      ]);
+      // Mock readMetadata to return metadata (modern session)
+      const sessionMetadata = {
+        __meta__: true as const,
+        sessionId: sessionId,
+        sessionType: "main" as const,
+        workdir: testWorkdir,
+        startedAt: new Date().toISOString(),
+      };
+      mockJsonlHandler.readMetadata.mockResolvedValueOnce(sessionMetadata);
 
       // Mock getLastMessage for last message
       mockJsonlHandler.getLastMessage.mockResolvedValueOnce(
@@ -640,18 +666,23 @@ describe("Session Management", () => {
         `${sessionId}.jsonl`,
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-      // Mock readMetadata to return null (legacy session)
-      mockJsonlHandler.readMetadata.mockResolvedValueOnce(null);
-
-      // Mock read for legacy sessions (first message)
-      mockJsonlHandler.read
-        .mockResolvedValueOnce([allMessagesWithTimestamp[0]]) // First message for listing
-        .mockResolvedValueOnce(allMessagesWithTimestamp); // Full session data
+      // Mock readMetadata to return metadata (modern session)
+      const sessionMetadata2 = {
+        __meta__: true as const,
+        sessionId: sessionId,
+        sessionType: "main" as const,
+        workdir: testWorkdir,
+        startedAt: new Date().toISOString(),
+      };
+      mockJsonlHandler.readMetadata.mockResolvedValueOnce(sessionMetadata2);
 
       // Mock getLastMessage for last message
       mockJsonlHandler.getLastMessage.mockResolvedValueOnce(
         allMessagesWithTimestamp[allMessagesWithTimestamp.length - 1],
       );
+
+      // Mock read for loadSessionFromJsonl (used by getLatestSessionFromJsonl)
+      mockJsonlHandler.read.mockResolvedValueOnce(allMessagesWithTimestamp);
 
       const latestSession = await getLatestSessionFromJsonl(testWorkdir);
       expect(latestSession!.id).toBe(sessionId);
@@ -738,13 +769,24 @@ describe("Session Management", () => {
         timestamp: new Date().toISOString(),
       }));
 
-      // Mock readMetadata to return null for legacy sessions
-      mockJsonlHandler.readMetadata.mockResolvedValue(null);
-
-      // Mock read for legacy sessions (first messages)
-      mockJsonlHandler.read
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // session1, first message
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]); // session2, first message
+      // Mock readMetadata to return metadata for sessions
+      const metadata1b = {
+        __meta__: true as const,
+        sessionId: session1Id,
+        sessionType: "main" as const,
+        workdir: workdir1,
+        startedAt: new Date().toISOString(),
+      };
+      const metadata2b = {
+        __meta__: true as const,
+        sessionId: session2Id,
+        sessionType: "main" as const,
+        workdir: workdir2,
+        startedAt: new Date().toISOString(),
+      };
+      mockJsonlHandler.readMetadata
+        .mockResolvedValueOnce(metadata1b) // session1
+        .mockResolvedValueOnce(metadata2b); // session2
 
       // Mock getLastMessage for last messages
       mockJsonlHandler.getLastMessage
@@ -791,12 +833,23 @@ describe("Session Management", () => {
         .mockResolvedValueOnce(workdir2);
 
       // Mock readMetadata for includeAllWorkdirs call
-      mockJsonlHandler.readMetadata.mockResolvedValue(null);
-
-      // Mock read for legacy sessions (first messages)
-      mockJsonlHandler.read
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]) // session1, first message
-        .mockResolvedValueOnce([messagesWithTimestamp[0]]); // session2, first message
+      const metadata1c = {
+        __meta__: true as const,
+        sessionId: session1Id,
+        sessionType: "main" as const,
+        workdir: workdir1,
+        startedAt: new Date().toISOString(),
+      };
+      const metadata2c = {
+        __meta__: true as const,
+        sessionId: session2Id,
+        sessionType: "main" as const,
+        workdir: workdir2,
+        startedAt: new Date().toISOString(),
+      };
+      mockJsonlHandler.readMetadata
+        .mockResolvedValueOnce(metadata1c) // session1
+        .mockResolvedValueOnce(metadata2c); // session2
 
       // Mock getLastMessage for last messages
       mockJsonlHandler.getLastMessage
@@ -1015,20 +1068,33 @@ describe("Session Management", () => {
         files as unknown as Awaited<ReturnType<typeof readdir>>,
       );
 
-      // Mock readMetadata to return null (legacy sessions)
-      mockJsonlHandler.readMetadata.mockResolvedValue(null);
-
-      // Mock read for main sessions (first messages) + loading the latest session
-      mockJsonlHandler.read
-        .mockResolvedValueOnce([messages[0]]) // First read for older session
-        .mockResolvedValueOnce([messages[0]]) // First read for newer session
-        .mockResolvedValueOnce([messages[0]]); // Load the latest session
+      // Mock readMetadata to return metadata (modern sessions)
+      const mainMetadata1 = {
+        __meta__: true as const,
+        sessionId: olderMainSessionId,
+        sessionType: "main" as const,
+        workdir: testWorkdir,
+        startedAt: new Date().toISOString(),
+      };
+      const mainMetadata2 = {
+        __meta__: true as const,
+        sessionId: newerMainSessionId,
+        sessionType: "main" as const,
+        workdir: testWorkdir,
+        startedAt: new Date().toISOString(),
+      };
+      mockJsonlHandler.readMetadata
+        .mockResolvedValueOnce(mainMetadata1) // Older main session
+        .mockResolvedValueOnce(mainMetadata2) // Newer main session
+        .mockResolvedValueOnce(mainMetadata2); // Loading the latest session
 
       // Mock getLastMessage for main sessions (last messages)
       mockJsonlHandler.getLastMessage
         .mockResolvedValueOnce(messages[0]) // Last message for older session
         .mockResolvedValueOnce(messages[0]); // Last message for newer session
 
+      // Mock read for loadSessionFromJsonl (used by getLatestSessionFromJsonl)
+      mockJsonlHandler.read.mockResolvedValueOnce(messages);
       const latestSession = await getLatestSessionFromJsonl(testWorkdir);
 
       expect(latestSession).not.toBeNull();
