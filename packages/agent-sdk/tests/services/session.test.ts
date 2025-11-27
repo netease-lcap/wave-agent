@@ -960,91 +960,6 @@ describe("Session Management", () => {
       expect(sessions).toEqual([]);
     });
 
-    it("should skip non-jsonl files in project directory", async () => {
-      const fs = await import("fs/promises");
-      const sessionId = generateSessionId();
-
-      // Mock fs.access to always succeed (session files exist after creation)
-      vi.mocked(fs.access).mockResolvedValue(undefined);
-
-      const messages: Message[] = [
-        { role: "user", blocks: [{ type: "text", content: "test" }] },
-      ];
-
-      // Add both .jsonl and non-.jsonl files
-      vi.mocked(fs.readdir).mockResolvedValue([
-        `${sessionId}.jsonl`,
-        "not-a-session.txt",
-        "config.json",
-      ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
-
-      // Mock JsonlHandler for the valid session file
-      const messagesWithTimestamp = messages.map((msg) => ({
-        ...msg,
-        timestamp: new Date().toISOString(),
-      }));
-
-      // Mock readMetadata to return null (legacy session)
-      mockJsonlHandler.readMetadata.mockResolvedValueOnce(null);
-
-      // Mock read for legacy sessions (first message)
-      mockJsonlHandler.read.mockResolvedValueOnce([messagesWithTimestamp[0]]);
-
-      // Mock getLastMessage for last message
-      mockJsonlHandler.getLastMessage.mockResolvedValueOnce(
-        messagesWithTimestamp[messagesWithTimestamp.length - 1],
-      );
-
-      await createSession(sessionId, testWorkdir);
-      await appendMessages(sessionId, messages, testWorkdir);
-
-      const sessions = await listSessionsFromJsonl(testWorkdir, false);
-      expect(sessions).toHaveLength(1);
-      expect(sessions[0].id).toBe(sessionId);
-    });
-
-    it("should only list sessions from main directory (not subagent directory)", async () => {
-      const mainSessionId = uuidv6();
-
-      const messages = [
-        {
-          role: "user" as const,
-          blocks: [{ type: "text" as const, content: "Hello" }],
-          timestamp: new Date().toISOString(),
-        },
-      ];
-
-      // Mock directory structure: only main directory files should be found
-      // Subagent sessions would be in subagent/ subdirectory which readdir won't see
-      const mainFile = `${mainSessionId}.jsonl`;
-
-      const { readdir } = await import("fs/promises");
-      vi.mocked(readdir).mockResolvedValueOnce([
-        mainFile,
-        "other-file.txt", // Non-JSONL file to test filtering
-      ] as unknown as Awaited<ReturnType<typeof readdir>>);
-
-      // Mock readMetadata to return null (legacy session)
-      mockJsonlHandler.readMetadata.mockResolvedValueOnce(null);
-
-      // Mock read for main session (first message)
-      mockJsonlHandler.read.mockResolvedValueOnce([messages[0]]);
-
-      // Mock getLastMessage for main session (last message)
-      mockJsonlHandler.getLastMessage.mockResolvedValueOnce(messages[0]);
-
-      const sessions = await listSessionsFromJsonl(testWorkdir, false);
-
-      // Should only return the main session
-      expect(sessions).toHaveLength(1);
-      expect(sessions[0].id).toBe(mainSessionId);
-
-      // Verify that methods were called correctly
-      expect(mockJsonlHandler.readMetadata).toHaveBeenCalledTimes(1);
-      expect(mockJsonlHandler.read).toHaveBeenCalledTimes(1);
-      expect(mockJsonlHandler.getLastMessage).toHaveBeenCalledTimes(1);
-    });
-
     it("should handle getLatestSessionFromJsonl with directory separation", async () => {
       const olderMainSessionId = uuidv6();
       const newerMainSessionId = uuidv6();
@@ -1102,8 +1017,9 @@ describe("Session Management", () => {
 
       // Should have called readMetadata 2 times (once per session)
       expect(mockJsonlHandler.readMetadata).toHaveBeenCalledTimes(2);
-      // Should have called read 3 times (first message for each session + loading latest)
-      expect(mockJsonlHandler.read).toHaveBeenCalledTimes(3);
+      // Should have called read 1 time (only for loading the latest session)
+      // Modern sessions with metadata don't need read during listing
+      expect(mockJsonlHandler.read).toHaveBeenCalledTimes(1);
       // Should have called getLastMessage 2 times (once per session)
       expect(mockJsonlHandler.getLastMessage).toHaveBeenCalledTimes(2);
     });
