@@ -355,6 +355,11 @@ test("tool name printing during running stage", async () => {
     .spyOn(process.stdout, "write")
     .mockImplementation(() => true);
 
+  // Mock console.error to suppress stderr output during testing
+  const consoleErrorSpy = vi
+    .spyOn(console, "error")
+    .mockImplementation(() => {});
+
   try {
     await startPrintCli({ message: "test message" });
   } catch (error) {
@@ -429,6 +434,7 @@ test("tool name printing during running stage", async () => {
   expect(callCountAfterStart).toBe(callCountBeforeStart);
 
   stdoutSpy.mockRestore();
+  consoleErrorSpy.mockRestore();
 });
 
 afterEach(() => {
