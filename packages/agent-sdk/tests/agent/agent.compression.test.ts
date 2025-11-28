@@ -552,10 +552,11 @@ describe("Agent Message Compression Tests", () => {
     // Call sendMessage to trigger AI call (this will trigger compression)
     await agent.sendMessage("Test message");
 
-    // Verify saveSession was called at least twice:
+    // Verify saveSession was called at least 3rd:
+    // 0. At the start
     // 1. Before compression (to preserve original messages)
     // 2. At the end of sendAIMessage (normal session save)
-    expect(saveSessionSpy).toHaveBeenCalledTimes(2);
+    expect(saveSessionSpy).toHaveBeenCalledTimes(3);
 
     // Verify the order: saveSession should be called before compressMessages
     const saveSessionCalls = saveSessionSpy.mock.invocationCallOrder;
