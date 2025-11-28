@@ -428,19 +428,20 @@ async function processStreamingResponse(
             existingCall.function.name = functionDelta.name;
           }
 
+          // Emit start stage when a new tool call is created and we have the tool name
+          if (onToolUpdate && isNew && existingCall.function.name) {
+            onToolUpdate({
+              id: existingCall.id,
+              name: existingCall.function.name,
+              parameters: "", // Empty parameters for start stage
+              parametersChunk: "", // Empty chunk for start stage
+              stage: "start", // New tool call triggers start stage
+            });
+            isNew = false; // Prevent duplicate start emissions
+          }
+
           if (functionDelta.arguments) {
             existingCall.function.arguments += functionDelta.arguments;
-
-            // Emit start stage with empty parameters when first chunk arrives
-            if (onToolUpdate && isNew) {
-              onToolUpdate({
-                id: existingCall.id,
-                name: existingCall.function.name || "",
-                parameters: "", // Empty parameters for start stage
-                parametersChunk: "", // Empty chunk for start stage
-                stage: "start", // First chunk triggers start stage
-              });
-            }
           }
 
           // Emit streaming updates for all chunks with actual content (including first chunk)
