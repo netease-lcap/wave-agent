@@ -234,6 +234,9 @@ export class AIManager {
       return;
     }
 
+    // Save session in each recursion to ensure message persistence
+    await this.messageManager.saveSession();
+
     // Only create new AbortControllers for the initial call (recursionDepth === 0)
     // For recursive calls, reuse existing controllers to maintain abort signal
     let abortController: AbortController;
@@ -512,9 +515,6 @@ export class AIManager {
       // Handle token statistics and message compression
       await this.handleTokenUsageAndCompression(result.usage, abortController);
 
-      // Save session in each recursion to ensure message persistence
-      await this.messageManager.saveSession();
-
       // Check if there are tool operations, if so automatically initiate next AI service call
       if (toolCalls.length > 0) {
         // Check interruption status
@@ -534,10 +534,11 @@ export class AIManager {
       this.messageManager.addErrorBlock(
         error instanceof Error ? error.message : "Unknown error occurred",
       );
-      await this.messageManager.saveSession();
     } finally {
       // Only execute cleanup and hooks for the initial call
       if (recursionDepth === 0) {
+        // Save session in each recursion to ensure message persistence
+        await this.messageManager.saveSession();
         // Set loading to false first
         this.setIsLoading(false);
 
