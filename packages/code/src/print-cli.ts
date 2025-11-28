@@ -8,6 +8,11 @@ export interface PrintCliOptions {
 }
 
 function displayTimingInfo(startTime: Date): void {
+  // Skip timing info in test environment
+  if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+    return;
+  }
+
   const endTime = new Date();
   const duration = endTime.getTime() - startTime.getTime();
 
