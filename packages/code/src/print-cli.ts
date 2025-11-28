@@ -109,7 +109,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     displayTimingInfo(startTime);
 
     // Destroy agent and exit after sendMessage completes
-    agent.destroy();
+    await agent.destroy();
     process.exit(0);
   } catch (error) {
     console.error("Failed to send message:", error);
@@ -126,7 +126,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       // Display timing information even on error
       displayTimingInfo(startTime);
 
-      agent.destroy();
+      await agent.destroy();
     }
     process.exit(1);
   }
