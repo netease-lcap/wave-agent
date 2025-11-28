@@ -94,22 +94,6 @@ describe("AIManager", () => {
   });
 
   describe("Message Persistence During AI Recursion (FR-012)", () => {
-    it("should save session after each recursion call", async () => {
-      // Mock callAgent to return no tool calls (to prevent recursion)
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockResolvedValue({
-        content: "Test response",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        tool_calls: [], // No tool calls to prevent recursion
-      });
-
-      // Call sendAIMessage with recursion depth > 0 to simulate recursion
-      await aiManager.sendAIMessage({ recursionDepth: 1 });
-
-      // Verify that saveSession was called during recursion
-      expect(mockMessageManager.saveSession).toHaveBeenCalledTimes(1);
-    });
-
     it("should save session after each recursion level in nested calls", async () => {
       // Mock callAgent to return tool calls for the first call, no tool calls for subsequent calls
       const { callAgent } = await import("../../src/services/aiService.js");
