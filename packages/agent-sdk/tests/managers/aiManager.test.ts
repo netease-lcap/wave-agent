@@ -135,9 +135,10 @@ describe("AIManager", () => {
       await aiManager.sendAIMessage({ recursionDepth: 0 });
 
       // Verify that saveSession was called:
+      // - Once for user
       // - Once for the initial call (recursionDepth = 0)
       // - Once for the recursive call (recursionDepth = 1)
-      expect(mockMessageManager.saveSession).toHaveBeenCalledTimes(2);
+      expect(mockMessageManager.saveSession).toHaveBeenCalledTimes(3);
     });
 
     it("should save session even when AI call fails during recursion", async () => {
@@ -176,8 +177,8 @@ describe("AIManager", () => {
       // Call sendAIMessage with recursion depth = 0 (will trigger recursion that fails)
       await aiManager.sendAIMessage({ recursionDepth: 0 });
 
-      // Verify that saveSession was called for both initial and recursive calls
-      expect(mockMessageManager.saveSession).toHaveBeenCalledTimes(2);
+      // Verify that saveSession was called for user and both initial and recursive calls
+      expect(mockMessageManager.saveSession).toHaveBeenCalledTimes(3);
 
       // Verify that error was handled in the recursive call
       expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
