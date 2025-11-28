@@ -44,6 +44,18 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       process.stdout.write(chunk);
     },
 
+    // Tool block callback - display tool name when tool starts
+    onToolBlockUpdated: (params) => {
+      // Print tool name only during 'running' stage (happens once per tool call)
+      if (params.stage === "running" && params.name) {
+        process.stdout.write(`\n🔧 ${params.name}`);
+        if (params.compactParams) {
+          process.stdout.write(` ${params.compactParams}`);
+        }
+        process.stdout.write(`\n`);
+      }
+    },
+
     // Subagent block callbacks
     onSubAgentBlockAdded: (subagentId: string, parameters) => {
       // Display subagent creation with indentation

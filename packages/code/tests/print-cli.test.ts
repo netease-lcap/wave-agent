@@ -331,6 +331,100 @@ test("subagent content callbacks output correctly", async () => {
   consoleErrorSpy.mockRestore();
 });
 
+test("tool name printing during start stage", async () => {
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    abortMessage: vi.fn(),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+
+  let capturedCallbacks:
+    | Record<string, (...args: unknown[]) => void>
+    | undefined;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    capturedCallbacks = options.callbacks as Record<
+      string,
+      (...args: unknown[]) => void
+    >;
+    return mockAgent as unknown as Agent;
+  });
+
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+
+  try {
+    await startPrintCli({ message: "test message" });
+  } catch (error) {
+    // Expected when process.exit is called
+    expect(String(error)).toContain("process.exit called");
+  }
+
+  // Test onToolBlockUpdated callback - 'start' stage should print tool name
+  capturedCallbacks?.onToolBlockUpdated?.({
+    stage: "start",
+    name: "Read",
+    id: "call_123",
+    parameters: "",
+    parametersChunk: "",
+  });
+  expect(stdoutSpy).toHaveBeenCalledWith("\n🔧 Read\n");
+
+  // Test second call to same tool name but different ID - should print again since it's a separate tool call
+  capturedCallbacks?.onToolBlockUpdated?.({
+    stage: "start",
+    name: "Read",
+    id: "call_456",
+    parameters: "",
+    parametersChunk: "",
+  });
+  expect(stdoutSpy).toHaveBeenCalledWith("\n🔧 Read\n");
+
+  // Verify both calls were made
+  const readToolCalls = stdoutSpy.mock.calls.filter(
+    (call) => call[0] === "\n🔧 Read\n",
+  );
+  expect(readToolCalls).toHaveLength(2);
+
+  // Test different tool - should print
+  capturedCallbacks?.onToolBlockUpdated?.({
+    stage: "start",
+    name: "Write",
+    id: "call_789",
+    parameters: "",
+    parametersChunk: "",
+  });
+  expect(stdoutSpy).toHaveBeenCalledWith("\n🔧 Write\n");
+
+  // Test tool without name - should not print anything
+  const callCountBeforeNoName = stdoutSpy.mock.calls.length;
+  capturedCallbacks?.onToolBlockUpdated?.({
+    stage: "start",
+    name: undefined,
+    id: "call_no_name",
+    parameters: "",
+    parametersChunk: "",
+  });
+  const callCountAfterNoName = stdoutSpy.mock.calls.length;
+  expect(callCountAfterNoName).toBe(callCountBeforeNoName);
+
+  // Test non-start stage - should not print
+  const callCountBeforeRunning = stdoutSpy.mock.calls.length;
+  capturedCallbacks?.onToolBlockUpdated?.({
+    stage: "running",
+    name: "Edit",
+    id: "call_running",
+    parameters: "",
+    parametersChunk: "",
+  });
+  const callCountAfterRunning = stdoutSpy.mock.calls.length;
+  expect(callCountAfterRunning).toBe(callCountBeforeRunning);
+
+  stdoutSpy.mockRestore();
+});
+
 afterEach(() => {
   vi.clearAllMocks();
   mockExit.mockClear();
