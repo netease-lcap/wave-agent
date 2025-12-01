@@ -21,6 +21,10 @@ export async function main() {
       description: "Print response without interactive mode",
       type: "string",
     })
+    .option("show-stats", {
+      description: "Show timing and usage statistics in print mode",
+      type: "boolean",
+    })
     .option("list-sessions", {
       description: "List all available sessions",
       type: "boolean",
@@ -31,7 +35,10 @@ export async function main() {
     .example("$0 --restore session_123", "Restore specific session")
     .example("$0 --continue", "Continue from last session")
     .example("$0 --print 'Hello'", "Send message in print mode")
-    .example("$0 -p 'Hello'", "Send message in print mode (short)")
+    .example(
+      "$0 -p 'Hello' --show-stats",
+      "Send message in print mode with statistics",
+    )
     .example("$0 --list-sessions", "List all available sessions")
     .help("h")
     .parseAsync();
@@ -78,6 +85,7 @@ export async function main() {
       restoreSessionId: argv.restore,
       continueLastSession: argv.continue,
       message: argv.print,
+      showStats: argv.showStats,
     });
   }
 

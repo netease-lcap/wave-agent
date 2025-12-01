@@ -5,11 +5,12 @@ export interface PrintCliOptions {
   restoreSessionId?: string;
   continueLastSession?: boolean;
   message?: string;
+  showStats?: boolean;
 }
 
-function displayTimingInfo(startTime: Date): void {
-  // Skip timing info in test environment
-  if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+function displayTimingInfo(startTime: Date, showStats: boolean): void {
+  // Skip timing info in test environment or if stats are disabled
+  if (process.env.NODE_ENV === "test" || process.env.VITEST || !showStats) {
     return;
   }
 
@@ -23,7 +24,12 @@ function displayTimingInfo(startTime: Date): void {
 
 export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   const startTime = new Date();
-  const { restoreSessionId, continueLastSession, message } = options;
+  const {
+    restoreSessionId,
+    continueLastSession,
+    message,
+    showStats = false,
+  } = options;
 
   if (
     (!message || message.trim() === "") &&
@@ -114,16 +120,18 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     }
 
     // Display usage summary before exit
-    try {
-      const usages = agent.usages;
-      const sessionFilePath = agent.sessionFilePath;
-      displayUsageSummary(usages, sessionFilePath);
-    } catch {
-      // Silently ignore usage summary errors
+    if (showStats) {
+      try {
+        const usages = agent.usages;
+        const sessionFilePath = agent.sessionFilePath;
+        displayUsageSummary(usages, sessionFilePath);
+      } catch {
+        // Silently ignore usage summary errors
+      }
     }
 
     // Display timing information
-    displayTimingInfo(startTime);
+    displayTimingInfo(startTime, showStats);
 
     // Destroy agent and exit after sendMessage completes
     await agent.destroy();
@@ -132,16 +140,18 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     console.error("Failed to send message:", error);
     if (agent!) {
       // Display usage summary even on error
-      try {
-        const usages = agent.usages;
-        const sessionFilePath = agent.sessionFilePath;
-        displayUsageSummary(usages, sessionFilePath);
-      } catch {
-        // Silently ignore usage summary errors
+      if (showStats) {
+        try {
+          const usages = agent.usages;
+          const sessionFilePath = agent.sessionFilePath;
+          displayUsageSummary(usages, sessionFilePath);
+        } catch {
+          // Silently ignore usage summary errors
+        }
       }
 
       // Display timing information even on error
-      displayTimingInfo(startTime);
+      displayTimingInfo(startTime, showStats);
 
       await agent.destroy();
     }
