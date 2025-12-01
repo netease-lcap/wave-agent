@@ -25,7 +25,7 @@ A developer needs to pass custom environment variables (API keys, database URLs,
 
 ### User Story 2 - Live Settings Reload (Priority: P2)
 
-A developer is actively working and needs to modify their settings.json configuration (hooks, environment variables, etc.). They want these changes to take effect immediately without restarting the SDK, enabling rapid iteration on their configuration. The Wave Code CLI will benefit from this since it uses the SDK.
+A developer is actively working and needs to modify their settings.json configuration (hooks, environment variables, and other Wave settings). They want these changes to take effect immediately without restarting the SDK, enabling rapid iteration on their configuration. The Wave Code CLI will benefit from this since it uses the SDK.
 
 **Why this priority**: Eliminates workflow disruption and improves developer productivity by removing restart requirements for configuration changes.
 
@@ -35,7 +35,8 @@ A developer is actively working and needs to modify their settings.json configur
 
 1. **Given** Wave Agent SDK is running, **When** user modifies settings.json, **Then** changes are detected and applied to subsequent operations without restart
 2. **Given** Wave Agent SDK is processing requests, **When** settings.json is updated, **Then** new settings are used for the next agent execution
-3. **Given** invalid settings are saved, **When** file watcher detects changes, **Then** system logs error but continues with previous valid configuration
+3. **Given** environment configuration (AIGW_TOKEN, AIGW_URL, AIGW_MODEL, etc.) is changed in settings.json during operation, **When** the current agent performs new operations, **Then** agent usage tracking shows updated configuration for subsequent operations while preserving original configuration for completed operations
+4. **Given** invalid settings are saved, **When** file watcher detects changes, **Then** system logs error but continues with previous valid configuration
 
 ---
 
@@ -59,8 +60,8 @@ A developer frequently updates their AGENTS.md file to provide context and memor
 
 - What happens when settings.json contains malformed JSON during live reload?
 - How does system handle file system permission errors during file watching?
-- What happens when AGENTS.md file becomes very large (>1MB)?
-- How does system handle rapid consecutive file modifications?
+- What happens when AGENTS.md file becomes very large? System should validate content fits within model context limits and log warning if truncation is needed for system prompt.
+- How does system handle rapid consecutive file modifications? System should debounce changes with 100ms delay to prevent excessive reload operations.
 - What happens when file watchers fail to initialize on system startup?
 
 ## Requirements *(mandatory)*
@@ -75,14 +76,33 @@ A developer frequently updates their AGENTS.md file to provide context and memor
 - **FR-006**: System MUST keep AGENTS.md content in memory to avoid repeated file reads
 - **FR-007**: System MUST update memory content when file changes are detected
 - **FR-008**: System MUST continue operating with previous valid configuration when invalid changes are detected
-- **FR-009**: System MUST log configuration reload events and errors appropriately
+- **FR-009**: System MUST log configuration reload events at debug level, validation errors at warn level, and critical failures at error level
 - **FR-010**: File watchers MUST handle file deletion, creation, and modification events
 - **FR-011**: Environment variables from env field MUST be available to hook processes and agent execution context
 - **FR-012**: System MUST handle file watcher initialization failures by throwing descriptive error and preventing SDK startup
+- **FR-013**: When environment configuration changes (AIGW_TOKEN, AIGW_URL, AIGW_MODEL, AIGW_FAST_MODEL, TOKEN_LIMIT), existing agents MUST use new configuration for subsequent operations while preserving original configuration for in-progress operations
+- **FR-014**: configResolver MUST receive configuration updates through file watcher notifications and immediately update cached configuration values
+- **FR-015**: Constructor arguments MUST take precedence over settings.json env fields, which MUST take precedence over process environment variables
+- **FR-016**: System MUST log environment configuration changes at debug level to support troubleshooting and verification
+- **FR-017**: Testing validation through agent usage tracking MUST demonstrate updated configuration values for subsequent operations while preserving original configuration for completed operations
+- **FR-018**: System MUST validate AGENTS.md content fits within model context limits and log warning if truncation is needed for system prompt inclusion
+- **FR-019**: System MUST debounce file change events with 100ms delay to prevent excessive reload operations from rapid consecutive modifications
 
 ### Key Entities
 
 - **Settings Configuration**: Contains hooks, env variables, and other configuration options, watched for changes
-- **Memory Store**: In-memory storage for AGENTS.md content, updated on file changes  
+- **MemoryStore**: In-memory storage for AGENTS.md content, updated on file changes  
 - **File Watcher**: Monitors configuration files and triggers reload events
 - **Environment Context**: Merged environment variables from user and project settings, passed to agent processes
+
+## Clarifications
+
+### Session 2024-12-01
+
+- Q: When AIGW_MODEL changes in settings.json, should the configResolver immediately use the new model for in-progress operations or only for new operations? → A: Use new model for subsequent operations, preserve in-progress operations
+- Q: How should the system validate that agent usage tracking correctly reflects the new AIGW_MODEL after a settings change? → A: usage already have model info
+- Q: When should the configResolver check for updated AIGW_MODEL configuration - on every agent creation or through a separate configuration update mechanism? → A: Use file watcher to notify configResolver of configuration changes, existing agents should use updated config immediately
+- Q: Should the system provide any notification or logging when AIGW_MODEL changes are applied, or should it be silent? → A: Log changes at debug level for troubleshooting
+- Q: When testing with agent usage tracking, what specific behavior should indicate that the new AIGW_MODEL is working correctly? → A: Subsequent agent operations after settings change should show the updated model name in usage records while completed operations retain their original model
+
+**Note**: These clarifications apply to all environment configuration variables handled by configResolver.ts (AIGW_TOKEN, AIGW_URL, AIGW_MODEL, AIGW_FAST_MODEL, TOKEN_LIMIT). Existing agents should immediately use updated configuration for new operations.

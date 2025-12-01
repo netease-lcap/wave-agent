@@ -12,32 +12,39 @@ import {
   ConfigurationWatcher,
   type ConfigurationChangeEvent,
 } from "../services/configurationWatcher.js";
-import { MemoryStoreService } from "../services/memoryStore.js";
+
 import { type FileWatchEvent } from "../services/fileWatcher.js";
+import { configResolver } from "../utils/configResolver.js";
 import { join } from "path";
 import { homedir } from "os";
-import type { HookManager } from "./hookManager.js";
+import { CONFIGURATION_EVENTS } from "../constants/events.js";
 
 export interface LiveConfigManagerOptions {
   workdir: string;
   logger?: Logger;
-  hookManager?: HookManager;
-  memoryStore?: MemoryStoreService;
+  onConfigurationChanged?: () => void; // Callback for when configuration changes
+  onMemoryStoreFileChanged?: (
+    filePath: string,
+    changeType: "add" | "change" | "unlink",
+  ) => Promise<void>; // Callback for memory store file changes
 }
 
 export class LiveConfigManager {
   private readonly workdir: string;
   private readonly logger?: Logger;
-  private readonly hookManager?: HookManager;
-  private readonly memoryStore?: MemoryStoreService;
+  private readonly onConfigurationChanged?: () => void;
+  private readonly onMemoryStoreFileChanged?: (
+    filePath: string,
+    changeType: "add" | "change" | "unlink",
+  ) => Promise<void>;
   private configurationWatcher?: ConfigurationWatcher;
   private isInitialized: boolean = false;
 
   constructor(options: LiveConfigManagerOptions) {
     this.workdir = options.workdir;
     this.logger = options.logger;
-    this.hookManager = options.hookManager;
-    this.memoryStore = options.memoryStore;
+    this.onConfigurationChanged = options.onConfigurationChanged;
+    this.onMemoryStoreFileChanged = options.onMemoryStoreFileChanged;
   }
 
   /**
@@ -53,8 +60,8 @@ export class LiveConfigManager {
       // Initialize configuration watcher for hook settings
       await this.initializeConfigurationWatcher();
 
-      // Initialize memory store watching for AGENTS.md if available
-      if (this.memoryStore) {
+      // Initialize memory store watching for AGENTS.md if callback is available
+      if (this.onMemoryStoreFileChanged) {
         await this.initializeMemoryStoreWatching();
       }
 
@@ -100,13 +107,6 @@ export class LiveConfigManager {
    * Initialize configuration watcher for hook settings
    */
   private async initializeConfigurationWatcher(): Promise<void> {
-    if (!this.hookManager) {
-      this.logger?.debug(
-        "Live Config: No hook manager provided, skipping configuration watching",
-      );
-      return;
-    }
-
     this.configurationWatcher = new ConfigurationWatcher(
       this.workdir,
       this.logger,
@@ -114,7 +114,7 @@ export class LiveConfigManager {
 
     // Set up configuration change handler using EventEmitter pattern
     this.configurationWatcher.on(
-      "configurationChanged",
+      CONFIGURATION_EVENTS.CONFIGURATION_CHANGE,
       (event: ConfigurationChangeEvent) => {
         this.handleConfigurationChange(event);
       },
@@ -130,9 +130,9 @@ export class LiveConfigManager {
    * Initialize memory store watching for AGENTS.md files
    */
   private async initializeMemoryStoreWatching(): Promise<void> {
-    if (!this.memoryStore || !this.configurationWatcher) {
+    if (!this.onMemoryStoreFileChanged || !this.configurationWatcher) {
       this.logger?.debug(
-        "Live Config: Memory store or configuration watcher not available, skipping AGENTS.md watching",
+        "Live Config: Memory store callback or configuration watcher not available, skipping AGENTS.md watching",
       );
       return;
     }
@@ -165,18 +165,28 @@ export class LiveConfigManager {
       `Live Config: Configuration change detected: ${event.type} at ${event.path}`,
     );
 
-    if (this.hookManager) {
+    // Invalidate and refresh configuration cache for live environment variable updates
+    configResolver.invalidateCache(this.workdir);
+    configResolver.refreshCache(this.workdir);
+
+    // Trigger Agent configuration update callback if provided
+    if (this.onConfigurationChanged) {
       try {
-        // Delegate to hook manager for hook-specific configuration reloading
-        this.hookManager.loadConfigurationFromSettings();
-        this.logger?.info(
-          "Live Config: Hook configuration reloaded successfully",
-        );
+        this.logger?.info("Live Config: Triggering Agent configuration update");
+        this.onConfigurationChanged();
       } catch (error) {
         this.logger?.error(
-          `Live Config: Failed to reload hook configuration: ${(error as Error).message}`,
+          `Live Config: Error in configuration change callback: ${(error as Error).message}`,
         );
       }
+    }
+
+    // Log cache status after refresh
+    const cacheStatus = configResolver.getCacheStatus();
+    if (cacheStatus) {
+      this.logger?.info(
+        `Live Config: Configuration cache refreshed - ${cacheStatus.envVarCount} environment variables loaded`,
+      );
     }
   }
 
@@ -186,7 +196,7 @@ export class LiveConfigManager {
   private async handleMemoryStoreFileChange(
     event: FileWatchEvent,
   ): Promise<void> {
-    if (!this.memoryStore) {
+    if (!this.onMemoryStoreFileChanged) {
       return;
     }
 
@@ -195,19 +205,17 @@ export class LiveConfigManager {
         `Live Config: AGENTS.md ${event.type} detected: ${event.path}`,
       );
 
-      if (event.type === "delete") {
-        // Handle file deletion gracefully
-        this.memoryStore.removeContent(event.path);
-        this.logger?.info(
-          "Live Config: Removed AGENTS.md from memory store due to file deletion",
-        );
-      } else {
-        // Update memory store content
-        await this.memoryStore.updateContent(event.path);
-        this.logger?.info(
-          "Live Config: Updated AGENTS.md content in memory store",
-        );
-      }
+      const changeType: "add" | "change" | "unlink" =
+        event.type === "delete"
+          ? "unlink"
+          : event.type === "create"
+            ? "add"
+            : "change";
+      await this.onMemoryStoreFileChanged(event.path, changeType);
+
+      this.logger?.info(
+        `Live Config: Memory store updated for AGENTS.md ${event.type}`,
+      );
     } catch (error) {
       this.logger?.error(
         `Live Config: Failed to handle AGENTS.md file change: ${(error as Error).message}`,

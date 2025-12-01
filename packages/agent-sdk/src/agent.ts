@@ -92,6 +92,13 @@ export class Agent {
   private modelConfig: ModelConfig;
   private tokenLimit: number;
 
+  // Original constructor values for preserving overrides during live updates
+  private readonly constructorApiKey?: string;
+  private readonly constructorBaseURL?: string;
+  private readonly constructorAgentModel?: string;
+  private readonly constructorFastModel?: string;
+  private readonly constructorTokenLimit?: number;
+
   /**
    * Agent constructor - handles configuration resolution and validation
    *
@@ -104,16 +111,31 @@ export class Agent {
   private constructor(options: AgentOptions) {
     const { callbacks = {}, logger, workdir, systemPrompt } = options;
 
-    // Resolve configuration from constructor args and environment variables
+    // Set working directory first so it can be used for configuration resolution
+    this.workdir = workdir || process.cwd();
+
+    // Store original constructor values for live config updates
+    this.constructorApiKey = options.apiKey;
+    this.constructorBaseURL = options.baseURL;
+    this.constructorAgentModel = options.agentModel;
+    this.constructorFastModel = options.fastModel;
+    this.constructorTokenLimit = options.tokenLimit;
+
+    // Resolve configuration from constructor args and environment variables with live config support
     const gatewayConfig = configResolver.resolveGatewayConfig(
       options.apiKey,
       options.baseURL,
+      this.workdir,
     );
     const modelConfig = configResolver.resolveModelConfig(
       options.agentModel,
       options.fastModel,
+      this.workdir,
     );
-    const tokenLimit = configResolver.resolveTokenLimit(options.tokenLimit);
+    const tokenLimit = configResolver.resolveTokenLimit(
+      options.tokenLimit,
+      this.workdir,
+    );
 
     // Validate resolved configuration
     configValidator.validateGatewayConfig(gatewayConfig);
@@ -124,7 +146,6 @@ export class Agent {
     );
 
     this.logger = logger; // Save the passed logger
-    this.workdir = workdir || process.cwd(); // Set working directory, default to current working directory
     this.systemPrompt = systemPrompt; // Save custom system prompt
 
     // Set global logger for SDK-wide access
@@ -147,17 +168,50 @@ export class Agent {
 
     this.memoryStore = new MemoryStoreService(this.logger); // Initialize memory store service
     initializeMemoryStore(this.memoryStore); // Initialize global memory store reference
-    this.hookManager = new HookManager(
-      this.workdir,
-      undefined,
-      this.logger,
-      this.memoryStore,
-    ); // Initialize hooks manager
+    this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
     this.liveConfigManager = new LiveConfigManager({
       workdir: this.workdir,
       logger: this.logger,
-      hookManager: this.hookManager,
-      memoryStore: this.memoryStore,
+      onConfigurationChanged: () => {
+        // Update Agent configuration (AIManager, SubagentManager)
+        this.updateConfiguration();
+
+        // Reload hook configuration
+        try {
+          this.hookManager.loadConfigurationFromSettings();
+          this.logger?.info(
+            "Live Config: Hook configuration reloaded successfully",
+          );
+        } catch (error) {
+          this.logger?.error(
+            `Live Config: Failed to reload hook configuration: ${(error as Error).message}`,
+          );
+        }
+      },
+      onMemoryStoreFileChanged: async (
+        filePath: string,
+        changeType: "add" | "change" | "unlink",
+      ) => {
+        try {
+          if (changeType === "unlink") {
+            // Handle file deletion gracefully
+            this.memoryStore.removeContent(filePath);
+            this.logger?.info(
+              "Live Config: Removed AGENTS.md from memory store due to file deletion",
+            );
+          } else {
+            // Update memory store content for add/change
+            await this.memoryStore.updateContent(filePath);
+            this.logger?.info(
+              "Live Config: Updated AGENTS.md content in memory store",
+            );
+          }
+        } catch (error) {
+          this.logger?.error(
+            `Live Config: Failed to update memory store: ${(error as Error).message}`,
+          );
+        }
+      },
     }); // Initialize live configuration manager
 
     // Initialize MessageManager
@@ -749,5 +803,88 @@ export class Agent {
   /** Get all custom commands */
   public getCustomCommands(): CustomSlashCommand[] {
     return this.slashCommandManager.getCustomCommands();
+  }
+
+  // ========== Live Configuration Management ==========
+
+  /**
+   * Update Agent configuration from live settings.json changes
+   * This method refreshes all configuration-dependent components with new values
+   * Note: Constructor values still take precedence over live configuration
+   */
+  public updateConfiguration(): void {
+    try {
+      this.logger?.info(
+        "Live Config: Updating Agent configuration from live settings",
+      );
+
+      // Re-resolve configuration with current workdir, preserving constructor overrides
+      // We need to track what was explicitly provided in constructor vs. what should use live config
+      const newGatewayConfig = configResolver.resolveGatewayConfig(
+        this.constructorApiKey, // Preserve constructor override if provided
+        this.constructorBaseURL, // Preserve constructor override if provided
+        this.workdir,
+      );
+      const newModelConfig = configResolver.resolveModelConfig(
+        this.constructorAgentModel, // Preserve constructor override if provided
+        this.constructorFastModel, // Preserve constructor override if provided
+        this.workdir,
+      );
+      const newTokenLimit = configResolver.resolveTokenLimit(
+        this.constructorTokenLimit,
+        this.workdir,
+      );
+
+      // Validate new configuration
+      configValidator.validateGatewayConfig(newGatewayConfig);
+      configValidator.validateTokenLimit(newTokenLimit);
+      configValidator.validateModelConfig(
+        newModelConfig.agentModel,
+        newModelConfig.fastModel,
+      );
+
+      // Update stored configuration
+      this.gatewayConfig = newGatewayConfig;
+      this.modelConfig = newModelConfig;
+      this.tokenLimit = newTokenLimit;
+
+      // Update AIManager with new configuration
+      this.aiManager.updateConfiguration(
+        newGatewayConfig,
+        newModelConfig,
+        newTokenLimit,
+      );
+
+      // Update SubagentManager with new configuration
+      this.subagentManager.updateConfiguration(
+        newGatewayConfig,
+        newModelConfig,
+        newTokenLimit,
+      );
+
+      this.logger?.info(
+        `Live Config: Agent configuration updated successfully - model: ${newModelConfig.agentModel}, tokenLimit: ${newTokenLimit}`,
+      );
+    } catch (error) {
+      this.logger?.error(
+        `Live Config: Failed to update Agent configuration: ${(error as Error).message}`,
+      );
+      // Don't throw - continue with previous configuration
+    }
+  }
+
+  /**
+   * Get current Agent configuration for debugging
+   */
+  public getCurrentConfiguration(): {
+    gatewayConfig: GatewayConfig;
+    modelConfig: ModelConfig;
+    tokenLimit: number;
+  } {
+    return {
+      gatewayConfig: { ...this.gatewayConfig },
+      modelConfig: { ...this.modelConfig },
+      tokenLimit: this.tokenLimit,
+    };
   }
 }
