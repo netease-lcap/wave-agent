@@ -1,6 +1,26 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
+import { MemoryStoreService } from "./memoryStore.js";
+
+// Global memory store instance for project memory files
+let globalMemoryStore: MemoryStoreService | null = null;
+
+/**
+ * Initialize global memory store
+ */
+export const initializeMemoryStore = (
+  memoryStore: MemoryStoreService,
+): void => {
+  globalMemoryStore = memoryStore;
+};
+
+/**
+ * Get current memory store instance
+ */
+export const getMemoryStore = (): MemoryStoreService | null => {
+  return globalMemoryStore;
+};
 
 // Project memory related methods
 export const isMemoryMessage = (message: string): boolean => {
@@ -40,6 +60,18 @@ export const addMemory = async (
 
     // Write file
     await fs.writeFile(memoryFilePath, updatedContent, "utf-8");
+
+    // Update memory store if available
+    if (globalMemoryStore) {
+      try {
+        await globalMemoryStore.updateContent(memoryFilePath);
+      } catch (error) {
+        console.warn(
+          `Failed to update memory store for ${memoryFilePath}:`,
+          error,
+        );
+      }
+    }
 
     // logger.debug(`Memory added to ${memoryFilePath}:`, message);
   } catch (error) {
@@ -110,10 +142,25 @@ export const getUserMemoryContent = async (): Promise<string> => {
   }
 };
 
-// Read project memory file content
+// Read project memory file content with memory store optimization
 export const readMemoryFile = async (workdir: string): Promise<string> => {
+  const memoryFilePath = path.join(workdir, "AGENTS.md");
+
+  // Use memory store if available for optimized access
+  if (globalMemoryStore) {
+    try {
+      return await globalMemoryStore.getContent(memoryFilePath);
+    } catch (error) {
+      // Fallback to direct file access on memory store error
+      console.warn(
+        `Memory store access failed for ${memoryFilePath}, falling back to file system:`,
+        error,
+      );
+    }
+  }
+
+  // Fallback to direct file access (original behavior)
   try {
-    const memoryFilePath = path.join(workdir, "AGENTS.md");
     return await fs.readFile(memoryFilePath, "utf-8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {

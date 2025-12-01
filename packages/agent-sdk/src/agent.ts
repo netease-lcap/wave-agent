@@ -26,6 +26,9 @@ import type {
   Usage,
 } from "./types/index.js";
 import { HookManager } from "./managers/hookManager.js";
+import { MemoryStoreService } from "./services/memoryStore.js";
+import { initializeMemoryStore } from "./services/memory.js";
+import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
@@ -77,6 +80,8 @@ export class Agent {
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private hookManager: HookManager; // Add hooks manager instance
+  private memoryStore: MemoryStoreService; // Add memory store service
+  private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
   private _usages: Usage[] = []; // Usage tracking array
@@ -136,7 +141,20 @@ export class Agent {
       logger: this.logger,
     }); // Initialize tool registry, pass MCP manager
 
-    this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
+    this.memoryStore = new MemoryStoreService(this.logger); // Initialize memory store service
+    initializeMemoryStore(this.memoryStore); // Initialize global memory store reference
+    this.hookManager = new HookManager(
+      this.workdir,
+      undefined,
+      this.logger,
+      this.memoryStore,
+    ); // Initialize hooks manager
+    this.liveConfigManager = new LiveConfigManager({
+      workdir: this.workdir,
+      logger: this.logger,
+      hookManager: this.hookManager,
+      memoryStore: this.memoryStore,
+    }); // Initialize live configuration manager
 
     // Initialize MessageManager
     this.messageManager = new MessageManager({
@@ -257,6 +275,11 @@ export class Agent {
     return this.workdir;
   }
 
+  /** Get merged environment variables from Wave configuration */
+  public get environmentVars(): Record<string, string> | undefined {
+    return this.hookManager.getEnvironmentVars();
+  }
+
   /** Get AI loading status */
   public get isLoading(): boolean {
     return this.aiManager.isLoading;
@@ -374,6 +397,19 @@ export class Agent {
     } catch (error) {
       this.logger?.error("Failed to initialize hooks system:", error);
       // Don't throw error to prevent app startup failure
+    }
+
+    // Initialize live configuration reload
+    try {
+      this.logger?.debug("Initializing live configuration reload...");
+      await this.liveConfigManager.initialize();
+      this.logger?.debug("Live configuration reload initialized successfully");
+    } catch (error) {
+      this.logger?.error(
+        "Failed to initialize live configuration reload:",
+        error,
+      );
+      // Don't throw error to prevent app startup failure - continue without live reload
     }
 
     // Handle session restoration or set provided messages
@@ -524,6 +560,22 @@ export class Agent {
     await this.mcpManager.cleanup();
     // Cleanup subagent manager
     this.subagentManager.cleanup();
+    // Cleanup live configuration reload
+    try {
+      await this.liveConfigManager.shutdown();
+    } catch (error) {
+      this.logger?.error(
+        "Error shutting down live configuration reload:",
+        error,
+      );
+    }
+    // Cleanup memory store
+    try {
+      this.memoryStore.clear();
+      this.logger?.debug("Memory store cleared successfully");
+    } catch (error) {
+      this.logger?.error("Error clearing memory store:", error);
+    }
   }
 
   public async sendMessage(

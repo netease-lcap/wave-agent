@@ -164,7 +164,7 @@ describe("Hook Types", () => {
 
 describe("Type Integration", () => {
   it("should work together for complete validation", () => {
-    const completeConfig = {
+    const completeWaveConfig = {
       hooks: {
         PostToolUse: [
           {
@@ -183,17 +183,25 @@ describe("Type Integration", () => {
           },
         ],
       },
+      env: {
+        NODE_ENV: "test",
+        DEBUG: "true",
+      },
     };
 
     // Validate the complete structure using individual validators
-    Object.entries(completeConfig.hooks).forEach(([event, configs]) => {
-      expect(isValidHookEvent(event)).toBe(true);
-      configs.forEach((config) => {
-        expect(isValidHookEventConfig(config)).toBe(true);
-        config.hooks.forEach((hookCommand) => {
-          expect(isValidHookCommand(hookCommand)).toBe(true);
-        });
+    if (completeWaveConfig.hooks) {
+      Object.entries(completeWaveConfig.hooks).forEach(([event, configs]) => {
+        expect(isValidHookEvent(event)).toBe(true);
+        if (configs) {
+          configs.forEach((config) => {
+            expect(isValidHookEventConfig(config)).toBe(true);
+            config.hooks.forEach((hookCommand) => {
+              expect(isValidHookCommand(hookCommand)).toBe(true);
+            });
+          });
+        }
       });
-    });
+    }
   });
 });

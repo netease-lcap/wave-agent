@@ -7,6 +7,7 @@ import {
   isCommandSafe,
 } from "../../src/services/hook.js";
 import type {
+  WaveConfiguration,
   PartialHookConfiguration,
   HookExecutionContext,
   HookExecutionResult,
@@ -50,54 +51,64 @@ describe("HookManager", () => {
     manager = new HookManager("/test/workdir", mockMatcher);
   });
 
-  describe("Configuration Management", () => {
+  describe("Wave Configuration Management", () => {
     it("should initialize with no configuration", () => {
       expect(manager.getConfiguration()).toBeUndefined();
     });
 
-    it("should load configuration successfully", () => {
-      const config: PartialHookConfiguration = {
-        PostToolUse: [
-          {
-            matcher: "Edit",
-            hooks: [{ type: "command", command: "test-hook" }],
-          },
-        ],
+    it("should load wave configuration successfully", () => {
+      const waveConfig: WaveConfiguration = {
+        hooks: {
+          PostToolUse: [
+            {
+              matcher: "Edit",
+              hooks: [{ type: "command", command: "test-hook" }],
+            },
+          ],
+        },
+        env: {
+          NODE_ENV: "test",
+        },
       };
 
-      manager.loadConfiguration(config);
+      // Load just the hooks portion for now (until HookManager is updated)
+      manager.loadConfiguration(waveConfig.hooks);
       const loadedConfig = manager.getConfiguration();
 
       expect(loadedConfig?.PostToolUse).toBeDefined();
       expect(loadedConfig?.PostToolUse).toHaveLength(1);
     });
 
-    it("should load partial configuration", () => {
-      const config: PartialHookConfiguration = {
-        PostToolUse: [
-          {
-            hooks: [{ type: "command", command: "test-hook" }],
-          },
-        ],
+    it("should load partial wave configuration", () => {
+      const waveConfig: WaveConfiguration = {
+        hooks: {
+          PostToolUse: [
+            {
+              hooks: [{ type: "command", command: "test-hook" }],
+            },
+          ],
+        },
       };
 
-      manager.loadConfiguration(config);
+      manager.loadConfiguration(waveConfig.hooks);
       const loadedConfig = manager.getConfiguration();
 
       expect(loadedConfig?.PostToolUse).toBeDefined();
       expect(loadedConfig?.PostToolUse).toHaveLength(1);
     });
 
-    it("should clear configuration", () => {
-      const config: PartialHookConfiguration = {
-        PostToolUse: [
-          {
-            hooks: [{ type: "command", command: "test-hook" }],
-          },
-        ],
+    it("should clear wave configuration", () => {
+      const waveConfig: WaveConfiguration = {
+        hooks: {
+          PostToolUse: [
+            {
+              hooks: [{ type: "command", command: "test-hook" }],
+            },
+          ],
+        },
       };
 
-      manager.loadConfiguration(config);
+      manager.loadConfiguration(waveConfig.hooks);
       expect(manager.getConfiguration()).not.toBeUndefined();
 
       manager.clearConfiguration();
@@ -107,16 +118,18 @@ describe("HookManager", () => {
 
   describe("Hook Execution", () => {
     it("should execute hooks for event", async () => {
-      const config: PartialHookConfiguration = {
-        PostToolUse: [
-          {
-            matcher: "Edit",
-            hooks: [{ type: "command", command: "test-hook" }],
-          },
-        ],
+      const waveConfig: WaveConfiguration = {
+        hooks: {
+          PostToolUse: [
+            {
+              matcher: "Edit",
+              hooks: [{ type: "command", command: "test-hook" }],
+            },
+          ],
+        },
       };
 
-      manager.loadConfiguration(config);
+      manager.loadConfiguration(waveConfig.hooks);
 
       const context: HookExecutionContext = {
         event: "PostToolUse",
@@ -143,15 +156,17 @@ describe("HookManager", () => {
     });
 
     it("should handle event with no matching configurations", async () => {
-      const config: PartialHookConfiguration = {
-        UserPromptSubmit: [
-          {
-            hooks: [{ type: "command", command: "test-hook" }],
-          },
-        ],
+      const waveConfig: WaveConfiguration = {
+        hooks: {
+          UserPromptSubmit: [
+            {
+              hooks: [{ type: "command", command: "test-hook" }],
+            },
+          ],
+        },
       };
 
-      manager.loadConfiguration(config);
+      manager.loadConfiguration(waveConfig.hooks);
 
       const context: HookExecutionContext = {
         event: "Stop", // Different event
@@ -165,13 +180,13 @@ describe("HookManager", () => {
   });
 
   describe("Error Handling", () => {
-    it("should handle invalid configuration gracefully", () => {
+    it("should handle invalid wave configuration gracefully", () => {
       // This should not throw
       manager.loadConfiguration({});
       expect(manager.getConfiguration()).toEqual({});
     });
 
-    it("should handle null configuration", () => {
+    it("should handle null wave configuration", () => {
       // This should not throw
       manager.loadConfiguration(null as unknown as PartialHookConfiguration);
       expect(manager.getConfiguration()).toEqual({});
