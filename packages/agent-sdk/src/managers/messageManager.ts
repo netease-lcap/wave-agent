@@ -460,6 +460,7 @@ export class MessageManager {
   public compressMessagesAndUpdateSession(
     insertIndex: number,
     compressedContent: string,
+    usage?: Usage,
   ): void {
     const currentMessages = this.messages;
 
@@ -473,6 +474,7 @@ export class MessageManager {
           sessionId: this.sessionId,
         },
       ],
+      ...(usage && { usage }),
     };
 
     // Convert negative index to positive index

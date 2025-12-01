@@ -175,26 +175,28 @@ export class AIManager {
             abortSignal: abortController.signal,
           });
 
-          // Execute message reconstruction and sessionId update after compression
-          this.messageManager.compressMessagesAndUpdateSession(
-            insertIndex,
-            compressionResult.content,
-          );
-
           // Handle usage tracking for compression operations
+          let compressionUsage: Usage | undefined;
           if (compressionResult.usage) {
-            const usage: Usage = {
+            compressionUsage = {
               prompt_tokens: compressionResult.usage.prompt_tokens,
               completion_tokens: compressionResult.usage.completion_tokens,
               total_tokens: compressionResult.usage.total_tokens,
               model: this.modelConfig.fastModel,
               operation_type: "compress",
             };
+          }
 
-            // Notify Agent to add to usage tracking
-            if (this.callbacks?.onUsageAdded) {
-              this.callbacks.onUsageAdded(usage);
-            }
+          // Execute message reconstruction and sessionId update after compression
+          this.messageManager.compressMessagesAndUpdateSession(
+            insertIndex,
+            compressionResult.content,
+            compressionUsage,
+          );
+
+          // Notify Agent to add to usage tracking
+          if (compressionUsage && this.callbacks?.onUsageAdded) {
+            this.callbacks.onUsageAdded(compressionUsage);
           }
 
           this.logger?.debug(
