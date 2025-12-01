@@ -30,6 +30,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.2",
     "@vscode/ripgrep": "^1.15.14",
+    "chokidar": "^5.0.0",
     "diff": "^8.0.2",
     "glob": "^11.0.3",
     "minimatch": "^10.0.3",
