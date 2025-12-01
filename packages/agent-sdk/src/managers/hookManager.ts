@@ -303,7 +303,7 @@ export class HookManager {
     if (event === "UserPromptSubmit" && result.stdout?.trim()) {
       // Inject stdout as user message context for UserPromptSubmit
       messageManager.addUserMessage({
-        content: result.stdout.trim(),
+        content: `<!-- Auto triggered by hooks -->\n${result.stdout.trim()}`,
         source: MessageSource.HOOK,
       });
     }
@@ -352,7 +352,7 @@ export class HookManager {
       case "PostToolUse":
         // Show error to Wave Agent via user message and allow AI to continue
         messageManager.addUserMessage({
-          content: errorMessage,
+          content: `<!-- Auto triggered by hooks -->\n${errorMessage}`,
           source: MessageSource.HOOK,
         });
         return { shouldBlock: false };
@@ -360,7 +360,7 @@ export class HookManager {
       case "Stop":
         // Show error to Wave Agent via user message and block stopping to continue conversation
         messageManager.addUserMessage({
-          content: errorMessage,
+          content: `<!-- Auto triggered by hooks -->\n${errorMessage}`,
           source: MessageSource.HOOK,
         });
         return { shouldBlock: true, errorMessage };
