@@ -34,6 +34,7 @@ import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
 import { loadSessionFromJsonl } from "./services/session.js";
 import type { SubagentConfiguration } from "./utils/subagentParser.js";
+import { setGlobalLogger } from "./utils/globalLogger.js";
 
 /**
  * Configuration options for Agent instances
@@ -125,6 +126,9 @@ export class Agent {
     this.logger = logger; // Save the passed logger
     this.workdir = workdir || process.cwd(); // Set working directory, default to current working directory
     this.systemPrompt = systemPrompt; // Save custom system prompt
+
+    // Set global logger for SDK-wide access
+    setGlobalLogger(logger || null);
 
     // Store resolved configuration
     this.gatewayConfig = gatewayConfig;

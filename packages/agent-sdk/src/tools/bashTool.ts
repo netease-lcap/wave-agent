@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from "child_process";
+import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 
 /**
@@ -133,8 +134,8 @@ export const bashTool: ToolPlugin = {
                 if (child.pid && !child.killed) {
                   try {
                     process.kill(-child.pid, "SIGKILL");
-                  } catch {
-                    // logger.error("Failed to force kill process:", killError);
+                  } catch (killError) {
+                    logger.error("Failed to force kill process:", killError);
                   }
                 }
               }, 1000);
@@ -147,8 +148,8 @@ export const bashTool: ToolPlugin = {
                     child.kill("SIGKILL");
                   }
                 }, 1000);
-              } catch {
-                // logger.error("Failed to kill child process:", directKillError);
+              } catch (directKillError) {
+                logger.error("Failed to kill child process:", directKillError);
               }
             }
           }

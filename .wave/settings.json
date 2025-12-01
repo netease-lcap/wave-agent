@@ -11,5 +11,8 @@
         ]
       }
     ]
+  },
+  "env": {
+    "AIGW_MODEL": "deepseek-v3.1-latest"
   }
 }

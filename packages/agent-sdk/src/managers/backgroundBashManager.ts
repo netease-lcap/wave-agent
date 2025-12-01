@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { logger } from "../utils/globalLogger.js";
 import type { BackgroundShell } from "../types/index.js";
 
 export interface BackgroundBashManagerCallbacks {
@@ -127,8 +128,8 @@ export class BackgroundBashManager {
           .split("\n")
           .filter((line) => regex.test(line))
           .join("\n");
-      } catch {
-        // logger.warn(`Invalid filter regex: ${filter}`, error);
+      } catch (error) {
+        logger.warn(`Invalid filter regex: ${filter}`, error);
       }
     }
 
@@ -159,8 +160,8 @@ export class BackgroundBashManager {
           ) {
             try {
               process.kill(-shell.process.pid, "SIGKILL");
-            } catch {
-              // logger.error("Failed to force kill process:", error);
+            } catch (error) {
+              logger.error("Failed to force kill process:", error);
             }
           }
         }, 1000);
@@ -183,8 +184,8 @@ export class BackgroundBashManager {
         shell.runtime = Date.now() - shell.startTime;
         this.notifyShellsChange();
         return true;
-      } catch {
-        // logger.error("Failed to kill child process:", directKillError);
+      } catch (directKillError) {
+        logger.error("Failed to kill child process:", directKillError);
         return false;
       }
     }

@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "fs";
 import { join, extname } from "path";
+import { logger } from "./globalLogger.js";
 
 export interface SubagentConfiguration {
   name: string;
@@ -172,7 +173,7 @@ function scanSubagentDirectory(
           configurations.push(config);
         } catch (parseError) {
           // Log error but continue with other files
-          console.warn(
+          logger.warn(
             `Warning: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
           );
         }

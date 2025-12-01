@@ -6,6 +6,7 @@ import {
   ChatCompletionContentPart,
   ChatCompletionMessageParam,
 } from "openai/resources.js";
+import { logger } from "./globalLogger.js";
 
 /**
  * Safely handle tool call parameters, ensuring a legal JSON string is returned
@@ -21,8 +22,8 @@ function safeToolArguments(args: string): string {
     // Try to parse as JSON to validate format
     JSON.parse(args);
     return args;
-  } catch {
-    // logger.error(`Invalid tool arguments: ${args}`);
+  } catch (error) {
+    logger.error(`Invalid tool arguments: ${args}`, error);
     // If not valid JSON, return a fallback empty object
     return "{}";
   }
@@ -195,7 +196,7 @@ export function convertMessagesForAPI(
               try {
                 finalImageUrl = convertImageToBase64(imageUrl);
               } catch (error) {
-                console.error(
+                logger.error(
                   "Failed to convert image path to base64:",
                   imageUrl,
                   error,
