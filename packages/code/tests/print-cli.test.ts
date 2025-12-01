@@ -7,24 +7,25 @@ vi.mock("../src/utils/usageSummary.js");
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
 
-// Mock process.exit
+// Mock process.exit - use a simple mock that doesn't throw
 const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
-  throw new Error("process.exit called");
+  // Return undefined to satisfy TypeScript, but the process won't actually exit in tests
+  return undefined as never;
 });
 
-// Mock console.error
+// Mock console methods to suppress all console output during testing
 const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+// Mock process.stderr.write to suppress stderr output during testing
+const stderrWriteSpy = vi
+  .spyOn(process.stderr, "write")
+  .mockImplementation(() => true);
 
 import { startPrintCli } from "../src/print-cli.js";
 import { displayUsageSummary } from "../src/utils/usageSummary.js";
 
 test("startPrintCli requires a message when not continuing session", async () => {
-  try {
-    await startPrintCli({ message: "" });
-  } catch (error) {
-    // Expected when process.exit is called
-    expect(String(error)).toContain("process.exit called");
-  }
+  await startPrintCli({ message: "" });
 
   // Verify error message and exit code
   expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -57,12 +58,7 @@ test("startPrintCli sends message and exits after completion", async () => {
 
   const testMessage = "Hello, how are you?";
 
-  try {
-    await startPrintCli({ message: testMessage });
-  } catch (error) {
-    // Expected when process.exit is called
-    expect(String(error)).toContain("process.exit called");
-  }
+  await startPrintCli({ message: testMessage, showStats: true });
 
   // Verify that the Agent was created
   expect(vi.mocked(Agent.create)).toHaveBeenCalledWith({
@@ -109,12 +105,7 @@ test("onAssistantMessageAdded outputs newline", async () => {
     .spyOn(process.stdout, "write")
     .mockImplementation(() => true);
 
-  try {
-    await startPrintCli({ message: "test message" });
-  } catch (error) {
-    // Expected when process.exit is called
-    expect(String(error)).toContain("process.exit called");
-  }
+  await startPrintCli({ message: "test message" });
 
   // Test the onAssistantMessageAdded callback
   capturedCallbacks?.onAssistantMessageAdded?.();
@@ -137,7 +128,7 @@ test("startPrintCli works with continue session", async () => {
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
   try {
-    await startPrintCli({ continueLastSession: true });
+    await startPrintCli({ continueLastSession: true, showStats: true });
   } catch (error) {
     // Expected when process.exit is called
     expect(String(error)).toContain("process.exit called");
@@ -179,12 +170,7 @@ test("startPrintCli handles usage summary errors gracefully", async () => {
 
   vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
 
-  try {
-    await startPrintCli({ message: "test message" });
-  } catch (error) {
-    // Expected when process.exit is called
-    expect(String(error)).toContain("process.exit called");
-  }
+  await startPrintCli({ message: "test message" });
 
   // Verify that displayUsageSummary was NOT called due to error
   expect(vi.mocked(displayUsageSummary)).not.toHaveBeenCalled();
@@ -220,12 +206,7 @@ test("startPrintCli handles sendMessage errors and displays usage summary", asyn
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  try {
-    await startPrintCli({ message: "test message" });
-  } catch (error) {
-    // Expected when process.exit is called
-    expect(String(error)).toContain("process.exit called");
-  }
+  await startPrintCli({ message: "test message", showStats: true });
 
   // Verify error was logged
   expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -275,12 +256,7 @@ test("subagent content callbacks output correctly", async () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  try {
-    await startPrintCli({ message: "test message" });
-  } catch (error) {
-    // Expected when process.exit is called
-    expect(String(error)).toContain("process.exit called");
-  }
+  await startPrintCli({ message: "test message" });
 
   // Test onSubagentAssistantMessageAdded callback (starts subagent response)
   capturedCallbacks?.onSubagentAssistantMessageAdded?.("test-subagent-123");
@@ -360,12 +336,7 @@ test("tool name printing during running stage", async () => {
     .spyOn(console, "error")
     .mockImplementation(() => {});
 
-  try {
-    await startPrintCli({ message: "test message" });
-  } catch (error) {
-    // Expected when process.exit is called
-    expect(String(error)).toContain("process.exit called");
-  }
+  await startPrintCli({ message: "test message" });
 
   // Clear stdout spy after initialization to focus on callback testing
   stdoutSpy.mockClear();
@@ -437,8 +408,60 @@ test("tool name printing during running stage", async () => {
   consoleErrorSpy.mockRestore();
 });
 
+test("startPrintCli does not display stats by default", async () => {
+  const mockUsages = [
+    {
+      prompt_tokens: 100,
+      completion_tokens: 50,
+      total_tokens: 150,
+      model: "gpt-4",
+      operation_type: "agent",
+    },
+  ];
+  const mockSessionFilePath = "/path/to/session.json";
+
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    abortMessage: vi.fn(),
+    usages: mockUsages,
+    sessionFilePath: mockSessionFilePath,
+  };
+
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+
+  const testMessage = "Hello, how are you?";
+
+  // Suppress stderr output for this specific test
+  const originalStderr = process.stderr.write;
+  process.stderr.write = vi.fn().mockReturnValue(true);
+
+  await startPrintCli({ message: testMessage }); // No showStats parameter
+
+  // Restore stderr
+  process.stderr.write = originalStderr;
+
+  // Verify that the Agent was created
+  expect(vi.mocked(Agent.create)).toHaveBeenCalledWith({
+    callbacks: expect.any(Object),
+    restoreSessionId: undefined,
+    continueLastSession: undefined,
+  });
+
+  // Verify that sendMessage was called with the correct message
+  expect(mockAgent.sendMessage).toHaveBeenCalledWith(testMessage);
+
+  // Verify displayUsageSummary was NOT called when showStats is not provided
+  expect(vi.mocked(displayUsageSummary)).not.toHaveBeenCalled();
+
+  // Verify agent was destroyed and process.exit was called
+  expect(mockAgent.destroy).toHaveBeenCalled();
+  expect(mockExit).toHaveBeenCalledWith(0);
+});
+
 afterEach(() => {
   vi.clearAllMocks();
   mockExit.mockClear();
   consoleErrorSpy.mockClear();
+  stderrWriteSpy.mockClear();
 });
