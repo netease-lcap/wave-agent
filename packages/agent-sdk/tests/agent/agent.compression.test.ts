@@ -89,6 +89,11 @@ describe("Agent Message Compression Tests", () => {
       return {
         content:
           "Compressed content: Previous conversations involved multiple task requests and corresponding processing.",
+        usage: {
+          prompt_tokens: 1000,
+          completion_tokens: 500,
+          total_tokens: 1500,
+        },
       };
     });
 
@@ -107,6 +112,23 @@ describe("Agent Message Compression Tests", () => {
     expect(compressCall[0]).toHaveProperty("messages");
     expect(Array.isArray(compressCall[0].messages)).toBe(true);
     expect(compressCall[0].messages.length).toBeGreaterThan(0);
+
+    // Verify that the compressed assistant message includes usage field
+    const messagesAfterCompression = agent.messages;
+    const compressedMessage = messagesAfterCompression.find(
+      (message) =>
+        message.role === "assistant" &&
+        message.blocks.some((block) => block.type === "compress"),
+    );
+    expect(compressedMessage).toBeDefined();
+    expect(compressedMessage?.usage).toBeDefined();
+    expect(compressedMessage?.usage).toEqual({
+      prompt_tokens: 1000,
+      completion_tokens: 500,
+      total_tokens: 1500,
+      model: "gemini-2.5-flash", // The default fast model
+      operation_type: "compress",
+    });
 
     // Verify compressCall messages should include user1 to user6
     const messagesToCompress = compressCall[0].messages;
@@ -294,6 +316,11 @@ describe("Agent Message Compression Tests", () => {
     mockCompressMessages.mockImplementation(async () => {
       return {
         content: "New compressed content: Contains summary of more messages",
+        usage: {
+          prompt_tokens: 800,
+          completion_tokens: 400,
+          total_tokens: 1200,
+        },
       };
     });
 
@@ -430,6 +457,11 @@ describe("Agent Message Compression Tests", () => {
       return {
         content:
           "Compressed content: This contains summary information of previous multi-round conversations.",
+        usage: {
+          prompt_tokens: 1200,
+          completion_tokens: 600,
+          total_tokens: 1800,
+        },
       };
     });
 
@@ -546,6 +578,11 @@ describe("Agent Message Compression Tests", () => {
       return {
         content:
           "Compressed content: Previous conversations involved multiple task requests and corresponding processing.",
+        usage: {
+          prompt_tokens: 900,
+          completion_tokens: 450,
+          total_tokens: 1350,
+        },
       };
     });
 
