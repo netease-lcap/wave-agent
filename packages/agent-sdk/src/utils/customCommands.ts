@@ -9,6 +9,7 @@ import {
   getNamespace,
   getDepth,
 } from "./commandPathResolver.js";
+import { logger } from "./globalLogger.js";
 
 /**
  * Get the project-specific commands directory
@@ -70,14 +71,14 @@ function scanCommandsDirectoryRecursive(
         isFile = stats.isFile();
       } catch (error) {
         // Skip entries that cannot be stat'd
-        console.warn(`Cannot access ${fullPath}:`, error);
+        logger.warn(`Cannot access ${fullPath}:`, error);
         continue;
       }
 
       if (isDirectory) {
         // Skip subdirectories if we're at max depth
         if (currentDepth >= maxDepth) {
-          console.warn(
+          logger.warn(
             `Skipping directory ${fullPath}: exceeds maximum nesting depth of ${maxDepth}`,
           );
           continue;
@@ -116,16 +117,13 @@ function scanCommandsDirectoryRecursive(
             segments,
           });
         } catch (error) {
-          console.warn(
-            `Failed to load custom command from ${fullPath}:`,
-            error,
-          );
+          logger.warn(`Failed to load custom command from ${fullPath}:`, error);
         }
       }
       // Skip non-markdown files silently
     }
   } catch (error) {
-    console.warn(`Failed to scan commands directory ${currentPath}:`, error);
+    logger.warn(`Failed to scan commands directory ${currentPath}:`, error);
   }
 
   return commands;

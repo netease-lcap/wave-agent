@@ -5,6 +5,7 @@
 
 import fs from "fs";
 import { BASH_HISTORY_FILE, DATA_DIRECTORY } from "./constants.js";
+import { logger } from "./globalLogger.js";
 
 export interface BashHistoryEntry {
   command: string;
@@ -28,8 +29,8 @@ const ensureDataDirectory = (): void => {
     if (!fs.existsSync(DATA_DIRECTORY)) {
       fs.mkdirSync(DATA_DIRECTORY, { recursive: true });
     }
-  } catch {
-    // logger.debug("Failed to create data directory:", error);
+  } catch (error) {
+    logger.debug("Failed to create data directory:", error);
   }
 };
 
@@ -52,7 +53,7 @@ export const loadBashHistory = (): BashHistory => {
 
     // Version compatibility check
     if (history.version !== HISTORY_VERSION) {
-      // logger.debug("Bash history version mismatch, resetting history");
+      logger.debug("Bash history version mismatch, resetting history");
       return {
         commands: [],
         version: HISTORY_VERSION,
@@ -60,8 +61,8 @@ export const loadBashHistory = (): BashHistory => {
     }
 
     return history;
-  } catch {
-    // logger.debug("Failed to load bash history:", error);
+  } catch (error) {
+    logger.debug("Failed to load bash history:", error);
     return {
       commands: [],
       version: HISTORY_VERSION,
@@ -76,7 +77,7 @@ export const saveBashHistory = (history: BashHistory): void => {
   try {
     // Skip saving to file when in test environment
     if (process.env.NODE_ENV === "test") {
-      // logger.debug("Skipping bash history save in test environment");
+      logger.debug("Skipping bash history save in test environment");
       return;
     }
 
@@ -89,8 +90,8 @@ export const saveBashHistory = (history: BashHistory): void => {
 
     const data = JSON.stringify(history, null, 2);
     fs.writeFileSync(BASH_HISTORY_FILE, data, "utf-8");
-  } catch {
-    // logger.debug("Failed to save bash history:", error);
+  } catch (error) {
+    logger.debug("Failed to save bash history:", error);
   }
 };
 
@@ -124,9 +125,9 @@ export const addBashCommandToHistory = (
     }
 
     saveBashHistory(history);
-    // logger.debug("Added bash command to history:", { command, workdir });
-  } catch {
-    // logger.debug("Failed to add bash command to history:", error);
+    logger.debug("Added bash command to history:", { command, workdir });
+  } catch (error) {
+    logger.debug("Failed to add bash command to history:", error);
   }
 };
 
@@ -195,11 +196,16 @@ export const searchBashHistory = (
     const dedupedMatches = deduplicateCommands(matches);
     const result = dedupedMatches.slice(0, limit);
 
-    // logger.debug("Bash history search results:", { query, workdir: process.cwd(), originalCount: matches.length, dedupedCount: result.length });
+    logger.debug("Bash history search results:", {
+      query,
+      workdir: process.cwd(),
+      originalCount: matches.length,
+      dedupedCount: result.length,
+    });
 
     return result;
-  } catch {
-    // logger.debug("Failed to search bash history:", error);
+  } catch (error) {
+    logger.debug("Failed to search bash history:", error);
     return [];
   }
 };
@@ -242,8 +248,8 @@ export const getRecentBashCommands = (
     // Return recent commands after deduplication
     const deduped = deduplicateCommands(filtered);
     return deduped.slice(-limit).reverse(); // Latest first
-  } catch {
-    // logger.debug("Failed to get recent bash commands:", error);
+  } catch (error) {
+    logger.debug("Failed to get recent bash commands:", error);
     return [];
   }
 };
@@ -258,9 +264,9 @@ export const clearBashHistory = (): void => {
       version: HISTORY_VERSION,
     };
     saveBashHistory(history);
-    // logger.debug("Bash history cleared");
-  } catch {
-    // logger.debug("Failed to clear bash history:", error);
+    logger.debug("Bash history cleared");
+  } catch (error) {
+    logger.debug("Failed to clear bash history:", error);
   }
 };
 
@@ -286,8 +292,8 @@ export const getBashCommandStats = (): {
       uniqueCommands: uniqueCommands.size,
       workdirs,
     };
-  } catch {
-    // logger.debug("Failed to get bash command stats:", error);
+  } catch (error) {
+    logger.debug("Failed to get bash command stats:", error);
     return {
       totalCommands: 0,
       uniqueCommands: 0,

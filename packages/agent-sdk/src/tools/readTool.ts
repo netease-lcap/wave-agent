@@ -1,4 +1,5 @@
 import { readFile } from "fs/promises";
+import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import {
@@ -75,7 +76,7 @@ export const readTool: ToolPlugin = {
 
       // Check if file is empty
       if (fileContent.length === 0) {
-        // logger.warn(`File ${filePath} exists but has empty contents`);
+        logger.warn(`File ${filePath} exists but has empty contents`);
         return {
           success: true,
           content:

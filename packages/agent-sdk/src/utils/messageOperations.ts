@@ -4,6 +4,7 @@ import type { SubagentConfiguration } from "./subagentParser.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
+import { logger } from "./globalLogger.js";
 
 // Base user message parameters interface
 export interface UserMessageParams {
@@ -137,8 +138,8 @@ export const convertImageToBase64 = (imagePath: string): string => {
 
     const base64String = imageBuffer.toString("base64");
     return `data:${mimeType};base64,${base64String}`;
-  } catch {
-    // logger.error(`Failed to convert image to base64: ${imagePath}`, error);
+  } catch (error) {
+    logger.error(`Failed to convert image to base64: ${imagePath}`, error);
     // Return an error placeholder or throw error
     return `data:image/png;base64,`; // Empty base64, avoid program crash
   }

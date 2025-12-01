@@ -7,6 +7,7 @@ import {
   ChatCompletionFunctionTool,
   ChatCompletionChunk,
 } from "openai/resources.js";
+import { logger } from "../utils/globalLogger.js";
 import type { GatewayConfig, ModelConfig } from "../types/index.js";
 
 import * as os from "os";
@@ -298,7 +299,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     if ((error as Error).name === "AbortError") {
       throw new Error("Request was aborted");
     }
-    // // logger.error("Failed to call OpenAI:", error);
+    logger.error("Failed to call OpenAI:", error);
     throw error;
   }
 }
@@ -677,7 +678,7 @@ When you are using compact - please focus on test output and code changes. Inclu
     if ((error as Error).name === "AbortError") {
       throw new Error("Compression request was aborted");
     }
-    // // logger.error("Failed to compress messages:", error);
+    logger.error("Failed to compress messages:", error);
     return {
       content: "Failed to compress conversation history",
       usage: undefined,

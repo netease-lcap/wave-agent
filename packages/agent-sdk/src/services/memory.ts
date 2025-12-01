@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
 import { MemoryStoreService } from "./memoryStore.js";
+import { logger } from "../utils/globalLogger.js";
 
 // Global memory store instance for project memory files
 let globalMemoryStore: MemoryStoreService | null = null;
@@ -48,6 +49,9 @@ export const addMemory = async (
     } catch (error) {
       // File does not exist, create new file
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        logger.info("Memory file does not exist, will create new one", {
+          memoryFilePath,
+        });
         existingContent =
           "# Memory\n\nThis is the AI assistant's memory file, recording important information and context.\n\n";
       } else {
@@ -66,16 +70,18 @@ export const addMemory = async (
       try {
         await globalMemoryStore.updateContent(memoryFilePath);
       } catch (error) {
-        console.warn(
+        logger.warn(
           `Failed to update memory store for ${memoryFilePath}:`,
           error,
         );
       }
+    } else {
+      logger.debug("No global memory store available, skipping store update");
     }
 
-    // logger.debug(`Memory added to ${memoryFilePath}:`, message);
+    logger.debug(`Memory added to ${memoryFilePath}:`, message);
   } catch (error) {
-    // logger.error("Failed to add memory:", error);
+    logger.error("Failed to add memory:", error);
     throw new Error(`Failed to add memory: ${(error as Error).message}`);
   }
 };
@@ -92,16 +98,19 @@ export const ensureUserMemoryFile = async (): Promise<void> => {
     } catch (error) {
       // File does not exist, create new file
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        logger.info("Creating new user memory file", {
+          userMemoryFile: USER_MEMORY_FILE,
+        });
         const initialContent =
           "# User Memory\n\nThis is the user-level memory file, recording important information and context across projects.\n\n";
         await fs.writeFile(USER_MEMORY_FILE, initialContent, "utf-8");
-        // logger.debug(`Created user memory file: ${USER_MEMORY_FILE}`);
+        logger.debug(`Created user memory file: ${USER_MEMORY_FILE}`);
       } else {
         throw error;
       }
     }
   } catch (error) {
-    // logger.error("Failed to ensure user memory file:", error);
+    logger.error("Failed to ensure user memory file:", error);
     throw new Error(
       `Failed to ensure user memory file: ${(error as Error).message}`,
     );
@@ -125,9 +134,9 @@ export const addUserMemory = async (message: string): Promise<void> => {
     // Write file
     await fs.writeFile(USER_MEMORY_FILE, updatedContent, "utf-8");
 
-    // logger.debug(`User memory added to ${USER_MEMORY_FILE}:`, message);
+    logger.debug(`User memory added to ${USER_MEMORY_FILE}:`, message);
   } catch (error) {
-    // logger.error("Failed to add user memory:", error);
+    logger.error("Failed to add user memory:", error);
     throw new Error(`Failed to add user memory: ${(error as Error).message}`);
   }
 };
@@ -135,9 +144,14 @@ export const addUserMemory = async (message: string): Promise<void> => {
 export const getUserMemoryContent = async (): Promise<string> => {
   try {
     await ensureUserMemoryFile();
-    return await fs.readFile(USER_MEMORY_FILE, "utf-8");
-  } catch {
-    // logger.error("Failed to read user memory:", error);
+    const content = await fs.readFile(USER_MEMORY_FILE, "utf-8");
+    logger.debug("User memory content read successfully", {
+      userMemoryFile: USER_MEMORY_FILE,
+      contentLength: content.length,
+    });
+    return content;
+  } catch (error) {
+    logger.error("Failed to read user memory:", error);
     return "";
   }
 };
@@ -148,24 +162,43 @@ export const readMemoryFile = async (workdir: string): Promise<string> => {
 
   // Use memory store if available for optimized access
   if (globalMemoryStore) {
+    logger.debug("Using memory store for optimized access", { memoryFilePath });
     try {
-      return await globalMemoryStore.getContent(memoryFilePath);
+      const content = await globalMemoryStore.getContent(memoryFilePath);
+      logger.debug("Memory content retrieved from store successfully", {
+        memoryFilePath,
+        contentLength: content.length,
+      });
+      return content;
     } catch (error) {
       // Fallback to direct file access on memory store error
-      console.warn(
+      logger.warn(
         `Memory store access failed for ${memoryFilePath}, falling back to file system:`,
         error,
       );
     }
+  } else {
+    logger.debug("No memory store available, using direct file access", {
+      memoryFilePath,
+    });
   }
 
   // Fallback to direct file access (original behavior)
   try {
-    return await fs.readFile(memoryFilePath, "utf-8");
+    const content = await fs.readFile(memoryFilePath, "utf-8");
+    logger.debug("Memory file read successfully via direct file access", {
+      memoryFilePath,
+      contentLength: content.length,
+    });
+    return content;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      logger.debug("Memory file does not exist, returning empty content", {
+        memoryFilePath,
+      });
       return "";
     }
+    logger.error("Failed to read memory file", { memoryFilePath, error });
     throw error;
   }
 };
