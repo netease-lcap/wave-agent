@@ -27,7 +27,7 @@ import {
 } from "../../src/services/hook.js";
 import type {
   HookExecutionContext,
-  HookConfiguration,
+  WaveConfiguration,
 } from "../../src/types/hooks.js";
 
 // Mock child_process module
@@ -469,7 +469,7 @@ describe("Hook Services", () => {
     });
   });
 
-  describe("configuration file loading", () => {
+  describe("wave configuration file loading", () => {
     beforeEach(() => {
       // Reset fs mocks for this test block
       mockExistsSync.mockReset();
@@ -483,8 +483,8 @@ describe("Hook Services", () => {
       expect(config).toBeNull();
     });
 
-    it("should load valid configuration file", () => {
-      const testConfig: HookConfiguration = {
+    it("should load valid wave configuration file", () => {
+      const testWaveConfig: WaveConfiguration = {
         hooks: {
           PreToolUse: [],
           PostToolUse: [
@@ -496,14 +496,18 @@ describe("Hook Services", () => {
           UserPromptSubmit: [],
           Stop: [],
         },
+        env: {
+          NODE_ENV: "test",
+          DEBUG: "true",
+        },
       };
 
       mockExistsSync.mockReturnValue(true);
-      mockReadFileSync.mockReturnValue(JSON.stringify(testConfig, null, 2));
+      mockReadFileSync.mockReturnValue(JSON.stringify(testWaveConfig, null, 2));
 
       const configFile = "/test/test-settings.json";
       const loaded = loadHooksConfigFromFile(configFile);
-      expect(loaded).toEqual(testConfig.hooks);
+      expect(loaded).toEqual(testWaveConfig.hooks);
     });
 
     it("should handle invalid JSON gracefully", () => {
@@ -514,27 +518,26 @@ describe("Hook Services", () => {
       expect(() => loadHooksConfigFromFile(configFile)).toThrow();
     });
 
-    it("should handle invalid configuration structure", () => {
-      const invalidConfig = { notHooks: "invalid" };
+    it("should handle wave configuration without hooks", () => {
+      const configWithoutHooks = { notHooks: "invalid" };
 
       mockExistsSync.mockReturnValue(true);
-      mockReadFileSync.mockReturnValue(JSON.stringify(invalidConfig));
+      mockReadFileSync.mockReturnValue(JSON.stringify(configWithoutHooks));
 
-      const configFile = "/test/invalid-structure.json";
-      expect(() => loadHooksConfigFromFile(configFile)).toThrow(
-        "Invalid hooks configuration structure",
-      );
+      const configFile = "/test/no-hooks-structure.json";
+      const result = loadHooksConfigFromFile(configFile);
+      expect(result).toBeNull();
     });
   });
 
-  describe("merged configuration loading", () => {
+  describe("merged wave configuration loading", () => {
     beforeEach(() => {
       // Override fs functions for these specific tests
       mockExistsSync.mockReset();
       mockReadFileSync.mockReset();
     });
 
-    it("should return null when no configurations exist", () => {
+    it("should return null when no wave configurations exist", () => {
       // Mock file system to return false for all file existence checks
       mockExistsSync.mockReturnValue(false);
 
@@ -542,10 +545,15 @@ describe("Hook Services", () => {
       expect(merged).toBeNull();
     });
 
-    it("should return user config when only user config exists", () => {
-      const userConfig = {
+    it("should return user wave config when only user config exists", () => {
+      const userWaveConfig: WaveConfiguration = {
         hooks: {
-          Stop: [{ type: "command" as const, command: "echo user" }],
+          Stop: [
+            { hooks: [{ type: "command" as const, command: "echo user" }] },
+          ],
+        },
+        env: {
+          USER_ENV: "test",
         },
       };
 
@@ -558,16 +566,21 @@ describe("Hook Services", () => {
         );
       });
 
-      mockReadFileSync.mockReturnValue(JSON.stringify(userConfig));
+      mockReadFileSync.mockReturnValue(JSON.stringify(userWaveConfig));
 
       const merged = loadMergedHooksConfig("/nonexistent/workdir");
-      expect(merged).toEqual(userConfig.hooks);
+      expect(merged).toEqual(userWaveConfig.hooks);
     });
 
-    it("should return project config when only project config exists", () => {
-      const projectConfig = {
+    it("should return project wave config when only project config exists", () => {
+      const projectWaveConfig: WaveConfiguration = {
         hooks: {
-          Stop: [{ type: "command" as const, command: "echo project" }],
+          Stop: [
+            { hooks: [{ type: "command" as const, command: "echo project" }] },
+          ],
+        },
+        env: {
+          PROJECT_ENV: "production",
         },
       };
 
@@ -577,24 +590,40 @@ describe("Hook Services", () => {
         return pathStr.includes("/test/workdir/.wave/settings.json");
       });
 
-      mockReadFileSync.mockReturnValue(JSON.stringify(projectConfig));
+      mockReadFileSync.mockReturnValue(JSON.stringify(projectWaveConfig));
 
       const merged = loadMergedHooksConfig("/test/workdir");
-      expect(merged).toEqual(projectConfig.hooks);
+      expect(merged).toEqual(projectWaveConfig.hooks);
     });
 
-    it("should merge configurations with project taking precedence", () => {
-      const userConfig = {
+    it("should merge wave configurations with project taking precedence", () => {
+      const userWaveConfig: WaveConfiguration = {
         hooks: {
-          Stop: [{ type: "command" as const, command: "echo user" }],
+          Stop: [
+            { hooks: [{ type: "command" as const, command: "echo user" }] },
+          ],
           UserPromptSubmit: [
-            { type: "command" as const, command: "echo user prompt" },
+            {
+              hooks: [
+                { type: "command" as const, command: "echo user prompt" },
+              ],
+            },
           ],
         },
+        env: {
+          USER_ENV: "test",
+          SHARED_ENV: "user_value",
+        },
       };
-      const projectConfig = {
+      const projectWaveConfig: WaveConfiguration = {
         hooks: {
-          Stop: [{ type: "command" as const, command: "echo project" }],
+          Stop: [
+            { hooks: [{ type: "command" as const, command: "echo project" }] },
+          ],
+        },
+        env: {
+          PROJECT_ENV: "production",
+          SHARED_ENV: "project_value", // Should override user value
         },
       };
 
@@ -604,19 +633,21 @@ describe("Hook Services", () => {
       mockReadFileSync.mockImplementation((path) => {
         const pathStr = path.toString();
         if (pathStr.includes(process.env.HOME || "/home")) {
-          return JSON.stringify(userConfig);
+          return JSON.stringify(userWaveConfig);
         } else {
-          return JSON.stringify(projectConfig);
+          return JSON.stringify(projectWaveConfig);
         }
       });
 
       const merged = loadMergedHooksConfig("/test/workdir");
       expect(merged).toEqual({
         Stop: [
-          { type: "command", command: "echo user" },
-          { type: "command", command: "echo project" },
+          { hooks: [{ type: "command", command: "echo user" }] },
+          { hooks: [{ type: "command", command: "echo project" }] },
         ],
-        UserPromptSubmit: [{ type: "command", command: "echo user prompt" }],
+        UserPromptSubmit: [
+          { hooks: [{ type: "command", command: "echo user prompt" }] },
+        ],
       });
     });
   });

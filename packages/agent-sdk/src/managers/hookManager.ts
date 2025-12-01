@@ -8,7 +8,7 @@
 import {
   type HookEvent,
   type HookEventConfig,
-  type HookConfiguration,
+  type WaveConfiguration,
   type PartialHookConfiguration,
   type HookExecutionContext,
   type ExtendedHookExecutionContext,
@@ -22,26 +22,31 @@ import { HookMatcher } from "../utils/hookMatcher.js";
 import {
   executeCommand,
   isCommandSafe,
-  loadMergedHooksConfig,
+  loadMergedWaveConfig,
 } from "../services/hook.js";
 import type { Logger } from "../types/index.js";
 import { MessageSource } from "../types/index.js";
 import type { MessageManager } from "./messageManager.js";
+import { MemoryStoreService } from "../services/memoryStore.js";
 
 export class HookManager {
   private configuration: PartialHookConfiguration | undefined;
+  private environmentVars: Record<string, string> | undefined;
   private readonly matcher: HookMatcher;
   private readonly logger?: Logger;
   private readonly workdir: string;
+  private memoryStore?: MemoryStoreService;
 
   constructor(
     workdir: string,
     matcher: HookMatcher = new HookMatcher(),
     logger?: Logger,
+    memoryStore?: MemoryStoreService,
   ) {
     this.workdir = workdir;
     this.matcher = matcher;
     this.logger = logger;
+    this.memoryStore = memoryStore;
   }
 
   /**
@@ -78,18 +83,25 @@ export class HookManager {
 
   /**
    * Load configuration from filesystem settings
-   * Automatically loads and merges user and project hooks configuration
+   * Automatically loads and merges user and project Wave configuration (hooks + environment)
    */
   loadConfigurationFromSettings(): void {
     try {
       this.logger?.debug(`[HookManager] Loading configuration...`);
-      const mergedConfig = loadMergedHooksConfig(this.workdir);
-      this.logger?.debug(`[HookManager] Merged config result:`, mergedConfig);
-      this.configuration = mergedConfig || undefined;
+      const mergedWaveConfig = loadMergedWaveConfig(this.workdir);
+      this.logger?.debug(
+        `[HookManager] Merged config result:`,
+        mergedWaveConfig,
+      );
+
+      this.configuration = mergedWaveConfig?.hooks || undefined;
+      this.environmentVars = mergedWaveConfig?.env || undefined;
 
       // Validate the loaded configuration if it exists
-      if (mergedConfig) {
-        const validation = this.validatePartialConfiguration(mergedConfig);
+      if (mergedWaveConfig?.hooks) {
+        const validation = this.validatePartialConfiguration(
+          mergedWaveConfig.hooks,
+        );
         if (!validation.valid) {
           throw new HookConfigurationError(
             "filesystem settings",
@@ -99,11 +111,12 @@ export class HookManager {
       }
 
       this.logger?.debug(
-        `[HookManager] Configuration loaded successfully with ${Object.keys(mergedConfig || {}).length} event types`,
+        `[HookManager] Configuration loaded successfully with ${Object.keys(mergedWaveConfig?.hooks || {}).length} event types and ${Object.keys(this.environmentVars || {}).length} environment variables`,
       );
     } catch (error) {
       // If loading fails, start with undefined configuration (no hooks)
       this.configuration = undefined;
+      this.environmentVars = undefined;
 
       // Re-throw configuration errors, but handle file system errors gracefully
       if (error instanceof HookConfigurationError) {
@@ -194,7 +207,12 @@ export class HookManager {
             `[HookManager] Executing command ${commandIndex + 1}/${config.hooks.length} in configuration ${configIndex + 1}`,
           );
 
-          const result = await executeCommand(hookCommand.command, context);
+          const result = await executeCommand(
+            hookCommand.command,
+            context,
+            undefined,
+            this.environmentVars,
+          );
           results.push(result);
 
           // Report individual command result
@@ -396,46 +414,62 @@ export class HookManager {
   }
 
   /**
-   * Validate hook configuration structure and content
+   * Validate Wave configuration structure and content
    */
-  validateConfiguration(config: HookConfiguration): ValidationResult {
+  validateConfiguration(config: WaveConfiguration): ValidationResult {
     const errors: string[] = [];
 
     if (!config || typeof config !== "object") {
       return { valid: false, errors: ["Configuration must be an object"] };
     }
 
-    if (!config.hooks || typeof config.hooks !== "object") {
-      return {
-        valid: false,
-        errors: ["Configuration must have a hooks property"],
-      };
+    // Validate hooks if present
+    if (config.hooks) {
+      if (typeof config.hooks !== "object") {
+        errors.push("hooks property must be an object");
+      } else {
+        // Validate each hook event
+        for (const [eventName, eventConfigs] of Object.entries(config.hooks)) {
+          // Validate event name
+          if (!isValidHookEvent(eventName)) {
+            errors.push(`Invalid hook event: ${eventName}`);
+            continue;
+          }
+
+          // Validate event configurations
+          if (!Array.isArray(eventConfigs)) {
+            errors.push(
+              `Hook event ${eventName} must be an array of configurations`,
+            );
+            continue;
+          }
+
+          eventConfigs.forEach((eventConfig, index) => {
+            const configErrors = this.validateEventConfig(
+              eventName as HookEvent,
+              eventConfig,
+              index,
+            );
+            errors.push(...configErrors);
+          });
+        }
+      }
     }
 
-    // Validate each hook event
-    for (const [eventName, eventConfigs] of Object.entries(config.hooks)) {
-      // Validate event name
-      if (!isValidHookEvent(eventName)) {
-        errors.push(`Invalid hook event: ${eventName}`);
-        continue;
+    // Validate environment variables if present
+    if (config.env) {
+      if (typeof config.env !== "object" || Array.isArray(config.env)) {
+        errors.push("env property must be an object");
+      } else {
+        for (const [key, value] of Object.entries(config.env)) {
+          if (typeof key !== "string" || key.trim() === "") {
+            errors.push(`Invalid environment variable key: ${key}`);
+          }
+          if (typeof value !== "string") {
+            errors.push(`Environment variable ${key} must have a string value`);
+          }
+        }
       }
-
-      // Validate event configurations
-      if (!Array.isArray(eventConfigs)) {
-        errors.push(
-          `Hook event ${eventName} must be an array of configurations`,
-        );
-        continue;
-      }
-
-      eventConfigs.forEach((eventConfig, index) => {
-        const configErrors = this.validateEventConfig(
-          eventName as HookEvent,
-          eventConfig,
-          index,
-        );
-        errors.push(...configErrors);
-      });
     }
 
     return {
@@ -496,6 +530,16 @@ export class HookManager {
 
     // Deep clone to prevent external modification
     return JSON.parse(JSON.stringify(this.configuration));
+  }
+
+  /**
+   * Get current environment variables
+   */
+  getEnvironmentVars(): Record<string, string> | undefined {
+    if (!this.environmentVars) return undefined;
+
+    // Deep clone to prevent external modification
+    return JSON.parse(JSON.stringify(this.environmentVars));
   }
 
   /**

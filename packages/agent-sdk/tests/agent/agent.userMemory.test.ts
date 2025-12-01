@@ -45,6 +45,8 @@ vi.mock("@/services/memory", () => ({
   getCombinedMemoryContent: vi
     .fn()
     .mockResolvedValue("Combined memory content"),
+  initializeMemoryStore: vi.fn(),
+  getMemoryStore: vi.fn().mockReturnValue(null),
 }));
 
 describe("Agent User Memory Integration", () => {

@@ -1,10 +1,9 @@
 <!--
 Sync Impact Report:
-- Version change: 1.3.0 → 1.4.0
-- Added principles: VIII. Test-Driven Development (new principle defining TDD workflow and practices)
-- Modified principles: III. Test Alignment (enhanced with TDD requirements)
-- Modified sections: Quality Standards (enhanced testing requirements with TDD workflow)
-- Templates requiring updates: ✅ plan-template.md, spec-template.md, tasks-template.md all maintain compatibility with TDD workflow
+- Version change: 1.5.0 → 1.5.1
+- Modified principles: IX. Type System Evolution (removed backward compatibility requirement)
+- Modified sections: Quality Standards (removed backward compatibility requirement), Development Workflow (simplified type evolution process)
+- Templates requiring updates: ✅ plan-template.md, spec-template.md, tasks-template.md all maintain compatibility
 - Follow-up TODOs: None - all placeholders filled
 -->
 
@@ -52,6 +51,11 @@ All new functionality MUST follow TDD workflow: Red (write failing test), Green 
 
 **Rationale**: TDD ensures comprehensive test coverage, promotes better API design, catches regressions early, and provides living documentation of system behavior through executable specifications.
 
+### IX. Type System Evolution
+When adding functionality, MUST modify existing types or interfaces rather than creating new ones whenever possible. New types or interfaces may only be created when extending existing ones would violate single responsibility principle or create semantic inconsistencies. Type extensions MUST use composition, union types, or generic constraints to build upon existing type definitions.
+
+**Rationale**: Type proliferation creates maintenance burden and cognitive overhead. Evolving existing types keeps the codebase lean, maintains semantic consistency, and reduces the number of concepts developers must understand.
+
 ## Quality Standards
 
 All code MUST pass TypeScript compilation without errors or warnings. All tests MUST pass before merging. Code MUST follow the established linting and formatting rules enforced by ESLint and Prettier. Quality gates (type-check and lint) MUST be run and pass after every modification.
@@ -60,6 +64,11 @@ All code MUST pass TypeScript compilation without errors or warnings. All tests 
 - All new features require corresponding tests following TDD workflow
 - TDD cycle: Write failing test → Make test pass → Refactor if needed
 - Test coverage: Aim for comprehensive behavior coverage, not just line coverage
+
+**Type Evolution Requirements**:
+- Evaluate existing types before creating new ones
+- Justify new type creation with clear semantic reasoning
+- Document type evolution decisions in code comments
 
 ## Development Workflow
 
@@ -73,13 +82,20 @@ All code MUST pass TypeScript compilation without errors or warnings. All tests 
 5. Refactor code while keeping tests passing
 6. Repeat for each new behavior or feature
 
+**Type Evolution Process**:
+1. Identify existing types that could be extended or modified
+2. Evaluate semantic compatibility of proposed changes
+3. Choose modification over creation when semantically appropriate
+4. Document rationale for new type creation when necessary
+
 **Build Process**: 
 1. Follow TDD cycle for new functionality
-2. Modify code in any package
-3. Run `pnpm build` if changes affect `agent-sdk`
-4. Test in dependent packages
-5. Run `pnpm run type-check` and `pnpm run lint`
-6. Commit with clear, descriptive messages
+2. Apply type evolution principles before creating new types
+3. Modify code in any package
+4. Run `pnpm build` if changes affect `agent-sdk`
+5. Test in dependent packages
+6. Run `pnpm run type-check` and `pnpm run lint`
+7. Commit with clear, descriptive messages
 
 **Testing Strategy**:
 - All tests must be in tests directories with proper cleanup
@@ -94,4 +110,4 @@ This constitution supersedes all other development practices. All pull requests 
 
 **Version Control**: Use semantic versioning for constitution updates. Breaking changes to principles require major version bump.
 
-**Version**: 1.4.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-11-19
+**Version**: 1.5.1 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-12-01
