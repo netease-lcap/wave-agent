@@ -27,7 +27,6 @@ import {
 import type { Logger } from "../types/index.js";
 import { MessageSource } from "../types/index.js";
 import type { MessageManager } from "./messageManager.js";
-import { MemoryStoreService } from "../services/memoryStore.js";
 
 export class HookManager {
   private configuration: PartialHookConfiguration | undefined;
@@ -35,18 +34,15 @@ export class HookManager {
   private readonly matcher: HookMatcher;
   private readonly logger?: Logger;
   private readonly workdir: string;
-  private memoryStore?: MemoryStoreService;
 
   constructor(
     workdir: string,
     matcher: HookMatcher = new HookMatcher(),
     logger?: Logger,
-    memoryStore?: MemoryStoreService,
   ) {
     this.workdir = workdir;
     this.matcher = matcher;
     this.logger = logger;
-    this.memoryStore = memoryStore;
   }
 
   /**

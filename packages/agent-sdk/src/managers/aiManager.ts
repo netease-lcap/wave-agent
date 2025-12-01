@@ -76,6 +76,74 @@ export class AIManager {
   private callbacks: AIManagerCallbacks;
 
   /**
+   * Update gateway configuration at runtime for live config reload
+   * @param newConfig - New gateway configuration
+   */
+  updateGatewayConfig(newConfig: GatewayConfig): void {
+    this.logger?.info(
+      `Live Config: Updating AIManager gateway config - baseURL: ${newConfig.baseURL}`,
+    );
+    this.gatewayConfig = newConfig;
+  }
+
+  /**
+   * Update model configuration at runtime for live config reload
+   * @param newConfig - New model configuration
+   */
+  updateModelConfig(newConfig: ModelConfig): void {
+    this.logger?.info(
+      `Live Config: Updating AIManager model config - agent: ${newConfig.agentModel}, fast: ${newConfig.fastModel}`,
+    );
+    this.modelConfig = newConfig;
+  }
+
+  /**
+   * Update token limit at runtime for live config reload
+   * @param newLimit - New token limit
+   */
+  updateTokenLimit(newLimit: number): void {
+    this.logger?.info(
+      `Live Config: Updating AIManager token limit: ${newLimit}`,
+    );
+    this.tokenLimit = newLimit;
+  }
+
+  /**
+   * Update all configurations at once for live config reload
+   * @param newGatewayConfig - New gateway configuration
+   * @param newModelConfig - New model configuration
+   * @param newTokenLimit - New token limit
+   */
+  updateConfiguration(
+    newGatewayConfig: GatewayConfig,
+    newModelConfig: ModelConfig,
+    newTokenLimit: number,
+  ): void {
+    this.logger?.info("Live Config: Updating all AIManager configuration");
+    this.gatewayConfig = newGatewayConfig;
+    this.modelConfig = newModelConfig;
+    this.tokenLimit = newTokenLimit;
+    this.logger?.info(
+      `Live Config: Configuration updated - model: ${newModelConfig.agentModel}, tokenLimit: ${newTokenLimit}`,
+    );
+  }
+
+  /**
+   * Get current configuration for debugging
+   */
+  getCurrentConfiguration(): {
+    gatewayConfig: GatewayConfig;
+    modelConfig: ModelConfig;
+    tokenLimit: number;
+  } {
+    return {
+      gatewayConfig: { ...this.gatewayConfig },
+      modelConfig: { ...this.modelConfig },
+      tokenLimit: this.tokenLimit,
+    };
+  }
+
+  /**
    * Get filtered tool configuration
    */
   private getFilteredToolsConfig(allowedTools?: string[]) {

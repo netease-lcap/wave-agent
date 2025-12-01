@@ -552,4 +552,84 @@ export class SubagentManager {
       },
     };
   }
+
+  /**
+   * Update configuration for SubagentManager and all active subagents
+   * This method updates configuration for live config reload support
+   * @param newGatewayConfig - New gateway configuration
+   * @param newModelConfig - New model configuration
+   * @param newTokenLimit - New token limit
+   */
+  updateConfiguration(
+    newGatewayConfig: GatewayConfig,
+    newModelConfig: ModelConfig,
+    newTokenLimit: number,
+  ): void {
+    this.logger?.info("Live Config: Updating SubagentManager configuration");
+
+    // Update stored configuration
+    this.gatewayConfig = newGatewayConfig;
+    this.modelConfig = newModelConfig;
+    this.tokenLimit = newTokenLimit;
+
+    // Update all active subagent AIManager instances
+    let updatedCount = 0;
+    for (const [subagentId, instance] of this.instances.entries()) {
+      if (instance.status === "active" || instance.status === "initializing") {
+        try {
+          // For subagents, we need to preserve their model if it was explicitly set
+          const subagentModelConfig = {
+            ...newModelConfig,
+            // If subagent has its own model configured, preserve it
+            agentModel:
+              instance.configuration.model &&
+              instance.configuration.model !== "inherit"
+                ? instance.configuration.model
+                : newModelConfig.agentModel,
+          };
+
+          instance.aiManager.updateConfiguration(
+            newGatewayConfig,
+            subagentModelConfig,
+            newTokenLimit,
+          );
+          updatedCount++;
+
+          this.logger?.debug(
+            `Live Config: Updated configuration for subagent ${subagentId}`,
+          );
+        } catch (error) {
+          this.logger?.error(
+            `Live Config: Failed to update configuration for subagent ${subagentId}: ${(error as Error).message}`,
+          );
+        }
+      }
+    }
+
+    this.logger?.info(
+      `Live Config: SubagentManager configuration updated - ${updatedCount} active subagents updated`,
+    );
+  }
+
+  /**
+   * Get current configuration for debugging
+   */
+  getCurrentConfiguration(): {
+    gatewayConfig: GatewayConfig;
+    modelConfig: ModelConfig;
+    tokenLimit: number;
+    activeSubagents: number;
+  } {
+    const activeSubagents = Array.from(this.instances.values()).filter(
+      (instance) =>
+        instance.status === "active" || instance.status === "initializing",
+    ).length;
+
+    return {
+      gatewayConfig: { ...this.gatewayConfig },
+      modelConfig: { ...this.modelConfig },
+      tokenLimit: this.tokenLimit,
+      activeSubagents,
+    };
+  }
 }
