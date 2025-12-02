@@ -392,8 +392,11 @@ describe("Session Management", () => {
       expect(sessions.map((s) => s.id)).toContain(session1Id);
       expect(sessions.map((s) => s.id)).toContain(session2Id);
 
-      // Should be sorted by ID (newest first for UUIDv6)
-      expect(sessions[0].id > sessions[1].id).toBe(true);
+      // Should be sorted by last active time (most recently active first)
+      expect(
+        sessions[0].lastActiveAt.getTime() >=
+          sessions[1].lastActiveAt.getTime(),
+      ).toBe(true);
 
       // Verify that readMetadata was called
       expect(mockJsonlHandler.readMetadata).toHaveBeenCalled();
@@ -401,7 +404,7 @@ describe("Session Management", () => {
       expect(mockJsonlHandler.getLastMessage).toHaveBeenCalled();
     });
 
-    it("should get latest session", async () => {
+    it("should get latest session based on last active time", async () => {
       const fs = await import("fs/promises");
       const session1Id = generateSessionId();
       // Small delay to ensure different timestamps
@@ -415,11 +418,19 @@ describe("Session Management", () => {
         `${session2Id}.jsonl`,
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-      // Create messages with timestamps
-      const messagesWithTimestamp = messages.map((msg) => ({
-        ...msg,
-        timestamp: new Date().toISOString(),
-      }));
+      // Create different timestamps - session1 more recently active despite older UUID
+      const olderTimestamp = new Date(Date.now() - 1000).toISOString(); // 1 second ago
+      const newerTimestamp = new Date().toISOString(); // now
+
+      const session1LastMessage = {
+        ...messages[messages.length - 1],
+        timestamp: newerTimestamp, // session1 is more recently active
+      };
+
+      const session2LastMessage = {
+        ...messages[messages.length - 1],
+        timestamp: olderTimestamp, // session2 is older despite newer UUID
+      };
 
       // Mock readMetadata to return metadata (modern sessions)
       const metadata1 = {
@@ -439,23 +450,24 @@ describe("Session Management", () => {
       mockJsonlHandler.readMetadata
         .mockResolvedValueOnce(metadata1) // First session
         .mockResolvedValueOnce(metadata2) // Second session
-        .mockResolvedValueOnce(metadata2); // Load full session data for latest
+        .mockResolvedValueOnce(metadata1); // Load full session data for latest (session1 now)
 
-      // Mock getLastMessage for last messages
+      // Mock getLastMessage for last messages with different timestamps
       mockJsonlHandler.getLastMessage
-        .mockResolvedValueOnce(
-          messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ) // First session - last message
-        .mockResolvedValueOnce(
-          messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ); // Second session - last message
+        .mockResolvedValueOnce(session1LastMessage) // First session - more recent last message
+        .mockResolvedValueOnce(session2LastMessage); // Second session - older last message
 
       // Mock read for loadSessionFromJsonl (used by getLatestSessionFromJsonl)
+      const messagesWithTimestamp = messages.map((msg) => ({
+        ...msg,
+        timestamp: newerTimestamp,
+      }));
       mockJsonlHandler.read.mockResolvedValueOnce(messagesWithTimestamp);
+
       const latestSession = await getLatestSessionFromJsonl(testWorkdir);
 
       expect(latestSession).toBeTruthy();
-      expect(latestSession!.id).toBe(session2Id); // More recent UUID
+      expect(latestSession!.id).toBe(session1Id); // Session1 has more recent activity
     });
 
     it("should check if session exists", async () => {
@@ -960,17 +972,25 @@ describe("Session Management", () => {
       expect(sessions).toEqual([]);
     });
 
-    it("should handle getLatestSessionFromJsonl with directory separation", async () => {
+    it("should handle getLatestSessionFromJsonl with directory separation based on last active time", async () => {
       const olderMainSessionId = uuidv6();
       const newerMainSessionId = uuidv6();
 
-      const messages = [
-        {
-          role: "user" as const,
-          blocks: [{ type: "text" as const, content: "Hello" }],
-          timestamp: new Date().toISOString(),
-        },
-      ];
+      // Create different timestamps - older session has more recent activity
+      const olderTimestamp = new Date(Date.now() - 1000).toISOString(); // 1 second ago
+      const newerTimestamp = new Date().toISOString(); // now
+
+      const olderSessionMessage = {
+        role: "user" as const,
+        blocks: [{ type: "text" as const, content: "Hello" }],
+        timestamp: newerTimestamp, // More recent activity
+      };
+
+      const newerSessionMessage = {
+        role: "user" as const,
+        blocks: [{ type: "text" as const, content: "Hello" }],
+        timestamp: olderTimestamp, // Less recent activity
+      };
 
       // Create files - subagent sessions would be in separate directory
       const files = [
@@ -1001,19 +1021,20 @@ describe("Session Management", () => {
       mockJsonlHandler.readMetadata
         .mockResolvedValueOnce(mainMetadata1) // Older main session
         .mockResolvedValueOnce(mainMetadata2) // Newer main session
-        .mockResolvedValueOnce(mainMetadata2); // Loading the latest session
+        .mockResolvedValueOnce(mainMetadata1); // Loading the latest session (olderMainSessionId has more recent activity)
 
       // Mock getLastMessage for main sessions (last messages)
       mockJsonlHandler.getLastMessage
-        .mockResolvedValueOnce(messages[0]) // Last message for older session
-        .mockResolvedValueOnce(messages[0]); // Last message for newer session
+        .mockResolvedValueOnce(olderSessionMessage) // Last message for older session (more recent)
+        .mockResolvedValueOnce(newerSessionMessage); // Last message for newer session (less recent)
 
       // Mock read for loadSessionFromJsonl (used by getLatestSessionFromJsonl)
-      mockJsonlHandler.read.mockResolvedValueOnce(messages);
+      mockJsonlHandler.read.mockResolvedValueOnce([olderSessionMessage]);
+
       const latestSession = await getLatestSessionFromJsonl(testWorkdir);
 
       expect(latestSession).not.toBeNull();
-      expect(latestSession?.id).toBe(newerMainSessionId);
+      expect(latestSession?.id).toBe(olderMainSessionId); // Session with more recent activity
 
       // Should have called readMetadata 2 times (once per session)
       expect(mockJsonlHandler.readMetadata).toHaveBeenCalledTimes(2);

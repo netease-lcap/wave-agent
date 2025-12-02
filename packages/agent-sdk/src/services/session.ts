@@ -215,11 +215,12 @@ export async function loadSessionFromJsonl(
 }
 
 /**
- * Get the most recent session for a specific working directory (new JSONL approach)
+ * Get the most recently active session for a specific working directory (new JSONL approach)
  * Only returns main sessions, skips subagent sessions
+ * Sessions are sorted by last active time (most recently active first)
  *
- * @param workdir - Working directory to find the most recent session for
- * @returns Promise that resolves to the most recent session data or null if no sessions exist
+ * @param workdir - Working directory to find the most recently active session for
+ * @returns Promise that resolves to the most recently active session data or null if no sessions exist
  */
 export async function getLatestSessionFromJsonl(
   workdir: string,
@@ -230,8 +231,10 @@ export async function getLatestSessionFromJsonl(
     return null;
   }
 
-  // UUIDv6 sessions are naturally time-ordered, so we can sort by ID
-  const latestSession = sessions.sort((a, b) => b.id.localeCompare(a.id))[0];
+  // Sort by last active time (most recently active first)
+  const latestSession = sessions.sort(
+    (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
+  )[0];
   return loadSessionFromJsonl(latestSession.id, workdir);
 }
 
@@ -309,8 +312,10 @@ export async function listSessionsFromJsonl(
         }
       }
 
-      // UUIDv6 is time-ordered, so we can sort by ID (newest first)
-      const sortedSessions = sessions.sort((a, b) => b.id.localeCompare(a.id));
+      // Sort by last active time (most recently active first)
+      const sortedSessions = sessions.sort(
+        (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
+      );
 
       // Filter out subagent sessions if requested
       if (!includeSubagentSessions) {
@@ -379,8 +384,10 @@ export async function listSessionsFromJsonl(
       return [];
     }
 
-    // UUIDv6 is time-ordered, so we can sort by ID (newest first)
-    const sortedSessions = sessions.sort((a, b) => b.id.localeCompare(a.id));
+    // Sort by last active time (most recently active first)
+    const sortedSessions = sessions.sort(
+      (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
+    );
 
     // Filter out subagent sessions if requested
     if (!includeSubagentSessions) {
