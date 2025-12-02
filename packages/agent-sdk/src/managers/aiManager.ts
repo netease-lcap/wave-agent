@@ -634,18 +634,18 @@ export class AIManager {
         this.abortController = null;
         this.toolAbortController = null;
 
-        // Execute Stop hooks only if the operation was not aborted
+        // Execute Stop/SubagentStop hooks only if the operation was not aborted
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
 
         if (!isCurrentlyAborted) {
           const shouldContinue = await this.executeStopHooks();
 
-          // If Stop hooks indicate we should continue (due to blocking errors),
+          // If Stop/SubagentStop hooks indicate we should continue (due to blocking errors),
           // restart the AI conversation cycle
           if (shouldContinue) {
             this.logger?.info(
-              "Stop hooks indicate issues need fixing, continuing conversation...",
+              `${this.subagentType ? "SubagentStop" : "Stop"} hooks indicate issues need fixing, continuing conversation...`,
             );
 
             // Restart the conversation to let AI fix the issues
@@ -662,15 +662,19 @@ export class AIManager {
   }
 
   /**
-   * Execute Stop hooks when AI response cycle completes
+   * Execute Stop or SubagentStop hooks when AI response cycle completes
+   * Uses "SubagentStop" hook name when triggered by a subagent, otherwise uses "Stop"
    * @returns Promise<boolean> - true if should continue conversation, false if should stop
    */
   private async executeStopHooks(): Promise<boolean> {
     if (!this.hookManager) return false;
 
     try {
+      // Use "SubagentStop" hook name when triggered by a subagent, otherwise use "Stop"
+      const hookName = this.subagentType ? "SubagentStop" : "Stop";
+
       const context: ExtendedHookExecutionContext = {
-        event: "Stop",
+        event: hookName,
         projectDir: this.workdir,
         timestamp: new Date(),
         sessionId: this.messageManager.getSessionId(),
@@ -680,13 +684,13 @@ export class AIManager {
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
       };
 
-      const results = await this.hookManager.executeHooks("Stop", context);
+      const results = await this.hookManager.executeHooks(hookName, context);
 
       // Process hook results to handle exit codes and appropriate responses
       let shouldContinue = false;
       if (results.length > 0) {
         const processResult = this.hookManager.processHookResults(
-          "Stop",
+          hookName,
           results,
           this.messageManager,
         );
@@ -694,7 +698,7 @@ export class AIManager {
         // If hook processing indicates we should block (exit code 2), continue conversation
         if (processResult.shouldBlock) {
           this.logger?.info(
-            "Stop hook blocked stopping with error:",
+            `${hookName} hook blocked stopping with error:`,
             processResult.errorMessage,
           );
           shouldContinue = true;
@@ -704,7 +708,7 @@ export class AIManager {
       // Log hook execution results for debugging
       if (results.length > 0) {
         this.logger?.debug(
-          `Executed ${results.length} Stop hook(s):`,
+          `Executed ${results.length} ${hookName} hook(s):`,
           results.map((r) => ({
             success: r.success,
             duration: r.duration,
@@ -718,7 +722,10 @@ export class AIManager {
       return shouldContinue;
     } catch (error) {
       // Hook execution errors should not interrupt the main workflow
-      this.logger?.error("Stop hook execution failed:", error);
+      this.logger?.error(
+        `${this.subagentType ? "SubagentStop" : "Stop"} hook execution failed:`,
+        error,
+      );
       return false;
     }
   }

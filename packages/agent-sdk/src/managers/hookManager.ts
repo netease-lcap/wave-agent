@@ -738,6 +738,7 @@ export class HookManager {
           PostToolUse: 0,
           UserPromptSubmit: 0,
           Stop: 0,
+          SubagentStop: 0,
         },
       };
     }
@@ -747,6 +748,7 @@ export class HookManager {
       PostToolUse: 0,
       UserPromptSubmit: 0,
       Stop: 0,
+      SubagentStop: 0,
     };
 
     let totalConfigs = 0;
