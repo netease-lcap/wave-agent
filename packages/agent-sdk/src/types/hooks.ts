@@ -19,7 +19,8 @@ export type HookEvent =
   | "PreToolUse"
   | "PostToolUse"
   | "UserPromptSubmit"
-  | "Stop";
+  | "Stop"
+  | "SubagentStop";
 
 // Individual hook command configuration
 export interface HookCommand {
@@ -110,9 +111,13 @@ export class HookConfigurationError extends Error {
 
 // Type guards for runtime validation
 export function isValidHookEvent(event: string): event is HookEvent {
-  return ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"].includes(
-    event,
-  );
+  return [
+    "PreToolUse",
+    "PostToolUse",
+    "UserPromptSubmit",
+    "Stop",
+    "SubagentStop",
+  ].includes(event);
 }
 
 export function isValidHookCommand(cmd: unknown): cmd is HookCommand {
@@ -150,7 +155,7 @@ export interface HookJsonInput {
   session_id: string; // Format: "wave_session_{uuid}_{shortId}"
   transcript_path: string; // Format: "~/.wave/sessions/session_{shortId}.json"
   cwd: string; // Absolute path to current working directory
-  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop"
+  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SubagentStop"
 
   // Optional fields based on event type
   tool_name?: string; // Present for PreToolUse, PostToolUse
