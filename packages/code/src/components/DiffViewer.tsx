@@ -5,7 +5,7 @@ import type { DiffBlock } from "wave-agent-sdk";
 
 interface DiffViewerProps {
   block: DiffBlock;
-  isExpanded?: boolean;
+  isStatic?: boolean;
 }
 
 // Render word-level diff
@@ -48,7 +48,7 @@ const renderWordLevelDiff = (removedLine: string, addedLine: string) => {
 
 export const DiffViewer: React.FC<DiffViewerProps> = ({
   block,
-  isExpanded = false,
+  isStatic = true,
 }) => {
   const { diffResult } = block;
 
@@ -246,21 +246,22 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     // Handle remaining deleted lines at the end
     flushPendingLines();
 
-    // Only limit displayed lines in collapsed state
-    if (!isExpanded) {
-      const MAX_DISPLAY_LINES = 50;
-      if (lines.length > MAX_DISPLAY_LINES) {
-        const truncatedLines = lines.slice(0, MAX_DISPLAY_LINES);
-        truncatedLines.push({
-          content: `... (${lines.length - MAX_DISPLAY_LINES} more lines truncated, press Ctrl+O to expand)`,
-          type: "separator",
-        });
-        return truncatedLines;
-      }
+    return lines;
+  }, [diffResult]);
+
+  // Truncate to last 10 lines for non-static items
+  const displayLines = useMemo(() => {
+    if (isStatic) {
+      return diffLines;
     }
 
-    return lines;
-  }, [diffResult, isExpanded]);
+    const MAX_LINES = 10;
+    if (diffLines.length <= MAX_LINES) {
+      return diffLines;
+    }
+
+    return diffLines.slice(-MAX_LINES);
+  }, [diffLines, isStatic]);
 
   if (!diffResult || diffResult.length === 0) {
     return (
@@ -275,7 +276,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     <Box flexDirection="column">
       <Box flexDirection="column">
         <Box flexDirection="column">
-          {diffLines.map((line, index) => {
+          {displayLines.map((line, index) => {
             // If has word-level diff, render special effects
             if (line.wordDiff) {
               const prefix = line.type === "removed" ? "- " : "+ ";
