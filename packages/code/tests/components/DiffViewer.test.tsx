@@ -39,30 +39,17 @@ describe("DiffViewer", () => {
     };
   };
 
-  describe("Truncation behavior", () => {
-    it("should truncate content when not expanded", () => {
+  describe("Content display behavior", () => {
+    it("should always show all content without truncation", () => {
       const block = createLargeDiffBlock();
-      const { lastFrame } = render(
-        <DiffViewer block={block} isExpanded={false} />,
-      );
+      const { lastFrame } = render(<DiffViewer block={block} />);
 
-      // Should show truncation message
-      expect(lastFrame()).toContain("more lines truncated");
-      expect(lastFrame()).toContain("press Ctrl+O to expand");
-    });
-
-    it("should not truncate content when expanded", () => {
-      const block = createLargeDiffBlock();
-      const { lastFrame } = render(
-        <DiffViewer block={block} isExpanded={true} />,
-      );
-
-      // Should not show truncation message
+      // Should never show truncation message since DiffViewer always shows all content
       expect(lastFrame()).not.toContain("more lines truncated");
       expect(lastFrame()).not.toContain("press Ctrl+O to expand");
     });
 
-    it("should handle small diffs without truncation regardless of expand state", () => {
+    it("should handle small diffs without truncation", () => {
       const smallBlock: DiffBlock = {
         type: "diff",
         path: "small.txt",
@@ -73,16 +60,10 @@ describe("DiffViewer", () => {
         ],
       };
 
-      const { lastFrame: collapsedFrame } = render(
-        <DiffViewer block={smallBlock} isExpanded={false} />,
-      );
-      const { lastFrame: expandedFrame } = render(
-        <DiffViewer block={smallBlock} isExpanded={true} />,
-      );
+      const { lastFrame } = render(<DiffViewer block={smallBlock} />);
 
-      // Neither should show truncation for small diffs
-      expect(collapsedFrame()).not.toContain("more lines truncated");
-      expect(expandedFrame()).not.toContain("more lines truncated");
+      // Should not show truncation for small diffs
+      expect(lastFrame()).not.toContain("more lines truncated");
     });
   });
 

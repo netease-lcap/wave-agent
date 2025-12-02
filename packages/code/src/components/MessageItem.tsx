@@ -14,12 +14,14 @@ export interface MessageItemProps {
   message: Message;
   isExpanded: boolean;
   shouldShowHeader: boolean;
+  isStatic?: boolean;
 }
 
 export const MessageItem = ({
   message,
   isExpanded,
   shouldShowHeader,
+  isStatic = true,
 }: MessageItemProps) => {
   if (message.blocks.length === 0) return null;
   return (
@@ -47,7 +49,11 @@ export const MessageItem = ({
                     🔗{" "}
                   </Text>
                 )}
-                <Markdown>{block.content}</Markdown>
+                {isStatic ? (
+                  <Markdown>{block.content}</Markdown>
+                ) : (
+                  <Text>{block.content.split("\n").slice(-10).join("\n")}</Text>
+                )}
               </Box>
             )}
 
@@ -58,7 +64,7 @@ export const MessageItem = ({
             )}
 
             {block.type === "diff" && (
-              <DiffViewer block={block} isExpanded={isExpanded} />
+              <DiffViewer block={block} isStatic={isStatic} />
             )}
 
             {block.type === "command_output" && (

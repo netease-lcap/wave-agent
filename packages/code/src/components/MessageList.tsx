@@ -75,6 +75,7 @@ export const MessageList = React.memo(
                 message={message}
                 shouldShowHeader={previousMessage?.role !== message.role}
                 isExpanded={isExpanded}
+                isStatic={true}
               />
             );
           }}
@@ -91,6 +92,7 @@ export const MessageList = React.memo(
                 message={message}
                 shouldShowHeader={previousMessage?.role !== message.role}
                 isExpanded={isExpanded}
+                isStatic={false}
               />
             </Box>
           );
