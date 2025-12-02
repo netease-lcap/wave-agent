@@ -7,8 +7,14 @@
 
 import { spawn, type ChildProcess } from "child_process";
 import { existsSync, readFileSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import {
+  getUserConfigPath,
+  getProjectConfigPath,
+  getUserConfigPaths,
+  getProjectConfigPaths,
+  hasAnyConfig,
+  getConfigurationInfo,
+} from "../utils/configPaths.js";
 import {
   type HookExecutionContext,
   type HookExecutionResult,
@@ -367,21 +373,39 @@ export function mergeEnvironmentConfig(
 }
 
 // =============================================================================
-// Hook Settings Functions
+// Hook Settings Functions (using centralized config path utilities)
 // =============================================================================
 
 /**
- * Get the user-specific hooks configuration file path
+ * Get the user-specific hooks configuration file path (legacy function)
+ * @deprecated Use getUserConfigPaths() from configPaths.ts for better priority support
  */
 export function getUserHooksConfigPath(): string {
-  return join(homedir(), ".wave", "settings.json");
+  return getUserConfigPath();
 }
 
 /**
- * Get the project-specific hooks configuration file path
+ * Get the project-specific hooks configuration file path (legacy function)
+ * @deprecated Use getProjectConfigPaths() from configPaths.ts for better priority support
  */
 export function getProjectHooksConfigPath(workdir: string): string {
-  return join(workdir, ".wave", "settings.json");
+  return getProjectConfigPath(workdir);
+}
+
+/**
+ * Get the user-specific hooks configuration file paths in priority order
+ * @deprecated Use getUserConfigPaths() from configPaths.ts directly
+ */
+export function getUserHooksConfigPaths(): string[] {
+  return getUserConfigPaths();
+}
+
+/**
+ * Get the project-specific hooks configuration file paths in priority order
+ * @deprecated Use getProjectConfigPaths() from configPaths.ts directly
+ */
+export function getProjectHooksConfigPaths(workdir: string): string[] {
+  return getProjectConfigPaths(workdir);
 }
 
 /**
@@ -457,6 +481,66 @@ export function loadWaveConfigFromFileWithFallback(
 }
 
 /**
+ * Load Wave configuration from multiple file paths in priority order
+ * Returns the first valid configuration found, or null if none exist
+ */
+export function loadWaveConfigFromFiles(
+  filePaths: string[],
+): WaveConfiguration | null {
+  for (const filePath of filePaths) {
+    const config = loadWaveConfigFromFile(filePath);
+    if (config !== null) {
+      return config;
+    }
+  }
+  return null;
+}
+
+/**
+ * Load Wave configuration from multiple file paths with graceful fallback
+ * Returns the first valid configuration found with fallback support
+ */
+export function loadWaveConfigFromFilesWithFallback(
+  filePaths: string[],
+  previousValidConfig?: WaveConfiguration | null,
+): {
+  config: WaveConfiguration | null;
+  error?: string;
+  usedFallback: boolean;
+  usedPath?: string;
+} {
+  let lastError: string | undefined;
+
+  for (const filePath of filePaths) {
+    const result = loadWaveConfigFromFileWithFallback(
+      filePath,
+      previousValidConfig,
+    );
+
+    if (result.config !== null && !result.usedFallback) {
+      // Found a valid config at this path
+      return {
+        config: result.config,
+        error: result.error,
+        usedFallback: result.usedFallback,
+        usedPath: filePath,
+      };
+    }
+
+    if (result.error) {
+      lastError = result.error;
+    }
+  }
+
+  // No valid config found in any path
+  return {
+    config: previousValidConfig || null,
+    error: lastError,
+    usedFallback: !!previousValidConfig,
+  };
+}
+
+/**
  * Load and merge Wave configuration with graceful fallback for live reload
  * Provides error recovery by falling back to previous valid configuration
  */
@@ -471,9 +555,9 @@ export function loadMergedWaveConfigWithFallback(
   const errors: string[] = [];
   let usedFallback = false;
 
-  // Load user config with fallback
-  const userResult = loadWaveConfigFromFileWithFallback(
-    getUserHooksConfigPath(),
+  // Load user config with fallback (check .local.json first, then .json)
+  const userResult = loadWaveConfigFromFilesWithFallback(
+    getUserHooksConfigPaths(),
     previousValidConfig,
   );
   if (userResult.error) {
@@ -483,9 +567,9 @@ export function loadMergedWaveConfigWithFallback(
     usedFallback = true;
   }
 
-  // Load project config with fallback
-  const projectResult = loadWaveConfigFromFileWithFallback(
-    getProjectHooksConfigPath(workdir),
+  // Load project config with fallback (check .local.json first, then .json)
+  const projectResult = loadWaveConfigFromFilesWithFallback(
+    getProjectHooksConfigPaths(workdir),
     previousValidConfig,
   );
   if (projectResult.error) {
@@ -630,18 +714,20 @@ export function loadHooksConfigFromFile(
 
 /**
  * Load user-specific Wave configuration
+ * Checks .local.json first, then falls back to .json
  */
 export function loadUserWaveConfig(): WaveConfiguration | null {
-  return loadWaveConfigFromFile(getUserHooksConfigPath());
+  return loadWaveConfigFromFiles(getUserHooksConfigPaths());
 }
 
 /**
  * Load project-specific Wave configuration
+ * Checks .local.json first, then falls back to .json
  */
 export function loadProjectWaveConfig(
   workdir: string,
 ): WaveConfiguration | null {
-  return loadWaveConfigFromFile(getProjectHooksConfigPath(workdir));
+  return loadWaveConfigFromFiles(getProjectHooksConfigPaths(workdir));
 }
 
 /**
@@ -665,6 +751,7 @@ export function loadProjectHooksConfig(
 /**
  * Load and merge Wave configuration from both user and project sources
  * Project configuration takes precedence over user configuration
+ * Checks .local.json files first, then falls back to .json files
  */
 export function loadMergedWaveConfig(
   workdir: string,
@@ -740,28 +827,25 @@ export function loadMergedHooksConfig(
 
 /**
  * Check if hooks configuration exists (user or project)
+ * Checks both .local.json and .json variants
+ * @deprecated Use hasAnyConfig() from configPaths.ts for better functionality
  */
 export function hasHooksConfiguration(workdir: string): boolean {
-  return (
-    existsSync(getUserHooksConfigPath()) ||
-    existsSync(getProjectHooksConfigPath(workdir))
-  );
+  return hasAnyConfig(workdir);
 }
 
 /**
  * Get hooks configuration information for debugging
+ * Includes both .local.json and .json variants
+ * @deprecated Use getConfigurationInfo() from configPaths.ts for better functionality
  */
 export function getHooksConfigurationInfo(workdir: string): {
   hasUser: boolean;
   hasProject: boolean;
   paths: string[];
+  userPaths: string[];
+  projectPaths: string[];
+  existingPaths: string[];
 } {
-  const userPath = getUserHooksConfigPath();
-  const projectPath = getProjectHooksConfigPath(workdir);
-
-  return {
-    hasUser: existsSync(userPath),
-    hasProject: existsSync(projectPath),
-    paths: [userPath, projectPath],
-  };
+  return getConfigurationInfo(workdir);
 }
