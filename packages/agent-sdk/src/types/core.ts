@@ -3,6 +3,8 @@
  * Dependencies: None (foundation layer)
  */
 
+import type { CompletionUsage } from "openai/resources";
+
 /**
  * Logger interface definition
  * Compatible with OpenAI package Logger interface
@@ -24,6 +26,48 @@ export interface Usage {
   total_tokens: number; // Sum of prompt + completion tokens
   model?: string; // Model used for the operation (e.g., "gpt-4", "gpt-3.5-turbo")
   operation_type?: "agent" | "compress"; // Type of operation that generated usage
+
+  // Cache-related tokens (Claude models only)
+  cache_read_input_tokens?: number; // Tokens read from cache
+  cache_creation_input_tokens?: number; // Tokens used to create cache entries
+  cache_creation?: {
+    ephemeral_5m_input_tokens: number; // Tokens cached for 5 minutes
+    ephemeral_1h_input_tokens: number; // Tokens cached for 1 hour
+  };
+}
+
+/**
+ * Enhanced usage metrics including Claude cache information
+ * Backward compatible with standard OpenAI CompletionUsage
+ */
+export interface ClaudeUsage extends CompletionUsage {
+  // Standard OpenAI usage fields (inherited)
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+
+  // Claude-specific cache extensions
+  /**
+   * Number of tokens read from existing cache
+   * Indicates cost savings from cache hits
+   */
+  cache_read_input_tokens?: number;
+
+  /**
+   * Number of tokens used to create new cache entries
+   * Investment in future cache hits
+   */
+  cache_creation_input_tokens?: number;
+
+  /**
+   * Detailed breakdown of cache creation by duration
+   */
+  cache_creation?: {
+    /** Tokens cached for 5 minute duration */
+    ephemeral_5m_input_tokens: number;
+    /** Tokens cached for 1 hour duration */
+    ephemeral_1h_input_tokens: number;
+  };
 }
 
 export class ConfigurationError extends Error {

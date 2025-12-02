@@ -77,6 +77,19 @@ describe("AI Service - Basic CallAgent", () => {
     vi.clearAllMocks();
   });
 
+  // Helper function to get content from system message (handles both string and array formats)
+  const getSystemMessageContent = (
+    content: string | Array<{ type: string; text?: string }>,
+  ): string => {
+    if (typeof content === "string") {
+      return content;
+    }
+    if (Array.isArray(content)) {
+      return content.map((part) => part.text || "").join("");
+    }
+    return "";
+  };
+
   describe("callAgent basic functionality", () => {
     // Import the function after mocking
     let callAgent: (
@@ -100,12 +113,11 @@ describe("AI Service - Basic CallAgent", () => {
 
       // Should have system message as first message
       expect(callArgs.messages[0].role).toBe("system");
-      expect(callArgs.messages[0].content).toContain(
-        "You are an interactive CLI tool",
+      const systemContent = getSystemMessageContent(
+        callArgs.messages[0].content,
       );
-      expect(callArgs.messages[0].content).toContain(
-        "Working directory: /test/workdir",
-      );
+      expect(systemContent).toContain("You are an interactive CLI tool");
+      expect(systemContent).toContain("Working directory: /test/workdir");
     });
 
     it("should use custom systemPrompt when provided", async () => {
@@ -124,11 +136,12 @@ describe("AI Service - Basic CallAgent", () => {
 
       // Should have custom system message as first message
       expect(callArgs.messages[0].role).toBe("system");
-      expect(callArgs.messages[0].content).toContain(customPrompt);
-      // Should not contain default prompt content
-      expect(callArgs.messages[0].content).not.toContain(
-        "You are an interactive CLI tool",
+      const systemContent = getSystemMessageContent(
+        callArgs.messages[0].content,
       );
+      expect(systemContent).toContain(customPrompt);
+      // Should not contain default prompt content
+      expect(systemContent).not.toContain("You are an interactive CLI tool");
     });
 
     it("should add memory to default system prompt when no custom systemPrompt provided", async () => {
@@ -146,8 +159,11 @@ describe("AI Service - Basic CallAgent", () => {
 
       // Should have system message with memory
       expect(callArgs.messages[0].role).toBe("system");
-      expect(callArgs.messages[0].content).toContain("## Memory Context");
-      expect(callArgs.messages[0].content).toContain(memoryContent);
+      const systemContent = getSystemMessageContent(
+        callArgs.messages[0].content,
+      );
+      expect(systemContent).toContain("## Memory Context");
+      expect(systemContent).toContain(memoryContent);
     });
 
     it("should handle response with usage information", async () => {

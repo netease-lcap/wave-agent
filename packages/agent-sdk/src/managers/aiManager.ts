@@ -1,6 +1,7 @@
 import { callAgent, compressMessages } from "../services/aiService.js";
 import { getMessagesToCompress } from "../utils/messageOperations.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
+import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
 import * as memory from "../services/memory.js";
 import type {
   Logger,
@@ -207,16 +208,22 @@ export class AIManager {
 
   // Private method to handle token statistics and message compression
   private async handleTokenUsageAndCompression(
-    usage: { total_tokens: number } | undefined,
+    usage: Usage | undefined,
     abortController: AbortController,
   ): Promise<void> {
     if (!usage) return;
 
-    // Update token statistics - display latest token usage
-    this.messageManager.setlatestTotalTokens(usage.total_tokens);
+    // Update token statistics - display comprehensive token usage including cache tokens
+    const comprehensiveTotalTokens = calculateComprehensiveTotalTokens(usage);
+    this.messageManager.setlatestTotalTokens(comprehensiveTotalTokens);
 
     // Check if token limit exceeded - use injected configuration
-    if (usage.total_tokens > this.tokenLimit) {
+    if (
+      usage.total_tokens +
+        (usage.cache_read_input_tokens || 0) +
+        (usage.cache_creation_input_tokens || 0) >
+      this.tokenLimit
+    ) {
       this.logger?.debug(
         `Token usage exceeded ${this.tokenLimit}, compressing messages...`,
       );
@@ -408,6 +415,17 @@ export class AIManager {
           total_tokens: result.usage.total_tokens,
           model: model || this.modelConfig.agentModel,
           operation_type: "agent",
+          // Preserve cache fields if present
+          ...(result.usage.cache_read_input_tokens !== undefined && {
+            cache_read_input_tokens: result.usage.cache_read_input_tokens,
+          }),
+          ...(result.usage.cache_creation_input_tokens !== undefined && {
+            cache_creation_input_tokens:
+              result.usage.cache_creation_input_tokens,
+          }),
+          ...(result.usage.cache_creation && {
+            cache_creation: result.usage.cache_creation,
+          }),
         };
       }
 
