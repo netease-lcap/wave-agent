@@ -16,7 +16,10 @@ import {
 import { type FileWatchEvent } from "../services/fileWatcher.js";
 import { configResolver } from "../utils/configResolver.js";
 import { join } from "path";
-import { homedir } from "os";
+import {
+  getUserConfigPaths,
+  getProjectConfigPaths,
+} from "../utils/configPaths.js";
 import { CONFIGURATION_EVENTS } from "../constants/events.js";
 
 export interface LiveConfigManagerOptions {
@@ -121,8 +124,8 @@ export class LiveConfigManager {
     );
 
     // Initialize watching for user and project settings
-    const { userPath, projectPath } = this.getConfigurationPaths();
-    await this.configurationWatcher.initializeWatching(userPath, projectPath);
+    const { userPaths, projectPaths } = this.getConfigurationPaths();
+    await this.configurationWatcher.initializeWatching(userPaths, projectPaths);
     this.logger?.info("Live Config: Configuration watching initialized");
   }
 
@@ -232,10 +235,14 @@ export class LiveConfigManager {
 
   /**
    * Get configuration file paths for user and project settings
+   * Returns paths in priority order (local.json first, then .json)
    */
-  private getConfigurationPaths(): { userPath: string; projectPath: string } {
-    const userPath = join(homedir(), ".config", "wave", "settings.json");
-    const projectPath = join(this.workdir, ".wave", "settings.json");
-    return { userPath, projectPath };
+  private getConfigurationPaths(): {
+    userPaths: string[];
+    projectPaths: string[];
+  } {
+    const userPaths = getUserConfigPaths();
+    const projectPaths = getProjectConfigPaths(this.workdir);
+    return { userPaths, projectPaths };
   }
 }

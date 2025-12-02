@@ -13,3 +13,4 @@ Thumbs.db
 .vscode/
 .idea/
 nohup.out
+.wave/settings.local.json

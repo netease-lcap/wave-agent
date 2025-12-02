@@ -32,7 +32,10 @@ export interface ConfigurationChangeEvent {
 }
 
 export interface ConfigurationReloadService {
-  initializeWatching(userPath: string, projectPath?: string): Promise<void>;
+  initializeWatching(
+    userPaths: string[],
+    projectPaths?: string[],
+  ): Promise<void>;
   reloadConfiguration(): Promise<WaveConfiguration>;
   getCurrentConfiguration(): WaveConfiguration | null;
   validateEnvironmentVariables(env: Record<string, string>): {
@@ -51,8 +54,8 @@ export class ConfigurationWatcher
   private logger?: Logger;
   private currentConfiguration: WaveConfiguration | null = null;
   private lastValidConfiguration: WaveConfiguration | null = null;
-  private userConfigPath?: string;
-  private projectConfigPath?: string;
+  private userConfigPaths?: string[];
+  private projectConfigPaths?: string[];
   private workdir: string;
   private isWatching: boolean = false;
   private reloadInProgress: boolean = false;
@@ -68,46 +71,53 @@ export class ConfigurationWatcher
   /**
    * Initialize configuration watching
    * Maps to FR-004: System MUST watch settings.json files
+   * Supports watching multiple file paths (e.g., settings.local.json and settings.json)
    */
   async initializeWatching(
-    userPath: string,
-    projectPath?: string,
+    userPaths: string[],
+    projectPaths?: string[],
   ): Promise<void> {
     try {
       this.logger?.info("Live Config: Initializing configuration watching...");
 
-      this.userConfigPath = userPath;
-      this.projectConfigPath = projectPath;
+      this.userConfigPaths = userPaths;
+      this.projectConfigPaths = projectPaths;
 
       // Load initial configuration
       await this.reloadConfiguration();
 
-      // Start watching user config if it exists
-      if (existsSync(userPath)) {
-        this.logger?.debug(
-          `Live Config: Starting to watch user config: ${userPath}`,
-        );
-        await this.fileWatcher.watchFile(userPath, (event) =>
-          this.handleFileChange(event, "user"),
-        );
-      } else {
-        this.logger?.debug(
-          `Live Config: User config file does not exist: ${userPath}`,
-        );
+      // Start watching user configs that exist
+      for (const userPath of userPaths) {
+        if (existsSync(userPath)) {
+          this.logger?.debug(
+            `Live Config: Starting to watch user config: ${userPath}`,
+          );
+          await this.fileWatcher.watchFile(userPath, (event) =>
+            this.handleFileChange(event, "user"),
+          );
+        } else {
+          this.logger?.debug(
+            `Live Config: User config file does not exist: ${userPath}`,
+          );
+        }
       }
 
-      // Start watching project config if it exists
-      if (projectPath && existsSync(projectPath)) {
-        this.logger?.debug(
-          `Live Config: Starting to watch project config: ${projectPath}`,
-        );
-        await this.fileWatcher.watchFile(projectPath, (event) =>
-          this.handleFileChange(event, "project"),
-        );
-      } else if (projectPath) {
-        this.logger?.debug(
-          `Live Config: Project config file does not exist: ${projectPath}`,
-        );
+      // Start watching project configs that exist
+      if (projectPaths) {
+        for (const projectPath of projectPaths) {
+          if (existsSync(projectPath)) {
+            this.logger?.debug(
+              `Live Config: Starting to watch project config: ${projectPath}`,
+            );
+            await this.fileWatcher.watchFile(projectPath, (event) =>
+              this.handleFileChange(event, "project"),
+            );
+          } else {
+            this.logger?.debug(
+              `Live Config: Project config file does not exist: ${projectPath}`,
+            );
+          }
+        }
       }
 
       this.isWatching = true;
@@ -152,7 +162,10 @@ export class ConfigurationWatcher
         // Emit error event
         this.emit(CONFIGURATION_EVENTS.CONFIGURATION_CHANGE, {
           type: "settings_changed",
-          path: this.projectConfigPath || this.userConfigPath || "unknown",
+          path:
+            this.getFirstExistingProjectPath() ||
+            this.getFirstExistingUserPath() ||
+            "unknown",
           timestamp,
           changes: { added: [], modified: [], removed: [] },
           isValid: false,
@@ -185,7 +198,10 @@ export class ConfigurationWatcher
           // Emit error event but continue with previous valid config
           this.emit(CONFIGURATION_EVENTS.CONFIGURATION_CHANGE, {
             type: "settings_changed",
-            path: this.projectConfigPath || this.userConfigPath || "unknown",
+            path:
+              this.getFirstExistingProjectPath() ||
+              this.getFirstExistingUserPath() ||
+              "unknown",
             timestamp,
             changes: { added: [], modified: [], removed: [] },
             isValid: false,
@@ -227,7 +243,10 @@ export class ConfigurationWatcher
       // Emit configuration change event
       this.emit(CONFIGURATION_EVENTS.CONFIGURATION_CHANGE, {
         type: "settings_changed",
-        path: this.projectConfigPath || this.userConfigPath || "merged",
+        path:
+          this.getFirstExistingProjectPath() ||
+          this.getFirstExistingUserPath() ||
+          "merged",
         timestamp,
         changes,
         isValid: true,
@@ -579,5 +598,25 @@ export class ConfigurationWatcher
     }
 
     return { added, modified, removed };
+  }
+
+  /**
+   * Get the first existing user config path for error reporting
+   */
+  private getFirstExistingUserPath(): string | undefined {
+    return (
+      this.userConfigPaths?.find((path) => existsSync(path)) ||
+      this.userConfigPaths?.[0]
+    );
+  }
+
+  /**
+   * Get the first existing project config path for error reporting
+   */
+  private getFirstExistingProjectPath(): string | undefined {
+    return (
+      this.projectConfigPaths?.find((path) => existsSync(path)) ||
+      this.projectConfigPaths?.[0]
+    );
   }
 }
