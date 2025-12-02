@@ -1,58 +1,13 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type {
-  SubagentBlock as SubagentBlockType,
-  Message,
-  MessageBlock,
-} from "wave-agent-sdk";
-import { ToolResultDisplay } from "./ToolResultDisplay.js";
+import type { SubagentBlock as SubagentBlockType } from "wave-agent-sdk";
 import { useChat } from "../contexts/useChat.js";
-
-// Component to render individual message blocks
-interface MessageBlockRendererProps {
-  block: MessageBlock;
-  isExpanded: boolean;
-}
-
-const MessageBlockRenderer: React.FC<MessageBlockRendererProps> = ({
-  block,
-  isExpanded,
-}) => {
-  const truncateText = (text: string, maxLines: number): string => {
-    const lines = text.split("\n");
-    if (lines.length <= maxLines) {
-      return text;
-    }
-    return lines.slice(0, maxLines).join("\n") + "\n...";
-  };
-
-  switch (block.type) {
-    case "text": {
-      const maxLines = isExpanded ? 50 : 10;
-      const truncatedContent = truncateText(block.content, maxLines);
-      return <Text>{truncatedContent}</Text>;
-    }
-
-    case "error":
-      return <Text color="red">❌ Error: {block.content}</Text>;
-
-    case "tool":
-      return <ToolResultDisplay block={block} isExpanded={isExpanded} />;
-
-    default:
-      return null;
-  }
-};
 
 interface SubagentBlockProps {
   block: SubagentBlockType;
-  isExpanded?: boolean;
 }
 
-export const SubagentBlock: React.FC<SubagentBlockProps> = ({
-  block,
-  isExpanded = false,
-}) => {
+export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
   const { subagentMessages } = useChat();
 
   // Get messages for this subagent from context
@@ -76,10 +31,33 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
 
   const statusInfo = getStatusIndicator(block.status);
 
-  // Determine how many messages to show
-  const messagesToShow = isExpanded
-    ? messages.slice(-10) // Up to 10 most recent when expanded
-    : messages.slice(-2); // Up to 2 most recent when collapsed
+  // Find the last 2 tool names and their compact params, and count total tools
+  const getLastTwoTools = (): {
+    tools: Array<{ name: string; compactParams?: string }>;
+    totalToolCount: number;
+  } => {
+    const tools: Array<{ name: string; compactParams?: string }> = [];
+    let totalToolCount = 0;
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      for (let j = message.blocks.length - 1; j >= 0; j--) {
+        const messageBlock = message.blocks[j];
+        if (messageBlock.type === "tool" && messageBlock.name) {
+          totalToolCount++;
+          if (tools.length < 2) {
+            tools.push({
+              name: messageBlock.name,
+              compactParams: messageBlock.compactParams,
+            });
+          }
+        }
+      }
+    }
+    return { tools: tools.reverse(), totalToolCount }; // Reverse to show oldest first, newest last
+  };
+
+  const { tools: lastTwoTools, totalToolCount } = getLastTwoTools();
 
   return (
     <Box
@@ -101,41 +79,30 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
             {" "}
             {statusInfo.icon}
           </Text>
-        </Box>
-
-        {!isExpanded && (
           <Text color="gray" dimColor>
-            {messages.length} messages
+            {" "}
+            ({messages.length} messages)
           </Text>
-        )}
+        </Box>
       </Box>
 
-      {/* Messages Section */}
-      {messagesToShow.length > 0 && (
+      {/* Tool Names Section - Vertical List */}
+      {lastTwoTools.length > 0 && (
         <Box flexDirection="column" marginTop={1} gap={1}>
-          {messagesToShow.map((message: Message, index: number) => (
-            <Box key={index} flexDirection="column" marginBottom={0} gap={1}>
-              {message.blocks.map(
-                (messageBlock: MessageBlock, blockIndex: number) => (
-                  <Box key={blockIndex} flexDirection="column">
-                    <MessageBlockRenderer
-                      block={messageBlock}
-                      isExpanded={isExpanded}
-                    />
-                  </Box>
-                ),
+          {totalToolCount > 2 && (
+            <Text color="gray" dimColor>
+              ...
+            </Text>
+          )}
+          {lastTwoTools.map((tool, index) => (
+            <Box key={index} flexDirection="row">
+              <Text color="magenta">🔧 </Text>
+              <Text color="white">{tool.name}</Text>
+              {tool.compactParams && (
+                <Text color="gray"> {tool.compactParams}</Text>
               )}
             </Box>
           ))}
-        </Box>
-      )}
-
-      {/* Show truncation indicator if there are more messages */}
-      {!isExpanded && messages.length > 2 && (
-        <Box marginTop={1}>
-          <Text color="gray" dimColor>
-            ... and {messages.length - 2} more messages (Ctrl+O to expand)
-          </Text>
         </Box>
       )}
     </Box>
