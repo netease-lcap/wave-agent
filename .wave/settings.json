@@ -13,6 +13,6 @@
     ]
   },
   "env": {
-    "AIGW_MODEL": "deepseek-v3.1-latest"
+    "AIGW_MODEL": "claude-sonnet-4-20250514"
   }
 }

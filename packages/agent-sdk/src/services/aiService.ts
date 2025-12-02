@@ -9,6 +9,13 @@ import {
 } from "openai/resources.js";
 import { logger } from "../utils/globalLogger.js";
 import type { GatewayConfig, ModelConfig } from "../types/index.js";
+import {
+  transformMessagesForClaudeCache,
+  addCacheControlToLastTool,
+  isClaudeModel,
+  extendUsageWithCacheMetrics,
+  type ClaudeUsage,
+} from "../utils/cacheControlUtils.js";
 
 import * as os from "os";
 import * as fs from "fs";
@@ -103,11 +110,7 @@ export interface CallAgentOptions {
 export interface CallAgentResult {
   content?: string;
   tool_calls?: ChatCompletionMessageToolCall[];
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  };
+  usage?: ClaudeUsage;
   finish_reason?:
     | "stop"
     | "length"
@@ -180,8 +183,20 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     };
 
     // ChatCompletionMessageParam[] is already in OpenAI format, add system prompt to the beginning
-    const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
-      [systemMessage, ...messages];
+    let openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      systemMessage,
+      ...messages,
+    ];
+
+    // Apply cache control for Claude models
+    const currentModel = model || modelConfig.agentModel;
+
+    if (isClaudeModel(currentModel)) {
+      openaiMessages = transformMessagesForClaudeCache(
+        openaiMessages,
+        currentModel,
+      );
+    }
 
     // Get model configuration - use injected modelConfig with optional override
     const openaiModelConfig = getModelConfig(model || modelConfig.agentModel, {
@@ -202,7 +217,12 @@ Today's date: ${new Date().toISOString().split("T")[0]}
 
     // Only add tools if they exist
     if (tools && tools.length > 0) {
-      createParams.tools = tools;
+      // Apply cache control to tools for Claude models
+      if (isClaudeModel(currentModel)) {
+        createParams.tools = addCacheControlToLastTool(tools);
+      } else {
+        createParams.tools = tools;
+      }
     }
 
     if (isStreaming) {
@@ -225,6 +245,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
         onToolUpdate,
         abortSignal,
         responseHeaders,
+        currentModel,
       );
     } else {
       // Handle non-streaming response
@@ -243,13 +264,22 @@ Today's date: ${new Date().toISOString().split("T")[0]}
 
       const finalMessage = response.choices[0]?.message;
       const finishReason = response.choices[0]?.finish_reason || null;
-      const totalUsage = response.usage
+
+      let totalUsage = response.usage
         ? {
             prompt_tokens: response.usage.prompt_tokens,
             completion_tokens: response.usage.completion_tokens,
             total_tokens: response.usage.total_tokens,
           }
         : undefined;
+
+      // Extend usage with cache metrics for Claude models
+      if (totalUsage && isClaudeModel(currentModel) && response.usage) {
+        totalUsage = extendUsageWithCacheMetrics(
+          totalUsage,
+          response.usage as Partial<ClaudeUsage>,
+        );
+      }
 
       const result: CallAgentResult = {};
 
@@ -311,6 +341,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
  * @param onToolUpdate Callback for tool updates
  * @param abortSignal Optional abort signal
  * @param responseHeaders Response headers from the initial request
+ * @param modelName Model name for cache control processing
  * @returns Final result with accumulated content and tool calls
  */
 async function processStreamingResponse(
@@ -325,6 +356,7 @@ async function processStreamingResponse(
   }) => void,
   abortSignal?: AbortSignal,
   responseHeaders?: Record<string, string>,
+  modelName?: string,
 ): Promise<CallAgentResult> {
   let accumulatedContent = "";
   const toolCalls: {
@@ -348,11 +380,21 @@ async function processStreamingResponse(
 
       // Check for usage information in any chunk
       if (chunk.usage) {
-        usage = {
+        let chunkUsage = {
           prompt_tokens: chunk.usage.prompt_tokens,
           completion_tokens: chunk.usage.completion_tokens,
           total_tokens: chunk.usage.total_tokens,
         };
+
+        // Extend usage with cache metrics for Claude models
+        if (modelName && isClaudeModel(modelName)) {
+          chunkUsage = extendUsageWithCacheMetrics(
+            chunkUsage,
+            chunk.usage as Partial<ClaudeUsage>,
+          );
+        }
+
+        usage = chunkUsage;
       }
 
       // Check for finish_reason in the choice

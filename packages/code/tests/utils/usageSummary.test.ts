@@ -448,5 +448,104 @@ describe("Usage Summary Utilities", () => {
         }),
       );
     });
+
+    describe("Cache token handling", () => {
+      it("should include cache tokens when present", () => {
+        const usages: Usage[] = [
+          {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            model: "claude-3-sonnet",
+            operation_type: "agent",
+            cache_read_input_tokens: 30,
+            cache_creation_input_tokens: 70,
+            cache_creation: {
+              ephemeral_5m_input_tokens: 40,
+              ephemeral_1h_input_tokens: 30,
+            },
+          },
+        ];
+
+        const result = calculateTokenSummary(usages);
+
+        expect(result).toEqual({
+          "claude-3-sonnet": {
+            model: "claude-3-sonnet",
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            operations: {
+              agent_calls: 1,
+              compressions: 0,
+            },
+            cache_read_input_tokens: 30,
+            cache_creation_input_tokens: 70,
+            cache_creation: {
+              ephemeral_5m_input_tokens: 40,
+              ephemeral_1h_input_tokens: 30,
+            },
+          },
+        });
+      });
+
+      it("should display cache information when present", () => {
+        const consoleSpy = vi
+          .spyOn(console, "log")
+          .mockImplementation(() => {});
+
+        const usages: Usage[] = [
+          {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            model: "claude-3-sonnet",
+            operation_type: "agent",
+            cache_read_input_tokens: 30,
+            cache_creation_input_tokens: 70,
+            cache_creation: {
+              ephemeral_5m_input_tokens: 40,
+              ephemeral_1h_input_tokens: 30,
+            },
+          },
+        ];
+
+        displayUsageSummary(usages);
+
+        // Check that cache information is displayed
+        const logCalls = consoleSpy.mock.calls.map((call) => call[0]);
+        expect(logCalls).toContain("  Cache Usage:");
+        expect(logCalls).toContain("    Read from cache: 30 tokens");
+        expect(logCalls).toContain("    Created cache: 70 tokens");
+        expect(logCalls).toContain("    5m cache: 40 tokens");
+        expect(logCalls).toContain("    1h cache: 30 tokens");
+
+        consoleSpy.mockRestore();
+      });
+
+      it("should not display cache information when not present", () => {
+        const consoleSpy = vi
+          .spyOn(console, "log")
+          .mockImplementation(() => {});
+
+        const usages: Usage[] = [
+          {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            model: "gpt-4",
+            operation_type: "agent",
+          },
+        ];
+
+        displayUsageSummary(usages);
+
+        // Check that cache information is not displayed
+        const logCalls = consoleSpy.mock.calls.map((call) => call[0]);
+        expect(logCalls).not.toContain("  Cache Usage:");
+
+        consoleSpy.mockRestore();
+      });
+    });
   });
 });

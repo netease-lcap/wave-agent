@@ -6,6 +6,7 @@ import type { Message } from "../types/index.js";
 import type { SessionMessage } from "../types/session.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
+import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 
 export interface SessionData {
   id: string;
@@ -183,7 +184,9 @@ export async function loadSessionFromJsonl(
         workdir,
         startedAt: firstMessage.timestamp,
         lastActiveAt: lastMessage.timestamp,
-        latestTotalTokens: lastMessage.usage?.total_tokens || 0,
+        latestTotalTokens: lastMessage.usage
+          ? extractLatestTotalTokens([lastMessage])
+          : 0,
       },
     };
 
@@ -295,7 +298,9 @@ export async function listSessionsFromJsonl(
               lastActiveAt: lastMessage
                 ? new Date(lastMessage.timestamp)
                 : new Date(metadata.startedAt),
-              latestTotalTokens: lastMessage?.usage?.total_tokens || 0,
+              latestTotalTokens: lastMessage?.usage
+                ? extractLatestTotalTokens([lastMessage])
+                : 0,
             });
           }
         } catch {
@@ -358,7 +363,9 @@ export async function listSessionsFromJsonl(
                 lastActiveAt: lastMessage
                   ? new Date(lastMessage.timestamp)
                   : new Date(metadata.startedAt),
-                latestTotalTokens: lastMessage?.usage?.total_tokens || 0,
+                latestTotalTokens: lastMessage?.usage
+                  ? extractLatestTotalTokens([lastMessage])
+                  : 0,
               });
             }
           } catch {
