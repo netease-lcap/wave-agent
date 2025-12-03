@@ -142,6 +142,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
           setBackgroundShells([...shells]);
         },
         onSubagentMessagesChange: (subagentId, messages) => {
+          logger.debug("onSubagentMessagesChange", subagentId, messages.length);
           setSubagentMessages((prev) => ({
             ...prev,
             [subagentId]: [...messages],

@@ -471,19 +471,7 @@ export class SubagentManager {
         // This ensures the callback can find the instance
         this.instances.set(subagentId, instance);
 
-        // Now restore the session data including sessionId, which will trigger the callback chain
-        const sessionDataObj = {
-          id: sessionData.id,
-          messages: sessionData.messages,
-          version: "1.0.0",
-          metadata: {
-            workdir: this.workdir,
-            startedAt: new Date().toISOString(),
-            lastActiveAt: new Date().toISOString(),
-            latestTotalTokens: 0,
-          },
-        };
-        messageManager.initializeFromSession(sessionDataObj);
+        messageManager.initializeFromSession(sessionData);
       } catch (error) {
         this.logger?.warn(
           `Failed to restore subagent session ${subagentId}:`,
