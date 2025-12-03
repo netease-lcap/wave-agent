@@ -12,7 +12,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   setGlobalLogger,
-  getGlobalLogger,
   clearGlobalLogger,
   isLoggerConfigured,
   logger,
@@ -49,11 +48,11 @@ describe("Global Logger Registry", () => {
 
   describe("setGlobalLogger()", () => {
     it("should set the global logger instance", () => {
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
 
       setGlobalLogger(mockLogger);
 
-      expect(getGlobalLogger()).toBe(mockLogger);
+      expect(isLoggerConfigured()).toBe(true);
     });
 
     it("should replace existing logger with new instance", () => {
@@ -61,102 +60,62 @@ describe("Global Logger Registry", () => {
       const secondLogger = createMockLogger();
 
       setGlobalLogger(firstLogger);
-      expect(getGlobalLogger()).toBe(firstLogger);
+      expect(isLoggerConfigured()).toBe(true);
 
       setGlobalLogger(secondLogger);
-      expect(getGlobalLogger()).toBe(secondLogger);
-      expect(getGlobalLogger()).not.toBe(firstLogger);
+      expect(isLoggerConfigured()).toBe(true);
     });
 
     it("should accept null to clear the logger", () => {
       setGlobalLogger(mockLogger);
-      expect(getGlobalLogger()).toBe(mockLogger);
+      expect(isLoggerConfigured()).toBe(true);
 
       setGlobalLogger(null);
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
     });
 
     it("should handle multiple set operations correctly", () => {
       // Set -> Clear -> Set -> Clear sequence
       setGlobalLogger(mockLogger);
-      expect(getGlobalLogger()).toBe(mockLogger);
+      expect(isLoggerConfigured()).toBe(true);
 
       setGlobalLogger(null);
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
 
       const secondLogger = createMockLogger();
       setGlobalLogger(secondLogger);
-      expect(getGlobalLogger()).toBe(secondLogger);
+      expect(isLoggerConfigured()).toBe(true);
 
       setGlobalLogger(null);
-      expect(getGlobalLogger()).toBeNull();
-    });
-  });
-
-  describe("getGlobalLogger()", () => {
-    it("should return null when no logger is configured", () => {
-      expect(getGlobalLogger()).toBeNull();
-    });
-
-    it("should return the configured logger instance", () => {
-      setGlobalLogger(mockLogger);
-
-      const retrieved = getGlobalLogger();
-      expect(retrieved).toBe(mockLogger);
-      expect(retrieved).not.toBeNull();
-    });
-
-    it("should return same instance on multiple calls", () => {
-      setGlobalLogger(mockLogger);
-
-      const first = getGlobalLogger();
-      const second = getGlobalLogger();
-
-      expect(first).toBe(second);
-      expect(first).toBe(mockLogger);
-    });
-
-    it("should reflect logger changes immediately", () => {
-      expect(getGlobalLogger()).toBeNull();
-
-      setGlobalLogger(mockLogger);
-      expect(getGlobalLogger()).toBe(mockLogger);
-
-      const newLogger = createMockLogger();
-      setGlobalLogger(newLogger);
-      expect(getGlobalLogger()).toBe(newLogger);
-      expect(getGlobalLogger()).not.toBe(mockLogger);
+      expect(isLoggerConfigured()).toBe(false);
     });
   });
 
   describe("clearGlobalLogger()", () => {
     it("should reset logger to null when logger was configured", () => {
       setGlobalLogger(mockLogger);
-      expect(getGlobalLogger()).toBe(mockLogger);
+      expect(isLoggerConfigured()).toBe(true);
 
       clearGlobalLogger();
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
     });
 
     it("should be safe to call when no logger is configured", () => {
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
 
       clearGlobalLogger();
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
     });
 
     it("should be equivalent to setGlobalLogger(null)", () => {
       setGlobalLogger(mockLogger);
 
       clearGlobalLogger();
-      const afterClear = getGlobalLogger();
+      expect(isLoggerConfigured()).toBe(false);
 
       setGlobalLogger(mockLogger);
       setGlobalLogger(null);
-      const afterSetNull = getGlobalLogger();
-
-      expect(afterClear).toBe(afterSetNull);
-      expect(afterClear).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
     });
 
     it("should handle multiple consecutive clears", () => {
@@ -166,7 +125,7 @@ describe("Global Logger Registry", () => {
       clearGlobalLogger();
       clearGlobalLogger();
 
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
     });
   });
 
@@ -210,7 +169,7 @@ describe("Global Logger Registry", () => {
 
   describe("logger.debug()", () => {
     it("should be no-op when global logger is null", () => {
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
 
       logger.debug("test message");
       logger.debug("multiple", "arguments", { key: "value" });
@@ -266,7 +225,7 @@ describe("Global Logger Registry", () => {
 
   describe("logger.info()", () => {
     it("should be no-op when global logger is null", () => {
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
 
       logger.info("test message");
       logger.info("multiple", "arguments", { key: "value" });
@@ -314,7 +273,7 @@ describe("Global Logger Registry", () => {
 
   describe("logger.warn()", () => {
     it("should be no-op when global logger is null", () => {
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
 
       logger.warn("warning message");
       logger.warn("multiple warnings", "with context");
@@ -350,7 +309,7 @@ describe("Global Logger Registry", () => {
 
   describe("logger.error()", () => {
     it("should be no-op when global logger is null", () => {
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
 
       logger.error("error message");
       logger.error("multiple", "error", "arguments");
@@ -425,7 +384,7 @@ describe("Global Logger Registry", () => {
     });
 
     it("should ignore all log levels when unconfigured", () => {
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
 
       logger.debug("debug msg");
       logger.info("info msg");
@@ -469,7 +428,7 @@ describe("Global Logger Registry", () => {
 
   describe("Performance Characteristics", () => {
     it("should have minimal overhead when unconfigured", () => {
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
 
       // These calls should return immediately without any processing
       const start = performance.now();
@@ -569,7 +528,7 @@ describe("Global Logger Registry", () => {
   describe("Test State Isolation", () => {
     it("should start each test with clean slate", () => {
       // This test verifies our beforeEach/afterEach hooks work correctly
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
       expect(isLoggerConfigured()).toBe(false);
       expectNoLoggerCalls(mockLogger);
     });
@@ -587,7 +546,7 @@ describe("Global Logger Registry", () => {
 
     it("should have clean state despite previous test", () => {
       // Verify the previous test didn't affect this one
-      expect(getGlobalLogger()).toBeNull();
+      expect(isLoggerConfigured()).toBe(false);
       expect(isLoggerConfigured()).toBe(false);
       expectNoLoggerCalls(mockLogger);
     });

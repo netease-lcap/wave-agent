@@ -264,19 +264,18 @@ const agent = await Agent.create({
 For advanced use cases, you can manually manage the global logger:
 
 ```typescript
-import { setGlobalLogger, getGlobalLogger } from 'wave-agent-sdk/utils/globalLogger';
+import { setGlobalLogger, logger } from 'wave-agent-sdk/utils/globalLogger';
 
 // Set custom logger outside of Agent
 setGlobalLogger(myCustomLogger);
 
-// Get current logger for inspection
-const currentLogger = getGlobalLogger();
+// Use logger directly in production code
+logger.info('This will use the configured global logger');
 
 // Temporarily disable logging
-const previousLogger = getGlobalLogger();
 setGlobalLogger(null);
 // ... operations without logging
-setGlobalLogger(previousLogger);
+setGlobalLogger(myCustomLogger);
 ```
 
 ## Troubleshooting

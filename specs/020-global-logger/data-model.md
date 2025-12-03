@@ -82,7 +82,6 @@ let globalLogger: Logger | null = null;
 ```typescript
 // Global logger management
 setGlobalLogger(logger: Logger | null): void
-getGlobalLogger(): Logger | null
 clearGlobalLogger(): void
 isLoggerConfigured(): boolean
 ```

@@ -47,23 +47,6 @@ export function setGlobalLogger(logger: Logger | null): void {
 }
 
 /**
- * Retrieve the current global logger instance
- *
- * @returns Current logger instance or null if unconfigured
- *
- * @example
- * ```typescript
- * const currentLogger = getGlobalLogger();
- * if (currentLogger) {
- *   currentLogger.info('Direct logger access');
- * }
- * ```
- */
-export function getGlobalLogger(): Logger | null {
-  return globalLogger;
-}
-
-/**
  * Reset global logger to unconfigured state
  * Equivalent to setGlobalLogger(null)
  *
