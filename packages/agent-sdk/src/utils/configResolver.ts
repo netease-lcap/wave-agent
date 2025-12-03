@@ -12,7 +12,7 @@ import {
 } from "../types/index.js";
 import { DEFAULT_TOKEN_LIMIT } from "./constants.js";
 import { loadMergedWaveConfig } from "../services/hook.js";
-import { getGlobalLogger } from "./globalLogger.js";
+import { logger } from "./globalLogger.js";
 
 /**
  * Live configuration cache and invalidation support
@@ -41,13 +41,11 @@ function initializeConfigurationCache(workdir?: string): void {
       isValid: true,
     };
 
-    const logger = getGlobalLogger();
-    logger?.debug(
+    logger.debug(
       `Live Config: Configuration cache initialized with ${Object.keys(envVars).length} environment variables`,
     );
   } catch (error) {
-    const logger = getGlobalLogger();
-    logger?.error(
+    logger.error(
       `Live Config: Failed to initialize configuration cache: ${(error as Error).message}`,
     );
     configCache = {
@@ -75,8 +73,7 @@ function getCurrentEnvironmentValue(
   if (configCache && configCache.isValid) {
     const cachedValue = configCache.environmentVars[key];
     if (cachedValue !== undefined) {
-      const logger = getGlobalLogger();
-      logger?.debug(
+      logger.debug(
         `Live Config: Using cached environment variable ${key}=${cachedValue}`,
       );
       return cachedValue;
@@ -185,8 +182,7 @@ export class ConfigResolver {
       getCurrentEnvironmentValue("AIGW_FAST_MODEL", workdir) ||
       DEFAULT_FAST_MODEL;
 
-    const logger = getGlobalLogger();
-    logger?.debug(
+    logger.debug(
       `Live Config: Resolved models - agent: ${resolvedAgentModel}, fast: ${resolvedFastModel}`,
     );
 
@@ -216,8 +212,7 @@ export class ConfigResolver {
     if (envTokenLimit) {
       const parsed = parseInt(envTokenLimit, 10);
       if (!isNaN(parsed)) {
-        const logger = getGlobalLogger();
-        logger?.debug(
+        logger.debug(
           `Live Config: Resolved token limit from configuration: ${parsed}`,
         );
         return parsed;
@@ -237,8 +232,7 @@ export class ConfigResolver {
       configCache &&
       (workdir === undefined || configCache.workdir === workdir)
     ) {
-      const logger = getGlobalLogger();
-      logger?.info(
+      logger.info(
         `Live Config: Configuration cache invalidated for workdir: ${workdir || "global"}`,
       );
       configCache = null;
@@ -250,8 +244,7 @@ export class ConfigResolver {
    * @param workdir - Working directory to refresh cache for (optional)
    */
   static refreshCache(workdir?: string): void {
-    const logger = getGlobalLogger();
-    logger?.info(
+    logger.info(
       `Live Config: Refreshing configuration cache for workdir: ${workdir || "global"}`,
     );
     initializeConfigurationCache(workdir);

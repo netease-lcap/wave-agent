@@ -39,30 +39,6 @@ setGlobalLogger(null);
 
 ---
 
-### `getGlobalLogger(): Logger | null`
-
-**Purpose**: Retrieve the current global logger instance.
-
-**Returns**: `Logger | null` - Current logger instance or null if unconfigured
-
-**Behavior**:
-- Returns current global logger state
-- Null indicates no logger configured
-- Direct access to logger instance (use with caution)
-
-**Usage**:
-```typescript
-import { getGlobalLogger } from './utils/globalLogger.js';
-
-const currentLogger = getGlobalLogger();
-if (currentLogger) {
-  currentLogger.info('Direct logger access');
-}
-```
-
-**Performance**: O(1) variable access
-**Use Cases**: Testing, conditional logging, advanced integrations
-
 ---
 
 ### `clearGlobalLogger(): void`
@@ -208,7 +184,6 @@ interface Logger {
 ```typescript
 // Registry management
 export function setGlobalLogger(logger: Logger | null): void;
-export function getGlobalLogger(): Logger | null;
 export function clearGlobalLogger(): void;
 export function isLoggerConfigured(): boolean;
 
