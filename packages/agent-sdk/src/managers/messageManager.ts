@@ -21,9 +21,6 @@ import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { Logger, Message, Usage } from "../types/index.js";
 import { join } from "path";
 import {
-  cleanupExpiredSessionsFromJsonl,
-  getLatestSessionFromJsonl,
-  loadSessionFromJsonl,
   appendMessages,
   createSession,
   generateSessionId,
@@ -173,6 +170,7 @@ export class MessageManager {
       this.savedMessageCount = 0;
       // Recompute transcript path since session ID changed
       this.transcriptPath = this.computeTranscriptPath();
+
       this.callbacks.onSessionIdChange?.(sessionId);
     }
   }
@@ -232,61 +230,10 @@ export class MessageManager {
     }
   }
 
-  /**
-   * Handle session restoration logic
-   */
-  public async handleSessionRestoration(
-    restoreSessionId?: string,
-    continueLastSession?: boolean,
-  ): Promise<void> {
-    // Clean up expired sessions first
-    cleanupExpiredSessionsFromJsonl(this.workdir).catch((error) => {
-      this.logger?.warn("Failed to cleanup expired sessions:", error);
-    });
-
-    if (!restoreSessionId && !continueLastSession) {
-      return;
-    }
-
-    try {
-      let sessionToRestore: SessionData | null = null;
-
-      if (restoreSessionId) {
-        // Use only JSONL format - no legacy support
-        sessionToRestore = await loadSessionFromJsonl(
-          restoreSessionId,
-          this.workdir,
-        );
-        if (!sessionToRestore) {
-          console.error(`Session not found: ${restoreSessionId}`);
-          process.exit(1);
-        }
-      } else if (continueLastSession) {
-        // Use only JSONL format - no legacy support
-        sessionToRestore = await getLatestSessionFromJsonl(this.workdir);
-        if (!sessionToRestore) {
-          console.error(
-            `No previous session found for workdir: ${this.workdir}`,
-          );
-          process.exit(1);
-        }
-      }
-
-      if (sessionToRestore) {
-        console.log(`Restoring session: ${sessionToRestore.id}`);
-
-        // Initialize from session data
-        this.initializeFromSession(sessionToRestore);
-      }
-    } catch (error) {
-      console.error("Failed to restore session:", error);
-      process.exit(1);
-    }
-  }
-
   public setlatestTotalTokens(latestTotalTokens: number): void {
     if (this.latestTotalTokens !== latestTotalTokens) {
       this.latestTotalTokens = latestTotalTokens;
+
       this.callbacks.onLatestTotalTokensChange?.(latestTotalTokens);
     }
   }

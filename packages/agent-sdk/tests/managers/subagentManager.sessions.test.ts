@@ -35,6 +35,7 @@ vi.mock("../../src/services/session.js", () => ({
   }),
   appendMessages: vi.fn().mockResolvedValue(undefined),
   loadSessionFromJsonl: vi.fn().mockResolvedValue(null),
+  handleSessionRestoration: vi.fn().mockResolvedValue(null),
   getLatestSessionFromJsonl: vi.fn().mockResolvedValue(null),
   listSessions: vi.fn().mockResolvedValue([]),
   listSessionsFromJsonl: vi.fn().mockResolvedValue([]),
@@ -183,14 +184,15 @@ describe("SubagentManager - Session Functionality", () => {
       );
     });
 
-    it("should handle session restoration using loadSessionFromJsonl function", async () => {
-      const { loadSessionFromJsonl } = await import(
+    it("should handle session restoration using handleSessionRestoration function", async () => {
+      const { loadSessionFromJsonl, handleSessionRestoration } = await import(
         "../../src/services/session.js"
       );
       const mockLoadSessionFromJsonl = vi.mocked(loadSessionFromJsonl);
+      const mockHandleSessionRestoration = vi.mocked(handleSessionRestoration);
 
       // Mock loadSessionFromJsonl to return a valid session
-      mockLoadSessionFromJsonl.mockResolvedValueOnce({
+      const mockSession = {
         id: "01234567-89ab-6cde-f012-3456789abcde",
         messages: [],
         metadata: {
@@ -199,7 +201,9 @@ describe("SubagentManager - Session Functionality", () => {
           lastActiveAt: "2024-01-01T00:00:00.000Z",
           latestTotalTokens: 0,
         },
-      });
+      };
+      mockLoadSessionFromJsonl.mockResolvedValueOnce(mockSession);
+      mockHandleSessionRestoration.mockResolvedValueOnce(mockSession);
 
       const mockConfiguration: SubagentConfiguration = {
         name: "test-subagent",
@@ -224,14 +228,16 @@ describe("SubagentManager - Session Functionality", () => {
       );
 
       // Trigger session restoration
-      await instance.messageManager.handleSessionRestoration(
+      await handleSessionRestoration(
         "01234567-89ab-6cde-f012-3456789abcde",
         false,
+        instance.messageManager.getWorkdir(),
       );
 
-      // Verify that loadSessionFromJsonl was called with the correct parameters
-      expect(mockLoadSessionFromJsonl).toHaveBeenCalledWith(
+      // Verify that handleSessionRestoration was called with the correct parameters
+      expect(mockHandleSessionRestoration).toHaveBeenCalledWith(
         "01234567-89ab-6cde-f012-3456789abcde",
+        false,
         "/tmp/test", // workdir
       );
     });

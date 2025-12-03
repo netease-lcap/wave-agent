@@ -32,7 +32,10 @@ import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
-import { loadSessionFromJsonl } from "./services/session.js";
+import {
+  loadSessionFromJsonl,
+  handleSessionRestoration,
+} from "./services/session.js";
 import type { SubagentConfiguration } from "./utils/subagentParser.js";
 import { setGlobalLogger } from "./utils/globalLogger.js";
 
@@ -300,9 +303,9 @@ export class Agent {
    * Rebuild usage array from messages containing usage metadata
    * Called during session restoration to reconstruct usage tracking
    */
-  private rebuildUsageFromMessages(): void {
+  private rebuildUsageFromMessages(messages: Message[]): void {
     this._usages = [];
-    this.messages.forEach((message) => {
+    messages.forEach((message) => {
       if (message.role === "assistant" && message.usage) {
         this._usages.push(message.usage);
       }
@@ -475,18 +478,22 @@ export class Agent {
       // If messages are provided, use them directly (useful for testing)
       this.messageManager.setMessages(options.messages);
       // Rebuild usage array from restored messages
-      this.rebuildUsageFromMessages();
+      this.rebuildUsageFromMessages(options.messages);
     } else {
       // Otherwise, handle session restoration
-      await this.messageManager.handleSessionRestoration(
+      const sessionToRestore = await handleSessionRestoration(
         options?.restoreSessionId,
         options?.continueLastSession,
+        this.messageManager.getWorkdir(),
       );
       // Rebuild usage array from restored messages
-      this.rebuildUsageFromMessages();
+      this.rebuildUsageFromMessages(sessionToRestore?.messages || []);
 
       // After main session is restored, restore any associated subagent sessions
-      await this.restoreSubagentSessions();
+      await this.restoreSubagentSessions(sessionToRestore?.messages || []);
+
+      if (sessionToRestore)
+        this.messageManager.initializeFromSession(sessionToRestore);
     }
   }
 
@@ -494,10 +501,10 @@ export class Agent {
    * Restore subagent sessions associated with the current main session
    * This method is called after the main session is restored to load any subagent sessions
    */
-  private async restoreSubagentSessions(): Promise<void> {
+  private async restoreSubagentSessions(messages: Message[]): Promise<void> {
     try {
       // Only attempt to restore subagent sessions if we have messages (session was restored)
-      if (this.messages.length === 0) {
+      if (messages.length === 0) {
         return;
       }
 
@@ -507,7 +514,7 @@ export class Agent {
         { subagentId: string; configuration: SubagentConfiguration }
       >(); // sessionId -> { subagentId, configuration }
 
-      for (const message of this.messages) {
+      for (const message of messages) {
         if (message.role === "assistant" && message.blocks) {
           for (const block of message.blocks) {
             if (
