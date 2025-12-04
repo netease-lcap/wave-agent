@@ -118,7 +118,7 @@ export class LiveConfigManager {
 
     // Set up configuration change handler using EventEmitter pattern
     this.configurationWatcher.on(
-      "configurationChanged",
+      "configurationChange",
       (event: ConfigurationChangeEvent) => {
         this.handleConfigurationChange(event);
       },

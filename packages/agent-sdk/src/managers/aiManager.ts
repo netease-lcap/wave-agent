@@ -296,6 +296,8 @@ export class AIManager {
       // Add assistant message first (for streaming updates)
       this.messageManager.addAssistantMessage();
 
+      this.logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
+
       // Call AI service with streaming callbacks
       const result = await callAgent({
         gatewayConfig: this.getGatewayConfig(),

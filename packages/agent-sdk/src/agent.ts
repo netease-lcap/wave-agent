@@ -38,6 +38,7 @@ import {
 } from "./services/session.js";
 import type { SubagentConfiguration } from "./utils/subagentParser.js";
 import { setGlobalLogger } from "./utils/globalLogger.js";
+import { loadMergedWaveConfig } from "./services/hook.js";
 
 /**
  * Configuration options for Agent instances
@@ -124,6 +125,29 @@ export class Agent {
   private constructor(options: AgentOptions) {
     const { callbacks = {}, logger, workdir, systemPrompt } = options;
 
+    // Set working directory early as we need it for loading configuration
+    this.workdir = workdir || process.cwd();
+
+    // Load environment variables from .wave/settings.local.json before resolving configuration
+    try {
+      const waveConfig = loadMergedWaveConfig(this.workdir);
+      if (waveConfig && waveConfig.env) {
+        // Update process.env with environment variables from settings files
+        for (const [key, value] of Object.entries(waveConfig.env)) {
+          if (typeof value === "string" && !process.env[key]) {
+            // Only set if not already set (existing env vars take precedence)
+            process.env[key] = value;
+          }
+        }
+      }
+    } catch (error) {
+      // Don't throw error, just log it - continue with default configuration
+      logger?.debug(
+        "Failed to load environment variables from settings:",
+        error,
+      );
+    }
+
     // Resolve configuration from constructor args and environment variables
     const gatewayConfig = configResolver.resolveGatewayConfig(
       options.apiKey,
@@ -144,7 +168,6 @@ export class Agent {
     );
 
     this.logger = logger; // Save the passed logger
-    this.workdir = workdir || process.cwd(); // Set working directory, default to current working directory
     this.systemPrompt = systemPrompt; // Save custom system prompt
 
     // Set global logger for SDK-wide access
