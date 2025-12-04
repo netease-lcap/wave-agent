@@ -47,6 +47,7 @@ describe("Dynamic Configuration Tests", () => {
     delete process.env.AIGW_MODEL;
     delete process.env.AIGW_FAST_MODEL;
     delete process.env.TOKEN_LIMIT;
+    vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
   });
 
   afterEach(async () => {
