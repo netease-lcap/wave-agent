@@ -29,6 +29,7 @@ vi.mock("../../src/services/session.js", () => ({
   ensureSessionDir: vi.fn(),
   listSessions: vi.fn(),
   cleanupEmptyProjectDirectories: vi.fn(),
+  handleSessionRestoration: vi.fn(),
   SESSION_DIR: "/mock/session/dir",
 }));
 
@@ -57,10 +58,11 @@ describe("Agent - Subagent Session Restoration", () => {
     const subagentSessionId = uuidv6();
 
     // Import and mock the session functions
-    const { loadSessionFromJsonl } = await import(
+    const { loadSessionFromJsonl, handleSessionRestoration } = await import(
       "../../src/services/session.js"
     );
     const mockLoadSessionFromJsonl = vi.mocked(loadSessionFromJsonl);
+    const mockHandleSessionRestoration = vi.mocked(handleSessionRestoration);
 
     // Create mock main session data
     const mainSessionData = {
@@ -139,10 +141,16 @@ describe("Agent - Subagent Session Restoration", () => {
       },
     };
 
-    // Mock session loading - main session first, then subagent session
-    mockLoadSessionFromJsonl
-      .mockResolvedValueOnce(mainSessionData) // First call for main session
-      .mockResolvedValueOnce(subagentSessionData); // Second call for subagent session
+    // Mock session restoration to return the main session data
+    mockHandleSessionRestoration.mockResolvedValue(mainSessionData);
+
+    // Mock session loading - be specific about which calls should return what
+    mockLoadSessionFromJsonl.mockImplementation(async (sessionId) => {
+      if (sessionId === subagentSessionId) {
+        return subagentSessionData; // Return subagent session for the specific subagent
+      }
+      return mainSessionData; // Default to main session data for any other calls
+    });
 
     // Mock callback to verify UI callback is triggered
     const mockSubagentMessagesChange = vi.fn();
@@ -210,15 +218,17 @@ describe("Agent - Subagent Session Restoration", () => {
       ]),
     );
 
-    // Verify that loadSessionFromJsonl was called for both sessions
-    expect(mockLoadSessionFromJsonl).toHaveBeenCalledTimes(2);
-    expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
-      1,
+    // Verify that handleSessionRestoration was called for main session restoration
+    expect(mockHandleSessionRestoration).toHaveBeenCalledTimes(1);
+    expect(mockHandleSessionRestoration).toHaveBeenCalledWith(
       mainSessionId,
+      undefined, // continueLastSession
       testWorkdir,
     );
-    expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
-      2,
+
+    // Verify that loadSessionFromJsonl was called for the subagent session only
+    expect(mockLoadSessionFromJsonl).toHaveBeenCalledTimes(1);
+    expect(mockLoadSessionFromJsonl).toHaveBeenCalledWith(
       subagentSessionId,
       testWorkdir,
     );
@@ -232,10 +242,11 @@ describe("Agent - Subagent Session Restoration", () => {
     const missingSubagentSessionId = uuidv6();
 
     // Import and mock the session functions
-    const { loadSessionFromJsonl } = await import(
+    const { loadSessionFromJsonl, handleSessionRestoration } = await import(
       "../../src/services/session.js"
     );
     const mockLoadSessionFromJsonl = vi.mocked(loadSessionFromJsonl);
+    const mockHandleSessionRestoration = vi.mocked(handleSessionRestoration);
 
     // Create mock main session with reference to non-existent subagent
     const mainSessionData = {
@@ -279,10 +290,16 @@ describe("Agent - Subagent Session Restoration", () => {
       },
     };
 
-    // Mock session loading - main session succeeds, subagent session fails (returns null)
-    mockLoadSessionFromJsonl
-      .mockResolvedValueOnce(mainSessionData) // First call for main session
-      .mockResolvedValueOnce(null); // Second call for subagent session - not found
+    // Mock session restoration to return the main session data
+    mockHandleSessionRestoration.mockResolvedValue(mainSessionData);
+
+    // Mock session loading - be specific about which calls should return what
+    mockLoadSessionFromJsonl.mockImplementation(async (sessionId) => {
+      if (sessionId === missingSubagentSessionId) {
+        return null; // Subagent session not found
+      }
+      return mainSessionData; // Any other calls return main session data
+    });
 
     // Agent creation should succeed even with missing subagent session
     const agent = await Agent.create({
@@ -302,15 +319,17 @@ describe("Agent - Subagent Session Restoration", () => {
       agentWithPrivates.subagentManager.getInstance(missingSubagentId);
     expect(subagentInstance).toBeNull();
 
-    // Verify that loadSessionFromJsonl was called for both sessions
-    expect(mockLoadSessionFromJsonl).toHaveBeenCalledTimes(2);
-    expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
-      1,
+    // Verify that handleSessionRestoration was called for main session restoration
+    expect(mockHandleSessionRestoration).toHaveBeenCalledTimes(1);
+    expect(mockHandleSessionRestoration).toHaveBeenCalledWith(
       mainSessionId,
+      undefined, // continueLastSession
       testWorkdir,
     );
-    expect(mockLoadSessionFromJsonl).toHaveBeenNthCalledWith(
-      2,
+
+    // Verify that loadSessionFromJsonl was called for the subagent session only (and it returned null)
+    expect(mockLoadSessionFromJsonl).toHaveBeenCalledTimes(1);
+    expect(mockLoadSessionFromJsonl).toHaveBeenCalledWith(
       missingSubagentSessionId,
       testWorkdir,
     );
@@ -320,10 +339,14 @@ describe("Agent - Subagent Session Restoration", () => {
 
   it("should not attempt subagent restoration when no session is restored", async () => {
     // Import and mock the session functions
-    const { loadSessionFromJsonl } = await import(
+    const { loadSessionFromJsonl, handleSessionRestoration } = await import(
       "../../src/services/session.js"
     );
     const mockLoadSessionFromJsonl = vi.mocked(loadSessionFromJsonl);
+    const mockHandleSessionRestoration = vi.mocked(handleSessionRestoration);
+
+    // Mock session restoration to return undefined (no session to restore)
+    mockHandleSessionRestoration.mockResolvedValue(undefined);
 
     // Create agent without session restoration
     const agent = await Agent.create({
