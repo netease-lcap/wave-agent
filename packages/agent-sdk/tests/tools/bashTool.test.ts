@@ -223,7 +223,7 @@ describe("bashTool", () => {
 
       const params2 = { command: "echo hello", run_in_background: true };
       const result2 = bashTool.formatCompactParams?.(params2, context);
-      expect(result2).toBe("echo hello background");
+      expect(result2).toBe("echo hello (background)");
     });
   });
 
