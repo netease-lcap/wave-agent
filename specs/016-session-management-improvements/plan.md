@@ -9,7 +9,7 @@
 
 Improve Wave agent session management by:
 1. **✅ IMPLEMENTED**: Changing default session directory from `~/.wave/sessions` to `~/.wave/projects` with project-based subdirectories
-2. **✅ IMPLEMENTED**: Switching from JSON to JSONL format with UUIDv6 filenames for better performance
+2. **✅ IMPLEMENTED**: Switching from JSON to JSONL format with crypto.randomUUID() filenames for better performance
 3. **✅ IMPLEMENTED**: Session metadata stored in first line of JSONL file for efficient access
 4. **✅ IMPLEMENTED**: Streaming JSONL reading for memory efficiency and performance
 5. **✅ IMPLEMENTED**: Removal of `isSubagent` parameter and unused complexity - focusing on core functionality
@@ -24,12 +24,12 @@ Improve Wave agent session management by:
 -->
 
 **Language/Version**: TypeScript 5.9+ with Node.js 16+  
-**Primary Dependencies**: Node.js fs/promises, uuid@latest (for UUIDv6), path utilities, crypto (for hash generation)  
+**Primary Dependencies**: Node.js fs/promises, path utilities, crypto (for UUID generation and hash generation) - uuid package removed  
 **Storage**: Local filesystem - JSONL files in hierarchical directory structure  
 **Testing**: Vitest with mocking for unit tests, real filesystem operations for integration tests  
 **Target Platform**: Cross-platform Node.js CLI application
 **Project Type**: Node.js monorepo package (agent-sdk modifications)  
-**Performance Goals**: Fast session loading using UUIDv6 time ordering, append-only JSONL writes  
+**Performance Goals**: Fast session loading using lastActiveAt sorting from metadata, append-only JSONL writes  
 **Constraints**: Filesystem path length limits, cross-platform directory name encoding  
 **Scale/Scope**: Multi-project session management, thousands of sessions per project
 

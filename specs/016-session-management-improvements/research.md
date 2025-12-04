@@ -34,19 +34,20 @@ This document consolidates research findings for the improved session management
 - Memory usage: ~100KB vs ~10MB for full session load
 - Streaming operations for large sessions
 
-### 2. UUIDv6 for Session Identifiers ✅ IMPLEMENTED
+### 2. crypto.randomUUID() for Session Identifiers ✅ IMPLEMENTED
 
-**Decision**: Adopt UUIDv6 format for session file names without prefixes
+**Decision**: Adopt crypto.randomUUID() format for session file names without prefixes
 
 **Rationale**:
-- **Time-ordering**: UUIDv6 provides lexicographic sorting that matches chronological order
-- **Performance**: 2-5x faster session listing operations
-- **Clean naming**: Direct UUIDv6 format eliminates need for prefixes
+- **Native Node.js**: crypto.randomUUID() is built into Node.js, no external dependencies
+- **Performance**: Metadata-based sorting provides accurate session ordering
+- **Clean naming**: Direct crypto.randomUUID() format eliminates need for prefixes
 - **Scalability**: Performance improvement scales with session count
 
 **Implementation**:
-- Session IDs generated using `uuidv6()` from uuid library
+- Session IDs generated using Node.js native `crypto.randomUUID()`
 - Direct filename mapping: `${sessionId}.jsonl`
+- Sorting handled by lastActiveAt metadata instead of filename ordering
 - Natural chronological sorting without timestamps
 
 ### 3. JSONL Format with Streaming Architecture ✅ IMPLEMENTED
@@ -155,7 +156,7 @@ All targets **ACHIEVED** with simplified implementation:
 ## Technology Decisions ✅
 
 ### Libraries Used (IMPLEMENTED)
-- **uuid**: UUIDv6 generation for session identifiers ✅
+- **crypto**: Native Node.js UUID generation for session identifiers ✅
 - **Node.js fs/promises**: Async file operations ✅
 - **Node.js readline**: Streaming JSONL processing ✅
 - **PathEncoder**: Working directory path encoding ✅

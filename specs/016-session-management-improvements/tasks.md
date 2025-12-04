@@ -16,7 +16,7 @@
 
 **Purpose**: Project initialization and dependency installation
 
-- [X] ✅ T001 Install UUIDv6 dependency in packages/agent-sdk/package.json
+- [X] ✅ T001 Remove uuid package dependency from packages/agent-sdk/package.json (replaced with Node.js native crypto.randomUUID())
 - [X] ✅ T002 [P] Create jsonlHandler service structure in packages/agent-sdk/src/services/jsonlHandler.ts (replaced pathEncoder)
 - [X] ✅ T003 [P] Implement streaming JSONL operations with metadata-first line architecture
 
@@ -66,23 +66,23 @@
 
 ## Phase 4: User Story 2 - Cleaner Session File Names (Priority: P2)
 
-**Goal**: Session files use UUIDv6 format without prefixes for cleaner file system organization and better programmatic access
+**Goal**: Session files use crypto.randomUUID() format without prefixes for cleaner file system organization and better programmatic access
 
-**Independent Test**: Create new sessions and verify files are named with UUIDv6 format without prefixes (e.g., `01234567-89ab-6cde-f012-3456789abcde.jsonl`)
+**Independent Test**: Create new sessions and verify files are named with crypto.randomUUID() format without prefixes (e.g., `f47ac10b-58cc-4372-a567-0e02b2c3d479.jsonl`)
 
 ### Tests for User Story 2
 
 **✅ TDD GATE COMPLETED: All tests written and implementation delivered successfully.**
 
-- [X] ✅ T016 [P] [US2] Unit test for UUIDv6 generation and validation in packages/agent-sdk/tests/services/session.test.ts
+- [X] ✅ T016 [P] [US2] Unit test for crypto.randomUUID() generation and validation in packages/agent-sdk/tests/services/session.test.ts
 - [X] ✅ T017 [P] [US2] Integration test for session file naming in packages/agent-sdk/tests/services/session.test.ts
 
 ### Implementation for User Story 2
 
-- [X] ✅ T018 [P] [US2] Implement generateSessionId() with UUIDv6 in packages/agent-sdk/src/services/session.ts
-- [X] ✅ T019 [P] [US2] Update MessageManager constructor to use UUIDv6 IDs in packages/agent-sdk/src/managers/messageManager.ts
-- [X] ✅ T020 [US2] Update session file path generation to use clean UUIDv6 names in packages/agent-sdk/src/services/session.ts
-- [X] ✅ T021 [US2] Update getLatestSession() to use UUIDv6 time-ordering in packages/agent-sdk/src/services/session.ts
+- [X] ✅ T018 [P] [US2] Implement generateSessionId() with crypto.randomUUID() in packages/agent-sdk/src/services/session.ts
+- [X] ✅ T019 [P] [US2] Update MessageManager constructor to use crypto.randomUUID() IDs in packages/agent-sdk/src/managers/messageManager.ts
+- [X] ✅ T020 [US2] Update session file path generation to use clean crypto.randomUUID() names in packages/agent-sdk/src/services/session.ts
+- [X] ✅ T021 [US2] Update getLatestSession() to use lastActiveAt metadata sorting in packages/agent-sdk/src/services/session.ts
 
 **✅ Checkpoint**: User Stories 1 AND 2 both working independently with simplified architecture
 
@@ -202,7 +202,7 @@ With multiple developers:
 1. Team completes Setup + Foundational together
 2. Once Foundational is done:
    - Developer A: User Story 1 + PathEncoder tests
-   - Developer B: User Story 2 (UUIDv6 implementation)
+   - Developer B: User Story 2 (crypto.randomUUID() implementation)
    - Developer C: User Story 3 (Path encoding enhancements)
 3. Stories complete and integrate independently
 

@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { v6 as uuidv6 } from "uuid";
+import { randomUUID } from "crypto";
 import type { Message } from "../types/index.js";
 import type { SessionMessage } from "../types/session.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
@@ -32,11 +32,11 @@ export interface SessionMetadata {
 }
 
 /**
- * Generate a new UUIDv6-based session ID
- * @returns UUIDv6 string for time-ordered sessions
+ * Generate a new session ID using Node.js native crypto.randomUUID()
+ * @returns UUID string for session identification
  */
 export function generateSessionId(): string {
-  return uuidv6();
+  return randomUUID();
 }
 
 // Constants
@@ -57,7 +57,7 @@ export async function ensureSessionDir(): Promise<void> {
 /**
  * Generate session file path using project-based directory structure
  * Note: With metadata-based approach, we no longer need separate subagent directories
- * @param sessionId - UUIDv6 session identifier
+ * @param sessionId - UUID session identifier
  * @param workdir - Working directory for the session
  * @returns Promise resolving to full file path for the session JSONL file
  */
@@ -75,7 +75,7 @@ export async function getSessionFilePath(
 
 /**
  * Create a new session with metadata
- * @param sessionId - UUIDv6 session identifier
+ * @param sessionId - UUID session identifier
  * @param workdir - Working directory for the session
  * @param sessionType - Type of session ('main' or 'subagent')
  * @param parentSessionId - Parent session ID for subagent sessions
@@ -103,7 +103,7 @@ export async function createSession(
 /**
  * Append messages to session using JSONL format (new approach)
  *
- * @param sessionId - UUIDv6 session identifier
+ * @param sessionId - UUID session identifier
  * @param newMessages - Array of messages to append
  * @param workdir - Working directory for the session
  */
@@ -151,7 +151,7 @@ export async function appendMessages(
 /**
  * Load session data from JSONL file (new approach)
  *
- * @param sessionId - UUIDv6 session identifier
+ * @param sessionId - UUID session identifier
  * @param workdir - Working directory for the session
  * @returns Promise that resolves to session data or null if session doesn't exist
  */
@@ -218,7 +218,7 @@ export async function loadSessionFromJsonl(
 /**
  * Get the most recently active session for a specific working directory (new JSONL approach)
  * Only returns main sessions, skips subagent sessions
- * Sessions are sorted by last active time (most recently active first)
+ * Uses listSessionsFromJsonl which already sorts sessions by last active time (most recent first)
  *
  * @param workdir - Working directory to find the most recently active session for
  * @returns Promise that resolves to the most recently active session data or null if no sessions exist
@@ -232,10 +232,8 @@ export async function getLatestSessionFromJsonl(
     return null;
   }
 
-  // Sort by last active time (most recently active first)
-  const latestSession = sessions.sort(
-    (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
-  )[0];
+  // Sessions are already sorted by lastActiveAt from listSessionsFromJsonl (most recent first)
+  const latestSession = sessions[0];
   return loadSessionFromJsonl(latestSession.id, workdir);
 }
 
@@ -404,7 +402,7 @@ export async function listSessionsFromJsonl(
 /**
  * Delete a session from JSONL storage (new approach)
  *
- * @param sessionId - UUIDv6 session identifier
+ * @param sessionId - UUID session identifier
  * @param workdir - Working directory for the session
  * @returns Promise that resolves to true if session was deleted, false if it didn't exist
  */
@@ -543,7 +541,7 @@ export async function cleanupEmptyProjectDirectories(): Promise<void> {
 /**
  * Check if a session exists in JSONL storage (new approach)
  *
- * @param sessionId - UUIDv6 session identifier
+ * @param sessionId - UUID session identifier
  * @param workdir - Working directory for the session
  * @returns Promise that resolves to true if session exists, false otherwise
  */
