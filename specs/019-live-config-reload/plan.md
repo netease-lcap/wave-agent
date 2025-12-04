@@ -43,7 +43,7 @@ Implement live configuration reload for Wave Agent SDK using Chokidar library fo
 ✅ **VI. Quality Gates**: Implementation will pass type-check and lint requirements  
 ✅ **VII. Source Code Structure**: Design follows agent-sdk patterns (services for I/O, managers for coordination, types for interfaces)  
 ✅ **VIII. Test-Driven Development**: Quickstart includes comprehensive test examples following TDD principles  
-✅ **IX. Type System Evolution**: Renamed HookConfiguration to WaveConfiguration throughout codebase (types, imports, function signatures) to better express its expanded scope (hooks + environment variables) rather than creating separate configuration types
+✅ **IX. Type System Evolution**: Renamed HookConfiguration to WaveConfiguration to better express its expanded scope (hooks + environment variables) rather than creating separate configuration types
 
 **Post-Design Result**: All constitutional principles maintained. The design properly extends existing systems without introducing architectural violations. Type system evolution follows principle IX by renaming `HookConfiguration` to `WaveConfiguration` to better express the complete configuration scope rather than creating separate configuration types.
 
@@ -70,9 +70,7 @@ packages/agent-sdk/
 │   │   ├── hook.ts           # Extend for settings watching
 │   │   └── memory.ts         # Extend for AGENTS.md caching
 │   ├── managers/
-│   │   └── liveConfigManager.ts    # Manage live reload coordination
-│   ├── utils/
-│   │   └── configResolver.ts # Extend for environment config live updates
+│   │   └── hookManager.ts    # Extend for live reload
 │   ├── types/
 │   │   └── hooks.ts          # Extend for env field
 │   └── agent.ts              # Update to use cached memory
@@ -81,7 +79,7 @@ packages/agent-sdk/
     │   ├── hook.test.ts      # Add env field tests
     │   └── memory.test.ts    # Add caching tests
     └── managers/
-        └── liveConfigManager.test.ts # Add live reload tests
+        └── hookManager.test.ts # Add live reload tests
 
 packages/code/                 # CLI inherits SDK functionality automatically
 ```

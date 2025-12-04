@@ -77,9 +77,9 @@ describe("SubagentManager - Callback Integration", () => {
       parentToolManager,
       parentMessageManager,
       callbacks,
-      gatewayConfig: mockGatewayConfig,
-      modelConfig: mockModelConfig,
-      tokenLimit: 1000,
+      getGatewayConfig: () => mockGatewayConfig,
+      getModelConfig: () => mockModelConfig,
+      getTokenLimit: () => 1000,
     });
 
     await subagentManager.initialize();
@@ -454,9 +454,9 @@ describe("SubagentManager - Callback Integration", () => {
         parentToolManager,
         parentMessageManager,
         callbacks: errorCallbacks,
-        gatewayConfig: mockGatewayConfig,
-        modelConfig: mockModelConfig,
-        tokenLimit: 1000,
+        getGatewayConfig: () => mockGatewayConfig,
+        getModelConfig: () => mockModelConfig,
+        getTokenLimit: () => 1000,
       });
 
       await errorSubagentManager.initialize();
@@ -499,9 +499,9 @@ describe("SubagentManager - Callback Integration", () => {
         parentToolManager,
         parentMessageManager,
         // No callbacks provided
-        gatewayConfig: mockGatewayConfig,
-        modelConfig: mockModelConfig,
-        tokenLimit: 1000,
+        getGatewayConfig: () => mockGatewayConfig,
+        getModelConfig: () => mockModelConfig,
+        getTokenLimit: () => 1000,
       });
 
       await noCallbackManager.initialize();

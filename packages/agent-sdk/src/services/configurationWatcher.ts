@@ -13,10 +13,6 @@ import { loadMergedWaveConfigWithFallback } from "./hook.js";
 import type { WaveConfiguration, ValidationResult } from "../types/hooks.js";
 import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
 import type { Logger } from "../types/index.js";
-import {
-  CONFIGURATION_EVENTS,
-  FILE_WATCHER_EVENTS,
-} from "../constants/events.js";
 
 export interface ConfigurationChangeEvent {
   type: "settings_changed" | "memory_changed" | "env_changed";
@@ -160,7 +156,7 @@ export class ConfigurationWatcher
         this.logger?.error(`Live Config: ${errorMessage}`);
 
         // Emit error event
-        this.emit(CONFIGURATION_EVENTS.CONFIGURATION_CHANGE, {
+        this.emit("configurationChange", {
           type: "settings_changed",
           path:
             this.getFirstExistingProjectPath() ||
@@ -196,7 +192,7 @@ export class ConfigurationWatcher
           this.logger?.error(`Live Config: ${errorMessage}`);
 
           // Emit error event but continue with previous valid config
-          this.emit(CONFIGURATION_EVENTS.CONFIGURATION_CHANGE, {
+          this.emit("configurationChange", {
             type: "settings_changed",
             path:
               this.getFirstExistingProjectPath() ||
@@ -241,7 +237,7 @@ export class ConfigurationWatcher
       );
 
       // Emit configuration change event
-      this.emit(CONFIGURATION_EVENTS.CONFIGURATION_CHANGE, {
+      this.emit("configurationChange", {
         type: "settings_changed",
         path:
           this.getFirstExistingProjectPath() ||
@@ -271,7 +267,7 @@ export class ConfigurationWatcher
       }
 
       // Emit error event
-      this.emit(CONFIGURATION_EVENTS.CONFIGURATION_CHANGE, {
+      this.emit("configurationChange", {
         type: "settings_changed",
         path: "reload-error",
         timestamp: Date.now(),
@@ -436,7 +432,7 @@ export class ConfigurationWatcher
   private setupFileWatcherEvents(): void {
     this.fileWatcher.on("watcherError", (error: Error) => {
       this.logger?.error(`Live Config: File watcher error: ${error.message}`);
-      this.emit(CONFIGURATION_EVENTS.WATCHER_ERROR, error);
+      this.emit("watcherError", error);
     });
   }
 
@@ -450,7 +446,7 @@ export class ConfigurationWatcher
 
     try {
       // Handle file deletion
-      if (event.type === FILE_WATCHER_EVENTS.DELETE) {
+      if (event.type === "delete") {
         this.logger?.info(
           `Live Config: ${source} config file deleted: ${event.path}`,
         );
@@ -460,10 +456,7 @@ export class ConfigurationWatcher
       }
 
       // Handle file creation or modification
-      if (
-        event.type === FILE_WATCHER_EVENTS.CHANGE ||
-        event.type === FILE_WATCHER_EVENTS.CREATE
-      ) {
+      if (event.type === "change" || event.type === "create") {
         this.logger?.info(
           `Live Config: ${source} config file ${event.type}: ${event.path}`,
         );

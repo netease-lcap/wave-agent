@@ -32,10 +32,10 @@ export interface AIManagerOptions {
   workdir: string;
   systemPrompt?: string;
   subagentType?: string; // Optional subagent type for hook context
-  // Resolved configuration
-  gatewayConfig: GatewayConfig;
-  modelConfig: ModelConfig;
-  tokenLimit: number;
+  // Dynamic configuration getters
+  getGatewayConfig: () => GatewayConfig;
+  getModelConfig: () => ModelConfig;
+  getTokenLimit: () => number;
 }
 
 export class AIManager {
@@ -51,10 +51,10 @@ export class AIManager {
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
 
-  // Configuration properties
-  private gatewayConfig: GatewayConfig;
-  private modelConfig: ModelConfig;
-  private tokenLimit: number;
+  // Configuration properties (replaced with getter function storage)
+  private getGatewayConfigFn: () => GatewayConfig;
+  private getModelConfigFn: () => ModelConfig;
+  private getTokenLimitFn: () => number;
 
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
@@ -67,82 +67,27 @@ export class AIManager {
     this.subagentType = options.subagentType; // Store subagent type
     this.callbacks = options.callbacks ?? {};
 
-    // Store resolved configuration
-    this.gatewayConfig = options.gatewayConfig;
-    this.modelConfig = options.modelConfig;
-    this.tokenLimit = options.tokenLimit;
+    // Store configuration getter functions for dynamic resolution
+    this.getGatewayConfigFn = options.getGatewayConfig;
+    this.getModelConfigFn = options.getModelConfig;
+    this.getTokenLimitFn = options.getTokenLimit;
+  }
+
+  // Getter methods for accessing dynamic configuration
+  public getGatewayConfig(): GatewayConfig {
+    return this.getGatewayConfigFn();
+  }
+
+  public getModelConfig(): ModelConfig {
+    return this.getModelConfigFn();
+  }
+
+  public getTokenLimit(): number {
+    return this.getTokenLimitFn();
   }
 
   private isCompressing: boolean = false;
   private callbacks: AIManagerCallbacks;
-
-  /**
-   * Update gateway configuration at runtime for live config reload
-   * @param newConfig - New gateway configuration
-   */
-  updateGatewayConfig(newConfig: GatewayConfig): void {
-    this.logger?.info(
-      `Live Config: Updating AIManager gateway config - baseURL: ${newConfig.baseURL}`,
-    );
-    this.gatewayConfig = newConfig;
-  }
-
-  /**
-   * Update model configuration at runtime for live config reload
-   * @param newConfig - New model configuration
-   */
-  updateModelConfig(newConfig: ModelConfig): void {
-    this.logger?.info(
-      `Live Config: Updating AIManager model config - agent: ${newConfig.agentModel}, fast: ${newConfig.fastModel}`,
-    );
-    this.modelConfig = newConfig;
-  }
-
-  /**
-   * Update token limit at runtime for live config reload
-   * @param newLimit - New token limit
-   */
-  updateTokenLimit(newLimit: number): void {
-    this.logger?.info(
-      `Live Config: Updating AIManager token limit: ${newLimit}`,
-    );
-    this.tokenLimit = newLimit;
-  }
-
-  /**
-   * Update all configurations at once for live config reload
-   * @param newGatewayConfig - New gateway configuration
-   * @param newModelConfig - New model configuration
-   * @param newTokenLimit - New token limit
-   */
-  updateConfiguration(
-    newGatewayConfig: GatewayConfig,
-    newModelConfig: ModelConfig,
-    newTokenLimit: number,
-  ): void {
-    this.logger?.info("Live Config: Updating all AIManager configuration");
-    this.gatewayConfig = newGatewayConfig;
-    this.modelConfig = newModelConfig;
-    this.tokenLimit = newTokenLimit;
-    this.logger?.info(
-      `Live Config: Configuration updated - model: ${newModelConfig.agentModel}, tokenLimit: ${newTokenLimit}`,
-    );
-  }
-
-  /**
-   * Get current configuration for debugging
-   */
-  getCurrentConfiguration(): {
-    gatewayConfig: GatewayConfig;
-    modelConfig: ModelConfig;
-    tokenLimit: number;
-  } {
-    return {
-      gatewayConfig: { ...this.gatewayConfig },
-      modelConfig: { ...this.modelConfig },
-      tokenLimit: this.tokenLimit,
-    };
-  }
 
   /**
    * Get filtered tool configuration
@@ -222,10 +167,10 @@ export class AIManager {
       usage.total_tokens +
         (usage.cache_read_input_tokens || 0) +
         (usage.cache_creation_input_tokens || 0) >
-      this.tokenLimit
+      this.getTokenLimit()
     ) {
       this.logger?.debug(
-        `Token usage exceeded ${this.tokenLimit}, compressing messages...`,
+        `Token usage exceeded ${this.getTokenLimit()}, compressing messages...`,
       );
 
       // Check if messages need compression
@@ -244,8 +189,8 @@ export class AIManager {
         this.setIsCompressing(true);
         try {
           const compressionResult = await compressMessages({
-            gatewayConfig: this.gatewayConfig,
-            modelConfig: this.modelConfig,
+            gatewayConfig: this.getGatewayConfig(),
+            modelConfig: this.getModelConfig(),
             messages: recentChatMessages,
             abortSignal: abortController.signal,
           });
@@ -257,7 +202,7 @@ export class AIManager {
               prompt_tokens: compressionResult.usage.prompt_tokens,
               completion_tokens: compressionResult.usage.completion_tokens,
               total_tokens: compressionResult.usage.total_tokens,
-              model: this.modelConfig.fastModel,
+              model: this.getModelConfig().fastModel,
               operation_type: "compress",
             };
           }
@@ -353,8 +298,8 @@ export class AIManager {
 
       // Call AI service with streaming callbacks
       const result = await callAgent({
-        gatewayConfig: this.gatewayConfig,
-        modelConfig: this.modelConfig,
+        gatewayConfig: this.getGatewayConfig(),
+        modelConfig: this.getModelConfig(),
         messages: recentMessages,
         sessionId: this.messageManager.getSessionId(),
         abortSignal: abortController.signal,
@@ -413,7 +358,7 @@ export class AIManager {
           prompt_tokens: result.usage.prompt_tokens,
           completion_tokens: result.usage.completion_tokens,
           total_tokens: result.usage.total_tokens,
-          model: model || this.modelConfig.agentModel,
+          model: model || this.getModelConfig().agentModel,
           operation_type: "agent",
           // Preserve cache fields if present
           ...(result.usage.cache_read_input_tokens !== undefined && {

@@ -93,9 +93,9 @@ describe("SubagentManager - Session Functionality", () => {
       workdir: "/tmp/test",
       parentToolManager,
       parentMessageManager,
-      gatewayConfig: mockGatewayConfig,
-      modelConfig: mockModelConfig,
-      tokenLimit: 1000,
+      getGatewayConfig: () => mockGatewayConfig,
+      getModelConfig: () => mockModelConfig,
+      getTokenLimit: () => 1000,
     });
 
     await subagentManager.initialize();

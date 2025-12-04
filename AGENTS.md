@@ -18,7 +18,7 @@ This is the AI assistant's memory file, recording important information and cont
     - `vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);`
     - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`
   - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
-  - No `mkdtemp`
+  - MUST not write `mkdtemp` in test, use mocking instead
   - Mock stdout and stderr to suppress output during testing and restore mocks after tests
 - `packages/code/src/components` contains Ink components
 - After modifying agent-sdk, need to build before using in code

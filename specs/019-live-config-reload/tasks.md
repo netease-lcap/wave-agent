@@ -84,15 +84,6 @@
 - [x] T027 [US2] Pass logger from Agent constructor to ConfigurationWatcher for structured logging in packages/agent-sdk/src/services/configurationWatcher.ts
 - [x] T028 [US2] Add structured logging for reload events with Live Config prefix in packages/agent-sdk/src/services/configurationWatcher.ts
 - [x] T029 [US2] Implement file watcher initialization failure handling with descriptive errors in packages/agent-sdk/src/services/fileWatcher.ts
-- [x] T030 [US2] Implement live configuration updates for all env vars (AIGW_TOKEN, AIGW_URL, AIGW_MODEL, AIGW_FAST_MODEL, TOKEN_LIMIT) in packages/agent-sdk/src/utils/configResolver.ts
-- [x] T031 [US2] Add configuration cache invalidation and refresh mechanism in packages/agent-sdk/src/utils/configResolver.ts
-- [x] T032 [US2] Add debug logging for environment configuration changes in packages/agent-sdk/src/utils/configResolver.ts
-- [x] T033 [US2] Ensure usage tracking reflects current configuration values for subsequent operations (verify through agent usage history)
-- [x] T034 [US2] Integrate configResolver with file watcher notifications in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [x] T035 [US2] **CRITICAL** Add dynamic configuration update methods to AIManager for runtime config changes in packages/agent-sdk/src/managers/aiManager.ts
-- [x] T036 [US2] **CRITICAL** Implement Agent.updateConfiguration() method to refresh AIManager config from live settings in packages/agent-sdk/src/agent.ts
-- [x] T037 [US2] **CRITICAL** Integrate live configuration updates with LiveConfigManager to trigger AIManager refresh on config changes in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [x] T038 [US2] **CRITICAL** Add dynamic configuration update methods to SubagentManager for runtime config changes in packages/agent-sdk/src/managers/subagentManager.ts
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -106,14 +97,14 @@
 
 ### Implementation for User Story 3
 
-- [x] T039 [P] [US3] Implement MemoryStore interface in packages/agent-sdk/src/types/memoryStore.ts
-- [x] T040 [P] [US3] Implement MemoryStoreService class in packages/agent-sdk/src/services/memoryStore.ts
-- [x] T041 [US3] Update readMemoryFile function to use memory store in packages/agent-sdk/src/services/memory.ts
-- [x] T042 [US3] Add AGENTS.md file watching to LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [x] T043 [US3] Implement memory content update on file change events in LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [x] T044 [US3] Add memory store initialization in Agent constructor in packages/agent-sdk/src/agent.ts
-- [x] T045 [US3] Handle AGENTS.md file deletion gracefully in LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [x] T046 [US3] Add memory store cleanup on agent disposal in packages/agent-sdk/src/agent.ts
+- [x] T030 [P] [US3] Implement MemoryStore interface in packages/agent-sdk/src/types/memoryStore.ts
+- [x] T031 [P] [US3] Implement MemoryStoreService class in packages/agent-sdk/src/services/memoryStore.ts
+- [x] T032 [US3] Update readMemoryFile function to use memory store in packages/agent-sdk/src/services/memory.ts
+- [x] T033 [US3] Add AGENTS.md file watching to LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
+- [x] T034 [US3] Implement memory content update on file change events in LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
+- [x] T035 [US3] Add memory store initialization in Agent constructor in packages/agent-sdk/src/agent.ts
+- [x] T036 [US3] Handle AGENTS.md file deletion gracefully in LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
+- [x] T037 [US3] Add memory store cleanup on agent disposal in packages/agent-sdk/src/agent.ts
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -123,20 +114,13 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [x] T047 [P] Add comprehensive error logging with Live Config prefix across all services
-- [x] T048 [P] Implement performance monitoring and metrics collection
-- [x] T049 Code cleanup and refactoring for consistency
-- [x] T050 [P] Add type safety improvements and remove any types
-- [x] T051 [P] Update existing tests that use HookConfiguration to use WaveConfiguration
-- [x] T052 Run quickstart.md validation examples
-- [x] T053 Build and test agent-sdk package integration
-- [x] T054 Move hookManager.loadConfigurationFromSettings() to Agent callback for proper separation of concerns
-- [x] T055 Remove unused memoryStore parameter from HookManager constructor and clean up imports
-- [x] T056 Refactor LiveConfigManager to use callbacks for memoryStore operations instead of direct dependency injection
-- [x] T057 Create focused live configuration example demonstrating: create settings → create agent → modify settings → automatic config update
-- [x] T058 Simplify example to focus only on core live configuration workflow
-- [x] T059 **CRITICAL BUG FIX** Fix event name mismatch: ConfigurationWatcher emits 'configurationChange' but LiveConfigManager listens for 'configurationChanged' - this was preventing automatic file watching from working
-- [x] T060 **IMPROVEMENT** Replace magic strings with event name constants to prevent future typos and ensure consistency across the codebase
+- [x] T038 [P] Add comprehensive error logging with Live Config prefix across all services
+- [x] T039 [P] Implement performance monitoring and metrics collection
+- [x] T040 Code cleanup and refactoring for consistency
+- [x] T041 [P] Add type safety improvements and remove any types
+- [x] T042 [P] Update existing tests that use HookConfiguration to use WaveConfiguration
+- [x] T043 Run quickstart.md validation examples
+- [x] T044 Build and test agent-sdk package integration
 
 ---
 
