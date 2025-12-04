@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { v6 as uuidv6 } from "uuid";
+import { randomUUID } from "crypto";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -140,16 +140,16 @@ describe("Session Management", () => {
     );
   });
 
-  describe("T016: UUIDv6 Generation and Validation", () => {
-    it("should generate valid UUIDv6 format", () => {
+  describe("T016: crypto.randomUUID() Generation and Validation", () => {
+    it("should generate valid UUID format", () => {
       const sessionId = generateSessionId();
 
-      // UUIDv6 format: xxxxxxxx-xxxx-6xxx-yxxx-xxxxxxxxxxxx
+      // UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
       // where y is 8, 9, A, or B (variant bits)
-      const uuidv6Regex =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-      expect(sessionId).toMatch(uuidv6Regex);
+      expect(sessionId).toMatch(uuidRegex);
       expect(sessionId).toBe(sessionId.toLowerCase());
     });
 
@@ -163,50 +163,59 @@ describe("Session Management", () => {
       expect(id1).not.toBe(id3);
     });
 
-    it("should generate UUIDs with time-ordering properties", () => {
+    it("should generate unique UUIDs", () => {
       const ids: string[] = [];
 
-      // Generate multiple UUIDs with small delays
-      for (let i = 0; i < 3; i++) {
+      // Generate multiple UUIDs
+      for (let i = 0; i < 10; i++) {
         ids.push(generateSessionId());
-        // Small delay to ensure time difference
-        const start = Date.now();
-        while (Date.now() - start < 2) {
-          // Busy wait for 2ms
-        }
       }
 
-      // UUIDv6 should be lexicographically sortable by time
-      const sortedIds = [...ids].sort();
-      expect(sortedIds).toEqual(ids);
+      // All UUIDs should be unique
+      const uniqueIds = new Set(ids);
+      expect(uniqueIds.size).toBe(10);
+
+      // All should be valid UUID format
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      ids.forEach((id) => {
+        expect(id).toMatch(uuidRegex);
+      });
     });
 
-    it("should validate UUIDv6 format using library function", () => {
+    it("should validate UUID format using Node.js crypto", () => {
       const validId = generateSessionId();
       const invalidIds = [
         "invalid-uuid",
+        "12345678-1234-6678-9abc-123456789012", // v6 format (we now use v4)
         "12345678-1234-5678-9abc-123456789012", // v5 format
-        "12345678-1234-4678-9abc-123456789012", // v4 format
         "",
         "not-a-uuid-at-all",
       ];
 
-      // Valid UUID should pass library validation
-      expect(() => uuidv6()).not.toThrow();
+      // Valid UUID should pass format validation
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+      expect(validId).toMatch(uuidRegex);
+      expect(validId.length).toBe(36);
+      expect(() => randomUUID()).not.toThrow();
+      expect(validId).toBeTruthy();
+      expect(() => randomUUID()).not.toThrow();
       expect(validId).toBeTruthy();
       expect(typeof validId).toBe("string");
 
       // Invalid UUIDs should be rejected
       invalidIds.forEach((id) => {
         expect(id).not.toMatch(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
         );
       });
     });
   });
 
   describe("T017: Integration test for session file naming", () => {
-    it("should create session files with clean UUIDv6 names", async () => {
+    it("should create session files with clean UUID names", async () => {
       const sessionId = generateSessionId();
       const filePath = await getSessionFilePath(sessionId, testWorkdir);
 
@@ -215,7 +224,7 @@ describe("Session Management", () => {
       expect(sessionId).not.toContain("session-");
       expect(sessionId).not.toContain("wave-");
       expect(filePath).toMatch(
-        /[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jsonl$/i,
+        /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jsonl$/i,
       );
     });
 
@@ -973,8 +982,8 @@ describe("Session Management", () => {
     });
 
     it("should handle getLatestSessionFromJsonl with directory separation based on last active time", async () => {
-      const olderMainSessionId = uuidv6();
-      const newerMainSessionId = uuidv6();
+      const olderMainSessionId = randomUUID();
+      const newerMainSessionId = randomUUID();
 
       // Create different timestamps - older session has more recent activity
       const olderTimestamp = new Date(Date.now() - 1000).toISOString(); // 1 second ago
@@ -1046,7 +1055,7 @@ describe("Session Management", () => {
     });
 
     it("should support loading subagent sessions", async () => {
-      const subagentSessionId = uuidv6();
+      const subagentSessionId = randomUUID();
 
       const messages = [
         {

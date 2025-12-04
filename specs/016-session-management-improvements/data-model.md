@@ -17,7 +17,7 @@ The first line of each JSONL file containing essential session metadata.
 
 **Fields**:
 - **__meta__**: `true` - Special marker to identify metadata line
-- **sessionId**: `string` - UUIDv6 session identifier
+- **sessionId**: `string` - crypto.randomUUID() session identifier
 - **sessionType**: `'main' | 'subagent'` - Type of session for agent hierarchy
 - **parentSessionId**: `string?` - Parent session ID for subagents only
 - **subagentType**: `string?` - Subagent type identifier for subagents only (e.g., 'typescript-expert')
@@ -59,7 +59,7 @@ Runtime metadata about sessions used for listing and management operations.
 **Entity**: `SessionMetadata` (defined in `services/session.ts`)
 
 **Fields**:
-- **id**: `string` - UUIDv6 session identifier
+- **id**: `string` - crypto.randomUUID() session identifier
 - **sessionType**: `'main' | 'subagent'` - Type of session (from metadata line)
 - **parentSessionId**: `string?` - Parent session ID (from metadata line, subagents only)
 - **subagentType**: `string?` - Subagent type (from metadata line, subagents only)
@@ -82,7 +82,7 @@ Complete session data structure used by the agent system.
 **Entity**: `SessionData` (defined in `services/session.ts`)
 
 **Fields**:
-- **id**: `string` - UUIDv6 session identifier
+- **id**: `string` - crypto.randomUUID() session identifier
 - **messages**: `Message[]` - Array of messages (timestamps removed for compatibility)
 - **metadata**: Object containing:
   - **workdir**: `string` - Working directory
@@ -106,8 +106,8 @@ Complete session data structure used by the agent system.
 - `readMetadata()` - reads only first line
 - Memory-efficient processing for large session files
 
-### **3. UUIDv6 Time Ordering**
-- Session IDs are UUIDv6 for natural time-based sorting
+### **3. Metadata-Based Time Ordering**
+- Session IDs are crypto.randomUUID() with sorting based on lastActiveAt from metadata
 - No need for separate creation timestamps
 - Enables efficient "latest session" operations
 
@@ -134,7 +134,7 @@ The following entities were **removed** as they were never used in the actual im
 ## Performance Characteristics ✅
 
 ### Time Complexity
-- **Session Creation**: O(1) - Direct file creation with UUIDv6
+- **Session Creation**: O(1) - Direct file creation with crypto.randomUUID()
 - **Message Append**: O(1) - JSONL line append operation
 - **Metadata Access**: O(1) - First line only streaming read
 - **Session Listing**: O(n) - Directory scan + metadata reads

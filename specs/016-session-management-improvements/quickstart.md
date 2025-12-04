@@ -5,7 +5,7 @@
 
 ## Overview
 
-This guide provides a quick start for implementing the **✅ COMPLETED** session management system in Wave Agent. The improvements introduce project-based session organization, JSONL format with metadata-first line architecture, UUIDv6 identifiers, and streaming operations for optimal performance.
+This guide provides a quick start for implementing the **✅ COMPLETED** session management system in Wave Agent. The improvements introduce project-based session organization, JSONL format with metadata-first line architecture, crypto.randomUUID() identifiers, and streaming operations for optimal performance.
 
 ## Key Changes Summary
 
@@ -60,7 +60,7 @@ This guide provides a quick start for implementing the **✅ COMPLETED** session
   - File: `packages/agent-sdk/src/services/session.ts`
   - ✅ Metadata-based session management
   - ✅ Removed `isSubagent` parameter complexity
-  - ✅ UUIDv6 session identifiers implemented
+  - ✅ crypto.randomUUID() session identifiers implemented
 
 ### Phase 2: Integration Updates ✅ COMPLETED
 
@@ -168,7 +168,7 @@ export class JsonlHandler {
 
 ```typescript
 // packages/agent-sdk/src/services/session.ts - KEY CHANGES IMPLEMENTED
-import { v6 as uuidv6 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { JsonlHandler } from './jsonlHandler.js';
 
 // ✅ IMPLEMENTED: Metadata stored as first line
@@ -189,7 +189,7 @@ export async function createSession(
   parentSessionId?: string,
   subagentType?: string
 ): Promise<string> {
-  const sessionId = uuidv6();
+  const sessionId = randomUUID();
   const metadata: SessionMetadataLine = {
     __meta__: true,
     sessionId,
@@ -265,7 +265,7 @@ export class MessageManager {
   private sessionId: string;
   
   constructor(options: MessageManagerOptions) {
-    // Use UUIDv6 instead of timestamp-based ID
+    // Use crypto.randomUUID() instead of timestamp-based ID
     this.sessionId = generateSessionId();
   }
   
@@ -332,8 +332,8 @@ export class MessageManager {
 - [ ] JSONL handler appends messages correctly
 - [ ] JSONL handler reads messages in order
 - [ ] Session service creates project directories
-- [ ] Session service generates valid UUIDv6
-- [ ] UUIDv6 sorting matches chronological order
+- [ ] Session service generates valid crypto.randomUUID()
+- [ ] Sessions sorted by lastActiveAt from metadata
 
 ### Integration Tests
 - [ ] End-to-end session creation and loading

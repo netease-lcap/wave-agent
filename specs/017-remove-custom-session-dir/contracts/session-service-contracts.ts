@@ -27,7 +27,7 @@ export interface SessionMessage extends Message {
 /**
  * Append messages to session using JSONL format (UPDATED - sessionDir removed)
  * 
- * @param sessionId UUIDv6 session identifier
+ * @param sessionId UUID session identifier
  * @param newMessages Array of messages to append
  * @param workdir Working directory for the session
  * @param isSubagent Whether this is a subagent session
@@ -45,7 +45,7 @@ export async function appendMessages(
 /**
  * Load session data from JSONL file (UPDATED - sessionDir removed)
  * 
- * @param sessionId UUIDv6 session identifier  
+ * @param sessionId UUID session identifier  
  * @param workdir Working directory for the session
  * @param isSubagent Whether this is a subagent session
  * @returns Promise that resolves to session data or null if session doesn't exist
@@ -61,7 +61,7 @@ export async function loadSessionFromJsonl(
 /**
  * Generate session file path using project-based directory structure (UPDATED - sessionDir removed)
  * 
- * @param sessionId UUIDv6 session identifier
+ * @param sessionId UUID session identifier
  * @param workdir Working directory for the session
  * @param isSubagent Whether this is a subagent session  
  * @returns Promise resolving to full file path for the session JSONL file

@@ -28,10 +28,22 @@ vi.mock("../../src/services/aiService.js", () => ({
 // Mock the session service with new functions
 vi.mock("../../src/services/session.js", () => ({
   generateSessionId: vi.fn().mockImplementation(() => {
-    // Generate a mock UUIDv6 format for testing
-    const timestamp = Date.now().toString(16).padStart(12, "0");
-    const random = Math.random().toString(16).substring(2, 14);
-    return `${timestamp.substring(0, 8)}-${timestamp.substring(8, 12)}-6${random.substring(0, 3)}-a${random.substring(3, 6)}-${random.substring(6, 18).padEnd(12, "0")}`;
+    // Generate a mock UUID v4 format for testing
+    const chars = "0123456789abcdef";
+    let result = "";
+    for (let i = 0; i < 32; i++) {
+      if (i === 8 || i === 12 || i === 16 || i === 20) {
+        result += "-";
+      }
+      if (i === 12) {
+        result += "4"; // Version 4
+      } else if (i === 16) {
+        result += chars[8 + Math.floor(Math.random() * 4)]; // Variant bits
+      } else {
+        result += chars[Math.floor(Math.random() * 16)];
+      }
+    }
+    return result;
   }),
   appendMessages: vi.fn().mockResolvedValue(undefined),
   loadSessionFromJsonl: vi.fn().mockResolvedValue(null),
@@ -132,10 +144,10 @@ describe("SubagentManager - Session Functionality", () => {
       // Get the transcript path from the subagent's message manager
       const transcriptPath = instance.messageManager.getTranscriptPath();
 
-      // Verify that the path uses JSONL extension and UUIDv6 format
+      // Verify that the path uses JSONL extension and UUID format
       expect(transcriptPath).toMatch(/\.jsonl$/);
       expect(transcriptPath).toMatch(
-        /[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jsonl$/,
+        /[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.jsonl$/,
       );
       expect(transcriptPath).toContain("/mock/session/dir/");
     });
@@ -177,8 +189,8 @@ describe("SubagentManager - Session Functionality", () => {
       // Verify that appendMessages was called with the correct parameters
       expect(mockAppendMessages).toHaveBeenCalledWith(
         expect.stringMatching(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-        ), // UUIDv6 sessionId
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        ), // UUID sessionId
         expect.any(Array), // messages
         "/tmp/test", // workdir
       );
@@ -289,12 +301,12 @@ describe("SubagentManager - Session Functionality", () => {
 
       expect(sessionId1).not.toBe(sessionId2);
 
-      // Verify both session IDs are valid UUIDv6 format
+      // Verify both session IDs are valid UUID format
       expect(sessionId1).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
       );
       expect(sessionId2).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
       );
     });
 
@@ -335,8 +347,8 @@ describe("SubagentManager - Session Functionality", () => {
       // Verify that appendMessages was called with correct parameters
       expect(mockAppendMessages).toHaveBeenCalledWith(
         expect.stringMatching(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-        ), // UUIDv6 sessionId
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        ), // UUID sessionId
         expect.any(Array), // messages
         "/tmp/test", // workdir
       );
@@ -390,12 +402,12 @@ describe("SubagentManager - Session Functionality", () => {
       // Verify session IDs are different
       expect(sessionId1).not.toBe(sessionId2);
 
-      // Verify both are valid UUIDv6 format
+      // Verify both are valid UUID format
       expect(sessionId1).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
       );
       expect(sessionId2).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-6[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
       );
 
       // Verify both use the same workdir

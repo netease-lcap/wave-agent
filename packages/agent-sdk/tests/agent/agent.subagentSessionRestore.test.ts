@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "../../src/agent.js";
 import type { SubagentInstance } from "../../src/managers/subagentManager.js";
-import { v6 as uuidv6 } from "uuid";
+import { randomUUID } from "crypto";
 
 // Mock dependencies to prevent real I/O operations
 vi.mock("@/services/aiService", () => ({
@@ -53,9 +53,9 @@ describe("Agent - Subagent Session Restoration", () => {
   });
 
   it("should discover and restore subagent sessions when main session is loaded", async () => {
-    const mainSessionId = uuidv6();
+    const mainSessionId = randomUUID();
     const subagentId = "subagent_87654321";
-    const subagentSessionId = uuidv6();
+    const subagentSessionId = randomUUID();
 
     // Import and mock the session functions
     const { loadSessionFromJsonl, handleSessionRestoration } = await import(
@@ -237,9 +237,9 @@ describe("Agent - Subagent Session Restoration", () => {
   });
 
   it("should handle missing subagent session files gracefully", async () => {
-    const mainSessionId = uuidv6();
+    const mainSessionId = randomUUID();
     const missingSubagentId = "missing_subagent_12345678";
-    const missingSubagentSessionId = uuidv6();
+    const missingSubagentSessionId = randomUUID();
 
     // Import and mock the session functions
     const { loadSessionFromJsonl, handleSessionRestoration } = await import(
