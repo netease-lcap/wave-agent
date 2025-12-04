@@ -220,9 +220,15 @@ export const bashTool: ToolPlugin = {
     });
   },
   formatCompactParams: (params: Record<string, unknown>) => {
+    const description = params.description as string;
     const command = params.command as string;
     const runInBackground = params.run_in_background as boolean;
-    return `${command}${runInBackground ? " background" : ""}`;
+
+    if (description) {
+      return description;
+    }
+
+    return `${command}${runInBackground ? " (background)" : ""}`;
   },
 };
 
