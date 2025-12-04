@@ -1,4 +1,5 @@
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
+import { extname } from "path";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
@@ -6,6 +7,123 @@ import {
   isBinaryDocument,
   getBinaryDocumentError,
 } from "../utils/fileFormat.js";
+import { convertImageToBase64 } from "../utils/messageOperations.js";
+
+/**
+ * Supported image file extensions
+ */
+const SUPPORTED_IMAGE_EXTENSIONS = [
+  "png",
+  "jpeg",
+  "jpg",
+  "gif",
+  "webp",
+] as const;
+
+/**
+ * Check if a file path represents an image file
+ * @param filePath - Path to the file
+ * @returns true if the file is a supported image format
+ */
+function isImageFile(filePath: string): boolean {
+  const ext = extname(filePath).toLowerCase().substring(1);
+  return (SUPPORTED_IMAGE_EXTENSIONS as readonly string[]).includes(ext);
+}
+
+/**
+ * Validate image file size
+ * @param filePath - Path to the image file
+ * @param maxSizeBytes - Maximum allowed file size in bytes (default: 20MB)
+ * @returns Promise<boolean> - true if file size is within limit
+ */
+async function validateImageFileSize(
+  filePath: string,
+  maxSizeBytes: number = 20 * 1024 * 1024,
+): Promise<boolean> {
+  try {
+    const stats = await stat(filePath);
+    return stats.size <= maxSizeBytes;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get MIME type for image file based on extension
+ * @param filePath - Path to the image file
+ * @returns MIME type string
+ */
+function getImageMimeType(filePath: string): string {
+  const ext = extname(filePath).toLowerCase().substring(1);
+  switch (ext) {
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "gif":
+      return "image/gif";
+    case "webp":
+      return "image/webp";
+    default:
+      return "image/png"; // Default fallback
+  }
+}
+
+/**
+ * Process an image file and return ToolResult with image data
+ * @param filePath - Path to the image file
+ * @param context - Tool execution context
+ * @returns Promise<ToolResult> with image data
+ */
+async function processImageFile(
+  filePath: string,
+  context: ToolContext,
+): Promise<ToolResult> {
+  try {
+    // Resolve path
+    const actualFilePath = filePath.startsWith("/")
+      ? filePath
+      : resolvePath(filePath, context.workdir);
+
+    // Validate file size
+    const isValidSize = await validateImageFileSize(actualFilePath);
+    if (!isValidSize) {
+      const stats = await stat(actualFilePath);
+      const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+      return {
+        success: false,
+        content: "",
+        error: `Image file exceeds 20MB limit (actual: ${sizeMB}MB)`,
+      };
+    }
+
+    // Convert image to base64
+    const imageDataUrl = convertImageToBase64(actualFilePath);
+    const mimeType = getImageMimeType(actualFilePath);
+
+    // Extract base64 data from data URL (remove data:image/type;base64, prefix)
+    const base64Data = imageDataUrl.split(",")[1] || "";
+
+    return {
+      success: true,
+      content: `Image file processed: ${getDisplayPath(filePath, context.workdir)}\nFormat: ${mimeType}\nSize: Available for AI processing`,
+      shortResult: `Image processed (${mimeType})`,
+      images: [
+        {
+          data: base64Data,
+          mediaType: mimeType,
+        },
+      ],
+    };
+  } catch (error) {
+    return {
+      success: false,
+      content: "",
+      error: `Failed to process image: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
 
 /**
  * Read Tool Plugin - Read file content
@@ -63,6 +181,11 @@ export const readTool: ToolPlugin = {
         content: "",
         error: getBinaryDocumentError(filePath),
       };
+    }
+
+    // Check if this is an image file
+    if (isImageFile(filePath)) {
+      return processImageFile(filePath, context);
     }
 
     try {

@@ -1,12 +1,21 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readTool } from "@/tools/readTool.js";
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
   readFile: vi.fn(),
+  stat: vi.fn(),
 }));
+
+// Mock messageOperations for image conversion
+vi.mock("@/utils/messageOperations.js", () => ({
+  convertImageToBase64: vi.fn(),
+}));
+
+// Get mocked function
+import { convertImageToBase64 } from "@/utils/messageOperations.js";
 
 // Mock path utilities
 vi.mock("@/utils/path.js", () => ({
@@ -48,6 +57,7 @@ Emoji: 🚀 🌟 ✨
 Multi-byte: café naïve résumé`,
   "/test/workdir/subdir/nested.txt": "Nested file content",
   "/test/workdir/mixed-endings.txt": "Line 1\r\nLine 2\nLine 3\r\n",
+  "/test/workdir/test.bmp": "BMP content that should be processed as text",
   "/test/workdir/special-chars.txt": "Normal text\x00\x01\x02More text",
 };
 
@@ -346,5 +356,203 @@ describe("readTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("Normal text");
     expect(result.content).toContain("More text");
+  });
+
+  // Image processing tests
+  describe("Image Processing", () => {
+    beforeEach(() => {
+      // Mock image file stats
+      vi.mocked(stat).mockImplementation(async (path) => {
+        if (typeof path === "string" && path.includes("large-image")) {
+          return { size: 25 * 1024 * 1024 } as unknown as Awaited<
+            ReturnType<typeof stat>
+          >; // 25MB - exceeds limit
+        }
+        return { size: 1024 * 1024 } as unknown as Awaited<
+          ReturnType<typeof stat>
+        >; // 1MB - within limit
+      });
+    });
+
+    it("should process PNG image files and return base64 data", async () => {
+      const pngPath = "/test/workdir/test-image.png";
+      const mockBase64Data =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU8YBgAAAABJRU5ErkJggg==";
+
+      vi.mocked(convertImageToBase64).mockReturnValue(
+        `data:image/png;base64,${mockBase64Data}`,
+      );
+
+      const result = await readTool.execute(
+        { file_path: pngPath },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Image file processed");
+      expect(result.content).toContain("image/png");
+      expect(result.images).toBeDefined();
+      expect(result.images).toHaveLength(1);
+      expect(result.images![0].data).toBe(mockBase64Data);
+      expect(result.images![0].mediaType).toBe("image/png");
+      expect(result.shortResult).toContain("Image processed");
+    });
+
+    it("should process JPEG image files and return base64 data", async () => {
+      const jpegPath = "/test/workdir/test-image.jpeg";
+      const mockBase64Data =
+        "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wgARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGKAP/EABUQAQEAAAAAAAAAAAAAAAAAAAAAAf/aAAgBAQABBQJO/8QAFREBAQAAAAAAAAAAAAAAAAAAAAH/2gAIAQMBAT8B";
+
+      vi.mocked(convertImageToBase64).mockReturnValue(
+        `data:image/jpeg;base64,${mockBase64Data}`,
+      );
+
+      const result = await readTool.execute(
+        { file_path: jpegPath },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Image file processed");
+      expect(result.content).toContain("image/jpeg");
+      expect(result.images).toBeDefined();
+      expect(result.images).toHaveLength(1);
+      expect(result.images![0].data).toBe(mockBase64Data);
+      expect(result.images![0].mediaType).toBe("image/jpeg");
+    });
+
+    it("should handle image file not found error", async () => {
+      const nonExistentPath = "/test/workdir/nonexistent.png";
+
+      vi.mocked(stat).mockRejectedValue(
+        new Error("ENOENT: no such file or directory"),
+      );
+      vi.mocked(convertImageToBase64).mockImplementation(() => {
+        throw new Error("ENOENT: no such file or directory");
+      });
+
+      const result = await readTool.execute(
+        { file_path: nonExistentPath },
+        testContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Failed to process image");
+    });
+
+    it("should process GIF image files and return base64 data", async () => {
+      const gifPath = "/test/workdir/test-image.gif";
+      const mockBase64Data =
+        "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+      vi.mocked(convertImageToBase64).mockReturnValue(
+        `data:image/gif;base64,${mockBase64Data}`,
+      );
+
+      const result = await readTool.execute(
+        { file_path: gifPath },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Image file processed");
+      expect(result.content).toContain("image/gif");
+      expect(result.images).toBeDefined();
+      expect(result.images).toHaveLength(1);
+      expect(result.images![0].data).toBe(mockBase64Data);
+      expect(result.images![0].mediaType).toBe("image/gif");
+    });
+
+    it("should process WebP image files and return base64 data", async () => {
+      const webpPath = "/test/workdir/test-image.webp";
+      const mockBase64Data =
+        "UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA";
+
+      vi.mocked(convertImageToBase64).mockReturnValue(
+        `data:image/webp;base64,${mockBase64Data}`,
+      );
+
+      const result = await readTool.execute(
+        { file_path: webpPath },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Image file processed");
+      expect(result.content).toContain("image/webp");
+      expect(result.images).toBeDefined();
+      expect(result.images).toHaveLength(1);
+      expect(result.images![0].data).toBe(mockBase64Data);
+      expect(result.images![0].mediaType).toBe("image/webp");
+    });
+
+    it("should handle case-insensitive extension detection", async () => {
+      const upperCasePath = "/test/workdir/test-image.PNG";
+      const mockBase64Data =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU8YBgAAAABJRU5ErkJggg==";
+
+      vi.mocked(convertImageToBase64).mockReturnValue(
+        `data:image/png;base64,${mockBase64Data}`,
+      );
+
+      const result = await readTool.execute(
+        { file_path: upperCasePath },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("image/png");
+      expect(result.images![0].mediaType).toBe("image/png");
+    });
+
+    it("should enforce 20MB file size limit", async () => {
+      const largePath = "/test/workdir/large-image.png";
+
+      // Mock a file larger than 20MB
+      vi.mocked(stat).mockResolvedValue({
+        size: 25 * 1024 * 1024,
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+
+      const result = await readTool.execute(
+        { file_path: largePath },
+        testContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Image file exceeds 20MB limit");
+      expect(result.error).toContain("25.00MB");
+    });
+
+    it("should handle corrupted image files gracefully", async () => {
+      const corruptedPath = "/test/workdir/corrupted.png";
+
+      vi.mocked(convertImageToBase64).mockImplementation(() => {
+        throw new Error("Invalid image data");
+      });
+
+      const result = await readTool.execute(
+        { file_path: corruptedPath },
+        testContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Failed to process image");
+      expect(result.error).toContain("Invalid image data");
+    });
+
+    it("should handle unsupported image format gracefully", async () => {
+      const unsupportedPath = "/test/workdir/test.bmp";
+
+      // BMP files should not be processed as images (not in supported formats)
+      const result = await readTool.execute(
+        { file_path: unsupportedPath },
+        testContext,
+      );
+
+      // Since BMP is not supported, it should fall back to text processing
+      expect(result.success).toBe(true);
+      // It should not contain image data
+      expect(result.images).toBeUndefined();
+    });
   });
 });
