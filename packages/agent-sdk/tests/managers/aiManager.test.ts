@@ -87,9 +87,9 @@ describe("AIManager", () => {
       toolManager: mockToolManager,
       logger: mockLogger,
       workdir: "/test/workdir",
-      gatewayConfig: mockGatewayConfig,
-      modelConfig: mockModelConfig,
-      tokenLimit: 96000,
+      getGatewayConfig: () => mockGatewayConfig,
+      getModelConfig: () => mockModelConfig,
+      getTokenLimit: () => 96000,
     });
   });
 

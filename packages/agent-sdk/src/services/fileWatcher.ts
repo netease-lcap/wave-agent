@@ -8,7 +8,6 @@
 import * as chokidar from "chokidar";
 import { EventEmitter } from "events";
 import type { Logger } from "../types/index.js";
-import { FILE_WATCHER_EVENTS } from "../constants/events.js";
 
 export interface FileWatchEvent {
   type: "change" | "create" | "delete" | "rename";
@@ -146,7 +145,7 @@ export class FileWatcherService extends EventEmitter {
       lastEvent:
         entry.lastEvent > 0
           ? {
-              type: FILE_WATCHER_EVENTS.CHANGE,
+              type: "change",
               path: entry.path,
               timestamp: entry.lastEvent,
             }
@@ -244,21 +243,21 @@ export class FileWatcherService extends EventEmitter {
     if (!this.globalWatcher) return;
 
     this.globalWatcher.on(
-      FILE_WATCHER_EVENTS.CHANGE,
+      "change",
       (filePath: string, stats?: { size?: number }) => {
-        this.handleFileEvent(FILE_WATCHER_EVENTS.CHANGE, filePath, stats);
+        this.handleFileEvent("change", filePath, stats);
       },
     );
 
     this.globalWatcher.on(
       "add",
       (filePath: string, stats?: { size?: number }) => {
-        this.handleFileEvent(FILE_WATCHER_EVENTS.CREATE, filePath, stats);
+        this.handleFileEvent("create", filePath, stats);
       },
     );
 
     this.globalWatcher.on("unlink", (filePath: string) => {
-      this.handleFileEvent(FILE_WATCHER_EVENTS.DELETE, filePath);
+      this.handleFileEvent("delete", filePath);
     });
 
     this.globalWatcher.on("error", (err: unknown) => {

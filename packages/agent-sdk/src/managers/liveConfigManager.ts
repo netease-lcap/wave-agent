@@ -12,42 +12,36 @@ import {
   ConfigurationWatcher,
   type ConfigurationChangeEvent,
 } from "../services/configurationWatcher.js";
-
+import { MemoryStoreService } from "../services/memoryStore.js";
 import { type FileWatchEvent } from "../services/fileWatcher.js";
-import { configResolver } from "../utils/configResolver.js";
 import { join } from "path";
+import type { HookManager } from "./hookManager.js";
 import {
-  getUserConfigPaths,
   getProjectConfigPaths,
-} from "../utils/configPaths.js";
-import { CONFIGURATION_EVENTS } from "../constants/events.js";
+  getUserConfigPaths,
+} from "@/utils/configPaths.js";
+import { loadMergedWaveConfig } from "../services/hook.js";
 
 export interface LiveConfigManagerOptions {
   workdir: string;
   logger?: Logger;
-  onConfigurationChanged?: () => void; // Callback for when configuration changes
-  onMemoryStoreFileChanged?: (
-    filePath: string,
-    changeType: "add" | "change" | "unlink",
-  ) => Promise<void>; // Callback for memory store file changes
+  hookManager?: HookManager;
+  memoryStore?: MemoryStoreService;
 }
 
 export class LiveConfigManager {
   private readonly workdir: string;
   private readonly logger?: Logger;
-  private readonly onConfigurationChanged?: () => void;
-  private readonly onMemoryStoreFileChanged?: (
-    filePath: string,
-    changeType: "add" | "change" | "unlink",
-  ) => Promise<void>;
+  private readonly hookManager?: HookManager;
+  private readonly memoryStore?: MemoryStoreService;
   private configurationWatcher?: ConfigurationWatcher;
   private isInitialized: boolean = false;
 
   constructor(options: LiveConfigManagerOptions) {
     this.workdir = options.workdir;
     this.logger = options.logger;
-    this.onConfigurationChanged = options.onConfigurationChanged;
-    this.onMemoryStoreFileChanged = options.onMemoryStoreFileChanged;
+    this.hookManager = options.hookManager;
+    this.memoryStore = options.memoryStore;
   }
 
   /**
@@ -63,8 +57,8 @@ export class LiveConfigManager {
       // Initialize configuration watcher for hook settings
       await this.initializeConfigurationWatcher();
 
-      // Initialize memory store watching for AGENTS.md if callback is available
-      if (this.onMemoryStoreFileChanged) {
+      // Initialize memory store watching for AGENTS.md if available
+      if (this.memoryStore) {
         await this.initializeMemoryStoreWatching();
       }
 
@@ -110,6 +104,13 @@ export class LiveConfigManager {
    * Initialize configuration watcher for hook settings
    */
   private async initializeConfigurationWatcher(): Promise<void> {
+    if (!this.hookManager) {
+      this.logger?.debug(
+        "Live Config: No hook manager provided, skipping configuration watching",
+      );
+      return;
+    }
+
     this.configurationWatcher = new ConfigurationWatcher(
       this.workdir,
       this.logger,
@@ -117,7 +118,7 @@ export class LiveConfigManager {
 
     // Set up configuration change handler using EventEmitter pattern
     this.configurationWatcher.on(
-      CONFIGURATION_EVENTS.CONFIGURATION_CHANGE,
+      "configurationChanged",
       (event: ConfigurationChangeEvent) => {
         this.handleConfigurationChange(event);
       },
@@ -133,9 +134,9 @@ export class LiveConfigManager {
    * Initialize memory store watching for AGENTS.md files
    */
   private async initializeMemoryStoreWatching(): Promise<void> {
-    if (!this.onMemoryStoreFileChanged || !this.configurationWatcher) {
+    if (!this.memoryStore || !this.configurationWatcher) {
       this.logger?.debug(
-        "Live Config: Memory store callback or configuration watcher not available, skipping AGENTS.md watching",
+        "Live Config: Memory store or configuration watcher not available, skipping AGENTS.md watching",
       );
       return;
     }
@@ -168,28 +169,21 @@ export class LiveConfigManager {
       `Live Config: Configuration change detected: ${event.type} at ${event.path}`,
     );
 
-    // Invalidate and refresh configuration cache for live environment variable updates
-    configResolver.invalidateCache(this.workdir);
-    configResolver.refreshCache(this.workdir);
+    // Update process.env from settings.json
+    this.updateEnvironmentFromSettings();
 
-    // Trigger Agent configuration update callback if provided
-    if (this.onConfigurationChanged) {
+    if (this.hookManager) {
       try {
-        this.logger?.info("Live Config: Triggering Agent configuration update");
-        this.onConfigurationChanged();
+        // Delegate to hook manager for hook-specific configuration reloading
+        this.hookManager.loadConfigurationFromSettings();
+        this.logger?.info(
+          "Live Config: Hook configuration reloaded successfully",
+        );
       } catch (error) {
         this.logger?.error(
-          `Live Config: Error in configuration change callback: ${(error as Error).message}`,
+          `Live Config: Failed to reload hook configuration: ${(error as Error).message}`,
         );
       }
-    }
-
-    // Log cache status after refresh
-    const cacheStatus = configResolver.getCacheStatus();
-    if (cacheStatus) {
-      this.logger?.info(
-        `Live Config: Configuration cache refreshed - ${cacheStatus.envVarCount} environment variables loaded`,
-      );
     }
   }
 
@@ -199,7 +193,7 @@ export class LiveConfigManager {
   private async handleMemoryStoreFileChange(
     event: FileWatchEvent,
   ): Promise<void> {
-    if (!this.onMemoryStoreFileChanged) {
+    if (!this.memoryStore) {
       return;
     }
 
@@ -208,17 +202,19 @@ export class LiveConfigManager {
         `Live Config: AGENTS.md ${event.type} detected: ${event.path}`,
       );
 
-      const changeType: "add" | "change" | "unlink" =
-        event.type === "delete"
-          ? "unlink"
-          : event.type === "create"
-            ? "add"
-            : "change";
-      await this.onMemoryStoreFileChanged(event.path, changeType);
-
-      this.logger?.info(
-        `Live Config: Memory store updated for AGENTS.md ${event.type}`,
-      );
+      if (event.type === "delete") {
+        // Handle file deletion gracefully
+        this.memoryStore.removeContent(event.path);
+        this.logger?.info(
+          "Live Config: Removed AGENTS.md from memory store due to file deletion",
+        );
+      } else {
+        // Update memory store content
+        await this.memoryStore.updateContent(event.path);
+        this.logger?.info(
+          "Live Config: Updated AGENTS.md content in memory store",
+        );
+      }
     } catch (error) {
       this.logger?.error(
         `Live Config: Failed to handle AGENTS.md file change: ${(error as Error).message}`,
@@ -231,6 +227,39 @@ export class LiveConfigManager {
    */
   get initialized(): boolean {
     return this.isInitialized;
+  }
+
+  /**
+   * Update process.env from merged settings.json files
+   */
+  private updateEnvironmentFromSettings(): void {
+    try {
+      // Load merged Wave configuration (includes environment variables)
+      const waveConfig = loadMergedWaveConfig(this.workdir);
+
+      if (!waveConfig || !waveConfig.env) {
+        this.logger?.debug(
+          "Live Config: No environment configuration found in settings",
+        );
+        return;
+      }
+
+      // Update process.env with environment variables from settings.json
+      for (const [key, value] of Object.entries(waveConfig.env)) {
+        if (typeof value === "string") {
+          process.env[key] = value;
+          this.logger?.debug(`Live Config: Updated process.env.${key}`);
+        }
+      }
+
+      this.logger?.info(
+        "Live Config: Environment variables updated from settings",
+      );
+    } catch (error) {
+      this.logger?.error(
+        `Live Config: Failed to update environment from settings: ${(error as Error).message}`,
+      );
+    }
   }
 
   /**

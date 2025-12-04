@@ -58,9 +58,9 @@ export interface SubagentManagerOptions {
   parentMessageManager: MessageManager;
   callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
   logger?: Logger;
-  gatewayConfig: GatewayConfig;
-  modelConfig: ModelConfig;
-  tokenLimit: number;
+  getGatewayConfig: () => GatewayConfig;
+  getModelConfig: () => ModelConfig;
+  getTokenLimit: () => number;
   hookManager?: HookManager;
   onUsageAdded?: (usage: Usage) => void;
 }
@@ -74,9 +74,9 @@ export class SubagentManager {
   private parentMessageManager: MessageManager;
   private callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
   private logger?: Logger;
-  private gatewayConfig: GatewayConfig;
-  private modelConfig: ModelConfig;
-  private tokenLimit: number;
+  private getGatewayConfig: () => GatewayConfig;
+  private getModelConfig: () => ModelConfig;
+  private getTokenLimit: () => number;
   private hookManager?: HookManager;
   private onUsageAdded?: (usage: Usage) => void;
 
@@ -86,9 +86,9 @@ export class SubagentManager {
     this.parentMessageManager = options.parentMessageManager;
     this.callbacks = options.callbacks; // Store SubagentManagerCallbacks
     this.logger = options.logger;
-    this.gatewayConfig = options.gatewayConfig;
-    this.modelConfig = options.modelConfig;
-    this.tokenLimit = options.tokenLimit;
+    this.getGatewayConfig = options.getGatewayConfig;
+    this.getModelConfig = options.getModelConfig;
+    this.getTokenLimit = options.getTokenLimit;
     this.hookManager = options.hookManager;
     this.onUsageAdded = options.onUsageAdded;
   }
@@ -146,12 +146,7 @@ export class SubagentManager {
       subagent_type: string;
     },
   ): Promise<SubagentInstance> {
-    if (
-      !this.parentToolManager ||
-      !this.gatewayConfig ||
-      !this.modelConfig ||
-      !this.tokenLimit
-    ) {
+    if (!this.parentToolManager) {
       throw new Error(
         "SubagentManager not properly initialized - call initialize() first",
       );
@@ -174,12 +169,6 @@ export class SubagentManager {
     // Use the parent tool manager directly - tool restrictions will be handled by allowedTools parameter
     const toolManager = this.parentToolManager;
 
-    // Determine model to use
-    const modelToUse =
-      configuration.model && configuration.model !== "inherit"
-        ? configuration.model
-        : this.modelConfig.agentModel;
-
     // Create isolated AIManager for the subagent
     const aiManager = new AIManager({
       messageManager,
@@ -189,12 +178,21 @@ export class SubagentManager {
       systemPrompt: configuration.systemPrompt,
       subagentType: parameters.subagent_type, // Pass subagent type for hook context
       hookManager: this.hookManager,
-      gatewayConfig: this.gatewayConfig,
-      modelConfig: {
-        ...this.modelConfig,
-        agentModel: modelToUse,
+      getGatewayConfig: this.getGatewayConfig,
+      getModelConfig: () => {
+        // Determine model dynamically each time
+        const parentModelConfig = this.getModelConfig();
+        const modelToUse =
+          configuration.model && configuration.model !== "inherit"
+            ? configuration.model
+            : parentModelConfig.agentModel;
+
+        return {
+          ...parentModelConfig,
+          agentModel: modelToUse,
+        };
       },
-      tokenLimit: this.tokenLimit,
+      getTokenLimit: this.getTokenLimit,
       callbacks: {
         onUsageAdded: this.onUsageAdded,
       },
@@ -433,7 +431,7 @@ export class SubagentManager {
         const modelToUse =
           configuration.model && configuration.model !== "inherit"
             ? configuration.model
-            : this.modelConfig.agentModel;
+            : this.getModelConfig().agentModel;
 
         // Create AIManager for the restored subagent
         const aiManager = new AIManager({
@@ -444,12 +442,12 @@ export class SubagentManager {
           systemPrompt: configuration.systemPrompt,
           subagentType: configuration.name, // Use configuration name as subagent type for restored instances
           hookManager: this.hookManager,
-          gatewayConfig: this.gatewayConfig,
-          modelConfig: {
-            ...this.modelConfig,
+          getGatewayConfig: this.getGatewayConfig,
+          getModelConfig: () => ({
+            ...this.getModelConfig(),
             agentModel: modelToUse,
-          },
-          tokenLimit: this.tokenLimit,
+          }),
+          getTokenLimit: this.getTokenLimit,
           callbacks: {
             onUsageAdded: this.onUsageAdded,
           },
@@ -538,86 +536,6 @@ export class SubagentManager {
           sessionId: newSessionId,
         });
       },
-    };
-  }
-
-  /**
-   * Update configuration for SubagentManager and all active subagents
-   * This method updates configuration for live config reload support
-   * @param newGatewayConfig - New gateway configuration
-   * @param newModelConfig - New model configuration
-   * @param newTokenLimit - New token limit
-   */
-  updateConfiguration(
-    newGatewayConfig: GatewayConfig,
-    newModelConfig: ModelConfig,
-    newTokenLimit: number,
-  ): void {
-    this.logger?.info("Live Config: Updating SubagentManager configuration");
-
-    // Update stored configuration
-    this.gatewayConfig = newGatewayConfig;
-    this.modelConfig = newModelConfig;
-    this.tokenLimit = newTokenLimit;
-
-    // Update all active subagent AIManager instances
-    let updatedCount = 0;
-    for (const [subagentId, instance] of this.instances.entries()) {
-      if (instance.status === "active" || instance.status === "initializing") {
-        try {
-          // For subagents, we need to preserve their model if it was explicitly set
-          const subagentModelConfig = {
-            ...newModelConfig,
-            // If subagent has its own model configured, preserve it
-            agentModel:
-              instance.configuration.model &&
-              instance.configuration.model !== "inherit"
-                ? instance.configuration.model
-                : newModelConfig.agentModel,
-          };
-
-          instance.aiManager.updateConfiguration(
-            newGatewayConfig,
-            subagentModelConfig,
-            newTokenLimit,
-          );
-          updatedCount++;
-
-          this.logger?.debug(
-            `Live Config: Updated configuration for subagent ${subagentId}`,
-          );
-        } catch (error) {
-          this.logger?.error(
-            `Live Config: Failed to update configuration for subagent ${subagentId}: ${(error as Error).message}`,
-          );
-        }
-      }
-    }
-
-    this.logger?.info(
-      `Live Config: SubagentManager configuration updated - ${updatedCount} active subagents updated`,
-    );
-  }
-
-  /**
-   * Get current configuration for debugging
-   */
-  getCurrentConfiguration(): {
-    gatewayConfig: GatewayConfig;
-    modelConfig: ModelConfig;
-    tokenLimit: number;
-    activeSubagents: number;
-  } {
-    const activeSubagents = Array.from(this.instances.values()).filter(
-      (instance) =>
-        instance.status === "active" || instance.status === "initializing",
-    ).length;
-
-    return {
-      gatewayConfig: { ...this.gatewayConfig },
-      modelConfig: { ...this.modelConfig },
-      tokenLimit: this.tokenLimit,
-      activeSubagents,
     };
   }
 }
