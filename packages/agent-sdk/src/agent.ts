@@ -559,6 +559,48 @@ export class Agent {
     }
   }
 
+  /**
+   * Restore a session by ID, switching to the target session without destroying the Agent instance
+   * @param sessionId - The ID of the session to restore
+   */
+  public async restoreSession(sessionId: string): Promise<void> {
+    // 1. Validation
+    if (!sessionId || sessionId === this.sessionId) {
+      return; // No-op if session ID is invalid or already current
+    }
+
+    // 2. Auto-save current session
+    try {
+      await this.messageManager.saveSession();
+    } catch (error) {
+      this.logger?.warn(
+        "Failed to save current session before restore:",
+        error,
+      );
+      // Continue with restoration even if save fails
+    }
+
+    // 3. Load target session
+    const sessionData = await loadSessionFromJsonl(
+      sessionId,
+      this.messageManager.getWorkdir(),
+    );
+    if (!sessionData) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    // 4. Clean current state
+    this.abortMessage(); // Abort any running operations
+    this.subagentManager.cleanup(); // Clean up active subagents
+
+    // 5. Rebuild usage and restore subagents (in correct order)
+    this.rebuildUsageFromMessages(sessionData.messages);
+    await this.restoreSubagentSessions(sessionData.messages);
+
+    // 6. Initialize session state last
+    this.messageManager.initializeFromSession(sessionData);
+  }
+
   public abortAIMessage(): void {
     this.aiManager.abortAIMessage();
   }
