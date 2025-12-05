@@ -86,7 +86,6 @@ export class MessageManager {
   private messages: Message[];
   private latestTotalTokens: number;
   private userInputHistory: string[];
-  private sessionStartTime: string;
   private workdir: string;
   private encodedWorkdir: string; // Cached encoded workdir
   private logger?: Logger; // Add optional logger property
@@ -101,7 +100,6 @@ export class MessageManager {
     this.messages = [];
     this.latestTotalTokens = 0;
     this.userInputHistory = [];
-    this.sessionStartTime = new Date().toISOString();
     this.workdir = options.workdir;
     this.encodedWorkdir = pathEncoder.encodeSync(this.workdir); // Cache encoded workdir
     this.callbacks = options.callbacks;
@@ -129,10 +127,6 @@ export class MessageManager {
 
   public getUserInputHistory(): string[] {
     return [...this.userInputHistory];
-  }
-
-  public getSessionStartTime(): string {
-    return this.sessionStartTime;
   }
 
   public getWorkdir(): string {
@@ -242,7 +236,6 @@ export class MessageManager {
     this.setUserInputHistory([]);
     this.setSessionId(generateSessionId());
     this.setlatestTotalTokens(0);
-    this.sessionStartTime = new Date().toISOString();
     this.savedMessageCount = 0; // Reset saved message count
   }
 
@@ -251,9 +244,6 @@ export class MessageManager {
     this.setSessionId(sessionData.id);
     this.setMessages([...sessionData.messages]);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
-
-    // Keep current session start time for consistency
-    // (sessionStartTime is now managed internally)
 
     // Extract user input history from session messages
     this.setUserInputHistory(extractUserInputHistory(sessionData.messages));
