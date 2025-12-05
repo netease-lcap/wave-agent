@@ -190,9 +190,9 @@ export class PathEncoder {
   }
 
   /**
-   * Create project directory entity from original path
+   * Get project directory info without creating the directory
    */
-  async createProjectDirectory(
+  async getProjectDirectory(
     originalPath: string,
     baseSessionDir: string,
   ): Promise<ProjectDirectory> {
@@ -221,13 +221,6 @@ export class PathEncoder {
       pathHash = this.generateHash(resolvedPath, this.options.hashLength);
     }
 
-    // Ensure the encoded directory exists
-    try {
-      await mkdir(encodedPath, { recursive: true });
-    } catch {
-      // Ignore errors if directory already exists
-    }
-
     return {
       originalPath: resolvedPath,
       encodedName,
@@ -235,6 +228,28 @@ export class PathEncoder {
       pathHash,
       isSymbolicLink,
     };
+  }
+
+  /**
+   * Create project directory entity from original path
+   */
+  async createProjectDirectory(
+    originalPath: string,
+    baseSessionDir: string,
+  ): Promise<ProjectDirectory> {
+    const projectDirectory = await this.getProjectDirectory(
+      originalPath,
+      baseSessionDir,
+    );
+
+    // Ensure the encoded directory exists
+    try {
+      await mkdir(projectDirectory.encodedPath, { recursive: true });
+    } catch {
+      // Ignore errors if directory already exists
+    }
+
+    return projectDirectory;
   }
 
   /**

@@ -5,15 +5,6 @@
  * enabling automated actions at specific workflow points.
  */
 
-import { join } from "path";
-import { homedir } from "os";
-
-// Session path utility (simplified version for hooks)
-export function getSessionFilePath(sessionId: string): string {
-  const shortId = sessionId.split("_")[2] || sessionId.slice(-8);
-  return join(homedir(), ".wave", "sessions", `session_${shortId}.json`);
-}
-
 // Hook event types - trigger points in the AI workflow
 export type HookEvent =
   | "PreToolUse"

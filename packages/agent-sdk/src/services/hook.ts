@@ -23,9 +23,9 @@ import {
   type HookJsonInput,
   type WaveConfiguration,
   type PartialHookConfiguration,
-  getSessionFilePath,
   isValidHookEvent,
 } from "../types/hooks.js";
+import { generateSessionFilePath } from "./session.js";
 import {
   type EnvironmentValidationResult,
   type MergedEnvironmentContext,
@@ -40,15 +40,27 @@ import {
 /**
  * Build JSON input data for hook stdin
  */
-function buildHookJsonInput(
+async function buildHookJsonInput(
   context: ExtendedHookExecutionContext,
-): HookJsonInput {
+): Promise<HookJsonInput> {
+  const workdir = context.cwd || context.projectDir || process.cwd();
+
+  let transcriptPath = context.transcriptPath;
+  if (!transcriptPath && context.sessionId) {
+    try {
+      transcriptPath = await generateSessionFilePath(
+        context.sessionId,
+        workdir,
+      );
+    } catch {
+      transcriptPath = "";
+    }
+  }
+
   const jsonInput: HookJsonInput = {
     session_id: context.sessionId || "unknown",
-    transcript_path:
-      context.transcriptPath ||
-      (context.sessionId ? getSessionFilePath(context.sessionId) : ""),
-    cwd: context.cwd || context.projectDir,
+    transcript_path: transcriptPath || "",
+    cwd: workdir,
     hook_event_name: context.event,
   };
 
@@ -111,6 +123,17 @@ export async function executeCommand(
     };
   }
 
+  // Prepare JSON input for hooks that need it
+  let jsonInput: string | null = null;
+  if ("sessionId" in context) {
+    try {
+      const hookJsonInput = await buildHookJsonInput(context);
+      jsonInput = JSON.stringify(hookJsonInput, null, 2);
+    } catch {
+      // Continue execution even if JSON input preparation fails
+    }
+  }
+
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
@@ -160,11 +183,10 @@ export async function executeCommand(
       });
     }
 
-    // Send JSON input to stdin if we have extended context
-    if (childProcess.stdin && "sessionId" in context) {
+    // Send JSON input to stdin if we have prepared it
+    if (childProcess.stdin && jsonInput) {
       try {
-        const jsonInput = buildHookJsonInput(context);
-        childProcess.stdin.write(JSON.stringify(jsonInput, null, 2));
+        childProcess.stdin.write(jsonInput);
         childProcess.stdin.end();
       } catch {
         // Continue execution even if JSON input fails
