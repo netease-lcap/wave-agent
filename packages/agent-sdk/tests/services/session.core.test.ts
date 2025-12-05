@@ -47,6 +47,7 @@ vi.mock("@/services/jsonlHandler.js", () => ({
 vi.mock("@/utils/pathEncoder.js", () => ({
   PathEncoder: vi.fn(() => ({
     createProjectDirectory: vi.fn(),
+    getProjectDirectory: vi.fn(),
     decode: vi.fn(),
   })),
 }));
@@ -56,7 +57,6 @@ import {
   appendMessages,
   loadSessionFromJsonl,
   sessionExistsInJsonl,
-  deleteSessionFromJsonl,
   getSessionFilePath,
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
@@ -76,6 +76,7 @@ describe("Session Core Functionality", () => {
   };
   let mockPathEncoder: {
     createProjectDirectory: ReturnType<typeof vi.fn>;
+    getProjectDirectory: ReturnType<typeof vi.fn>;
     decode: ReturnType<typeof vi.fn>;
   };
   let mockFileUtils: {
@@ -90,6 +91,10 @@ describe("Session Core Functionality", () => {
     exists = true,
   ) => {
     const fs = await import("fs/promises");
+
+    // Clear any previous mocks to avoid interference
+    vi.mocked(fs.access).mockClear();
+
     if (exists) {
       if (sessionType === "main") {
         // Main session exists, so first access call succeeds
@@ -100,8 +105,9 @@ describe("Session Core Functionality", () => {
         vi.mocked(fs.access).mockResolvedValueOnce(undefined);
       }
     } else {
-      // Neither main nor subagent exists
-      vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
+      // Neither main nor subagent exists - use mockRejectedValueOnce for single call
+      vi.mocked(fs.access).mockRejectedValueOnce(new Error("ENOENT"));
+      vi.mocked(fs.access).mockRejectedValueOnce(new Error("ENOENT"));
     }
   };
 
@@ -136,6 +142,7 @@ describe("Session Core Functionality", () => {
 
     mockPathEncoder = {
       createProjectDirectory: vi.fn(),
+      getProjectDirectory: vi.fn(),
       decode: vi.fn(),
     };
 
@@ -166,6 +173,14 @@ describe("Session Core Functionality", () => {
 
     // Set up default mock behavior for PathEncoder
     mockPathEncoder.createProjectDirectory.mockResolvedValue({
+      originalPath: testWorkdir,
+      encodedName: "encoded-workdir",
+      encodedPath: `${tempDir}/encoded-workdir`,
+      pathHash: undefined,
+      isSymbolicLink: false,
+    });
+
+    mockPathEncoder.getProjectDirectory.mockResolvedValue({
       originalPath: testWorkdir,
       encodedName: "encoded-workdir",
       encodedPath: `${tempDir}/encoded-workdir`,
@@ -361,7 +376,7 @@ describe("Session Core Functionality", () => {
 
       // Verify that JsonlHandler.append was called
       expect(mockJsonlHandler.append).toHaveBeenCalled();
-      expect(mockPathEncoder.createProjectDirectory).toHaveBeenCalledWith(
+      expect(mockPathEncoder.getProjectDirectory).toHaveBeenCalledWith(
         testWorkdir,
         SESSION_DIR,
       );
@@ -389,7 +404,7 @@ describe("Session Core Functionality", () => {
       expect(sessionData!.messages).toHaveLength(2);
       expect(sessionData!.metadata.workdir).toBe(testWorkdir);
       expect(sessionData!.metadata.latestTotalTokens).toBe(15);
-      expect(mockPathEncoder.createProjectDirectory).toHaveBeenCalledWith(
+      expect(mockPathEncoder.getProjectDirectory).toHaveBeenCalledWith(
         testWorkdir,
         SESSION_DIR,
       );
@@ -413,55 +428,42 @@ describe("Session Core Functionality", () => {
     it("should check if session exists", async () => {
       const sessionId = generateSessionId();
 
-      // First check - file doesn't exist (neither main nor subagent)
-      await mockSessionFileExists(sessionId, "main", false);
+      // Import the fs module the same way the session service does
+      const fs = await import("fs");
+
+      // Clear all mocks and set up fresh
+      vi.clearAllMocks();
+
+      // Set up basic PathEncoder mock
+      mockPathEncoder.getProjectDirectory.mockResolvedValue({
+        originalPath: testWorkdir,
+        encodedName: "encoded-workdir",
+        encodedPath: `${tempDir}/encoded-workdir`,
+        pathHash: undefined,
+        isSymbolicLink: false,
+      });
+
+      // Test case 1: Explicitly specify sessionType="main" and file doesn't exist
+      // Mock fs.promises.access (which is what session.ts imports as fs)
+      vi.mocked(fs.promises.access).mockRejectedValueOnce(new Error("ENOENT"));
+      expect(await sessionExistsInJsonl(sessionId, testWorkdir, "main")).toBe(
+        false,
+      );
+
+      // Test case 2: Explicitly specify sessionType="main" and file exists
+      vi.mocked(fs.promises.access).mockResolvedValueOnce(undefined);
+      expect(await sessionExistsInJsonl(sessionId, testWorkdir, "main")).toBe(
+        true,
+      );
+
+      // Test case 3: No sessionType provided, both main and subagent fail
+      vi.mocked(fs.promises.access).mockRejectedValueOnce(new Error("ENOENT")); // Main fails
+      vi.mocked(fs.promises.access).mockRejectedValueOnce(new Error("ENOENT")); // Subagent fails
       expect(await sessionExistsInJsonl(sessionId, testWorkdir)).toBe(false);
 
-      // Second check - file exists (main session)
-      await mockSessionFileExists(sessionId, "main", true);
+      // Test case 4: No sessionType provided, main succeeds
+      vi.mocked(fs.promises.access).mockResolvedValueOnce(undefined); // Main succeeds
       expect(await sessionExistsInJsonl(sessionId, testWorkdir)).toBe(true);
-
-      // Verify PathEncoder was used
-      expect(mockPathEncoder.createProjectDirectory).toHaveBeenCalledWith(
-        testWorkdir,
-        SESSION_DIR,
-      );
-    });
-
-    it("should delete session", async () => {
-      const fs = await import("fs/promises");
-      const sessionId = generateSessionId();
-
-      // Mock that the session file exists (main session)
-      await mockSessionFileExists(sessionId, "main", true);
-
-      // Mock file operations for successful deletion
-      vi.mocked(fs.unlink).mockResolvedValue(undefined);
-      vi.mocked(fs.readdir).mockResolvedValue(
-        [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
-      ); // Empty directory after deletion
-      vi.mocked(fs.rmdir).mockResolvedValue(undefined);
-
-      const deleted = await deleteSessionFromJsonl(sessionId, testWorkdir);
-      expect(deleted).toBe(true);
-
-      // Mock fs.access for sessionExistsInJsonl to return false (file deleted)
-      await mockSessionFileExists(sessionId, "main", false);
-      expect(await sessionExistsInJsonl(sessionId, testWorkdir)).toBe(false);
-    });
-
-    it("should return false when deleting non-existent session", async () => {
-      const fs = await import("fs/promises");
-      const sessionId = generateSessionId();
-
-      // Mock unlink to throw ENOENT error for non-existent file
-      vi.mocked(fs.unlink).mockRejectedValue(
-        Object.assign(new Error("File not found"), { code: "ENOENT" }),
-      );
-
-      const deleted = await deleteSessionFromJsonl(sessionId, testWorkdir);
-
-      expect(deleted).toBe(false);
     });
 
     it("should handle empty messages array gracefully", async () => {

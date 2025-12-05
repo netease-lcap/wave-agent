@@ -230,6 +230,7 @@ describe("Agent - Subagent Session Restoration", () => {
     expect(mockLoadSessionFromJsonl).toHaveBeenCalledWith(
       subagentSessionId,
       testWorkdir,
+      "subagent",
     );
 
     await agent.destroy();
@@ -330,6 +331,7 @@ describe("Agent - Subagent Session Restoration", () => {
     expect(mockLoadSessionFromJsonl).toHaveBeenCalledWith(
       missingSubagentSessionId,
       testWorkdir,
+      "subagent",
     );
 
     await agent.destroy();

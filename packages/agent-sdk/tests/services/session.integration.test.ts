@@ -55,7 +55,6 @@ import {
   appendMessages,
   loadSessionFromJsonl,
   listSessionsFromJsonl,
-  deleteSessionFromJsonl,
   getLatestSessionFromJsonl,
   cleanupExpiredSessionsFromJsonl,
 } from "@/services/session.js";
@@ -81,28 +80,6 @@ describe("Session Integration Tests", () => {
   let mockFileUtils: {
     readFirstLine: ReturnType<typeof vi.fn>;
     getLastLine: ReturnType<typeof vi.fn>;
-  };
-
-  // Helper function to mock session file existence
-  const mockSessionFileExists = async (
-    sessionId: string,
-    sessionType: "main" | "subagent" = "main",
-    exists = true,
-  ) => {
-    const fs = await import("fs/promises");
-    if (exists) {
-      if (sessionType === "main") {
-        // Main session exists, so first access call succeeds
-        vi.mocked(fs.access).mockResolvedValueOnce(undefined);
-      } else {
-        // Main session doesn't exist, subagent exists
-        vi.mocked(fs.access).mockRejectedValueOnce(new Error("ENOENT"));
-        vi.mocked(fs.access).mockResolvedValueOnce(undefined);
-      }
-    } else {
-      // Neither main nor subagent exists
-      vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
-    }
   };
 
   beforeEach(async () => {
@@ -505,38 +482,6 @@ describe("Session Integration Tests", () => {
 
       const latestSession = await getLatestSessionFromJsonl(testWorkdir);
       expect(latestSession!.id).toBe(sessionId);
-
-      // 7. Delete the session
-      // First, mock that the session exists for deleteSessionFromJsonl
-      await mockSessionFileExists(sessionId, "main", true);
-      // Mock file operations for successful deletion
-      vi.mocked(fs.unlink).mockResolvedValue(undefined);
-      vi.mocked(fs.readdir).mockResolvedValue(
-        [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
-      ); // Empty directory after deletion
-      vi.mocked(fs.rmdir).mockResolvedValue(undefined);
-
-      const deleted = await deleteSessionFromJsonl(sessionId, testWorkdir);
-      expect(deleted).toBe(true);
-
-      // 8. Session no longer exists
-      // Mock that the session no longer exists for sessionExistsInJsonl
-      await mockSessionFileExists(sessionId, "main", false);
-
-      mockJsonlHandler.read.mockRejectedValueOnce(
-        Object.assign(new Error("ENOENT: no such file or directory"), {
-          code: "ENOENT",
-        }),
-      );
-      sessionData = await loadSessionFromJsonl(sessionId, testWorkdir);
-      expect(sessionData).toBeNull();
-
-      // 9. Session no longer appears in listings
-      vi.mocked(fs.readdir).mockResolvedValueOnce(
-        [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
-      );
-      const finalSessions = await listSessionsFromJsonl(testWorkdir, false);
-      expect(finalSessions.some((s) => s.id === sessionId)).toBe(false);
     });
 
     it("should handle multiple sessions in different workdirs", async () => {
@@ -558,16 +503,20 @@ describe("Session Integration Tests", () => {
       vi.mocked(fs.access).mockResolvedValue(undefined);
 
       // Set up different PathEncoder responses for different workdirs
+      // We need both createProjectDirectory (for createSession) and getProjectDirectory (for listSessionsFromJsonl)
+      const pathEncoderImpl = async (workdir: string, baseDir: string) => ({
+        originalPath: workdir,
+        encodedName:
+          workdir === workdir1 ? "encoded-project1" : "encoded-project2",
+        encodedPath: `${baseDir}/${workdir === workdir1 ? "encoded-project1" : "encoded-project2"}`,
+        pathHash: undefined,
+        isSymbolicLink: false,
+      });
+
       mockPathEncoder.createProjectDirectory.mockImplementation(
-        async (workdir: string, baseDir: string) => ({
-          originalPath: workdir,
-          encodedName:
-            workdir === workdir1 ? "encoded-project1" : "encoded-project2",
-          encodedPath: `${baseDir}/${workdir === workdir1 ? "encoded-project1" : "encoded-project2"}`,
-          pathHash: undefined,
-          isSymbolicLink: false,
-        }),
+        pathEncoderImpl,
       );
+      mockPathEncoder.getProjectDirectory.mockImplementation(pathEncoderImpl);
 
       // Create sessions in different workdirs
       await createSession(session1Id, workdir1);

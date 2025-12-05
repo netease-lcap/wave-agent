@@ -206,6 +206,7 @@ export class MessageManager {
         this.sessionId,
         unsavedMessages, // Only append new messages
         this.workdir,
+        this.sessionType,
       );
 
       // Update the saved message count
