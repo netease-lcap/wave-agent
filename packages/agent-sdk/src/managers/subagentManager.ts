@@ -16,6 +16,10 @@ import {
   UserMessageParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
+import {
+  addConsolidatedAbortListener,
+  createAbortPromise,
+} from "../utils/abortUtils.js";
 
 export interface SubagentManagerCallbacks {
   // Granular subagent message callbacks (015-subagent-message-callbacks)
@@ -247,14 +251,22 @@ export class SubagentManager {
         status: "active",
       });
 
-      // Set up abort handler
+      // Set up consolidated abort handler to prevent listener accumulation
+      let abortCleanup: (() => void) | undefined;
       if (abortSignal) {
-        abortSignal.addEventListener("abort", () => {
-          this.updateInstanceStatus(instance.subagentId, "aborted");
-          this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
-            status: "aborted",
-          });
-        });
+        abortCleanup = addConsolidatedAbortListener(abortSignal, [
+          () => {
+            // Update status to aborted
+            this.updateInstanceStatus(instance.subagentId, "aborted");
+            this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
+              status: "aborted",
+            });
+          },
+          () => {
+            // Abort the AI execution
+            instance.aiManager.abortAIMessage();
+          },
+        ]);
       }
 
       // Add the user's prompt as a message
@@ -274,7 +286,6 @@ export class SubagentManager {
 
       // Execute the AI request with tool restrictions
       // The AIManager will handle abort signals through its own abort controllers
-      // We need to abort the AI execution if the external abort signal is triggered
       const executeAI = instance.aiManager.sendAIMessage({
         allowedTools,
         model:
@@ -283,23 +294,21 @@ export class SubagentManager {
             : undefined,
       });
 
-      // If we have an abort signal, race against it
-      if (abortSignal) {
-        await Promise.race([
-          executeAI,
-          new Promise<never>((_, reject) => {
-            if (abortSignal.aborted) {
-              reject(new Error("Task was aborted"));
-            }
-            abortSignal.addEventListener("abort", () => {
-              // Abort the AI execution
-              instance.aiManager.abortAIMessage();
-              reject(new Error("Task was aborted"));
-            });
-          }),
-        ]);
-      } else {
-        await executeAI;
+      try {
+        // If we have an abort signal, race against it using utilities to prevent listener accumulation
+        if (abortSignal) {
+          await Promise.race([
+            executeAI,
+            createAbortPromise(abortSignal, "Task was aborted"),
+          ]);
+        } else {
+          await executeAI;
+        }
+      } finally {
+        // Clean up abort listeners to prevent memory leaks
+        if (abortCleanup) {
+          abortCleanup();
+        }
       }
 
       // Get the latest messages to extract the response

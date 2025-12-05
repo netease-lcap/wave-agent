@@ -168,7 +168,10 @@ export const bashTool: ToolPlugin = {
           handleAbort();
           return;
         }
-        context.abortSignal.addEventListener("abort", () => handleAbort());
+        // Use { once: true } to prevent listener accumulation on signal reuse
+        context.abortSignal.addEventListener("abort", () => handleAbort(), {
+          once: true,
+        });
       }
 
       child.stdout?.on("data", (data) => {
