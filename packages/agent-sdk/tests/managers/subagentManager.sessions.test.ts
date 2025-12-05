@@ -193,6 +193,7 @@ describe("SubagentManager - Session Functionality", () => {
         ), // UUID sessionId
         expect.any(Array), // messages
         "/tmp/test", // workdir
+        "subagent", // sessionType
       );
     });
 
@@ -350,6 +351,7 @@ describe("SubagentManager - Session Functionality", () => {
         ), // UUID sessionId
         expect.any(Array), // messages
         "/tmp/test", // workdir
+        "subagent", // sessionType
       );
     });
 

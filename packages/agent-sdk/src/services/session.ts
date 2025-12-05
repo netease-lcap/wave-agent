@@ -122,38 +122,6 @@ export async function getSessionFilePath(
 }
 
 /**
- * Find existing session file path by trying both main and subagent formats
- * @param sessionId - UUID session identifier
- * @param workdir - Working directory for the session
- * @returns Promise resolving to file path and session type if found, null if not found
- */
-async function findExistingSessionFile(
-  sessionId: string,
-  workdir: string,
-): Promise<{ filePath: string; sessionType: "main" | "subagent" } | null> {
-  // Try main session first
-  try {
-    const mainPath = await generateSessionFilePath(sessionId, workdir, "main");
-    await fs.access(mainPath);
-    return { filePath: mainPath, sessionType: "main" };
-  } catch {
-    // Main session not found, try subagent
-    try {
-      const subagentPath = await generateSessionFilePath(
-        sessionId,
-        workdir,
-        "subagent",
-      );
-      await fs.access(subagentPath);
-      return { filePath: subagentPath, sessionType: "subagent" };
-    } catch {
-      // Neither found
-      return null;
-    }
-  }
-}
-
-/**
  * Create a new session
  * @param sessionId - UUID session identifier
  * @param workdir - Working directory for the session
@@ -175,11 +143,13 @@ export async function createSession(
  * @param sessionId - UUID session identifier
  * @param newMessages - Array of messages to append
  * @param workdir - Working directory for the session
+ * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
  */
 export async function appendMessages(
   sessionId: string,
   newMessages: Message[],
   workdir: string,
+  sessionType: "main" | "subagent" = "main",
 ): Promise<void> {
   // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
@@ -193,9 +163,17 @@ export async function appendMessages(
 
   const jsonlHandler = new JsonlHandler();
 
-  // Find existing session file (try both main and subagent)
-  const existingSession = await findExistingSessionFile(sessionId, workdir);
-  if (!existingSession) {
+  // Generate the session file path directly using known session type
+  const filePath = await generateSessionFilePath(
+    sessionId,
+    workdir,
+    sessionType,
+  );
+
+  // Check if the session file exists
+  try {
+    await fs.access(filePath);
+  } catch {
     throw new Error(
       `Session file not found: ${sessionId}. Use createSession() to create a new session first.`,
     );
@@ -206,7 +184,7 @@ export async function appendMessages(
     ...msg,
   }));
 
-  await jsonlHandler.append(existingSession.filePath, messagesWithTimestamp, {
+  await jsonlHandler.append(filePath, messagesWithTimestamp, {
     atomic: false,
   });
 }
@@ -216,22 +194,25 @@ export async function appendMessages(
  *
  * @param sessionId - UUID session identifier
  * @param workdir - Working directory for the session
+ * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
  * @returns Promise that resolves to session data or null if session doesn't exist
  */
 export async function loadSessionFromJsonl(
   sessionId: string,
   workdir: string,
+  sessionType: "main" | "subagent" = "main",
 ): Promise<SessionData | null> {
   try {
     const jsonlHandler = new JsonlHandler();
 
-    // Find existing session file (try both main and subagent)
-    const existingSession = await findExistingSessionFile(sessionId, workdir);
-    if (!existingSession) {
-      return null;
-    }
+    // Generate the session file path directly using known session type
+    const filePath = await generateSessionFilePath(
+      sessionId,
+      workdir,
+      sessionType,
+    );
 
-    const messages = await jsonlHandler.read(existingSession.filePath);
+    const messages = await jsonlHandler.read(filePath);
 
     if (messages.length === 0) {
       return null;
@@ -502,47 +483,6 @@ export async function listSessionsFromJsonl(
 }
 
 /**
- * Delete a session from JSONL storage (new approach)
- *
- * @param sessionId - UUID session identifier
- * @param workdir - Working directory for the session
- * @returns Promise that resolves to true if session was deleted, false if it didn't exist
- */
-export async function deleteSessionFromJsonl(
-  sessionId: string,
-  workdir: string,
-): Promise<boolean> {
-  try {
-    // Find existing session file (try both main and subagent)
-    const existingSession = await findExistingSessionFile(sessionId, workdir);
-    if (!existingSession) {
-      return false; // Session doesn't exist
-    }
-
-    await fs.unlink(existingSession.filePath);
-
-    // Try to clean up empty project directory
-    const encoder = new PathEncoder();
-    const projectDir = await encoder.getProjectDirectory(workdir, SESSION_DIR);
-    try {
-      const files = await fs.readdir(projectDir.encodedPath);
-      if (files.length === 0) {
-        await fs.rmdir(projectDir.encodedPath);
-      }
-    } catch {
-      // Ignore errors if directory is not empty or can't be removed
-    }
-
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return false; // File does not exist
-    }
-    throw new Error(`Failed to delete session ${sessionId}: ${error}`);
-  }
-}
-
-/**
  * Clean up expired sessions older than 14 days based on file modification time
  *
  * @param workdir - Working directory to clean up sessions for
@@ -644,14 +584,51 @@ export async function cleanupEmptyProjectDirectories(): Promise<void> {
  *
  * @param sessionId - UUID session identifier
  * @param workdir - Working directory for the session
+ * @param sessionType - Type of session ("main" or "subagent"). If not provided, checks both types.
  * @returns Promise that resolves to true if session exists, false otherwise
  */
 export async function sessionExistsInJsonl(
   sessionId: string,
   workdir: string,
+  sessionType?: "main" | "subagent",
 ): Promise<boolean> {
-  const existingSession = await findExistingSessionFile(sessionId, workdir);
-  return existingSession !== null;
+  try {
+    if (sessionType) {
+      // If session type is known, check directly
+      const filePath = await generateSessionFilePath(
+        sessionId,
+        workdir,
+        sessionType,
+      );
+      await fs.access(filePath);
+      return true;
+    } else {
+      // If session type is unknown, try both
+      const mainPath = await generateSessionFilePath(
+        sessionId,
+        workdir,
+        "main",
+      );
+      try {
+        await fs.access(mainPath);
+        return true;
+      } catch {
+        const subagentPath = await generateSessionFilePath(
+          sessionId,
+          workdir,
+          "subagent",
+        );
+        try {
+          await fs.access(subagentPath);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    }
+  } catch {
+    return false;
+  }
 }
 
 /**
