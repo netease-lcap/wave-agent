@@ -77,7 +77,6 @@ export interface MessageManagerOptions {
   workdir: string;
   logger?: Logger;
   sessionType?: "main" | "subagent";
-  parentSessionId?: string;
   subagentType?: string;
 }
 
@@ -95,7 +94,6 @@ export class MessageManager {
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
   private sessionType: "main" | "subagent";
-  private parentSessionId?: string;
   private subagentType?: string;
 
   constructor(options: MessageManagerOptions) {
@@ -110,7 +108,6 @@ export class MessageManager {
     this.logger = options.logger;
     this.savedMessageCount = 0; // Initialize saved message count tracker
     this.sessionType = options.sessionType || "main";
-    this.parentSessionId = options.parentSessionId;
     this.subagentType = options.subagentType;
 
     // Compute and cache the transcript path
@@ -180,13 +177,7 @@ export class MessageManager {
    */
   private async createSessionIfNeeded(): Promise<void> {
     try {
-      await createSession(
-        this.sessionId,
-        this.workdir,
-        this.sessionType,
-        this.parentSessionId,
-        this.subagentType,
-      );
+      await createSession(this.sessionId, this.workdir, this.sessionType);
     } catch (error) {
       this.logger?.error("Failed to create session:", error);
     }
@@ -261,8 +252,8 @@ export class MessageManager {
     this.setMessages([...sessionData.messages]);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
 
-    // Restore the original session start time
-    this.sessionStartTime = sessionData.metadata.startedAt;
+    // Keep current session start time for consistency
+    // (sessionStartTime is now managed internally)
 
     // Extract user input history from session messages
     this.setUserInputHistory(extractUserInputHistory(sessionData.messages));

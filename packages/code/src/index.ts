@@ -58,7 +58,7 @@ export async function main() {
       console.log("==========================================");
 
       for (const session of sessions) {
-        const startedAt = new Date(session.startedAt).toLocaleString();
+        const startedAt = new Date(session.lastActiveAt).toLocaleString();
         const lastActiveAt = new Date(session.lastActiveAt).toLocaleString();
         const filePath = await getSessionFilePath(session.id, session.workdir);
 
