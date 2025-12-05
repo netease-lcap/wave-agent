@@ -13,13 +13,8 @@ export interface SessionMessage extends Message {
   // Inherits: role: "user" | "assistant", blocks: MessageBlock[], usage?, metadata?
 }
 
-// Metadata line that appears as the first line in JSONL session files
-export interface SessionMetadataLine {
-  __meta__: true;
+// Session filename structure for simple filename-based metadata
+export interface SessionFilename {
   sessionId: string;
   sessionType: "main" | "subagent";
-  parentSessionId?: string;
-  subagentType?: string;
-  workdir: string;
-  startedAt: string;
 }

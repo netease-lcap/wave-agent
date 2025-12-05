@@ -1386,7 +1386,6 @@ describe("Agent - Global Logger Integration", () => {
           operation: "createSession",
           sessionId: "uuid-123",
           sessionType: "subagent",
-          parentSessionId: "parent-uuid-456",
           subagentType: "coder",
         });
 
@@ -1417,7 +1416,6 @@ describe("Agent - Global Logger Integration", () => {
           expect.objectContaining({
             service: "SessionService",
             sessionId: "uuid-123",
-            parentSessionId: "parent-uuid-456",
           }),
         );
 

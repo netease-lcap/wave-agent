@@ -166,7 +166,6 @@ export class SubagentManager {
       workdir: this.workdir,
       logger: this.logger,
       sessionType: "subagent",
-      parentSessionId: this.parentMessageManager.getSessionId(),
       subagentType: parameters.subagent_type,
     });
 
@@ -429,7 +428,6 @@ export class SubagentManager {
           workdir: this.workdir,
           logger: this.logger,
           sessionType: "subagent",
-          parentSessionId: this.parentMessageManager.getSessionId(),
           subagentType: configuration.name, // Use configuration name for restored sessions
         });
 

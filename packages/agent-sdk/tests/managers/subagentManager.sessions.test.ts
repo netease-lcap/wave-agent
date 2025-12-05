@@ -209,7 +209,6 @@ describe("SubagentManager - Session Functionality", () => {
         messages: [],
         metadata: {
           workdir: "/tmp/test",
-          startedAt: "2024-01-01T00:00:00.000Z",
           lastActiveAt: "2024-01-01T00:00:00.000Z",
           latestTotalTokens: 0,
         },

@@ -5,10 +5,10 @@
 
 import { appendFile, readFile, writeFile, stat, mkdir } from "fs/promises";
 import { dirname } from "path";
-import { getLastLine, readFirstLine } from "../utils/fileUtils.js";
+import { getLastLine } from "../utils/fileUtils.js";
 
 import type { Message } from "../types/index.js";
-import type { SessionMessage, SessionMetadataLine } from "../types/session.js";
+import type { SessionMessage, SessionFilename } from "../types/session.js";
 
 /**
  * JSONL write options
@@ -31,31 +31,14 @@ export class JsonlHandler {
   }
 
   /**
-   * Create a new session file with metadata header
+   * Create a new session file (simplified - no metadata header)
    */
-  async createSession(
-    filePath: string,
-    sessionId: string,
-    workdir: string,
-    sessionType: "main" | "subagent" = "main",
-    parentSessionId?: string,
-    subagentType?: string,
-  ): Promise<void> {
-    const metadataLine: SessionMetadataLine = {
-      __meta__: true,
-      sessionId,
-      sessionType,
-      ...(parentSessionId && { parentSessionId }),
-      ...(subagentType && { subagentType }),
-      workdir,
-      startedAt: new Date().toISOString(),
-    };
-
+  async createSession(filePath: string): Promise<void> {
     // Ensure directory exists
     await this.ensureDirectory(dirname(filePath));
 
-    // Write metadata line as first line
-    await writeFile(filePath, JSON.stringify(metadataLine) + "\n", "utf8");
+    // Create empty file (no metadata line needed)
+    await writeFile(filePath, "", "utf8");
   }
 
   /**
@@ -131,8 +114,7 @@ export class JsonlHandler {
   }
 
   /**
-   * Read all messages from JSONL file
-   * Includes metadata handling for backward compatibility
+   * Read all messages from JSONL file (simplified - no metadata handling)
    */
   async read(filePath: string): Promise<SessionMessage[]> {
     try {
@@ -148,30 +130,13 @@ export class JsonlHandler {
 
       const allMessages: SessionMessage[] = [];
 
-      // Skip metadata line if present (first line with __meta__: true)
-      let startIndex = 0;
-      if (lines.length > 0) {
-        try {
-          const firstLine = JSON.parse(lines[0]);
-          if (firstLine.__meta__ === true) {
-            startIndex = 1; // Skip metadata line
-          }
-        } catch (error) {
-          // If first line is not valid JSON, throw error with line number
-          if (lines[0].trim().length > 0) {
-            // Only throw if line is not empty
-            throw new Error(`Invalid JSON at line 1: ${error}`);
-          }
-        }
-      }
-
-      // Parse all messages
-      for (let i = startIndex; i < lines.length; i++) {
+      // Parse all messages (no metadata line to skip)
+      for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
         try {
           const message = JSON.parse(line) as SessionMessage;
-          allMessages.push(message);
+          if (message.timestamp) allMessages.push(message);
         } catch (error) {
           // Throw error for invalid JSON lines with line number
           throw new Error(`Invalid JSON at line ${i + 1}: ${error}`);
@@ -188,7 +153,7 @@ export class JsonlHandler {
   }
 
   /**
-   * Get the last message from JSONL file using efficient file reading
+   * Get the last message from JSONL file using efficient file reading (simplified)
    */
   async getLastMessage(filePath: string): Promise<SessionMessage | null> {
     try {
@@ -211,14 +176,6 @@ export class JsonlHandler {
 
       try {
         const parsed = JSON.parse(lastLine);
-
-        // Skip metadata line
-        if (parsed.__meta__ === true) {
-          // If the last line is metadata, the file only contains metadata
-          return null;
-        }
-
-        // Found a valid message
         return parsed as SessionMessage;
       } catch (error) {
         throw new Error(`Invalid JSON in last line of "${filePath}": ${error}`);
@@ -228,52 +185,6 @@ export class JsonlHandler {
         `Failed to get last message from "${filePath}": ${error}`,
       );
     }
-  }
-
-  /**
-   * Read session metadata from first line (streaming - only reads first line)
-   */
-  async readMetadata(filePath: string): Promise<SessionMetadataLine | null> {
-    try {
-      // First check if file exists
-      try {
-        await stat(filePath);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          return null;
-        }
-        throw err;
-      }
-
-      // Read the first line efficiently
-      const firstLine = await readFirstLine(filePath);
-
-      if (!firstLine) {
-        return null; // Empty file or first line
-      }
-
-      try {
-        const parsed = JSON.parse(firstLine);
-        if (parsed.__meta__ === true) {
-          return parsed as SessionMetadataLine;
-        } else {
-          return null; // First line is not metadata
-        }
-      } catch {
-        return null; // Invalid JSON on first line
-      }
-    } catch (error) {
-      throw new Error(`Failed to read metadata from "${filePath}": ${error}`);
-    }
-  }
-
-  /**
-   * Check if a session file has metadata (first line check only)
-   * Very efficient - only reads first line
-   */
-  async hasMetadata(filePath: string): Promise<boolean> {
-    const metadata = await this.readMetadata(filePath);
-    return metadata !== null;
   }
 
   /**
@@ -314,6 +225,79 @@ export class JsonlHandler {
       if (err.code !== "EEXIST") {
         throw error;
       }
+    }
+  }
+
+  /**
+   * Parse session metadata from filename
+   * @param filePath - Path to the session file
+   * @returns Parsed session filename metadata
+   */
+  parseSessionFilename(filePath: string): SessionFilename {
+    // Extract filename from path
+    const filename = filePath.split("/").pop() || "";
+
+    // Check if it's a subagent session
+    const subagentMatch = filename.match(
+      /^subagent-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
+    );
+    if (subagentMatch) {
+      return {
+        sessionId: subagentMatch[1],
+        sessionType: "subagent",
+      };
+    }
+
+    // Check if it's a main session
+    const mainMatch = filename.match(
+      /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
+    );
+    if (mainMatch) {
+      return {
+        sessionId: mainMatch[1],
+        sessionType: "main",
+      };
+    }
+
+    throw new Error(`Invalid session filename format: ${filename}`);
+  }
+
+  /**
+   * Validate filename format
+   * @param filename - Filename to validate
+   * @returns True if valid, false otherwise
+   */
+  isValidSessionFilename(filename: string): boolean {
+    // UUID validation patterns
+    const uuidPattern =
+      /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
+    const subagentPattern =
+      /^subagent-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
+
+    return uuidPattern.test(filename) || subagentPattern.test(filename);
+  }
+
+  /**
+   * Generate simple filename for sessions
+   * @param sessionId - UUID session identifier
+   * @param sessionType - Type of session ("main" or "subagent")
+   * @returns Generated filename
+   */
+  generateSessionFilename(
+    sessionId: string,
+    sessionType: "main" | "subagent",
+  ): string {
+    // Validate sessionId is a valid UUID
+    const uuidPattern =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    if (!uuidPattern.test(sessionId)) {
+      throw new Error(`Invalid session ID format: ${sessionId}`);
+    }
+
+    if (sessionType === "subagent") {
+      return `subagent-${sessionId}.jsonl`;
+    } else {
+      return `${sessionId}.jsonl`;
     }
   }
 }

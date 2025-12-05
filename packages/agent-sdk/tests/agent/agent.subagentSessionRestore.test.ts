@@ -104,7 +104,6 @@ describe("Agent - Subagent Session Restoration", () => {
       ],
       metadata: {
         workdir: testWorkdir,
-        startedAt: new Date().toISOString(),
         lastActiveAt: new Date().toISOString(),
         latestTotalTokens: 100,
       },
@@ -284,7 +283,6 @@ describe("Agent - Subagent Session Restoration", () => {
       ],
       metadata: {
         workdir: testWorkdir,
-        startedAt: new Date().toISOString(),
         lastActiveAt: new Date().toISOString(),
         latestTotalTokens: 100,
       },
