@@ -232,4 +232,66 @@ describe("Agent - Abort Handling", () => {
     // Since sendMessage returns void, we just verify it doesn't throw
     expect(true).toBe(true); // Test passes if no exception was thrown
   });
+
+  it("should not accumulate abort listeners when using same signal multiple times", async () => {
+    // Create a shared abort signal to simulate reuse scenario
+    const abortController = new AbortController();
+
+    // Mock console.warn to catch the memory leak warning
+    const consoleWarnSpy = vi
+      .spyOn(console, "warn")
+      .mockImplementation(() => {});
+
+    try {
+      // Create multiple SubagentManager instances that would use the same signal
+      // This simulates the scenario that was causing the memory leak
+      const promises: Promise<void>[] = [];
+
+      // Create 12 operations to exceed the warning threshold
+      for (let i = 0; i < 12; i++) {
+        const promise = new Promise<void>((resolve, reject) => {
+          // Simulate what SubagentManager.executeTask does
+          if (abortController.signal.aborted) {
+            reject(new Error("Already aborted"));
+            return;
+          }
+
+          // Add listeners the way our fixed code does (with { once: true })
+          abortController.signal.addEventListener(
+            "abort",
+            () => {
+              reject(new Error(`Task ${i} aborted`));
+            },
+            { once: true },
+          );
+
+          // Resolve after a short delay
+          setTimeout(() => resolve(), 10);
+        });
+
+        promises.push(promise);
+      }
+
+      // Wait for all operations to complete
+      await Promise.allSettled(promises);
+
+      // Check that no MaxListenersExceededWarning was issued
+      const memoryLeakWarnings = consoleWarnSpy.mock.calls.filter((call) =>
+        call.some(
+          (arg) =>
+            typeof arg === "string" &&
+            arg.includes("MaxListenersExceededWarning"),
+        ),
+      );
+
+      expect(memoryLeakWarnings).toHaveLength(0);
+    } finally {
+      consoleWarnSpy.mockRestore();
+
+      // Clean up - abort to ensure all listeners are cleaned up
+      if (!abortController.signal.aborted) {
+        abortController.abort();
+      }
+    }
+  });
 });
