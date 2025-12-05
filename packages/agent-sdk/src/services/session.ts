@@ -78,6 +78,28 @@ export async function ensureSessionDir(): Promise<void> {
 }
 
 /**
+ * Generate session file path without creating directories
+ * @param sessionId - UUID session identifier
+ * @param workdir - Working directory for the session
+ * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ * @returns Promise resolving to full file path for the session JSONL file
+ */
+export async function generateSessionFilePath(
+  sessionId: string,
+  workdir: string,
+  sessionType: "main" | "subagent" = "main",
+): Promise<string> {
+  const encoder = new PathEncoder();
+  const projectDir = await encoder.getProjectDirectory(workdir, SESSION_DIR);
+
+  // Generate filename based on session type
+  const jsonlHandler = new JsonlHandler();
+  const filename = jsonlHandler.generateSessionFilename(sessionId, sessionType);
+
+  return join(projectDir.encodedPath, filename);
+}
+
+/**
  * Generate session file path using project-based directory structure
  * @param sessionId - UUID session identifier
  * @param workdir - Working directory for the session
@@ -111,13 +133,13 @@ async function findExistingSessionFile(
 ): Promise<{ filePath: string; sessionType: "main" | "subagent" } | null> {
   // Try main session first
   try {
-    const mainPath = await getSessionFilePath(sessionId, workdir, "main");
+    const mainPath = await generateSessionFilePath(sessionId, workdir, "main");
     await fs.access(mainPath);
     return { filePath: mainPath, sessionType: "main" };
   } catch {
     // Main session not found, try subagent
     try {
-      const subagentPath = await getSessionFilePath(
+      const subagentPath = await generateSessionFilePath(
         sessionId,
         workdir,
         "subagent",
@@ -319,7 +341,7 @@ export async function listSessionsFromJsonl(
 
     // If not including all workdirs, just scan the specific project directory
     if (!includeAllWorkdirs) {
-      const projectDir = await encoder.createProjectDirectory(workdir, baseDir);
+      const projectDir = await encoder.getProjectDirectory(workdir, baseDir);
       const files = await fs.readdir(projectDir.encodedPath);
 
       const sessions: SessionMetadata[] = [];
@@ -501,10 +523,7 @@ export async function deleteSessionFromJsonl(
 
     // Try to clean up empty project directory
     const encoder = new PathEncoder();
-    const projectDir = await encoder.createProjectDirectory(
-      workdir,
-      SESSION_DIR,
-    );
+    const projectDir = await encoder.getProjectDirectory(workdir, SESSION_DIR);
     try {
       const files = await fs.readdir(projectDir.encodedPath);
       if (files.length === 0) {
@@ -539,10 +558,7 @@ export async function cleanupExpiredSessionsFromJsonl(
 
   try {
     const encoder = new PathEncoder();
-    const projectDir = await encoder.createProjectDirectory(
-      workdir,
-      SESSION_DIR,
-    );
+    const projectDir = await encoder.getProjectDirectory(workdir, SESSION_DIR);
     const files = await fs.readdir(projectDir.encodedPath);
 
     const now = new Date();

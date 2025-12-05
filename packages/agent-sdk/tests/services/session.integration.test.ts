@@ -44,6 +44,7 @@ vi.mock("@/services/jsonlHandler.js", () => ({
 vi.mock("@/utils/pathEncoder.js", () => ({
   PathEncoder: vi.fn(() => ({
     createProjectDirectory: vi.fn(),
+    getProjectDirectory: vi.fn(),
     decode: vi.fn(),
   })),
 }));
@@ -74,6 +75,7 @@ describe("Session Integration Tests", () => {
   };
   let mockPathEncoder: {
     createProjectDirectory: ReturnType<typeof vi.fn>;
+    getProjectDirectory: ReturnType<typeof vi.fn>;
     decode: ReturnType<typeof vi.fn>;
   };
   let mockFileUtils: {
@@ -134,6 +136,7 @@ describe("Session Integration Tests", () => {
 
     mockPathEncoder = {
       createProjectDirectory: vi.fn(),
+      getProjectDirectory: vi.fn(),
       decode: vi.fn(),
     };
 
@@ -164,6 +167,14 @@ describe("Session Integration Tests", () => {
 
     // Set up default mock behavior for PathEncoder
     mockPathEncoder.createProjectDirectory.mockResolvedValue({
+      originalPath: testWorkdir,
+      encodedName: "encoded-workdir",
+      encodedPath: `${tempDir}/encoded-workdir`,
+      pathHash: undefined,
+      isSymbolicLink: false,
+    });
+
+    mockPathEncoder.getProjectDirectory.mockResolvedValue({
       originalPath: testWorkdir,
       encodedName: "encoded-workdir",
       encodedPath: `${tempDir}/encoded-workdir`,
