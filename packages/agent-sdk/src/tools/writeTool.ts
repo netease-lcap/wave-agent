@@ -80,9 +80,6 @@ export const writeTool: ToolPlugin = {
           content: `File ${filePath} already has the same content, no changes needed`,
           shortResult: "No changes needed",
           filePath: resolvedPath,
-          originalContent,
-          newContent: content,
-          diffResult: [],
         };
       }
 
@@ -102,6 +99,14 @@ export const writeTool: ToolPlugin = {
         }
       }
 
+      // Generate diff information BEFORE filesystem operation
+      const diffResult = diffLines(originalContent, content);
+
+      // Add diff block via context callback BEFORE filesystem operation
+      if (context.addDiffBlock) {
+        context.addDiffBlock(resolvedPath, diffResult);
+      }
+
       // Write file
       try {
         await writeFile(resolvedPath, content, "utf-8");
@@ -112,9 +117,6 @@ export const writeTool: ToolPlugin = {
           error: `Failed to write file: ${writeError instanceof Error ? writeError.message : String(writeError)}`,
         };
       }
-
-      // Generate diff information
-      const diffResult = diffLines(originalContent, content);
 
       const shortResult = isExistingFile ? "File overwritten" : "File created";
 
@@ -129,9 +131,6 @@ export const writeTool: ToolPlugin = {
         content: detailedContent,
         shortResult,
         filePath: resolvedPath,
-        originalContent,
-        newContent: content,
-        diffResult,
       };
     } catch (error) {
       const errorMessage =

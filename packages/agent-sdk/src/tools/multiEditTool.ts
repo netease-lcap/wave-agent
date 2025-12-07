@@ -217,6 +217,14 @@ export const multiEditTool: ToolPlugin = {
         }
       }
 
+      // Generate diff information BEFORE filesystem operation
+      const diffResult = diffLines(originalContent, currentContent);
+
+      // Add diff block via context callback BEFORE filesystem operation
+      if (context.addDiffBlock) {
+        context.addDiffBlock(resolvedPath, diffResult);
+      }
+
       // Write file
       try {
         await writeFile(resolvedPath, currentContent, "utf-8");
@@ -227,9 +235,6 @@ export const multiEditTool: ToolPlugin = {
           error: `Failed to write file: ${writeError instanceof Error ? writeError.message : String(writeError)}`,
         };
       }
-
-      // Generate diff information
-      const diffResult = diffLines(originalContent, currentContent);
 
       const shortResult = isNewFile
         ? `Created file with ${edits.length} operations`
@@ -244,9 +249,6 @@ export const multiEditTool: ToolPlugin = {
         content: detailedContent,
         shortResult,
         filePath: resolvedPath,
-        originalContent,
-        newContent: currentContent,
-        diffResult,
       };
     } catch (error) {
       const errorMessage =

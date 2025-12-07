@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
+import { ToolContext } from "@/tools/types.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -77,31 +78,43 @@ describe("Agent Diff Integration Tests", () => {
       return {};
     });
 
-    // Mock edit_file tool execution, return diff related information
-    mockToolExecute.mockResolvedValue({
-      success: true,
-      content: "Rewrote file test.js with error handling",
-      shortResult: "Modified test.js",
-      filePath: "test.js",
-      originalContent: `function greet(name) {
+    // Mock edit_file tool execution, simulate addDiffBlock callback
+    mockToolExecute.mockImplementation(
+      async (
+        toolName: string,
+        args: Record<string, unknown>,
+        context: ToolContext,
+      ) => {
+        // Simulate the tool calling context.addDiffBlock
+        if (context.addDiffBlock) {
+          context.addDiffBlock("test.js", [
+            { value: "function greet(name) {\n" },
+            {
+              value:
+                "  if (!name) {\n    throw new Error('Name is required');\n  }\n",
+              added: true,
+            },
+            { value: "  console.log('Hello, ' + name);\n}" },
+          ]);
+        }
+
+        return {
+          success: true,
+          content: "Rewrote file test.js with error handling",
+          shortResult: "Modified test.js",
+          filePath: "test.js",
+          originalContent: `function greet(name) {
   console.log('Hello, ' + name);
 }`,
-      newContent: `function greet(name) {
+          newContent: `function greet(name) {
   if (!name) {
     throw new Error('Name is required');
   }
   console.log('Hello, ' + name);
 }`,
-      diffResult: [
-        { value: "function greet(name) {\n" },
-        {
-          value:
-            "  if (!name) {\n    throw new Error('Name is required');\n  }\n",
-          added: true,
-        },
-        { value: "  console.log('Hello, ' + name);\n}" },
-      ],
-    });
+        };
+      },
+    );
 
     // Call sendMessage to trigger tool execution and recursion
     await agent.sendMessage("Test message");
@@ -192,25 +205,37 @@ describe("Agent Diff Integration Tests", () => {
       return {};
     });
 
-    // Mock search_replace tool execution, return diff related information
-    mockToolExecute.mockResolvedValue({
-      success: true,
-      content: "Successfully replaced text in test.js",
-      shortResult: "Updated test.js",
-      filePath: "test.js",
-      originalContent: `function greet(name) {
+    // Mock search_replace tool execution, simulate addDiffBlock callback
+    mockToolExecute.mockImplementation(
+      async (
+        toolName: string,
+        args: Record<string, unknown>,
+        context: ToolContext,
+      ) => {
+        // Simulate the tool calling context.addDiffBlock
+        if (context.addDiffBlock) {
+          context.addDiffBlock("test.js", [
+            { value: "function greet(name) {\n" },
+            { value: "  console.log('Hello, ' + name);\n", removed: true },
+            { value: "  console.log(`Hello, ${name}!`);\n", added: true },
+            { value: "}" },
+          ]);
+        }
+
+        return {
+          success: true,
+          content: "Successfully replaced text in test.js",
+          shortResult: "Updated test.js",
+          filePath: "test.js",
+          originalContent: `function greet(name) {
   console.log('Hello, ' + name);
 }`,
-      newContent: `function greet(name) {
+          newContent: `function greet(name) {
   console.log(\`Hello, \${name}!\`);
 }`,
-      diffResult: [
-        { value: "function greet(name) {\n" },
-        { value: "  console.log('Hello, ' + name);\n", removed: true },
-        { value: "  console.log(`Hello, ${name}!`);\n", added: true },
-        { value: "}" },
-      ],
-    });
+        };
+      },
+    );
 
     // Call sendMessage to trigger tool execution and recursion
     await agent.sendMessage("Test message");
@@ -309,10 +334,21 @@ describe("Agent Diff Integration Tests", () => {
       return {};
     });
 
-    // Mock tool execution - return different results based on file name
+    // Mock tool execution - return different results based on file name and simulate addDiffBlock
     mockToolExecute.mockImplementation(
-      async (toolName: string, args: Record<string, unknown>) => {
+      async (
+        toolName: string,
+        args: Record<string, unknown>,
+        context: ToolContext,
+      ) => {
         if (args.target_file === "file1.js") {
+          // Simulate the tool calling context.addDiffBlock
+          if (context.addDiffBlock) {
+            context.addDiffBlock("file1.js", [
+              { value: "console.log('Starting application');", added: true },
+            ]);
+          }
+
           return {
             success: true,
             content: "Created file1.js with logging",
@@ -320,11 +356,18 @@ describe("Agent Diff Integration Tests", () => {
             filePath: "file1.js",
             originalContent: "",
             newContent: "console.log('Starting application');",
-            diffResult: [
-              { value: "console.log('Starting application');", added: true },
-            ],
           };
         } else if (args.target_file === "file2.js") {
+          // Simulate the tool calling context.addDiffBlock
+          if (context.addDiffBlock) {
+            context.addDiffBlock("file2.js", [
+              {
+                value: "try { main(); } catch(e) { console.error(e); }",
+                added: true,
+              },
+            ]);
+          }
+
           return {
             success: true,
             content: "Created file2.js with error handling",
@@ -332,12 +375,6 @@ describe("Agent Diff Integration Tests", () => {
             filePath: "file2.js",
             originalContent: "",
             newContent: "try { main(); } catch(e) { console.error(e); }",
-            diffResult: [
-              {
-                value: "try { main(); } catch(e) { console.error(e); }",
-                added: true,
-              },
-            ],
           };
         }
 
