@@ -23,15 +23,7 @@ export interface ToolResult {
   error?: string;
   // Short output, used to display summary information in collapsed state
   shortResult?: string;
-  // Additional properties for file editing tools
-  originalContent?: string;
-  newContent?: string;
-  diffResult?: Array<{
-    count?: number;
-    value: string;
-    added?: boolean;
-    removed?: boolean;
-  }>;
+  // File path for operations that affect files
   filePath?: string;
   // Image data, for supporting multimedia content
   images?: Array<{
@@ -44,4 +36,8 @@ export interface ToolContext {
   abortSignal?: AbortSignal;
   backgroundBashManager?: import("../managers/backgroundBashManager.js").BackgroundBashManager;
   workdir: string;
+  addDiffBlock?: (
+    filePath: string,
+    diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
+  ) => void;
 }

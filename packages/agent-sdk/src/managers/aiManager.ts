@@ -481,6 +481,16 @@ export class AIManager {
                 abortSignal: toolAbortController.signal,
                 backgroundBashManager: this.backgroundBashManager,
                 workdir: this.workdir,
+                addDiffBlock: (
+                  filePath: string,
+                  diffResult: Array<{
+                    value: string;
+                    added?: boolean;
+                    removed?: boolean;
+                  }>,
+                ) => {
+                  this.messageManager.addDiffBlock(filePath, diffResult);
+                },
               };
 
               // Execute tool
@@ -503,18 +513,6 @@ export class AIManager {
                 name: toolName,
                 shortResult: toolResult.shortResult,
               });
-
-              // If tool returns diff information, add diff block
-              if (
-                toolResult.success &&
-                toolResult.diffResult &&
-                toolResult.filePath
-              ) {
-                this.messageManager.addDiffBlock(
-                  toolResult.filePath,
-                  toolResult.diffResult,
-                );
-              }
 
               // Execute PostToolUse hooks after successful tool completion
               await this.executePostToolUseHooks(

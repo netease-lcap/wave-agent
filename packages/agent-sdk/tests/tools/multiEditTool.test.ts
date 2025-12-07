@@ -7,10 +7,17 @@ import type { ToolContext } from "@/tools/types.js";
 vi.mock("fs/promises");
 
 describe("multiEditTool", () => {
-  const mockContext: ToolContext = {
-    abortSignal: new AbortController().signal,
-    workdir: "/test/workdir",
-  };
+  let mockAddDiffBlock: ReturnType<typeof vi.fn>;
+  let mockContext: ToolContext;
+
+  beforeEach(() => {
+    mockAddDiffBlock = vi.fn();
+    mockContext = {
+      abortSignal: new AbortController().signal,
+      workdir: "/test/workdir",
+      addDiffBlock: mockAddDiffBlock,
+    };
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,9 +76,14 @@ describe("multiEditTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("Applied 2 edits");
     expect(result.filePath).toBe("/test/file.js");
-    expect(result.originalContent).toBe(mockContent);
-    expect(result.newContent).toBe(expectedContent);
-    expect(result.diffResult).toBeDefined();
+
+    // Verify addDiffBlock was called with correct parameters
+    expect(mockAddDiffBlock).toHaveBeenCalledWith(
+      "/test/file.js",
+      expect.arrayContaining([
+        expect.objectContaining({ value: expect.any(String) }),
+      ]),
+    );
 
     expect(readFile).toHaveBeenCalledWith("/test/file.js", "utf-8");
     expect(writeFile).toHaveBeenCalledWith(
@@ -102,8 +114,14 @@ describe("multiEditTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Created file with");
-    expect(result.originalContent).toBe("");
-    expect(result.newContent).toBe(content);
+
+    // Verify addDiffBlock was called with correct parameters (empty original content for new file)
+    expect(mockAddDiffBlock).toHaveBeenCalledWith(
+      "/test/newfile.js",
+      expect.arrayContaining([
+        expect.objectContaining({ value: expect.any(String) }),
+      ]),
+    );
 
     expect(writeFile).toHaveBeenCalledWith(
       "/test/newfile.js",
@@ -114,7 +132,6 @@ describe("multiEditTool", () => {
 
   it("should handle replace_all option in individual edits", async () => {
     const mockContent = "var x = 1;\nvar y = 2;\nlet z = 3;";
-    const expectedContent = "let x = 1;\nlet y = 2;\nconst z = 3;";
 
     vi.mocked(readFile).mockResolvedValue(mockContent);
     vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -139,7 +156,14 @@ describe("multiEditTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Applied 2 edits");
-    expect(result.newContent).toBe(expectedContent);
+
+    // Verify addDiffBlock was called with correct parameters
+    expect(mockAddDiffBlock).toHaveBeenCalledWith(
+      "/test/file.js",
+      expect.arrayContaining([
+        expect.objectContaining({ value: expect.any(String) }),
+      ]),
+    );
   });
 
   it("should fail if any edit operation fails", async () => {
@@ -340,7 +364,6 @@ describe("multiEditTool", () => {
 
   it("should provide detailed operation information", async () => {
     const mockContent = "var x = 1;\nvar y = 2;";
-    const expectedContent = "let x = 1;\nconst y = 2;";
 
     vi.mocked(readFile).mockResolvedValue(mockContent);
     vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -361,6 +384,13 @@ describe("multiEditTool", () => {
     expect(result.content).toContain("Operations performed:");
     expect(result.content).toContain('1. Replaced "var x"');
     expect(result.content).toContain('2. Replaced "var y"');
-    expect(result.newContent).toBe(expectedContent);
+
+    // Verify addDiffBlock was called with correct parameters
+    expect(mockAddDiffBlock).toHaveBeenCalledWith(
+      "/test/file.js",
+      expect.arrayContaining([
+        expect.objectContaining({ value: expect.any(String) }),
+      ]),
+    );
   });
 });

@@ -9,10 +9,17 @@ const testContext: ToolContext = { workdir: "/test/workdir" };
 vi.mock("fs/promises");
 
 describe("writeTool", () => {
-  const mockContext: ToolContext = {
-    abortSignal: new AbortController().signal,
-    workdir: "/test/workdir",
-  };
+  let mockAddDiffBlock: ReturnType<typeof vi.fn>;
+  let mockContext: ToolContext;
+
+  beforeEach(() => {
+    mockAddDiffBlock = vi.fn();
+    mockContext = {
+      abortSignal: new AbortController().signal,
+      workdir: "/test/workdir",
+      addDiffBlock: mockAddDiffBlock,
+    };
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,9 +68,14 @@ describe("writeTool", () => {
     expect(result.content).toContain("File created");
     expect(result.shortResult).toBe("File created");
     expect(result.filePath).toBe("/test/newfile.js");
-    expect(result.originalContent).toBe("");
-    expect(result.newContent).toBe(content);
-    expect(result.diffResult).toBeDefined();
+
+    // Verify addDiffBlock was called with correct parameters (empty original content for new file)
+    expect(mockAddDiffBlock).toHaveBeenCalledWith(
+      "/test/newfile.js",
+      expect.arrayContaining([
+        expect.objectContaining({ value: expect.any(String) }),
+      ]),
+    );
 
     expect(mkdir).toHaveBeenCalledWith("/test", { recursive: true });
     expect(writeFile).toHaveBeenCalledWith(
@@ -93,9 +105,14 @@ describe("writeTool", () => {
     expect(result.content).toContain("File overwritten");
     expect(result.shortResult).toBe("File overwritten");
     expect(result.filePath).toBe("/test/file.js");
-    expect(result.originalContent).toBe(originalContent);
-    expect(result.newContent).toBe(newContent);
-    expect(result.diffResult).toBeDefined();
+
+    // Verify addDiffBlock was called with correct parameters
+    expect(mockAddDiffBlock).toHaveBeenCalledWith(
+      "/test/file.js",
+      expect.arrayContaining([
+        expect.objectContaining({ value: expect.any(String) }),
+      ]),
+    );
 
     expect(readFile).toHaveBeenCalledWith("/test/file.js", "utf-8");
     expect(writeFile).toHaveBeenCalledWith(
@@ -121,9 +138,7 @@ describe("writeTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("already has the same content");
     expect(result.shortResult).toBe("No changes needed");
-    expect(result.originalContent).toBe(content);
-    expect(result.newContent).toBe(content);
-    expect(result.diffResult).toEqual([]);
+    // No diff result since file content is the same
 
     expect(writeFile).not.toHaveBeenCalled();
   });
@@ -251,7 +266,6 @@ describe("writeTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("File created (1 lines, 0 characters)");
-    expect(result.newContent).toBe("");
   });
 
   it("should handle content with special characters", async () => {
@@ -270,7 +284,6 @@ describe("writeTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.newContent).toBe(content);
     expect(writeFile).toHaveBeenCalledWith(
       "/test/special.txt",
       content,

@@ -143,6 +143,14 @@ export const editTool: ToolPlugin = {
         replacementCount = 1;
       }
 
+      // Generate diff information BEFORE filesystem operation
+      const diffResult = diffLines(originalContent, newContent);
+
+      // Add diff block via context callback BEFORE filesystem operation
+      if (context.addDiffBlock) {
+        context.addDiffBlock(resolvedPath, diffResult);
+      }
+
       // Write file
       try {
         await writeFile(resolvedPath, newContent, "utf-8");
@@ -153,9 +161,6 @@ export const editTool: ToolPlugin = {
           error: `Failed to write file: ${writeError instanceof Error ? writeError.message : String(writeError)}`,
         };
       }
-
-      // Generate diff information
-      const diffResult = diffLines(originalContent, newContent);
 
       const shortResult = replaceAll
         ? `Replaced ${replacementCount} instances`
@@ -168,9 +173,6 @@ export const editTool: ToolPlugin = {
         content: shortResult,
         shortResult,
         filePath: resolvedPath,
-        originalContent,
-        newContent,
-        diffResult,
       };
     } catch (error) {
       const errorMessage =

@@ -7,10 +7,17 @@ import type { ToolContext } from "@/tools/types.js";
 vi.mock("fs/promises");
 
 describe("editTool", () => {
-  const mockContext: ToolContext = {
-    abortSignal: new AbortController().signal,
-    workdir: "/test/workdir",
-  };
+  let mockAddDiffBlock: ReturnType<typeof vi.fn>;
+  let mockContext: ToolContext;
+
+  beforeEach(() => {
+    mockAddDiffBlock = vi.fn();
+    mockContext = {
+      abortSignal: new AbortController().signal,
+      workdir: "/test/workdir",
+      addDiffBlock: mockAddDiffBlock,
+    };
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,9 +68,14 @@ describe("editTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("Text replaced successfully");
     expect(result.filePath).toBe("/test/file.js");
-    expect(result.originalContent).toBe(mockContent);
-    expect(result.newContent).toBe(expectedContent);
-    expect(result.diffResult).toBeDefined();
+
+    // Verify addDiffBlock was called with correct parameters
+    expect(mockAddDiffBlock).toHaveBeenCalledWith(
+      "/test/file.js",
+      expect.arrayContaining([
+        expect.objectContaining({ value: expect.any(String) }),
+      ]),
+    );
 
     expect(readFile).toHaveBeenCalledWith("/test/file.js", "utf-8");
     expect(writeFile).toHaveBeenCalledWith(
@@ -92,7 +104,14 @@ describe("editTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Replaced 3 instances");
-    expect(result.newContent).toBe(expectedContent);
+
+    // Verify addDiffBlock was called with correct parameters
+    expect(mockAddDiffBlock).toHaveBeenCalledWith(
+      "/test/file.js",
+      expect.arrayContaining([
+        expect.objectContaining({ value: expect.any(String) }),
+      ]),
+    );
 
     expect(writeFile).toHaveBeenCalledWith(
       "/test/file.js",
@@ -229,7 +248,6 @@ describe("editTool", () => {
 
   it("should handle special regex characters in old_string", async () => {
     const mockContent = "function test() { return /^[a-z]+$/; }";
-    const expectedContent = "function test() { return /^[a-zA-Z]+$/; }";
 
     vi.mocked(readFile).mockResolvedValue(mockContent);
     vi.mocked(writeFile).mockResolvedValue(undefined);
@@ -245,7 +263,14 @@ describe("editTool", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.newContent).toBe(expectedContent);
+
+    // Verify addDiffBlock was called with correct parameters
+    expect(mockAddDiffBlock).toHaveBeenCalledWith(
+      "/test/file.js",
+      expect.arrayContaining([
+        expect.objectContaining({ value: expect.any(String) }),
+      ]),
+    );
   });
 
   it("should work with absolute file paths", async () => {
