@@ -1,4 +1,4 @@
-import type { ToolPlugin, ToolResult } from "./types.js";
+import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 
 interface TodoItem {
   content: string;
@@ -99,6 +99,38 @@ When in doubt, use this tool. Being proactive with task management demonstrates 
         additionalProperties: false,
       },
     },
+  },
+
+  formatCompactParams: (
+    params: Record<string, unknown>,
+    context: ToolContext,
+  ) => {
+    void context; // Context not needed for this tool
+    try {
+      const { todos } = params as { todos?: TodoItem[] };
+
+      // Handle invalid or missing tasks array
+      if (!todos || !Array.isArray(todos)) {
+        return "invalid todos";
+      }
+
+      // Handle empty task list
+      if (todos.length === 0) {
+        return "0 tasks";
+      }
+
+      // Count completed tasks
+      const completedCount = todos.filter(
+        (todo) => todo && todo.status === "completed",
+      ).length;
+      const totalCount = todos.length;
+
+      // Format with proper singular/plural
+      const taskWord = totalCount === 1 ? "task" : "tasks";
+      return `${completedCount}/${totalCount} ${taskWord}`;
+    } catch {
+      return "invalid todos";
+    }
   },
 
   execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
