@@ -15,7 +15,11 @@ import type {
   SlashCommand,
   PermissionDecision,
 } from "wave-agent-sdk";
-import { Agent, AgentCallbacks } from "wave-agent-sdk";
+import {
+  Agent,
+  AgentCallbacks,
+  type ToolPermissionContext,
+} from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
 
@@ -55,8 +59,11 @@ export interface ChatContextType {
   subagentMessages: Record<string, Message[]>;
   // Permission confirmation state
   isConfirmationVisible: boolean;
-  confirmingTool?: string;
-  showConfirmation: (toolName: string) => Promise<PermissionDecision>;
+  confirmingTool?: { name: string; input?: Record<string, unknown> };
+  showConfirmation: (
+    toolName: string,
+    toolInput?: Record<string, unknown>,
+  ) => Promise<PermissionDecision>;
   hideConfirmation: () => void;
   handleConfirmationDecision: (decision: PermissionDecision) => void;
   handleConfirmationCancel: () => void;
@@ -113,16 +120,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Confirmation state with queue-based architecture
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
-  const [confirmingTool, setConfirmingTool] = useState<string | undefined>();
+  const [confirmingTool, setConfirmingTool] = useState<
+    { name: string; input?: Record<string, unknown> } | undefined
+  >();
   const [confirmationQueue, setConfirmationQueue] = useState<
     Array<{
       toolName: string;
+      toolInput?: Record<string, unknown>;
       resolver: (decision: PermissionDecision) => void;
       reject: () => void;
     }>
   >([]);
   const [currentConfirmation, setCurrentConfirmation] = useState<{
     toolName: string;
+    toolInput?: Record<string, unknown>;
     resolver: (decision: PermissionDecision) => void;
     reject: () => void;
   } | null>(null);
@@ -131,10 +142,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Permission confirmation methods with queue support
   const showConfirmation = useCallback(
-    async (toolName: string): Promise<PermissionDecision> => {
+    async (
+      toolName: string,
+      toolInput?: Record<string, unknown>,
+    ): Promise<PermissionDecision> => {
       return new Promise<PermissionDecision>((resolve, reject) => {
         const queueItem = {
           toolName,
+          toolInput,
           resolver: resolve,
           reject,
         };
@@ -186,9 +201,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         // Create the permission callback inside the try block to access showConfirmation
         const permissionCallback = bypassPermissions
           ? undefined
-          : async (toolName: string): Promise<PermissionDecision> => {
+          : async (
+              context: ToolPermissionContext,
+            ): Promise<PermissionDecision> => {
               try {
-                return await showConfirmation(toolName);
+                return await showConfirmation(
+                  context.toolName,
+                  context.toolInput,
+                );
               } catch {
                 // If confirmation was cancelled or failed, deny the operation
                 return {
@@ -363,7 +383,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     if (confirmationQueue.length > 0 && !isConfirmationVisible) {
       const next = confirmationQueue[0];
       setCurrentConfirmation(next);
-      setConfirmingTool(next.toolName);
+      setConfirmingTool({ name: next.toolName, input: next.toolInput });
       setIsConfirmationVisible(true);
       setConfirmationQueue((prev) => prev.slice(1));
     }

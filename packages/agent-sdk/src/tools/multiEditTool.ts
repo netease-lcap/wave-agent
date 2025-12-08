@@ -237,6 +237,7 @@ export const multiEditTool: ToolPlugin = {
               "MultiEdit",
               context.permissionMode,
               context.canUseToolCallback,
+              { file_path: filePath, edits },
             );
             const permissionResult =
               await context.permissionManager.checkPermission(

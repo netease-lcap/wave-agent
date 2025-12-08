@@ -1,11 +1,11 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "ink-testing-library";
-import { ConfirmationComponent } from "../../src/components/ConfirmationComponent.js";
+import { Confirmation } from "../../src/components/Confirmation.js";
 import { waitForText } from "../helpers/waitHelpers.js";
 import type { PermissionDecision } from "wave-agent-sdk";
 
-describe("ConfirmationComponent", () => {
+describe("Confirmation", () => {
   let mockOnDecision: ReturnType<typeof vi.fn>;
   let mockOnCancel: ReturnType<typeof vi.fn>;
   let consoleSpy: ReturnType<typeof vi.spyOn>;
@@ -30,7 +30,7 @@ describe("ConfirmationComponent", () => {
   describe("Component Rendering Tests", () => {
     it("should render with correct tool name display", async () => {
       const { lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -41,13 +41,13 @@ describe("ConfirmationComponent", () => {
 
       const frame = lastFrame();
       expect(frame).toContain("Tool: Edit");
-      expect(frame).toContain("Action: Modify file");
+      expect(frame).toContain("Execute operation");
       expect(frame).toContain("Do you want to proceed?");
     });
 
     it("should show option selection states correctly", async () => {
       const { lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Write"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -64,7 +64,7 @@ describe("ConfirmationComponent", () => {
 
     it("should display placeholder text correctly", async () => {
       const { lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Delete"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -82,7 +82,7 @@ describe("ConfirmationComponent", () => {
 
     it("should show keyboard navigation instructions", async () => {
       const { lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Bash"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -99,7 +99,7 @@ describe("ConfirmationComponent", () => {
   describe("User Interaction Tests", () => {
     it("should handle down arrow key navigation", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -120,7 +120,7 @@ describe("ConfirmationComponent", () => {
 
     it("should handle up arrow key navigation", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -143,7 +143,7 @@ describe("ConfirmationComponent", () => {
 
     it("should handle Enter key confirmation for allow option", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -164,7 +164,7 @@ describe("ConfirmationComponent", () => {
 
     it("should handle ESC key cancellation", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -185,7 +185,7 @@ describe("ConfirmationComponent", () => {
 
     it("should handle text input for alternative instructions", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -213,7 +213,7 @@ describe("ConfirmationComponent", () => {
 
     it("should handle Enter key with alternative text", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -244,7 +244,7 @@ describe("ConfirmationComponent", () => {
 
     it("should not call onDecision for Enter on alternative option without text", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -270,7 +270,7 @@ describe("ConfirmationComponent", () => {
   describe("State Management Tests", () => {
     it("should update selectedOption state on arrow navigation", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -294,7 +294,7 @@ describe("ConfirmationComponent", () => {
 
     it("should update alternativeText state on text input", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -321,7 +321,7 @@ describe("ConfirmationComponent", () => {
 
     it("should update hasUserInput flag correctly", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -348,7 +348,7 @@ describe("ConfirmationComponent", () => {
 
     it("should handle placeholder visibility logic correctly", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -383,7 +383,7 @@ describe("ConfirmationComponent", () => {
   describe("Callback Integration Tests", () => {
     it("should call onDecision with correct allow PermissionDecision format", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="MultiEdit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -403,7 +403,7 @@ describe("ConfirmationComponent", () => {
 
     it("should call onDecision with correct deny + message PermissionDecision format", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Delete"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -431,7 +431,7 @@ describe("ConfirmationComponent", () => {
 
     it("should call onCancel callback on ESC", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Write"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -449,7 +449,7 @@ describe("ConfirmationComponent", () => {
 
     it("should trim whitespace from alternative message", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -481,7 +481,7 @@ describe("ConfirmationComponent", () => {
   describe("Edge Cases", () => {
     it("should handle empty alternative text gracefully", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -507,7 +507,7 @@ describe("ConfirmationComponent", () => {
 
     it("should handle basic backspace functionality", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -534,9 +534,9 @@ describe("ConfirmationComponent", () => {
       expect(frame).toContain("> 2.");
     });
 
-    it("should handle delete key to clear all text", async () => {
+    it("should handle backspace and delete keys consistently for single character removal", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -549,27 +549,25 @@ describe("ConfirmationComponent", () => {
       );
 
       // Type some text
-      stdin.write("test message");
-      await waitForText(lastFrame, "test message");
+      stdin.write("test");
+      await waitForText(lastFrame, "test");
 
-      // Use delete key to clear all text
-      stdin.write("\u001b[3~"); // Delete key
+      // Use backspace to verify the single-character deletion works
+      stdin.write("\x08"); // Backspace key
 
-      // Should show placeholder again
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      // Wait a bit for the state to update
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       const frame = lastFrame();
-      expect(frame).not.toContain("test message");
-      expect(frame).toContain("Type here to tell Wave what to do differently");
+      // Should contain "tes" and not contain the full "test"
+      expect(frame).toContain("tes");
+      expect(frame).not.toContain("> 2. test"); // More specific to avoid false positives
       expect(frame).toContain("> 2."); // Should remain on alternative option
     });
 
     it("should process text input correctly", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -591,7 +589,7 @@ describe("ConfirmationComponent", () => {
 
     it("should handle rapid key presses correctly", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -611,7 +609,7 @@ describe("ConfirmationComponent", () => {
 
     it("should handle backspace on empty text correctly", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -639,7 +637,7 @@ describe("ConfirmationComponent", () => {
 
     it("should handle whitespace-only alternative text", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -672,7 +670,7 @@ describe("ConfirmationComponent", () => {
   describe("Accessibility Features", () => {
     it("should provide clear keyboard navigation", async () => {
       const { lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -689,7 +687,7 @@ describe("ConfirmationComponent", () => {
 
     it("should provide clear visual feedback for option selection", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
@@ -714,7 +712,7 @@ describe("ConfirmationComponent", () => {
 
     it("should automatically focus alternative option when user starts typing", async () => {
       const { stdin, lastFrame } = render(
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}

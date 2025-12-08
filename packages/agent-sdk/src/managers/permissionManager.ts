@@ -62,7 +62,7 @@ export class PermissionManager {
         this.logger?.debug("Calling custom permission callback for tool", {
           toolName: context.toolName,
         });
-        const decision = await context.canUseToolCallback(context.toolName);
+        const decision = await context.canUseToolCallback(context);
         this.logger?.debug("Custom callback returned decision", {
           toolName: context.toolName,
           decision,
@@ -117,17 +117,20 @@ export class PermissionManager {
     toolName: string,
     permissionMode: PermissionMode,
     callback?: PermissionCallback,
+    toolInput?: Record<string, unknown>,
   ): ToolPermissionContext {
     const context: ToolPermissionContext = {
       toolName,
       permissionMode,
       canUseToolCallback: callback,
+      toolInput,
     };
 
     this.logger?.debug("Created permission context", {
       toolName,
       permissionMode,
       hasCallback: !!callback,
+      hasToolInput: !!toolInput,
     });
 
     return context;

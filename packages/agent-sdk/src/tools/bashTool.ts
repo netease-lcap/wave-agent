@@ -45,6 +45,7 @@ export const bashTool: ToolPlugin = {
   ): Promise<ToolResult> => {
     const command = args.command as string;
     const runInBackground = args.run_in_background as boolean | undefined;
+    const description = args.description as string | undefined;
     // Set default timeout: 60s for foreground, no timeout for background
     const timeout =
       (args.timeout as number | undefined) ??
@@ -82,6 +83,12 @@ export const bashTool: ToolPlugin = {
             "Bash",
             context.permissionMode,
             context.canUseToolCallback,
+            {
+              command,
+              description,
+              run_in_background: runInBackground,
+              timeout,
+            },
           );
           const permissionResult =
             await context.permissionManager.checkPermission(permissionContext);
