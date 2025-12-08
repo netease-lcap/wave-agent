@@ -3,6 +3,10 @@
  */
 
 import { ChatCompletionFunctionTool } from "openai/resources.js";
+import type {
+  PermissionMode,
+  PermissionCallback,
+} from "../types/permissions.js";
 
 export interface ToolPlugin {
   name: string;
@@ -40,4 +44,10 @@ export interface ToolContext {
     filePath: string,
     diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
   ) => void;
+  /** Permission mode for this tool execution */
+  permissionMode?: PermissionMode;
+  /** Custom permission callback */
+  canUseToolCallback?: PermissionCallback;
+  /** Permission manager instance for permission checks */
+  permissionManager?: import("../managers/permissionManager.js").PermissionManager;
 }

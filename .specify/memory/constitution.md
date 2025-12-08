@@ -1,9 +1,9 @@
 <!--
 Sync Impact Report:
-- Version change: 1.5.1 → 1.6.0
-- Modified principles: III. Test Alignment (removed comprehensive test requirement), VIII. Test-Driven Development (removed comprehensive coverage requirement)
-- Modified sections: Quality Standards (removed comprehensive test coverage requirement), Development Workflow (updated TDD process to focus on essential tests)
-- Templates requiring updates: ✅ plan-template.md (maintains compatibility), ✅ spec-template.md (maintains compatibility), ✅ tasks-template.md (already marks tests as OPTIONAL)
+- Version change: 1.6.0 → 1.7.0
+- Added principles: X. Data Model Minimalism (new principle for concise entity modeling)
+- Modified sections: Core Principles (added new principle), Quality Standards (added data modeling requirements)
+- Templates requiring updates: ✅ plan-template.md (maintains compatibility), ✅ spec-template.md (maintains compatibility), ✅ tasks-template.md (maintains compatibility)
 - Follow-up TODOs: None - all placeholders filled
 -->
 
@@ -56,6 +56,11 @@ When adding functionality, MUST modify existing types or interfaces rather than 
 
 **Rationale**: Type proliferation creates maintenance burden and cognitive overhead. Evolving existing types keeps the codebase lean, maintains semantic consistency, and reduces the number of concepts developers must understand.
 
+### X. Data Model Minimalism
+Data models MUST be kept concise and focused on essential attributes only. Avoid excessive entity decomposition or over-specification of attributes. Include only fields that are actively used in implementation. Entity relationships MUST be simple and direct. Prefer flat structures over deep hierarchies when possible.
+
+**Rationale**: Concise data models reduce cognitive overhead, simplify implementation, and prevent over-engineering. Simple models are easier to understand, test, and maintain.
+
 ## Quality Standards
 
 All code MUST pass TypeScript compilation without errors or warnings. All existing tests MUST pass before merging. Code MUST follow the established linting and formatting rules enforced by ESLint and Prettier. Quality gates (type-check and lint) MUST be run and pass after every modification.
@@ -70,6 +75,12 @@ All code MUST pass TypeScript compilation without errors or warnings. All existi
 - Evaluate existing types before creating new ones
 - Justify new type creation with clear semantic reasoning
 - Document type evolution decisions in code comments
+
+**Data Modeling Requirements**:
+- Keep entity definitions concise and focused
+- Include only actively used attributes
+- Prefer simple, flat structures over complex hierarchies
+- Document entity relationships clearly but minimally
 
 ## Development Workflow
 
@@ -88,14 +99,21 @@ All code MUST pass TypeScript compilation without errors or warnings. All existi
 3. Choose modification over creation when semantically appropriate
 4. Document rationale for new type creation when necessary
 
+**Data Modeling Process**:
+1. Identify essential entities and their core attributes
+2. Eliminate unnecessary fields and complex relationships
+3. Validate model supports all required use cases with minimal structure
+4. Review for simplification opportunities before finalizing
+
 **Build Process**: 
 1. Apply essential testing for critical functionality
 2. Apply type evolution principles before creating new types
-3. Modify code in any package
-4. Run `pnpm build` if changes affect `agent-sdk`
-5. Test in dependent packages
-6. Run `pnpm run type-check` and `pnpm lint`
-7. Commit with clear, descriptive messages
+3. Apply data model minimalism to entity design
+4. Modify code in any package
+5. Run `pnpm build` if changes affect `agent-sdk`
+6. Test in dependent packages
+7. Run `pnpm run type-check` and `pnpm lint`
+8. Commit with clear, descriptive messages
 
 **Testing Strategy**:
 - Focus tests on high-risk and critical functionality
@@ -110,4 +128,4 @@ This constitution supersedes all other development practices. All pull requests 
 
 **Version Control**: Use semantic versioning for constitution updates. Breaking changes to principles require major version bump.
 
-**Version**: 1.6.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-12-07
+**Version**: 1.7.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-12-08

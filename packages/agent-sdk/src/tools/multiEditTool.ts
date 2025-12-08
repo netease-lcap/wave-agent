@@ -225,6 +225,43 @@ export const multiEditTool: ToolPlugin = {
         context.addDiffBlock(resolvedPath, diffResult);
       }
 
+      // Permission check after validation/diff but before real operation
+      if (
+        context.permissionManager &&
+        context.permissionMode &&
+        context.permissionMode !== "bypassPermissions"
+      ) {
+        if (context.permissionManager.isRestrictedTool("MultiEdit")) {
+          try {
+            const permissionContext = context.permissionManager.createContext(
+              "MultiEdit",
+              context.permissionMode,
+              context.canUseToolCallback,
+            );
+            const permissionResult =
+              await context.permissionManager.checkPermission(
+                permissionContext,
+              );
+
+            if (permissionResult.behavior === "deny") {
+              return {
+                success: false,
+                content: "",
+                error:
+                  permissionResult.message ||
+                  "MultiEdit operation denied by permission system",
+              };
+            }
+          } catch {
+            return {
+              success: false,
+              content: "",
+              error: "Permission check failed",
+            };
+          }
+        }
+      }
+
       // Write file
       try {
         await writeFile(resolvedPath, currentContent, "utf-8");

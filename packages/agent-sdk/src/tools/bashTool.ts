@@ -70,6 +70,41 @@ export const bashTool: ToolPlugin = {
       };
     }
 
+    // Permission check after validation but before real operation
+    if (
+      context.permissionManager &&
+      context.permissionMode &&
+      context.permissionMode !== "bypassPermissions"
+    ) {
+      if (context.permissionManager.isRestrictedTool("Bash")) {
+        try {
+          const permissionContext = context.permissionManager.createContext(
+            "Bash",
+            context.permissionMode,
+            context.canUseToolCallback,
+          );
+          const permissionResult =
+            await context.permissionManager.checkPermission(permissionContext);
+
+          if (permissionResult.behavior === "deny") {
+            return {
+              success: false,
+              content: "",
+              error:
+                permissionResult.message ||
+                "Bash operation denied by permission system",
+            };
+          }
+        } catch {
+          return {
+            success: false,
+            content: "",
+            error: "Permission check failed",
+          };
+        }
+      }
+    }
+
     if (runInBackground) {
       // Background execution
       const backgroundBashManager = context?.backgroundBashManager;

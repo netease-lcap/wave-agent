@@ -26,6 +26,7 @@ This is the AI assistant's memory file, recording important information and cont
   - MUST task typescript-expert to fix type and eslint errors in order to reduce context usage of main agent
   - Don't write any types
   - Do not modify tsconfig unless user ask you to do that
+  - Do not prefix unused variables with underscore, just remove them
 - While writing tests about `Agent`, always use `await Agent.create` instead of `new Agent`
 - Do not perform git commit operation unless explicitly mentioned by user
 - While implementing tasks in `specs/*/tasks.md`:

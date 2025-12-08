@@ -2,6 +2,7 @@ import React from "react";
 import { Box } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
+import { ConfirmationComponent } from "./ConfirmationComponent.js";
 import { useChat } from "../contexts/useChat.js";
 
 export const ChatInterface: React.FC = () => {
@@ -22,6 +23,10 @@ export const ChatInterface: React.FC = () => {
     latestTotalTokens,
     slashCommands,
     hasSlashCommand,
+    isConfirmationVisible,
+    confirmingTool,
+    handleConfirmationDecision,
+    handleConfirmationCancel,
   } = useChat();
 
   if (!sessionId) return null;
@@ -38,21 +43,28 @@ export const ChatInterface: React.FC = () => {
         key={String(isExpanded) + sessionId}
       />
 
-      {!isExpanded && (
-        <InputBox
-          isLoading={isLoading}
-          isCommandRunning={isCommandRunning}
-          userInputHistory={userInputHistory}
-          sendMessage={sendMessage}
-          abortMessage={abortMessage}
-          saveMemory={saveMemory}
-          mcpServers={mcpServers}
-          connectMcpServer={connectMcpServer}
-          disconnectMcpServer={disconnectMcpServer}
-          slashCommands={slashCommands}
-          hasSlashCommand={hasSlashCommand}
-        />
-      )}
+      {!isExpanded &&
+        (isConfirmationVisible ? (
+          <ConfirmationComponent
+            toolName={confirmingTool!}
+            onDecision={handleConfirmationDecision}
+            onCancel={handleConfirmationCancel}
+          />
+        ) : (
+          <InputBox
+            isLoading={isLoading}
+            isCommandRunning={isCommandRunning}
+            userInputHistory={userInputHistory}
+            sendMessage={sendMessage}
+            abortMessage={abortMessage}
+            saveMemory={saveMemory}
+            mcpServers={mcpServers}
+            connectMcpServer={connectMcpServer}
+            disconnectMcpServer={disconnectMcpServer}
+            slashCommands={slashCommands}
+            hasSlashCommand={hasSlashCommand}
+          />
+        ))}
     </Box>
   );
 };
