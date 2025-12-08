@@ -8,7 +8,11 @@
  * - Graceful degradation
  */
 
-import { Agent, type PermissionDecision } from "../src/index.js";
+import {
+  Agent,
+  type PermissionDecision,
+  type ToolPermissionContext,
+} from "../src/index.js";
 
 // Mock database service
 class PermissionDatabase {
@@ -79,34 +83,42 @@ async function main() {
 
   const dbAgent = await Agent.create({
     permissionMode: "default",
-    canUseTool: async (toolName: string): Promise<PermissionDecision> => {
+    canUseTool: async (
+      context: ToolPermissionContext,
+    ): Promise<PermissionDecision> => {
       const userId = "user123"; // In real app, extract from JWT/session
       console.log(
-        `   🔍 Checking database permissions for user: ${userId}, tool: ${toolName}`,
+        `   🔍 Checking database permissions for user: ${userId}, tool: ${context.toolName}`,
       );
 
       try {
         const userPermissions = await db.getUserPermissions(userId);
 
-        if (userPermissions.has(toolName)) {
-          console.log(`   ✅ Database permission granted for ${toolName}`);
+        if (userPermissions.has(context.toolName)) {
+          console.log(
+            `   ✅ Database permission granted for ${context.toolName}`,
+          );
           return { behavior: "allow" };
         } else {
-          console.log(`   ❌ Database permission denied for ${toolName}`);
+          console.log(
+            `   ❌ Database permission denied for ${context.toolName}`,
+          );
           return {
             behavior: "deny",
-            message: `User ${userId} does not have permission to use ${toolName}`,
+            message: `User ${userId} does not have permission to use ${context.toolName}`,
           };
         }
       } catch (error) {
         console.log(`   💥 Database error: ${error}`);
         // Graceful degradation: allow read-only operations, deny write operations
         const readOnlyTools = ["Read", "Grep", "LS", "Glob"];
-        if (readOnlyTools.includes(toolName)) {
-          console.log(`   🚑 Fallback: allowing read-only tool ${toolName}`);
+        if (readOnlyTools.includes(context.toolName)) {
+          console.log(
+            `   🚑 Fallback: allowing read-only tool ${context.toolName}`,
+          );
           return { behavior: "allow" };
         } else {
-          console.log(`   🚑 Fallback: denying write tool ${toolName}`);
+          console.log(`   🚑 Fallback: denying write tool ${context.toolName}`);
           return {
             behavior: "deny",
             message:
@@ -130,28 +142,30 @@ async function main() {
 
   const rateLimitedAgent = await Agent.create({
     permissionMode: "default",
-    canUseTool: async (toolName: string): Promise<PermissionDecision> => {
+    canUseTool: async (
+      context: ToolPermissionContext,
+    ): Promise<PermissionDecision> => {
       const userId = "user123";
       const expensiveTools = ["Bash", "Delete"];
 
-      if (expensiveTools.includes(toolName)) {
-        const rateLimitKey = `${userId}:${toolName}`;
+      if (expensiveTools.includes(context.toolName)) {
+        const rateLimitKey = `${userId}:${context.toolName}`;
         const allowed = rateLimiter.checkRateLimit(rateLimitKey, 60000, 3); // 3 per minute
 
         if (!allowed) {
           console.log(
-            `   🚫 Rate limit exceeded for ${toolName} (user: ${userId})`,
+            `   🚫 Rate limit exceeded for ${context.toolName} (user: ${userId})`,
           );
           return {
             behavior: "deny",
-            message: `Rate limit exceeded for ${toolName}. Maximum 3 operations per minute.`,
+            message: `Rate limit exceeded for ${context.toolName}. Maximum 3 operations per minute.`,
           };
         }
 
-        console.log(`   ⏱️  Rate limit check passed for ${toolName}`);
+        console.log(`   ⏱️  Rate limit check passed for ${context.toolName}`);
       }
 
-      console.log(`   ✅ ${toolName} operation allowed`);
+      console.log(`   ✅ ${context.toolName} operation allowed`);
       return { behavior: "allow" };
     },
     logger: {
@@ -169,7 +183,9 @@ async function main() {
 
   const contextAwareAgent = await Agent.create({
     permissionMode: "default",
-    canUseTool: async (toolName: string): Promise<PermissionDecision> => {
+    canUseTool: async (
+      context: ToolPermissionContext,
+    ): Promise<PermissionDecision> => {
       // Mock context (in real app, this could come from tool arguments, current directory, etc.)
       const currentPath = "/home/user/projects/safe-project";
       const timeOfDay = new Date().getHours();
@@ -180,7 +196,7 @@ async function main() {
       );
 
       // Path-based restrictions
-      if (currentPath.includes("production") && toolName === "Delete") {
+      if (currentPath.includes("production") && context.toolName === "Delete") {
         console.log(`   🚨 Delete operation blocked in production path`);
         return {
           behavior: "deny",
@@ -189,17 +205,20 @@ async function main() {
       }
 
       // Time-based restrictions
-      if (!isBusinessHours && (toolName === "Bash" || toolName === "Delete")) {
+      if (
+        !isBusinessHours &&
+        (context.toolName === "Bash" || context.toolName === "Delete")
+      ) {
         console.log(
-          `   🌙 ${toolName} operation blocked outside business hours`,
+          `   🌙 ${context.toolName} operation blocked outside business hours`,
         );
         return {
           behavior: "deny",
-          message: `${toolName} operations only allowed during business hours (9 AM - 5 PM)`,
+          message: `${context.toolName} operations only allowed during business hours (9 AM - 5 PM)`,
         };
       }
 
-      console.log(`   ✅ Context check passed for ${toolName}`);
+      console.log(`   ✅ Context check passed for ${context.toolName}`);
       return { behavior: "allow" };
     },
     logger: {
@@ -217,48 +236,50 @@ async function main() {
 
   const productionAgent = await Agent.create({
     permissionMode: "default",
-    canUseTool: async (toolName: string): Promise<PermissionDecision> => {
+    canUseTool: async (
+      context: ToolPermissionContext,
+    ): Promise<PermissionDecision> => {
       const startTime = Date.now();
       const userId = "user123";
 
       console.log(
-        `   🔄 Starting comprehensive permission check for ${toolName}...`,
+        `   🔄 Starting comprehensive permission check for ${context.toolName}...`,
       );
 
       try {
         // 1. Rate limiting
-        if (["Bash", "Delete"].includes(toolName)) {
-          const rateLimitKey = `${userId}:${toolName}`;
+        if (["Bash", "Delete"].includes(context.toolName)) {
+          const rateLimitKey = `${userId}:${context.toolName}`;
           if (!rateLimiter.checkRateLimit(rateLimitKey, 60000, 3)) {
             return {
               behavior: "deny",
-              message: `Rate limit exceeded for ${toolName}`,
+              message: `Rate limit exceeded for ${context.toolName}`,
             };
           }
         }
 
         // 2. Database permissions
         const userPermissions = await db.getUserPermissions(userId);
-        if (!userPermissions.has(toolName)) {
+        if (!userPermissions.has(context.toolName)) {
           return {
             behavior: "deny",
-            message: `Insufficient database permissions for ${toolName}`,
+            message: `Insufficient database permissions for ${context.toolName}`,
           };
         }
 
         // 3. Context checks
         const timeOfDay = new Date().getHours();
         const isBusinessHours = timeOfDay >= 9 && timeOfDay <= 17;
-        if (!isBusinessHours && ["Bash", "Delete"].includes(toolName)) {
+        if (!isBusinessHours && ["Bash", "Delete"].includes(context.toolName)) {
           return {
             behavior: "deny",
-            message: `${toolName} operations only allowed during business hours`,
+            message: `${context.toolName} operations only allowed during business hours`,
           };
         }
 
         const checkDuration = Date.now() - startTime;
         console.log(
-          `   ✅ All checks passed for ${toolName} (${checkDuration}ms)`,
+          `   ✅ All checks passed for ${context.toolName} (${checkDuration}ms)`,
         );
         return { behavior: "allow" };
       } catch (error) {
@@ -266,8 +287,8 @@ async function main() {
 
         // Graceful degradation
         const safeFallbackTools = ["Read", "Grep", "LS"];
-        if (safeFallbackTools.includes(toolName)) {
-          console.log(`   🚑 Fallback: allowing safe tool ${toolName}`);
+        if (safeFallbackTools.includes(context.toolName)) {
+          console.log(`   🚑 Fallback: allowing safe tool ${context.toolName}`);
           return { behavior: "allow" };
         } else {
           return {

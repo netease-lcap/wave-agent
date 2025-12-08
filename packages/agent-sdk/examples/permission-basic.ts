@@ -5,7 +5,11 @@
  * Shows how to use default mode, bypass mode, and custom permission callbacks.
  */
 
-import { Agent, type PermissionDecision } from "../src/index.js";
+import {
+  Agent,
+  type PermissionDecision,
+  type ToolPermissionContext,
+} from "../src/index.js";
 
 async function main() {
   console.log("🔒 Wave Agent SDK Permission System Examples\n");
@@ -44,11 +48,13 @@ async function main() {
   console.log("3️⃣  Custom Permission Logic:");
   const customAgent = await Agent.create({
     permissionMode: "default",
-    canUseTool: async (toolName: string): Promise<PermissionDecision> => {
-      console.log(`   🔍 Permission check requested for: ${toolName}`);
+    canUseTool: async (
+      context: ToolPermissionContext,
+    ): Promise<PermissionDecision> => {
+      console.log(`   🔍 Permission check requested for: ${context.toolName}`);
 
       // Example business logic
-      if (toolName === "Bash") {
+      if (context.toolName === "Bash") {
         console.log("   ❌ Denying Bash execution (company policy)");
         return {
           behavior: "deny",
@@ -56,7 +62,7 @@ async function main() {
         };
       }
 
-      if (toolName === "Delete") {
+      if (context.toolName === "Delete") {
         console.log("   ❌ Denying Delete operations (safety first)");
         return {
           behavior: "deny",
@@ -64,7 +70,7 @@ async function main() {
         };
       }
 
-      console.log(`   ✅ Allowing ${toolName} operation`);
+      console.log(`   ✅ Allowing ${context.toolName} operation`);
       return { behavior: "allow" };
     },
     logger: {

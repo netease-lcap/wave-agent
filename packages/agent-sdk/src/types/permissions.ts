@@ -16,7 +16,7 @@ export interface PermissionDecision {
 
 /** Callback function for custom permission logic */
 export type PermissionCallback = (
-  toolName: string,
+  context: ToolPermissionContext,
 ) => Promise<PermissionDecision>;
 
 /** Internal context passed to PermissionManager */
@@ -27,6 +27,8 @@ export interface ToolPermissionContext {
   permissionMode: PermissionMode;
   /** Custom permission callback if provided */
   canUseToolCallback?: PermissionCallback;
+  /** Tool input parameters for better context */
+  toolInput?: Record<string, unknown>;
 }
 
 /** List of tools that require permission checks in default mode */

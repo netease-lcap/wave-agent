@@ -58,6 +58,7 @@ export const deleteFileTool: ToolPlugin = {
               "Delete",
               context.permissionMode,
               context.canUseToolCallback,
+              { target_file: targetFile },
             );
             const permissionResult =
               await context.permissionManager.checkPermission(

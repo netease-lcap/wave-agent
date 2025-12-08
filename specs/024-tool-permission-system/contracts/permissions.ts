@@ -65,7 +65,7 @@ export interface CLIPermissionConfig {
 /**
  * Props for the confirmation component
  */
-export interface ConfirmationComponentProps {
+export interface ConfirmationProps {
   /** Name of the tool requesting permission */
   toolName: string;
   /** Called when user makes a decision */

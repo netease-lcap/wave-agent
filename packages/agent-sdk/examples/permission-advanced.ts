@@ -8,7 +8,11 @@
  * - Environment-based permissions
  */
 
-import { Agent, type PermissionDecision } from "../src/index.js";
+import {
+  Agent,
+  type PermissionDecision,
+  type ToolPermissionContext,
+} from "../src/index.js";
 
 // Mock external authorization service
 class AuthorizationService {
@@ -54,25 +58,27 @@ async function main() {
 
   const rbacAgent = await Agent.create({
     permissionMode: "default",
-    canUseTool: async (toolName: string): Promise<PermissionDecision> => {
+    canUseTool: async (
+      context: ToolPermissionContext,
+    ): Promise<PermissionDecision> => {
       const userRoles = authService.getCurrentUserRoles();
       console.log(`   👤 Current user roles: ${userRoles.join(", ")}`);
-      console.log(`   🔍 Checking permission for: ${toolName}`);
+      console.log(`   🔍 Checking permission for: ${context.toolName}`);
 
       try {
         const hasPermission = await authService.checkPermission(
-          toolName,
+          context.toolName,
           userRoles,
         );
 
         if (hasPermission) {
-          console.log(`   ✅ Access granted for ${toolName}`);
+          console.log(`   ✅ Access granted for ${context.toolName}`);
           return { behavior: "allow" };
         } else {
-          console.log(`   ❌ Access denied for ${toolName}`);
+          console.log(`   ❌ Access denied for ${context.toolName}`);
           return {
             behavior: "deny",
-            message: `Insufficient privileges. Required roles not found for ${toolName}`,
+            message: `Insufficient privileges. Required roles not found for ${context.toolName}`,
           };
         }
       } catch (error) {
@@ -100,39 +106,41 @@ async function main() {
   const environmentAgent = await Agent.create({
     permissionMode:
       process.env.NODE_ENV === "production" ? "default" : "bypassPermissions",
-    canUseTool: async (toolName: string): Promise<PermissionDecision> => {
+    canUseTool: async (
+      context: ToolPermissionContext,
+    ): Promise<PermissionDecision> => {
       const env = process.env.NODE_ENV || "development";
       console.log(`   🌍 Current environment: ${env}`);
 
       if (env === "production") {
         // Strict production rules
         const allowedInProduction = ["Read", "Grep", "LS", "Glob"];
-        if (allowedInProduction.includes(toolName)) {
-          console.log(`   ✅ ${toolName} allowed in production`);
+        if (allowedInProduction.includes(context.toolName)) {
+          console.log(`   ✅ ${context.toolName} allowed in production`);
           return { behavior: "allow" };
         } else {
-          console.log(`   ❌ ${toolName} blocked in production`);
+          console.log(`   ❌ ${context.toolName} blocked in production`);
           return {
             behavior: "deny",
-            message: `${toolName} operations not allowed in production environment`,
+            message: `${context.toolName} operations not allowed in production environment`,
           };
         }
       } else if (env === "staging") {
         // Moderate staging rules
         const blockedInStaging = ["Delete"];
-        if (blockedInStaging.includes(toolName)) {
-          console.log(`   ❌ ${toolName} blocked in staging`);
+        if (blockedInStaging.includes(context.toolName)) {
+          console.log(`   ❌ ${context.toolName} blocked in staging`);
           return {
             behavior: "deny",
-            message: `${toolName} operations not allowed in staging environment`,
+            message: `${context.toolName} operations not allowed in staging environment`,
           };
         } else {
-          console.log(`   ✅ ${toolName} allowed in staging`);
+          console.log(`   ✅ ${context.toolName} allowed in staging`);
           return { behavior: "allow" };
         }
       } else {
         // Development: allow everything
-        console.log(`   ✅ ${toolName} allowed in development`);
+        console.log(`   ✅ ${context.toolName} allowed in development`);
         return { behavior: "allow" };
       }
     },
@@ -160,18 +168,22 @@ async function main() {
 
   const auditAgent = await Agent.create({
     permissionMode: "default",
-    canUseTool: async (toolName: string): Promise<PermissionDecision> => {
+    canUseTool: async (
+      context: ToolPermissionContext,
+    ): Promise<PermissionDecision> => {
       const user = "john.doe@company.com"; // In real app, get from auth context
       const timestamp = new Date();
 
       // Business logic for permission
       const restrictedTools = ["Delete", "Bash"];
-      const decision = restrictedTools.includes(toolName) ? "deny" : "allow";
+      const decision = restrictedTools.includes(context.toolName)
+        ? "deny"
+        : "allow";
 
       // Log the decision
-      auditLogs.push({ timestamp, toolName, decision, user });
+      auditLogs.push({ timestamp, toolName: context.toolName, decision, user });
       console.log(
-        `   📝 Audit: ${user} ${decision === "allow" ? "✅ granted" : "❌ denied"} ${toolName} at ${timestamp.toISOString()}`,
+        `   📝 Audit: ${user} ${decision === "allow" ? "✅ granted" : "❌ denied"} ${context.toolName} at ${timestamp.toISOString()}`,
       );
 
       if (decision === "allow") {
@@ -179,7 +191,7 @@ async function main() {
       } else {
         return {
           behavior: "deny",
-          message: `${toolName} operations require additional approval`,
+          message: `${context.toolName} operations require additional approval`,
         };
       }
     },

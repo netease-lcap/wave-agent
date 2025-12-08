@@ -2,8 +2,34 @@ import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { PermissionDecision } from "wave-agent-sdk";
 
-export interface ConfirmationComponentProps {
+// Helper function to generate descriptive action text
+const getActionDescription = (
+  toolName: string,
+  toolInput?: Record<string, unknown>,
+): string => {
+  if (!toolInput) {
+    return "Execute operation";
+  }
+
+  switch (toolName) {
+    case "Bash":
+      return `Execute command: ${toolInput.command || "unknown command"}`;
+    case "Edit":
+      return `Edit file: ${toolInput.file_path || "unknown file"}`;
+    case "MultiEdit":
+      return `Edit multiple sections in: ${toolInput.file_path || "unknown file"}`;
+    case "Delete":
+      return `Delete file: ${toolInput.target_file || "unknown file"}`;
+    case "Write":
+      return `Write to file: ${toolInput.file_path || "unknown file"}`;
+    default:
+      return "Execute operation";
+  }
+};
+
+export interface ConfirmationProps {
   toolName: string;
+  toolInput?: Record<string, unknown>;
   onDecision: (decision: PermissionDecision) => void;
   onCancel: () => void;
 }
@@ -14,8 +40,9 @@ interface ConfirmationState {
   hasUserInput: boolean; // to hide placeholder
 }
 
-export const ConfirmationComponent: React.FC<ConfirmationComponentProps> = ({
+export const Confirmation: React.FC<ConfirmationProps> = ({
   toolName,
+  toolInput,
   onDecision,
   onCancel,
 }) => {
@@ -70,8 +97,8 @@ export const ConfirmationComponent: React.FC<ConfirmationComponentProps> = ({
       return;
     }
 
-    // Handle backspace
-    if (key.backspace) {
+    // Handle backspace and delete (same behavior - delete one character)
+    if (key.backspace || key.delete) {
       setState((prev) => {
         const newText = prev.alternativeText.slice(0, -1);
         return {
@@ -81,17 +108,6 @@ export const ConfirmationComponent: React.FC<ConfirmationComponentProps> = ({
           hasUserInput: newText.length > 0,
         };
       });
-      return;
-    }
-
-    // Handle delete/clear
-    if (key.delete) {
-      setState((prev) => ({
-        ...prev,
-        selectedOption: "alternative",
-        alternativeText: "",
-        hasUserInput: false,
-      }));
       return;
     }
   });
@@ -111,7 +127,7 @@ export const ConfirmationComponent: React.FC<ConfirmationComponentProps> = ({
       <Text color="yellow" bold>
         Tool: {toolName}
       </Text>
-      <Text color="yellow">Action: Modify file</Text>
+      <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
 
       <Box marginTop={1}>
         <Text>Do you want to proceed?</Text>

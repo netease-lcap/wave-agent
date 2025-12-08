@@ -163,6 +163,12 @@ export const editTool: ToolPlugin = {
               "Edit",
               context.permissionMode,
               context.canUseToolCallback,
+              {
+                file_path: filePath,
+                old_string: oldString,
+                new_string: newString,
+                replace_all: replaceAll,
+              },
             );
             const permissionResult =
               await context.permissionManager.checkPermission(

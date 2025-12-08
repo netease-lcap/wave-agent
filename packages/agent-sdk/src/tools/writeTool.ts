@@ -119,6 +119,7 @@ export const writeTool: ToolPlugin = {
               "Write",
               context.permissionMode,
               context.canUseToolCallback,
+              { file_path: filePath, content },
             );
             const permissionResult =
               await context.permissionManager.checkPermission(

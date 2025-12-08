@@ -30,9 +30,9 @@
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
 - [ ] T005 Update ToolManager to pass permission context to tools in packages/agent-sdk/src/managers/toolManager.ts
-- [X] T006 [P] Create ConfirmationComponent in packages/code/src/components/ConfirmationComponent.tsx
+- [X] T006 [P] Create Confirmation in packages/code/src/components/Confirmation.tsx
 - [X] T007 [P] Extend useChat context with confirmation state in packages/code/src/contexts/useChat.tsx
-- [X] T008 Update ChatInterface to conditionally render InputBox vs ConfirmationComponent in packages/code/src/components/ChatInterface.tsx
+- [X] T008 Update ChatInterface to conditionally render InputBox vs Confirmation in packages/code/src/components/ChatInterface.tsx
 - [X] T009 Add --dangerously-skip-permissions CLI flag in packages/code/src/index.ts
 - [X] T010 Update CLI to pass permission mode to Agent in packages/code/src/cli.tsx
 
@@ -52,7 +52,7 @@
 
 - [X] T011 [P] [US1] Create permission manager tests in packages/agent-sdk/tests/managers/permissionManager.test.ts
 - [X] T012 [P] [US1] Create agent permission integration tests in packages/agent-sdk/tests/agent/agent.permissions.test.ts
-- [X] T013 [P] [US1] Create confirmation component tests in packages/code/tests/components/ConfirmationComponent.test.ts
+- [X] T013 [P] [US1] Create confirmation component tests in packages/code/tests/components/Confirmation.test.ts
 
 ### Implementation for User Story 1
 
@@ -61,9 +61,9 @@
 - [X] T016 [P] [US1] Add permission check to Delete tool after validation/diff in packages/agent-sdk/src/tools/deleteFileTool.ts
 - [X] T017 [P] [US1] Add permission check to Bash tool after validation/diff in packages/agent-sdk/src/tools/bashTool.ts
 - [X] T018 [P] [US1] Add permission check to Write tool after validation/diff in packages/agent-sdk/src/tools/writeTool.ts
-- [X] T019 [US1] Implement CLI confirmation flow with "Do you want to proceed?" prompt in ConfirmationComponent
-- [X] T020 [US1] Add keyboard navigation (arrow keys) and ESC handling to ConfirmationComponent
-- [X] T021 [US1] Implement alternative instructions input with placeholder hiding logic in ConfirmationComponent
+- [X] T019 [US1] Implement CLI confirmation flow with "Do you want to proceed?" prompt in Confirmation
+- [X] T020 [US1] Add keyboard navigation (arrow keys) and ESC handling to Confirmation
+- [X] T021 [US1] Implement alternative instructions input with placeholder hiding logic in Confirmation
 - [X] T022 [US1] Connect confirmation decisions to tool permission system via useChat context
 - [X] T023 [US1] Implement multiple tool call sequential confirmation handling with queue-based architecture and batched result return
 
@@ -163,7 +163,7 @@
 # Launch all tests for User Story 1 together:
 Task: "Create permission manager tests in packages/agent-sdk/tests/managers/permissionManager.test.ts"
 Task: "Create agent permission integration tests in packages/agent-sdk/tests/agent/agent.permissions.test.ts"  
-Task: "Create confirmation component tests in packages/code/tests/components/ConfirmationComponent.test.ts"
+Task: "Create confirmation component tests in packages/code/tests/components/Confirmation.test.ts"
 
 # Launch all tool modifications for User Story 1 together:
 Task: "Add permission check to Edit tool after validation/diff in packages/agent-sdk/src/tools/editTool.ts"

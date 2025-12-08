@@ -90,7 +90,7 @@
 - `hasUserInput`: false → true (when user starts typing, hides placeholder)
 
 **Relationships**:
-- Managed by `ConfirmationComponent`
+- Managed by `Confirmation`
 - Influences permission decision result
 
 ---
@@ -119,7 +119,7 @@
 **Relationships**:
 - Managed by `useChat` context hook
 - Controls rendering logic in `ChatInterface.tsx`
-- Influences `InputBox` vs `ConfirmationComponent` display
+- Influences `InputBox` vs `Confirmation` display
 - Processes multiple tool calls sequentially
 
 ---
@@ -172,9 +172,9 @@ Multiple Tool Call Flow
 ChatInterface.tsx
     ├── reads isConfirmationVisible from useChat context  
     ├── conditionally renders InputBox (when isConfirmationVisible is false)
-    └── conditionally renders ConfirmationComponent (when isConfirmationVisible is true)
+    └── conditionally renders Confirmation (when isConfirmationVisible is true)
 
-ConfirmationComponent
+Confirmation
     ├── manages internal ConfirmationState  
     ├── displays current confirmation from queue (currentConfirmation.toolName)
     ├── calls context.handleConfirmationDecision()

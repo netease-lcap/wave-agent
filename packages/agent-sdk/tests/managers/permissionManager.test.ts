@@ -157,7 +157,11 @@ describe("PermissionManager", () => {
         const result = await permissionManager.checkPermission(context);
 
         expect(result).toEqual({ behavior: "allow" });
-        expect(mockCallback).toHaveBeenCalledWith("Edit");
+        expect(mockCallback).toHaveBeenCalledWith({
+          toolName: "Edit",
+          permissionMode: "default",
+          canUseToolCallback: mockCallback,
+        });
         expect(mockLogger.debug).toHaveBeenCalledWith(
           "Calling custom permission callback for tool",
           { toolName: "Edit" },
@@ -186,7 +190,11 @@ describe("PermissionManager", () => {
           behavior: "deny",
           message: "User denied permission",
         });
-        expect(mockCallback).toHaveBeenCalledWith("Delete");
+        expect(mockCallback).toHaveBeenCalledWith({
+          toolName: "Delete",
+          permissionMode: "default",
+          canUseToolCallback: mockCallback,
+        });
         expect(mockLogger.debug).toHaveBeenCalledWith(
           "Custom callback returned decision",
           {
@@ -213,7 +221,11 @@ describe("PermissionManager", () => {
           behavior: "deny",
           message: "Error in permission callback",
         });
-        expect(mockCallback).toHaveBeenCalledWith("Write");
+        expect(mockCallback).toHaveBeenCalledWith({
+          toolName: "Write",
+          permissionMode: "default",
+          canUseToolCallback: mockCallback,
+        });
         expect(mockLogger.error).toHaveBeenCalledWith(
           "Error in permission callback",
           { toolName: "Write", error: "Callback failed" },
@@ -258,7 +270,11 @@ describe("PermissionManager", () => {
           const result = await permissionManager.checkPermission(context);
 
           expect(result).toEqual({ behavior: "allow" });
-          expect(mockCallback).toHaveBeenCalledWith(toolName);
+          expect(mockCallback).toHaveBeenCalledWith({
+            toolName,
+            permissionMode: "default",
+            canUseToolCallback: mockCallback,
+          });
         }
       });
     });
@@ -408,6 +424,7 @@ describe("PermissionManager", () => {
           toolName: "Edit",
           permissionMode: "default",
           hasCallback: false,
+          hasToolInput: false,
         },
       );
     });
@@ -434,6 +451,7 @@ describe("PermissionManager", () => {
           toolName: "Delete",
           permissionMode: "bypassPermissions",
           hasCallback: true,
+          hasToolInput: false,
         },
       );
     });

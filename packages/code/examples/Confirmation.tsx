@@ -1,6 +1,6 @@
 import React from "react";
 import { Box, render, Text } from "ink";
-import { ConfirmationComponent } from "../src/components/ConfirmationComponent.js";
+import { Confirmation } from "../src/components/Confirmation.js";
 import type { PermissionDecision } from "wave-agent-sdk";
 
 const ExampleApp: React.FC = () => {
@@ -40,11 +40,11 @@ const ExampleApp: React.FC = () => {
   return (
     <Box flexDirection="column" padding={1}>
       <Text color="cyan" bold>
-        ConfirmationComponent Example
+        Confirmation Example
       </Text>
       <Text>Press keys to interact with the component:</Text>
       <Box marginTop={1}>
-        <ConfirmationComponent
+        <Confirmation
           toolName="Edit"
           onDecision={handleDecision}
           onCancel={handleCancel}

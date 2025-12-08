@@ -107,12 +107,12 @@ packages/
 │   │   ├── contexts/
 │   │   │   └── useChat.tsx           # MODIFY: Add confirmation state management
 │   │   └── components/
-│   │       ├── ChatInterface.tsx     # MODIFY: Conditionally render InputBox vs ConfirmationComponent
+│   │       ├── ChatInterface.tsx     # MODIFY: Conditionally render InputBox vs Confirmation
 │   │       ├── InputBox.tsx          # No changes (conditional rendering handled by parent)
-│   │       └── ConfirmationComponent.tsx  # New: User permission prompts
+│   │       └── Confirmation.tsx  # New: User permission prompts
 │   └── tests/
 │       └── components/
-│           └── ConfirmationComponent.test.ts
+│           └── Confirmation.test.ts
 ```
 
 **Structure Decision**: Extending existing monorepo structure with focused modifications to `agent-sdk` for core permission logic and `code` package for CLI integration. No new packages required - follows existing package-first architecture with clear separation between SDK capabilities and CLI interface.

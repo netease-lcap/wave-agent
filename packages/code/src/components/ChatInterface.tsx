@@ -2,7 +2,7 @@ import React from "react";
 import { Box } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
-import { ConfirmationComponent } from "./ConfirmationComponent.js";
+import { Confirmation } from "./Confirmation.js";
 import { useChat } from "../contexts/useChat.js";
 
 export const ChatInterface: React.FC = () => {
@@ -45,8 +45,9 @@ export const ChatInterface: React.FC = () => {
 
       {!isExpanded &&
         (isConfirmationVisible ? (
-          <ConfirmationComponent
-            toolName={confirmingTool!}
+          <Confirmation
+            toolName={confirmingTool!.name}
+            toolInput={confirmingTool!.input}
             onDecision={handleConfirmationDecision}
             onCancel={handleConfirmationCancel}
           />
