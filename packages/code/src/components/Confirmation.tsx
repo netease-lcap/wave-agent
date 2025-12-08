@@ -32,6 +32,7 @@ export interface ConfirmationProps {
   toolInput?: Record<string, unknown>;
   onDecision: (decision: PermissionDecision) => void;
   onCancel: () => void;
+  onAbort: () => void;
 }
 
 interface ConfirmationState {
@@ -45,6 +46,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
   toolInput,
   onDecision,
   onCancel,
+  onAbort,
 }) => {
   const [state, setState] = useState<ConfirmationState>({
     selectedOption: "allow",
@@ -53,9 +55,10 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
   });
 
   useInput((input, key) => {
-    // Handle ESC to cancel
+    // Handle ESC to cancel and abort
     if (key.escape) {
       onCancel();
+      onAbort();
       return;
     }
 

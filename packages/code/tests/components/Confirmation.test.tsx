@@ -8,11 +8,13 @@ import type { PermissionDecision } from "wave-agent-sdk";
 describe("Confirmation", () => {
   let mockOnDecision: ReturnType<typeof vi.fn>;
   let mockOnCancel: ReturnType<typeof vi.fn>;
+  let mockOnAbort: ReturnType<typeof vi.fn>;
   let consoleSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     mockOnDecision = vi.fn();
     mockOnCancel = vi.fn();
+    mockOnAbort = vi.fn();
 
     // Mock console methods to suppress output during testing
     consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -34,6 +36,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -51,6 +54,7 @@ describe("Confirmation", () => {
           toolName="Write"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -68,6 +72,7 @@ describe("Confirmation", () => {
           toolName="Delete"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -86,6 +91,7 @@ describe("Confirmation", () => {
           toolName="Bash"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -103,6 +109,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -124,6 +131,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -147,6 +155,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -168,6 +177,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -189,6 +199,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -217,6 +228,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -248,6 +260,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -274,6 +287,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -298,6 +312,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -325,6 +340,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -352,6 +368,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -387,6 +404,7 @@ describe("Confirmation", () => {
           toolName="MultiEdit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -407,6 +425,7 @@ describe("Confirmation", () => {
           toolName="Delete"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -429,12 +448,13 @@ describe("Confirmation", () => {
       } as PermissionDecision);
     });
 
-    it("should call onCancel callback on ESC", async () => {
+    it("should call onCancel and onAbort callbacks on ESC", async () => {
       const { stdin, lastFrame } = render(
         <Confirmation
           toolName="Write"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -444,6 +464,7 @@ describe("Confirmation", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(mockOnCancel).toHaveBeenCalledTimes(1);
+      expect(mockOnAbort).toHaveBeenCalledTimes(1);
       expect(mockOnDecision).not.toHaveBeenCalled();
     });
 
@@ -453,6 +474,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -485,6 +507,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -511,6 +534,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -540,6 +564,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -571,6 +596,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -593,6 +619,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -613,6 +640,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -641,6 +669,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -674,6 +703,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -691,6 +721,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 
@@ -716,6 +747,7 @@ describe("Confirmation", () => {
           toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
         />,
       );
 

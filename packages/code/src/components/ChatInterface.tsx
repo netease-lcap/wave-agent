@@ -50,6 +50,7 @@ export const ChatInterface: React.FC = () => {
             toolInput={confirmingTool!.input}
             onDecision={handleConfirmationDecision}
             onCancel={handleConfirmationCancel}
+            onAbort={abortMessage}
           />
         ) : (
           <InputBox
