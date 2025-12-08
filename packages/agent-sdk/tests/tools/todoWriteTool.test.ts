@@ -260,4 +260,101 @@ describe("todoWriteTool", () => {
     expect(result.shortResult).toBe("Invalid todo id");
     expect(result.error).toContain("must have a non-empty id");
   });
+
+  describe("formatCompactParams", () => {
+    it("should format progress correctly for multiple tasks", () => {
+      const params = {
+        todos: [
+          { id: "1", content: "Task 1", status: "completed" },
+          { id: "2", content: "Task 2", status: "pending" },
+          { id: "3", content: "Task 3", status: "in_progress" },
+        ],
+      };
+      const result = todoWriteTool.formatCompactParams!(params, mockContext);
+      expect(result).toBe("1/3 tasks");
+    });
+
+    it("should handle singular task correctly", () => {
+      const params = {
+        todos: [{ id: "1", content: "Single task", status: "pending" }],
+      };
+      const result = todoWriteTool.formatCompactParams!(params, mockContext);
+      expect(result).toBe("0/1 task");
+    });
+
+    it("should handle single completed task correctly", () => {
+      const params = {
+        todos: [{ id: "1", content: "Single task", status: "completed" }],
+      };
+      const result = todoWriteTool.formatCompactParams!(params, mockContext);
+      expect(result).toBe("1/1 task");
+    });
+
+    it("should handle empty todo list", () => {
+      const params = { todos: [] };
+      const result = todoWriteTool.formatCompactParams!(params, mockContext);
+      expect(result).toBe("0 tasks");
+    });
+
+    it("should handle invalid parameters gracefully", () => {
+      expect(todoWriteTool.formatCompactParams!({}, mockContext)).toBe(
+        "invalid todos",
+      );
+      expect(
+        todoWriteTool.formatCompactParams!({ todos: null }, mockContext),
+      ).toBe("invalid todos");
+      expect(
+        todoWriteTool.formatCompactParams!({ todos: "not-array" }, mockContext),
+      ).toBe("invalid todos");
+    });
+
+    it("should handle all completed tasks", () => {
+      const params = {
+        todos: [
+          { id: "1", content: "Task 1", status: "completed" },
+          { id: "2", content: "Task 2", status: "completed" },
+        ],
+      };
+      const result = todoWriteTool.formatCompactParams!(params, mockContext);
+      expect(result).toBe("2/2 tasks");
+    });
+
+    it("should handle mixed status tasks correctly", () => {
+      const params = {
+        todos: [
+          { id: "1", content: "Completed task", status: "completed" },
+          { id: "2", content: "In progress task", status: "in_progress" },
+          { id: "3", content: "Pending task 1", status: "pending" },
+          { id: "4", content: "Pending task 2", status: "pending" },
+          { id: "5", content: "Another completed", status: "completed" },
+        ],
+      };
+      const result = todoWriteTool.formatCompactParams!(params, mockContext);
+      expect(result).toBe("2/5 tasks");
+    });
+
+    it("should handle malformed todo objects gracefully", () => {
+      const params = {
+        todos: [
+          { id: "1", content: "Valid task", status: "completed" },
+          null, // Invalid task object
+          { id: "3", content: "Another valid", status: "pending" },
+        ],
+      };
+      const result = todoWriteTool.formatCompactParams!(params, mockContext);
+      expect(result).toBe("1/3 tasks"); // Should count 1 completed out of 3 total
+    });
+
+    it("should handle todos with invalid status gracefully", () => {
+      const params = {
+        todos: [
+          { id: "1", content: "Valid task", status: "completed" },
+          { id: "2", content: "Invalid status", status: "invalid" },
+          { id: "3", content: "Valid pending", status: "pending" },
+        ],
+      };
+      const result = todoWriteTool.formatCompactParams!(params, mockContext);
+      expect(result).toBe("1/3 tasks"); // Should only count valid completed status
+    });
+  });
 });
