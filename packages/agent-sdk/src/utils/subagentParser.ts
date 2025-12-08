@@ -9,7 +9,7 @@ export interface SubagentConfiguration {
   model?: string;
   systemPrompt: string;
   filePath: string;
-  scope: "project" | "user";
+  scope: "project" | "user" | "builtin";
   priority: number;
 }
 
@@ -101,11 +101,11 @@ function validateConfiguration(
     throw new Error(`Missing required field 'description' in ${filePath}`);
   }
 
-  // Validate name pattern
-  const namePattern = /^[a-z][a-z0-9-]*$/;
+  // Validate name pattern - allow letters (upper/lowercase), numbers, and hyphens
+  const namePattern = /^[a-zA-Z][a-zA-Z0-9-]*$/;
   if (!namePattern.test(config.name)) {
     throw new Error(
-      `Invalid subagent name '${config.name}' in ${filePath}. Must start with a letter and contain only lowercase letters, numbers, and hyphens.`,
+      `Invalid subagent name '${config.name}' in ${filePath}. Must start with a letter and contain only letters, numbers, and hyphens.`,
     );
   }
 
@@ -187,7 +187,7 @@ function scanSubagentDirectory(
 }
 
 /**
- * Load all subagent configurations from project and user directories
+ * Load all subagent configurations from project and user directories, plus built-in subagents
  */
 export async function loadSubagentConfigurations(
   workdir: string,
@@ -195,14 +195,17 @@ export async function loadSubagentConfigurations(
   const projectDir = join(workdir, ".wave", "agents");
   const userDir = join(process.env.HOME || "~", ".wave", "agents");
 
+  // Load configurations from all sources
+  const { getBuiltinSubagents } = await import("./builtinSubagents.js");
+  const builtinConfigs = getBuiltinSubagents();
   const projectConfigs = scanSubagentDirectory(projectDir, "project");
   const userConfigs = scanSubagentDirectory(userDir, "user");
 
-  // Merge configurations, with project configs taking precedence
+  // Merge configurations, with project configs taking highest precedence
   const configMap = new Map<string, SubagentConfiguration>();
 
-  // Process in reverse priority order (user first, then project)
-  for (const config of [...userConfigs, ...projectConfigs]) {
+  // Process in reverse priority order (built-in first, then user, then project)
+  for (const config of [...builtinConfigs, ...userConfigs, ...projectConfigs]) {
     configMap.set(config.name, config);
   }
 
