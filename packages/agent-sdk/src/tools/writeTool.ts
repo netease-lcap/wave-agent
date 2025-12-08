@@ -107,6 +107,43 @@ export const writeTool: ToolPlugin = {
         context.addDiffBlock(resolvedPath, diffResult);
       }
 
+      // Permission check after validation/diff but before real operation
+      if (
+        context.permissionManager &&
+        context.permissionMode &&
+        context.permissionMode !== "bypassPermissions"
+      ) {
+        if (context.permissionManager.isRestrictedTool("Write")) {
+          try {
+            const permissionContext = context.permissionManager.createContext(
+              "Write",
+              context.permissionMode,
+              context.canUseToolCallback,
+            );
+            const permissionResult =
+              await context.permissionManager.checkPermission(
+                permissionContext,
+              );
+
+            if (permissionResult.behavior === "deny") {
+              return {
+                success: false,
+                content: "",
+                error:
+                  permissionResult.message ||
+                  "Write operation denied by permission system",
+              };
+            }
+          } catch {
+            return {
+              success: false,
+              content: "",
+              error: "Permission check failed",
+            };
+          }
+        }
+      }
+
       // Write file
       try {
         await writeFile(resolvedPath, content, "utf-8");

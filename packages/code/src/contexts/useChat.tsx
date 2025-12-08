@@ -13,6 +13,7 @@ import type {
   McpServerStatus,
   BackgroundShell,
   SlashCommand,
+  PermissionDecision,
 } from "wave-agent-sdk";
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
@@ -52,6 +53,13 @@ export interface ChatContextType {
   hasSlashCommand: (commandId: string) => boolean;
   // Subagent messages
   subagentMessages: Record<string, Message[]>;
+  // Permission confirmation state
+  isConfirmationVisible: boolean;
+  confirmingTool?: string;
+  showConfirmation: (toolName: string) => Promise<PermissionDecision>;
+  hideConfirmation: () => void;
+  handleConfirmationDecision: (decision: PermissionDecision) => void;
+  handleConfirmationCancel: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -66,9 +74,13 @@ export const useChat = () => {
 
 export interface ChatProviderProps {
   children: React.ReactNode;
+  bypassPermissions?: boolean;
 }
 
-export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
+export const ChatProvider: React.FC<ChatProviderProps> = ({
+  children,
+  bypassPermissions,
+}) => {
   const { restoreSessionId, continueLastSession } = useAppConfig();
 
   // Message Display State
@@ -99,20 +111,40 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     Record<string, Message[]>
   >({});
 
+  // Confirmation state with queue-based architecture
+  const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
+  const [confirmingTool, setConfirmingTool] = useState<string | undefined>();
+  const [confirmationQueue, setConfirmationQueue] = useState<
+    Array<{
+      toolName: string;
+      resolver: (decision: PermissionDecision) => void;
+      reject: () => void;
+    }>
+  >([]);
+  const [currentConfirmation, setCurrentConfirmation] = useState<{
+    toolName: string;
+    resolver: (decision: PermissionDecision) => void;
+    reject: () => void;
+  } | null>(null);
+
   const agentRef = useRef<Agent | null>(null);
 
-  // Listen for Ctrl+O hotkey to toggle collapse/expand state
-  useInput((input, key) => {
-    if (key.ctrl && input === "o") {
-      // Clear terminal screen when expanded state changes
-      process.stdout.write("\x1Bc", () => {
-        setIsExpanded((prev) => {
-          const newExpanded = !prev;
-          return newExpanded;
-        });
+  // Permission confirmation methods with queue support
+  const showConfirmation = useCallback(
+    async (toolName: string): Promise<PermissionDecision> => {
+      return new Promise<PermissionDecision>((resolve, reject) => {
+        const queueItem = {
+          toolName,
+          resolver: resolve,
+          reject,
+        };
+
+        setConfirmationQueue((prev) => [...prev, queueItem]);
+        // processNextConfirmation will be called via useEffect
       });
-    }
-  });
+    },
+    [],
+  );
 
   // Initialize AI manager
   useEffect(() => {
@@ -151,11 +183,28 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       };
 
       try {
+        // Create the permission callback inside the try block to access showConfirmation
+        const permissionCallback = bypassPermissions
+          ? undefined
+          : async (toolName: string): Promise<PermissionDecision> => {
+              try {
+                return await showConfirmation(toolName);
+              } catch {
+                // If confirmation was cancelled or failed, deny the operation
+                return {
+                  behavior: "deny",
+                  message: "Operation cancelled by user",
+                };
+              }
+            };
+
         const agent = await Agent.create({
           callbacks,
           restoreSessionId,
           continueLastSession,
           logger,
+          permissionMode: bypassPermissions ? "bypassPermissions" : "default",
+          canUseTool: permissionCallback,
         });
 
         agentRef.current = agent;
@@ -182,7 +231,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     };
 
     initializeAgent();
-  }, [restoreSessionId, continueLastSession]);
+  }, [
+    restoreSessionId,
+    continueLastSession,
+    bypassPermissions,
+    showConfirmation,
+  ]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -304,6 +358,63 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     return agentRef.current.hasSlashCommand(commandId);
   }, []);
 
+  // Queue processing helper
+  const processNextConfirmation = useCallback(() => {
+    if (confirmationQueue.length > 0 && !isConfirmationVisible) {
+      const next = confirmationQueue[0];
+      setCurrentConfirmation(next);
+      setConfirmingTool(next.toolName);
+      setIsConfirmationVisible(true);
+      setConfirmationQueue((prev) => prev.slice(1));
+    }
+  }, [confirmationQueue, isConfirmationVisible]);
+
+  // Process queue when queue changes or confirmation is hidden
+  useEffect(() => {
+    processNextConfirmation();
+  }, [processNextConfirmation]);
+
+  const hideConfirmation = useCallback(() => {
+    setIsConfirmationVisible(false);
+    setConfirmingTool(undefined);
+    setCurrentConfirmation(null);
+  }, []);
+
+  const handleConfirmationDecision = useCallback(
+    (decision: PermissionDecision) => {
+      if (currentConfirmation) {
+        currentConfirmation.resolver(decision);
+      }
+      hideConfirmation();
+    },
+    [currentConfirmation, hideConfirmation],
+  );
+
+  const handleConfirmationCancel = useCallback(() => {
+    if (currentConfirmation) {
+      currentConfirmation.reject();
+    }
+    hideConfirmation();
+  }, [currentConfirmation, hideConfirmation]);
+
+  // Listen for Ctrl+O hotkey to toggle collapse/expand state and ESC to cancel confirmation
+  useInput((input, key) => {
+    if (key.ctrl && input === "o") {
+      // Clear terminal screen when expanded state changes
+      process.stdout.write("\x1Bc", () => {
+        setIsExpanded((prev) => {
+          const newExpanded = !prev;
+          return newExpanded;
+        });
+      });
+    }
+
+    // Handle ESC key to cancel confirmation
+    if (key.escape && isConfirmationVisible) {
+      handleConfirmationCancel();
+    }
+  });
+
   const contextValue: ChatContextType = {
     messages,
     isLoading,
@@ -325,6 +436,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
     slashCommands,
     hasSlashCommand,
     subagentMessages,
+    isConfirmationVisible,
+    confirmingTool,
+    showConfirmation,
+    hideConfirmation,
+    handleConfirmationDecision,
+    handleConfirmationCancel,
   };
 
   return (

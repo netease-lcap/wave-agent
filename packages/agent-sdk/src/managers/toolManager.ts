@@ -13,27 +13,47 @@ import { todoWriteTool } from "../tools/todoWriteTool.js";
 import { createTaskTool } from "../tools/taskTool.js";
 import { createSkillTool } from "../tools/skillTool.js";
 import { McpManager } from "./mcpManager.js";
+import { PermissionManager } from "./permissionManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
-import type { Logger } from "../types/index.js";
+import type {
+  Logger,
+  PermissionMode,
+  PermissionCallback,
+} from "../types/index.js";
 import type { SubagentManager } from "./subagentManager.js";
 import type { SkillManager } from "./skillManager.js";
 
 export interface ToolManagerOptions {
   mcpManager: McpManager;
   logger?: Logger;
+  /** Optional permission manager for handling tool permission checks */
+  permissionManager?: PermissionManager;
+  /** Permission mode for tool execution (defaults to "default") */
+  permissionMode?: PermissionMode;
+  /** Custom permission callback for tool usage */
+  canUseToolCallback?: PermissionCallback;
 }
 
 /**
  * Tool Manager
+ *
+ * Manages tool registration and execution with optional permission system integration.
+ * Supports both built-in tools and MCP (Model Context Protocol) tools.
  */
 class ToolManager {
   private tools = new Map<string, ToolPlugin>();
   private mcpManager: McpManager;
   private logger?: Logger;
+  private permissionManager?: PermissionManager;
+  private permissionMode: PermissionMode;
+  private canUseToolCallback?: PermissionCallback;
 
   constructor(options: ToolManagerOptions) {
     this.mcpManager = options.mcpManager;
     this.logger = options.logger;
+    this.permissionManager = options.permissionManager;
+    this.permissionMode = options.permissionMode || "default";
+    this.canUseToolCallback = options.canUseToolCallback;
   }
 
   /**
@@ -101,22 +121,58 @@ class ToolManager {
     }
   }
 
+  /**
+   * Execute a tool by name with the provided arguments and context
+   *
+   * Enhances the context with permission-related fields before execution:
+   * - permissionMode: The current permission mode (default or bypassPermissions)
+   * - canUseToolCallback: Custom permission callback if provided
+   * - permissionManager: The PermissionManager instance for permission checks
+   *
+   * @param name - Name of the tool to execute
+   * @param args - Arguments to pass to the tool
+   * @param context - Execution context for the tool
+   * @returns Promise resolving to the tool execution result
+   */
   async execute(
     name: string,
     args: Record<string, unknown>,
     context: ToolContext,
   ): Promise<ToolResult> {
+    // Enhance context with permission-related fields
+    const enhancedContext: ToolContext = {
+      ...context,
+      permissionMode: this.permissionMode,
+      canUseToolCallback: this.canUseToolCallback,
+      permissionManager: this.permissionManager,
+    };
+
+    this.logger?.debug("Executing tool with enhanced context", {
+      toolName: name,
+      permissionMode: this.permissionMode,
+      hasPermissionManager: !!this.permissionManager,
+      hasPermissionCallback: !!this.canUseToolCallback,
+    });
+
     // Check if it's an MCP tool first
     if (this.mcpManager.isMcpTool(name)) {
-      return this.mcpManager.executeMcpToolByRegistry(name, args, context);
+      return this.mcpManager.executeMcpToolByRegistry(
+        name,
+        args,
+        enhancedContext,
+      );
     }
 
     // Check built-in tools
     const plugin = this.tools.get(name);
     if (plugin) {
       try {
-        return await plugin.execute(args, context);
+        return await plugin.execute(args, enhancedContext);
       } catch (error) {
+        this.logger?.error("Tool execution failed", {
+          toolName: name,
+          error: error instanceof Error ? error.message : String(error),
+        });
         return {
           success: false,
           content: "",
@@ -125,6 +181,7 @@ class ToolManager {
       }
     }
 
+    this.logger?.warn("Tool not found", { toolName: name });
     return {
       success: false,
       content: "",

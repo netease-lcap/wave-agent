@@ -16,6 +16,7 @@ import {
   type BackgroundBashManagerCallbacks,
 } from "./managers/backgroundBashManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
+import { PermissionManager } from "./managers/permissionManager.js";
 import type { SlashCommand, CustomSlashCommand } from "./types/index.js";
 import type {
   Message,
@@ -24,6 +25,8 @@ import type {
   GatewayConfig,
   ModelConfig,
   Usage,
+  PermissionMode,
+  PermissionCallback,
 } from "./types/index.js";
 import { HookManager } from "./managers/hookManager.js";
 import { MemoryStoreService } from "./services/memoryStore.js";
@@ -65,6 +68,10 @@ export interface AgentOptions {
   workdir?: string;
   /**Optional custom system prompt - if provided, replaces default system prompt */
   systemPrompt?: string;
+  /**Permission mode - defaults to "default" */
+  permissionMode?: PermissionMode;
+  /**Custom permission callback */
+  canUseTool?: PermissionCallback;
 }
 
 export interface AgentCallbacks
@@ -82,6 +89,7 @@ export class Agent {
   private logger?: Logger; // Add optional logger property
   private toolManager: ToolManager; // Add tool registry instance
   private mcpManager: McpManager; // Add MCP manager instance
+  private permissionManager: PermissionManager; // Add permission manager instance
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private hookManager: HookManager; // Add hooks manager instance
@@ -181,10 +189,18 @@ export class Agent {
       workdir: this.workdir,
     });
     this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
+
+    // Initialize permission manager
+    this.permissionManager = new PermissionManager({ logger: this.logger });
+
+    // Initialize tool manager with permission context
     this.toolManager = new ToolManager({
       mcpManager: this.mcpManager,
       logger: this.logger,
-    }); // Initialize tool registry, pass MCP manager
+      permissionManager: this.permissionManager,
+      permissionMode: options.permissionMode || "default",
+      canUseToolCallback: options.canUseTool,
+    }); // Initialize tool registry with permission support
 
     this.memoryStore = new MemoryStoreService(this.logger); // Initialize memory store service
     initializeMemoryStore(this.memoryStore); // Initialize global memory store reference

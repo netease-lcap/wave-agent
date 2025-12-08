@@ -6,10 +6,11 @@ import { cleanupLogs } from "./utils/logger.js";
 export interface CliOptions {
   restoreSessionId?: string;
   continueLastSession?: boolean;
+  bypassPermissions?: boolean;
 }
 
 export async function startCli(options: CliOptions): Promise<void> {
-  const { restoreSessionId, continueLastSession } = options;
+  const { restoreSessionId, continueLastSession, bypassPermissions } = options;
 
   // Continue with ink-based UI for normal mode
   // Global cleanup tracker
@@ -63,6 +64,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     <App
       restoreSessionId={restoreSessionId}
       continueLastSession={continueLastSession}
+      bypassPermissions={bypassPermissions}
     />,
   );
 

@@ -6,11 +6,14 @@ import { AppProvider } from "../contexts/useAppConfig.js";
 interface AppProps {
   restoreSessionId?: string;
   continueLastSession?: boolean;
+  bypassPermissions?: boolean;
 }
 
-const AppWithProviders: React.FC = () => {
+const AppWithProviders: React.FC<{ bypassPermissions?: boolean }> = ({
+  bypassPermissions,
+}) => {
   return (
-    <ChatProvider>
+    <ChatProvider bypassPermissions={bypassPermissions}>
       <ChatInterface />
     </ChatProvider>
   );
@@ -19,13 +22,14 @@ const AppWithProviders: React.FC = () => {
 export const App: React.FC<AppProps> = ({
   restoreSessionId,
   continueLastSession,
+  bypassPermissions,
 }) => {
   return (
     <AppProvider
       restoreSessionId={restoreSessionId}
       continueLastSession={continueLastSession}
     >
-      <AppWithProviders />
+      <AppWithProviders bypassPermissions={bypassPermissions} />
     </AppProvider>
   );
 };

@@ -23,3 +23,4 @@ export * from "./skills.js";
 export * from "./config.js";
 export * from "./session.js";
 export * from "./environment.js";
+export * from "./permissions.js";

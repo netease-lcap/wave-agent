@@ -46,6 +46,43 @@ export const deleteFileTool: ToolPlugin = {
     try {
       const filePath = resolvePath(targetFile, context.workdir);
 
+      // Permission check after validation but before real operation
+      if (
+        context.permissionManager &&
+        context.permissionMode &&
+        context.permissionMode !== "bypassPermissions"
+      ) {
+        if (context.permissionManager.isRestrictedTool("Delete")) {
+          try {
+            const permissionContext = context.permissionManager.createContext(
+              "Delete",
+              context.permissionMode,
+              context.canUseToolCallback,
+            );
+            const permissionResult =
+              await context.permissionManager.checkPermission(
+                permissionContext,
+              );
+
+            if (permissionResult.behavior === "deny") {
+              return {
+                success: false,
+                content: "",
+                error:
+                  permissionResult.message ||
+                  "Delete operation denied by permission system",
+              };
+            }
+          } catch {
+            return {
+              success: false,
+              content: "",
+              error: "Permission check failed",
+            };
+          }
+        }
+      }
+
       // Delete file
       await unlink(filePath);
 

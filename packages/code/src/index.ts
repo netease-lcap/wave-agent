@@ -29,6 +29,11 @@ export async function main() {
       description: "List all available sessions",
       type: "boolean",
     })
+    .option("dangerously-skip-permissions", {
+      description: "Skip all permission checks (dangerous)",
+      type: "boolean",
+      default: false,
+    })
     .version()
     .alias("v", "version")
     .example("$0", "Start CLI with default settings")
@@ -92,6 +97,7 @@ export async function main() {
   await startCli({
     restoreSessionId: argv.restore,
     continueLastSession: argv.continue,
+    bypassPermissions: argv.dangerouslySkipPermissions,
   });
 }
 
