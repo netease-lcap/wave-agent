@@ -185,10 +185,18 @@ export class SubagentManager {
       getModelConfig: () => {
         // Determine model dynamically each time
         const parentModelConfig = this.getModelConfig();
-        const modelToUse =
-          configuration.model && configuration.model !== "inherit"
-            ? configuration.model
-            : parentModelConfig.agentModel;
+        let modelToUse: string;
+
+        if (!configuration.model || configuration.model === "inherit") {
+          // Use parent's agentModel for "inherit" or undefined
+          modelToUse = parentModelConfig.agentModel;
+        } else if (configuration.model === "fastModel") {
+          // Use parent's fastModel for special "fastModel" value
+          modelToUse = parentModelConfig.fastModel;
+        } else {
+          // Use specific model name
+          modelToUse = configuration.model;
+        }
 
         return {
           ...parentModelConfig,
@@ -285,12 +293,26 @@ export class SubagentManager {
 
       // Execute the AI request with tool restrictions
       // The AIManager will handle abort signals through its own abort controllers
+      // Resolve model name for sendAIMessage
+      let resolvedModel: string | undefined;
+      if (
+        instance.configuration.model &&
+        instance.configuration.model !== "inherit"
+      ) {
+        if (instance.configuration.model === "fastModel") {
+          // Use parent's fastModel for special "fastModel" value
+          const parentModelConfig = this.getModelConfig();
+          resolvedModel = parentModelConfig.fastModel;
+        } else {
+          // Use specific model name
+          resolvedModel = instance.configuration.model;
+        }
+      }
+      // For "inherit" or undefined, resolvedModel remains undefined (uses AIManager default)
+
       const executeAI = instance.aiManager.sendAIMessage({
         allowedTools,
-        model:
-          instance.configuration.model !== "inherit"
-            ? instance.configuration.model
-            : undefined,
+        model: resolvedModel,
       });
 
       try {
@@ -435,10 +457,16 @@ export class SubagentManager {
         const toolManager = this.parentToolManager;
 
         // Determine model to use
-        const modelToUse =
-          configuration.model && configuration.model !== "inherit"
-            ? configuration.model
-            : this.getModelConfig().agentModel;
+        let modelToUse: string;
+        const parentModelConfig = this.getModelConfig();
+
+        if (!configuration.model || configuration.model === "inherit") {
+          modelToUse = parentModelConfig.agentModel;
+        } else if (configuration.model === "fastModel") {
+          modelToUse = parentModelConfig.fastModel;
+        } else {
+          modelToUse = configuration.model;
+        }
 
         // Create AIManager for the restored subagent
         const aiManager = new AIManager({
@@ -451,7 +479,7 @@ export class SubagentManager {
           hookManager: this.hookManager,
           getGatewayConfig: this.getGatewayConfig,
           getModelConfig: () => ({
-            ...this.getModelConfig(),
+            ...parentModelConfig,
             agentModel: modelToUse,
           }),
           getTokenLimit: this.getTokenLimit,
