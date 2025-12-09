@@ -223,7 +223,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           restoreSessionId,
           continueLastSession,
           logger,
-          permissionMode: bypassPermissions ? "bypassPermissions" : "default",
+          permissionMode: bypassPermissions ? "bypassPermissions" : undefined,
           canUseTool: permissionCallback,
         });
 

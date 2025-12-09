@@ -21,6 +21,7 @@ import {
   getUserConfigPaths,
 } from "@/utils/configPaths.js";
 import { loadMergedWaveConfig } from "../services/hook.js";
+import type { WaveConfiguration } from "../types/hooks.js";
 
 export interface LiveConfigManagerOptions {
   workdir: string;
@@ -260,6 +261,13 @@ export class LiveConfigManager {
         `Live Config: Failed to update environment from settings: ${(error as Error).message}`,
       );
     }
+  }
+
+  /**
+   * Get current configuration from the configuration watcher
+   */
+  getCurrentConfiguration(): WaveConfiguration | null {
+    return this.configurationWatcher?.getCurrentConfiguration() || null;
   }
 
   /**

@@ -91,6 +91,7 @@ export async function main() {
       continueLastSession: argv.continue,
       message: argv.print,
       showStats: argv.showStats,
+      bypassPermissions: argv.dangerouslySkipPermissions,
     });
   }
 

@@ -18,13 +18,67 @@ import type { Logger } from "../types/index.js";
 export interface PermissionManagerOptions {
   /** Logger for debugging permission decisions */
   logger?: Logger;
+  /** Configured default permission mode from settings */
+  configuredDefaultMode?: "default" | "bypassPermissions";
 }
 
 export class PermissionManager {
   private logger?: Logger;
+  private configuredDefaultMode?: "default" | "bypassPermissions";
 
   constructor(options: PermissionManagerOptions = {}) {
     this.logger = options.logger;
+    this.configuredDefaultMode = options.configuredDefaultMode;
+  }
+
+  /**
+   * Update the configured default mode (e.g., when configuration reloads)
+   */
+  updateConfiguredDefaultMode(
+    defaultMode?: "default" | "bypassPermissions",
+  ): void {
+    this.logger?.debug("Updating configured default permission mode", {
+      previous: this.configuredDefaultMode,
+      new: defaultMode,
+    });
+    this.configuredDefaultMode = defaultMode;
+  }
+
+  /**
+   * Get the current effective permission mode for tool execution context
+   */
+  getCurrentEffectiveMode(
+    cliPermissionMode?: "default" | "bypassPermissions",
+  ): "default" | "bypassPermissions" {
+    return this.resolveEffectivePermissionMode(cliPermissionMode);
+  }
+
+  /**
+   * Resolve the effective permission mode based on CLI override and configured default
+   */
+  resolveEffectivePermissionMode(
+    cliPermissionMode?: "default" | "bypassPermissions",
+  ): "default" | "bypassPermissions" {
+    // CLI override takes highest precedence
+    if (cliPermissionMode !== undefined) {
+      this.logger?.debug("Using CLI permission mode override", {
+        cliMode: cliPermissionMode,
+        configuredDefault: this.configuredDefaultMode,
+      });
+      return cliPermissionMode;
+    }
+
+    // Use configured default mode if available
+    if (this.configuredDefaultMode !== undefined) {
+      this.logger?.debug("Using configured default permission mode", {
+        configuredDefault: this.configuredDefaultMode,
+      });
+      return this.configuredDefaultMode;
+    }
+
+    // Fall back to system default
+    this.logger?.debug("Using system default permission mode");
+    return "default";
   }
 
   /**

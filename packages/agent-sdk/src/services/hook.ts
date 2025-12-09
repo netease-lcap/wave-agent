@@ -482,6 +482,7 @@ export function loadWaveConfigFromFileWithFallback(
       config: {
         hooks: config.hooks || undefined,
         env: config.env || undefined,
+        defaultMode: config.defaultMode,
       },
       usedFallback: false,
     };
@@ -655,6 +656,8 @@ export function loadMergedWaveConfigWithFallback(
         Object.keys(environmentContext.mergedVars).length > 0
           ? environmentContext.mergedVars
           : undefined,
+      // Project defaultMode takes precedence over user defaultMode
+      defaultMode: projectConfig.defaultMode ?? userConfig.defaultMode,
     };
 
     return { config: mergedConfig, errors, usedFallback };
@@ -709,6 +712,7 @@ export function loadWaveConfigFromFile(
     return {
       hooks: config.hooks || undefined,
       env: config.env || undefined,
+      defaultMode: config.defaultMode,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {

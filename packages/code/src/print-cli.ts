@@ -6,6 +6,7 @@ export interface PrintCliOptions {
   continueLastSession?: boolean;
   message?: string;
   showStats?: boolean;
+  bypassPermissions?: boolean;
 }
 
 function displayTimingInfo(startTime: Date, showStats: boolean): void {
@@ -29,6 +30,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     continueLastSession,
     message,
     showStats = false,
+    bypassPermissions,
   } = options;
 
   if (
@@ -112,6 +114,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       callbacks,
       restoreSessionId,
       continueLastSession,
+      permissionMode: bypassPermissions ? "bypassPermissions" : undefined,
     });
 
     // Send message if provided and not empty
