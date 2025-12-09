@@ -106,6 +106,10 @@ export class Agent {
   // Configuration options storage for dynamic resolution
   private options: AgentOptions;
 
+  // Memory content storage
+  private _projectMemoryContent: string = "";
+  private _userMemoryContent: string = "";
+
   // Dynamic configuration getter methods
   public getGatewayConfig(): GatewayConfig {
     return configResolver.resolveGatewayConfig(
@@ -339,6 +343,31 @@ export class Agent {
   /** Get working directory */
   public get workingDirectory(): string {
     return this.workdir;
+  }
+
+  /** Get project memory content */
+  public get projectMemory(): string {
+    return this._projectMemoryContent;
+  }
+
+  /** Get user memory content */
+  public get userMemory(): string {
+    return this._userMemoryContent;
+  }
+
+  /** Get combined memory content (project + user) */
+  public get combinedMemory(): string {
+    let combined = "";
+    if (this._projectMemoryContent.trim()) {
+      combined += this._projectMemoryContent;
+    }
+    if (this._userMemoryContent.trim()) {
+      if (combined) {
+        combined += "\n\n";
+      }
+      combined += this._userMemoryContent;
+    }
+    return combined;
   }
 
   /** Get AI loading status */
@@ -798,8 +827,12 @@ export class Agent {
     try {
       if (type === "project") {
         await memory.addMemory(message, this.workdir);
+        // Update internal state after successful save
+        this._projectMemoryContent = await memory.readMemoryFile(this.workdir);
       } else {
         await memory.addUserMemory(message);
+        // Update internal state after successful save
+        this._userMemoryContent = await memory.getUserMemoryContent();
       }
 
       // Add successful MemoryBlock to the last assistant message
@@ -815,13 +848,14 @@ export class Agent {
       );
     } catch (error) {
       // Add failed MemoryBlock to the last assistant message
+      const memoryText = message.substring(1).trim();
       const typeLabel = type === "project" ? "Project Memory" : "User Memory";
       const storagePath = type === "project" ? "AGENTS.md" : "user-memory.md";
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
 
       this.messageManager.addMemoryBlock(
-        `${typeLabel} add failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `${typeLabel}: ${memoryText} - Error: ${errorMessage}`,
         false,
         type,
         storagePath,
