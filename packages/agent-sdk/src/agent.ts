@@ -29,8 +29,6 @@ import type {
   PermissionCallback,
 } from "./types/index.js";
 import { HookManager } from "./managers/hookManager.js";
-import { MemoryStoreService } from "./services/memoryStore.js";
-import { initializeMemoryStore } from "./services/memory.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
@@ -99,7 +97,6 @@ export class Agent {
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private hookManager: HookManager; // Add hooks manager instance
-  private memoryStore: MemoryStoreService; // Add memory store service
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private configurationService: ConfigurationService; // Add configuration service
   private workdir: string; // Working directory
@@ -213,20 +210,12 @@ export class Agent {
       canUseToolCallback: options.canUseTool,
     }); // Initialize tool registry with permission support
 
-    this.memoryStore = new MemoryStoreService(this.logger); // Initialize memory store service
-    initializeMemoryStore(this.memoryStore); // Initialize global memory store reference
     this.configurationService = new ConfigurationService(); // Initialize configuration service
-    this.hookManager = new HookManager(
-      this.workdir,
-      undefined,
-      this.logger,
-      this.memoryStore,
-    ); // Initialize hooks manager
+    this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
     this.liveConfigManager = new LiveConfigManager({
       workdir: this.workdir,
       logger: this.logger,
       hookManager: this.hookManager,
-      memoryStore: this.memoryStore,
     }); // Initialize live configuration manager
 
     // Initialize MessageManager
@@ -774,12 +763,6 @@ export class Agent {
       );
     }
     // Cleanup memory store
-    try {
-      this.memoryStore.clear();
-      this.logger?.debug("Memory store cleared successfully");
-    } catch (error) {
-      this.logger?.error("Error clearing memory store:", error);
-    }
   }
 
   public async sendMessage(
@@ -874,12 +857,17 @@ export class Agent {
     type: "project" | "user",
   ): Promise<void> {
     try {
+      // Ensure the message starts with # for memory functions
+      const formattedMessage = message.startsWith("#")
+        ? message
+        : `#${message}`;
+
       if (type === "project") {
-        await memory.addMemory(message, this.workdir);
+        await memory.addMemory(formattedMessage, this.workdir);
         // Update internal state after successful save
         this._projectMemoryContent = await memory.readMemoryFile(this.workdir);
       } else {
-        await memory.addUserMemory(message);
+        await memory.addUserMemory(formattedMessage);
         // Update internal state after successful save
         this._userMemoryContent = await memory.getUserMemoryContent();
       }

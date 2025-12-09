@@ -3,55 +3,134 @@
  *
  * Orchestrates live configuration reload functionality including:
  * - Hook configuration watching and reloading
- * - Memory store management for AGENTS.md files
+ * - Configuration file watching for settings.json files
  * - Coordination between file watchers and configuration updates
  */
 
+import { existsSync } from "fs";
 import type { Logger } from "../types/index.js";
 import {
-  ConfigurationWatcher,
-  type ConfigurationChangeEvent,
-} from "../services/configurationWatcher.js";
-import { MemoryStoreService } from "../services/memoryStore.js";
-import { type FileWatchEvent } from "../services/fileWatcher.js";
-import { join } from "path";
+  FileWatcherService,
+  type FileWatchEvent,
+} from "../services/fileWatcher.js";
 import type { HookManager } from "./hookManager.js";
 import {
   getProjectConfigPaths,
   getUserConfigPaths,
 } from "@/utils/configPaths.js";
-import type { WaveConfiguration } from "../types/hooks.js";
+import type { WaveConfiguration, ValidationResult } from "../types/hooks.js";
+import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { EnvironmentService } from "../services/environmentService.js";
+import type { ConfigurationLoadResult } from "../types/configuration.js";
 
 export interface LiveConfigManagerOptions {
   workdir: string;
   logger?: Logger;
   hookManager?: HookManager;
-  memoryStore?: MemoryStoreService;
 }
 
 export class LiveConfigManager {
   private readonly workdir: string;
   private readonly logger?: Logger;
   private readonly hookManager?: HookManager;
-  private readonly memoryStore?: MemoryStoreService;
-  private configurationWatcher?: ConfigurationWatcher;
   private isInitialized: boolean = false;
   private readonly environmentService: EnvironmentService;
   private readonly configurationService: ConfigurationService;
+
+  // Configuration state
+  private currentConfiguration: WaveConfiguration | null = null;
+  private lastValidConfiguration: WaveConfiguration | null = null;
+
+  // File watching state
+  private fileWatcher: FileWatcherService;
+  private userConfigPaths?: string[];
+  private projectConfigPaths?: string[];
+  private isWatching: boolean = false;
+  private reloadInProgress: boolean = false;
 
   constructor(options: LiveConfigManagerOptions) {
     this.workdir = options.workdir;
     this.logger = options.logger;
     this.hookManager = options.hookManager;
-    this.memoryStore = options.memoryStore;
     this.environmentService = new EnvironmentService({ logger: this.logger });
     this.configurationService = new ConfigurationService();
+    this.fileWatcher = new FileWatcherService(this.logger);
+    this.setupFileWatcherEvents();
   }
 
   /**
-   * Initialize live configuration management
+   * Initialize configuration watching
+   * Maps to FR-004: System MUST watch settings.json files
+   * Supports watching multiple file paths (e.g., settings.local.json and settings.json)
+   */
+  private async initializeWatching(
+    userPaths: string[],
+    projectPaths?: string[],
+  ): Promise<void> {
+    try {
+      this.logger?.info("Live Config: Initializing configuration watching...");
+
+      this.userConfigPaths = userPaths;
+      this.projectConfigPaths = projectPaths;
+
+      // Load initial configuration
+      await this.reloadConfiguration();
+
+      // Start watching user configs that exist
+      for (const userPath of userPaths) {
+        if (existsSync(userPath)) {
+          this.logger?.debug(
+            `Live Config: Starting to watch user config: ${userPath}`,
+          );
+          await this.fileWatcher.watchFile(userPath, (event) =>
+            this.handleFileChange(event, "user"),
+          );
+        } else {
+          this.logger?.debug(
+            `Live Config: User config file does not exist: ${userPath}`,
+          );
+        }
+      }
+
+      // Start watching project configs that exist
+      if (projectPaths) {
+        for (const projectPath of projectPaths) {
+          if (existsSync(projectPath)) {
+            this.logger?.debug(
+              `Live Config: Starting to watch project config: ${projectPath}`,
+            );
+            await this.fileWatcher.watchFile(projectPath, (event) =>
+              this.handleFileChange(event, "project"),
+            );
+          } else {
+            this.logger?.debug(
+              `Live Config: Project config file does not exist: ${projectPath}`,
+            );
+          }
+        }
+      }
+
+      this.isWatching = true;
+      this.logger?.info(
+        "Live Config: Configuration watching initialized successfully",
+      );
+    } catch (error) {
+      const errorMessage = `Failed to initialize configuration watching: ${(error as Error).message}`;
+      this.logger?.error(`Live Config: ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
+   * Get current configuration
+   */
+  getCurrentConfiguration(): WaveConfiguration | null {
+    return this.currentConfiguration ? { ...this.currentConfiguration } : null;
+  }
+
+  /**
+   * Initialize configuration management with file watching
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) {
@@ -60,16 +139,16 @@ export class LiveConfigManager {
     }
 
     try {
-      // Initialize configuration watcher for hook settings
-      await this.initializeConfigurationWatcher();
+      // Get configuration file paths
+      const { userPaths, projectPaths } = this.getConfigurationPaths();
 
-      // Initialize memory store watching for AGENTS.md if available
-      if (this.memoryStore) {
-        await this.initializeMemoryStoreWatching();
-      }
+      // Initialize configuration watching
+      await this.initializeWatching(userPaths, projectPaths);
 
       this.isInitialized = true;
-      this.logger?.info("Live configuration management initialized");
+      this.logger?.info(
+        "Live configuration management initialized with file watching",
+      );
     } catch (error) {
       this.logger?.error(`Failed to initialize: ${(error as Error).message}`);
       throw error;
@@ -77,7 +156,7 @@ export class LiveConfigManager {
   }
 
   /**
-   * Shutdown live configuration management
+   * Shutdown configuration management and cleanup resources
    */
   async shutdown(): Promise<void> {
     if (!this.isInitialized) {
@@ -85,10 +164,16 @@ export class LiveConfigManager {
     }
 
     try {
-      if (this.configurationWatcher) {
-        await this.configurationWatcher.shutdown();
-        this.configurationWatcher = undefined;
-      }
+      this.logger?.info("Live Config: Shutting down configuration manager...");
+
+      this.isWatching = false;
+
+      // Cleanup file watcher
+      await this.fileWatcher.cleanup();
+
+      // Clean up state
+      this.currentConfiguration = null;
+      this.lastValidConfiguration = null;
 
       this.isInitialized = false;
       this.logger?.info("Live configuration management shutdown completed");
@@ -99,192 +184,412 @@ export class LiveConfigManager {
   }
 
   /**
-   * Initialize configuration watcher for hook settings
+   * Reload configuration from files
+   * Maps to FR-008: Continue with previous valid configuration on errors
    */
-  private async initializeConfigurationWatcher(): Promise<void> {
-    if (!this.hookManager) {
-      this.logger?.debug(
-        "No hook manager provided, skipping configuration watching",
-      );
-      return;
+  private async reloadConfiguration(): Promise<WaveConfiguration> {
+    if (this.reloadInProgress) {
+      this.logger?.debug("Live Config: Reload already in progress, skipping");
+      return this.currentConfiguration || {};
     }
 
-    this.configurationWatcher = new ConfigurationWatcher(
-      this.workdir,
-      this.logger,
-    );
-
-    // Set up configuration change handler using EventEmitter pattern
-    this.configurationWatcher.on(
-      "configurationChange",
-      (event: ConfigurationChangeEvent) => {
-        this.handleConfigurationChange(event);
-      },
-    );
-
-    // Initialize watching for user and project settings
-    const { userPaths, projectPaths } = this.getConfigurationPaths();
-    await this.configurationWatcher.initializeWatching(userPaths, projectPaths);
-    this.logger?.info("Configuration watching initialized");
-  }
-
-  /**
-   * Initialize memory store watching for AGENTS.md files
-   */
-  private async initializeMemoryStoreWatching(): Promise<void> {
-    if (!this.memoryStore || !this.configurationWatcher) {
-      this.logger?.debug(
-        "Memory store not available, skipping AGENTS.md watching",
-      );
-      return;
-    }
+    this.reloadInProgress = true;
 
     try {
-      const agentsFilePath = join(this.workdir, "AGENTS.md");
+      this.logger?.debug("Live Config: Reloading configuration from files...");
 
-      // Add AGENTS.md to file watcher
-      await this.configurationWatcher.watchAdditionalFile(
-        agentsFilePath,
-        async (event: FileWatchEvent) => {
-          await this.handleMemoryStoreFileChange(event);
-        },
-      );
+      // Load merged configuration using ConfigurationService
+      const loadResult: ConfigurationLoadResult =
+        await this.configurationService.loadMergedConfiguration(this.workdir);
+      const newConfig = loadResult.configuration;
 
-      this.logger?.info("AGENTS.md file watching initialized");
-    } catch (error) {
-      this.logger?.warn(
-        `Failed to initialize AGENTS.md watching: ${(error as Error).message}`,
-      );
-      // Don't throw - memory optimization is not critical for core functionality
-    }
-  }
+      // Check for errors during loading
+      if (!loadResult.success) {
+        const errorMessage =
+          loadResult.error || "Configuration loading failed with unknown error";
+        this.logger?.error(
+          `Live Config: Configuration loading failed: ${errorMessage}`,
+        );
 
-  /**
-   * Handle configuration change events
-   */
-  private handleConfigurationChange(event: ConfigurationChangeEvent): void {
-    this.logger?.info(
-      `Live Config: Configuration change detected: ${event.type} at ${event.path}`,
-    );
-
-    // Handle configuration errors with clear user feedback
-    if (!event.isValid && event.errorMessage) {
-      this.logger?.error(
-        `Live Config: Configuration error - ${event.errorMessage}`,
-      );
-      this.logger?.warn(
-        "Live Config: System is using previous valid configuration to maintain functionality",
-      );
-      return; // Skip environment update on configuration errors
-    }
-
-    // Load configuration once and use for both environment update and hook manager update
-    this.configurationService
-      .loadMergedConfiguration(this.workdir)
-      .then((configResult) => {
-        if (!configResult.success) {
-          this.logger?.error(
-            `Live Config: Failed to load configuration: ${configResult.error || "Unknown error"}`,
+        // Log warnings if any
+        if (loadResult.warnings && loadResult.warnings.length > 0) {
+          this.logger?.warn(
+            `Live Config: Configuration warnings: ${loadResult.warnings.join("; ")}`,
           );
-          return;
         }
 
-        // Update environment variables if configuration has env section
-        if (configResult.configuration?.env) {
-          this.updateEnvironmentFromConfiguration(
-            configResult.configuration.env,
+        // Use fallback configuration if available
+        if (this.lastValidConfiguration) {
+          this.logger?.info(
+            "Live Config: Using previous valid configuration due to loading errors",
+          );
+          this.currentConfiguration = this.lastValidConfiguration;
+
+          // Apply environment variables if configured
+          if (this.lastValidConfiguration.env) {
+            this.environmentService.applyEnvironmentVariables(
+              this.lastValidConfiguration.env,
+            );
+          }
+
+          // Update hook manager if available
+          if (this.hookManager) {
+            this.hookManager.loadConfigurationFromWaveConfig(
+              this.lastValidConfiguration,
+            );
+          }
+
+          return this.currentConfiguration;
+        } else {
+          this.logger?.warn(
+            "Live Config: No previous valid configuration available, using empty config",
+          );
+          this.currentConfiguration = {};
+          return this.currentConfiguration;
+        }
+      }
+
+      // Log success with detailed information
+      if (newConfig) {
+        this.logger?.info(
+          `Live Config: Configuration loaded successfully from ${loadResult.sourcePath || "merged sources"}`,
+        );
+
+        // Log detailed configuration info
+        const hookCount = Object.keys(newConfig.hooks || {}).length;
+        const envCount = Object.keys(newConfig.env || {}).length;
+        this.logger?.debug(
+          `Live Config: Loaded ${hookCount} hook events and ${envCount} environment variables`,
+        );
+      } else {
+        this.logger?.info(
+          "Live Config: No configuration found (using empty configuration)",
+        );
+      }
+
+      // Log warnings from successful loading
+      if (loadResult.warnings && loadResult.warnings.length > 0) {
+        this.logger?.warn(
+          `Live Config: Configuration warnings: ${loadResult.warnings.join("; ")}`,
+        );
+      }
+
+      // Validate new configuration if it exists
+      if (newConfig) {
+        const validation = this.validateConfiguration(newConfig);
+        if (!validation.valid) {
+          const errorMessage = `Configuration validation failed: ${validation.errors.join(", ")}`;
+          this.logger?.error(`Live Config: ${errorMessage}`);
+
+          // Use previous valid configuration for error recovery
+          if (this.lastValidConfiguration) {
+            this.logger?.info(
+              "Live Config: Using previous valid configuration due to validation errors",
+            );
+            this.currentConfiguration = this.lastValidConfiguration;
+
+            // Apply environment variables if configured
+            if (this.lastValidConfiguration.env) {
+              this.environmentService.applyEnvironmentVariables(
+                this.lastValidConfiguration.env,
+              );
+            }
+
+            // Update hook manager if available
+            if (this.hookManager) {
+              this.hookManager.loadConfigurationFromWaveConfig(
+                this.lastValidConfiguration,
+              );
+            }
+
+            return this.currentConfiguration;
+          } else {
+            this.logger?.warn(
+              "Live Config: No previous valid configuration available, using empty config",
+            );
+            this.currentConfiguration = {};
+            return this.currentConfiguration;
+          }
+        }
+      }
+
+      // Detect changes between old and new configuration
+      this.detectChanges(this.currentConfiguration, newConfig);
+
+      // Update current configuration
+      this.currentConfiguration = newConfig || {};
+
+      // Save as last valid configuration if it's valid and not empty
+      if (newConfig && (newConfig.hooks || newConfig.env)) {
+        this.lastValidConfiguration = { ...newConfig };
+        this.logger?.debug(
+          "Live Config: Saved current configuration as last valid backup",
+        );
+      }
+
+      // Apply environment variables if configured
+      if (this.currentConfiguration.env) {
+        this.environmentService.applyEnvironmentVariables(
+          this.currentConfiguration.env,
+        );
+      }
+
+      // Update hook manager if available
+      if (this.hookManager) {
+        this.hookManager.loadConfigurationFromWaveConfig(
+          this.currentConfiguration,
+        );
+      }
+
+      this.logger?.info(
+        `Live Config: Configuration reload completed successfully with ${Object.keys(newConfig?.hooks || {}).length} event types and ${Object.keys(newConfig?.env || {}).length} environment variables`,
+      );
+
+      return this.currentConfiguration;
+    } catch (error) {
+      const errorMessage = `Configuration reload failed with exception: ${(error as Error).message}`;
+      this.logger?.error(`Live Config: ${errorMessage}`);
+
+      // Use previous valid configuration for error recovery
+      if (this.lastValidConfiguration) {
+        this.logger?.info(
+          "Live Config: Using previous valid configuration due to reload exception",
+        );
+        this.currentConfiguration = this.lastValidConfiguration;
+
+        // Apply environment variables if configured
+        if (this.lastValidConfiguration.env) {
+          this.environmentService.applyEnvironmentVariables(
+            this.lastValidConfiguration.env,
           );
         }
 
         // Update hook manager if available
         if (this.hookManager) {
           this.hookManager.loadConfigurationFromWaveConfig(
-            configResult.configuration,
+            this.lastValidConfiguration,
           );
-          this.logger?.info("Live Config: Configuration reloaded successfully");
         }
-
-        // Log configuration warnings
-        if (configResult.warnings && configResult.warnings.length > 0) {
-          this.logger?.warn(`Live Config: ${configResult.warnings.join("; ")}`);
-        }
-      })
-      .catch((error) => {
-        this.logger?.error(
-          `Live Config: Exception during configuration reload: ${(error as Error).message}`,
+      } else {
+        this.logger?.warn(
+          "Live Config: No previous valid configuration available, using empty config",
         );
-      });
+        this.currentConfiguration = {};
+      }
+
+      return this.currentConfiguration;
+    } finally {
+      this.reloadInProgress = false;
+    }
   }
 
   /**
-   * Handle AGENTS.md file change events
+   * Reload configuration from files (public method)
    */
-  private async handleMemoryStoreFileChange(
+  async reload(): Promise<WaveConfiguration> {
+    this.logger?.info("Manually reloading configuration...");
+    return await this.reloadConfiguration();
+  }
+
+  /**
+   * Check if watching is active
+   */
+  isWatchingActive(): boolean {
+    return this.isWatching;
+  }
+
+  /**
+   * Get watcher status for monitoring
+   */
+  getWatcherStatus() {
+    const statuses = this.fileWatcher.getAllWatcherStatuses();
+    return {
+      isActive: this.isWatching,
+      configurationLoaded: this.currentConfiguration !== null,
+      hasValidConfiguration: this.lastValidConfiguration !== null,
+      reloadInProgress: this.reloadInProgress,
+      watchedFiles: statuses.map((s) => ({
+        path: s.path,
+        isActive: s.isActive,
+        method: s.method,
+        errorCount: s.errorCount,
+      })),
+    };
+  }
+
+  private setupFileWatcherEvents(): void {
+    this.fileWatcher.on("watcherError", (error: Error) => {
+      this.logger?.error(`Live Config: File watcher error: ${error.message}`);
+    });
+  }
+
+  private async handleFileChange(
     event: FileWatchEvent,
+    source: "user" | "project",
   ): Promise<void> {
-    if (!this.memoryStore) {
-      return;
-    }
+    this.logger?.debug(
+      `Live Config: File ${event.type} detected for ${source} config: ${event.path}`,
+    );
 
     try {
-      this.logger?.debug(`Live Config: AGENTS.md ${event.type} detected`);
-
+      // Handle file deletion
       if (event.type === "delete") {
-        this.memoryStore.removeContent(event.path);
-      } else {
-        await this.memoryStore.updateContent(event.path);
+        this.logger?.info(
+          `Live Config: ${source} config file deleted: ${event.path}`,
+        );
+        // Reload configuration without the deleted file
+        await this.reloadConfiguration();
+        return;
+      }
+
+      // Handle file creation or modification
+      if (event.type === "change" || event.type === "create") {
+        this.logger?.info(
+          `Live Config: ${source} config file ${event.type}: ${event.path}`,
+        );
+
+        // Add small delay to ensure file write is complete
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Reload configuration
+        await this.reloadConfiguration();
       }
     } catch (error) {
       this.logger?.error(
-        `Live Config: Failed to handle AGENTS.md file change: ${(error as Error).message}`,
+        `Live Config: Error handling file change for ${source} config: ${(error as Error).message}`,
       );
     }
   }
 
   /**
-   * Get initialization status
+   * Validate configuration structure and content
    */
-  get initialized(): boolean {
-    return this.isInitialized;
+  private validateConfiguration(config: WaveConfiguration): ValidationResult {
+    const errors: string[] = [];
+
+    if (!config || typeof config !== "object") {
+      return { valid: false, errors: ["Configuration must be an object"] };
+    }
+
+    // Validate defaultMode if present
+    if (config.defaultMode !== undefined) {
+      if (
+        config.defaultMode !== "default" &&
+        config.defaultMode !== "bypassPermissions"
+      ) {
+        errors.push(
+          `Invalid defaultMode: "${config.defaultMode}". Must be "default" or "bypassPermissions"`,
+        );
+      }
+    }
+
+    // Validate hooks if present
+    if (config.hooks) {
+      if (typeof config.hooks !== "object") {
+        errors.push("hooks property must be an object");
+      } else {
+        // Validate each hook event
+        for (const [eventName, eventConfigs] of Object.entries(config.hooks)) {
+          // Validate event name
+          if (!isValidHookEvent(eventName)) {
+            errors.push(`Invalid hook event: ${eventName}`);
+            continue;
+          }
+
+          // Validate event configurations
+          if (!Array.isArray(eventConfigs)) {
+            errors.push(
+              `Hook event ${eventName} must be an array of configurations`,
+            );
+            continue;
+          }
+
+          eventConfigs.forEach((eventConfig, index) => {
+            if (!isValidHookEventConfig(eventConfig)) {
+              errors.push(
+                `Invalid hook event configuration at ${eventName}[${index}]`,
+              );
+            }
+          });
+        }
+      }
+    }
+
+    // Validate environment variables if present
+    if (config.env) {
+      if (typeof config.env !== "object" || Array.isArray(config.env)) {
+        errors.push("env property must be an object");
+      } else {
+        for (const [key, value] of Object.entries(config.env)) {
+          if (typeof key !== "string" || key.trim() === "") {
+            errors.push(`Invalid environment variable key: ${key}`);
+          }
+          if (typeof value !== "string") {
+            errors.push(`Environment variable ${key} must have a string value`);
+          }
+        }
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
   }
 
-  /**
-   * Update process.env from provided environment configuration
-   */
-  private updateEnvironmentFromConfiguration(
-    envConfig: Record<string, string>,
-  ): void {
-    // Process environment variables using EnvironmentService
-    const result = this.environmentService.processEnvironmentConfig(envConfig);
+  private detectChanges(
+    oldConfig: WaveConfiguration | null,
+    newConfig: WaveConfiguration | null,
+  ): {
+    added: string[];
+    modified: string[];
+    removed: string[];
+  } {
+    const added: string[] = [];
+    const modified: string[] = [];
+    const removed: string[] = [];
 
-    // Handle conflicts and warnings
-    if (result.conflicts.length > 0) {
-      this.logger?.warn(
-        `Live Config: ${result.conflicts.length} environment variable conflicts resolved`,
-      );
+    // Handle environment variables changes
+    const oldEnv = oldConfig?.env || {};
+    const newEnv = newConfig?.env || {};
+
+    for (const key of Object.keys(newEnv)) {
+      if (!(key in oldEnv)) {
+        added.push(`env.${key}`);
+      } else if (oldEnv[key] !== newEnv[key]) {
+        modified.push(`env.${key}`);
+      }
     }
 
-    if (result.warnings.length > 0) {
-      this.logger?.warn(
-        `Live Config: ${result.warnings.length} environment variable warnings`,
-      );
+    for (const key of Object.keys(oldEnv)) {
+      if (!(key in newEnv)) {
+        removed.push(`env.${key}`);
+      }
     }
 
-    if (result.applied) {
-      const varCount = Object.keys(result.processedVars).length;
-      this.logger?.info(
-        `Live Config: Environment variables updated (${varCount} variables)`,
-      );
-    } else {
-      this.logger?.error("Live Config: Failed to apply environment variables");
-    }
-  }
+    // Handle hooks changes (simplified)
+    const oldHooks = oldConfig?.hooks || {};
+    const newHooks = newConfig?.hooks || {};
 
-  /**
-   * Get current configuration from the configuration watcher
-   */
-  getCurrentConfiguration(): WaveConfiguration | null {
-    return this.configurationWatcher?.getCurrentConfiguration() || null;
+    for (const event of Object.keys(newHooks)) {
+      if (isValidHookEvent(event)) {
+        if (!(event in oldHooks)) {
+          added.push(`hooks.${event}`);
+        } else if (
+          JSON.stringify(oldHooks[event]) !== JSON.stringify(newHooks[event])
+        ) {
+          modified.push(`hooks.${event}`);
+        }
+      }
+    }
+
+    for (const event of Object.keys(oldHooks)) {
+      if (isValidHookEvent(event) && !(event in newHooks)) {
+        removed.push(`hooks.${event}`);
+      }
+    }
+
+    return { added, modified, removed };
   }
 
   /**
