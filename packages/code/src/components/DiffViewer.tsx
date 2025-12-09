@@ -5,7 +5,6 @@ import type { DiffBlock } from "wave-agent-sdk";
 
 interface DiffViewerProps {
   block: DiffBlock;
-  isStatic?: boolean;
 }
 
 // Render word-level diff
@@ -46,10 +45,7 @@ const renderWordLevelDiff = (removedLine: string, addedLine: string) => {
   return { removedParts, addedParts };
 };
 
-export const DiffViewer: React.FC<DiffViewerProps> = ({
-  block,
-  isStatic = true,
-}) => {
+export const DiffViewer: React.FC<DiffViewerProps> = ({ block }) => {
   const { diffResult } = block;
 
   const diffLines = useMemo(() => {
@@ -249,20 +245,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     return lines;
   }, [diffResult]);
 
-  // Truncate to last 10 lines for non-static items
-  const displayLines = useMemo(() => {
-    if (isStatic) {
-      return diffLines;
-    }
-
-    const MAX_LINES = 10;
-    if (diffLines.length <= MAX_LINES) {
-      return diffLines;
-    }
-
-    return diffLines.slice(-MAX_LINES);
-  }, [diffLines, isStatic]);
-
   if (!diffResult || diffResult.length === 0) {
     return (
       <Box flexDirection="column">
@@ -276,7 +258,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({
     <Box flexDirection="column">
       <Box flexDirection="column">
         <Box flexDirection="column">
-          {displayLines.map((line, index) => {
+          {diffLines.map((line, index) => {
             // If has word-level diff, render special effects
             if (line.wordDiff) {
               const prefix = line.type === "removed" ? "- " : "+ ";

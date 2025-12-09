@@ -63,9 +63,7 @@ export const MessageItem = ({
               </Box>
             )}
 
-            {block.type === "diff" && (
-              <DiffViewer block={block} isStatic={isStatic} />
-            )}
+            {block.type === "diff" && <DiffViewer block={block} />}
 
             {block.type === "command_output" && (
               <CommandOutputDisplay block={block} isExpanded={isExpanded} />
