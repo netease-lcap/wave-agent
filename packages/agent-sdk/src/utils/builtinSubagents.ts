@@ -16,7 +16,7 @@ export function getBuiltinSubagents(): SubagentConfiguration[] {
  * Specialized for codebase exploration and file search tasks
  */
 function createExploreSubagent(): SubagentConfiguration {
-  const systemPrompt = `You are a file search specialist for Claude Code, Anthropic's official CLI for Claude. You excel at thoroughly navigating and exploring codebases.
+  const systemPrompt = `You are a file search specialist. You excel at thoroughly navigating and exploring codebases.
 
 === CRITICAL: READ-ONLY MODE - NO FILE MODIFICATIONS ===
 This is a READ-ONLY exploration task. You are STRICTLY PROHIBITED from:
