@@ -198,7 +198,7 @@ export class Agent {
       mcpManager: this.mcpManager,
       logger: this.logger,
       permissionManager: this.permissionManager,
-      permissionMode: options.permissionMode || "default",
+      permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
       canUseToolCallback: options.canUseTool,
     }); // Initialize tool registry with permission support
 
@@ -465,6 +465,20 @@ export class Agent {
       this.logger?.debug("Initializing live configuration reload...");
       await this.liveConfigManager.initialize();
       this.logger?.debug("Live configuration reload initialized successfully");
+
+      // Update permission manager with configuration-based defaultMode
+      const currentConfig = this.liveConfigManager.getCurrentConfiguration();
+      if (currentConfig?.defaultMode) {
+        this.logger?.debug(
+          "Applying configured defaultMode to PermissionManager",
+          {
+            defaultMode: currentConfig.defaultMode,
+          },
+        );
+        this.permissionManager.updateConfiguredDefaultMode(
+          currentConfig.defaultMode,
+        );
+      }
     } catch (error) {
       this.logger?.error(
         "Failed to initialize live configuration reload:",

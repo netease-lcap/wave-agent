@@ -484,6 +484,18 @@ export class ConfigurationWatcher
       return { valid: false, errors: ["Configuration must be an object"] };
     }
 
+    // Validate defaultMode if present
+    if (config.defaultMode !== undefined) {
+      if (
+        config.defaultMode !== "default" &&
+        config.defaultMode !== "bypassPermissions"
+      ) {
+        errors.push(
+          `Invalid defaultMode: "${config.defaultMode}". Must be "default" or "bypassPermissions"`,
+        );
+      }
+    }
+
     // Validate hooks if present
     if (config.hooks) {
       if (typeof config.hooks !== "object") {

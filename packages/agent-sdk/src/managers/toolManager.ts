@@ -45,14 +45,15 @@ class ToolManager {
   private mcpManager: McpManager;
   private logger?: Logger;
   private permissionManager?: PermissionManager;
-  private permissionMode: PermissionMode;
+  private permissionMode?: PermissionMode;
   private canUseToolCallback?: PermissionCallback;
 
   constructor(options: ToolManagerOptions) {
     this.mcpManager = options.mcpManager;
     this.logger = options.logger;
     this.permissionManager = options.permissionManager;
-    this.permissionMode = options.permissionMode || "default";
+    // Store CLI permission mode, let PermissionManager resolve effective mode
+    this.permissionMode = options.permissionMode;
     this.canUseToolCallback = options.canUseToolCallback;
   }
 
@@ -139,17 +140,23 @@ class ToolManager {
     args: Record<string, unknown>,
     context: ToolContext,
   ): Promise<ToolResult> {
+    // Resolve effective permission mode (CLI override > configuration > default)
+    const effectivePermissionMode = this.permissionManager
+      ? this.permissionManager.getCurrentEffectiveMode(this.permissionMode)
+      : this.permissionMode || "default";
+
     // Enhance context with permission-related fields
     const enhancedContext: ToolContext = {
       ...context,
-      permissionMode: this.permissionMode,
+      permissionMode: effectivePermissionMode,
       canUseToolCallback: this.canUseToolCallback,
       permissionManager: this.permissionManager,
     };
 
     this.logger?.debug("Executing tool with enhanced context", {
       toolName: name,
-      permissionMode: this.permissionMode,
+      cliPermissionMode: this.permissionMode,
+      effectivePermissionMode,
       hasPermissionManager: !!this.permissionManager,
       hasPermissionCallback: !!this.canUseToolCallback,
     });
