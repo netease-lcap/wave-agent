@@ -1,27 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
-import { MemoryStoreService } from "./memoryStore.js";
 import { logger } from "../utils/globalLogger.js";
-
-// Global memory store instance for project memory files
-let globalMemoryStore: MemoryStoreService | null = null;
-
-/**
- * Initialize global memory store
- */
-export const initializeMemoryStore = (
-  memoryStore: MemoryStoreService,
-): void => {
-  globalMemoryStore = memoryStore;
-};
-
-/**
- * Get current memory store instance
- */
-export const getMemoryStore = (): MemoryStoreService | null => {
-  return globalMemoryStore;
-};
 
 // Project memory related methods
 export const isMemoryMessage = (message: string): boolean => {
@@ -64,20 +44,6 @@ export const addMemory = async (
 
     // Write file
     await fs.writeFile(memoryFilePath, updatedContent, "utf-8");
-
-    // Update memory store if available
-    if (globalMemoryStore) {
-      try {
-        await globalMemoryStore.updateContent(memoryFilePath);
-      } catch (error) {
-        logger.warn(
-          `Failed to update memory store for ${memoryFilePath}:`,
-          error,
-        );
-      }
-    } else {
-      logger.debug("No global memory store available, skipping store update");
-    }
 
     logger.debug(`Memory added to ${memoryFilePath}:`, message);
   } catch (error) {
@@ -156,34 +122,11 @@ export const getUserMemoryContent = async (): Promise<string> => {
   }
 };
 
-// Read project memory file content with memory store optimization
+// Read project memory file content
 export const readMemoryFile = async (workdir: string): Promise<string> => {
   const memoryFilePath = path.join(workdir, "AGENTS.md");
 
-  // Use memory store if available for optimized access
-  if (globalMemoryStore) {
-    logger.debug("Using memory store for optimized access", { memoryFilePath });
-    try {
-      const content = await globalMemoryStore.getContent(memoryFilePath);
-      logger.debug("Memory content retrieved from store successfully", {
-        memoryFilePath,
-        contentLength: content.length,
-      });
-      return content;
-    } catch (error) {
-      // Fallback to direct file access on memory store error
-      logger.warn(
-        `Memory store access failed for ${memoryFilePath}, falling back to file system:`,
-        error,
-      );
-    }
-  } else {
-    logger.debug("No memory store available, using direct file access", {
-      memoryFilePath,
-    });
-  }
-
-  // Fallback to direct file access (original behavior)
+  // Direct file access
   try {
     const content = await fs.readFile(memoryFilePath, "utf-8");
     logger.debug("Memory file read successfully via direct file access", {

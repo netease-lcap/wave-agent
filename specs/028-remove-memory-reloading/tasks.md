@@ -123,12 +123,12 @@
 
 ### Implementation for User Story 4
 
-- [ ] T033 [US4] Move ConfigurationWatcher private state to LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [ ] T034 [US4] Integrate ConfigurationWatcher core methods as private methods in LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts  
-- [ ] T035 [US4] Update LiveConfigManager.initialize() to handle configuration watching directly in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [ ] T036 [US4] Remove memory file watching functionality from LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [ ] T037 [US4] Delete packages/agent-sdk/src/services/configurationWatcher.ts file
-- [ ] T038 [US4] Update imports and references to use merged LiveConfigManager in packages/agent-sdk/src
+- [X] T033 [US4] Move ConfigurationWatcher private state to LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
+- [X] T034 [US4] Integrate ConfigurationWatcher core methods as private methods in LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts  
+- [X] T035 [US4] Update LiveConfigManager.initialize() to handle configuration watching directly in packages/agent-sdk/src/managers/liveConfigManager.ts
+- [X] T036 [US4] Remove memory file watching functionality from LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
+- [X] T037 [US4] Delete packages/agent-sdk/src/services/configurationWatcher.ts file
+- [X] T038 [US4] Update imports and references to use merged LiveConfigManager in packages/agent-sdk/src
 
 **Checkpoint**: At this point, configuration management should be consolidated with settings watching preserved but memory watching removed
 

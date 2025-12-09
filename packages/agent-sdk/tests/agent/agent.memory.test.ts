@@ -1,9 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/agent.js";
-import * as fs from "fs/promises";
+import { promises as fs } from "fs";
+import * as fsPromises from "fs/promises";
+import type { PathLike } from "fs";
+import type { FileHandle } from "fs/promises";
+import type { URL } from "url";
 
-// Mock fs operations
+// Mock both fs import patterns
+vi.mock("fs", () => ({
+  promises: {
+    rm: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    access: vi.fn(),
+    mkdir: vi.fn(),
+    readdir: vi.fn(),
+    stat: vi.fn(),
+  },
+}));
+
 vi.mock("fs/promises", () => ({
   rm: vi.fn(),
   readFile: vi.fn(),
@@ -39,18 +55,39 @@ describe("Agent Memory Functionality", () => {
   let mockCallbacks: AgentCallbacks;
   let mockTempDir: string;
 
+  // Helper to set up fs mocks for both import patterns
+  const setupFsMock = (
+    implementation: (
+      ...args: Parameters<typeof fs.readFile>
+    ) => Promise<string | Buffer>,
+  ) => {
+    vi.mocked(fs.readFile).mockImplementation(implementation);
+    vi.mocked(fsPromises.readFile).mockImplementation(implementation);
+  };
+
   beforeEach(async () => {
     // Set up mock directory path
     mockTempDir = "/mock/tmp/memory-test-123";
 
-    // Setup fs mock implementations
+    // Setup fs mock implementations for both import patterns
     vi.mocked(fs.rm).mockResolvedValue(undefined);
     vi.mocked(fs.access).mockResolvedValue(undefined);
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
     vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue("[]");
+    vi.mocked(fs.readFile).mockResolvedValue(""); // Default to empty string for files
     vi.mocked(fs.readdir).mockResolvedValue([]);
     vi.mocked(fs.stat).mockResolvedValue({
+      isFile: () => true,
+    } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+
+    // Mock fs/promises as well
+    vi.mocked(fsPromises.rm).mockResolvedValue(undefined);
+    vi.mocked(fsPromises.access).mockResolvedValue(undefined);
+    vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
+    vi.mocked(fsPromises.readFile).mockResolvedValue(""); // Default to empty string for files
+    vi.mocked(fsPromises.readdir).mockResolvedValue([]);
+    vi.mocked(fsPromises.stat).mockResolvedValue({
       isFile: () => true,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
@@ -72,15 +109,21 @@ describe("Agent Memory Functionality", () => {
       const projectMemoryContent =
         "# Memory\n\nProject-specific important information\n- Key project detail\n";
 
-      vi.mocked(fs.readFile).mockImplementation((path) => {
-        if (path.toString().includes("AGENTS.md")) {
-          return Promise.resolve(projectMemoryContent);
-        }
-        if (path.toString().includes("user-memory.md")) {
-          return Promise.resolve("# User Memory\n\nUser-level preferences\n");
-        }
-        return Promise.resolve("[]");
-      });
+      // Set up mock for both fs import patterns
+      const mockImplementation = vi
+        .fn()
+        .mockImplementation((path: PathLike | FileHandle) => {
+          if (path.toString().includes("AGENTS.md")) {
+            return Promise.resolve(projectMemoryContent);
+          }
+          if (path.toString().includes("user-memory.md")) {
+            return Promise.resolve("# User Memory\n\nUser-level preferences\n");
+          }
+          return Promise.resolve("");
+        });
+
+      setupFsMock(mockImplementation);
+      vi.mocked(fsPromises.readFile).mockImplementation(mockImplementation);
 
       const agent = await Agent.create({
         workdir: mockTempDir,
@@ -98,14 +141,14 @@ describe("Agent Memory Functionality", () => {
       const userMemoryContent =
         "# User Memory\n\nUser-level preferences\n- User setting 1\n- User setting 2\n";
 
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           return Promise.resolve("# Memory\n\nProject memory\n");
         }
         if (path.toString().includes("user-memory.md")) {
           return Promise.resolve(userMemoryContent);
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -121,7 +164,7 @@ describe("Agent Memory Functionality", () => {
 
     it("should initialize with empty content when files don't exist", async () => {
       // Mock files not existing (ENOENT errors)
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (
           path.toString().includes("AGENTS.md") ||
           path.toString().includes("user-memory.md")
@@ -130,7 +173,7 @@ describe("Agent Memory Functionality", () => {
           error.code = "ENOENT";
           return Promise.reject(error);
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -150,7 +193,7 @@ describe("Agent Memory Functionality", () => {
       const userMemoryContent = "# User Memory\n\nInitial user content\n";
 
       let readFileCallCount = 0;
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           readFileCallCount++;
           return Promise.resolve(projectMemoryContent);
@@ -159,7 +202,7 @@ describe("Agent Memory Functionality", () => {
           readFileCallCount++;
           return Promise.resolve(userMemoryContent);
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -193,14 +236,14 @@ describe("Agent Memory Functionality", () => {
       const projectMemoryContent =
         "# Memory\n\n- Important project info\n- Another detail\n";
 
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           return Promise.resolve(projectMemoryContent);
         }
         if (path.toString().includes("user-memory.md")) {
           return Promise.resolve("# User Memory\n\n");
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -219,14 +262,14 @@ describe("Agent Memory Functionality", () => {
       const userMemoryContent =
         "# User Memory\n\n- User preference 1\n- User preference 2\n";
 
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           return Promise.resolve("# Memory\n\n");
         }
         if (path.toString().includes("user-memory.md")) {
           return Promise.resolve(userMemoryContent);
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -245,14 +288,14 @@ describe("Agent Memory Functionality", () => {
       const projectMemoryContent = "# Memory\n\nProject context";
       const userMemoryContent = "# User Memory\n\nUser preferences";
 
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           return Promise.resolve(projectMemoryContent);
         }
         if (path.toString().includes("user-memory.md")) {
           return Promise.resolve(userMemoryContent);
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -270,14 +313,14 @@ describe("Agent Memory Functionality", () => {
     it("should return combined memory with only project content when user memory is empty", async () => {
       const projectMemoryContent = "# Memory\n\nProject context only";
 
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           return Promise.resolve(projectMemoryContent);
         }
         if (path.toString().includes("user-memory.md")) {
           return Promise.resolve("");
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -294,14 +337,14 @@ describe("Agent Memory Functionality", () => {
     it("should return combined memory with only user content when project memory is empty", async () => {
       const userMemoryContent = "# User Memory\n\nUser context only";
 
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           return Promise.resolve("");
         }
         if (path.toString().includes("user-memory.md")) {
           return Promise.resolve(userMemoryContent);
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -317,7 +360,7 @@ describe("Agent Memory Functionality", () => {
 
     it("should return empty strings when no content loaded", async () => {
       // Mock files not existing
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (
           path.toString().includes("AGENTS.md") ||
           path.toString().includes("user-memory.md")
@@ -326,7 +369,7 @@ describe("Agent Memory Functionality", () => {
           error.code = "ENOENT";
           return Promise.reject(error);
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -346,7 +389,7 @@ describe("Agent Memory Functionality", () => {
   describe("T011 - Memory loading error handling test", () => {
     it("should handle missing AGENTS.md gracefully (empty string fallback)", async () => {
       // Mock project memory file missing but user memory exists
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           const error = new Error("File not found") as NodeJS.ErrnoException;
           error.code = "ENOENT";
@@ -355,7 +398,7 @@ describe("Agent Memory Functionality", () => {
         if (path.toString().includes("user-memory.md")) {
           return Promise.resolve("# User Memory\n\nUser content");
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -373,7 +416,7 @@ describe("Agent Memory Functionality", () => {
 
     it("should handle missing user memory file gracefully", async () => {
       // Mock user memory file missing but project memory exists
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           return Promise.resolve("# Memory\n\nProject content");
         }
@@ -382,7 +425,7 @@ describe("Agent Memory Functionality", () => {
           error.code = "ENOENT";
           return Promise.reject(error);
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -400,7 +443,7 @@ describe("Agent Memory Functionality", () => {
 
     it("should handle corrupted/unreadable files gracefully", async () => {
       // Mock files being unreadable due to permissions or corruption
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           const error = new Error("Permission denied") as NodeJS.ErrnoException;
           error.code = "EACCES";
@@ -413,7 +456,7 @@ describe("Agent Memory Functionality", () => {
           error.code = "EIO";
           return Promise.reject(error);
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -436,14 +479,14 @@ describe("Agent Memory Functionality", () => {
         .mockImplementation(() => {});
 
       // Mock files throwing various errors
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           return Promise.reject(new Error("Unexpected file system error"));
         }
         if (path.toString().includes("user-memory.md")) {
           return Promise.reject(new Error("Network file system timeout"));
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       // Agent creation should NOT throw despite memory loading errors
@@ -470,7 +513,7 @@ describe("Agent Memory Functionality", () => {
 
     it("should ensure Agent startup succeeds even with memory errors", async () => {
       // Mock all possible error scenarios
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (
           path.toString().includes("AGENTS.md") ||
           path.toString().includes("user-memory.md")
@@ -485,7 +528,7 @@ describe("Agent Memory Functionality", () => {
           const randomError = errors[Math.floor(Math.random() * errors.length)];
           return Promise.reject(randomError);
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       // Multiple agent creations should all succeed
@@ -510,14 +553,14 @@ describe("Agent Memory Functionality", () => {
 
     it("should handle memory loading errors in saveMemory method", async () => {
       // Mock initial memory loading to succeed
-      vi.mocked(fs.readFile).mockImplementation((path) => {
+      setupFsMock((path: PathLike | FileHandle) => {
         if (path.toString().includes("AGENTS.md")) {
           return Promise.resolve("# Memory\n\nInitial content");
         }
         if (path.toString().includes("user-memory.md")) {
           return Promise.resolve("# User Memory\n\nInitial content");
         }
-        return Promise.resolve("[]");
+        return Promise.resolve("");
       });
 
       const agent = await Agent.create({
@@ -533,6 +576,293 @@ describe("Agent Memory Functionality", () => {
       await expect(
         agent.saveMemory("#Test memory save", "project"),
       ).resolves.not.toThrow();
+
+      await agent.destroy();
+    });
+  });
+
+  // T017 [P] [US2] - Test to verify memory content updates when saveMemory is called
+  describe("T017 - Memory content updates on saveMemory", () => {
+    it("should update projectMemory getter after calling saveMemory with project type", async () => {
+      // Create a simulated file system to track file contents
+      const fileSystem = new Map<string, string>();
+      fileSystem.set(
+        `${mockTempDir}/AGENTS.md`,
+        "# Initial Project Memory\n\nOriginal content",
+      );
+      fileSystem.set(
+        "/mock/home/.wave/user-memory.md",
+        "# Initial User Memory\n\nOriginal user content",
+      );
+
+      // Mock fs operations to use our simulated file system - both import patterns
+      const readFileImpl = vi
+        .fn()
+        .mockImplementation((path: PathLike | FileHandle) => {
+          const content = fileSystem.get(path.toString()) || "";
+          return Promise.resolve(content);
+        });
+      const writeFileImpl = vi
+        .fn()
+        .mockImplementation(
+          (path: PathLike | URL, content: string | Buffer | Uint8Array) => {
+            fileSystem.set(path.toString(), content.toString());
+            return Promise.resolve(undefined);
+          },
+        );
+
+      setupFsMock(readFileImpl);
+      vi.mocked(fs.writeFile).mockImplementation(writeFileImpl);
+      vi.mocked(fsPromises.readFile).mockImplementation(readFileImpl);
+      vi.mocked(fsPromises.writeFile).mockImplementation(writeFileImpl);
+
+      // Mock other fs operations that might be needed
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.access).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
+
+      const agent = await Agent.create({
+        workdir: mockTempDir,
+        callbacks: mockCallbacks,
+      });
+
+      // Verify initial content
+      expect(agent.projectMemory).toBe(
+        "# Initial Project Memory\n\nOriginal content",
+      );
+      expect(agent.userMemory).toBe(
+        "# Initial User Memory\n\nOriginal user content",
+      );
+
+      // Call saveMemory to add new project memory
+      await agent.saveMemory("New project memory block", "project");
+
+      // Verify that projectMemory getter reflects the updated content
+      // It should contain both original and new content
+      expect(agent.projectMemory).toContain(
+        "# Initial Project Memory\n\nOriginal content",
+      );
+      expect(agent.projectMemory).toContain("New project memory block");
+
+      // Verify userMemory remains unchanged
+      expect(agent.userMemory).toBe(
+        "# Initial User Memory\n\nOriginal user content",
+      );
+
+      await agent.destroy();
+    });
+
+    it("should update userMemory getter after calling saveMemory with user type", async () => {
+      // Create a simulated file system to track file contents
+      const fileSystem = new Map<string, string>();
+      fileSystem.set(
+        `${mockTempDir}/AGENTS.md`,
+        "# Initial Project Memory\n\nOriginal content",
+      );
+      fileSystem.set(
+        "/mock/home/.wave/user-memory.md",
+        "# Initial User Memory\n\nOriginal user content",
+      );
+
+      // Mock fs operations to use our simulated file system - both import patterns
+      const readFileImpl = vi
+        .fn()
+        .mockImplementation((path: PathLike | FileHandle) => {
+          const content = fileSystem.get(path.toString()) || "";
+          return Promise.resolve(content);
+        });
+      const writeFileImpl = vi
+        .fn()
+        .mockImplementation(
+          (path: PathLike | URL, content: string | Buffer | Uint8Array) => {
+            fileSystem.set(path.toString(), content.toString());
+            return Promise.resolve(undefined);
+          },
+        );
+
+      setupFsMock(readFileImpl);
+      vi.mocked(fs.writeFile).mockImplementation(writeFileImpl);
+      vi.mocked(fsPromises.readFile).mockImplementation(readFileImpl);
+      vi.mocked(fsPromises.writeFile).mockImplementation(writeFileImpl);
+
+      // Mock other fs operations that might be needed
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.access).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
+
+      const agent = await Agent.create({
+        workdir: mockTempDir,
+        callbacks: mockCallbacks,
+      });
+
+      // Verify initial content
+      expect(agent.projectMemory).toBe(
+        "# Initial Project Memory\n\nOriginal content",
+      );
+      expect(agent.userMemory).toBe(
+        "# Initial User Memory\n\nOriginal user content",
+      );
+
+      // Call saveMemory to add new user memory
+      await agent.saveMemory("New user memory block", "user");
+
+      // Verify that userMemory getter reflects the updated content
+      expect(agent.userMemory).toContain(
+        "# Initial User Memory\n\nOriginal user content",
+      );
+      expect(agent.userMemory).toContain("New user memory block");
+
+      // Verify projectMemory remains unchanged
+      expect(agent.projectMemory).toBe(
+        "# Initial Project Memory\n\nOriginal content",
+      );
+
+      await agent.destroy();
+    });
+
+    it("should update combinedMemory getter after saveMemory calls", async () => {
+      // Create a simulated file system to track file contents
+      const fileSystem = new Map<string, string>();
+      fileSystem.set(
+        `${mockTempDir}/AGENTS.md`,
+        "# Project Memory\n\nProject content",
+      );
+      fileSystem.set(
+        "/mock/home/.wave/user-memory.md",
+        "# User Memory\n\nUser content",
+      );
+
+      // Mock fs operations to use our simulated file system - both import patterns
+      const readFileImpl = vi
+        .fn()
+        .mockImplementation((path: PathLike | FileHandle) => {
+          const content = fileSystem.get(path.toString()) || "";
+          return Promise.resolve(content);
+        });
+      const writeFileImpl = vi
+        .fn()
+        .mockImplementation(
+          (path: PathLike | URL, content: string | Buffer | Uint8Array) => {
+            fileSystem.set(path.toString(), content.toString());
+            return Promise.resolve(undefined);
+          },
+        );
+
+      setupFsMock(readFileImpl);
+      vi.mocked(fs.writeFile).mockImplementation(writeFileImpl);
+      vi.mocked(fsPromises.readFile).mockImplementation(readFileImpl);
+      vi.mocked(fsPromises.writeFile).mockImplementation(writeFileImpl);
+
+      // Mock other fs operations that might be needed
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.access).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
+
+      const agent = await Agent.create({
+        workdir: mockTempDir,
+        callbacks: mockCallbacks,
+      });
+
+      // Get initial combined memory
+      const initialCombined = agent.combinedMemory;
+      expect(initialCombined).toContain("Project content");
+      expect(initialCombined).toContain("User content");
+
+      // Add project memory
+      await agent.saveMemory("New project info", "project");
+
+      // Verify combinedMemory includes new project content
+      expect(agent.combinedMemory).toContain("Project content");
+      expect(agent.combinedMemory).toContain("User content");
+      expect(agent.combinedMemory).toContain("New project info");
+
+      // Add user memory
+      await agent.saveMemory("New user info", "user");
+
+      // Verify combinedMemory includes all content
+      expect(agent.combinedMemory).toContain("Project content");
+      expect(agent.combinedMemory).toContain("User content");
+      expect(agent.combinedMemory).toContain("New project info");
+      expect(agent.combinedMemory).toContain("New user info");
+
+      await agent.destroy();
+    });
+
+    it("should handle multiple sequential saveMemory calls correctly", async () => {
+      // Create a simulated file system to track file contents
+      const fileSystem = new Map<string, string>();
+      fileSystem.set(
+        `${mockTempDir}/AGENTS.md`,
+        "# Project Memory\n\nInitial project content",
+      );
+      fileSystem.set(
+        "/mock/home/.wave/user-memory.md",
+        "# User Memory\n\nInitial user content",
+      );
+
+      // Mock fs operations to use our simulated file system - both import patterns
+      const readFileImpl = vi
+        .fn()
+        .mockImplementation((path: PathLike | FileHandle) => {
+          const content = fileSystem.get(path.toString()) || "";
+          return Promise.resolve(content);
+        });
+      const writeFileImpl = vi
+        .fn()
+        .mockImplementation(
+          (path: PathLike | URL, content: string | Buffer | Uint8Array) => {
+            fileSystem.set(path.toString(), content.toString());
+            return Promise.resolve(undefined);
+          },
+        );
+
+      setupFsMock(readFileImpl);
+      vi.mocked(fs.writeFile).mockImplementation(writeFileImpl);
+      vi.mocked(fsPromises.readFile).mockImplementation(readFileImpl);
+      vi.mocked(fsPromises.writeFile).mockImplementation(writeFileImpl);
+
+      // Mock other fs operations that might be needed
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.access).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
+
+      const agent = await Agent.create({
+        workdir: mockTempDir,
+        callbacks: mockCallbacks,
+      });
+
+      // Perform multiple sequential saves
+      await agent.saveMemory("First project update", "project");
+      await agent.saveMemory("First user update", "user");
+      await agent.saveMemory("Second project update", "project");
+      await agent.saveMemory("Second user update", "user");
+
+      // Verify all updates are reflected in getters
+      const projectMemory = agent.projectMemory;
+      const userMemory = agent.userMemory;
+      const combinedMemory = agent.combinedMemory;
+
+      // Project memory should contain original + all project updates
+      expect(projectMemory).toContain("Initial project content");
+      expect(projectMemory).toContain("First project update");
+      expect(projectMemory).toContain("Second project update");
+
+      // User memory should contain original + all user updates
+      expect(userMemory).toContain("Initial user content");
+      expect(userMemory).toContain("First user update");
+      expect(userMemory).toContain("Second user update");
+
+      // Combined memory should contain everything
+      expect(combinedMemory).toContain("Initial project content");
+      expect(combinedMemory).toContain("Initial user content");
+      expect(combinedMemory).toContain("First project update");
+      expect(combinedMemory).toContain("First user update");
+      expect(combinedMemory).toContain("Second project update");
+      expect(combinedMemory).toContain("Second user update");
 
       await agent.destroy();
     });
