@@ -9,7 +9,8 @@
 import { EventEmitter } from "events";
 import { existsSync } from "fs";
 import { FileWatcherService, type FileWatchEvent } from "./fileWatcher.js";
-import { loadMergedWaveConfigWithFallback } from "./hook.js";
+import { ConfigurationService } from "./configurationService.js";
+import type { ConfigurationLoadResult } from "../types/configuration.js";
 import type { WaveConfiguration, ValidationResult } from "../types/hooks.js";
 import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
 import type { Logger } from "../types/index.js";
@@ -34,11 +35,6 @@ export interface ConfigurationReloadService {
   ): Promise<void>;
   reloadConfiguration(): Promise<WaveConfiguration>;
   getCurrentConfiguration(): WaveConfiguration | null;
-  validateEnvironmentVariables(env: Record<string, string>): {
-    isValid: boolean;
-    errors: string[];
-    warnings: string[];
-  };
   shutdown(): Promise<void>;
 }
 
@@ -55,12 +51,14 @@ export class ConfigurationWatcher
   private workdir: string;
   private isWatching: boolean = false;
   private reloadInProgress: boolean = false;
+  private configurationService: ConfigurationService;
 
   constructor(workdir: string, logger?: Logger) {
     super();
     this.workdir = workdir;
     this.logger = logger;
     this.fileWatcher = new FileWatcherService(logger);
+    this.configurationService = new ConfigurationService();
     this.setupFileWatcherEvents();
   }
 
@@ -142,36 +140,45 @@ export class ConfigurationWatcher
     try {
       this.logger?.debug("Live Config: Reloading configuration from files...");
 
-      // Load merged configuration with fallback support
-      const loadResult = loadMergedWaveConfigWithFallback(
-        this.workdir,
-        this.lastValidConfiguration,
-      );
-      const newConfig = loadResult.config;
+      // Load merged configuration using ConfigurationService
+      const loadResult: ConfigurationLoadResult =
+        await this.configurationService.loadMergedConfiguration(this.workdir);
+      const newConfig = loadResult.configuration;
       const timestamp = Date.now();
 
       // Check for errors during loading
-      if (loadResult.errors.length > 0) {
-        const errorMessage = `Configuration load errors: ${loadResult.errors.join("; ")}`;
-        this.logger?.error(`Live Config: ${errorMessage}`);
+      if (!loadResult.success) {
+        const errorMessage =
+          loadResult.error || "Configuration loading failed with unknown error";
+        this.logger?.error(
+          `Live Config: Configuration loading failed: ${errorMessage}`,
+        );
 
-        // Emit error event
+        // Log warnings if any
+        if (loadResult.warnings && loadResult.warnings.length > 0) {
+          this.logger?.warn(
+            `Live Config: Configuration warnings: ${loadResult.warnings.join("; ")}`,
+          );
+        }
+
+        // Emit error event with clear error information
         this.emit("configurationChange", {
           type: "settings_changed",
           path:
+            loadResult.sourcePath ||
             this.getFirstExistingProjectPath() ||
             this.getFirstExistingUserPath() ||
             "unknown",
           timestamp,
           changes: { added: [], modified: [], removed: [] },
           isValid: false,
-          errorMessage,
+          errorMessage: `Configuration loading failed: ${errorMessage}`,
         } as ConfigurationChangeEvent);
 
         // Use fallback configuration if available
-        if (loadResult.usedFallback && this.lastValidConfiguration) {
-          this.logger?.warn(
-            "Live Config: Using previous valid configuration due to load errors",
+        if (this.lastValidConfiguration) {
+          this.logger?.info(
+            "Live Config: Using previous valid configuration due to loading errors",
           );
           this.currentConfiguration = this.lastValidConfiguration;
           return this.currentConfiguration;
@@ -184,29 +191,55 @@ export class ConfigurationWatcher
         }
       }
 
+      // Log success with detailed information
+      if (newConfig) {
+        this.logger?.info(
+          `Live Config: Configuration loaded successfully from ${loadResult.sourcePath || "merged sources"}`,
+        );
+
+        // Log detailed configuration info
+        const hookCount = Object.keys(newConfig.hooks || {}).length;
+        const envCount = Object.keys(newConfig.env || {}).length;
+        this.logger?.debug(
+          `Live Config: Loaded ${hookCount} hook events and ${envCount} environment variables`,
+        );
+      } else {
+        this.logger?.info(
+          "Live Config: No configuration found (using empty configuration)",
+        );
+      }
+
+      // Log warnings from successful loading
+      if (loadResult.warnings && loadResult.warnings.length > 0) {
+        this.logger?.warn(
+          `Live Config: Configuration warnings: ${loadResult.warnings.join("; ")}`,
+        );
+      }
+
       // Validate new configuration if it exists
       if (newConfig) {
         const validation = this.validateConfiguration(newConfig);
         if (!validation.valid) {
-          const errorMessage = `Invalid configuration: ${validation.errors.join(", ")}`;
+          const errorMessage = `Configuration validation failed: ${validation.errors.join(", ")}`;
           this.logger?.error(`Live Config: ${errorMessage}`);
 
           // Emit error event but continue with previous valid config
           this.emit("configurationChange", {
             type: "settings_changed",
             path:
+              loadResult.sourcePath ||
               this.getFirstExistingProjectPath() ||
               this.getFirstExistingUserPath() ||
               "unknown",
             timestamp,
             changes: { added: [], modified: [], removed: [] },
             isValid: false,
-            errorMessage,
+            errorMessage: `Validation failed: ${errorMessage}`,
           } as ConfigurationChangeEvent);
 
           // Use previous valid configuration for error recovery
           if (this.lastValidConfiguration) {
-            this.logger?.warn(
+            this.logger?.info(
               "Live Config: Using previous valid configuration due to validation errors",
             );
             this.currentConfiguration = this.lastValidConfiguration;
@@ -230,16 +263,20 @@ export class ConfigurationWatcher
       // Save as last valid configuration if it's valid and not empty
       if (newConfig && (newConfig.hooks || newConfig.env)) {
         this.lastValidConfiguration = { ...newConfig };
+        this.logger?.debug(
+          "Live Config: Saved current configuration as last valid backup",
+        );
       }
 
       this.logger?.info(
-        `Live Config: Configuration reloaded successfully with ${Object.keys(newConfig?.hooks || {}).length} event types and ${Object.keys(newConfig?.env || {}).length} environment variables`,
+        `Live Config: Configuration reload completed successfully with ${Object.keys(newConfig?.hooks || {}).length} event types and ${Object.keys(newConfig?.env || {}).length} environment variables`,
       );
 
       // Emit configuration change event
       this.emit("configurationChange", {
         type: "settings_changed",
         path:
+          loadResult.sourcePath ||
           this.getFirstExistingProjectPath() ||
           this.getFirstExistingUserPath() ||
           "merged",
@@ -250,13 +287,13 @@ export class ConfigurationWatcher
 
       return this.currentConfiguration;
     } catch (error) {
-      const errorMessage = `Failed to reload configuration: ${(error as Error).message}`;
+      const errorMessage = `Configuration reload failed with exception: ${(error as Error).message}`;
       this.logger?.error(`Live Config: ${errorMessage}`);
 
       // Use previous valid configuration for error recovery
       if (this.lastValidConfiguration) {
-        this.logger?.warn(
-          "Live Config: Using previous valid configuration due to reload error",
+        this.logger?.info(
+          "Live Config: Using previous valid configuration due to reload exception",
         );
         this.currentConfiguration = this.lastValidConfiguration;
       } else {
@@ -288,59 +325,6 @@ export class ConfigurationWatcher
    */
   getCurrentConfiguration(): WaveConfiguration | null {
     return this.currentConfiguration ? { ...this.currentConfiguration } : null;
-  }
-
-  /**
-   * Validate environment variables
-   * Maps to FR-003: Validate env field format
-   */
-  validateEnvironmentVariables(env: Record<string, string>): {
-    isValid: boolean;
-    errors: string[];
-    warnings: string[];
-  } {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    if (typeof env !== "object" || env === null) {
-      errors.push("Environment variables must be an object");
-      return { isValid: false, errors, warnings };
-    }
-
-    if (Array.isArray(env)) {
-      errors.push("Environment variables cannot be an array");
-      return { isValid: false, errors, warnings };
-    }
-
-    for (const [key, value] of Object.entries(env)) {
-      // Validate key format
-      if (typeof key !== "string" || key.trim() === "") {
-        errors.push(
-          `Invalid environment variable key: '${key}' (must be non-empty string)`,
-        );
-        continue;
-      }
-
-      // Validate key naming convention (optional warning)
-      if (!/^[A-Z_][A-Z0-9_]*$/i.test(key)) {
-        warnings.push(
-          `Environment variable '${key}' doesn't follow conventional naming (A-Z, 0-9, underscore)`,
-        );
-      }
-
-      // Validate value type
-      if (typeof value !== "string") {
-        errors.push(
-          `Environment variable '${key}' must have a string value (got ${typeof value})`,
-        );
-      }
-    }
-
-    return {
-      isValid: errors.length === 0,
-      errors,
-      warnings,
-    };
   }
 
   /**

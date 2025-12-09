@@ -13,12 +13,12 @@ import {
   getUserConfigPaths,
   getProjectConfigPaths,
   getConfigurationInfo,
+  hasAnyConfig as hasHooksConfiguration,
 } from "../src/utils/configPaths.js";
 import {
   loadProjectWaveConfig,
   loadMergedWaveConfig,
-  hasHooksConfiguration,
-} from "../src/services/hook.js";
+} from "../src/services/configurationService.js";
 import { mkdir, writeFile, rmdir } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";

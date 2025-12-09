@@ -20,8 +20,9 @@ import {
   getProjectConfigPaths,
   getUserConfigPaths,
 } from "@/utils/configPaths.js";
-import { loadMergedWaveConfig } from "../services/hook.js";
 import type { WaveConfiguration } from "../types/hooks.js";
+import { ConfigurationService } from "../services/configurationService.js";
+import { EnvironmentService } from "../services/environmentService.js";
 
 export interface LiveConfigManagerOptions {
   workdir: string;
@@ -37,12 +38,16 @@ export class LiveConfigManager {
   private readonly memoryStore?: MemoryStoreService;
   private configurationWatcher?: ConfigurationWatcher;
   private isInitialized: boolean = false;
+  private readonly environmentService: EnvironmentService;
+  private readonly configurationService: ConfigurationService;
 
   constructor(options: LiveConfigManagerOptions) {
     this.workdir = options.workdir;
     this.logger = options.logger;
     this.hookManager = options.hookManager;
     this.memoryStore = options.memoryStore;
+    this.environmentService = new EnvironmentService({ logger: this.logger });
+    this.configurationService = new ConfigurationService();
   }
 
   /**
@@ -50,7 +55,7 @@ export class LiveConfigManager {
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) {
-      this.logger?.debug("[LiveConfigManager] Already initialized");
+      this.logger?.debug("Already initialized");
       return;
     }
 
@@ -64,13 +69,9 @@ export class LiveConfigManager {
       }
 
       this.isInitialized = true;
-      this.logger?.info(
-        "Live Config: Live configuration management initialized successfully",
-      );
+      this.logger?.info("Live configuration management initialized");
     } catch (error) {
-      this.logger?.error(
-        `Live Config: Failed to initialize: ${(error as Error).message}`,
-      );
+      this.logger?.error(`Failed to initialize: ${(error as Error).message}`);
       throw error;
     }
   }
@@ -90,13 +91,9 @@ export class LiveConfigManager {
       }
 
       this.isInitialized = false;
-      this.logger?.info(
-        "Live Config: Live configuration management shutdown completed",
-      );
+      this.logger?.info("Live configuration management shutdown completed");
     } catch (error) {
-      this.logger?.error(
-        `Live Config: Error during shutdown: ${(error as Error).message}`,
-      );
+      this.logger?.error(`Error during shutdown: ${(error as Error).message}`);
       throw error;
     }
   }
@@ -107,7 +104,7 @@ export class LiveConfigManager {
   private async initializeConfigurationWatcher(): Promise<void> {
     if (!this.hookManager) {
       this.logger?.debug(
-        "Live Config: No hook manager provided, skipping configuration watching",
+        "No hook manager provided, skipping configuration watching",
       );
       return;
     }
@@ -128,7 +125,7 @@ export class LiveConfigManager {
     // Initialize watching for user and project settings
     const { userPaths, projectPaths } = this.getConfigurationPaths();
     await this.configurationWatcher.initializeWatching(userPaths, projectPaths);
-    this.logger?.info("Live Config: Configuration watching initialized");
+    this.logger?.info("Configuration watching initialized");
   }
 
   /**
@@ -137,7 +134,7 @@ export class LiveConfigManager {
   private async initializeMemoryStoreWatching(): Promise<void> {
     if (!this.memoryStore || !this.configurationWatcher) {
       this.logger?.debug(
-        "Live Config: Memory store or configuration watcher not available, skipping AGENTS.md watching",
+        "Memory store not available, skipping AGENTS.md watching",
       );
       return;
     }
@@ -153,10 +150,10 @@ export class LiveConfigManager {
         },
       );
 
-      this.logger?.info("Live Config: AGENTS.md file watching initialized");
+      this.logger?.info("AGENTS.md file watching initialized");
     } catch (error) {
       this.logger?.warn(
-        `Live Config: Failed to initialize AGENTS.md watching: ${(error as Error).message}`,
+        `Failed to initialize AGENTS.md watching: ${(error as Error).message}`,
       );
       // Don't throw - memory optimization is not critical for core functionality
     }
@@ -170,22 +167,53 @@ export class LiveConfigManager {
       `Live Config: Configuration change detected: ${event.type} at ${event.path}`,
     );
 
-    // Update process.env from settings.json
-    this.updateEnvironmentFromSettings();
-
-    if (this.hookManager) {
-      try {
-        // Delegate to hook manager for hook-specific configuration reloading
-        this.hookManager.loadConfigurationFromSettings();
-        this.logger?.info(
-          "Live Config: Hook configuration reloaded successfully",
-        );
-      } catch (error) {
-        this.logger?.error(
-          `Live Config: Failed to reload hook configuration: ${(error as Error).message}`,
-        );
-      }
+    // Handle configuration errors with clear user feedback
+    if (!event.isValid && event.errorMessage) {
+      this.logger?.error(
+        `Live Config: Configuration error - ${event.errorMessage}`,
+      );
+      this.logger?.warn(
+        "Live Config: System is using previous valid configuration to maintain functionality",
+      );
+      return; // Skip environment update on configuration errors
     }
+
+    // Load configuration once and use for both environment update and hook manager update
+    this.configurationService
+      .loadMergedConfiguration(this.workdir)
+      .then((configResult) => {
+        if (!configResult.success) {
+          this.logger?.error(
+            `Live Config: Failed to load configuration: ${configResult.error || "Unknown error"}`,
+          );
+          return;
+        }
+
+        // Update environment variables if configuration has env section
+        if (configResult.configuration?.env) {
+          this.updateEnvironmentFromConfiguration(
+            configResult.configuration.env,
+          );
+        }
+
+        // Update hook manager if available
+        if (this.hookManager) {
+          this.hookManager.loadConfigurationFromWaveConfig(
+            configResult.configuration,
+          );
+          this.logger?.info("Live Config: Configuration reloaded successfully");
+        }
+
+        // Log configuration warnings
+        if (configResult.warnings && configResult.warnings.length > 0) {
+          this.logger?.warn(`Live Config: ${configResult.warnings.join("; ")}`);
+        }
+      })
+      .catch((error) => {
+        this.logger?.error(
+          `Live Config: Exception during configuration reload: ${(error as Error).message}`,
+        );
+      });
   }
 
   /**
@@ -199,22 +227,12 @@ export class LiveConfigManager {
     }
 
     try {
-      this.logger?.info(
-        `Live Config: AGENTS.md ${event.type} detected: ${event.path}`,
-      );
+      this.logger?.debug(`Live Config: AGENTS.md ${event.type} detected`);
 
       if (event.type === "delete") {
-        // Handle file deletion gracefully
         this.memoryStore.removeContent(event.path);
-        this.logger?.info(
-          "Live Config: Removed AGENTS.md from memory store due to file deletion",
-        );
       } else {
-        // Update memory store content
         await this.memoryStore.updateContent(event.path);
-        this.logger?.info(
-          "Live Config: Updated AGENTS.md content in memory store",
-        );
       }
     } catch (error) {
       this.logger?.error(
@@ -231,35 +249,34 @@ export class LiveConfigManager {
   }
 
   /**
-   * Update process.env from merged settings.json files
+   * Update process.env from provided environment configuration
    */
-  private updateEnvironmentFromSettings(): void {
-    try {
-      // Load merged Wave configuration (includes environment variables)
-      const waveConfig = loadMergedWaveConfig(this.workdir);
+  private updateEnvironmentFromConfiguration(
+    envConfig: Record<string, string>,
+  ): void {
+    // Process environment variables using EnvironmentService
+    const result = this.environmentService.processEnvironmentConfig(envConfig);
 
-      if (!waveConfig || !waveConfig.env) {
-        this.logger?.debug(
-          "Live Config: No environment configuration found in settings",
-        );
-        return;
-      }
+    // Handle conflicts and warnings
+    if (result.conflicts.length > 0) {
+      this.logger?.warn(
+        `Live Config: ${result.conflicts.length} environment variable conflicts resolved`,
+      );
+    }
 
-      // Update process.env with environment variables from settings.json
-      for (const [key, value] of Object.entries(waveConfig.env)) {
-        if (typeof value === "string") {
-          process.env[key] = value;
-          this.logger?.debug(`Live Config: Updated process.env.${key}`);
-        }
-      }
+    if (result.warnings.length > 0) {
+      this.logger?.warn(
+        `Live Config: ${result.warnings.length} environment variable warnings`,
+      );
+    }
 
+    if (result.applied) {
+      const varCount = Object.keys(result.processedVars).length;
       this.logger?.info(
-        "Live Config: Environment variables updated from settings",
+        `Live Config: Environment variables updated (${varCount} variables)`,
       );
-    } catch (error) {
-      this.logger?.error(
-        `Live Config: Failed to update environment from settings: ${(error as Error).message}`,
-      );
+    } else {
+      this.logger?.error("Live Config: Failed to apply environment variables");
     }
   }
 
