@@ -58,3 +58,65 @@ export interface EnvironmentMergeOptions {
   /** Whether to validate variable names for common patterns */
   validateVariableNames?: boolean;
 }
+
+/**
+ * Result of environment variable processing operations
+ */
+export interface EnvironmentProcessResult {
+  /** The processed environment variables */
+  processedVars: Record<string, string>;
+  /** Any conflicts that occurred during processing */
+  conflicts: EnvironmentConflict[];
+  /** Non-critical warnings during processing */
+  warnings: string[];
+  /** Whether the variables were successfully applied to process.env */
+  applied: boolean;
+}
+
+/**
+ * Enhanced environment merge context with conflict details
+ */
+export interface EnvironmentMergeContext {
+  /** User-provided environment variables */
+  userVars: Record<string, string>;
+  /** Project-provided environment variables */
+  projectVars: Record<string, string>;
+  /** Final merged environment variables */
+  mergedVars: Record<string, string>;
+  /** Detailed conflict information */
+  conflicts: EnvironmentConflict[];
+}
+
+/**
+ * Detailed information about an environment variable conflict
+ */
+export interface EnvironmentConflict {
+  /** The environment variable key */
+  key: string;
+  /** Value from user configuration */
+  userValue: string;
+  /** Value from project configuration */
+  projectValue: string;
+  /** Final resolved value (which source won) */
+  resolvedValue: string;
+  /** Which source provided the final value */
+  source: "user" | "project";
+}
+
+/**
+ * Options for configuring the EnvironmentService
+ */
+export interface EnvironmentServiceOptions {
+  /** Optional logger for environment operations */
+  logger?: Logger;
+}
+
+/**
+ * Minimal logger interface for environment services
+ */
+interface Logger {
+  error: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  info: (...args: unknown[]) => void;
+  debug: (...args: unknown[]) => void;
+}

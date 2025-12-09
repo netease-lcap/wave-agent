@@ -22,22 +22,19 @@ import {
   executeCommand,
   executeCommands,
   isCommandSafe,
-  loadHooksConfigFromFile,
-  loadMergedHooksConfig,
+} from "../../src/services/hook.js";
+import {
   loadWaveConfigFromFiles,
   loadUserWaveConfig,
   loadProjectWaveConfig,
-  hasHooksConfiguration,
-  getHooksConfigurationInfo,
-} from "../../src/services/hook.js";
+} from "../../src/services/configurationService.js";
 import {
   getUserConfigPaths,
   getProjectConfigPaths,
+  hasAnyConfig as hasHooksConfiguration,
+  getConfigurationInfo as getHooksConfigurationInfo,
 } from "../../src/utils/configPaths.js";
-import type {
-  HookExecutionContext,
-  WaveConfiguration,
-} from "../../src/types/hooks.js";
+import type { HookExecutionContext } from "../../src/types/hooks.js";
 
 // Mock child_process module
 vi.mock("child_process", () => ({
@@ -475,189 +472,6 @@ describe("Hook Services", () => {
 
       // Restore original platform
       Object.defineProperty(process, "platform", { value: originalPlatform });
-    });
-  });
-
-  describe("wave configuration file loading", () => {
-    beforeEach(() => {
-      // Reset fs mocks for this test block
-      mockExistsSync.mockReset();
-      mockReadFileSync.mockReset();
-    });
-
-    it("should return null for non-existent file", () => {
-      mockExistsSync.mockReturnValue(false);
-
-      const config = loadHooksConfigFromFile("/non/existent/path.json");
-      expect(config).toBeNull();
-    });
-
-    it("should load valid wave configuration file", () => {
-      const testWaveConfig: WaveConfiguration = {
-        hooks: {
-          PreToolUse: [],
-          PostToolUse: [
-            {
-              matcher: "Edit",
-              hooks: [{ type: "command", command: 'echo "test"' }],
-            },
-          ],
-          UserPromptSubmit: [],
-          Stop: [],
-        },
-        env: {
-          NODE_ENV: "test",
-          DEBUG: "true",
-        },
-      };
-
-      mockExistsSync.mockReturnValue(true);
-      mockReadFileSync.mockReturnValue(JSON.stringify(testWaveConfig, null, 2));
-
-      const configFile = "/test/test-settings.json";
-      const loaded = loadHooksConfigFromFile(configFile);
-      expect(loaded).toEqual(testWaveConfig.hooks);
-    });
-
-    it("should handle invalid JSON gracefully", () => {
-      mockExistsSync.mockReturnValue(true);
-      mockReadFileSync.mockReturnValue("{ invalid json }");
-
-      const configFile = "/test/invalid.json";
-      expect(() => loadHooksConfigFromFile(configFile)).toThrow();
-    });
-
-    it("should handle wave configuration without hooks", () => {
-      const configWithoutHooks = { notHooks: "invalid" };
-
-      mockExistsSync.mockReturnValue(true);
-      mockReadFileSync.mockReturnValue(JSON.stringify(configWithoutHooks));
-
-      const configFile = "/test/no-hooks-structure.json";
-      const result = loadHooksConfigFromFile(configFile);
-      expect(result).toBeNull();
-    });
-  });
-
-  describe("merged wave configuration loading", () => {
-    beforeEach(() => {
-      // Override fs functions for these specific tests
-      mockExistsSync.mockReset();
-      mockReadFileSync.mockReset();
-    });
-
-    it("should return null when no wave configurations exist", () => {
-      // Mock file system to return false for all file existence checks
-      mockExistsSync.mockReturnValue(false);
-
-      const merged = loadMergedHooksConfig("/nonexistent/workdir");
-      expect(merged).toBeNull();
-    });
-
-    it("should return user wave config when only user config exists", () => {
-      const userWaveConfig: WaveConfiguration = {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: "command" as const, command: "echo user" }] },
-          ],
-        },
-        env: {
-          USER_ENV: "test",
-        },
-      };
-
-      mockExistsSync.mockImplementation((path) => {
-        // Return true only for user config path (contains home directory)
-        const pathStr = path.toString();
-        return (
-          pathStr.includes(".wave/settings.json") &&
-          pathStr.includes(process.env.HOME || "/home")
-        );
-      });
-
-      mockReadFileSync.mockReturnValue(JSON.stringify(userWaveConfig));
-
-      const merged = loadMergedHooksConfig("/nonexistent/workdir");
-      expect(merged).toEqual(userWaveConfig.hooks);
-    });
-
-    it("should return project wave config when only project config exists", () => {
-      const projectWaveConfig: WaveConfiguration = {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: "command" as const, command: "echo project" }] },
-          ],
-        },
-        env: {
-          PROJECT_ENV: "production",
-        },
-      };
-
-      mockExistsSync.mockImplementation((path) => {
-        // Return true only for project config path
-        const pathStr = path.toString();
-        return pathStr.includes("/test/workdir/.wave/settings.json");
-      });
-
-      mockReadFileSync.mockReturnValue(JSON.stringify(projectWaveConfig));
-
-      const merged = loadMergedHooksConfig("/test/workdir");
-      expect(merged).toEqual(projectWaveConfig.hooks);
-    });
-
-    it("should merge wave configurations with project taking precedence", () => {
-      const userWaveConfig: WaveConfiguration = {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: "command" as const, command: "echo user" }] },
-          ],
-          UserPromptSubmit: [
-            {
-              hooks: [
-                { type: "command" as const, command: "echo user prompt" },
-              ],
-            },
-          ],
-        },
-        env: {
-          USER_ENV: "test",
-          SHARED_ENV: "user_value",
-        },
-      };
-      const projectWaveConfig: WaveConfiguration = {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: "command" as const, command: "echo project" }] },
-          ],
-        },
-        env: {
-          PROJECT_ENV: "production",
-          SHARED_ENV: "project_value", // Should override user value
-        },
-      };
-
-      // Mock both user and project configs exist
-      mockExistsSync.mockReturnValue(true);
-
-      mockReadFileSync.mockImplementation((path) => {
-        const pathStr = path.toString();
-        if (pathStr.includes(process.env.HOME || "/home")) {
-          return JSON.stringify(userWaveConfig);
-        } else {
-          return JSON.stringify(projectWaveConfig);
-        }
-      });
-
-      const merged = loadMergedHooksConfig("/test/workdir");
-      expect(merged).toEqual({
-        Stop: [
-          { hooks: [{ type: "command", command: "echo user" }] },
-          { hooks: [{ type: "command", command: "echo project" }] },
-        ],
-        UserPromptSubmit: [
-          { hooks: [{ type: "command", command: "echo user prompt" }] },
-        ],
-      });
     });
   });
 

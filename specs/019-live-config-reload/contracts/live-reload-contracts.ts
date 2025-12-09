@@ -152,12 +152,6 @@ export interface ConfigurationReloadService {
   getCurrentConfiguration(): WaveConfiguration | null;
 
   /**
-   * Validate environment variables
-   * Maps to FR-003: Validate env field format
-   */
-  validateEnvironmentVariables(env: Record<string, string>): EnvironmentValidationResult;
-
-  /**
    * Stop watching and cleanup resources
    * Maps to cleanup requirements
    */

@@ -23,4 +23,5 @@ export * from "./skills.js";
 export * from "./config.js";
 export * from "./session.js";
 export * from "./environment.js";
+export * from "./configuration.js"; // New configuration management types
 export * from "./permissions.js";

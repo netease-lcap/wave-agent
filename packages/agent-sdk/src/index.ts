@@ -4,6 +4,8 @@ export * from "./services/memory.js";
 export * from "./services/session.js";
 export * from "./services/hook.js";
 export * from "./services/jsonlHandler.js";
+export * from "./services/configurationService.js"; // New configuration management service
+export * from "./services/environmentService.js"; // New environment management service
 
 // Export main agent
 export * from "./agent.js";

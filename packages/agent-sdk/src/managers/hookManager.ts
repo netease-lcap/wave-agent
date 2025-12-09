@@ -19,11 +19,7 @@ import {
   isValidHookEventConfig,
 } from "../types/hooks.js";
 import { HookMatcher } from "../utils/hookMatcher.js";
-import {
-  executeCommand,
-  isCommandSafe,
-  loadMergedWaveConfig,
-} from "../services/hook.js";
+import { executeCommand, isCommandSafe } from "../services/hook.js";
 import type { Logger } from "../types/index.js";
 import { MessageSource } from "../types/index.js";
 import type { MessageManager } from "./messageManager.js";
@@ -31,7 +27,6 @@ import { MemoryStoreService } from "../services/memoryStore.js";
 
 export class HookManager {
   private configuration: PartialHookConfiguration | undefined;
-  private environmentVars: Record<string, string> | undefined;
   private readonly matcher: HookMatcher;
   private readonly logger?: Logger;
   private readonly workdir: string;
@@ -82,49 +77,41 @@ export class HookManager {
   }
 
   /**
-   * Load configuration from filesystem settings
-   * Automatically loads and merges user and project Wave configuration (hooks + environment)
+   * Load hooks configuration from a pre-loaded WaveConfiguration
+   * Configuration loading is now handled by ConfigurationService
    */
-  loadConfigurationFromSettings(): void {
+  loadConfigurationFromWaveConfig(waveConfig: WaveConfiguration | null): void {
     try {
-      this.logger?.debug(`[HookManager] Loading configuration...`);
-      const mergedWaveConfig = loadMergedWaveConfig(this.workdir);
       this.logger?.debug(
-        `[HookManager] Merged config result:`,
-        mergedWaveConfig,
+        `[HookManager] Loading hooks configuration from pre-loaded config...`,
       );
 
-      this.configuration = mergedWaveConfig?.hooks || undefined;
-      this.environmentVars = mergedWaveConfig?.env || undefined;
+      this.configuration = waveConfig?.hooks || undefined;
 
       // Validate the loaded configuration if it exists
-      if (mergedWaveConfig?.hooks) {
-        const validation = this.validatePartialConfiguration(
-          mergedWaveConfig.hooks,
-        );
+      if (waveConfig?.hooks) {
+        const validation = this.validatePartialConfiguration(waveConfig.hooks);
         if (!validation.valid) {
           throw new HookConfigurationError(
-            "filesystem settings",
+            "provided configuration",
             validation.errors,
           );
         }
       }
 
       this.logger?.debug(
-        `[HookManager] Configuration loaded successfully with ${Object.keys(mergedWaveConfig?.hooks || {}).length} event types and ${Object.keys(this.environmentVars || {}).length} environment variables`,
+        `[HookManager] Hooks configuration loaded successfully with ${Object.keys(waveConfig?.hooks || {}).length} event types`,
       );
     } catch (error) {
       // If loading fails, start with undefined configuration (no hooks)
       this.configuration = undefined;
-      this.environmentVars = undefined;
 
-      // Re-throw configuration errors, but handle file system errors gracefully
+      // Re-throw configuration errors, but handle other errors gracefully
       if (error instanceof HookConfigurationError) {
         throw error;
       } else {
         this.logger?.warn(
-          "Failed to load hooks configuration from settings:",
-          error,
+          `[HookManager] Failed to load configuration, continuing with no hooks: ${(error as Error).message}`,
         );
       }
     }
@@ -211,7 +198,6 @@ export class HookManager {
             hookCommand.command,
             context,
             undefined,
-            this.environmentVars,
           );
           results.push(result);
 
@@ -530,16 +516,6 @@ export class HookManager {
 
     // Deep clone to prevent external modification
     return JSON.parse(JSON.stringify(this.configuration));
-  }
-
-  /**
-   * Get current environment variables
-   */
-  getEnvironmentVars(): Record<string, string> | undefined {
-    if (!this.environmentVars) return undefined;
-
-    // Deep clone to prevent external modification
-    return JSON.parse(JSON.stringify(this.environmentVars));
   }
 
   /**

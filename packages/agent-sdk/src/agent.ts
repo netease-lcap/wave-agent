@@ -41,7 +41,10 @@ import {
 } from "./services/session.js";
 import type { SubagentConfiguration } from "./utils/subagentParser.js";
 import { setGlobalLogger } from "./utils/globalLogger.js";
-import { loadMergedWaveConfig } from "./services/hook.js";
+import {
+  loadMergedWaveConfig,
+  ConfigurationService,
+} from "./services/configurationService.js";
 
 /**
  * Configuration options for Agent instances
@@ -95,6 +98,7 @@ export class Agent {
   private hookManager: HookManager; // Add hooks manager instance
   private memoryStore: MemoryStoreService; // Add memory store service
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
+  private configurationService: ConfigurationService; // Add configuration service
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
   private _usages: Usage[] = []; // Usage tracking array
@@ -204,6 +208,7 @@ export class Agent {
 
     this.memoryStore = new MemoryStoreService(this.logger); // Initialize memory store service
     initializeMemoryStore(this.memoryStore); // Initialize global memory store reference
+    this.configurationService = new ConfigurationService(); // Initialize configuration service
     this.hookManager = new HookManager(
       this.workdir,
       undefined,
@@ -336,11 +341,6 @@ export class Agent {
     return this.workdir;
   }
 
-  /** Get merged environment variables from Wave configuration */
-  public get environmentVars(): Record<string, string> | undefined {
-    return this.hookManager.getEnvironmentVars();
-  }
-
   /** Get AI loading status */
   public get isLoading(): boolean {
     return this.aiManager.isLoading;
@@ -451,9 +451,13 @@ export class Agent {
 
     // Initialize hooks configuration
     try {
-      // Load hooks configuration from user and project settings
+      // Load hooks configuration using ConfigurationService
       this.logger?.debug("Loading hooks configuration...");
-      this.hookManager.loadConfigurationFromSettings();
+      const configResult =
+        await this.configurationService.loadMergedConfiguration(this.workdir);
+      this.hookManager.loadConfigurationFromWaveConfig(
+        configResult.configuration,
+      );
       this.logger?.debug("Hooks system initialized successfully");
     } catch (error) {
       this.logger?.error("Failed to initialize hooks system:", error);
