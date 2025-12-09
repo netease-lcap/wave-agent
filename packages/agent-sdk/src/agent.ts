@@ -45,6 +45,9 @@ import {
   loadMergedWaveConfig,
   ConfigurationService,
 } from "./services/configurationService.js";
+import * as fs from "fs/promises";
+import path from "path";
+import os from "os";
 
 /**
  * Configuration options for Agent instances
@@ -518,6 +521,52 @@ export class Agent {
         error,
       );
       // Don't throw error to prevent app startup failure - continue without live reload
+    }
+
+    // Load memory files during initialization
+    try {
+      this.logger?.debug("Loading memory files...");
+
+      // Load project memory from AGENTS.md (bypass memory store for direct file access)
+      try {
+        const projectMemoryPath = path.join(this.workdir, "AGENTS.md");
+        this._projectMemoryContent = await fs.readFile(
+          projectMemoryPath,
+          "utf-8",
+        );
+        this.logger?.debug("Project memory loaded successfully");
+      } catch (error) {
+        this._projectMemoryContent = "";
+        this.logger?.debug(
+          "Project memory file not found or unreadable, using empty content:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+
+      // Load user memory (bypass memory store for direct file access)
+      try {
+        const userMemoryPath = path.join(
+          os.homedir(),
+          ".wave",
+          "user-memory.md",
+        );
+        this._userMemoryContent = await fs.readFile(userMemoryPath, "utf-8");
+        this.logger?.debug("User memory loaded successfully");
+      } catch (error) {
+        this._userMemoryContent = "";
+        this.logger?.debug(
+          "User memory file not found or unreadable, using empty content:",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+
+      this.logger?.debug("Memory initialization completed");
+    } catch (error) {
+      // Ensure memory is always initialized even if loading fails
+      this._projectMemoryContent = "";
+      this._userMemoryContent = "";
+      this.logger?.error("Failed to load memory files:", error);
+      // Don't throw error to prevent app startup failure
     }
 
     // Handle session restoration or set provided messages
