@@ -62,27 +62,9 @@ export interface ClaudeUsage extends CompletionUsage {
   };
 }
 
-/**
- * Configuration for cache control application
- */
-export interface CacheControlConfig {
-  cacheSystemMessage: boolean;
-  cacheUserMessageCount: number;
-  cacheLastTool: boolean;
-}
-
 // ============================================================================
 // Default Configuration
 // ============================================================================
-
-/**
- * Default cache control configuration
- */
-export const DEFAULT_CACHE_CONTROL_CONFIG: CacheControlConfig = {
-  cacheSystemMessage: true,
-  cacheUserMessageCount: 2,
-  cacheLastTool: true,
-} as const;
 
 // ============================================================================
 // Utility Functions (Basic Structure - to be implemented)
@@ -250,16 +232,43 @@ export function addCacheControlToLastTool(
 }
 
 /**
- * Transforms messages for Claude cache control
+ * Finds the latest message index at 20-message intervals (sliding window approach)
+ * @param messages - Array of chat completion messages
+ * @returns Index of the latest interval message (20th, 40th, 60th, etc.) or -1 if none
+ */
+export function findIntervalMessageIndex(
+  messages: ChatCompletionMessageParam[],
+): number {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return -1;
+  }
+
+  const interval = 20; // Hardcoded interval
+  const messageCount = messages.length;
+
+  // Find the largest interval that fits within the message count
+  // Math.floor(messageCount / interval) gives us how many complete intervals we have
+  // Multiply by interval to get the position of the latest interval message
+  const latestIntervalPosition = Math.floor(messageCount / interval) * interval;
+
+  // If no complete intervals exist, return -1
+  if (latestIntervalPosition === 0) {
+    return -1;
+  }
+
+  // Convert from 1-based position to 0-based index
+  return latestIntervalPosition - 1;
+}
+
+/**
+ * Transforms messages for Claude cache control with hardcoded strategy
  * @param messages - Original OpenAI message array
  * @param modelName - Model name for cache detection
- * @param config - Cache control configuration
  * @returns Messages with cache control markers applied
  */
 export function transformMessagesForClaudeCache(
   messages: ChatCompletionMessageParam[],
   modelName: string,
-  config: CacheControlConfig = DEFAULT_CACHE_CONTROL_CONFIG,
 ): ChatCompletionMessageParam[] {
   // Validate inputs
   if (!messages || !Array.isArray(messages)) {
@@ -278,10 +287,16 @@ export function transformMessagesForClaudeCache(
     return messages;
   }
 
-  // Validate config
-  if (!config || typeof config !== "object") {
-    console.warn("Invalid cache control config, using defaults");
-    config = DEFAULT_CACHE_CONTROL_CONFIG;
+  // Find the latest interval message index (20th, 40th, 60th, etc.)
+  const intervalMessageIndex = findIntervalMessageIndex(messages);
+
+  // Find last system message index
+  let lastSystemIndex = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "system") {
+      lastSystemIndex = i;
+      break;
+    }
   }
 
   const result = messages.map((message, index) => {
@@ -291,34 +306,41 @@ export function transformMessagesForClaudeCache(
       return message; // Return as-is to avoid breaking the flow
     }
 
-    // System message: cache if enabled in config
-    if (message.role === "system" && config.cacheSystemMessage) {
+    // Last system message: always cached (hardcoded)
+    if (message.role === "system" && index === lastSystemIndex) {
       return {
         ...message,
-        content: addCacheControlToContent(message.content, true),
-      };
+        content: addCacheControlToContent(
+          (message.content as string | ChatCompletionContentPart[]) || "",
+          true,
+        ),
+      } as ChatCompletionMessageParam;
     }
 
-    // User messages: cache last N messages based on config
-    if (message.role === "user" && config.cacheUserMessageCount > 0) {
-      const userMessageIndices: number[] = [];
-      messages.forEach((msg, idx) => {
-        if (msg.role === "user") {
-          userMessageIndices.push(idx);
-        }
-      });
+    // Tool caching: always cache last tool (hardcoded)
+    if (
+      message.role === "assistant" &&
+      message.tool_calls &&
+      index === messages.length - 1
+    ) {
+      return {
+        ...message,
+        content: addCacheControlToContent(
+          (message.content as string | ChatCompletionContentPart[]) || "",
+          true,
+        ),
+      } as ChatCompletionMessageParam;
+    }
 
-      // Check if this user message is among the last N
-      const isRecentUser = userMessageIndices
-        .slice(-config.cacheUserMessageCount)
-        .includes(index);
-
-      if (isRecentUser) {
-        return {
-          ...message,
-          content: addCacheControlToContent(message.content, true),
-        };
-      }
+    // Interval-based message caching: cache message at latest interval position (sliding window)
+    if (index === intervalMessageIndex) {
+      return {
+        ...message,
+        content: addCacheControlToContent(
+          (message.content as string | ChatCompletionContentPart[]) || "",
+          true,
+        ),
+      } as ChatCompletionMessageParam;
     }
 
     // Return message unchanged
@@ -419,122 +441,4 @@ export function isValidClaudeUsage(usage: unknown): usage is ClaudeUsage {
   }
 
   return true;
-}
-
-/**
- * Adds cache control to the last N user messages in a conversation
- * This optimizes multi-turn conversations by caching recent user context
- *
- * @param messages - Array of chat completion messages
- * @param maxUserMessagesToCache - Maximum number of recent user messages to cache (default: 2)
- * @returns Modified messages array with cache control on recent user messages
- */
-export function addCacheControlToRecentUserMessages(
-  messages: ChatCompletionMessageParam[],
-  maxUserMessagesToCache: number = 2,
-): ChatCompletionMessageParam[] {
-  // Validate inputs
-  if (!messages || !Array.isArray(messages)) {
-    console.warn(
-      "Invalid messages array provided to addCacheControlToRecentUserMessages",
-    );
-    return [];
-  }
-
-  if (messages.length === 0 || maxUserMessagesToCache <= 0) {
-    return messages;
-  }
-
-  // Validate maxUserMessagesToCache is a reasonable number
-  if (maxUserMessagesToCache > 100) {
-    console.warn(
-      "maxUserMessagesToCache is unusually high:",
-      maxUserMessagesToCache,
-      "limiting to 100",
-    );
-    maxUserMessagesToCache = 100;
-  }
-
-  // Find all user message indices in reverse order (most recent first)
-  const userMessageIndices: number[] = [];
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i];
-
-    // Validate message structure
-    if (!message || typeof message !== "object" || !message.role) {
-      console.warn("Invalid message at index", i, ", skipping");
-      continue;
-    }
-
-    if (message.role === "user") {
-      userMessageIndices.push(i);
-      if (userMessageIndices.length >= maxUserMessagesToCache) {
-        break;
-      }
-    }
-  }
-
-  // If no user messages found, return unchanged
-  if (userMessageIndices.length === 0) {
-    return messages;
-  }
-
-  // Create a copy of messages and modify the identified user messages
-  const modifiedMessages = [...messages];
-
-  for (const index of userMessageIndices) {
-    const message = modifiedMessages[index];
-    if (message.role === "user" && message.content != null) {
-      try {
-        modifiedMessages[index] = {
-          ...message,
-          content: addCacheControlToContent(message.content, true),
-        };
-      } catch (error) {
-        console.warn(
-          "Failed to add cache control to user message at index",
-          index,
-          ":",
-          error,
-        );
-        // Continue with original message if transformation fails
-      }
-    }
-  }
-
-  return modifiedMessages;
-}
-
-/**
- * Helper function to identify user message indices that should be cached
- * Used for testing and validation purposes
- *
- * @param messages - Array of chat completion messages
- * @param maxUserMessagesToCache - Maximum number of recent user messages to identify
- * @returns Array of indices for user messages that should be cached
- */
-export function findRecentUserMessageIndices(
-  messages: ChatCompletionMessageParam[],
-  maxUserMessagesToCache: number = 2,
-): number[] {
-  if (
-    !Array.isArray(messages) ||
-    messages.length === 0 ||
-    maxUserMessagesToCache <= 0
-  ) {
-    return [];
-  }
-
-  const userMessageIndices: number[] = [];
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "user") {
-      userMessageIndices.push(i);
-      if (userMessageIndices.length >= maxUserMessagesToCache) {
-        break;
-      }
-    }
-  }
-
-  // Return indices in original order (not reversed)
-  return userMessageIndices.reverse();
 }
