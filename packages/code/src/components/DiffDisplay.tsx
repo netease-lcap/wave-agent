@@ -25,7 +25,7 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
     toolBlock.name &&
     ["Write", "Edit", "MultiEdit"].includes(toolBlock.name);
 
-  // Render word-level diff for line-by-line comparison
+  // Render word-level diff between two lines of text
   const renderWordLevelDiff = (
     oldLine: string,
     newLine: string,
@@ -92,7 +92,7 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
     }
   };
 
-  // Render expanded diff display using diffLines with word-level support
+  // Render expanded diff display using word-level diff for all changes
   const renderExpandedDiff = () => {
     try {
       if (changes.length === 0) return null;
@@ -101,83 +101,138 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
         <Box flexDirection="column">
           {changes.map((change, changeIndex) => {
             try {
+              // Get line-level diff to understand the structure
               const lineDiffs = diffLines(
                 change.oldContent || "",
                 change.newContent || "",
               );
 
-              // For simple single-line changes, use word-level diff
-              const isSingleLineChange =
-                !change.oldContent.includes("\n") &&
-                !change.newContent.includes("\n") &&
-                change.oldContent.trim() !== "" &&
-                change.newContent.trim() !== "";
+              const diffElements: React.ReactNode[] = [];
 
-              if (isSingleLineChange) {
-                const { removedParts, addedParts } = renderWordLevelDiff(
-                  change.oldContent,
-                  change.newContent,
-                  `change-${changeIndex}`,
-                );
+              // Process line diffs and apply word-level diff to changed lines
+              lineDiffs.forEach((part, partIndex) => {
+                if (part.added) {
+                  const lines = part.value
+                    .split("\n")
+                    .filter((line) => line !== "");
+                  lines.forEach((line, lineIndex) => {
+                    diffElements.push(
+                      <Box
+                        key={`add-${changeIndex}-${partIndex}-${lineIndex}`}
+                        flexDirection="row"
+                      >
+                        <Text color="green">+</Text>
+                        <Text color="green">{line}</Text>
+                      </Box>,
+                    );
+                  });
+                } else if (part.removed) {
+                  const lines = part.value
+                    .split("\n")
+                    .filter((line) => line !== "");
+                  lines.forEach((line, lineIndex) => {
+                    diffElements.push(
+                      <Box
+                        key={`remove-${changeIndex}-${partIndex}-${lineIndex}`}
+                        flexDirection="row"
+                      >
+                        <Text color="red">-</Text>
+                        <Text color="red">{line}</Text>
+                      </Box>,
+                    );
+                  });
+                } else {
+                  // Context lines - show unchanged content
+                  const lines = part.value
+                    .split("\n")
+                    .filter((line) => line !== "");
+                  lines.forEach((line, lineIndex) => {
+                    diffElements.push(
+                      <Box
+                        key={`context-${changeIndex}-${partIndex}-${lineIndex}`}
+                        flexDirection="row"
+                      >
+                        <Text color="white"> </Text>
+                        <Text color="white">{line}</Text>
+                      </Box>,
+                    );
+                  });
+                }
+              });
 
-                return (
-                  <Box key={changeIndex} flexDirection="column">
-                    <Box flexDirection="row">
-                      <Text color="red">-</Text>
-                      {removedParts}
-                    </Box>
-                    <Box flexDirection="row">
-                      <Text color="green">+</Text>
-                      {addedParts}
-                    </Box>
-                  </Box>
-                );
+              // Now look for pairs of removed/added lines that can be word-diffed
+              const processedElements: React.ReactNode[] = [];
+              let i = 0;
+
+              while (i < diffElements.length) {
+                const current = diffElements[i];
+                const next =
+                  i + 1 < diffElements.length ? diffElements[i + 1] : null;
+
+                // Check if we have a removed line followed by an added line
+                const currentKey = React.isValidElement(current)
+                  ? current.key
+                  : "";
+                const nextKey = React.isValidElement(next) ? next.key : "";
+
+                const isCurrentRemoved =
+                  typeof currentKey === "string" &&
+                  currentKey.includes("remove-");
+                const isNextAdded =
+                  typeof nextKey === "string" && nextKey.includes("add-");
+
+                if (
+                  isCurrentRemoved &&
+                  isNextAdded &&
+                  React.isValidElement(current) &&
+                  React.isValidElement(next)
+                ) {
+                  // Extract the text content from the removed and added lines
+                  const removedText = extractTextFromElement(current);
+                  const addedText = extractTextFromElement(next);
+
+                  if (removedText && addedText) {
+                    // Apply word-level diff
+                    const { removedParts, addedParts } = renderWordLevelDiff(
+                      removedText,
+                      addedText,
+                      `word-${changeIndex}-${i}`,
+                    );
+
+                    processedElements.push(
+                      <Box
+                        key={`word-diff-removed-${changeIndex}-${i}`}
+                        flexDirection="row"
+                      >
+                        <Text color="red">-</Text>
+                        {removedParts}
+                      </Box>,
+                    );
+                    processedElements.push(
+                      <Box
+                        key={`word-diff-added-${changeIndex}-${i}`}
+                        flexDirection="row"
+                      >
+                        <Text color="green">+</Text>
+                        {addedParts}
+                      </Box>,
+                    );
+
+                    i += 2; // Skip the next element since we processed it
+                  } else {
+                    // Fallback to original elements
+                    processedElements.push(current);
+                    i += 1;
+                  }
+                } else {
+                  processedElements.push(current);
+                  i += 1;
+                }
               }
 
-              // For multi-line changes, use line-level diff
               return (
                 <Box key={changeIndex} flexDirection="column">
-                  {lineDiffs.map((part, partIndex) => {
-                    if (part.added) {
-                      return part.value
-                        .split("\n")
-                        .filter((line) => line !== "")
-                        .map((line, lineIndex) => (
-                          <Text
-                            key={`add-${changeIndex}-${partIndex}-${lineIndex}`}
-                            color="green"
-                          >
-                            +{line}
-                          </Text>
-                        ));
-                    } else if (part.removed) {
-                      return part.value
-                        .split("\n")
-                        .filter((line) => line !== "")
-                        .map((line, lineIndex) => (
-                          <Text
-                            key={`remove-${changeIndex}-${partIndex}-${lineIndex}`}
-                            color="red"
-                          >
-                            -{line}
-                          </Text>
-                        ));
-                    } else {
-                      // Context lines - show unchanged content
-                      return part.value
-                        .split("\n")
-                        .filter((line) => line !== "")
-                        .map((line, lineIndex) => (
-                          <Text
-                            key={`context-${changeIndex}-${partIndex}-${lineIndex}`}
-                            color="white"
-                          >
-                            {" "}
-                            {line}
-                          </Text>
-                        ));
-                    }
-                  })}
+                  {processedElements}
                 </Box>
               );
             } catch (error) {
@@ -204,6 +259,26 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
         </Box>
       );
     }
+  };
+
+  // Helper function to extract text content from a React element
+  const extractTextFromElement = (element: React.ReactNode): string | null => {
+    if (!React.isValidElement(element)) return null;
+
+    // Navigate through Box -> Text structure
+    const children = (
+      element.props as unknown as { children?: React.ReactNode[] }
+    ).children;
+    if (Array.isArray(children) && children.length >= 2) {
+      const textElement = children[1]; // Second child should be the Text with content
+      if (
+        React.isValidElement(textElement) &&
+        (textElement.props as unknown as { children?: string }).children
+      ) {
+        return (textElement.props as unknown as { children: string }).children;
+      }
+    }
+    return null;
   };
 
   // Don't render anything if no diff should be shown
