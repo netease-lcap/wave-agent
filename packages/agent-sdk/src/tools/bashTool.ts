@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from "child_process";
 import { logger } from "../utils/globalLogger.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
+import { handleLargeOutput } from "../utils/largeOutputHandler.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 
 /**
@@ -239,15 +240,32 @@ export const bashTool: ToolPlugin = {
           const combinedOutput =
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
 
-          resolve({
-            success: exitCode === 0,
-            content:
-              combinedOutput || `Command executed with exit code: ${exitCode}`,
-            error:
-              exitCode !== 0
-                ? `Command failed with exit code: ${exitCode}`
-                : undefined,
-          });
+          // Handle large output by writing to temp file if needed
+          const finalOutput =
+            combinedOutput || `Command executed with exit code: ${exitCode}`;
+          handleLargeOutput(finalOutput)
+            .then(({ content, filePath }) => {
+              resolve({
+                success: exitCode === 0,
+                content,
+                filePath,
+                error:
+                  exitCode !== 0
+                    ? `Command failed with exit code: ${exitCode}`
+                    : undefined,
+              });
+            })
+            .catch((error) => {
+              logger.warn(`Error handling large output: ${error}`);
+              resolve({
+                success: exitCode === 0,
+                content: finalOutput,
+                error:
+                  exitCode !== 0
+                    ? `Command failed with exit code: ${exitCode}`
+                    : undefined,
+              });
+            });
         }
       });
 
@@ -357,9 +375,14 @@ export const bashOutputTool: ToolPlugin = {
       content += (content ? "\n" : "") + stripAnsiColors(output.stderr);
     }
 
+    const finalContent = content || "No output available";
+    const { content: processedContent, filePath } =
+      await handleLargeOutput(finalContent);
+
     return {
       success: true,
-      content: content || "No output available",
+      content: processedContent,
+      filePath,
       shortResult: `${bashId}: ${output.status}${shell.exitCode !== undefined ? ` (${shell.exitCode})` : ""}`,
       error: undefined,
     };
