@@ -32,9 +32,6 @@ const agent = await Agent.create({
         console.log("Result:\n" + params.result.slice(-500));
       }
     },
-    onDiffBlockAdded: (filePath: string) => {
-      console.log(`📄 Diff block added for: ${filePath}`);
-    },
     onErrorBlockAdded: (error: string) => {
       console.log(`❌ Error block added: ${error}`);
     },

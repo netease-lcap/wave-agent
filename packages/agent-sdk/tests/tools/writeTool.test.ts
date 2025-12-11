@@ -9,15 +9,12 @@ const testContext: ToolContext = { workdir: "/test/workdir" };
 vi.mock("fs/promises");
 
 describe("writeTool", () => {
-  let mockAddDiffBlock: ReturnType<typeof vi.fn>;
   let mockContext: ToolContext;
 
   beforeEach(() => {
-    mockAddDiffBlock = vi.fn();
     mockContext = {
       abortSignal: new AbortController().signal,
       workdir: "/test/workdir",
-      addDiffBlock: mockAddDiffBlock,
     };
   });
 
@@ -69,14 +66,6 @@ describe("writeTool", () => {
     expect(result.shortResult).toBe("File created");
     expect(result.filePath).toBe("/test/newfile.js");
 
-    // Verify addDiffBlock was called with correct parameters (empty original content for new file)
-    expect(mockAddDiffBlock).toHaveBeenCalledWith(
-      "/test/newfile.js",
-      expect.arrayContaining([
-        expect.objectContaining({ value: expect.any(String) }),
-      ]),
-    );
-
     expect(mkdir).toHaveBeenCalledWith("/test", { recursive: true });
     expect(writeFile).toHaveBeenCalledWith(
       "/test/newfile.js",
@@ -105,14 +94,6 @@ describe("writeTool", () => {
     expect(result.content).toContain("File overwritten");
     expect(result.shortResult).toBe("File overwritten");
     expect(result.filePath).toBe("/test/file.js");
-
-    // Verify addDiffBlock was called with correct parameters
-    expect(mockAddDiffBlock).toHaveBeenCalledWith(
-      "/test/file.js",
-      expect.arrayContaining([
-        expect.objectContaining({ value: expect.any(String) }),
-      ]),
-    );
 
     expect(readFile).toHaveBeenCalledWith("/test/file.js", "utf-8");
     expect(writeFile).toHaveBeenCalledWith(

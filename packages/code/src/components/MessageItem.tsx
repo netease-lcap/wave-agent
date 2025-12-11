@@ -2,7 +2,6 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { MessageSource } from "wave-agent-sdk";
-import { DiffViewer } from "./DiffViewer.js";
 import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
@@ -62,8 +61,6 @@ export const MessageItem = ({
                 <Text color="red">❌ Error: {block.content}</Text>
               </Box>
             )}
-
-            {block.type === "diff" && <DiffViewer block={block} />}
 
             {block.type === "command_output" && (
               <CommandOutputDisplay block={block} isExpanded={isExpanded} />

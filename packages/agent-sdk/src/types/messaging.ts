@@ -23,7 +23,6 @@ export type MessageBlock =
   | ErrorBlock
   | ToolBlock
   | ImageBlock
-  | DiffBlock
   | CommandOutputBlock
   | CompressBlock
   | MemoryBlock
@@ -70,16 +69,6 @@ export interface ToolBlock {
 export interface ImageBlock {
   type: "image";
   imageUrls?: string[];
-}
-
-export interface DiffBlock {
-  type: "diff";
-  path: string;
-  diffResult: Array<{
-    value: string;
-    added?: boolean;
-    removed?: boolean;
-  }>;
 }
 
 export interface CommandOutputBlock {

@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { ToolBlock } from "wave-agent-sdk";
+import { DiffDisplay } from "./DiffDisplay.js";
 
 interface ToolResultDisplayProps {
   block: ToolBlock;
@@ -133,6 +134,9 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
           </Text>
         </Box>
       )}
+
+      {/* Diff display - handled by DiffDisplay component */}
+      <DiffDisplay toolBlock={block} />
     </Box>
   );
 };

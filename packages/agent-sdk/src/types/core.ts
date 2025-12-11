@@ -70,6 +70,17 @@ export interface ClaudeUsage extends CompletionUsage {
   };
 }
 
+/**
+ * Represents a diff change for tool parameter-based diff display
+ * Contains the old content and new content for comparison
+ */
+export interface Change {
+  /** The original content (empty string for additions) */
+  oldContent: string;
+  /** The new content (empty string for deletions) */
+  newContent: string;
+}
+
 export class ConfigurationError extends Error {
   constructor(
     message: string,

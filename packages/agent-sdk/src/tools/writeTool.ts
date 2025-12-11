@@ -3,7 +3,6 @@ import { dirname } from "path";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
-import { diffLines } from "diff";
 
 /**
  * File Write Tool Plugin
@@ -99,15 +98,7 @@ export const writeTool: ToolPlugin = {
         }
       }
 
-      // Generate diff information BEFORE filesystem operation
-      const diffResult = diffLines(originalContent, content);
-
-      // Add diff block via context callback BEFORE filesystem operation
-      if (context.addDiffBlock) {
-        context.addDiffBlock(resolvedPath, diffResult);
-      }
-
-      // Permission check after validation/diff but before real operation
+      // Permission check after validation but before real operation
       if (
         context.permissionManager &&
         context.permissionMode &&

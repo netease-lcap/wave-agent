@@ -2,7 +2,6 @@ import { readFile, writeFile } from "fs/promises";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
-import { diffLines } from "diff";
 
 /**
  * Format compact parameter display
@@ -143,15 +142,7 @@ export const editTool: ToolPlugin = {
         replacementCount = 1;
       }
 
-      // Generate diff information BEFORE filesystem operation
-      const diffResult = diffLines(originalContent, newContent);
-
-      // Add diff block via context callback BEFORE filesystem operation
-      if (context.addDiffBlock) {
-        context.addDiffBlock(resolvedPath, diffResult);
-      }
-
-      // Permission check after validation/diff but before real operation
+      // Permission check after validation but before real operation
       if (
         context.permissionManager &&
         context.permissionMode &&

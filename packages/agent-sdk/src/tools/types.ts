@@ -40,10 +40,6 @@ export interface ToolContext {
   abortSignal?: AbortSignal;
   backgroundBashManager?: import("../managers/backgroundBashManager.js").BackgroundBashManager;
   workdir: string;
-  addDiffBlock?: (
-    filePath: string,
-    diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
-  ) => void;
   /** Permission mode for this tool execution */
   permissionMode?: PermissionMode;
   /** Custom permission callback */

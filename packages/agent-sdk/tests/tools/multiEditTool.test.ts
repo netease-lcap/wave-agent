@@ -7,15 +7,12 @@ import type { ToolContext } from "@/tools/types.js";
 vi.mock("fs/promises");
 
 describe("multiEditTool", () => {
-  let mockAddDiffBlock: ReturnType<typeof vi.fn>;
   let mockContext: ToolContext;
 
   beforeEach(() => {
-    mockAddDiffBlock = vi.fn();
     mockContext = {
       abortSignal: new AbortController().signal,
       workdir: "/test/workdir",
-      addDiffBlock: mockAddDiffBlock,
     };
   });
 
@@ -77,14 +74,6 @@ describe("multiEditTool", () => {
     expect(result.content).toContain("Applied 2 edits");
     expect(result.filePath).toBe("/test/file.js");
 
-    // Verify addDiffBlock was called with correct parameters
-    expect(mockAddDiffBlock).toHaveBeenCalledWith(
-      "/test/file.js",
-      expect.arrayContaining([
-        expect.objectContaining({ value: expect.any(String) }),
-      ]),
-    );
-
     expect(readFile).toHaveBeenCalledWith("/test/file.js", "utf-8");
     expect(writeFile).toHaveBeenCalledWith(
       "/test/file.js",
@@ -114,14 +103,6 @@ describe("multiEditTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Created file with");
-
-    // Verify addDiffBlock was called with correct parameters (empty original content for new file)
-    expect(mockAddDiffBlock).toHaveBeenCalledWith(
-      "/test/newfile.js",
-      expect.arrayContaining([
-        expect.objectContaining({ value: expect.any(String) }),
-      ]),
-    );
 
     expect(writeFile).toHaveBeenCalledWith(
       "/test/newfile.js",
@@ -156,14 +137,6 @@ describe("multiEditTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Applied 2 edits");
-
-    // Verify addDiffBlock was called with correct parameters
-    expect(mockAddDiffBlock).toHaveBeenCalledWith(
-      "/test/file.js",
-      expect.arrayContaining([
-        expect.objectContaining({ value: expect.any(String) }),
-      ]),
-    );
   });
 
   it("should fail if any edit operation fails", async () => {
@@ -384,13 +357,5 @@ describe("multiEditTool", () => {
     expect(result.content).toContain("Operations performed:");
     expect(result.content).toContain('1. Replaced "var x"');
     expect(result.content).toContain('2. Replaced "var y"');
-
-    // Verify addDiffBlock was called with correct parameters
-    expect(mockAddDiffBlock).toHaveBeenCalledWith(
-      "/test/file.js",
-      expect.arrayContaining([
-        expect.objectContaining({ value: expect.any(String) }),
-      ]),
-    );
   });
 });

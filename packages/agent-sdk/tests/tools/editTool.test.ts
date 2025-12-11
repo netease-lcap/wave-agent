@@ -7,15 +7,12 @@ import type { ToolContext } from "@/tools/types.js";
 vi.mock("fs/promises");
 
 describe("editTool", () => {
-  let mockAddDiffBlock: ReturnType<typeof vi.fn>;
   let mockContext: ToolContext;
 
   beforeEach(() => {
-    mockAddDiffBlock = vi.fn();
     mockContext = {
       abortSignal: new AbortController().signal,
       workdir: "/test/workdir",
-      addDiffBlock: mockAddDiffBlock,
     };
   });
 
@@ -69,14 +66,6 @@ describe("editTool", () => {
     expect(result.content).toContain("Text replaced successfully");
     expect(result.filePath).toBe("/test/file.js");
 
-    // Verify addDiffBlock was called with correct parameters
-    expect(mockAddDiffBlock).toHaveBeenCalledWith(
-      "/test/file.js",
-      expect.arrayContaining([
-        expect.objectContaining({ value: expect.any(String) }),
-      ]),
-    );
-
     expect(readFile).toHaveBeenCalledWith("/test/file.js", "utf-8");
     expect(writeFile).toHaveBeenCalledWith(
       "/test/file.js",
@@ -104,14 +93,6 @@ describe("editTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Replaced 3 instances");
-
-    // Verify addDiffBlock was called with correct parameters
-    expect(mockAddDiffBlock).toHaveBeenCalledWith(
-      "/test/file.js",
-      expect.arrayContaining([
-        expect.objectContaining({ value: expect.any(String) }),
-      ]),
-    );
 
     expect(writeFile).toHaveBeenCalledWith(
       "/test/file.js",
@@ -263,14 +244,6 @@ describe("editTool", () => {
     );
 
     expect(result.success).toBe(true);
-
-    // Verify addDiffBlock was called with correct parameters
-    expect(mockAddDiffBlock).toHaveBeenCalledWith(
-      "/test/file.js",
-      expect.arrayContaining([
-        expect.objectContaining({ value: expect.any(String) }),
-      ]),
-    );
   });
 
   it("should work with absolute file paths", async () => {

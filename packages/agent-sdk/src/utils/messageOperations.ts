@@ -47,12 +47,6 @@ export type AgentToolBlockUpdateParams = Omit<
   "messages"
 >;
 
-export interface AddDiffBlockParams {
-  messages: Message[];
-  path: string;
-  diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>;
-}
-
 export interface AddErrorBlockParams {
   messages: Message[];
   error: string;
@@ -217,28 +211,6 @@ export const addAssistantMessageToMessages = (
   };
 
   return [...messages, initialAssistantMessage];
-};
-
-// Update File Operation Block of the last assistant message
-export const addDiffBlockToMessage = ({
-  messages,
-  path,
-  diffResult,
-}: AddDiffBlockParams): Message[] => {
-  const newMessages = [...messages];
-  // Find the last assistant message
-  for (let i = newMessages.length - 1; i >= 0; i--) {
-    if (newMessages[i].role === "assistant") {
-      // Directly add diff block instead of replacing existing blocks
-      newMessages[i].blocks.push({
-        type: "diff",
-        path: path,
-        diffResult: diffResult,
-      });
-      break;
-    }
-  }
-  return newMessages;
 };
 
 // Update Tool Block of the last assistant message
