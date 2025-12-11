@@ -800,6 +800,32 @@ export class Agent {
     // Cleanup memory store
   }
 
+  /**
+   * Send a message to the AI agent with optional images
+   *
+   * @param content - The text content of the message to send
+   * @param images - Optional array of images to include with the message
+   * @param images[].path - File path to the image or base64 encoded image data
+   * @param images[].mimeType - MIME type of the image (e.g., 'image/png', 'image/jpeg')
+   * @returns Promise that resolves when the message has been processed
+   *
+   * @example
+   * ```typescript
+   * // Send a text message
+   * await agent.sendMessage("Hello, how are you?");
+   *
+   * // Send a message with images using file paths
+   * await agent.sendMessage("What do you see in these images?", [
+   *   { path: "/path/to/image.png", mimeType: "image/png" },
+   *   { path: "/path/to/photo.jpg", mimeType: "image/jpeg" }
+   * ]);
+   *
+   * // Send a message with base64 encoded image
+   * await agent.sendMessage("Analyze this image", [
+   *   { path: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...", mimeType: "image/png" }
+   * ]);
+   * ```
+   */
   public async sendMessage(
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
