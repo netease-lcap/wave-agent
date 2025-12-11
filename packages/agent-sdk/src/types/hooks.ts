@@ -11,7 +11,8 @@ export type HookEvent =
   | "PostToolUse"
   | "UserPromptSubmit"
   | "Stop"
-  | "SubagentStop";
+  | "SubagentStop"
+  | "Notification";
 
 // Individual hook command configuration
 export interface HookCommand {
@@ -109,6 +110,7 @@ export function isValidHookEvent(event: string): event is HookEvent {
     "UserPromptSubmit",
     "Stop",
     "SubagentStop",
+    "Notification",
   ].includes(event);
 }
 
@@ -147,7 +149,7 @@ export interface HookJsonInput {
   session_id: string; // Format: "wave_session_{uuid}_{shortId}"
   transcript_path: string; // Format: "~/.wave/sessions/session_{shortId}.json"
   cwd: string; // Absolute path to current working directory
-  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SubagentStop"
+  hook_event_name: HookEvent; // "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop" | "SubagentStop" | "Notification"
 
   // Optional fields based on event type
   tool_name?: string; // Present for PreToolUse, PostToolUse
@@ -155,6 +157,8 @@ export interface HookJsonInput {
   tool_response?: unknown; // Present for PostToolUse only
   user_prompt?: string; // Present for UserPromptSubmit only
   subagent_type?: string; // Present when hook is executed by a subagent
+  message?: string; // Present for Notification events
+  notification_type?: string; // Present for Notification events
 }
 
 // Extended context interface for passing additional data to hook executor
@@ -166,6 +170,8 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   toolResponse?: unknown; // Tool execution result (PostToolUse only)
   userPrompt?: string; // User prompt text (UserPromptSubmit only)
   subagentType?: string; // Subagent type when hook is executed by a subagent
+  message?: string; // Notification message (Notification only)
+  notificationType?: string; // Notification type (Notification only)
 }
 
 // Environment variables injected into hook processes

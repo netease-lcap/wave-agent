@@ -204,22 +204,9 @@ export class Agent {
     // Initialize permission manager
     this.permissionManager = new PermissionManager({ logger: this.logger });
 
-    // Initialize tool manager with permission context
-    this.toolManager = new ToolManager({
-      mcpManager: this.mcpManager,
-      logger: this.logger,
-      permissionManager: this.permissionManager,
-      permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
-      canUseToolCallback: options.canUseTool,
-    }); // Initialize tool registry with permission support
-
+    // Initialize configuration service and hooks manager
     this.configurationService = new ConfigurationService(); // Initialize configuration service
     this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
-    this.liveConfigManager = new LiveConfigManager({
-      workdir: this.workdir,
-      logger: this.logger,
-      hookManager: this.hookManager,
-    }); // Initialize live configuration manager
 
     // Initialize MessageManager
     this.messageManager = new MessageManager({
@@ -227,6 +214,50 @@ export class Agent {
       workdir: this.workdir,
       logger: this.logger,
     });
+
+    // Create a wrapper for canUseTool that triggers notification hooks
+    const canUseToolWithNotification: PermissionCallback | undefined =
+      options.canUseTool
+        ? async (context) => {
+            try {
+              // Trigger notification hooks before calling the original callback
+              const notificationMessage = `Claude needs your permission to use ${context.toolName}`;
+              await this.hookManager.executeHooks("Notification", {
+                event: "Notification",
+                projectDir: this.workdir,
+                timestamp: new Date(),
+                sessionId: this.sessionId,
+                transcriptPath: this.messageManager.getTranscriptPath(),
+                cwd: this.workdir,
+                message: notificationMessage,
+                notificationType: "permission_prompt",
+              });
+            } catch (error) {
+              this.logger?.warn("Failed to execute notification hooks", {
+                toolName: context.toolName,
+                error: error instanceof Error ? error.message : String(error),
+              });
+              // Continue with permission check even if hooks fail
+            }
+
+            // Call the original callback
+            return options.canUseTool!(context);
+          }
+        : undefined;
+
+    // Initialize tool manager with permission context
+    this.toolManager = new ToolManager({
+      mcpManager: this.mcpManager,
+      logger: this.logger,
+      permissionManager: this.permissionManager,
+      permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
+      canUseToolCallback: canUseToolWithNotification,
+    }); // Initialize tool registry with permission support
+    this.liveConfigManager = new LiveConfigManager({
+      workdir: this.workdir,
+      logger: this.logger,
+      hookManager: this.hookManager,
+    }); // Initialize live configuration manager
 
     // Initialize subagent manager with all dependencies in constructor
     // IMPORTANT: Must be initialized AFTER MessageManager

@@ -365,6 +365,19 @@ export class HookManager {
         });
         return { shouldBlock: true, errorMessage };
 
+      case "Notification":
+        // For notification hooks with exit code 2, only show stderr in error block
+        messageManager.addErrorBlock(errorMessage);
+        return { shouldBlock: false };
+
+      case "SubagentStop":
+        // Similar to Stop, show error and allow blocking
+        messageManager.addUserMessage({
+          content: errorMessage,
+          source: MessageSource.HOOK,
+        });
+        return { shouldBlock: true, errorMessage };
+
       default:
         return { shouldBlock: false };
     }
@@ -561,7 +574,10 @@ export class HookManager {
 
     // Validate non-tool events don't have unexpected tool names
     if (
-      (event === "UserPromptSubmit" || event === "Stop") &&
+      (event === "UserPromptSubmit" ||
+        event === "Stop" ||
+        event === "Notification" ||
+        event === "SubagentStop") &&
       context.toolName !== undefined
     ) {
       this.logger?.warn(
@@ -633,7 +649,12 @@ export class HookManager {
     toolName?: string,
   ): boolean {
     // For events that don't use matchers, config always applies
-    if (event === "UserPromptSubmit" || event === "Stop") {
+    if (
+      event === "UserPromptSubmit" ||
+      event === "Stop" ||
+      event === "Notification" ||
+      event === "SubagentStop"
+    ) {
       return true;
     }
 
@@ -679,7 +700,13 @@ export class HookManager {
     }
 
     // Validate that non-tool events don't have matchers
-    if ((event === "UserPromptSubmit" || event === "Stop") && config.matcher) {
+    if (
+      (event === "UserPromptSubmit" ||
+        event === "Stop" ||
+        event === "Notification" ||
+        event === "SubagentStop") &&
+      config.matcher
+    ) {
       errors.push(`${prefix}: Event ${event} should not have a matcher`);
     }
 
@@ -715,6 +742,7 @@ export class HookManager {
           UserPromptSubmit: 0,
           Stop: 0,
           SubagentStop: 0,
+          Notification: 0,
         },
       };
     }
@@ -725,6 +753,7 @@ export class HookManager {
       UserPromptSubmit: 0,
       Stop: 0,
       SubagentStop: 0,
+      Notification: 0,
     };
 
     let totalConfigs = 0;

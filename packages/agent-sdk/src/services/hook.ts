@@ -73,6 +73,16 @@ async function buildHookJsonInput(
     jsonInput.subagent_type = context.subagentType;
   }
 
+  // Add notification fields for Notification events
+  if (context.event === "Notification") {
+    if (context.message !== undefined) {
+      jsonInput.message = context.message;
+    }
+    if (context.notificationType !== undefined) {
+      jsonInput.notification_type = context.notificationType;
+    }
+  }
+
   return jsonInput;
 }
 
