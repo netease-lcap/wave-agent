@@ -8,14 +8,23 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Agent } from "../../src/agent.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
+import { loadMergedWaveConfig } from "../../src/services/configurationService.js";
+
+// Mock loadMergedWaveConfig
+vi.mock("../../src/services/configurationService.js", async () => {
+  const actual = await vi.importActual(
+    "../../src/services/configurationService.js",
+  );
+  return {
+    ...actual,
+    loadMergedWaveConfig: vi.fn(),
+  };
+});
 
 // Define types for testing Agent internal methods
 interface TestableAgent {
   subagentManager: SubagentManager;
 }
-
-// Store original environment variables to restore later
-const originalEnv = { ...process.env };
 
 describe("Subagent Dynamic Configuration Tests", () => {
   let agent: Agent;
@@ -29,6 +38,8 @@ describe("Subagent Dynamic Configuration Tests", () => {
     delete process.env.AIGW_MODEL;
     delete process.env.AIGW_FAST_MODEL;
     delete process.env.TOKEN_LIMIT;
+    // Reset and setup loadMergedWaveConfig mock
+    vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
   });
 
   afterEach(async () => {
@@ -36,9 +47,6 @@ describe("Subagent Dynamic Configuration Tests", () => {
     if (agent) {
       await agent.destroy();
     }
-
-    // Restore original environment variables
-    process.env = { ...originalEnv };
 
     // Clear all mocks
     vi.clearAllMocks();

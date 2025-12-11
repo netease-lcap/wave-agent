@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import type { AgentOptions } from "@/agent.js";
+import { loadMergedWaveConfig } from "@/services/configurationService.js";
+
+// Mock loadMergedWaveConfig
+vi.mock("@/services/configurationService.js", async () => {
+  const actual = await vi.importActual("@/services/configurationService.js");
+  return {
+    ...actual,
+    loadMergedWaveConfig: vi.fn(),
+  };
+});
 
 describe("Agent Configuration", () => {
   const originalEnv = process.env;
@@ -9,6 +19,9 @@ describe("Agent Configuration", () => {
     // Reset environment variables
     vi.resetModules();
     process.env = { ...originalEnv };
+
+    // Reset and setup loadMergedWaveConfig mock
+    vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
   });
 
   afterEach(() => {
