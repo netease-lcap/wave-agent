@@ -16,12 +16,14 @@ export class ConfigResolver {
    * Resolves gateway configuration from constructor args and environment
    * @param apiKey - API key from constructor (optional)
    * @param baseURL - Base URL from constructor (optional)
+   * @param defaultHeaders - HTTP headers from constructor (optional)
    * @returns Resolved gateway configuration
    * @throws ConfigurationError if required configuration is missing after fallbacks
    */
   static resolveGatewayConfig(
     apiKey?: string,
     baseURL?: string,
+    defaultHeaders?: Record<string, string>,
   ): GatewayConfig {
     // Resolve API key: constructor > environment variable
     // Note: Explicitly provided empty strings should be treated as invalid, not fall back to env
@@ -74,6 +76,7 @@ export class ConfigResolver {
     return {
       apiKey: resolvedApiKey,
       baseURL: resolvedBaseURL,
+      defaultHeaders,
     };
   }
 
@@ -135,7 +138,11 @@ export class ConfigResolver {
  * Implements ConfigurationResolver interface from types.ts
  */
 export const configResolver = {
-  resolveGatewayConfig: ConfigResolver.resolveGatewayConfig,
+  resolveGatewayConfig: (
+    apiKey?: string,
+    baseURL?: string,
+    defaultHeaders?: Record<string, string>,
+  ) => ConfigResolver.resolveGatewayConfig(apiKey, baseURL, defaultHeaders),
   resolveModelConfig: ConfigResolver.resolveModelConfig,
   resolveTokenLimit: ConfigResolver.resolveTokenLimit,
 };

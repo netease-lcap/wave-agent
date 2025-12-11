@@ -57,6 +57,7 @@ export interface AgentOptions {
   // Optional configuration with environment fallbacks
   apiKey?: string;
   baseURL?: string;
+  defaultHeaders?: Record<string, string>;
   agentModel?: string;
   fastModel?: string;
   tokenLimit?: number;
@@ -115,6 +116,7 @@ export class Agent {
     return configResolver.resolveGatewayConfig(
       this.options.apiKey,
       this.options.baseURL,
+      this.options.defaultHeaders,
     );
   }
 
@@ -168,6 +170,7 @@ export class Agent {
     const gatewayConfig = configResolver.resolveGatewayConfig(
       options.apiKey,
       options.baseURL,
+      options.defaultHeaders,
     );
     const modelConfig = configResolver.resolveModelConfig(
       options.agentModel,
@@ -408,6 +411,7 @@ export class Agent {
    * @param options - Configuration options for the Agent instance
    * @param options.apiKey - API key for the AI service (or set WAVE_API_KEY env var)
    * @param options.baseURL - Base URL for the AI service (or set WAVE_BASE_URL env var)
+   * @param options.defaultHeaders - Optional HTTP headers to pass to the AI service
    * @param options.callbacks - Optional callbacks for various Agent events
    * @param options.restoreSessionId - Optional session ID to restore from
    * @param options.continueLastSession - Whether to continue the last session automatically

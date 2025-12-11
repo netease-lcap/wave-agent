@@ -144,6 +144,7 @@ export async function callAgent(
     const openai = new OpenAI({
       apiKey: gatewayConfig.apiKey,
       baseURL: gatewayConfig.baseURL,
+      defaultHeaders: gatewayConfig.defaultHeaders,
     });
 
     // Build system prompt content
@@ -578,6 +579,7 @@ export async function compressMessages(
   const openai = new OpenAI({
     apiKey: gatewayConfig.apiKey,
     baseURL: gatewayConfig.baseURL,
+    defaultHeaders: gatewayConfig.defaultHeaders,
   });
 
   // Get model configuration - use injected fast model
