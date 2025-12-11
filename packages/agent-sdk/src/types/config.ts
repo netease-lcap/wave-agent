@@ -6,6 +6,7 @@
 export interface GatewayConfig {
   apiKey: string;
   baseURL: string;
+  defaultHeaders?: Record<string, string>;
 }
 
 export interface ModelConfig {
