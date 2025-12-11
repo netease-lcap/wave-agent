@@ -4,8 +4,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ToolResultDisplay } from "../../src/components/ToolResultDisplay.js";
 import type { ToolBlock } from "wave-agent-sdk";
 
-// Mock toolManager - no longer needed since we removed display fields
-vi.mock("wave-agent-sdk");
+// Mock the transformToolBlockToChanges function to return empty array
+vi.mock("wave-agent-sdk", async () => {
+  const actual = await vi.importActual("wave-agent-sdk");
+  return {
+    ...actual,
+    transformToolBlockToChanges: vi.fn(() => []),
+  };
+});
 
 describe("ToolResultDisplay Component", () => {
   beforeEach(() => {
