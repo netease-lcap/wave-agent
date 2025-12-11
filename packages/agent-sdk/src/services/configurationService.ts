@@ -149,28 +149,20 @@ export class ConfigurationService {
       const userConfigPaths = getUserConfigPaths();
       const projectConfigPaths = getProjectConfigPaths(workdir);
 
-      // Load user configuration
-      const userConfig = loadUserWaveConfig();
-      const projectConfig = loadProjectWaveConfig(workdir);
-
-      // Track loading context for better error messages
-      const loadingContext: string[] = [];
-      if (userConfig) {
-        const userPath = userConfigPaths.find((path) => existsSync(path));
-        if (userPath) {
-          loadingContext.push(`user config from ${userPath}`);
-        }
-      }
-
-      if (projectConfig) {
-        const projectPath = projectConfigPaths.find((path) => existsSync(path));
-        if (projectPath) {
-          loadingContext.push(`project config from ${projectPath}`);
-        }
-      }
-
-      // Use the merged configuration function
+      // Use the merged configuration function (this loads user and project configs internally)
       const mergedConfig = loadMergedWaveConfig(workdir);
+
+      // Track loading context for better error messages by checking which files exist
+      const loadingContext: string[] = [];
+      const userPath = userConfigPaths.find((path) => existsSync(path));
+      if (userPath) {
+        loadingContext.push(`user config from ${userPath}`);
+      }
+
+      const projectPath = projectConfigPaths.find((path) => existsSync(path));
+      if (projectPath) {
+        loadingContext.push(`project config from ${projectPath}`);
+      }
 
       if (!mergedConfig) {
         const message =
