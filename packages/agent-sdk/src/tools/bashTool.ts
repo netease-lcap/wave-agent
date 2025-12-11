@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from "child_process";
 import { logger } from "../utils/globalLogger.js";
+import { stripAnsiColors } from "../utils/stringUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 
 /**
@@ -218,13 +219,13 @@ export const bashTool: ToolPlugin = {
 
       child.stdout?.on("data", (data) => {
         if (!isAborted) {
-          outputBuffer += data.toString();
+          outputBuffer += stripAnsiColors(data.toString());
         }
       });
 
       child.stderr?.on("data", (data) => {
         if (!isAborted) {
-          errorBuffer += data.toString();
+          errorBuffer += stripAnsiColors(data.toString());
         }
       });
 
@@ -350,10 +351,10 @@ export const bashOutputTool: ToolPlugin = {
 
     let content = "";
     if (output.stdout) {
-      content += output.stdout;
+      content += stripAnsiColors(output.stdout);
     }
     if (output.stderr) {
-      content += (content ? "\n" : "") + output.stderr;
+      content += (content ? "\n" : "") + stripAnsiColors(output.stderr);
     }
 
     return {

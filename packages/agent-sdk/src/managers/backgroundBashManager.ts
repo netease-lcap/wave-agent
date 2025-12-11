@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import { logger } from "../utils/globalLogger.js";
+import { stripAnsiColors } from "../utils/stringUtils.js";
 import type { BackgroundShell } from "../types/index.js";
 
 export interface BackgroundBashManagerCallbacks {
@@ -63,12 +64,12 @@ export class BackgroundBashManager {
     }
 
     child.stdout?.on("data", (data) => {
-      shell.stdout += data.toString();
+      shell.stdout += stripAnsiColors(data.toString());
       this.notifyShellsChange();
     });
 
     child.stderr?.on("data", (data) => {
-      shell.stderr += data.toString();
+      shell.stderr += stripAnsiColors(data.toString());
       this.notifyShellsChange();
     });
 
@@ -87,7 +88,7 @@ export class BackgroundBashManager {
         clearTimeout(timeoutHandle);
       }
       shell.status = "completed";
-      shell.stderr += `\nProcess error: ${error.message}`;
+      shell.stderr += `\nProcess error: ${stripAnsiColors(error.message)}`;
       shell.exitCode = 1;
       shell.runtime = Date.now() - startTime;
       this.notifyShellsChange();
