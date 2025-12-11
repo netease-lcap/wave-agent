@@ -323,7 +323,16 @@ export async function listSessionsFromJsonl(
     // If not including all workdirs, just scan the specific project directory
     if (!includeAllWorkdirs) {
       const projectDir = await encoder.getProjectDirectory(workdir, baseDir);
-      const files = await fs.readdir(projectDir.encodedPath);
+      let files: string[];
+      try {
+        files = await fs.readdir(projectDir.encodedPath);
+      } catch (error) {
+        // If project directory doesn't exist, return empty array
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return [];
+        }
+        throw error;
+      }
 
       const sessions: SessionMetadata[] = [];
 
