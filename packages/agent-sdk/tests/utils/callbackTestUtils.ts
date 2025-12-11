@@ -21,7 +21,6 @@ export function createMockCallbacks(): MessageManagerCallbacks {
     onAssistantMessageAdded: vi.fn(),
     onAssistantContentUpdated: vi.fn(),
     onToolBlockUpdated: vi.fn(),
-    onDiffBlockAdded: vi.fn(),
     onErrorBlockAdded: vi.fn(),
     onCompressBlockAdded: vi.fn(),
     onCompressionStateChange: vi.fn(),

@@ -53,9 +53,6 @@ importers:
       chokidar:
         specifier: ^5.0.0
         version: 5.0.0
-      diff:
-        specifier: ^8.0.2
-        version: 8.0.2
       glob:
         specifier: ^11.0.3
         version: 11.0.3

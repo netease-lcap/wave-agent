@@ -480,16 +480,6 @@ export class AIManager {
                 abortSignal: toolAbortController.signal,
                 backgroundBashManager: this.backgroundBashManager,
                 workdir: this.workdir,
-                addDiffBlock: (
-                  filePath: string,
-                  diffResult: Array<{
-                    value: string;
-                    added?: boolean;
-                    removed?: boolean;
-                  }>,
-                ) => {
-                  this.messageManager.addDiffBlock(filePath, diffResult);
-                },
               };
 
               // Execute tool

@@ -60,7 +60,6 @@ describe("AIManager", () => {
       setlatestTotalTokens: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
       compressMessagesAndUpdateSession: vi.fn(),
-      addDiffBlock: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.md"),
     } as unknown as MessageManager;
 

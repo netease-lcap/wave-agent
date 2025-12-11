@@ -2,7 +2,6 @@ import {
   addAssistantMessageToMessages,
   updateToolBlockInMessage,
   addErrorBlockToMessage,
-  addDiffBlockToMessage,
   addUserMessageToMessages,
   extractUserInputHistory,
   addMemoryBlockToMessage,
@@ -43,7 +42,6 @@ export interface MessageManagerCallbacks {
   // NEW: Streaming content callback - FR-001: receives chunk and accumulated content
   onAssistantContentUpdated?: (chunk: string, accumulated: string) => void;
   onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
-  onDiffBlockAdded?: (filePath: string, diffResult: string) => void;
   onErrorBlockAdded?: (error: string) => void;
   onCompressBlockAdded?: (insertIndex: number, content: string) => void;
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -359,19 +357,6 @@ export class MessageManager {
     this.callbacks.onToolBlockUpdated?.(params);
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
-  }
-
-  public addDiffBlock(
-    filePath: string,
-    diffResult: Array<{ value: string; added?: boolean; removed?: boolean }>,
-  ): void {
-    const newMessages = addDiffBlockToMessage({
-      messages: this.messages,
-      path: filePath,
-      diffResult,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onDiffBlockAdded?.(filePath, JSON.stringify(diffResult));
   }
 
   public addErrorBlock(error: string): void {
