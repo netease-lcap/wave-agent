@@ -302,7 +302,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
         if (Object.keys(otherFields).length > 0) {
           const metadata: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(otherFields)) {
-            if (value !== undefined) {
+            if (value !== undefined && key !== "role") {
               metadata[key] = value;
             }
           }
@@ -539,7 +539,7 @@ async function processStreamingResponse(
   if (Object.keys(additionalDeltaFields).length > 0) {
     result.metadata = {};
     for (const [key, value] of Object.entries(additionalDeltaFields)) {
-      if (value !== undefined) {
+      if (value !== undefined && key !== "role") {
         result.metadata[key] = value;
       }
     }
