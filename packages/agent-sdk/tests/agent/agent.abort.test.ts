@@ -208,10 +208,14 @@ describe("Agent - Abort Handling", () => {
 
         // Listen for abort signal
         if (abortSignal) {
-          abortSignal.addEventListener("abort", () => {
-            clearTimeout(timeout);
-            reject(new Error("Aborted"));
-          });
+          abortSignal.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timeout);
+              reject(new Error("Aborted"));
+            },
+            { once: true },
+          );
         }
       });
     });

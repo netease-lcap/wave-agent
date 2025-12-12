@@ -13,7 +13,9 @@ describe("AbortUtils - Memory Leak Prevention", () => {
     // Store original listener count by checking if we can add another listener
     // This is a workaround since Node.js doesn't expose listener count directly
     const testListener = () => {};
-    abortController.signal.addEventListener("abort", testListener);
+    abortController.signal.addEventListener("abort", testListener, {
+      once: true,
+    });
     abortController.signal.removeEventListener("abort", testListener);
   });
 
