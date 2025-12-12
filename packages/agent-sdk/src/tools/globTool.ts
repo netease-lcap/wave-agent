@@ -1,4 +1,4 @@
-import { glob } from "glob";
+import { glob } from "fs/promises";
 import { stat } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
@@ -54,13 +54,13 @@ export const globTool: ToolPlugin = {
         : context.workdir;
 
       // Execute glob search
-      const matches = await glob(pattern, {
+      const matches: string[] = [];
+      for await (const match of glob(pattern, {
         cwd: workdir,
-        ignore: getGlobIgnorePatterns(workdir),
-        dot: false,
-        absolute: false,
-        nocase: false, // Keep case sensitive
-      });
+        exclude: getGlobIgnorePatterns(workdir),
+      })) {
+        matches.push(match);
+      }
 
       if (matches.length === 0) {
         return {
