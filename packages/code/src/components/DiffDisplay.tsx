@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Box, Text } from "ink";
-import { transformToolBlockToChanges } from "wave-agent-sdk";
+import { transformToolBlockToChanges } from "../utils/toolParameterTransforms.js";
 import { diffLines, diffWords } from "diff";
 import type { ToolBlock } from "wave-agent-sdk";
 
@@ -9,9 +9,10 @@ interface DiffDisplayProps {
 }
 
 export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
-  // Diff detection and transformation
+  // Diff detection and transformation using typed parameters
   const changes = useMemo(() => {
     try {
+      // Use local transformation with JSON parsing and type guards
       return transformToolBlockToChanges(toolBlock);
     } catch (error) {
       console.warn("Error transforming tool block to changes:", error);

@@ -25,3 +25,4 @@ export * from "./session.js";
 export * from "./environment.js";
 export * from "./configuration.js"; // New configuration management types
 export * from "./permissions.js";
+export * from "./tools.js"; // Tool parameter types
