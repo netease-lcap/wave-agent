@@ -1,4 +1,4 @@
-import { glob } from "glob";
+import { glob } from "fs/promises";
 import { getGlobIgnorePatterns } from "wave-agent-sdk";
 import * as fs from "fs";
 import * as path from "path";
@@ -49,10 +49,7 @@ export const searchFiles = async (
     let directories: string[] = [];
 
     const globOptions = {
-      ignore: getGlobIgnorePatterns(workingDirectory),
-      maxDepth: 10,
-      nocase: true, // Case insensitive
-      dot: true, // Include hidden files and directories
+      exclude: getGlobIgnorePatterns(workingDirectory),
       cwd: workingDirectory, // Specify search root directory
     };
 
@@ -64,58 +61,53 @@ export const searchFiles = async (
         "**/*.js",
         "**/*.jsx",
         "**/*.json",
+        "*/", // For directories at the first level
       ];
 
-      // Search files
-      const filePromises = commonPatterns.map((pattern) =>
-        glob(pattern, { ...globOptions, nodir: true }),
-      );
+      files = [];
+      directories = [];
 
-      // Search directories (only search first level to avoid too many results)
-      const dirPromises = [glob("*/", { ...globOptions, maxDepth: 1 })];
-
-      const fileResults = await Promise.all(filePromises);
-      const dirResults = await Promise.all(dirPromises);
-
-      files = fileResults.flat();
-      directories = dirResults.flat().map((dir) => {
-        // glob returns string type paths, remove trailing slash
-        return String(dir).replace(/\/$/, "");
-      });
+      for (const pattern of commonPatterns) {
+        for await (const dirent of glob(pattern, {
+          ...globOptions,
+          withFileTypes: true,
+        })) {
+          if (dirent.isFile()) {
+            files.push(dirent.name);
+          } else if (dirent.isDirectory()) {
+            directories.push(dirent.name);
+          }
+        }
+      }
     } else {
-      // Build multiple glob patterns to support more flexible search
-      const filePatterns = [
+      // Build glob patterns to search files and directories together
+      const allPatterns = [
         // Match files with filenames containing query
         `**/*${query}*`,
         // Match files with query in path (match directory names)
         `**/${query}*/**/*`,
-      ];
-
-      const dirPatterns = [
         // Match directory names containing query
         `**/*${query}*/`,
         // Match directories containing query in path
         `**/${query}*/`,
       ];
 
-      // Search files
-      const filePromises = filePatterns.map((pattern) =>
-        glob(pattern, { ...globOptions, nodir: true }),
-      );
+      files = [];
+      directories = [];
 
-      // Search directories
-      const dirPromises = dirPatterns.map((pattern) =>
-        glob(pattern, { ...globOptions, nodir: false }),
-      );
-
-      const fileResults = await Promise.all(filePromises);
-      const dirResults = await Promise.all(dirPromises);
-
-      files = fileResults.flat();
-      directories = dirResults.flat().map((dir) => {
-        // glob returns string type paths, remove trailing slash
-        return String(dir).replace(/\/$/, "");
-      });
+      // Search all patterns and separate files/directories using withFileTypes
+      for (const pattern of allPatterns) {
+        for await (const dirent of glob(pattern, {
+          ...globOptions,
+          withFileTypes: true,
+        })) {
+          if (dirent.isFile()) {
+            files.push(dirent.name);
+          } else if (dirent.isDirectory()) {
+            directories.push(dirent.name);
+          }
+        }
+      }
     }
 
     // Deduplicate and merge files and directories

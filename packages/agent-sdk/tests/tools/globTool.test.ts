@@ -5,13 +5,9 @@ import type { Stats } from "fs";
 
 const testContext: ToolContext = { workdir: "/test/workdir" };
 
-// Mock glob
-vi.mock("glob", () => ({
-  glob: vi.fn(),
-}));
-
-// Mock fs/promises
+// Mock fs/promises including glob
 vi.mock("fs/promises", () => ({
+  glob: vi.fn(),
   stat: vi.fn(),
 }));
 
@@ -27,8 +23,7 @@ vi.mock("../utils/fileFilter.js", () => ({
 }));
 
 // Import the mocked modules
-import { glob } from "glob";
-import { stat } from "fs/promises";
+import { glob, stat } from "fs/promises";
 
 describe("globTool", () => {
   const mockGlob = vi.mocked(glob);
@@ -39,6 +34,15 @@ describe("globTool", () => {
     ({
       mtime,
     }) as Stats;
+
+  // Helper to create mock async generators from arrays
+  const createMockAsyncGenerator = (files: string[]) => {
+    return async function* () {
+      for (const file of files) {
+        yield file;
+      }
+    };
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,10 +65,12 @@ describe("globTool", () => {
   });
 
   it("should find TypeScript files with **/*.ts pattern", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/src/index.ts",
-      "/test/workdir/src/utils.ts",
-    ]);
+    // Mock glob to return an async generator
+    const mockGenerator = async function* () {
+      yield "/test/workdir/src/index.ts";
+      yield "/test/workdir/src/utils.ts";
+    };
+    mockGlob.mockReturnValueOnce(mockGenerator());
 
     mockStat
       .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
@@ -82,12 +88,14 @@ describe("globTool", () => {
   });
 
   it("should find all files with ** pattern", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/package.json",
-      "/test/workdir/src/index.ts",
-      "/test/workdir/tests/app.test.js",
-      "/test/workdir/docs/README.md",
-    ]);
+    mockGlob.mockReturnValueOnce(
+      createMockAsyncGenerator([
+        "/test/workdir/package.json",
+        "/test/workdir/src/index.ts",
+        "/test/workdir/tests/app.test.js",
+        "/test/workdir/docs/README.md",
+      ])(),
+    );
 
     mockStat
       .mockResolvedValueOnce(createMockStats(new Date("2023-01-01")))
@@ -108,10 +116,12 @@ describe("globTool", () => {
   });
 
   it("should find files in specific directory", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/src/index.ts",
-      "/test/workdir/src/utils.ts",
-    ]);
+    mockGlob.mockReturnValueOnce(
+      createMockAsyncGenerator([
+        "/test/workdir/src/index.ts",
+        "/test/workdir/src/utils.ts",
+      ])(),
+    );
 
     mockStat
       .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
@@ -129,7 +139,7 @@ describe("globTool", () => {
   });
 
   it("should return no matches for non-existent pattern", async () => {
-    mockGlob.mockResolvedValueOnce([]);
+    mockGlob.mockReturnValueOnce(createMockAsyncGenerator([])());
 
     const result = await globTool.execute(
       { pattern: "**/*.nonexistent" },
@@ -142,10 +152,12 @@ describe("globTool", () => {
   });
 
   it("should work with custom search path", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/src/index.ts",
-      "/test/workdir/src/utils.ts",
-    ]);
+    mockGlob.mockReturnValueOnce(
+      createMockAsyncGenerator([
+        "/test/workdir/src/index.ts",
+        "/test/workdir/src/utils.ts",
+      ])(),
+    );
 
     mockStat
       .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
@@ -190,10 +202,12 @@ describe("globTool", () => {
   });
 
   it("should sort files by modification time", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/file1.txt",
-      "/test/workdir/file2.txt",
-    ]);
+    mockGlob.mockReturnValueOnce(
+      createMockAsyncGenerator([
+        "/test/workdir/file1.txt",
+        "/test/workdir/file2.txt",
+      ])(),
+    );
 
     // file2.txt is newer (modified later)
     mockStat
@@ -214,9 +228,11 @@ describe("globTool", () => {
 
   it("should respect gitignore patterns", async () => {
     // Mock glob to return files that would include node_modules, but should be filtered out
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/tests/app.test.js", // This should be included
-    ]);
+    mockGlob.mockReturnValueOnce(
+      createMockAsyncGenerator([
+        "/test/workdir/tests/app.test.js", // This should be included
+      ])(),
+    );
 
     mockStat.mockResolvedValueOnce(createMockStats(new Date("2023-01-01")));
 
@@ -233,10 +249,12 @@ describe("globTool", () => {
   });
 
   it("should handle stat errors gracefully", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/file1.txt",
-      "/test/workdir/file2.txt",
-    ]);
+    mockGlob.mockReturnValueOnce(
+      createMockAsyncGenerator([
+        "/test/workdir/file1.txt",
+        "/test/workdir/file2.txt",
+      ])(),
+    );
 
     // First file stat succeeds, second fails
     mockStat
@@ -255,7 +273,16 @@ describe("globTool", () => {
   });
 
   it("should handle glob errors", async () => {
-    mockGlob.mockRejectedValueOnce(new Error("Invalid pattern"));
+    // Mock glob to return a generator that throws an error
+    const mockErrorGenerator = async function* (): AsyncGenerator<
+      string,
+      void,
+      unknown
+    > {
+      yield "fake-file";
+      throw new Error("Invalid pattern");
+    };
+    mockGlob.mockReturnValueOnce(mockErrorGenerator());
 
     const result = await globTool.execute(
       { pattern: "[invalid" },
@@ -267,11 +294,13 @@ describe("globTool", () => {
   });
 
   it("should work with complex patterns", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/src/component.tsx",
-      "/test/workdir/src/utils.ts",
-      "/test/workdir/test/app.test.js",
-    ]);
+    mockGlob.mockReturnValueOnce(
+      createMockAsyncGenerator([
+        "/test/workdir/src/component.tsx",
+        "/test/workdir/src/utils.ts",
+        "/test/workdir/test/app.test.js",
+      ])(),
+    );
 
     mockStat
       .mockResolvedValueOnce(createMockStats(new Date("2023-01-01")))
@@ -290,7 +319,9 @@ describe("globTool", () => {
   });
 
   it("should display relative paths correctly", async () => {
-    mockGlob.mockResolvedValueOnce(["/test/workdir/nested/deep/file.ts"]);
+    mockGlob.mockReturnValueOnce(
+      createMockAsyncGenerator(["/test/workdir/nested/deep/file.ts"])(),
+    );
 
     mockStat.mockResolvedValueOnce(createMockStats(new Date("2023-01-01")));
 
