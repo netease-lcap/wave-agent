@@ -28,6 +28,13 @@ import {
   type EnvironmentMergeOptions,
   isValidEnvironmentVars,
 } from "../types/environment.js";
+import {
+  GatewayConfig,
+  ModelConfig,
+  ConfigurationError,
+  CONFIG_ERRORS,
+} from "../types/index.js";
+import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
 
 /**
  * Default ConfigurationService implementation
@@ -37,107 +44,9 @@ import {
  */
 export class ConfigurationService {
   private currentConfiguration: WaveConfiguration | null = null;
+  private env: Record<string, string> = {};
 
   // Core loading operations
-
-  /**
-   * Load and merge configuration from user and project settings
-   */
-  async loadConfiguration(workdir: string): Promise<ConfigurationLoadResult> {
-    try {
-      // Use the extracted function to get the merged configuration
-      const mergedConfig = loadMergedWaveConfig(workdir);
-
-      if (!mergedConfig) {
-        return {
-          configuration: null,
-          success: true,
-          warnings: [],
-          error: undefined,
-        };
-      }
-
-      // Validate the merged configuration
-      const validation = this.validateConfiguration(mergedConfig);
-
-      if (!validation.isValid) {
-        return {
-          configuration: null,
-          success: false,
-          error: `Configuration validation failed: ${validation.errors.join(", ")}`,
-          warnings: validation.warnings,
-        };
-      }
-
-      this.currentConfiguration = mergedConfig;
-      return {
-        configuration: mergedConfig,
-        success: true,
-        sourcePath: "merged configuration",
-        warnings: validation.warnings,
-      };
-    } catch (error) {
-      return {
-        configuration: null,
-        success: false,
-        error: `Configuration loading failed: ${(error as Error).message}`,
-        warnings: [],
-      };
-    }
-  }
-
-  /**
-   * Load configuration from single file
-   */
-  async loadConfigurationFromFile(
-    filePath: string,
-  ): Promise<ConfigurationLoadResult> {
-    try {
-      const config = loadWaveConfigFromFile(filePath);
-
-      if (!config) {
-        return {
-          configuration: null,
-          success: false,
-          error: `Configuration file not found: ${filePath}`,
-          warnings: [],
-        };
-      }
-
-      // Validate configuration
-      const validation = this.validateConfiguration(config);
-      if (!validation.isValid) {
-        return {
-          configuration: null,
-          success: false,
-          error: `Configuration validation failed in ${filePath}: ${validation.errors.join(", ")}`,
-          warnings: validation.warnings,
-        };
-      }
-
-      this.currentConfiguration = config;
-      return {
-        configuration: config,
-        success: true,
-        sourcePath: filePath,
-        warnings: validation.warnings,
-      };
-    } catch (error) {
-      let errorMessage: string;
-      if (error instanceof SyntaxError) {
-        errorMessage = `Invalid JSON syntax in ${filePath}: ${error.message}`;
-      } else {
-        errorMessage = `Error loading configuration from ${filePath}: ${(error as Error).message}`;
-      }
-
-      return {
-        configuration: null,
-        success: false,
-        error: errorMessage,
-        warnings: [],
-      };
-    }
-  }
 
   /**
    * Load and merge configuration with comprehensive validation
@@ -192,6 +101,12 @@ export class ConfigurationService {
 
       // Success case
       this.currentConfiguration = mergedConfig;
+
+      // Set environment variables if present in the merged config
+      if (mergedConfig.env) {
+        this.setEnvironmentVars(mergedConfig.env);
+      }
+
       const sourcePaths = loadingContext.join(" and ");
 
       return {
@@ -335,6 +250,153 @@ export class ConfigurationService {
   }
 
   /**
+   * Set environment variables from configuration
+   * This replaces direct process.env modification
+   */
+  setEnvironmentVars(env: Record<string, string>): void {
+    this.env = { ...env };
+  }
+
+  /**
+   * Get current environment variables
+   */
+  getEnvironmentVars(): Record<string, string> {
+    return { ...this.env };
+  }
+
+  // =============================================================================
+  // Configuration Resolution Methods (merged from configResolver.ts)
+  // =============================================================================
+
+  /**
+   * Resolves gateway configuration from constructor args and environment
+   * Resolution priority: options > env (from settings.json) > process.env > error
+   * @param apiKey - API key from constructor (optional)
+   * @param baseURL - Base URL from constructor (optional)
+   * @param defaultHeaders - HTTP headers from constructor (optional)
+   * @returns Resolved gateway configuration
+   * @throws ConfigurationError if required configuration is missing after fallbacks
+   */
+  resolveGatewayConfig(
+    apiKey?: string,
+    baseURL?: string,
+    defaultHeaders?: Record<string, string>,
+  ): GatewayConfig {
+    // Resolve API key: constructor > env (settings.json) > process.env
+    // Note: Explicitly provided empty strings should be treated as invalid, not fall back to env
+    let resolvedApiKey: string;
+    if (apiKey !== undefined) {
+      resolvedApiKey = apiKey;
+    } else {
+      resolvedApiKey = this.env.AIGW_TOKEN || process.env.AIGW_TOKEN || "";
+    }
+
+    if (!resolvedApiKey && apiKey === undefined) {
+      throw new ConfigurationError(CONFIG_ERRORS.MISSING_API_KEY, "apiKey", {
+        constructor: apiKey,
+        environment: process.env.AIGW_TOKEN,
+        settings: this.env.AIGW_TOKEN,
+      });
+    }
+
+    if (resolvedApiKey.trim() === "") {
+      throw new ConfigurationError(
+        CONFIG_ERRORS.EMPTY_API_KEY,
+        "apiKey",
+        resolvedApiKey,
+      );
+    }
+
+    // Resolve base URL: constructor > env (settings.json) > process.env
+    // Note: Explicitly provided empty strings should be treated as invalid, not fall back to env
+    let resolvedBaseURL: string;
+    if (baseURL !== undefined) {
+      resolvedBaseURL = baseURL;
+    } else {
+      resolvedBaseURL = this.env.AIGW_URL || process.env.AIGW_URL || "";
+    }
+
+    if (!resolvedBaseURL && baseURL === undefined) {
+      throw new ConfigurationError(CONFIG_ERRORS.MISSING_BASE_URL, "baseURL", {
+        constructor: baseURL,
+        environment: process.env.AIGW_URL,
+        settings: this.env.AIGW_URL,
+      });
+    }
+
+    if (resolvedBaseURL.trim() === "") {
+      throw new ConfigurationError(
+        CONFIG_ERRORS.EMPTY_BASE_URL,
+        "baseURL",
+        resolvedBaseURL,
+      );
+    }
+
+    return {
+      apiKey: resolvedApiKey,
+      baseURL: resolvedBaseURL,
+      defaultHeaders,
+    };
+  }
+
+  /**
+   * Resolves model configuration with fallbacks
+   * Resolution priority: options > env (from settings.json) > process.env > default
+   * @param agentModel - Agent model from constructor (optional)
+   * @param fastModel - Fast model from constructor (optional)
+   * @returns Resolved model configuration with defaults
+   */
+  resolveModelConfig(agentModel?: string, fastModel?: string): ModelConfig {
+    // Default values as per data-model.md
+    const DEFAULT_AGENT_MODEL = "claude-sonnet-4-20250514";
+    const DEFAULT_FAST_MODEL = "gemini-2.5-flash";
+
+    // Resolve agent model: constructor > env (settings.json) > process.env > default
+    const resolvedAgentModel =
+      agentModel ||
+      this.env.AIGW_MODEL ||
+      process.env.AIGW_MODEL ||
+      DEFAULT_AGENT_MODEL;
+
+    // Resolve fast model: constructor > env (settings.json) > process.env > default
+    const resolvedFastModel =
+      fastModel ||
+      this.env.AIGW_FAST_MODEL ||
+      process.env.AIGW_FAST_MODEL ||
+      DEFAULT_FAST_MODEL;
+
+    return {
+      agentModel: resolvedAgentModel,
+      fastModel: resolvedFastModel,
+    };
+  }
+
+  /**
+   * Resolves token limit with fallbacks
+   * Resolution priority: options > env (from settings.json) > process.env > default
+   * @param constructorLimit - Token limit from constructor (optional)
+   * @returns Resolved token limit
+   */
+  resolveTokenLimit(constructorLimit?: number): number {
+    // If constructor value provided, use it
+    if (constructorLimit !== undefined) {
+      return constructorLimit;
+    }
+
+    // Try env (settings.json) first, then process.env
+    const envTokenLimit = this.env.TOKEN_LIMIT || process.env.TOKEN_LIMIT;
+    if (envTokenLimit) {
+      const parsed = parseInt(envTokenLimit, 10);
+      if (!isNaN(parsed)) {
+        return parsed;
+      }
+    }
+
+    // Use default
+    return DEFAULT_TOKEN_LIMIT;
+  }
+
+  /**
    * Resolve all configuration file paths
    */
   getConfigurationPaths(workdir: string): ConfigurationPaths {
@@ -348,55 +410,7 @@ export class ConfigurationService {
       existingPaths: existingPaths.existingPaths,
     };
   }
-
-  // Private helper methods
-
-  /**
-   * Load configuration from multiple file paths in priority order
-   */
-  private async loadConfigurationFromFiles(
-    filePaths: string[],
-  ): Promise<ConfigurationLoadResult> {
-    const config = loadWaveConfigFromFiles(filePaths);
-
-    if (!config) {
-      // No valid configuration found
-      return {
-        configuration: null,
-        success: true, // This is not an error - just no config files found
-        warnings: [],
-      };
-    }
-
-    // Find which file was actually used
-    let sourcePath: string | undefined;
-    for (const filePath of filePaths) {
-      if (existsSync(filePath)) {
-        sourcePath = filePath;
-        break;
-      }
-    }
-
-    // Validate the configuration
-    const validation = this.validateConfiguration(config);
-    if (!validation.isValid) {
-      return {
-        configuration: null,
-        success: false,
-        error: `Configuration validation failed: ${validation.errors.join(", ")}`,
-        warnings: validation.warnings,
-      };
-    }
-
-    return {
-      configuration: config,
-      success: true,
-      sourcePath,
-      warnings: validation.warnings,
-    };
-  }
 }
-
 // =============================================================================
 // Extracted Configuration Functions
 // =============================================================================

@@ -10,7 +10,6 @@ import { LiveConfigManager } from "../../src/managers/liveConfigManager.js";
 import type { Logger } from "../../src/types/index.js";
 import type { HookManager } from "../../src/managers/hookManager.js";
 import { ConfigurationService } from "../../src/services/configurationService.js";
-import { EnvironmentService } from "../../src/services/environmentService.js";
 import { FileWatcherService } from "../../src/services/fileWatcher.js";
 import * as configPaths from "../../src/utils/configPaths.js";
 import type { WaveConfiguration } from "../../src/types/hooks.js";
@@ -18,7 +17,6 @@ import type { ConfigurationLoadResult } from "../../src/types/configuration.js";
 
 // Mock all dependencies
 vi.mock("../../src/services/configurationService.js");
-vi.mock("../../src/services/environmentService.js");
 vi.mock("../../src/services/fileWatcher.js");
 vi.mock("../../src/utils/configPaths.js");
 vi.mock("fs", () => ({
@@ -30,7 +28,6 @@ describe("LiveConfigManager - Configuration Management", () => {
   let mockLogger: Logger;
   let mockHookManager: HookManager;
   let mockConfigurationService: ConfigurationService;
-  let mockEnvironmentService: EnvironmentService;
   let mockFileWatcherService: FileWatcherService;
   let workdir: string;
 
@@ -59,12 +56,8 @@ describe("LiveConfigManager - Configuration Management", () => {
     // Mock configuration service
     mockConfigurationService = {
       loadMergedConfiguration: vi.fn(),
+      setEnvironmentVars: vi.fn(),
     } as Partial<ConfigurationService> as ConfigurationService;
-
-    // Mock environment service
-    mockEnvironmentService = {
-      applyEnvironmentVariables: vi.fn(),
-    } as Partial<EnvironmentService> as EnvironmentService;
 
     // Mock config paths
     vi.mocked(configPaths.getUserConfigPaths).mockReturnValue([
@@ -77,9 +70,6 @@ describe("LiveConfigManager - Configuration Management", () => {
     // Mock constructors
     vi.mocked(ConfigurationService).mockImplementation(
       () => mockConfigurationService,
-    );
-    vi.mocked(EnvironmentService).mockImplementation(
-      () => mockEnvironmentService,
     );
     vi.mocked(FileWatcherService).mockImplementation(
       () => mockFileWatcherService,
@@ -216,9 +206,10 @@ describe("LiveConfigManager - Configuration Management", () => {
 
       await liveConfigManager.initialize();
 
+      // Configuration loading should have been called
       expect(
-        mockEnvironmentService.applyEnvironmentVariables,
-      ).toHaveBeenCalledWith(mockConfig.env);
+        mockConfigurationService.loadMergedConfiguration,
+      ).toHaveBeenCalled();
     });
 
     it("should handle exceptions during configuration loading", async () => {

@@ -36,6 +36,7 @@ export interface AIManagerOptions {
   getGatewayConfig: () => GatewayConfig;
   getModelConfig: () => ModelConfig;
   getTokenLimit: () => number;
+  getEnvironmentVars?: () => Record<string, string>; // Get configuration environment variables for hooks
 }
 
 export class AIManager {
@@ -55,6 +56,7 @@ export class AIManager {
   private getGatewayConfigFn: () => GatewayConfig;
   private getModelConfigFn: () => ModelConfig;
   private getTokenLimitFn: () => number;
+  private getEnvironmentVarsFn?: () => Record<string, string>;
 
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
@@ -71,6 +73,7 @@ export class AIManager {
     this.getGatewayConfigFn = options.getGatewayConfig;
     this.getModelConfigFn = options.getModelConfig;
     this.getTokenLimitFn = options.getTokenLimit;
+    this.getEnvironmentVarsFn = options.getEnvironmentVars;
   }
 
   // Getter methods for accessing dynamic configuration
@@ -616,6 +619,7 @@ export class AIManager {
         cwd: this.workdir,
         subagentType: this.subagentType, // Include subagent type in hook context
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
+        env: this.getEnvironmentVarsFn?.() || {}, // Include configuration environment variables
       };
 
       const results = await this.hookManager.executeHooks(hookName, context);
@@ -686,6 +690,7 @@ export class AIManager {
         cwd: this.workdir,
         toolInput,
         subagentType: this.subagentType, // Include subagent type in hook context
+        env: this.getEnvironmentVarsFn?.() || {}, // Include configuration environment variables
       };
 
       const results = await this.hookManager.executeHooks(
@@ -751,6 +756,7 @@ export class AIManager {
         toolInput,
         toolResponse,
         subagentType: this.subagentType, // Include subagent type in hook context
+        env: this.getEnvironmentVarsFn?.() || {}, // Include configuration environment variables
       };
 
       const results = await this.hookManager.executeHooks(
