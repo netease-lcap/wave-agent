@@ -21,13 +21,14 @@ import {
 import type { WaveConfiguration, ValidationResult } from "../types/hooks.js";
 import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
 import { ConfigurationService } from "../services/configurationService.js";
-import { EnvironmentService } from "../services/environmentService.js";
+
 import type { ConfigurationLoadResult } from "../types/configuration.js";
 
 export interface LiveConfigManagerOptions {
   workdir: string;
   logger?: Logger;
   hookManager?: HookManager;
+  configurationService?: ConfigurationService;
 }
 
 export class LiveConfigManager {
@@ -35,7 +36,6 @@ export class LiveConfigManager {
   private readonly logger?: Logger;
   private readonly hookManager?: HookManager;
   private isInitialized: boolean = false;
-  private readonly environmentService: EnvironmentService;
   private readonly configurationService: ConfigurationService;
 
   // Configuration state
@@ -53,8 +53,8 @@ export class LiveConfigManager {
     this.workdir = options.workdir;
     this.logger = options.logger;
     this.hookManager = options.hookManager;
-    this.environmentService = new EnvironmentService({ logger: this.logger });
-    this.configurationService = new ConfigurationService();
+    this.configurationService =
+      options.configurationService || new ConfigurationService();
     this.fileWatcher = new FileWatcherService(this.logger);
     this.setupFileWatcherEvents();
   }
@@ -225,9 +225,9 @@ export class LiveConfigManager {
           );
           this.currentConfiguration = this.lastValidConfiguration;
 
-          // Apply environment variables if configured
+          // Apply environment variables to configuration service if configured
           if (this.lastValidConfiguration.env) {
-            this.environmentService.applyEnvironmentVariables(
+            this.configurationService.setEnvironmentVars(
               this.lastValidConfiguration.env,
             );
           }
@@ -288,9 +288,9 @@ export class LiveConfigManager {
             );
             this.currentConfiguration = this.lastValidConfiguration;
 
-            // Apply environment variables if configured
+            // Apply environment variables to configuration service if configured
             if (this.lastValidConfiguration.env) {
-              this.environmentService.applyEnvironmentVariables(
+              this.configurationService.setEnvironmentVars(
                 this.lastValidConfiguration.env,
               );
             }
@@ -327,12 +327,8 @@ export class LiveConfigManager {
         );
       }
 
-      // Apply environment variables if configured
-      if (this.currentConfiguration.env) {
-        this.environmentService.applyEnvironmentVariables(
-          this.currentConfiguration.env,
-        );
-      }
+      // Note: Environment variables are already applied by loadMergedConfiguration()
+      // No need to set them again here as currentConfiguration === newConfig
 
       // Update hook manager if available
       if (this.hookManager) {
@@ -357,9 +353,9 @@ export class LiveConfigManager {
         );
         this.currentConfiguration = this.lastValidConfiguration;
 
-        // Apply environment variables if configured
+        // Apply environment variables to configuration service if configured
         if (this.lastValidConfiguration.env) {
-          this.environmentService.applyEnvironmentVariables(
+          this.configurationService.setEnvironmentVars(
             this.lastValidConfiguration.env,
           );
         }

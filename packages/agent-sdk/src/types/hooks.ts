@@ -168,6 +168,7 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   cwd?: string; // Current working directory
   toolInput?: unknown; // Tool input parameters (PreToolUse/PostToolUse)
   toolResponse?: unknown; // Tool execution result (PostToolUse only)
+  env?: Record<string, string>; // Additional environment variables (from configuration)
   userPrompt?: string; // User prompt text (UserPromptSubmit only)
   subagentType?: string; // Subagent type when hook is executed by a subagent
   message?: string; // Notification message (Notification only)

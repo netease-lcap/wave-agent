@@ -102,21 +102,3 @@ export interface EnvironmentConflict {
   /** Which source provided the final value */
   source: "user" | "project";
 }
-
-/**
- * Options for configuring the EnvironmentService
- */
-export interface EnvironmentServiceOptions {
-  /** Optional logger for environment operations */
-  logger?: Logger;
-}
-
-/**
- * Minimal logger interface for environment services
- */
-interface Logger {
-  error: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  info: (...args: unknown[]) => void;
-  debug: (...args: unknown[]) => void;
-}

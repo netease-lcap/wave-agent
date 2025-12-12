@@ -3,7 +3,7 @@
  *
  * Provides hook command execution functionality and hook-specific configuration loading.
  * This module focuses on hook execution while delegating general Wave configuration
- * management to ConfigurationService and EnvironmentService.
+ * management to ConfigurationService.
  */
 
 import { spawn, type ChildProcess } from "child_process";
@@ -140,7 +140,8 @@ export async function executeCommand(
       stdio: ["pipe", "pipe", "pipe"],
       cwd: context.projectDir,
       env: {
-        ...process.env, // Environment variables now come only from process.env (managed by EnvironmentService)
+        ...process.env, // Environment variables from process.env
+        ...("env" in context ? context.env || {} : {}), // Additional environment variables from configuration (if ExtendedHookExecutionContext)
         HOOK_EVENT: context.event,
         HOOK_TOOL_NAME: context.toolName || "",
         HOOK_PROJECT_DIR: context.projectDir,

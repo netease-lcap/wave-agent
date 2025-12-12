@@ -30,7 +30,6 @@ import type {
 } from "./types/index.js";
 import { HookManager } from "./managers/hookManager.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
-import { configResolver } from "./utils/configResolver.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
 import {
@@ -39,10 +38,7 @@ import {
 } from "./services/session.js";
 import type { SubagentConfiguration } from "./utils/subagentParser.js";
 import { setGlobalLogger } from "./utils/globalLogger.js";
-import {
-  loadMergedWaveConfig,
-  ConfigurationService,
-} from "./services/configurationService.js";
+import { ConfigurationService } from "./services/configurationService.js";
 import * as fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -113,7 +109,7 @@ export class Agent {
 
   // Dynamic configuration getter methods
   public getGatewayConfig(): GatewayConfig {
-    return configResolver.resolveGatewayConfig(
+    return this.configurationService.resolveGatewayConfig(
       this.options.apiKey,
       this.options.baseURL,
       this.options.defaultHeaders,
@@ -121,14 +117,14 @@ export class Agent {
   }
 
   public getModelConfig(): ModelConfig {
-    return configResolver.resolveModelConfig(
+    return this.configurationService.resolveModelConfig(
       this.options.agentModel,
       this.options.fastModel,
     );
   }
 
   public getTokenLimit(): number {
-    return configResolver.resolveTokenLimit(this.options.tokenLimit);
+    return this.configurationService.resolveTokenLimit(this.options.tokenLimit);
   }
 
   /**
@@ -146,37 +142,22 @@ export class Agent {
     // Set working directory early as we need it for loading configuration
     this.workdir = workdir || process.cwd();
 
-    // Load environment variables from .wave/settings.local.json before resolving configuration
-    try {
-      const waveConfig = loadMergedWaveConfig(this.workdir);
-      if (waveConfig && waveConfig.env) {
-        // Update process.env with environment variables from settings files
-        for (const [key, value] of Object.entries(waveConfig.env)) {
-          if (typeof value === "string" && !process.env[key]) {
-            // Only set if not already set (existing env vars take precedence)
-            process.env[key] = value;
-          }
-        }
-      }
-    } catch (error) {
-      // Don't throw error, just log it - continue with default configuration
-      logger?.debug(
-        "Failed to load environment variables from settings:",
-        error,
-      );
-    }
+    // Initialize configuration service
+    this.configurationService = new ConfigurationService();
 
     // Resolve configuration from constructor args and environment variables
-    const gatewayConfig = configResolver.resolveGatewayConfig(
+    const gatewayConfig = this.configurationService.resolveGatewayConfig(
       options.apiKey,
       options.baseURL,
       options.defaultHeaders,
     );
-    const modelConfig = configResolver.resolveModelConfig(
+    const modelConfig = this.configurationService.resolveModelConfig(
       options.agentModel,
       options.fastModel,
     );
-    const tokenLimit = configResolver.resolveTokenLimit(options.tokenLimit);
+    const tokenLimit = this.configurationService.resolveTokenLimit(
+      options.tokenLimit,
+    );
 
     // Validate resolved configuration
     configValidator.validateGatewayConfig(gatewayConfig);
@@ -205,7 +186,6 @@ export class Agent {
     this.permissionManager = new PermissionManager({ logger: this.logger });
 
     // Initialize configuration service and hooks manager
-    this.configurationService = new ConfigurationService(); // Initialize configuration service
     this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
 
     // Initialize MessageManager
@@ -231,6 +211,7 @@ export class Agent {
                 cwd: this.workdir,
                 message: notificationMessage,
                 notificationType: "permission_prompt",
+                env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
               });
             } catch (error) {
               this.logger?.warn("Failed to execute notification hooks", {
@@ -257,6 +238,7 @@ export class Agent {
       workdir: this.workdir,
       logger: this.logger,
       hookManager: this.hookManager,
+      configurationService: this.configurationService,
     }); // Initialize live configuration manager
 
     // Initialize subagent manager with all dependencies in constructor
@@ -300,6 +282,7 @@ export class Agent {
       getGatewayConfig: () => this.getGatewayConfig(),
       getModelConfig: () => this.getModelConfig(),
       getTokenLimit: () => this.getTokenLimit(),
+      getEnvironmentVars: () => this.configurationService.getEnvironmentVars(), // Provide access to configuration environment variables
     });
 
     // Initialize command manager
@@ -880,6 +863,7 @@ export class Agent {
               transcriptPath: this.messageManager.getTranscriptPath(),
               cwd: this.workdir,
               userPrompt: content,
+              env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
             },
           );
 
