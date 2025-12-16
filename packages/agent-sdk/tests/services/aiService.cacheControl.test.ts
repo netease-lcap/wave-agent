@@ -539,6 +539,79 @@ describe("AI Service - Claude Cache Control", () => {
         });
       });
 
+      it("should cache last tool call in interval messages with tool_calls", async () => {
+        // Create a 20-message conversation where the 20th message has tool calls
+        const messages = Array.from({ length: 19 }, (_, i) => ({
+          role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",
+          content: `Message ${i + 1}`,
+        })) as ChatCompletionMessageParam[];
+
+        // Add the 20th message with tool calls (this will be at interval position 19, 0-based)
+        messages.push({
+          role: "assistant" as const,
+          content: "",
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function" as const,
+              function: {
+                name: "first_tool",
+                arguments: '{"param": "value1"}',
+              },
+            },
+            {
+              id: "call_2",
+              type: "function" as const,
+              function: {
+                name: "second_tool",
+                arguments: '{"param": "value2"}',
+              },
+            },
+          ],
+        });
+
+        const result = cacheUtils.transformMessagesForClaudeCache(
+          messages,
+          "claude-3-sonnet",
+        );
+
+        expect(result).toHaveLength(20);
+
+        // System message (first) should have cache control
+        expect(Array.isArray(result[0].content)).toBe(true);
+
+        // 20th message (index 19) should have cache control on the LAST tool call, not content
+        const intervalMessage = result[19];
+        expect(intervalMessage.role).toBe("assistant");
+
+        // Type check for assistant message with tool calls
+        if (
+          intervalMessage.role === "assistant" &&
+          intervalMessage.tool_calls
+        ) {
+          expect(intervalMessage.tool_calls).toBeDefined();
+          expect(intervalMessage.tool_calls).toHaveLength(2);
+
+          // First tool call should NOT have cache control
+          expect(intervalMessage.tool_calls[0]).not.toHaveProperty(
+            "cache_control",
+          );
+
+          // Last tool call should have cache control
+          expect(intervalMessage.tool_calls[1]).toHaveProperty(
+            "cache_control",
+            {
+              type: "ephemeral",
+            },
+          );
+        } else {
+          throw new Error("Expected assistant message with tool_calls");
+        }
+
+        // Content should remain unchanged (not cached)
+        expect(intervalMessage.content).toBe("");
+      });
+
       it("should not apply cache control for non-Claude models", async () => {
         const messages = Array.from({ length: 25 }, (_, i) => ({
           role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",
