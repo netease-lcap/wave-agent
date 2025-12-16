@@ -60,9 +60,6 @@ importers:
         specifier: ^5.12.2
         version: 5.23.2(ws@8.18.3)(zod@3.25.76)
     devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.19.2
       rimraf:
         specifier: ^6.0.1
         version: 6.0.1
