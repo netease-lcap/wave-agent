@@ -145,6 +145,7 @@ export async function callAgent(
       apiKey: gatewayConfig.apiKey,
       baseURL: gatewayConfig.baseURL,
       defaultHeaders: gatewayConfig.defaultHeaders,
+      fetchOptions: gatewayConfig.fetchOptions,
     });
 
     // Build system prompt content
@@ -582,6 +583,7 @@ export async function compressMessages(
     apiKey: gatewayConfig.apiKey,
     baseURL: gatewayConfig.baseURL,
     defaultHeaders: gatewayConfig.defaultHeaders,
+    fetchOptions: gatewayConfig.fetchOptions,
   });
 
   // Get model configuration - use injected fast model
