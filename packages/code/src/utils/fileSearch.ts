@@ -9,6 +9,19 @@ export interface FileItem {
 }
 
 /**
+ * Convert a glob pattern to case-insensitive by replacing each alphabetic character
+ * with a bracket expression containing both uppercase and lowercase versions.
+ * Example: "*.js" becomes "*.[jJ][sS]"
+ */
+const makeCaseInsensitive = (pattern: string): string => {
+  return pattern.replace(/[a-zA-Z]/g, (char) => {
+    const lower = char.toLowerCase();
+    const upper = char.toUpperCase();
+    return lower === upper ? char : `[${lower}${upper}]`;
+  });
+};
+
+/**
  * Check if path is a directory
  */
 export const isDirectory = (filePath: string): boolean => {
@@ -40,9 +53,14 @@ export const searchFiles = async (
   options?: {
     maxResults?: number;
     workingDirectory?: string;
+    ignoreCase?: boolean;
   },
 ): Promise<FileItem[]> => {
-  const { maxResults = 10, workingDirectory = process.cwd() } = options || {};
+  const {
+    maxResults = 10,
+    workingDirectory = process.cwd(),
+    ignoreCase = false,
+  } = options || {};
 
   try {
     let files: string[] = [];
@@ -55,7 +73,7 @@ export const searchFiles = async (
 
     if (!query.trim()) {
       // When query is empty, show some common file types and directories
-      const commonPatterns = [
+      let commonPatterns = [
         "**/*.ts",
         "**/*.tsx",
         "**/*.js",
@@ -63,6 +81,11 @@ export const searchFiles = async (
         "**/*.json",
         "*/", // For directories at the first level
       ];
+
+      // Apply case insensitive transformation if needed
+      if (ignoreCase) {
+        commonPatterns = commonPatterns.map(makeCaseInsensitive);
+      }
 
       files = [];
       directories = [];
@@ -80,16 +103,19 @@ export const searchFiles = async (
         }
       }
     } else {
+      // Apply case insensitive transformation to query if needed
+      const searchQuery = ignoreCase ? makeCaseInsensitive(query) : query;
+
       // Build glob patterns to search files and directories together
       const allPatterns = [
         // Match files with filenames containing query
-        `**/*${query}*`,
+        `**/*${searchQuery}*`,
         // Match files with query in path (match directory names)
-        `**/${query}*/**/*`,
+        `**/${searchQuery}*/**/*`,
         // Match directory names containing query
-        `**/*${query}*/`,
+        `**/*${searchQuery}*/`,
         // Match directories containing query in path
-        `**/${query}*/`,
+        `**/${searchQuery}*/`,
       ];
 
       files = [];
