@@ -13,6 +13,7 @@ export * from "./agent.js";
 export * from "./utils/bashHistory.js";
 export * from "./utils/convertMessagesForAPI.js";
 export * from "./utils/fileFilter.js";
+export * from "./utils/fileSearchRipgrep.js";
 export * from "./utils/globalLogger.js";
 export * from "./utils/mcpUtils.js";
 export * from "./utils/messageOperations.js";
