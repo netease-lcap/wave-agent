@@ -317,21 +317,6 @@ export function transformMessagesForClaudeCache(
       } as ChatCompletionMessageParam;
     }
 
-    // Tool caching: always cache last tool (hardcoded)
-    if (
-      message.role === "assistant" &&
-      message.tool_calls &&
-      index === messages.length - 1
-    ) {
-      return {
-        ...message,
-        content: addCacheControlToContent(
-          (message.content as string | ChatCompletionContentPart[]) || "",
-          true,
-        ),
-      } as ChatCompletionMessageParam;
-    }
-
     // Interval-based message caching: cache message at latest interval position (sliding window)
     if (index === intervalMessageIndex) {
       return {

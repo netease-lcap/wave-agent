@@ -192,11 +192,18 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     // Apply cache control for Claude models
     const currentModel = model || modelConfig.agentModel;
 
+    let processedTools = tools;
+
     if (isClaudeModel(currentModel)) {
       openaiMessages = transformMessagesForClaudeCache(
         openaiMessages,
         currentModel,
       );
+
+      // Apply cache control to tools separately
+      if (tools && tools.length > 0) {
+        processedTools = addCacheControlToLastTool(tools);
+      }
     }
 
     // Get model configuration - use injected modelConfig with optional override
@@ -217,13 +224,8 @@ Today's date: ${new Date().toISOString().split("T")[0]}
       | ChatCompletionCreateParamsStreaming;
 
     // Only add tools if they exist
-    if (tools && tools.length > 0) {
-      // Apply cache control to tools for Claude models
-      if (isClaudeModel(currentModel)) {
-        createParams.tools = addCacheControlToLastTool(tools);
-      } else {
-        createParams.tools = tools;
-      }
+    if (processedTools && processedTools.length > 0) {
+      createParams.tools = processedTools;
     }
 
     if (isStreaming) {
