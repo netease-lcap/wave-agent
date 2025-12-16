@@ -554,11 +554,7 @@ export class Agent {
 
       // Load user memory (bypass memory store for direct file access)
       try {
-        const userMemoryPath = path.join(
-          os.homedir(),
-          ".wave",
-          "user-memory.md",
-        );
+        const userMemoryPath = path.join(os.homedir(), ".wave", "AGENTS.md");
         this._userMemoryContent = await fs.readFile(userMemoryPath, "utf-8");
         this.logger?.debug("User memory loaded successfully");
       } catch (error) {
@@ -922,7 +918,7 @@ export class Agent {
       // Add successful MemoryBlock to the last assistant message
       const memoryText = message.substring(1).trim();
       const typeLabel = type === "project" ? "Project Memory" : "User Memory";
-      const storagePath = type === "project" ? "AGENTS.md" : "user-memory.md";
+      const storagePath = "AGENTS.md";
 
       this.messageManager.addMemoryBlock(
         `${typeLabel}: ${memoryText}`,
@@ -934,7 +930,7 @@ export class Agent {
       // Add failed MemoryBlock to the last assistant message
       const memoryText = message.substring(1).trim();
       const typeLabel = type === "project" ? "Project Memory" : "User Memory";
-      const storagePath = type === "project" ? "AGENTS.md" : "user-memory.md";
+      const storagePath = "AGENTS.md";
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 

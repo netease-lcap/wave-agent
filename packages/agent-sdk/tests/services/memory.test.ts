@@ -30,7 +30,7 @@ vi.mock("@/utils/logger", () => ({
 
 // Mock the constants
 vi.mock("@/utils/constants", () => ({
-  USER_MEMORY_FILE: "/mock/user/memory.md",
+  USER_MEMORY_FILE: "/mock/user/AGENTS.md",
   DATA_DIRECTORY: "/mock/data",
 }));
 
@@ -135,7 +135,7 @@ describe("Memory Module", () => {
         recursive: true,
       });
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
-        "/mock/user/memory.md",
+        "/mock/user/AGENTS.md",
         expect.stringContaining("- Test user memory message"),
         "utf-8",
       );
@@ -156,7 +156,7 @@ describe("Memory Module", () => {
         recursive: true,
       });
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
-        "/mock/user/memory.md",
+        "/mock/user/AGENTS.md",
         "utf-8",
       );
       expect(result).toBe("User memory content");
@@ -177,7 +177,7 @@ describe("Memory Module", () => {
         recursive: true,
       });
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
-        "/mock/user/memory.md",
+        "/mock/user/AGENTS.md",
         expect.stringContaining("# User Memory"),
         "utf-8",
       );
@@ -230,7 +230,7 @@ describe("Memory Module", () => {
 
       expect(result).toBe("# User Memory\n\nUser memory data");
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
-        "/mock/user/memory.md",
+        "/mock/user/AGENTS.md",
         "utf-8",
       );
     });
@@ -289,16 +289,16 @@ describe("Memory Module", () => {
       await memory.addUserMemory("#New user memory");
 
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
-        "/mock/user/memory.md",
+        "/mock/user/AGENTS.md",
         "utf-8",
       );
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
-        "/mock/user/memory.md",
+        "/mock/user/AGENTS.md",
         expect.stringContaining("Existing user content"),
         "utf-8",
       );
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
-        "/mock/user/memory.md",
+        "/mock/user/AGENTS.md",
         expect.stringContaining("New user memory"),
         "utf-8",
       );

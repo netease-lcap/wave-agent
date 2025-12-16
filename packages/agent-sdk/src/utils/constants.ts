@@ -24,7 +24,7 @@ export const ERROR_LOG_DIRECTORY = path.join(DATA_DIRECTORY, "error-logs");
 /**
  * User-level memory file path
  */
-export const USER_MEMORY_FILE = path.join(DATA_DIRECTORY, "user-memory.md");
+export const USER_MEMORY_FILE = path.join(DATA_DIRECTORY, "AGENTS.md");
 
 /**
  * AI related constants

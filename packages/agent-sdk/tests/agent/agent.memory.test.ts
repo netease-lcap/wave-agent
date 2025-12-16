@@ -116,10 +116,15 @@ describe("Agent Memory Functionality", () => {
       const mockImplementation = vi
         .fn()
         .mockImplementation((path: PathLike | FileHandle) => {
-          if (path.toString().includes("AGENTS.md")) {
+          // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+          if (
+            path.toString().includes(mockTempDir) &&
+            path.toString().includes("AGENTS.md")
+          ) {
             return Promise.resolve(projectMemoryContent);
           }
-          if (path.toString().includes("user-memory.md")) {
+          // User memory file path: /mock/home/.wave/AGENTS.md
+          if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
             return Promise.resolve("# User Memory\n\nUser-level preferences\n");
           }
           return Promise.resolve("");
@@ -145,10 +150,15 @@ describe("Agent Memory Functionality", () => {
         "# User Memory\n\nUser-level preferences\n- User setting 1\n- User setting 2\n";
 
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           return Promise.resolve("# Memory\n\nProject memory\n");
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           return Promise.resolve(userMemoryContent);
         }
         return Promise.resolve("");
@@ -170,7 +180,7 @@ describe("Agent Memory Functionality", () => {
       setupFsMock((path: PathLike | FileHandle) => {
         if (
           path.toString().includes("AGENTS.md") ||
-          path.toString().includes("user-memory.md")
+          path.toString().includes("AGENTS.md")
         ) {
           const error = new Error("File not found") as NodeJS.ErrnoException;
           error.code = "ENOENT";
@@ -197,11 +207,16 @@ describe("Agent Memory Functionality", () => {
 
       let readFileCallCount = 0;
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           readFileCallCount++;
           return Promise.resolve(projectMemoryContent);
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           readFileCallCount++;
           return Promise.resolve(userMemoryContent);
         }
@@ -240,10 +255,15 @@ describe("Agent Memory Functionality", () => {
         "# Memory\n\n- Important project info\n- Another detail\n";
 
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           return Promise.resolve(projectMemoryContent);
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           return Promise.resolve("# User Memory\n\n");
         }
         return Promise.resolve("");
@@ -266,10 +286,15 @@ describe("Agent Memory Functionality", () => {
         "# User Memory\n\n- User preference 1\n- User preference 2\n";
 
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           return Promise.resolve("# Memory\n\n");
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           return Promise.resolve(userMemoryContent);
         }
         return Promise.resolve("");
@@ -292,10 +317,15 @@ describe("Agent Memory Functionality", () => {
       const userMemoryContent = "# User Memory\n\nUser preferences";
 
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           return Promise.resolve(projectMemoryContent);
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           return Promise.resolve(userMemoryContent);
         }
         return Promise.resolve("");
@@ -317,10 +347,15 @@ describe("Agent Memory Functionality", () => {
       const projectMemoryContent = "# Memory\n\nProject context only";
 
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           return Promise.resolve(projectMemoryContent);
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           return Promise.resolve("");
         }
         return Promise.resolve("");
@@ -341,10 +376,15 @@ describe("Agent Memory Functionality", () => {
       const userMemoryContent = "# User Memory\n\nUser context only";
 
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           return Promise.resolve("");
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           return Promise.resolve(userMemoryContent);
         }
         return Promise.resolve("");
@@ -366,7 +406,7 @@ describe("Agent Memory Functionality", () => {
       setupFsMock((path: PathLike | FileHandle) => {
         if (
           path.toString().includes("AGENTS.md") ||
-          path.toString().includes("user-memory.md")
+          path.toString().includes("AGENTS.md")
         ) {
           const error = new Error("File not found") as NodeJS.ErrnoException;
           error.code = "ENOENT";
@@ -393,12 +433,17 @@ describe("Agent Memory Functionality", () => {
     it("should handle missing AGENTS.md gracefully (empty string fallback)", async () => {
       // Mock project memory file missing but user memory exists
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           const error = new Error("File not found") as NodeJS.ErrnoException;
           error.code = "ENOENT";
           return Promise.reject(error);
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           return Promise.resolve("# User Memory\n\nUser content");
         }
         return Promise.resolve("");
@@ -420,10 +465,15 @@ describe("Agent Memory Functionality", () => {
     it("should handle missing user memory file gracefully", async () => {
       // Mock user memory file missing but project memory exists
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           return Promise.resolve("# Memory\n\nProject content");
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           const error = new Error("File not found") as NodeJS.ErrnoException;
           error.code = "ENOENT";
           return Promise.reject(error);
@@ -447,12 +497,17 @@ describe("Agent Memory Functionality", () => {
     it("should handle corrupted/unreadable files gracefully", async () => {
       // Mock files being unreadable due to permissions or corruption
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           const error = new Error("Permission denied") as NodeJS.ErrnoException;
           error.code = "EACCES";
           return Promise.reject(error);
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           const error = new Error(
             "Input/output error",
           ) as NodeJS.ErrnoException;
@@ -483,10 +538,15 @@ describe("Agent Memory Functionality", () => {
 
       // Mock files throwing various errors
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           return Promise.reject(new Error("Unexpected file system error"));
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           return Promise.reject(new Error("Network file system timeout"));
         }
         return Promise.resolve("");
@@ -519,7 +579,7 @@ describe("Agent Memory Functionality", () => {
       setupFsMock((path: PathLike | FileHandle) => {
         if (
           path.toString().includes("AGENTS.md") ||
-          path.toString().includes("user-memory.md")
+          path.toString().includes("AGENTS.md")
         ) {
           // Simulate random file system errors
           const errors = [
@@ -557,10 +617,15 @@ describe("Agent Memory Functionality", () => {
     it("should handle memory loading errors in saveMemory method", async () => {
       // Mock initial memory loading to succeed
       setupFsMock((path: PathLike | FileHandle) => {
-        if (path.toString().includes("AGENTS.md")) {
+        // Project memory file path: /mock/tmp/memory-test-123/AGENTS.md
+        if (
+          path.toString().includes(mockTempDir) &&
+          path.toString().includes("AGENTS.md")
+        ) {
           return Promise.resolve("# Memory\n\nInitial content");
         }
-        if (path.toString().includes("user-memory.md")) {
+        // User memory file path: /mock/home/.wave/AGENTS.md
+        if (path.toString().includes("/mock/home/.wave/AGENTS.md")) {
           return Promise.resolve("# User Memory\n\nInitial content");
         }
         return Promise.resolve("");
@@ -594,7 +659,7 @@ describe("Agent Memory Functionality", () => {
         "# Initial Project Memory\n\nOriginal content",
       );
       fileSystem.set(
-        "/mock/home/.wave/user-memory.md",
+        "/mock/home/.wave/AGENTS.md",
         "# Initial User Memory\n\nOriginal user content",
       );
 
@@ -664,7 +729,7 @@ describe("Agent Memory Functionality", () => {
         "# Initial Project Memory\n\nOriginal content",
       );
       fileSystem.set(
-        "/mock/home/.wave/user-memory.md",
+        "/mock/home/.wave/AGENTS.md",
         "# Initial User Memory\n\nOriginal user content",
       );
 
@@ -733,7 +798,7 @@ describe("Agent Memory Functionality", () => {
         "# Project Memory\n\nProject content",
       );
       fileSystem.set(
-        "/mock/home/.wave/user-memory.md",
+        "/mock/home/.wave/AGENTS.md",
         "# User Memory\n\nUser content",
       );
 
@@ -802,7 +867,7 @@ describe("Agent Memory Functionality", () => {
         "# Project Memory\n\nInitial project content",
       );
       fileSystem.set(
-        "/mock/home/.wave/user-memory.md",
+        "/mock/home/.wave/AGENTS.md",
         "# User Memory\n\nInitial user content",
       );
 
