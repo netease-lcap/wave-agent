@@ -14,6 +14,7 @@ import type {
   ChatCompletionMessageToolCall,
   CompletionUsage,
 } from "openai/resources";
+import { logger } from "./globalLogger.js";
 
 // ============================================================================
 // Core Types
@@ -153,7 +154,7 @@ export function addCacheControlToContent(
 
     // Validate array input
     if (!Array.isArray(content)) {
-      console.warn(
+      logger.warn(
         "Invalid content type for cache control transformation:",
         typeof content,
       );
@@ -185,7 +186,7 @@ export function addCacheControlToContent(
 
   // Validate array input
   if (!Array.isArray(content)) {
-    console.warn(
+    logger.warn(
       "Invalid content type for cache control transformation:",
       typeof content,
     );
@@ -223,11 +224,11 @@ export function addCacheControlToLastTool(
   // Validate tools structure
   const validTools = tools.filter((tool) => {
     if (!tool || typeof tool !== "object") {
-      console.warn("Invalid tool structure detected, skipping:", tool);
+      logger.warn("Invalid tool structure detected, skipping:", tool);
       return false;
     }
     if (tool.type !== "function" || !tool.function) {
-      console.warn(
+      logger.warn(
         "Tool is not a function type or missing function property:",
         tool,
       );
@@ -237,7 +238,7 @@ export function addCacheControlToLastTool(
   });
 
   if (validTools.length === 0) {
-    console.warn("No valid tools found for cache control");
+    logger.warn("No valid tools found for cache control");
     return [];
   }
 
@@ -297,7 +298,7 @@ export function transformMessagesForClaudeCache(
 ): ChatCompletionMessageParam[] {
   // Validate inputs
   if (!messages || !Array.isArray(messages)) {
-    console.warn(
+    logger.warn(
       "Invalid messages array provided to transformMessagesForClaudeCache",
     );
     return [];
@@ -327,7 +328,7 @@ export function transformMessagesForClaudeCache(
   const result = messages.map((message, index) => {
     // Validate message structure
     if (!message || typeof message !== "object" || !message.role) {
-      console.warn("Invalid message structure at index", index, ":", message);
+      logger.warn("Invalid message structure at index", index, ":", message);
       return message; // Return as-is to avoid breaking the flow
     }
 
