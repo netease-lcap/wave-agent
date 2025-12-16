@@ -35,7 +35,6 @@ vi.mock("@/services/jsonlHandler.js", () => ({
     read: vi.fn(),
     append: vi.fn(),
     isValidSessionFilename: vi.fn(),
-    parseSessionFilename: vi.fn(),
     generateSessionFilename: vi.fn(),
     getLastMessage: vi.fn(),
     createSession: vi.fn(),
@@ -66,7 +65,6 @@ describe("Subagent Session Tests", () => {
     read: ReturnType<typeof vi.fn>;
     append: ReturnType<typeof vi.fn>;
     isValidSessionFilename: ReturnType<typeof vi.fn>;
-    parseSessionFilename: ReturnType<typeof vi.fn>;
     generateSessionFilename: ReturnType<typeof vi.fn>;
     getLastMessage: ReturnType<typeof vi.fn>;
     createSession: ReturnType<typeof vi.fn>;
@@ -96,7 +94,6 @@ describe("Subagent Session Tests", () => {
       read: vi.fn(),
       append: vi.fn(),
       isValidSessionFilename: vi.fn().mockReturnValue(true),
-      parseSessionFilename: vi.fn(),
       generateSessionFilename: vi
         .fn()
         .mockImplementation(
@@ -325,7 +322,7 @@ describe("Subagent Session Tests", () => {
     });
 
     describe("Session type identification from filename", () => {
-      it("should identify main vs subagent sessions without file content reading", async () => {
+      it("should exclude subagent sessions by default", async () => {
         const fs = await import("fs/promises");
         const mainSessionId = generateSessionId();
         const subagentSessionId = generateSessionId();
@@ -337,16 +334,8 @@ describe("Subagent Session Tests", () => {
           "invalid-file.txt", // should be ignored
         ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-        // Mock parseSessionFilename to identify session types
-        mockJsonlHandler.parseSessionFilename
-          .mockReturnValueOnce({
-            sessionId: mainSessionId,
-            sessionType: "main" as const,
-          })
-          .mockReturnValueOnce({
-            sessionId: subagentSessionId,
-            sessionType: "subagent" as const,
-          });
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         // Mock validation to filter valid sessions
         mockJsonlHandler.isValidSessionFilename
@@ -379,21 +368,13 @@ describe("Subagent Session Tests", () => {
           .mockResolvedValueOnce(mockMessageJson) // main session
           .mockResolvedValueOnce(mockMessageJson); // subagent session
 
-        const sessions = await listSessionsFromJsonl(testWorkdir, false, true);
+        const sessions = await listSessionsFromJsonl(testWorkdir);
 
-        // Should find both sessions with correct types identified from filenames
-        expect(sessions).toHaveLength(2);
+        // Should only find main session (subagent sessions are excluded by default)
+        expect(sessions).toHaveLength(1);
 
         const mainSession = sessions.find((s) => s.id === mainSessionId);
-        const subagentSession = sessions.find(
-          (s) => s.id === subagentSessionId,
-        );
-
         expect(mainSession).toBeDefined();
-        expect(subagentSession).toBeDefined();
-
-        // Verify parseSessionFilename was called for type identification
-        expect(mockJsonlHandler.parseSessionFilename).toHaveBeenCalledTimes(2);
 
         // PERFORMANCE VERIFICATION: No full file content reading needed for session listing
         // (readFirstLine is used instead of read for better performance)
@@ -444,7 +425,7 @@ describe("Subagent Session Tests", () => {
         });
       });
 
-      it("should verify efficient session type detection", async () => {
+      it("should verify efficient session type detection and exclude subagent sessions", async () => {
         const fs = await import("fs/promises");
 
         // Create large number of mixed session files
@@ -465,20 +446,8 @@ describe("Subagent Session Tests", () => {
           sessionFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>,
         );
 
-        // Mock parseSessionFilename for each file
-        sessionFiles.forEach((filename) => {
-          const sessionId = filename
-            .replace(/^(subagent-)?/, "")
-            .replace(".jsonl", "");
-          const sessionType = filename.startsWith("subagent-")
-            ? "subagent"
-            : "main";
-
-          mockJsonlHandler.parseSessionFilename.mockReturnValueOnce({
-            sessionId,
-            sessionType: sessionType as "main" | "subagent",
-          });
-        });
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         // Mock isValidSessionFilename to return true for all valid formats
         mockJsonlHandler.isValidSessionFilename.mockImplementation(
@@ -503,27 +472,16 @@ describe("Subagent Session Tests", () => {
           mockJsonlHandler.read.mockResolvedValueOnce([mockMessage]);
         }
 
-        // List all sessions
-        const sessions = await listSessionsFromJsonl(testWorkdir, false, true);
+        // List all sessions (subagent sessions are excluded by default)
+        const sessions = await listSessionsFromJsonl(testWorkdir);
 
-        // Verify all sessions were processed
-        expect(sessions).toHaveLength(sessionCount);
+        // Verify only main sessions were returned (subagent sessions are excluded)
+        // Since we created equal numbers of main and subagent sessions, we expect half
+        expect(sessions).toHaveLength(sessionCount / 2);
 
-        // Verify session type identification was efficient (filename-based)
-        expect(mockJsonlHandler.parseSessionFilename).toHaveBeenCalledTimes(
-          sessionCount,
-        );
-
-        // Count main vs subagent sessions
+        // All returned sessions should be main sessions
         const mainSessions = sessions.filter((s) => !s.id.includes("subagent"));
-        const subagentSessions = sessions.filter((s) =>
-          s.id.includes("subagent"),
-        );
-
-        // Should have roughly equal split (depending on sessionId generation)
-        expect(mainSessions.length + subagentSessions.length).toBe(
-          sessionCount,
-        );
+        expect(mainSessions.length).toBe(sessionCount / 2);
       });
     });
 
@@ -588,20 +546,8 @@ describe("Subagent Session Tests", () => {
           sessionFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>,
         );
 
-        // Mock parseSessionFilename for type identification ONLY
-        mockJsonlHandler.parseSessionFilename
-          .mockReturnValueOnce({
-            sessionId: "12345678-1234-1234-1234-123456789abc",
-            sessionType: "main",
-          })
-          .mockReturnValueOnce({
-            sessionId: "87654321-4321-4321-4321-abcdef123456",
-            sessionType: "subagent",
-          })
-          .mockReturnValueOnce({
-            sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-            sessionType: "main",
-          });
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         // Reset read call count to measure content reading
         mockJsonlHandler.read.mockClear();

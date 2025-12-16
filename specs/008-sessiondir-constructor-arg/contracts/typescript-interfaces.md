@@ -100,7 +100,6 @@ export async function getLatestSession(
  */
 export async function listSessions(
   workdir: string,
-  includeAllWorkdirs = false,
   sessionDir?: string // New optional parameter
 ): Promise<SessionMetadata[]>
 
