@@ -36,7 +36,7 @@ describe("Memory Display Fixes", () => {
       content: "User memory: user preference",
       isSuccess: true,
       memoryType: "user",
-      storagePath: "user-memory.md",
+      storagePath: "AGENTS.md",
     });
 
     expect(result).toHaveLength(1);
@@ -49,7 +49,7 @@ describe("Memory Display Fixes", () => {
       expect(memoryBlock.content).toBe("User memory: user preference");
       expect(memoryBlock.isSuccess).toBe(true);
       expect(memoryBlock.memoryType).toBe("user");
-      expect(memoryBlock.storagePath).toBe("user-memory.md");
+      expect(memoryBlock.storagePath).toBe("AGENTS.md");
     }
   });
 
@@ -61,7 +61,7 @@ describe("Memory Display Fixes", () => {
       content: "User memory addition failed: Permission denied",
       isSuccess: false,
       memoryType: "user",
-      storagePath: "user-memory.md",
+      storagePath: "AGENTS.md",
     });
 
     expect(result).toHaveLength(1);
@@ -73,7 +73,7 @@ describe("Memory Display Fixes", () => {
       );
       expect(memoryBlock.isSuccess).toBe(false);
       expect(memoryBlock.memoryType).toBe("user");
-      expect(memoryBlock.storagePath).toBe("user-memory.md");
+      expect(memoryBlock.storagePath).toBe("AGENTS.md");
     }
   });
 });
