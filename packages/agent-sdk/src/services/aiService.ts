@@ -520,7 +520,7 @@ async function processStreamingResponse(
   const result: CallAgentResult = {};
 
   if (accumulatedContent) {
-    result.content = accumulatedContent;
+    result.content = accumulatedContent.trim();
   }
 
   if (toolCalls.length > 0) {
