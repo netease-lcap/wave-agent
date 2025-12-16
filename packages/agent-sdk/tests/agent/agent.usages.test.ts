@@ -19,8 +19,16 @@ vi.mock("@/managers/toolManager", () => ({
 describe("Agent Usage Tracking", () => {
   let agent: Agent;
   let usagesHistory: Usage[];
+  let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(async () => {
+    // Save original environment
+    originalEnv = process.env;
+    // Clear environment variables that might affect model selection
+    process.env = { ...originalEnv };
+    delete process.env.AIGW_MODEL;
+    delete process.env.AIGW_FAST_MODEL;
+
     // Create mock callbacks that track usage changes
     usagesHistory = [];
     const mockCallbacks = {
@@ -43,6 +51,8 @@ describe("Agent Usage Tracking", () => {
     if (agent) {
       await agent.destroy();
     }
+    // Restore original environment
+    process.env = originalEnv;
   });
 
   describe("usages getter", () => {
