@@ -51,7 +51,13 @@ export const MessageItem = ({
                 {isStatic ? (
                   <Markdown>{block.content}</Markdown>
                 ) : (
-                  <Text>{block.content.split("\n").slice(-10).join("\n")}</Text>
+                  <Text>
+                    {block.content
+                      .split("\n")
+                      .filter((r) => r.trim())
+                      .slice(-10)
+                      .join("\n")}
+                  </Text>
                 )}
               </Box>
             )}
