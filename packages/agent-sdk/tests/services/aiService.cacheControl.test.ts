@@ -499,7 +499,7 @@ describe("AI Service - Claude Cache Control", () => {
         expect(typeof result[1].content).toBe("string");
       });
 
-      it("should always cache last tool call", async () => {
+      it("should not cache assistant messages with tool calls", async () => {
         const messages = [
           { role: "system" as const, content: "You are helpful" },
           { role: "user" as const, content: "Use a tool" },
@@ -524,12 +524,17 @@ describe("AI Service - Claude Cache Control", () => {
           "claude-3-sonnet",
         );
 
-        // Last message with tool_calls should have cache control (it's the last message)
-        expect(Array.isArray(result[2].content)).toBe(true);
-        const toolContent = result[2].content as Array<{
+        // Assistant message with tool_calls should NOT have cache control
+        // Cache control should only be applied to tool definitions, not messages with tool calls
+        expect(typeof result[2].content).toBe("string");
+        expect(result[2].content).toBe("I'll use the tool");
+
+        // Only system message should have cache control (it's the last system message)
+        expect(Array.isArray(result[0].content)).toBe(true);
+        const systemContent = result[0].content as Array<{
           cache_control?: { type: string };
         }>;
-        expect(toolContent[0]).toHaveProperty("cache_control", {
+        expect(systemContent[0]).toHaveProperty("cache_control", {
           type: "ephemeral",
         });
       });
@@ -1035,14 +1040,21 @@ describe("AI Service - Claude Cache Control", () => {
 
         const callArgs = mockCreate.mock.calls[0][0];
 
-        // Last assistant message with tool_calls should have cache control (it's the last message)
+        // Assistant message with tool_calls should NOT have cache control
+        // Cache control should only be applied to tool definitions, not messages with tool calls
         const lastMessage = callArgs.messages[callArgs.messages.length - 1];
         expect(lastMessage.tool_calls).toBeDefined();
-        expect(Array.isArray(lastMessage.content)).toBe(true);
-        const toolCallContent = lastMessage.content as Array<{
+        expect(typeof lastMessage.content).toBe("string");
+        expect(lastMessage.content).toBe("I'll search for that");
+
+        // Only system message should have cache control (it's the last system message)
+        const systemMessage = callArgs.messages[0];
+        expect(systemMessage.role).toBe("system");
+        expect(Array.isArray(systemMessage.content)).toBe(true);
+        const systemContent = systemMessage.content as Array<{
           cache_control?: { type: string };
         }>;
-        expect(toolCallContent[0]).toHaveProperty("cache_control", {
+        expect(systemContent[0]).toHaveProperty("cache_control", {
           type: "ephemeral",
         });
       });
