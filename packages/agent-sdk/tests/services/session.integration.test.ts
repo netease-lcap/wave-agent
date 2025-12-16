@@ -33,7 +33,6 @@ vi.mock("@/services/jsonlHandler.js", () => ({
     read: vi.fn(),
     append: vi.fn(),
     isValidSessionFilename: vi.fn(),
-    parseSessionFilename: vi.fn(),
     generateSessionFilename: vi.fn(),
     getLastMessage: vi.fn(),
     createSession: vi.fn(),
@@ -67,7 +66,6 @@ describe("Session Integration Tests", () => {
     read: ReturnType<typeof vi.fn>;
     append: ReturnType<typeof vi.fn>;
     isValidSessionFilename: ReturnType<typeof vi.fn>;
-    parseSessionFilename: ReturnType<typeof vi.fn>;
     generateSessionFilename: ReturnType<typeof vi.fn>;
     getLastMessage: ReturnType<typeof vi.fn>;
     createSession: ReturnType<typeof vi.fn>;
@@ -97,7 +95,6 @@ describe("Session Integration Tests", () => {
       read: vi.fn(),
       append: vi.fn(),
       isValidSessionFilename: vi.fn().mockReturnValue(true),
-      parseSessionFilename: vi.fn(),
       generateSessionFilename: vi
         .fn()
         .mockImplementation(
@@ -218,16 +215,8 @@ describe("Session Integration Tests", () => {
         timestamp: new Date().toISOString(),
       }));
 
-      // Mock parseSessionFilename to return session metadata from filenames
-      mockJsonlHandler.parseSessionFilename
-        .mockReturnValueOnce({
-          sessionId: session1Id,
-          sessionType: "main" as const,
-        }) // First session
-        .mockReturnValueOnce({
-          sessionId: session2Id,
-          sessionType: "main" as const,
-        }); // Second session
+      // Note: parseSessionFilename is no longer called due to optimization
+      // Session type identification is now done via filename prefix checking
 
       // Mock getLastMessage for getting last messages
       mockJsonlHandler.getLastMessage
@@ -244,7 +233,7 @@ describe("Session Integration Tests", () => {
         .mockResolvedValueOnce(firstMessageJson) // First session - first message
         .mockResolvedValueOnce(firstMessageJson); // Second session - first message
 
-      const sessions = await listSessionsFromJsonl(testWorkdir, false);
+      const sessions = await listSessionsFromJsonl(testWorkdir);
 
       expect(sessions).toHaveLength(2);
       expect(sessions.map((s) => s.id)).toContain(session1Id);
@@ -256,8 +245,7 @@ describe("Session Integration Tests", () => {
           sessions[1].lastActiveAt.getTime(),
       ).toBe(true);
 
-      // Verify that parseSessionFilename was called
-      expect(mockJsonlHandler.parseSessionFilename).toHaveBeenCalled();
+      // Note: parseSessionFilename is no longer called due to optimization
       // Verify that getLastMessage was called for session metadata
       expect(mockJsonlHandler.getLastMessage).toHaveBeenCalled();
     });
@@ -290,16 +278,8 @@ describe("Session Integration Tests", () => {
         timestamp: olderTimestamp, // session2 is older despite newer UUID
       };
 
-      // Mock parseSessionFilename to return session metadata from filenames
-      mockJsonlHandler.parseSessionFilename
-        .mockReturnValueOnce({
-          sessionId: session1Id,
-          sessionType: "main" as const,
-        }) // First session
-        .mockReturnValueOnce({
-          sessionId: session2Id,
-          sessionType: "main" as const,
-        }); // Second session
+      // Note: parseSessionFilename is no longer called due to optimization
+      // Session type identification is now done via filename prefix checking
 
       // Mock getLastMessage for last messages with different timestamps
       mockJsonlHandler.getLastMessage
@@ -440,11 +420,8 @@ describe("Session Integration Tests", () => {
         `${sessionId}.jsonl`,
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-      // Mock parseSessionFilename to return session metadata from filename
-      mockJsonlHandler.parseSessionFilename.mockReturnValueOnce({
-        sessionId: sessionId,
-        sessionType: "main" as const,
-      });
+      // Note: parseSessionFilename is no longer called due to optimization
+      // Session type identification is now done via filename prefix checking
 
       // Mock getLastMessage for last message
       mockJsonlHandler.getLastMessage.mockResolvedValueOnce(
@@ -455,7 +432,7 @@ describe("Session Integration Tests", () => {
       const firstMessageJson = JSON.stringify(allMessagesWithTimestamp[0]);
       mockFileUtils.readFirstLine.mockResolvedValueOnce(firstMessageJson);
 
-      const sessions = await listSessionsFromJsonl(testWorkdir, false);
+      const sessions = await listSessionsFromJsonl(testWorkdir);
       expect(sessions.some((s) => s.id === sessionId)).toBe(true);
 
       // 6. Get latest session returns our session (if it's the most recent)
@@ -463,11 +440,8 @@ describe("Session Integration Tests", () => {
         `${sessionId}.jsonl`,
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-      // Mock parseSessionFilename to return session metadata from filename
-      mockJsonlHandler.parseSessionFilename.mockReturnValueOnce({
-        sessionId: sessionId,
-        sessionType: "main" as const,
-      });
+      // Note: parseSessionFilename is no longer called due to optimization
+      // Session type identification is now done via filename prefix checking
 
       // Mock getLastMessage for last message
       mockJsonlHandler.getLastMessage.mockResolvedValueOnce(
@@ -547,16 +521,8 @@ describe("Session Integration Tests", () => {
         timestamp: new Date().toISOString(),
       }));
 
-      // Mock parseSessionFilename to return session metadata from filenames
-      mockJsonlHandler.parseSessionFilename
-        .mockReturnValueOnce({
-          sessionId: session1Id,
-          sessionType: "main" as const,
-        }) // session1
-        .mockReturnValueOnce({
-          sessionId: session2Id,
-          sessionType: "main" as const,
-        }); // session2
+      // Note: parseSessionFilename is no longer called due to optimization
+      // Session type identification is now done via filename prefix checking
 
       // Mock getLastMessage for last messages
       mockJsonlHandler.getLastMessage
@@ -574,8 +540,8 @@ describe("Session Integration Tests", () => {
         .mockResolvedValueOnce(firstMessageJson); // session2, first message
 
       // Each workdir should only see its own sessions
-      const sessions1 = await listSessionsFromJsonl(workdir1, false);
-      const sessions2 = await listSessionsFromJsonl(workdir2, false);
+      const sessions1 = await listSessionsFromJsonl(workdir1);
+      const sessions2 = await listSessionsFromJsonl(workdir2);
 
       expect(sessions1).toHaveLength(1);
       expect(sessions1[0].id).toBe(session1Id);
@@ -584,57 +550,6 @@ describe("Session Integration Tests", () => {
       expect(sessions2).toHaveLength(1);
       expect(sessions2[0].id).toBe(session2Id);
       expect(sessions2[0].workdir).toBe(workdir2);
-
-      // includeAllWorkdirs should see both
-      vi.mocked(fs.readdir)
-        .mockResolvedValueOnce([
-          "encoded-project1",
-          "encoded-project2",
-        ] as unknown as Awaited<ReturnType<typeof fs.readdir>>) // Base directory listing
-        .mockResolvedValueOnce([`${session1Id}.jsonl`] as unknown as Awaited<
-          ReturnType<typeof fs.readdir>
-        >) // project1 files
-        .mockResolvedValueOnce([`${session2Id}.jsonl`] as unknown as Awaited<
-          ReturnType<typeof fs.readdir>
-        >); // project2 files
-
-      vi.mocked(fs.stat).mockResolvedValue({
-        isDirectory: () => true,
-        mtime: new Date(),
-      } as unknown as Awaited<ReturnType<typeof fs.stat>>);
-
-      // Set up decode method to return original paths
-      mockPathEncoder.decode
-        .mockResolvedValueOnce(workdir1)
-        .mockResolvedValueOnce(workdir2);
-
-      // Mock parseSessionFilename for includeAllWorkdirs call
-      mockJsonlHandler.parseSessionFilename
-        .mockReturnValueOnce({
-          sessionId: session1Id,
-          sessionType: "main" as const,
-        }) // session1
-        .mockReturnValueOnce({
-          sessionId: session2Id,
-          sessionType: "main" as const,
-        }); // session2
-
-      // Mock getLastMessage for last messages
-      mockJsonlHandler.getLastMessage
-        .mockResolvedValueOnce(
-          messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ) // session1, last message
-        .mockResolvedValueOnce(
-          messagesWithTimestamp[messagesWithTimestamp.length - 1],
-        ); // session2, last message
-
-      // Mock readFirstLine for getting first message timestamps (PERFORMANCE OPTIMIZATION)
-      mockFileUtils.readFirstLine
-        .mockResolvedValueOnce(firstMessageJson) // session1, first message
-        .mockResolvedValueOnce(firstMessageJson); // session2, first message
-
-      const allSessions = await listSessionsFromJsonl(workdir1, true);
-      expect(allSessions).toHaveLength(2);
     });
 
     it("should preserve message metadata through lifecycle", async () => {

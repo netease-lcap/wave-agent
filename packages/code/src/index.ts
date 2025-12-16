@@ -1,7 +1,11 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import { listSessions, getSessionFilePath } from "wave-agent-sdk";
+import {
+  listSessions,
+  getSessionFilePath,
+  getFirstMessageContent,
+} from "wave-agent-sdk";
 
 // Export main function for external use
 export async function main() {
@@ -62,10 +66,26 @@ export async function main() {
       console.log(`Available sessions for: ${currentWorkdir}`);
       console.log("==========================================");
 
-      for (const session of sessions) {
+      // Get last 5 sessions
+      const lastSessions = sessions.slice(0, 5);
+
+      for (const session of lastSessions) {
         const startedAt = new Date(session.lastActiveAt).toLocaleString();
         const lastActiveAt = new Date(session.lastActiveAt).toLocaleString();
         const filePath = await getSessionFilePath(session.id, session.workdir);
+
+        // Get first message content
+        const firstMessageContent = await getFirstMessageContent(
+          session.id,
+          session.workdir,
+        );
+
+        // Truncate content if too long
+        let truncatedContent =
+          firstMessageContent || "No first message content";
+        if (truncatedContent.length > 30) {
+          truncatedContent = truncatedContent.substring(0, 30) + "...";
+        }
 
         console.log(`ID: ${session.id}`);
         console.log(`  Workdir: ${session.workdir}`);
@@ -73,7 +93,12 @@ export async function main() {
         console.log(`  Started: ${startedAt}`);
         console.log(`  Last Active: ${lastActiveAt}`);
         console.log(`  Last Message Tokens: ${session.latestTotalTokens}`);
+        console.log(`  First Message: ${truncatedContent}`);
         console.log("");
+      }
+
+      if (sessions.length > 5) {
+        console.log(`... and ${sessions.length - 5} more sessions`);
       }
 
       return;

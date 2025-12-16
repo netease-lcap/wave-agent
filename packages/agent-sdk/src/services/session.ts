@@ -273,7 +273,7 @@ export async function loadSessionFromJsonl(
 export async function getLatestSessionFromJsonl(
   workdir: string,
 ): Promise<SessionData | null> {
-  const sessions = await listSessionsFromJsonl(workdir, false); // Uses default includeSubagentSessions = false
+  const sessions = await listSessionsFromJsonl(workdir); // Excludes subagent sessions by default
 
   if (sessions.length === 0) {
     return null;
@@ -294,7 +294,7 @@ export async function getLatestSessionFromJsonl(
 export async function listSessions(
   workdir: string,
 ): Promise<SessionMetadata[]> {
-  return listSessionsFromJsonl(workdir, false); // Uses default includeSubagentSessions = false
+  return listSessionsFromJsonl(workdir); // Excludes subagent sessions by default
 }
 
 /**
@@ -305,187 +305,91 @@ export async function listSessions(
  * - Only reads last message for timestamps and token counts
  * - Eliminates O(n*2) file operations, achieving O(n) performance
  * - Returns simplified session metadata objects
+ * - Only includes main sessions, excludes subagent sessions
  *
  * @param workdir - Working directory to filter sessions by
- * @param includeAllWorkdirs - If true, returns sessions from all working directories
- * @param includeSubagentSessions - If true, includes subagent sessions (default: false for user-facing operations)
  * @returns Promise that resolves to array of session metadata objects
  */
 export async function listSessionsFromJsonl(
   workdir: string,
-  includeAllWorkdirs = false,
-  includeSubagentSessions = false,
 ): Promise<SessionMetadata[]> {
   try {
     const encoder = new PathEncoder();
     const baseDir = SESSION_DIR;
 
-    // If not including all workdirs, just scan the specific project directory
-    if (!includeAllWorkdirs) {
-      const projectDir = await encoder.getProjectDirectory(workdir, baseDir);
-      let files: string[];
-      try {
-        files = await fs.readdir(projectDir.encodedPath);
-      } catch (error) {
-        // If project directory doesn't exist, return empty array
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          return [];
-        }
-        throw error;
+    const projectDir = await encoder.getProjectDirectory(workdir, baseDir);
+    let files: string[];
+    try {
+      files = await fs.readdir(projectDir.encodedPath);
+    } catch (error) {
+      // If project directory doesn't exist, return empty array
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return [];
       }
-
-      const sessions: SessionMetadata[] = [];
-
-      for (const file of files) {
-        if (!file.endsWith(".jsonl")) {
-          continue;
-        }
-
-        try {
-          const jsonlHandler = new JsonlHandler();
-          const filePath = join(projectDir.encodedPath, file);
-
-          // Validate filename format and parse session type from filename
-          if (!jsonlHandler.isValidSessionFilename(file)) {
-            continue; // Skip invalid filenames
-          }
-
-          const sessionFilename = jsonlHandler.parseSessionFilename(file);
-
-          // PERFORMANCE OPTIMIZATION: Only read the last message for timestamps and tokens
-          const lastMessage = await jsonlHandler.getLastMessage(filePath);
-
-          // Handle timing information efficiently
-          let lastActiveAt: Date;
-
-          if (lastMessage) {
-            lastActiveAt = new Date(lastMessage.timestamp);
-          } else {
-            // Empty session file - use file modification time
-            const stats = await fs.stat(filePath);
-            lastActiveAt = stats.mtime;
-          }
-
-          // Return inline object for performance (no interface instantiation overhead)
-          sessions.push({
-            id: sessionFilename.sessionId,
-            sessionType: sessionFilename.sessionType,
-            subagentType: undefined, // No longer stored in metadata
-            workdir: projectDir.originalPath,
-            lastActiveAt,
-            latestTotalTokens: lastMessage?.usage
-              ? extractLatestTotalTokens([lastMessage])
-              : 0,
-          });
-        } catch {
-          // Skip corrupted session files
-          continue;
-        }
-      }
-
-      // Sort by last active time (most recently active first)
-      const sortedSessions = sessions.sort(
-        (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
-      );
-
-      // Filter out subagent sessions if requested
-      if (!includeSubagentSessions) {
-        return sortedSessions.filter(
-          (session) => session.sessionType === "main",
-        );
-      }
-
-      return sortedSessions;
+      throw error;
     }
 
-    // For all workdirs, scan all project directories
     const sessions: SessionMetadata[] = [];
-    try {
-      const projectDirs = await fs.readdir(baseDir);
 
-      for (const projectDirName of projectDirs) {
-        const projectPath = join(baseDir, projectDirName);
-        const stat = await fs.stat(projectPath);
-
-        if (!stat.isDirectory()) {
-          continue;
-        }
-
-        const files = await fs.readdir(projectPath);
-
-        for (const file of files) {
-          if (!file.endsWith(".jsonl")) {
-            continue;
-          }
-
-          try {
-            const jsonlHandler = new JsonlHandler();
-            const filePath = join(projectPath, file);
-
-            // Validate filename format and parse session type from filename
-            if (!jsonlHandler.isValidSessionFilename(file)) {
-              continue; // Skip invalid filenames
-            }
-
-            const sessionFilename = jsonlHandler.parseSessionFilename(file);
-
-            // PERFORMANCE OPTIMIZATION: Only read the last message for timestamps and tokens
-            const lastMessage = await jsonlHandler.getLastMessage(filePath);
-
-            // Handle timing information efficiently
-            let lastActiveAt: Date;
-
-            if (lastMessage) {
-              lastActiveAt = new Date(lastMessage.timestamp);
-            } else {
-              // Empty session file - use file modification time
-              const stats = await fs.stat(filePath);
-              lastActiveAt = stats.mtime;
-            }
-
-            // Decode workdir from project path
-            const encoder = new PathEncoder();
-            let workdir: string;
-            try {
-              const decoded = encoder.decodeSync(projectDirName);
-              workdir = decoded || projectDirName; // Use encoded name if decode fails
-            } catch {
-              workdir = projectDirName; // Fallback to encoded name if decode fails
-            }
-
-            // Return inline object for performance (no interface instantiation overhead)
-            sessions.push({
-              id: sessionFilename.sessionId,
-              sessionType: sessionFilename.sessionType,
-              subagentType: undefined, // No longer stored in metadata
-              workdir,
-              lastActiveAt,
-              latestTotalTokens: lastMessage?.usage
-                ? extractLatestTotalTokens([lastMessage])
-                : 0,
-            });
-          } catch {
-            // Skip corrupted session files
-            continue;
-          }
-        }
+    for (const file of files) {
+      if (!file.endsWith(".jsonl")) {
+        continue;
       }
-    } catch {
-      // If base directory doesn't exist, return empty array
-      return [];
+
+      // EARLY FILTERING: Skip subagent sessions by filename prefix for maximum performance
+      if (file.startsWith("subagent-")) {
+        continue;
+      }
+
+      try {
+        const filePath = join(projectDir.encodedPath, file);
+
+        // Validate main session filename format (UUID.jsonl)
+        const uuidMatch = file.match(
+          /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
+        );
+        if (!uuidMatch) {
+          continue; // Skip invalid filenames
+        }
+
+        const sessionId = uuidMatch[1];
+
+        // PERFORMANCE OPTIMIZATION: Only read the last message for timestamps and tokens
+        const jsonlHandler = new JsonlHandler();
+        const lastMessage = await jsonlHandler.getLastMessage(filePath);
+
+        // Handle timing information efficiently
+        let lastActiveAt: Date;
+
+        if (lastMessage) {
+          lastActiveAt = new Date(lastMessage.timestamp);
+        } else {
+          // Empty session file - use file modification time
+          const stats = await fs.stat(filePath);
+          lastActiveAt = stats.mtime;
+        }
+
+        // Return inline object for performance (no interface instantiation overhead)
+        sessions.push({
+          id: sessionId,
+          sessionType: "main",
+          subagentType: undefined, // No longer stored in metadata
+          workdir: projectDir.originalPath,
+          lastActiveAt,
+          latestTotalTokens: lastMessage?.usage
+            ? extractLatestTotalTokens([lastMessage])
+            : 0,
+        });
+      } catch {
+        // Skip corrupted session files
+        continue;
+      }
     }
 
     // Sort by last active time (most recently active first)
-    const sortedSessions = sessions.sort(
+    return sessions.sort(
       (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
     );
-
-    // Filter out subagent sessions if requested
-    if (!includeSubagentSessions) {
-      return sortedSessions.filter((session) => session.sessionType === "main");
-    }
-
-    return sortedSessions;
   } catch (error) {
     throw new Error(`Failed to list sessions: ${error}`);
   }
@@ -638,6 +542,86 @@ export async function sessionExistsInJsonl(
   } catch {
     return false;
   }
+}
+
+/**
+ * Get the content of the first message in a session
+ * For user role: get text block content
+ * For assistant role: get compress block content
+ * @param sessionId - Session ID to get first message from
+ * @param workdir - Working directory for session operations
+ * @returns Promise that resolves to the first message content or null if not found
+ */
+export async function getFirstMessageContent(
+  sessionId: string,
+  workdir: string,
+): Promise<string | null> {
+  try {
+    const encoder = new PathEncoder();
+    const baseDir = SESSION_DIR;
+
+    const projectDir = await encoder.getProjectDirectory(workdir, baseDir);
+    const filePath = join(projectDir.encodedPath, `${sessionId}.jsonl`);
+
+    // Read the first line of the file
+    const { readFirstLine } = await import("../utils/fileUtils.js");
+    const firstLine = await readFirstLine(filePath);
+
+    if (!firstLine) {
+      return null;
+    }
+
+    try {
+      const message = JSON.parse(firstLine) as Message;
+
+      // Extract content based on role
+      if (message.role === "user") {
+        // Find text block
+        const textBlock = message.blocks.find((block) => block.type === "text");
+        if (textBlock && "content" in textBlock) {
+          return textBlock.content;
+        }
+      } else if (message.role === "assistant") {
+        // Find compress block
+        const compressBlock = message.blocks.find(
+          (block) => block.type === "compress",
+        );
+        if (compressBlock && "content" in compressBlock) {
+          return compressBlock.content;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      logger.warn(
+        `Failed to parse first message in session ${sessionId}:`,
+        error,
+      );
+      return null;
+    }
+  } catch (error) {
+    logger.warn(
+      `Failed to get first message content for session ${sessionId}:`,
+      error,
+    );
+    return null;
+  }
+}
+
+/**
+ * Truncate content to a maximum length, adding ellipsis if truncated
+ * @param content - The content to truncate
+ * @param maxLength - Maximum length before truncation (default: 30)
+ * @returns Truncated content with ellipsis if needed
+ */
+export function truncateContent(
+  content: string,
+  maxLength: number = 30,
+): string {
+  if (content.length <= maxLength) {
+    return content;
+  }
+  return content.substring(0, maxLength) + "...";
 }
 
 /**

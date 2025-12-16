@@ -90,12 +90,10 @@ class JsonlHandler {
  * Returns inline objects instead of formal SessionMetadata interface
  */
 function listSessionsFromJsonl(
-  workdir: string,
-  includeAllWorkdirs?: boolean,
-  includeSubagentSessions?: boolean
+  workdir: string
 ): Promise<Array<{
   id: string;
-  sessionType: "main" | "subagent";
+  sessionType: "main";
   workdir: string;
   lastActiveAt: Date;
   latestTotalTokens: number;

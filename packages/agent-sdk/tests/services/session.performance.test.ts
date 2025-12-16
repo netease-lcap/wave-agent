@@ -33,7 +33,6 @@ vi.mock("@/services/jsonlHandler.js", () => ({
     read: vi.fn(),
     append: vi.fn(),
     isValidSessionFilename: vi.fn(),
-    parseSessionFilename: vi.fn(),
     generateSessionFilename: vi.fn(),
     getLastMessage: vi.fn(),
     createSession: vi.fn(),
@@ -61,7 +60,6 @@ describe("Session Performance Optimization", () => {
     read: ReturnType<typeof vi.fn>;
     append: ReturnType<typeof vi.fn>;
     isValidSessionFilename: ReturnType<typeof vi.fn>;
-    parseSessionFilename: ReturnType<typeof vi.fn>;
     generateSessionFilename: ReturnType<typeof vi.fn>;
     getLastMessage: ReturnType<typeof vi.fn>;
     createSession: ReturnType<typeof vi.fn>;
@@ -91,7 +89,6 @@ describe("Session Performance Optimization", () => {
       read: vi.fn(),
       append: vi.fn(),
       isValidSessionFilename: vi.fn().mockReturnValue(true),
-      parseSessionFilename: vi.fn(),
       generateSessionFilename: vi
         .fn()
         .mockImplementation(
@@ -189,16 +186,8 @@ describe("Session Performance Optimization", () => {
           `${session2Id}.jsonl`,
         ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-        // Mock parseSessionFilename to return session metadata from filenames
-        mockJsonlHandler.parseSessionFilename
-          .mockReturnValueOnce({
-            sessionId: session1Id,
-            sessionType: "main" as const,
-          })
-          .mockReturnValueOnce({
-            sessionId: session2Id,
-            sessionType: "main" as const,
-          });
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         // Mock getLastMessage for timestamps and tokens (this should be the ONLY file read per session)
         const lastMessage = {
@@ -230,12 +219,12 @@ describe("Session Performance Optimization", () => {
           isFile: () => true,
         } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
-        const sessions = await listSessionsFromJsonl(testWorkdir, false);
+        const sessions = await listSessionsFromJsonl(testWorkdir);
 
         expect(sessions).toHaveLength(2);
 
-        // CRITICAL: Verify that parseSessionFilename was called (filename parsing)
-        expect(mockJsonlHandler.parseSessionFilename).toHaveBeenCalledTimes(2);
+        // CRITICAL: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         // CRITICAL: Verify that getLastMessage was called for each session (only for timestamps/tokens)
         expect(mockJsonlHandler.getLastMessage).toHaveBeenCalledTimes(2);
@@ -253,10 +242,8 @@ describe("Session Performance Optimization", () => {
           `${sessionId}.jsonl`,
         ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-        mockJsonlHandler.parseSessionFilename.mockReturnValueOnce({
-          sessionId: sessionId,
-          sessionType: "main" as const,
-        });
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         // Mock empty session (no messages yet)
         mockJsonlHandler.getLastMessage.mockResolvedValueOnce(null);
@@ -269,7 +256,7 @@ describe("Session Performance Optimization", () => {
           isFile: () => true,
         } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
-        const sessions = await listSessionsFromJsonl(testWorkdir, false);
+        const sessions = await listSessionsFromJsonl(testWorkdir);
 
         expect(sessions).toHaveLength(1);
         expect(sessions[0].id).toBe(sessionId);
@@ -300,13 +287,8 @@ describe("Session Performance Optimization", () => {
           sessionFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>,
         );
 
-        // Mock parseSessionFilename for all sessions
-        sessionIds.forEach((sessionId) => {
-          mockJsonlHandler.parseSessionFilename.mockReturnValueOnce({
-            sessionId,
-            sessionType: "main" as const,
-          });
-        });
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         // Mock getLastMessage for all sessions
         const lastMessage = {
@@ -332,15 +314,14 @@ describe("Session Performance Optimization", () => {
         }
 
         const startTime = Date.now();
-        const sessions = await listSessionsFromJsonl(testWorkdir, false);
+        const sessions = await listSessionsFromJsonl(testWorkdir);
         const endTime = Date.now();
 
         expect(sessions).toHaveLength(sessionCount);
 
         // Verify optimized approach was used
-        expect(mockJsonlHandler.parseSessionFilename).toHaveBeenCalledTimes(
-          sessionCount,
-        );
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
         expect(mockJsonlHandler.getLastMessage).toHaveBeenCalledTimes(
           sessionCount,
         );
@@ -361,10 +342,8 @@ describe("Session Performance Optimization", () => {
           `${sessionId}.jsonl`,
         ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-        mockJsonlHandler.parseSessionFilename.mockReturnValueOnce({
-          sessionId: sessionId,
-          sessionType: "main" as const,
-        });
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         const lastMessage = {
           role: "assistant" as const,
@@ -384,7 +363,7 @@ describe("Session Performance Optimization", () => {
 
         mockFileUtils.readFirstLine.mockResolvedValueOnce(firstMessageJson);
 
-        const sessions = await listSessionsFromJsonl(testWorkdir, false);
+        const sessions = await listSessionsFromJsonl(testWorkdir);
 
         expect(sessions).toHaveLength(1);
 
@@ -400,7 +379,7 @@ describe("Session Performance Optimization", () => {
         expect(Object.getPrototypeOf(session)).toBe(Object.prototype);
       });
 
-      it("should handle subagent sessions with filename parsing only", async () => {
+      it("should handle main sessions with filename parsing only (exclude subagent sessions)", async () => {
         const fs = await import("fs/promises");
         const mainSessionId = generateSessionId();
         const subagentSessionId = generateSessionId();
@@ -410,16 +389,8 @@ describe("Session Performance Optimization", () => {
           `subagent-${subagentSessionId}.jsonl`,
         ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-        // Mock parseSessionFilename to identify session types from filenames
-        mockJsonlHandler.parseSessionFilename
-          .mockReturnValueOnce({
-            sessionId: mainSessionId,
-            sessionType: "main" as const,
-          })
-          .mockReturnValueOnce({
-            sessionId: subagentSessionId,
-            sessionType: "subagent" as const,
-          });
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         const lastMessage = {
           role: "assistant" as const,
@@ -443,21 +414,18 @@ describe("Session Performance Optimization", () => {
           .mockResolvedValueOnce(firstMessageJson)
           .mockResolvedValueOnce(firstMessageJson);
 
-        // Include subagent sessions in listing
-        const sessions = await listSessionsFromJsonl(testWorkdir, false, true);
+        // List sessions (subagent sessions are excluded by default)
+        const sessions = await listSessionsFromJsonl(testWorkdir);
 
-        expect(sessions).toHaveLength(2);
+        // Should only get main session
+        expect(sessions).toHaveLength(1);
 
         const mainSession = sessions.find((s) => s.sessionType === "main");
-        const subagentSession = sessions.find(
-          (s) => s.sessionType === "subagent",
-        );
-
         expect(mainSession?.id).toBe(mainSessionId);
-        expect(subagentSession?.id).toBe(subagentSessionId);
 
         // CRITICAL: Type identification should be filename-based only
-        expect(mockJsonlHandler.parseSessionFilename).toHaveBeenCalledTimes(2);
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
         expect(mockJsonlHandler.read).not.toHaveBeenCalled();
       });
 
@@ -477,13 +445,8 @@ describe("Session Performance Optimization", () => {
           sessionFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>,
         );
 
-        // Mock all required operations
-        sessionIds.forEach((sessionId) => {
-          mockJsonlHandler.parseSessionFilename.mockReturnValueOnce({
-            sessionId,
-            sessionType: "main" as const,
-          });
-        });
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         const lastMessage = {
           role: "assistant" as const,
@@ -507,16 +470,14 @@ describe("Session Performance Optimization", () => {
           mockFileUtils.readFirstLine.mockResolvedValueOnce(firstMessageJson);
         }
 
-        await listSessionsFromJsonl(testWorkdir, false);
+        await listSessionsFromJsonl(testWorkdir);
 
         // Performance target verification:
         // BEFORE optimization: O(n*2) operations (readMetadata + getLastMessage per session)
         // AFTER optimization: O(n) operations (only getLastMessage per session)
 
-        // Should call parseSessionFilename once per session (filename parsing)
-        expect(mockJsonlHandler.parseSessionFilename).toHaveBeenCalledTimes(
-          sessionCount,
-        );
+        // Note: parseSessionFilename is no longer called due to optimization
+        // Session type identification is now done via filename prefix checking
 
         // Should call getLastMessage once per session (for timestamps/tokens)
         expect(mockJsonlHandler.getLastMessage).toHaveBeenCalledTimes(

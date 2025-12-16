@@ -34,7 +34,6 @@ vi.mock("@/services/jsonlHandler.js", () => ({
     read: vi.fn(),
     append: vi.fn(),
     isValidSessionFilename: vi.fn(),
-    parseSessionFilename: vi.fn(),
     generateSessionFilename: vi.fn(),
     getLastMessage: vi.fn(),
     createSession: vi.fn(),
@@ -63,7 +62,6 @@ describe("Session Error Handling and Edge Cases", () => {
     read: ReturnType<typeof vi.fn>;
     append: ReturnType<typeof vi.fn>;
     isValidSessionFilename: ReturnType<typeof vi.fn>;
-    parseSessionFilename: ReturnType<typeof vi.fn>;
     generateSessionFilename: ReturnType<typeof vi.fn>;
     getLastMessage: ReturnType<typeof vi.fn>;
     createSession: ReturnType<typeof vi.fn>;
@@ -93,7 +91,6 @@ describe("Session Error Handling and Edge Cases", () => {
       read: vi.fn(),
       append: vi.fn(),
       isValidSessionFilename: vi.fn().mockReturnValue(true),
-      parseSessionFilename: vi.fn(),
       generateSessionFilename: vi
         .fn()
         .mockImplementation(
@@ -198,7 +195,7 @@ describe("Session Error Handling and Edge Cases", () => {
         [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
       );
 
-      const sessions = await listSessionsFromJsonl(nonExistentPath, false);
+      const sessions = await listSessionsFromJsonl(nonExistentPath);
       expect(sessions).toEqual([]);
     });
 
@@ -210,7 +207,7 @@ describe("Session Error Handling and Edge Cases", () => {
         [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
       );
 
-      const sessions = await listSessionsFromJsonl(testWorkdir, false);
+      const sessions = await listSessionsFromJsonl(testWorkdir);
       expect(sessions).toEqual([]);
     });
 
@@ -245,16 +242,8 @@ describe("Session Error Handling and Edge Cases", () => {
         files as unknown as Awaited<ReturnType<typeof readdir>>,
       );
 
-      // Mock parseSessionFilename to return session metadata from filenames
-      mockJsonlHandler.parseSessionFilename
-        .mockReturnValueOnce({
-          sessionId: olderMainSessionId,
-          sessionType: "main" as const,
-        }) // Older main session
-        .mockReturnValueOnce({
-          sessionId: newerMainSessionId,
-          sessionType: "main" as const,
-        }); // Newer main session
+      // Note: parseSessionFilename is no longer called due to optimization
+      // Session type identification is now done via filename prefix checking
 
       // Mock getLastMessage for main sessions (last messages)
       mockJsonlHandler.getLastMessage
@@ -276,8 +265,7 @@ describe("Session Error Handling and Edge Cases", () => {
       expect(latestSession).not.toBeNull();
       expect(latestSession?.id).toBe(olderMainSessionId); // Session with more recent activity
 
-      // Should have called parseSessionFilename 2 times (once per session)
-      expect(mockJsonlHandler.parseSessionFilename).toHaveBeenCalledTimes(2);
+      // Note: parseSessionFilename is no longer called due to optimization
       // Should have called read 1 time (for loading the latest session, no longer needed for listing)
       expect(mockJsonlHandler.read).toHaveBeenCalledTimes(1);
       // Should have called getLastMessage 2 times (once per session)

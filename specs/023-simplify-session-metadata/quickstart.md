@@ -55,7 +55,7 @@ generateSessionFilename(sessionId, sessionType) {
 
 ```typescript
 // OLD: Reads metadata from every file
-async listSessionsFromJsonl(workdir, includeAllWorkdirs, includeSubagentSessions) {
+async listSessionsFromJsonl(workdir) {
   for (const file of files) {
     const metadata = await jsonlHandler.readMetadata(filePath); // Expensive I/O
     const lastMessage = await jsonlHandler.getLastMessage(filePath);
@@ -64,7 +64,7 @@ async listSessionsFromJsonl(workdir, includeAllWorkdirs, includeSubagentSessions
 }
 
 // NEW: Parses metadata from filenames, returns inline objects
-async listSessionsFromJsonl(workdir, includeAllWorkdirs, includeSubagentSessions) {
+async listSessionsFromJsonl(workdir) {
   const sessions = [];
   
   for (const file of files) {
