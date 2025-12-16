@@ -612,6 +612,46 @@ describe("AI Service - Claude Cache Control", () => {
         expect(intervalMessage.content).toBe("");
       });
 
+      it("should cache tool role messages at interval positions", async () => {
+        // Create a 20-message conversation where the 20th message is a tool response
+        const messages = Array.from({ length: 19 }, (_, i) => ({
+          role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",
+          content: `Message ${i + 1}`,
+        })) as ChatCompletionMessageParam[];
+
+        // Add the 20th message as a tool response (this will be at interval position 19, 0-based)
+        messages.push({
+          role: "tool" as const,
+          content: "rain",
+          tool_call_id: "toolu_vrtx_01SPwKHBh5KmA6dhcmZmCaRg",
+        });
+
+        const result = cacheUtils.transformMessagesForClaudeCache(
+          messages,
+          "claude-3-sonnet",
+        );
+
+        expect(result).toHaveLength(20);
+
+        // System message (first) should have cache control
+        expect(Array.isArray(result[0].content)).toBe(true);
+
+        // 20th message (index 19) should be a tool role with cache control
+        const intervalMessage = result[19];
+        expect(intervalMessage.role).toBe("tool");
+        expect(intervalMessage).toHaveProperty("cache_control", {
+          type: "ephemeral",
+        });
+        expect(intervalMessage.content).toBe("rain");
+
+        // Type guard for tool message
+        if (intervalMessage.role === "tool") {
+          expect(intervalMessage.tool_call_id).toBe(
+            "toolu_vrtx_01SPwKHBh5KmA6dhcmZmCaRg",
+          );
+        }
+      });
+
       it("should not apply cache control for non-Claude models", async () => {
         const messages = Array.from({ length: 25 }, (_, i) => ({
           role: i === 0 ? "system" : i % 2 === 1 ? "user" : "assistant",

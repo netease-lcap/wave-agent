@@ -344,8 +344,15 @@ export function transformMessagesForClaudeCache(
 
     // Interval-based message caching: cache message at latest interval position (sliding window)
     if (index === intervalMessageIndex) {
+      // If the message is a tool role, add cache control directly to the message
+      if (message.role === "tool") {
+        return {
+          ...message,
+          cache_control: { type: "ephemeral" },
+        } as ChatCompletionMessageParam;
+      }
       // If the message has tool calls, cache the last tool call instead of content
-      if (
+      else if (
         message.role === "assistant" &&
         message.tool_calls &&
         message.tool_calls.length > 0
@@ -355,7 +362,7 @@ export function transformMessagesForClaudeCache(
           tool_calls: addCacheControlToLastToolCall(message.tool_calls),
         } as ChatCompletionMessageParam;
       } else {
-        // For messages without tool calls, cache the content
+        // For other message types without tool calls, cache the content
         return {
           ...message,
           content: addCacheControlToContent(
