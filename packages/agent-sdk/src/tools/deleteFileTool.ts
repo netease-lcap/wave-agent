@@ -69,9 +69,7 @@ export const deleteFileTool: ToolPlugin = {
               return {
                 success: false,
                 content: "",
-                error:
-                  permissionResult.message ||
-                  "Delete operation denied by permission system",
+                error: `Delete operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
               };
             }
           } catch {

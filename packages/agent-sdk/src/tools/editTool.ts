@@ -170,9 +170,7 @@ export const editTool: ToolPlugin = {
               return {
                 success: false,
                 content: "",
-                error:
-                  permissionResult.message ||
-                  "Edit operation denied by permission system",
+                error: `Edit operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
               };
             }
           } catch {
