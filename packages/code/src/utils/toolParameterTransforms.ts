@@ -96,7 +96,7 @@ export function transformToolBlockToChanges(toolBlock: ToolBlock): Change[] {
         return [];
     }
   } catch (error) {
-    console.warn("Failed to transform tool block to changes:", error);
+    logger.warn("Failed to transform tool block to changes:", error);
     return [];
   }
 }
