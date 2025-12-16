@@ -3,13 +3,14 @@
  * Forces type judgment based on tool name using type assertions
  */
 
-import type {
-  Change,
-  ToolBlock,
-  WriteToolParameters,
-  EditToolParameters,
-  MultiEditToolParameters,
+import {
+  type Change,
+  type ToolBlock,
+  type WriteToolParameters,
+  type EditToolParameters,
+  type MultiEditToolParameters,
 } from "wave-agent-sdk";
+import { logger } from "./logger.js";
 
 /**
  * Parse tool block parameters
@@ -22,7 +23,7 @@ function parseToolParameters(toolBlock: ToolBlock): unknown {
   try {
     return JSON.parse(toolBlock.parameters);
   } catch (error) {
-    console.warn("Failed to parse tool parameters:", error);
+    logger.warn("Failed to parse tool parameters:", error);
     return {};
   }
 }
