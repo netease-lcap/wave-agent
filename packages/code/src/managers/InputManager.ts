@@ -192,7 +192,9 @@ export class InputManager {
   // File selector methods
   private async searchFiles(query: string): Promise<void> {
     try {
-      const fileItems = await searchFilesUtil(query);
+      const fileItems = await searchFilesUtil(query, {
+        ignoreCase: true,
+      });
       this.filteredFiles = fileItems;
       this.callbacks.onFileSelectorStateChange?.(
         this.showFileSelector,

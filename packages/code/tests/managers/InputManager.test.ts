@@ -182,7 +182,9 @@ describe("InputManager", () => {
       // Wait for debounced search
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(mockSearchFiles).toHaveBeenCalledWith("test");
+      expect(mockSearchFiles).toHaveBeenCalledWith("test", {
+        ignoreCase: true,
+      });
     });
 
     it("should detect @ deletion", () => {
