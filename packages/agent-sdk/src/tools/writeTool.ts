@@ -121,9 +121,7 @@ export const writeTool: ToolPlugin = {
               return {
                 success: false,
                 content: "",
-                error:
-                  permissionResult.message ||
-                  "Write operation denied by permission system",
+                error: `Write operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
               };
             }
           } catch {

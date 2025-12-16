@@ -99,9 +99,7 @@ export const bashTool: ToolPlugin = {
             return {
               success: false,
               content: "",
-              error:
-                permissionResult.message ||
-                "Bash operation denied by permission system",
+              error: `Bash operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
             };
           }
         } catch {

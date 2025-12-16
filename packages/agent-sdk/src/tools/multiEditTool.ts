@@ -239,9 +239,7 @@ export const multiEditTool: ToolPlugin = {
               return {
                 success: false,
                 content: "",
-                error:
-                  permissionResult.message ||
-                  "MultiEdit operation denied by permission system",
+                error: `MultiEdit operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
               };
             }
           } catch {
