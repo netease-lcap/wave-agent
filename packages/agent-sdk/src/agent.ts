@@ -54,6 +54,7 @@ export interface AgentOptions {
   apiKey?: string;
   baseURL?: string;
   defaultHeaders?: Record<string, string>;
+  fetchOptions?: import("openai").OpenAI["fetchOptions"];
   agentModel?: string;
   fastModel?: string;
   tokenLimit?: number;
@@ -113,6 +114,7 @@ export class Agent {
       this.options.apiKey,
       this.options.baseURL,
       this.options.defaultHeaders,
+      this.options.fetchOptions,
     );
   }
 
