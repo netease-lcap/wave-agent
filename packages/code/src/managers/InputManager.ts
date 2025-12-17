@@ -1,5 +1,5 @@
 import { FileItem } from "../components/FileSelector.js";
-import { searchFilesRipgrep as searchFilesUtil } from "wave-agent-sdk";
+import { searchFiles as searchFilesUtil } from "../utils/fileSearch.js";
 import { readClipboardImage } from "../utils/clipboard.js";
 import type { Key } from "ink";
 

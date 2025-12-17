@@ -13,8 +13,8 @@ vi.mock("../../src/utils/clipboard.js", () => ({
 
 // Mock file search utils
 const mockSearchFiles = vi.hoisted(() => vi.fn());
-vi.mock("wave-agent-sdk", () => ({
-  searchFilesRipgrep: mockSearchFiles,
+vi.mock("../../src/utils/fileSearch.js", () => ({
+  searchFiles: mockSearchFiles,
 }));
 
 describe("InputManager", () => {
