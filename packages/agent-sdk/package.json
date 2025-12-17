@@ -31,12 +31,12 @@
     "@modelcontextprotocol/sdk": "^1.18.2",
     "@vscode/ripgrep": "^1.15.14",
     "chokidar": "^5.0.0",
-    "glob": "^11.0.3",
+    "glob": "^13.0.0",
     "minimatch": "^10.0.3",
     "openai": "^5.12.2"
   },
   "devDependencies": {
-    "rimraf": "^6.0.1",
+    "rimraf": "^6.1.2",
     "tsc-alias": "^1.8.16",
     "tsx": "^4.20.4",
     "vitest": "^3.2.4"
