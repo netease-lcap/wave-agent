@@ -13,14 +13,12 @@ export interface MessageItemProps {
   message: Message;
   isExpanded: boolean;
   shouldShowHeader: boolean;
-  isStatic?: boolean;
 }
 
 export const MessageItem = ({
   message,
   isExpanded,
   shouldShowHeader,
-  isStatic = true,
 }: MessageItemProps) => {
   if (message.blocks.length === 0) return null;
   return (
@@ -48,17 +46,7 @@ export const MessageItem = ({
                     🔗{" "}
                   </Text>
                 )}
-                {isStatic ? (
-                  <Markdown>{block.content}</Markdown>
-                ) : (
-                  <Text>
-                    {block.content
-                      .split("\n")
-                      .filter((r) => r.trim())
-                      .slice(-10)
-                      .join("\n")}
-                  </Text>
-                )}
+                <Markdown>{block.content}</Markdown>
               </Box>
             )}
 

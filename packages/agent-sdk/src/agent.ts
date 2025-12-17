@@ -74,6 +74,8 @@ export interface AgentOptions {
   permissionMode?: PermissionMode;
   /**Custom permission callback */
   canUseTool?: PermissionCallback;
+  /**Whether to use streaming mode for AI responses - defaults to true */
+  stream?: boolean;
 }
 
 export interface AgentCallbacks
@@ -100,6 +102,7 @@ export class Agent {
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
   private _usages: Usage[] = []; // Usage tracking array
+  private stream: boolean; // Streaming mode flag
 
   // Configuration options storage for dynamic resolution
   private options: AgentOptions;
@@ -139,7 +142,13 @@ export class Agent {
    * @param options - Configuration options for the Agent instance
    */
   private constructor(options: AgentOptions) {
-    const { callbacks = {}, logger, workdir, systemPrompt } = options;
+    const {
+      callbacks = {},
+      logger,
+      workdir,
+      systemPrompt,
+      stream = true,
+    } = options;
 
     // Set working directory early as we need it for loading configuration
     this.workdir = workdir || process.cwd();
@@ -171,6 +180,7 @@ export class Agent {
 
     this.logger = logger; // Save the passed logger
     this.systemPrompt = systemPrompt; // Save custom system prompt
+    this.stream = stream; // Save streaming mode flag
 
     // Set global logger for SDK-wide access
     setGlobalLogger(logger || null);
@@ -281,6 +291,7 @@ export class Agent {
       },
       workdir: this.workdir,
       systemPrompt: this.systemPrompt,
+      stream: this.stream, // Pass streaming mode flag
       getGatewayConfig: () => this.getGatewayConfig(),
       getModelConfig: () => this.getModelConfig(),
       getTokenLimit: () => this.getTokenLimit(),

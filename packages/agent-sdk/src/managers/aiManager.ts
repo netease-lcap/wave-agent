@@ -1,4 +1,8 @@
-import { callAgent, compressMessages } from "../services/aiService.js";
+import {
+  callAgent,
+  compressMessages,
+  type CallAgentOptions,
+} from "../services/aiService.js";
 import { getMessagesToCompress } from "../utils/messageOperations.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
@@ -32,6 +36,8 @@ export interface AIManagerOptions {
   workdir: string;
   systemPrompt?: string;
   subagentType?: string; // Optional subagent type for hook context
+  /**Whether to use streaming mode for AI responses - defaults to true */
+  stream?: boolean;
   // Dynamic configuration getters
   getGatewayConfig: () => GatewayConfig;
   getModelConfig: () => ModelConfig;
@@ -51,6 +57,7 @@ export class AIManager {
   private workdir: string;
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
+  private stream: boolean; // Streaming mode flag
 
   // Configuration properties (replaced with getter function storage)
   private getGatewayConfigFn: () => GatewayConfig;
@@ -67,6 +74,7 @@ export class AIManager {
     this.workdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
     this.subagentType = options.subagentType; // Store subagent type
+    this.stream = options.stream ?? true; // Default to true if not specified
     this.callbacks = options.callbacks ?? {};
 
     // Store configuration getter functions for dynamic resolution
@@ -301,8 +309,8 @@ export class AIManager {
 
       this.logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
-      // Call AI service with streaming callbacks
-      const result = await callAgent({
+      // Call AI service with streaming callbacks if enabled
+      const callAgentOptions: CallAgentOptions = {
         gatewayConfig: this.getGatewayConfig(),
         modelConfig: this.getModelConfig(),
         messages: recentMessages,
@@ -313,11 +321,14 @@ export class AIManager {
         tools: this.getFilteredToolsConfig(allowedTools), // Pass filtered tool configuration
         model: model, // Use passed model
         systemPrompt: this.systemPrompt, // Pass custom system prompt
-        // Streaming callbacks
-        onContentUpdate: (content: string) => {
+      };
+
+      // Add streaming callbacks only if streaming is enabled
+      if (this.stream) {
+        callAgentOptions.onContentUpdate = (content: string) => {
           this.messageManager.updateCurrentMessageContent(content);
-        },
-        onToolUpdate: (toolCall) => {
+        };
+        callAgentOptions.onToolUpdate = (toolCall) => {
           // Use parametersChunk as compact param for better performance
           // No need to extract params or generate compact params during streaming
 
@@ -330,8 +341,10 @@ export class AIManager {
             compactParams: toolCall.parameters?.split("\n").pop()?.slice(-30),
             stage: toolCall.stage || "streaming", // Default to streaming if stage not provided
           });
-        },
-      });
+        };
+      }
+
+      const result = await callAgent(callAgentOptions);
 
       // Log finish reason and response headers if available
       if (result.finish_reason) {
