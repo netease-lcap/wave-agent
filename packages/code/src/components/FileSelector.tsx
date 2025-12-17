@@ -1,10 +1,8 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
+import type { FileItem } from "wave-agent-sdk";
 
-export interface FileItem {
-  path: string;
-  type: "file" | "directory";
-}
+export { type FileItem } from "wave-agent-sdk";
 
 export interface FileSelectorProps {
   files: FileItem[];
