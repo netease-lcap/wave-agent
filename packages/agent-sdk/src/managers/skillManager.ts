@@ -20,6 +20,7 @@ export class SkillManager {
   private personalSkillsPath: string;
   private scanTimeout: number;
   private logger?: Logger;
+  private workdir: string;
 
   private skillMetadata = new Map<string, SkillMetadata>();
   private skillContent = new Map<string, Skill>();
@@ -30,6 +31,7 @@ export class SkillManager {
       options.personalSkillsPath || join(homedir(), ".wave", "skills");
     this.scanTimeout = options.scanTimeout || 5000;
     this.logger = options.logger;
+    this.workdir = options.workdir || process.cwd();
   }
 
   /**
@@ -123,7 +125,7 @@ export class SkillManager {
     );
 
     const projectCollection = await this.discoverSkillCollection(
-      process.cwd(),
+      this.workdir,
       "project",
     );
 

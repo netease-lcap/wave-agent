@@ -52,7 +52,10 @@ describe("createSkillTool", () => {
       isFile: () => true,
     } as Stats);
 
-    skillManager = new SkillManager({ logger: mockLogger });
+    skillManager = new SkillManager({
+      logger: mockLogger,
+      workdir: "/test/workdir",
+    });
   });
 
   it("should throw error when created with uninitialized SkillManager", () => {
