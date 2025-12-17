@@ -31,6 +31,7 @@
     "@modelcontextprotocol/sdk": "^1.18.2",
     "@vscode/ripgrep": "^1.15.14",
     "chokidar": "^5.0.0",
+    "glob": "^11.0.3",
     "minimatch": "^10.0.3",
     "openai": "^5.12.2"
   },
@@ -41,7 +42,7 @@
     "vitest": "^3.2.4"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=16.0.0"
   },
   "license": "MIT"
 }

@@ -57,15 +57,12 @@ describe("Agent Memory Functionality", () => {
 
   // Helper to set up fs mocks for both import patterns
   const setupFsMock = (
-    implementation: (path: PathLike | FileHandle) => Promise<string | Buffer>,
+    implementation: (
+      ...args: Parameters<typeof fs.readFile>
+    ) => Promise<string | Buffer>,
   ) => {
-    // Use type assertion to avoid Buffer/ArrayBuffer incompatibility issues in @types/node v22
-    vi.mocked(fs.readFile).mockImplementation(
-      implementation as unknown as typeof fs.readFile,
-    );
-    vi.mocked(fsPromises.readFile).mockImplementation(
-      implementation as unknown as typeof fsPromises.readFile,
-    );
+    vi.mocked(fs.readFile).mockImplementation(implementation);
+    vi.mocked(fsPromises.readFile).mockImplementation(implementation);
   };
 
   beforeEach(async () => {
