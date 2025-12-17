@@ -53,7 +53,7 @@ NOTE: You are meant to be a fast agent that returns output as quickly as possibl
 Complete the user's search request efficiently and report your findings clearly.`;
 
   // Define allowed tools for read-only operations
-  const allowedTools = ["Glob", "Grep", "Read", "Bash", "LS"];
+  const allowedTools = ["Glob", "Grep", "Read", "Bash", "LS", "skill"];
 
   return {
     name: "Explore",
