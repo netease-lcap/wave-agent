@@ -53,7 +53,7 @@ describe("ToolManager.initializeBuiltInTools", () => {
     expect(toolNames).toContain("Read");
     expect(toolNames).toContain("TodoWrite");
     expect(toolNames).toContain("Task");
-    expect(toolNames).toContain("skill");
+    expect(toolNames).toContain("Skill");
   });
 
   it("should allow multiple calls without issues", async () => {

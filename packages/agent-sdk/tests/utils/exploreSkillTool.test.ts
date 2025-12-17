@@ -13,11 +13,11 @@ describe("Explore Subagent Skill Tool Support", () => {
   it("should have skill tool in Explore subagent tools list", () => {
     expect(exploreConfig).toBeDefined();
     expect(exploreConfig?.tools).toBeDefined();
-    expect(exploreConfig?.tools).toContain("skill");
+    expect(exploreConfig?.tools).toContain("Skill");
   });
 
   it("should have all expected read-only tools", () => {
-    const expectedTools = ["Glob", "Grep", "Read", "Bash", "LS", "skill"];
+    const expectedTools = ["Glob", "Grep", "Read", "Bash", "LS", "Skill"];
 
     expect(exploreConfig?.tools).toBeDefined();
 

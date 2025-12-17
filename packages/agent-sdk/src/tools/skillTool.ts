@@ -23,11 +23,11 @@ export function createSkillTool(skillManager: SkillManager): ToolPlugin {
   };
 
   return {
-    name: "skill",
+    name: "Skill",
     config: {
       type: "function",
       function: {
-        name: "skill",
+        name: "Skill",
         description: getToolDescription(),
         parameters: {
           type: "object",

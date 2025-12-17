@@ -23,7 +23,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     description:
       "Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns.",
     systemPrompt: "You are a file search specialist...",
-    tools: ["Glob", "Grep", "Read", "Bash", "LS", "skill"],
+    tools: ["Glob", "Grep", "Read", "Bash", "LS", "Skill"],
     model: "fastModel",
     filePath: "<builtin:Explore>",
     scope: "builtin",

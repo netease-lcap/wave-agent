@@ -71,10 +71,10 @@ describe("createSkillTool", () => {
 
     const tool = createSkillTool(skillManager);
 
-    expect(tool.name).toBe("skill");
+    expect(tool.name).toBe("Skill");
     expect(tool.config).toBeDefined();
     expect(tool.config.type).toBe("function");
-    expect(tool.config.function.name).toBe("skill");
+    expect(tool.config.function.name).toBe("Skill");
     expect(typeof tool.execute).toBe("function");
     expect(typeof tool.formatCompactParams).toBe("function");
 
@@ -179,7 +179,7 @@ describe("createSkillTool", () => {
 
     const tool = createSkillTool(skillManager);
 
-    expect(tool.name).toBe("skill");
+    expect(tool.name).toBe("Skill");
     expect(tool.config.function.description).toContain("Available skills:");
     expect(tool.config.function.description).toContain("test-skill");
     expect(tool.config.function.description).toContain("another-skill");
