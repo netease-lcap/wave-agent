@@ -13,13 +13,9 @@ vi.mock("../../src/utils/clipboard.js", () => ({
 
 // Mock file search utils
 const mockSearchFiles = vi.hoisted(() => vi.fn());
-vi.mock("wave-agent-sdk", async (importOriginal) => {
-  const original = await importOriginal();
-  return {
-    ...original,
-    searchFiles: mockSearchFiles,
-  };
-});
+vi.mock("wave-agent-sdk", () => ({
+  searchFiles: mockSearchFiles,
+}));
 
 describe("InputManager", () => {
   let manager: InputManager;
