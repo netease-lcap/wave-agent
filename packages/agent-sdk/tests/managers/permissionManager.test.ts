@@ -379,7 +379,7 @@ describe("PermissionManager", () => {
         "LS",
         "Glob",
         "TodoWrite",
-        "skill",
+        "Skill",
       ];
 
       for (const toolName of unrestrictedTools) {
