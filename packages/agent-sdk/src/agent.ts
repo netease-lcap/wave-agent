@@ -466,7 +466,10 @@ export class Agent {
     // Initialize managers first
     try {
       // Initialize SkillManager
-      const skillManager = new SkillManager({ logger: this.logger });
+      const skillManager = new SkillManager({
+        logger: this.logger,
+        workdir: this.workdir,
+      });
       await skillManager.initialize();
 
       // Initialize SubagentManager (load and cache configurations)

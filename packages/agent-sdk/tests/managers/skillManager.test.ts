@@ -19,12 +19,15 @@ describe("SkillManager", () => {
       debug: vi.fn(),
     };
 
-    skillManager = new SkillManager({ logger: mockLogger });
+    skillManager = new SkillManager({
+      logger: mockLogger,
+      workdir: process.cwd(),
+    });
   });
 
   describe("constructor", () => {
     it("should initialize with default options", () => {
-      const manager = new SkillManager();
+      const manager = new SkillManager({ workdir: "/test/workdir" });
       expect(manager).toBeInstanceOf(SkillManager);
     });
 
