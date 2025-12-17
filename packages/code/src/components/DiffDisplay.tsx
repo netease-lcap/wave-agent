@@ -9,22 +9,22 @@ interface DiffDisplayProps {
 }
 
 export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
+  const showDiff =
+    ["running", "end"].includes(toolBlock.stage) &&
+    toolBlock.name &&
+    ["Write", "Edit", "MultiEdit"].includes(toolBlock.name);
+
   // Diff detection and transformation using typed parameters
   const changes = useMemo(() => {
+    if (!showDiff || !toolBlock.name || !toolBlock.parameters) return [];
     try {
       // Use local transformation with JSON parsing and type guards
-      return transformToolBlockToChanges(toolBlock);
+      return transformToolBlockToChanges(toolBlock.name, toolBlock.parameters);
     } catch (error) {
       console.warn("Error transforming tool block to changes:", error);
       return [];
     }
-  }, [toolBlock]);
-
-  const showDiff =
-    changes.length > 0 &&
-    ["running", "end"].includes(toolBlock.stage) &&
-    toolBlock.name &&
-    ["Write", "Edit", "MultiEdit"].includes(toolBlock.name);
+  }, [toolBlock.name, toolBlock.parameters, showDiff]);
 
   // Render word-level diff between two lines of text
   const renderWordLevelDiff = (
@@ -289,19 +289,12 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
 
   return (
     <Box flexDirection="column">
-      {showDiff && (
-        <Box
-          paddingLeft={2}
-          borderLeft
-          borderColor="cyan"
-          flexDirection="column"
-        >
-          <Text color="cyan" bold>
-            Diff:
-          </Text>
-          {renderExpandedDiff()}
-        </Box>
-      )}
+      <Box paddingLeft={2} borderLeft borderColor="cyan" flexDirection="column">
+        <Text color="cyan" bold>
+          Diff:
+        </Text>
+        {renderExpandedDiff()}
+      </Box>
     </Box>
   );
 };
