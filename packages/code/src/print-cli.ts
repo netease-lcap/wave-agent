@@ -115,6 +115,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       restoreSessionId,
       continueLastSession,
       permissionMode: bypassPermissions ? "bypassPermissions" : undefined,
+      // 保持流式模式以获得更好的命令行用户体验
     });
 
     // Send message if provided and not empty

@@ -225,6 +225,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           logger,
           permissionMode: bypassPermissions ? "bypassPermissions" : undefined,
           canUseTool: permissionCallback,
+          stream: false, // 关闭流式模式
         });
 
         agentRef.current = agent;
