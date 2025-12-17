@@ -1,10 +1,6 @@
 import { globIterate, type Path } from "glob";
-import { getGlobIgnorePatterns } from "wave-agent-sdk";
-
-export interface FileItem {
-  path: string;
-  type: "file" | "directory";
-}
+import { getGlobIgnorePatterns } from "./fileFilter.js";
+import type { FileItem } from "../types/fileSearch.js";
 
 /**
  * Convert Path objects to FileItem objects
