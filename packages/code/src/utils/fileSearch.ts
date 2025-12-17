@@ -44,7 +44,7 @@ export const searchFiles = async (
     if (!query.trim()) {
       // When query is empty, show some common file types and directories
       patterns = [
-        "**/*.{ts,tsx,js,jsx,json}", // Combine common file extensions
+        "**/*.{ts,tsx,js,jsx,json,py,java}", // Combine common file extensions
         "*/", // First level directories
       ];
     } else {
