@@ -5,7 +5,6 @@
 
 import {
   type Change,
-  type ToolBlock,
   type WriteToolParameters,
   type EditToolParameters,
   type MultiEditToolParameters,
@@ -15,13 +14,13 @@ import { logger } from "./logger.js";
 /**
  * Parse tool block parameters
  */
-function parseToolParameters(toolBlock: ToolBlock): unknown {
-  if (!toolBlock.parameters) {
+function parseToolParameters(parameters: string): unknown {
+  if (!parameters) {
     return {};
   }
 
   try {
-    return JSON.parse(toolBlock.parameters);
+    return JSON.parse(parameters);
   } catch (error) {
     logger.warn("Failed to parse tool parameters:", error);
     return {};
@@ -72,15 +71,18 @@ export function transformMultiEditParameters(
  * Transform tool block parameters into standardized Change[] array for diff display
  * Forces type judgment based on tool name using type assertions
  */
-export function transformToolBlockToChanges(toolBlock: ToolBlock): Change[] {
+export function transformToolBlockToChanges(
+  toolName: string,
+  parameters: string,
+): Change[] {
   try {
-    if (!toolBlock.name) {
+    if (!toolName) {
       return [];
     }
 
-    const parsedParams = parseToolParameters(toolBlock);
+    const parsedParams = parseToolParameters(parameters);
 
-    switch (toolBlock.name) {
+    switch (toolName) {
       case "Write":
         return transformWriteParameters(parsedParams as WriteToolParameters);
 
@@ -98,25 +100,5 @@ export function transformToolBlockToChanges(toolBlock: ToolBlock): Change[] {
   } catch (error) {
     logger.warn("Failed to transform tool block to changes:", error);
     return [];
-  }
-}
-
-/**
- * Extract file path from parsed tool parameters based on tool name
- */
-export function extractFilePathFromToolBlock(
-  toolBlock: ToolBlock,
-): string | null {
-  const parsedParams = parseToolParameters(toolBlock);
-
-  switch (toolBlock.name) {
-    case "Write":
-      return (parsedParams as WriteToolParameters).file_path || null;
-    case "Edit":
-      return (parsedParams as EditToolParameters).file_path || null;
-    case "MultiEdit":
-      return (parsedParams as MultiEditToolParameters).file_path || null;
-    default:
-      return null;
   }
 }
