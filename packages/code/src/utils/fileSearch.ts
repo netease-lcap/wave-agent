@@ -1,4 +1,4 @@
-import { glob, type Path } from "glob";
+import { globIterate, type Path } from "glob";
 import { getGlobIgnorePatterns } from "wave-agent-sdk";
 
 export interface FileItem {
@@ -61,25 +61,39 @@ export const searchFiles = async (
       ];
     }
 
-    // Search with all patterns
-    const searchPromises = patterns.map((pattern) =>
-      glob(pattern, globOptions),
-    );
+    // Collect results until we reach maxResults
+    const collectedPaths: Path[] = [];
+    const seenPaths = new Set<string>();
 
-    const results = await Promise.all(searchPromises);
-
-    // Flatten all Path objects and deduplicate by relative path
-    const pathMap = new Map<string, Path>();
-    (results.flat() as Path[]).forEach((pathObj) => {
-      const relativePath = pathObj.relative();
-      if (!pathMap.has(relativePath)) {
-        pathMap.set(relativePath, pathObj);
+    // Process each pattern sequentially
+    for (const pattern of patterns) {
+      if (collectedPaths.length >= maxResults) {
+        break;
       }
-    });
 
-    // Convert to array and sort: directories first, then files
-    const allPaths: Path[] = Array.from(pathMap.values());
-    allPaths.sort((a, b) => {
+      // Use globIterate to get results one by one
+      const iterator = globIterate(pattern, globOptions) as AsyncGenerator<
+        Path,
+        void,
+        void
+      >;
+
+      for await (const pathObj of iterator) {
+        if (collectedPaths.length >= maxResults) {
+          // Stop the iterator when we have enough results
+          break;
+        }
+
+        const relativePath = pathObj.relative();
+        if (!seenPaths.has(relativePath)) {
+          seenPaths.add(relativePath);
+          collectedPaths.push(pathObj);
+        }
+      }
+    }
+
+    // Sort collected paths: directories first, then files
+    collectedPaths.sort((a, b) => {
       const aIsDir = a.isDirectory();
       const bIsDir = b.isDirectory();
       if (aIsDir && !bIsDir) return -1;
@@ -88,7 +102,7 @@ export const searchFiles = async (
     });
 
     // Convert to FileItems
-    const fileItems = convertPathsToFileItems(allPaths.slice(0, maxResults));
+    const fileItems = convertPathsToFileItems(collectedPaths);
     return fileItems;
   } catch (error) {
     console.error("Glob search error:", error);
