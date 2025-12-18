@@ -30,7 +30,8 @@ function safeToolArguments(args: string): string {
 }
 
 /**
- * Convert message format to API call format, stopping when a compressed message is encountered
+ * Convert message format to API call format, stopping when a compressed message is encountered.
+ * Messages with no meaningful content or tool calls are filtered out.
  * @param messages Message list
  * @returns Converted API message format list
  */
@@ -61,7 +62,7 @@ export function convertMessagesForAPI(
       break;
     }
 
-    // Skip empty assistant messages
+    // Skip empty assistant messages (no blocks or all blocks are empty)
     if (message.role === "assistant" && message.blocks.length === 0) {
       continue;
     }
@@ -128,12 +129,17 @@ export function convertMessagesForAPI(
       let content = "";
       let tool_calls: ChatCompletionMessageToolCall[] | undefined = undefined;
 
-      // Construct content from text blocks
+      // Construct content from text blocks - filter out empty content
       const textBlocks = message.blocks.filter(
-        (block) => block.type === "text",
+        (block) =>
+          block.type === "text" &&
+          block.content &&
+          block.content.trim().length > 0,
       );
       if (textBlocks.length > 0) {
-        content = textBlocks.map((block) => block.content || "").join("\n");
+        content = textBlocks
+          .map((block) => (block.type === "text" ? block.content : ""))
+          .join("\n");
       }
 
       // Construct tool calls from tool blocks
@@ -158,11 +164,14 @@ export function convertMessagesForAPI(
         }
       }
 
-      // Construct assistant message - only add if there is content or tool calls
-      if (content || tool_calls) {
+      // Construct assistant message - only add if there is meaningful content or tool calls
+      const hasContent = content && content.trim().length > 0;
+      const hasToolCalls = tool_calls && tool_calls.length > 0;
+
+      if (hasContent || hasToolCalls) {
         const assistantMessage: ChatCompletionMessageParam = {
           role: "assistant",
-          content,
+          content: hasContent ? content : undefined,
           tool_calls,
           ...(message.metadata ? { ...message.metadata } : {}),
         };
@@ -174,8 +183,12 @@ export function convertMessagesForAPI(
       const contentParts: ChatCompletionContentPart[] = [];
 
       message.blocks.forEach((block) => {
-        // Add text content
-        if (block.type === "text" && block.content) {
+        // Add text content - only if it has meaningful content
+        if (
+          block.type === "text" &&
+          block.content &&
+          block.content.trim().length > 0
+        ) {
           contentParts.push({
             type: "text",
             text: block.customCommandContent || block.content,
@@ -217,11 +230,22 @@ export function convertMessagesForAPI(
         }
       });
 
+      // Only add user message if there is meaningful content
       if (contentParts.length > 0) {
-        recentMessages.unshift({
-          role: "user",
-          content: contentParts,
+        // Filter out empty text parts
+        const meaningfulParts = contentParts.filter((part) => {
+          if (part.type === "text") {
+            return part.text && part.text.trim().length > 0;
+          }
+          return true; // Keep image parts
         });
+
+        if (meaningfulParts.length > 0) {
+          recentMessages.unshift({
+            role: "user",
+            content: meaningfulParts,
+          });
+        }
       }
     }
   }
