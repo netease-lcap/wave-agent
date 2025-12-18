@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { convertMessagesForAPI } from "../../src/utils/convertMessagesForAPI.js";
 import type { Message } from "../../src/types/index.js";
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionMessageToolCall,
+} from "openai/resources.js";
 
 describe("convertMessagesForAPI", () => {
   it("should correctly convert user and assistant messages", () => {
@@ -106,6 +110,94 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[0].role).toBe("user");
     expect(apiMessages[1].role).toBe("assistant");
     expect(apiMessages[1].content).toBe("Final response");
+  });
+
+  it("should filter out messages with no meaningful content or tool calls", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Hello, can you help me?" }],
+      },
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "" }], // Empty content
+      },
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "   " }], // Whitespace only
+      },
+      {
+        role: "assistant",
+        blocks: [], // No blocks at all
+      },
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "" }], // Empty user message
+      },
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "   " }], // Whitespace only user message
+      },
+      {
+        role: "assistant",
+        blocks: [{ type: "text", content: "This is a valid response" }],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    // Should only have the initial user message and the final assistant message
+    expect(apiMessages).toHaveLength(2);
+
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[0].content).toEqual([
+      { type: "text", text: "Hello, can you help me?" },
+    ]);
+
+    expect(apiMessages[1].role).toBe("assistant");
+    expect(apiMessages[1].content).toBe("This is a valid response");
+  });
+
+  it("should handle assistant messages with valid tool calls but no text content", () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", content: "Run a tool for me" }],
+      },
+      {
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            id: "tool1",
+            name: "bash",
+            parameters: '{"command": "echo hello"}',
+            stage: "end",
+            result: "hello",
+            success: true,
+          },
+        ],
+      },
+    ];
+
+    const apiMessages = convertMessagesForAPI(messages);
+
+    // Should include user message, assistant message with tool calls, and tool result
+    expect(apiMessages).toHaveLength(3);
+
+    expect(apiMessages[0].role).toBe("user");
+    expect(apiMessages[1].role).toBe("assistant");
+    // Type assertion for assistant message with tool_calls
+    const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
+      tool_calls?: ChatCompletionMessageToolCall[];
+    };
+    expect(assistantMessage.tool_calls).toBeDefined();
+    expect(assistantMessage.tool_calls).toHaveLength(1);
+    // Content should be undefined when there's no text content, only tool calls
+    expect(apiMessages[1].content).toBeUndefined();
+
+    expect(apiMessages[2].role).toBe("tool");
+    expect(apiMessages[2].content).toBe("hello");
   });
 
   it("should filter out ErrorBlock content to ensure user-visible only (FR-020)", () => {
