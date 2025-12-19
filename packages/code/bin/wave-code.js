@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+import inspector from "node:inspector";
+
+inspector.open();
+
 // Import and start the CLI
 import("../dist/index.js")
   .then(async ({ main }) => {
