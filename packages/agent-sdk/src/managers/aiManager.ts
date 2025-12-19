@@ -304,8 +304,8 @@ export class AIManager {
         this.workdir,
       );
 
-      // Add assistant message first (for streaming updates)
-      this.messageManager.addAssistantMessage();
+      // Track if assistant message has been created
+      let assistantMessageCreated = false;
 
       this.logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
@@ -326,9 +326,20 @@ export class AIManager {
       // Add streaming callbacks only if streaming is enabled
       if (this.stream) {
         callAgentOptions.onContentUpdate = (content: string) => {
+          // Create assistant message on first chunk if not already created
+          if (!assistantMessageCreated) {
+            this.messageManager.addAssistantMessage();
+            assistantMessageCreated = true;
+          }
           this.messageManager.updateCurrentMessageContent(content);
         };
         callAgentOptions.onToolUpdate = (toolCall) => {
+          // Create assistant message on first tool update if not already created
+          if (!assistantMessageCreated) {
+            this.messageManager.addAssistantMessage();
+            assistantMessageCreated = true;
+          }
+
           // Use parametersChunk as compact param for better performance
           // No need to extract params or generate compact params during streaming
 
@@ -345,6 +356,16 @@ export class AIManager {
       }
 
       const result = await callAgent(callAgentOptions);
+
+      // For non-streaming mode, create assistant message after callAgent returns
+      // Also create if streaming mode but no streaming callbacks were called (e.g., when content comes directly in result)
+      if (
+        !this.stream ||
+        (!assistantMessageCreated && (result.content || result.tool_calls))
+      ) {
+        this.messageManager.addAssistantMessage();
+        assistantMessageCreated = true;
+      }
 
       // Log finish reason and response headers if available
       if (result.finish_reason) {
