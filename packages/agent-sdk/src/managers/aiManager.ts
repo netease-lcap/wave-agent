@@ -353,6 +353,14 @@ export class AIManager {
             stage: toolCall.stage || "streaming", // Default to streaming if stage not provided
           });
         };
+        callAgentOptions.onReasoningUpdate = (reasoning: string) => {
+          // Create assistant message on first reasoning update if not already created
+          if (!assistantMessageCreated) {
+            this.messageManager.addAssistantMessage();
+            assistantMessageCreated = true;
+          }
+          this.messageManager.updateCurrentMessageReasoning(reasoning);
+        };
       }
 
       const result = await callAgent(callAgentOptions);
@@ -361,7 +369,8 @@ export class AIManager {
       // Also create if streaming mode but no streaming callbacks were called (e.g., when content comes directly in result)
       if (
         !this.stream ||
-        (!assistantMessageCreated && (result.content || result.tool_calls))
+        (!assistantMessageCreated &&
+          (result.content || result.tool_calls || result.reasoning_content))
       ) {
         this.messageManager.addAssistantMessage();
         assistantMessageCreated = true;
@@ -382,6 +391,13 @@ export class AIManager {
 
       if (result.metadata && Object.keys(result.metadata).length > 0) {
         this.messageManager.mergeAssistantMetadata(result.metadata);
+      }
+
+      // Handle result reasoning content from non-streaming mode
+      if (result.reasoning_content) {
+        this.messageManager.updateCurrentMessageReasoning(
+          result.reasoning_content,
+        );
       }
 
       // Handle result content from non-streaming mode

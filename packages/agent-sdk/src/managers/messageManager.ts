@@ -41,6 +41,8 @@ export interface MessageManagerCallbacks {
   onAssistantMessageAdded?: () => void;
   // NEW: Streaming content callback - FR-001: receives chunk and accumulated content
   onAssistantContentUpdated?: (chunk: string, accumulated: string) => void;
+  // NEW: Streaming reasoning callback
+  onAssistantReasoningUpdated?: (chunk: string, accumulated: string) => void;
   onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
   onErrorBlockAdded?: (error: string) => void;
   onCompressBlockAdded?: (insertIndex: number, content: string) => void;
@@ -554,7 +556,7 @@ export class MessageManager {
       };
     } else {
       // Add new text block if none exists
-      lastMessage.blocks.unshift({
+      lastMessage.blocks.push({
         type: "text",
         content: newAccumulatedContent,
       });
@@ -564,6 +566,56 @@ export class MessageManager {
     this.callbacks.onAssistantContentUpdated?.(chunk, newAccumulatedContent);
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
+
+    this.callbacks.onMessagesChange?.([...this.messages]); // Still need to notify of changes
+  }
+
+  /**
+   * Update the current assistant message reasoning during streaming
+   * This method updates the last assistant message's reasoning content without creating a new message
+   */
+  public updateCurrentMessageReasoning(newAccumulatedReasoning: string): void {
+    if (this.messages.length === 0) return;
+
+    const lastMessage = this.messages[this.messages.length - 1];
+    if (lastMessage.role !== "assistant") return;
+
+    // Get the current reasoning content to calculate the chunk
+    const reasoningBlockIndex = lastMessage.blocks.findIndex(
+      (block) => block.type === "reasoning",
+    );
+    const currentReasoning =
+      reasoningBlockIndex >= 0
+        ? (
+            lastMessage.blocks[reasoningBlockIndex] as {
+              type: "reasoning";
+              content: string;
+            }
+          ).content || ""
+        : "";
+
+    // Calculate the chunk (new content since last update)
+    const chunk = newAccumulatedReasoning.slice(currentReasoning.length);
+
+    if (reasoningBlockIndex >= 0) {
+      // Update existing reasoning block
+      lastMessage.blocks[reasoningBlockIndex] = {
+        type: "reasoning",
+        content: newAccumulatedReasoning,
+      };
+    } else {
+      // Add new reasoning block if none exists
+      lastMessage.blocks.push({
+        type: "reasoning",
+        content: newAccumulatedReasoning,
+      });
+    }
+
+    // Trigger callbacks with chunk and accumulated reasoning content
+    this.callbacks.onAssistantReasoningUpdated?.(
+      chunk,
+      newAccumulatedReasoning,
+    );
 
     this.callbacks.onMessagesChange?.([...this.messages]); // Still need to notify of changes
   }

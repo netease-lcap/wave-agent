@@ -7,6 +7,7 @@ import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { MemoryDisplay } from "./MemoryDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
 import { SubagentBlock } from "./SubagentBlock.js";
+import { ReasoningDisplay } from "./ReasoningDisplay.js";
 import { Markdown } from "./Markdown.js";
 
 export interface MessageItemProps {
@@ -85,6 +86,8 @@ export const MessageItem = ({
             )}
 
             {block.type === "subagent" && <SubagentBlock block={block} />}
+
+            {block.type === "reasoning" && <ReasoningDisplay block={block} />}
           </Box>
         ))}
       </Box>

@@ -265,6 +265,8 @@ export class Agent {
           callbacks.onSubagentAssistantMessageAdded,
         onSubagentAssistantContentUpdated:
           callbacks.onSubagentAssistantContentUpdated,
+        onSubagentAssistantReasoningUpdated:
+          callbacks.onSubagentAssistantReasoningUpdated,
         onSubagentToolBlockUpdated: callbacks.onSubagentToolBlockUpdated,
         onSubagentMessagesChange: callbacks.onSubagentMessagesChange,
       }, // Pass subagent callbacks for forwarding
