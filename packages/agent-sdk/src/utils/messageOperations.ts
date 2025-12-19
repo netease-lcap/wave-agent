@@ -180,7 +180,7 @@ export const addAssistantMessageToMessages = (
   content?: string,
   toolCalls?: ChatCompletionMessageFunctionToolCall[],
   usage?: Usage,
-  metadata?: Record<string, unknown>,
+  additionalFields?: Record<string, unknown>,
 ): Message[] => {
   const blocks: Message["blocks"] = [];
 
@@ -207,7 +207,7 @@ export const addAssistantMessageToMessages = (
     role: "assistant",
     blocks,
     usage, // Include usage data if provided
-    ...(metadata ? { metadata: { ...metadata } } : {}),
+    ...(additionalFields ? { additionalFields: { ...additionalFields } } : {}),
   };
 
   return [...messages, initialAssistantMessage];

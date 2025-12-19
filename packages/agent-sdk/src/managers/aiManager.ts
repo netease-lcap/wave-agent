@@ -389,8 +389,13 @@ export class AIManager {
         this.logger?.debug("AI response headers:", result.response_headers);
       }
 
-      if (result.metadata && Object.keys(result.metadata).length > 0) {
-        this.messageManager.mergeAssistantMetadata(result.metadata);
+      if (
+        result.additionalFields &&
+        Object.keys(result.additionalFields).length > 0
+      ) {
+        this.messageManager.mergeAssistantAdditionalFields(
+          result.additionalFields,
+        );
       }
 
       // Handle result reasoning content from non-streaming mode

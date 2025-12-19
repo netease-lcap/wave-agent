@@ -156,7 +156,7 @@ export interface CallAgentResult {
     | "function_call"
     | null;
   response_headers?: Record<string, string>;
-  metadata?: Record<string, unknown>;
+  additionalFields?: Record<string, unknown>;
 }
 
 export async function callAgent(
@@ -366,14 +366,14 @@ Today's date: ${new Date().toISOString().split("T")[0]}
         }
 
         if (Object.keys(otherFields).length > 0) {
-          const metadata: Record<string, unknown> = {};
+          const additionalFields: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(otherFields)) {
             if (value !== undefined && key !== "role") {
-              metadata[key] = value;
+              additionalFields[key] = value;
             }
           }
-          if (Object.keys(metadata).length > 0) {
-            result.metadata = metadata;
+          if (Object.keys(additionalFields).length > 0) {
+            result.additionalFields = additionalFields;
           }
         }
       }
@@ -713,14 +713,14 @@ async function processStreamingResponse(
   }
 
   if (Object.keys(additionalDeltaFields).length > 0) {
-    result.metadata = {};
+    result.additionalFields = {};
     for (const [key, value] of Object.entries(additionalDeltaFields)) {
       if (value !== undefined && key !== "role") {
-        result.metadata[key] = value;
+        result.additionalFields[key] = value;
       }
     }
-    if (Object.keys(result.metadata).length === 0) {
-      delete result.metadata;
+    if (Object.keys(result.additionalFields).length === 0) {
+      delete result.additionalFields;
     }
   }
 
