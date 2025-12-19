@@ -364,17 +364,15 @@ export class AIManager {
       const { role, blocks = [] } = item;
 
       const notUser = role !== "user";
-      const notSubagent = blocks.every(
-        (current) => current.type !== "subagent",
-      );
-      const notTodo = blocks.every(
-        (current) => (current as ToolBlock).name !== "TodoWrite",
-      );
 
-      return notUser && notSubagent && notTodo;
+      const isRead = (blocks as ToolBlock[])
+        .filter((current) => current.type === "tool")
+        .every((current) => current.name === "Read");
+
+      return notUser && isRead;
     });
 
-    messagesSource.splice(1, 0, ...recentParentMessagesSource);
+    messagesSource.splice(0, 0, ...recentParentMessagesSource);
 
     // Get recent message history
     const recentMessages = convertMessagesForAPI(messagesSource);
