@@ -288,11 +288,13 @@ export class MessageManager {
     content?: string,
     toolCalls?: ChatCompletionMessageFunctionToolCall[],
     usage?: Usage,
-    metadata?: Record<string, unknown>,
+    additionalFields?: Record<string, unknown>,
   ): void {
-    const metadataRecord = metadata
+    const additionalFieldsRecord = additionalFields
       ? Object.fromEntries(
-          Object.entries(metadata).filter(([, value]) => value !== undefined),
+          Object.entries(additionalFields).filter(
+            ([, value]) => value !== undefined,
+          ),
         )
       : undefined;
 
@@ -301,7 +303,7 @@ export class MessageManager {
       content,
       toolCalls,
       usage,
-      metadataRecord,
+      additionalFieldsRecord,
     );
     this.setMessages(newMessages);
     this.callbacks.onAssistantMessageAdded?.();
@@ -309,8 +311,10 @@ export class MessageManager {
     // Note: Subagent-specific callbacks are now handled by SubagentManager
   }
 
-  public mergeAssistantMetadata(metadata: Record<string, unknown>): void {
-    if (!metadata || Object.keys(metadata).length === 0) {
+  public mergeAssistantAdditionalFields(
+    additionalFields: Record<string, unknown>,
+  ): void {
+    if (!additionalFields || Object.keys(additionalFields).length === 0) {
       return;
     }
 
@@ -318,22 +322,22 @@ export class MessageManager {
     for (let i = newMessages.length - 1; i >= 0; i--) {
       const message = newMessages[i];
       if (message.role === "assistant") {
-        const mergedMetadata = {
-          ...(message.metadata || {}),
+        const mergedAdditionalFields = {
+          ...(message.additionalFields || {}),
         } as Record<string, unknown>;
 
-        for (const [key, value] of Object.entries(metadata)) {
+        for (const [key, value] of Object.entries(additionalFields)) {
           if (value === undefined) {
             continue;
           }
-          mergedMetadata[key] = value;
+          mergedAdditionalFields[key] = value;
         }
 
-        if (Object.keys(mergedMetadata).length === 0) {
+        if (Object.keys(mergedAdditionalFields).length === 0) {
           return;
         }
 
-        message.metadata = mergedMetadata;
+        message.additionalFields = mergedAdditionalFields;
         this.setMessages(newMessages);
         return;
       }

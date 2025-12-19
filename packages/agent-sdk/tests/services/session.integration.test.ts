@@ -552,18 +552,18 @@ describe("Session Integration Tests", () => {
       expect(sessions2[0].workdir).toBe(workdir2);
     });
 
-    it("should preserve message metadata through lifecycle", async () => {
+    it("should preserve message additionalFields through lifecycle", async () => {
       const fs = await import("fs/promises");
       const sessionId = generateSessionId();
 
       // Mock fs.access to always succeed (session files exist after creation)
       vi.mocked(fs.access).mockResolvedValue(undefined);
 
-      const messagesWithMetadata: Message[] = [
+      const messagesWithAdditionalFields: Message[] = [
         {
           role: "user",
           blocks: [{ type: "text", content: "User message" }],
-          metadata: { userAgent: "test", source: "cli" },
+          additionalFields: { userAgent: "test", source: "cli" },
         },
         {
           role: "assistant",
@@ -577,15 +577,19 @@ describe("Session Integration Tests", () => {
             },
           ],
           usage: { prompt_tokens: 15, completion_tokens: 10, total_tokens: 25 },
-          metadata: { modelName: "test-model", temperature: 0.7 },
+          additionalFields: { modelName: "test-model", temperature: 0.7 },
         },
       ];
 
       await createSession(sessionId, testWorkdir);
-      await appendMessages(sessionId, messagesWithMetadata, testWorkdir);
+      await appendMessages(
+        sessionId,
+        messagesWithAdditionalFields,
+        testWorkdir,
+      );
 
-      // Mock JsonlHandler.read to return messages with metadata and timestamps
-      const messagesWithTimestamp = messagesWithMetadata.map((msg) => ({
+      // Mock JsonlHandler.read to return messages with additionalFields and timestamps
+      const messagesWithTimestamp = messagesWithAdditionalFields.map((msg) => ({
         ...msg,
         timestamp: new Date().toISOString(),
       }));
@@ -594,11 +598,11 @@ describe("Session Integration Tests", () => {
 
       const sessionData = await loadSessionFromJsonl(sessionId, testWorkdir);
 
-      expect(sessionData!.messages[0].metadata).toEqual({
+      expect(sessionData!.messages[0].additionalFields).toEqual({
         userAgent: "test",
         source: "cli",
       });
-      expect(sessionData!.messages[1].metadata).toEqual({
+      expect(sessionData!.messages[1].additionalFields).toEqual({
         modelName: "test-model",
         temperature: 0.7,
       });
