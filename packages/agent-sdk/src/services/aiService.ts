@@ -22,6 +22,41 @@ import * as fs from "fs";
 import * as path from "path";
 
 /**
+ * Interface for debug data saved during 400 errors
+ */
+interface DebugData {
+  originalMessages: ChatCompletionMessageParam[];
+  timestamp: string;
+  model: string;
+  workdir: string;
+  sessionId?: string;
+  gatewayConfig: {
+    baseURL?: string;
+    defaultHeaders?: Record<string, string>;
+  };
+  processedMessages?: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+  createParams?:
+    | ChatCompletionCreateParamsNonStreaming
+    | ChatCompletionCreateParamsStreaming;
+  tools?: ChatCompletionFunctionTool[];
+}
+
+/**
+ * Interface for error data saved during 400 errors
+ */
+interface ErrorData {
+  error: {
+    message?: string;
+    status?: number;
+    type?: string;
+    code?: string;
+    body?: unknown;
+    stack?: string;
+  };
+  timestamp: string;
+}
+
+/**
  * Use parametersChunk as compact param for better performance
  * Instead of parsing JSON, we use the raw chunk for efficient streaming
  */
@@ -139,6 +174,16 @@ export async function callAgent(
     onToolUpdate,
   } = options;
 
+  // Declare variables outside try block for error handling access
+  let openaiMessages:
+    | OpenAI.Chat.Completions.ChatCompletionMessageParam[]
+    | undefined;
+  let createParams:
+    | ChatCompletionCreateParamsNonStreaming
+    | ChatCompletionCreateParamsStreaming
+    | undefined;
+  let processedTools: ChatCompletionFunctionTool[] | undefined;
+
   try {
     // Create OpenAI client with injected configuration
     const openai = new OpenAI({
@@ -185,15 +230,12 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     };
 
     // ChatCompletionMessageParam[] is already in OpenAI format, add system prompt to the beginning
-    let openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      systemMessage,
-      ...messages,
-    ];
+    openaiMessages = [systemMessage, ...messages];
 
     // Apply cache control for Claude models
     const currentModel = model || modelConfig.agentModel;
 
-    let processedTools = tools;
+    processedTools = tools;
 
     if (isClaudeModel(currentModel)) {
       openaiMessages = transformMessagesForClaudeCache(
@@ -216,7 +258,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     const isStreaming = !!(onContentUpdate || onToolUpdate);
 
     // Prepare API call parameters
-    const createParams = {
+    createParams = {
       ...openaiModelConfig,
       messages: openaiMessages,
       stream: isStreaming,
@@ -333,6 +375,98 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     if ((error as Error).name === "AbortError") {
       throw new Error("Request was aborted");
     }
+
+    // Check if it's a 400 error and save messages to temp directory
+    if (
+      error &&
+      typeof error === "object" &&
+      "status" in error &&
+      error.status === 400
+    ) {
+      try {
+        // Create temp directory for error debugging
+        const tempDir = fs.mkdtempSync(
+          path.join(os.tmpdir(), "callAgent-400-error-"),
+        );
+        const messagesFile = path.join(tempDir, "messages.json");
+        const errorFile = path.join(tempDir, "error.json");
+
+        // Save complete messages to temp file
+        const debugData: DebugData = {
+          originalMessages: messages,
+          timestamp: new Date().toISOString(),
+          model: model || modelConfig.agentModel,
+          workdir,
+          sessionId: options.sessionId,
+          gatewayConfig: {
+            baseURL: gatewayConfig.baseURL,
+            // Don't include apiKey for security
+            defaultHeaders: gatewayConfig.defaultHeaders,
+          },
+        };
+
+        // Add processed messages if they exist
+        if (typeof openaiMessages !== "undefined") {
+          debugData.processedMessages = openaiMessages;
+        }
+
+        // Add create params if they exist
+        if (typeof createParams !== "undefined") {
+          debugData.createParams = createParams;
+        }
+
+        // Add tools if they exist
+        if (processedTools) {
+          debugData.tools = processedTools;
+        }
+
+        fs.writeFileSync(messagesFile, JSON.stringify(debugData, null, 2));
+
+        // Save error details
+        const errorData: ErrorData = {
+          error: {
+            message:
+              error && typeof error === "object" && "message" in error
+                ? String(error.message)
+                : undefined,
+            status:
+              error && typeof error === "object" && "status" in error
+                ? Number(error.status)
+                : undefined,
+            type:
+              error && typeof error === "object" && "type" in error
+                ? String(error.type)
+                : undefined,
+            code:
+              error && typeof error === "object" && "code" in error
+                ? String(error.code)
+                : undefined,
+            body:
+              error && typeof error === "object" && "body" in error
+                ? error.body
+                : undefined,
+            stack:
+              error && typeof error === "object" && "stack" in error
+                ? String(error.stack)
+                : undefined,
+          },
+          timestamp: new Date().toISOString(),
+        };
+
+        fs.writeFileSync(errorFile, JSON.stringify(errorData, null, 2));
+
+        logger.error(
+          "callAgent 400 error occurred. Debug files saved to:",
+          tempDir,
+        );
+        logger.error("Messages file:", messagesFile);
+        logger.error("Error file:", errorFile);
+        logger.error("Error details:", error);
+      } catch (saveError) {
+        logger.error("Failed to save 400 error debug files:", saveError);
+      }
+    }
+
     logger.error("Failed to call OpenAI:", error);
     throw error;
   }
