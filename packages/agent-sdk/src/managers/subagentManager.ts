@@ -36,6 +36,12 @@ export interface SubagentManagerCallbacks {
     chunk: string,
     accumulated: string,
   ) => void;
+  /** Triggered during subagent reasoning streaming updates */
+  onSubagentAssistantReasoningUpdated?: (
+    subagentId: string,
+    chunk: string,
+    accumulated: string,
+  ) => void;
   /** Triggered when subagent tool block is updated */
   onSubagentToolBlockUpdated?: (
     subagentId: string,
@@ -539,6 +545,16 @@ export class SubagentManager {
         // Forward assistant content updates to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentAssistantContentUpdated) {
           this.callbacks.onSubagentAssistantContentUpdated(
+            subagentId,
+            chunk,
+            accumulated,
+          );
+        }
+      },
+      onAssistantReasoningUpdated: (chunk: string, accumulated: string) => {
+        // Forward assistant reasoning updates to parent via SubagentManager callbacks
+        if (this.callbacks?.onSubagentAssistantReasoningUpdated) {
+          this.callbacks.onSubagentAssistantReasoningUpdated(
             subagentId,
             chunk,
             accumulated,

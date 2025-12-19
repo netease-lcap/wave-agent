@@ -253,4 +253,80 @@ describe("MessageList Component", () => {
       expect(output).toContain("👤 You");
     });
   });
+
+  describe("Reasoning block rendering", () => {
+    it("should display reasoning block correctly", () => {
+      const messagesWithReasoning: Message[] = [
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "text",
+              content: "Let me think about this problem.",
+            },
+            {
+              type: "reasoning",
+              content:
+                "**Analyzing the Request**\n\nThe user is asking for help with a complex problem. I need to break this down step by step.",
+            },
+          ],
+        },
+      ];
+
+      const { lastFrame } = render(
+        <MessageList
+          messages={messagesWithReasoning}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
+
+      const output = lastFrame();
+
+      // Should display the text content
+      expect(output).toContain("Let me think about this problem");
+
+      // Should display reasoning content
+      expect(output).toContain("Analyzing the Request");
+      expect(output).toContain("The user is asking for help");
+
+      // Should show assistant header
+      expect(output).toContain("🤖 Assistant");
+    });
+
+    it("should not display empty reasoning blocks", () => {
+      const messagesWithEmptyReasoning: Message[] = [
+        {
+          role: "assistant",
+          blocks: [
+            {
+              type: "text",
+              content: "Hello there!",
+            },
+            {
+              type: "reasoning",
+              content: "",
+            },
+          ],
+        },
+      ];
+
+      const { lastFrame } = render(
+        <MessageList
+          messages={messagesWithEmptyReasoning}
+          isLoading={false}
+          isCommandRunning={false}
+          latestTotalTokens={1000}
+          isExpanded={false}
+        />,
+      );
+
+      const output = lastFrame();
+
+      // Should display text content
+      expect(output).toContain("Hello there!");
+    });
+  });
 });

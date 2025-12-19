@@ -26,7 +26,8 @@ export type MessageBlock =
   | CommandOutputBlock
   | CompressBlock
   | MemoryBlock
-  | SubagentBlock;
+  | SubagentBlock
+  | ReasoningBlock;
 
 export interface TextBlock {
   type: "text";
@@ -100,4 +101,9 @@ export interface SubagentBlock {
   status: "active" | "completed" | "error" | "aborted";
   sessionId: string;
   configuration: SubagentConfiguration;
+}
+
+export interface ReasoningBlock {
+  type: "reasoning";
+  content: string;
 }

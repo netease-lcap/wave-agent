@@ -1,5 +1,5 @@
 import { test, expect, vi, afterEach } from "vitest";
-import { Agent } from "wave-agent-sdk";
+import { Agent, AgentCallbacks } from "wave-agent-sdk";
 
 // Mock displayUsageSummary
 vi.mock("../src/utils/usageSummary.js");
@@ -266,6 +266,7 @@ test("subagent content callbacks output correctly", async () => {
   capturedCallbacks?.onSubagentAssistantContentUpdated?.(
     "test-subagent-123",
     "Hello from subagent",
+    "Hello from subagent",
   );
   expect(stdoutSpy).toHaveBeenCalledWith("Hello from subagent");
 
@@ -406,6 +407,99 @@ test("tool name printing during running stage", async () => {
 
   stdoutSpy.mockRestore();
   consoleErrorSpy.mockRestore();
+});
+
+test("reasoning callbacks output correctly", async () => {
+  const mockAgent = {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    abortMessage: vi.fn(),
+    usages: [],
+    sessionFilePath: "/mock/session.json",
+  };
+
+  let capturedCallbacks: AgentCallbacks | undefined;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    capturedCallbacks = options.callbacks;
+    return mockAgent as unknown as Agent;
+  });
+
+  const stdoutSpy = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+
+  await startPrintCli({ message: "test message" });
+
+  // 1. Trigger onAssistantReasoningUpdated and verify the output
+  capturedCallbacks?.onAssistantReasoningUpdated?.(
+    "Thinking...",
+    "Thinking...",
+  );
+  expect(stdoutSpy).toHaveBeenCalledWith("💭 Reasoning:\n");
+  expect(stdoutSpy).toHaveBeenCalledWith("Thinking...");
+
+  // Verify header is not printed again
+  stdoutSpy.mockClear();
+  capturedCallbacks?.onAssistantReasoningUpdated?.(
+    " more thinking",
+    "Thinking... more thinking",
+  );
+  expect(stdoutSpy).not.toHaveBeenCalledWith("💭 Reasoning:\n");
+  expect(stdoutSpy).toHaveBeenCalledWith(" more thinking");
+
+  // 2. Trigger onAssistantContentUpdated after reasoning and verify the "📝 Response:" header
+  stdoutSpy.mockClear();
+  capturedCallbacks?.onAssistantContentUpdated?.("Hello!", "Hello!");
+  expect(stdoutSpy).toHaveBeenCalledWith("\n\n📝 Response:\n");
+  expect(stdoutSpy).toHaveBeenCalledWith("Hello!");
+
+  // Verify header is not printed again
+  stdoutSpy.mockClear();
+  capturedCallbacks?.onAssistantContentUpdated?.(" world", "Hello! world");
+  expect(stdoutSpy).not.toHaveBeenCalledWith("\n\n📝 Response:\n");
+  expect(stdoutSpy).toHaveBeenCalledWith(" world");
+
+  // 3. Trigger onSubagentAssistantReasoningUpdated and verify the output
+  stdoutSpy.mockClear();
+  capturedCallbacks?.onSubagentAssistantReasoningUpdated?.(
+    "sub-1",
+    "Sub thinking...",
+    "Sub thinking...",
+  );
+  expect(stdoutSpy).toHaveBeenCalledWith("💭 Reasoning: ");
+  expect(stdoutSpy).toHaveBeenCalledWith("Sub thinking...");
+
+  // Verify header is not printed again
+  stdoutSpy.mockClear();
+  capturedCallbacks?.onSubagentAssistantReasoningUpdated?.(
+    "sub-1",
+    " more sub thinking",
+    "Sub thinking... more sub thinking",
+  );
+  expect(stdoutSpy).not.toHaveBeenCalledWith("💭 Reasoning: ");
+  expect(stdoutSpy).toHaveBeenCalledWith(" more sub thinking");
+
+  // 4. Trigger onSubagentAssistantContentUpdated after subagent reasoning and verify the "📝 Response:" header
+  stdoutSpy.mockClear();
+  capturedCallbacks?.onSubagentAssistantContentUpdated?.(
+    "sub-1",
+    "Sub hello!",
+    "Sub hello!",
+  );
+  expect(stdoutSpy).toHaveBeenCalledWith("\n   📝 Response: ");
+  expect(stdoutSpy).toHaveBeenCalledWith("Sub hello!");
+
+  // Verify header is not printed again
+  stdoutSpy.mockClear();
+  capturedCallbacks?.onSubagentAssistantContentUpdated?.(
+    "sub-1",
+    " world",
+    "Sub hello! world",
+  );
+  expect(stdoutSpy).not.toHaveBeenCalledWith("\n   📝 Response: ");
+  expect(stdoutSpy).toHaveBeenCalledWith(" world");
+
+  stdoutSpy.mockRestore();
 });
 
 test("startPrintCli does not display stats by default", async () => {

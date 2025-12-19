@@ -140,11 +140,13 @@ export interface CallAgentOptions {
     parametersChunk?: string;
     stage?: "start" | "streaming" | "running" | "end";
   }) => void;
+  onReasoningUpdate?: (content: string) => void;
 }
 
 export interface CallAgentResult {
   content?: string;
   tool_calls?: ChatCompletionMessageToolCall[];
+  reasoning_content?: string;
   usage?: ClaudeUsage;
   finish_reason?:
     | "stop"
@@ -172,6 +174,7 @@ export async function callAgent(
     systemPrompt,
     onContentUpdate,
     onToolUpdate,
+    onReasoningUpdate,
   } = options;
 
   // Declare variables outside try block for error handling access
@@ -255,7 +258,11 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     });
 
     // Determine if streaming is needed
-    const isStreaming = !!(onContentUpdate || onToolUpdate);
+    const isStreaming = !!(
+      onContentUpdate ||
+      onToolUpdate ||
+      onReasoningUpdate
+    );
 
     // Prepare API call parameters
     createParams = {
@@ -289,6 +296,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
         stream,
         onContentUpdate,
         onToolUpdate,
+        onReasoningUpdate,
         abortSignal,
         responseHeaders,
         currentModel,
@@ -333,11 +341,24 @@ Today's date: ${new Date().toISOString().split("T")[0]}
         const {
           content: finalContent,
           tool_calls: finalToolCalls,
+          reasoning_content: finalReasoningContent,
           ...otherFields
-        } = finalMessage;
+        } = finalMessage as unknown as {
+          content?: string;
+          tool_calls?: ChatCompletionMessageToolCall[];
+          reasoning_content?: string;
+          [key: string]: unknown;
+        };
 
         if (typeof finalContent === "string" && finalContent.length > 0) {
           result.content = finalContent;
+        }
+
+        if (
+          typeof finalReasoningContent === "string" &&
+          finalReasoningContent.length > 0
+        ) {
+          result.reasoning_content = finalReasoningContent;
         }
 
         if (Array.isArray(finalToolCalls) && finalToolCalls.length > 0) {
@@ -492,11 +513,13 @@ async function processStreamingResponse(
     parametersChunk?: string;
     stage?: "start" | "streaming" | "running" | "end";
   }) => void,
+  onReasoningUpdate?: (content: string) => void,
   abortSignal?: AbortSignal,
   responseHeaders?: Record<string, string>,
   modelName?: string,
 ): Promise<CallAgentResult> {
   let accumulatedContent = "";
+  let accumulatedReasoningContent = "";
   const toolCalls: {
     id: string;
     type: "function";
@@ -549,10 +572,12 @@ async function processStreamingResponse(
       const {
         content,
         tool_calls: toolCallUpdates,
+        reasoning_content,
         ...deltaMetadata
       } = delta as unknown as {
         content?: string;
         tool_calls?: ChatCompletionChunk.Choice.Delta.ToolCall[];
+        reasoning_content?: string;
         [key: string]: unknown;
       };
 
@@ -566,6 +591,16 @@ async function processStreamingResponse(
         accumulatedContent += content;
         if (onContentUpdate) {
           onContentUpdate(accumulatedContent);
+        }
+      }
+
+      if (
+        typeof reasoning_content === "string" &&
+        reasoning_content.length > 0
+      ) {
+        accumulatedReasoningContent += reasoning_content;
+        if (onReasoningUpdate) {
+          onReasoningUpdate(accumulatedReasoningContent);
         }
       }
 
@@ -655,6 +690,10 @@ async function processStreamingResponse(
 
   if (accumulatedContent) {
     result.content = accumulatedContent.trim();
+  }
+
+  if (accumulatedReasoningContent) {
+    result.reasoning_content = accumulatedReasoningContent.trim();
   }
 
   if (toolCalls.length > 0) {
