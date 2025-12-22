@@ -364,6 +364,7 @@ export class AIManager {
       }
 
       const result = await callAgent(callAgentOptions);
+      const createdByStreaming = assistantMessageCreated;
 
       // For non-streaming mode, create assistant message after callAgent returns
       // Also create if streaming mode but no streaming callbacks were called (e.g., when content comes directly in result)
@@ -399,14 +400,14 @@ export class AIManager {
       }
 
       // Handle result reasoning content from non-streaming mode
-      if (result.reasoning_content) {
+      if (result.reasoning_content && !createdByStreaming) {
         this.messageManager.updateCurrentMessageReasoning(
           result.reasoning_content,
         );
       }
 
       // Handle result content from non-streaming mode
-      if (result.content) {
+      if (result.content && !createdByStreaming) {
         this.messageManager.updateCurrentMessageContent(result.content);
       }
 
