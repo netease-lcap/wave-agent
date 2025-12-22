@@ -16,7 +16,7 @@ This is the frontend UI package of the Wave workspace, providing an interactive 
 ## Installation
 
 ```bash
-npm install wave-code
+npm install wave-code -g
 ```
 
 ## Environment Configuration
