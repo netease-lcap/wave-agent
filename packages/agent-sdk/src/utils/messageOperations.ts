@@ -425,7 +425,7 @@ export const addCommandOutputMessage = ({
   command,
 }: AddCommandOutputParams): Message[] => {
   const outputMessage: Message = {
-    role: "assistant",
+    role: "user",
     blocks: [
       {
         type: "command_output",
@@ -447,10 +447,10 @@ export const updateCommandOutputInMessage = ({
   output,
 }: UpdateCommandOutputParams): Message[] => {
   const newMessages = [...messages];
-  // Find the last assistant message with a command_output block for this command
+  // Find the last user message with a command_output block for this command
   for (let i = newMessages.length - 1; i >= 0; i--) {
     const msg = newMessages[i];
-    if (msg.role === "assistant") {
+    if (msg.role === "user") {
       const commandBlock = msg.blocks.find(
         (block) =>
           block.type === "command_output" &&
@@ -473,10 +473,10 @@ export const completeCommandInMessage = ({
   exitCode,
 }: CompleteCommandParams): Message[] => {
   const newMessages = [...messages];
-  // Find the last assistant message with a command_output block for this command
+  // Find the last user message with a command_output block for this command
   for (let i = newMessages.length - 1; i >= 0; i--) {
     const msg = newMessages[i];
-    if (msg.role === "assistant") {
+    if (msg.role === "user") {
       const commandBlock = msg.blocks.find(
         (block) =>
           block.type === "command_output" &&

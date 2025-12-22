@@ -576,10 +576,17 @@ export async function getFirstMessageContent(
 
       // Extract content based on role
       if (message.role === "user") {
-        // Find text block
-        const textBlock = message.blocks.find((block) => block.type === "text");
-        if (textBlock && "content" in textBlock) {
-          return textBlock.content;
+        // Find text block or command_output block
+        const block = message.blocks.find(
+          (block) => block.type === "text" || block.type === "command_output",
+        );
+        if (block) {
+          if (block.type === "text") {
+            return block.content;
+          }
+          if (block.type === "command_output") {
+            return block.command;
+          }
         }
       } else if (message.role === "assistant") {
         // Find compress block
