@@ -156,34 +156,9 @@ export class Agent {
     // Initialize configuration service
     this.configurationService = new ConfigurationService();
 
-    // Resolve configuration from constructor args and environment variables
-    const gatewayConfig = this.configurationService.resolveGatewayConfig(
-      options.apiKey,
-      options.baseURL,
-      options.defaultHeaders,
-    );
-    const modelConfig = this.configurationService.resolveModelConfig(
-      options.agentModel,
-      options.fastModel,
-    );
-    const tokenLimit = this.configurationService.resolveTokenLimit(
-      options.tokenLimit,
-    );
-
-    // Validate resolved configuration
-    configValidator.validateGatewayConfig(gatewayConfig);
-    configValidator.validateTokenLimit(tokenLimit);
-    configValidator.validateModelConfig(
-      modelConfig.agentModel,
-      modelConfig.fastModel,
-    );
-
     this.logger = logger; // Save the passed logger
     this.systemPrompt = systemPrompt; // Save custom system prompt
     this.stream = stream; // Save streaming mode flag
-
-    // Set global logger for SDK-wide access
-    setGlobalLogger(logger || null);
 
     // Store options for dynamic configuration resolution
     this.options = options;
@@ -460,7 +435,7 @@ export class Agent {
    * ```
    */
   static async create(options: AgentOptions): Promise<Agent> {
-    // Create Agent instance - configuration resolution and validation now happens in constructor
+    // Create Agent instance
     const instance = new Agent(options);
     await instance.initialize({
       restoreSessionId: options.restoreSessionId,
@@ -468,6 +443,27 @@ export class Agent {
       messages: options.messages,
     });
     return instance;
+  }
+
+  /**
+   * Resolve and validate configuration from constructor args, environment variables,
+   * and loaded settings.json.
+   *
+   * This is called during initialization after settings.json has been loaded.
+   */
+  private resolveAndValidateConfig(): void {
+    // Resolve configuration from constructor args and environment variables (including settings.json)
+    const gatewayConfig = this.getGatewayConfig();
+    const modelConfig = this.getModelConfig();
+    const tokenLimit = this.getTokenLimit();
+
+    // Validate resolved configuration
+    configValidator.validateGatewayConfig(gatewayConfig);
+    configValidator.validateTokenLimit(tokenLimit);
+    configValidator.validateModelConfig(
+      modelConfig.agentModel,
+      modelConfig.fastModel,
+    );
   }
 
   /** Private initialization method, handles async initialization logic */
@@ -512,6 +508,7 @@ export class Agent {
       this.logger?.debug("Loading hooks configuration...");
       const configResult =
         await this.configurationService.loadMergedConfiguration(this.workdir);
+
       this.hookManager.loadConfigurationFromWaveConfig(
         configResult.configuration,
       );
@@ -520,6 +517,12 @@ export class Agent {
       this.logger?.error("Failed to initialize hooks system:", error);
       // Don't throw error to prevent app startup failure
     }
+
+    // Resolve and validate configuration after loading settings.json
+    this.resolveAndValidateConfig();
+
+    // Set global logger for SDK-wide access after validation
+    setGlobalLogger(this.logger || null);
 
     // Initialize live configuration reload
     try {
