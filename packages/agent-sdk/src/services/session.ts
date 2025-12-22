@@ -574,28 +574,24 @@ export async function getFirstMessageContent(
     try {
       const message = JSON.parse(firstLine) as Message;
 
-      // Extract content based on role
-      if (message.role === "user") {
-        // Find text block or command_output block
-        const block = message.blocks.find(
-          (block) => block.type === "text" || block.type === "command_output",
-        );
-        if (block) {
-          if (block.type === "text") {
-            return block.content;
-          }
-          if (block.type === "command_output") {
-            return block.command;
-          }
-        }
-      } else if (message.role === "assistant") {
-        // Find compress block
-        const compressBlock = message.blocks.find(
-          (block) => block.type === "compress",
-        );
-        if (compressBlock && "content" in compressBlock) {
-          return compressBlock.content;
-        }
+      // Find first available content block regardless of role
+      const textBlock = message.blocks.find((block) => block.type === "text");
+      if (textBlock && "content" in textBlock) {
+        return textBlock.content;
+      }
+
+      const commandBlock = message.blocks.find(
+        (block) => block.type === "command_output",
+      );
+      if (commandBlock && "command" in commandBlock) {
+        return commandBlock.command;
+      }
+
+      const compressBlock = message.blocks.find(
+        (block) => block.type === "compress",
+      );
+      if (compressBlock && "content" in compressBlock) {
+        return compressBlock.content;
       }
 
       return null;
