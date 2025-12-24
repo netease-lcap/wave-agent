@@ -386,10 +386,13 @@ describe("McpManager", () => {
         serverName: "test-server",
       });
 
-      expect(mockClient.callTool).toHaveBeenCalledWith({
-        name: "test_tool",
-        arguments: { param: "value" },
-      });
+      expect(mockClient.callTool).toHaveBeenCalledWith(
+        {
+          name: "test_tool",
+          arguments: { param: "value" },
+        },
+        { signal: undefined },
+      );
     });
 
     it("should handle tool result with images", async () => {
@@ -433,10 +436,13 @@ describe("McpManager", () => {
         serverName: "test-server",
       });
 
-      expect(mockClient.callTool).toHaveBeenCalledWith({
-        name: "screenshot_tool",
-        arguments: { action: "capture" },
-      });
+      expect(mockClient.callTool).toHaveBeenCalledWith(
+        {
+          name: "screenshot_tool",
+          arguments: { action: "capture" },
+        },
+        { signal: undefined },
+      );
     });
 
     it("should handle tool result with multiple images", async () => {

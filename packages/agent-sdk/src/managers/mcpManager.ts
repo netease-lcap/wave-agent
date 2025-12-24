@@ -347,6 +347,7 @@ export class McpManager {
   async executeMcpTool(
     toolName: string,
     args: Record<string, unknown>,
+    abortSignal?: AbortSignal,
   ): Promise<{
     success: boolean;
     content: string;
@@ -361,10 +362,14 @@ export class McpManager {
           const connection = this.connections.get(serverName);
           if (connection) {
             try {
-              const result = await connection.client.callTool({
-                name: toolName,
-                arguments: args,
-              });
+              const result = await connection.client.callTool(
+                {
+                  name: toolName,
+                  arguments: args,
+                },
+                undefined,
+                { signal: abortSignal },
+              );
 
               // Separate text content and image data
               const textContent: string[] = [];
@@ -445,8 +450,11 @@ export class McpManager {
       const server = findToolServer(tool.name, servers);
 
       if (server) {
-        const plugin = createMcpToolPlugin(tool, server.name, (name, args) =>
-          this.executeMcpTool(name, args),
+        const plugin = createMcpToolPlugin(
+          tool,
+          server.name,
+          (name, args, abortSignal) =>
+            this.executeMcpTool(name, args, abortSignal),
         );
         mcpTools.set(tool.name, plugin);
       }
