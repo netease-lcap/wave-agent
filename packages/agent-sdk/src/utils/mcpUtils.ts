@@ -63,6 +63,7 @@ export function createMcpToolPlugin(
   executeTool: (
     name: string,
     args: Record<string, unknown>,
+    abortSignal?: AbortSignal,
   ) => Promise<{
     success: boolean;
     content: string;
@@ -78,11 +79,11 @@ export function createMcpToolPlugin(
       context?: ToolContext,
     ): Promise<ToolResult> {
       try {
-        // Context is available for future use when MCP tools need execution context
-        if (context) {
-          // Future: Could pass working directory or other context to MCP tools
-        }
-        const result = await executeTool(mcpTool.name, args);
+        const result = await executeTool(
+          mcpTool.name,
+          args,
+          context?.abortSignal,
+        );
         return {
           success: true,
           content: result.content || `Executed ${mcpTool.name}`,

@@ -87,10 +87,13 @@ export interface LspCallHierarchyOutgoingCall {
 }
 
 export interface ILspManager {
-  execute(args: {
-    operation: string;
-    filePath: string;
-    line: number;
-    character: number;
-  }): Promise<{ success: boolean; content: string }>;
+  execute(
+    args: {
+      operation: string;
+      filePath: string;
+      line: number;
+      character: number;
+    },
+    abortSignal?: AbortSignal,
+  ): Promise<{ success: boolean; content: string }>;
 }

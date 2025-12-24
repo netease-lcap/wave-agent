@@ -101,4 +101,58 @@ describe("LspManager", () => {
     expect(result.success).toBe(true);
     expect(JSON.parse(result.content)).toEqual({ uri: "file://test" });
   });
+
+  it("should cancel an LSP operation", async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const mockProcess = new EventEmitter() as unknown as ChildProcess;
+    mockProcess.stdin = stdin;
+    mockProcess.stdout = stdout;
+    mockProcess.stderr = stderr;
+    mockProcess.kill = vi.fn();
+
+    let cancelSent = false;
+    stdin.on("data", (data: Buffer) => {
+      const str = data.toString();
+      if (str.includes('"method":"initialize"')) {
+        process.nextTick(() => {
+          stdout.write(
+            'Content-Length: 36\r\n\r\n{"jsonrpc":"2.0","id":0,"result":{}}',
+          );
+        });
+      } else if (str.includes('"method":"$/cancelRequest"')) {
+        cancelSent = true;
+      }
+    });
+
+    vi.mocked(spawn).mockReturnValue(mockProcess);
+
+    lspManager.registerServer("typescript", {
+      command: "typescript-language-server",
+      args: ["--stdio"],
+      extensionToLanguage: { ".ts": "typescript" },
+    });
+
+    const controller = new AbortController();
+    const executePromise = lspManager.execute(
+      {
+        operation: "goToDefinition",
+        filePath: "test.ts",
+        line: 1,
+        character: 1,
+      },
+      controller.signal,
+    );
+
+    // Wait a bit to ensure the request is sent
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    controller.abort();
+
+    const result = await executePromise;
+    expect(result.success).toBe(false);
+    expect(result.content).toContain("Request aborted");
+    expect(cancelSent).toBe(true);
+  });
 });
