@@ -57,7 +57,7 @@ describe("lspTool", () => {
         line: 5,
         character: 10,
       },
-      undefined,
+      expect.any(AbortSignal),
     );
   });
 
