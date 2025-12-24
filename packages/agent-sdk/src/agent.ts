@@ -10,6 +10,7 @@ import {
 } from "./managers/subagentManager.js";
 import * as memory from "./services/memory.js";
 import { McpManager, type McpManagerCallbacks } from "./managers/mcpManager.js";
+import { LspManager } from "./managers/lspManager.js";
 import { BashManager } from "./managers/bashManager.js";
 import {
   BackgroundBashManager,
@@ -93,6 +94,7 @@ export class Agent {
   private logger?: Logger; // Add optional logger property
   private toolManager: ToolManager; // Add tool registry instance
   private mcpManager: McpManager; // Add MCP manager instance
+  private lspManager: LspManager; // Add LSP manager instance
   private permissionManager: PermissionManager; // Add permission manager instance
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
@@ -201,6 +203,7 @@ export class Agent {
       workdir: this.workdir,
     });
     this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
+    this.lspManager = new LspManager({ logger: this.logger }); // Initialize LSP manager
 
     // Initialize permission manager
     this.permissionManager = new PermissionManager({ logger: this.logger });
@@ -249,6 +252,7 @@ export class Agent {
     // Initialize tool manager with permission context
     this.toolManager = new ToolManager({
       mcpManager: this.mcpManager,
+      lspManager: this.lspManager,
       logger: this.logger,
       permissionManager: this.permissionManager,
       permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
@@ -530,6 +534,7 @@ export class Agent {
     // Initialize MCP servers with auto-connect
     try {
       await this.mcpManager.initialize(this.workdir, true);
+      await this.lspManager.initialize(this.workdir);
     } catch (error) {
       this.logger?.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
@@ -819,6 +824,8 @@ export class Agent {
     this.backgroundBashManager.cleanup();
     // Cleanup MCP connections
     await this.mcpManager.cleanup();
+    // Cleanup LSP connections
+    await this.lspManager.cleanup();
     // Cleanup subagent manager
     this.subagentManager.cleanup();
     // Cleanup live configuration reload
