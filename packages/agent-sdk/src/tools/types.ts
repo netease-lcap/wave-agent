@@ -46,4 +46,8 @@ export interface ToolContext {
   canUseToolCallback?: PermissionCallback;
   /** Permission manager instance for permission checks */
   permissionManager?: import("../managers/permissionManager.js").PermissionManager;
+  /** MCP manager instance for calling MCP tools */
+  mcpManager?: import("../managers/mcpManager.js").McpManager;
+  /** LSP manager instance for code intelligence */
+  lspManager?: import("../managers/lspManager.js").LspManager;
 }

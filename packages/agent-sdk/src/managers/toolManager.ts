@@ -10,9 +10,11 @@ import { grepTool } from "../tools/grepTool.js";
 import { lsTool } from "../tools/lsTool.js";
 import { readTool } from "../tools/readTool.js";
 import { todoWriteTool } from "../tools/todoWriteTool.js";
+import { lspTool } from "../tools/lspTool.js";
 import { createTaskTool } from "../tools/taskTool.js";
 import { createSkillTool } from "../tools/skillTool.js";
 import { McpManager } from "./mcpManager.js";
+import { LspManager } from "./lspManager.js";
 import { PermissionManager } from "./permissionManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import type {
@@ -25,6 +27,7 @@ import type { SkillManager } from "./skillManager.js";
 
 export interface ToolManagerOptions {
   mcpManager: McpManager;
+  lspManager?: LspManager;
   logger?: Logger;
   /** Optional permission manager for handling tool permission checks */
   permissionManager?: PermissionManager;
@@ -43,6 +46,7 @@ export interface ToolManagerOptions {
 class ToolManager {
   private tools = new Map<string, ToolPlugin>();
   private mcpManager: McpManager;
+  private lspManager?: LspManager;
   private logger?: Logger;
   private permissionManager?: PermissionManager;
   private permissionMode?: PermissionMode;
@@ -50,6 +54,7 @@ class ToolManager {
 
   constructor(options: ToolManagerOptions) {
     this.mcpManager = options.mcpManager;
+    this.lspManager = options.lspManager;
     this.logger = options.logger;
     this.permissionManager = options.permissionManager;
     // Store CLI permission mode, let PermissionManager resolve effective mode
@@ -104,6 +109,7 @@ class ToolManager {
       lsTool,
       readTool,
       todoWriteTool,
+      lspTool,
     ];
 
     for (const tool of builtInTools) {
@@ -151,6 +157,8 @@ class ToolManager {
       permissionMode: effectivePermissionMode,
       canUseToolCallback: this.canUseToolCallback,
       permissionManager: this.permissionManager,
+      mcpManager: this.mcpManager,
+      lspManager: this.lspManager,
     };
 
     this.logger?.debug("Executing tool with enhanced context", {
