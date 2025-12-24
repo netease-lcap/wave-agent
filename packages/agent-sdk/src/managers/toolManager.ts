@@ -14,20 +14,20 @@ import { lspTool } from "../tools/lspTool.js";
 import { createTaskTool } from "../tools/taskTool.js";
 import { createSkillTool } from "../tools/skillTool.js";
 import { McpManager } from "./mcpManager.js";
-import { LspManager } from "./lspManager.js";
 import { PermissionManager } from "./permissionManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 import type {
   Logger,
   PermissionMode,
   PermissionCallback,
+  ILspManager,
 } from "../types/index.js";
 import type { SubagentManager } from "./subagentManager.js";
 import type { SkillManager } from "./skillManager.js";
 
 export interface ToolManagerOptions {
   mcpManager: McpManager;
-  lspManager?: LspManager;
+  lspManager?: ILspManager;
   logger?: Logger;
   /** Optional permission manager for handling tool permission checks */
   permissionManager?: PermissionManager;
@@ -46,7 +46,7 @@ export interface ToolManagerOptions {
 class ToolManager {
   private tools = new Map<string, ToolPlugin>();
   private mcpManager: McpManager;
-  private lspManager?: LspManager;
+  private lspManager?: ILspManager;
   private logger?: Logger;
   private permissionManager?: PermissionManager;
   private permissionMode?: PermissionMode;

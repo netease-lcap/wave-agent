@@ -40,7 +40,7 @@ export interface LspLocationLink {
   originSelectionRange?: LspRange;
   targetUri: string;
   targetRange: LspRange;
-  targetSelectionRange: LspRange;
+  targetSelectionRange?: LspRange;
 }
 
 export interface LspHover {
@@ -74,4 +74,23 @@ export interface LspCallHierarchyItem {
   uri: string;
   range: LspRange;
   selectionRange: LspRange;
+}
+
+export interface LspCallHierarchyIncomingCall {
+  from: LspCallHierarchyItem;
+  fromRanges: LspRange[];
+}
+
+export interface LspCallHierarchyOutgoingCall {
+  to: LspCallHierarchyItem;
+  fromRanges: LspRange[];
+}
+
+export interface ILspManager {
+  execute(args: {
+    operation: string;
+    filePath: string;
+    line: number;
+    character: number;
+  }): Promise<{ success: boolean; content: string }>;
 }

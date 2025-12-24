@@ -1,5 +1,10 @@
 import { ChildProcess, spawn } from "child_process";
-import { Logger, LspConfig, LspServerConfig } from "../types/index.js";
+import {
+  Logger,
+  LspConfig,
+  LspServerConfig,
+  ILspManager,
+} from "../types/index.js";
 import { join, isAbsolute, extname } from "path";
 import { promises as fs } from "fs";
 
@@ -16,7 +21,7 @@ interface LspProcess {
   openedFiles: Set<string>;
 }
 
-export class LspManager {
+export class LspManager implements ILspManager {
   private processes: Map<string, LspProcess> = new Map();
   private workdir: string = "";
   private logger?: Logger;
