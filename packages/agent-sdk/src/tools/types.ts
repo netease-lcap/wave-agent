@@ -49,5 +49,5 @@ export interface ToolContext {
   /** MCP manager instance for calling MCP tools */
   mcpManager?: import("../managers/mcpManager.js").McpManager;
   /** LSP manager instance for code intelligence */
-  lspManager?: import("../managers/lspManager.js").LspManager;
+  lspManager?: import("../types/lsp.js").ILspManager;
 }

@@ -18,7 +18,11 @@ import {
 } from "./managers/backgroundBashManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
-import type { SlashCommand, CustomSlashCommand } from "./types/index.js";
+import type {
+  SlashCommand,
+  CustomSlashCommand,
+  ILspManager,
+} from "./types/index.js";
 import type {
   Message,
   Logger,
@@ -77,6 +81,8 @@ export interface AgentOptions {
   canUseTool?: PermissionCallback;
   /**Whether to use streaming mode for AI responses - defaults to true */
   stream?: boolean;
+  /**Optional custom LSP manager - if not provided, a standalone one will be created */
+  lspManager?: ILspManager;
 }
 
 export interface AgentCallbacks
@@ -94,7 +100,7 @@ export class Agent {
   private logger?: Logger; // Add optional logger property
   private toolManager: ToolManager; // Add tool registry instance
   private mcpManager: McpManager; // Add MCP manager instance
-  private lspManager: LspManager; // Add LSP manager instance
+  private lspManager: ILspManager; // Add LSP manager instance
   private permissionManager: PermissionManager; // Add permission manager instance
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
@@ -203,7 +209,8 @@ export class Agent {
       workdir: this.workdir,
     });
     this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
-    this.lspManager = new LspManager({ logger: this.logger }); // Initialize LSP manager
+    this.lspManager =
+      options.lspManager || new LspManager({ logger: this.logger }); // Initialize LSP manager
 
     // Initialize permission manager
     this.permissionManager = new PermissionManager({ logger: this.logger });
@@ -534,7 +541,9 @@ export class Agent {
     // Initialize MCP servers with auto-connect
     try {
       await this.mcpManager.initialize(this.workdir, true);
-      await this.lspManager.initialize(this.workdir);
+      if (this.lspManager instanceof LspManager) {
+        await this.lspManager.initialize(this.workdir);
+      }
     } catch (error) {
       this.logger?.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
@@ -825,7 +834,9 @@ export class Agent {
     // Cleanup MCP connections
     await this.mcpManager.cleanup();
     // Cleanup LSP connections
-    await this.lspManager.cleanup();
+    if (this.lspManager instanceof LspManager) {
+      await this.lspManager.cleanup();
+    }
     // Cleanup subagent manager
     this.subagentManager.cleanup();
     // Cleanup live configuration reload

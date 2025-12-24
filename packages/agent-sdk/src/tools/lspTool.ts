@@ -2,71 +2,16 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { relative } from "path";
 import { logger } from "../utils/globalLogger.js";
 import { getDisplayPath } from "../utils/path.js";
-
-// LSP Types
-interface Position {
-  line: number;
-  character: number;
-}
-
-interface Range {
-  start: Position;
-  end: Position;
-}
-
-interface Location {
-  uri: string;
-  range: Range;
-}
-
-interface LocationLink {
-  targetUri: string;
-  targetRange: Range;
-  targetSelectionRange?: Range;
-}
-
-interface Hover {
-  contents:
-    | string
-    | { kind: string; value: string }
-    | Array<string | { kind: string; value: string }>;
-  range?: Range;
-}
-
-interface SymbolInformation {
-  name: string;
-  kind: number;
-  location: Location;
-  containerName?: string;
-}
-
-interface DocumentSymbol {
-  name: string;
-  detail?: string;
-  kind: number;
-  range: Range;
-  selectionRange: Range;
-  children?: DocumentSymbol[];
-}
-
-interface CallHierarchyItem {
-  name: string;
-  kind: number;
-  detail?: string;
-  uri: string;
-  range: Range;
-  selectionRange: Range;
-}
-
-interface CallHierarchyIncomingCall {
-  from: CallHierarchyItem;
-  fromRanges: Range[];
-}
-
-interface CallHierarchyOutgoingCall {
-  to: CallHierarchyItem;
-  fromRanges: Range[];
-}
+import type {
+  LspLocation as Location,
+  LspLocationLink as LocationLink,
+  LspHover as Hover,
+  LspSymbolInformation as SymbolInformation,
+  LspDocumentSymbol as DocumentSymbol,
+  LspCallHierarchyItem as CallHierarchyItem,
+  LspCallHierarchyIncomingCall as CallHierarchyIncomingCall,
+  LspCallHierarchyOutgoingCall as CallHierarchyOutgoingCall,
+} from "../types/lsp.js";
 
 /**
  * Formats an LSP URI into a readable file path
