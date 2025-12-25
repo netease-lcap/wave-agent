@@ -550,24 +550,111 @@ Note: LSP servers must be configured for the file type. If no server is availabl
       character: number;
     };
 
-    if (!context.lspManager) {
-      return {
-        success: false,
-        content: "",
-        error: "LSP manager not available in tool context",
-      };
-    }
-
-    try {
-      const result = await context.lspManager.execute(
-        {
+    if (context.lspManager) {
+      try {
+        const result = await context.lspManager.execute({
           operation,
           filePath,
           line,
           character,
-        },
-        context.abortSignal,
-      );
+        });
+
+        if (!result.success) {
+          return {
+            success: false,
+            content: "",
+            error: result.content,
+          };
+        }
+
+        const rawResult = JSON.parse(result.content);
+        let formattedContent: string;
+        switch (operation) {
+          case "goToDefinition":
+          case "goToImplementation":
+            formattedContent = formatGoToDefinitionResult(
+              rawResult as
+                | Location
+                | Location[]
+                | LocationLink
+                | LocationLink[]
+                | null,
+              context.workdir,
+            );
+            break;
+          case "findReferences":
+            formattedContent = formatFindReferencesResult(
+              rawResult as Location[] | null,
+              context.workdir,
+            );
+            break;
+          case "hover":
+            formattedContent = formatHoverResult(rawResult as Hover | null);
+            break;
+          case "documentSymbol":
+            formattedContent = formatDocumentSymbolResult(
+              rawResult as DocumentSymbol[] | SymbolInformation[] | null,
+              context.workdir,
+            );
+            break;
+          case "workspaceSymbol":
+            formattedContent = formatWorkspaceSymbolResult(
+              rawResult as SymbolInformation[] | null,
+              context.workdir,
+            );
+            break;
+          case "prepareCallHierarchy":
+            formattedContent = formatPrepareCallHierarchyResult(
+              rawResult as CallHierarchyItem[] | null,
+              context.workdir,
+            );
+            break;
+          case "incomingCalls":
+            formattedContent = formatIncomingCallsResult(
+              rawResult as CallHierarchyIncomingCall[] | null,
+              context.workdir,
+            );
+            break;
+          case "outgoingCalls":
+            formattedContent = formatOutgoingCallsResult(
+              rawResult as CallHierarchyOutgoingCall[] | null,
+              context.workdir,
+            );
+            break;
+          default:
+            formattedContent = JSON.stringify(rawResult, null, 2);
+        }
+
+        return {
+          success: true,
+          content: formattedContent,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          content: "",
+          error: `LSP operation failed: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    }
+
+    if (!context.mcpManager) {
+      return {
+        success: false,
+        content: "",
+        error: "MCP manager not available in tool context",
+      };
+    }
+
+    try {
+      // Call the MCP tool named "LSP"
+      // We assume there is an MCP server that provides this tool
+      const result = await context.mcpManager.executeMcpTool("LSP", {
+        operation,
+        filePath,
+        line,
+        character,
+      });
 
       if (!result.success) {
         return {
@@ -577,7 +664,17 @@ Note: LSP servers must be configured for the file type. If no server is availabl
         };
       }
 
-      const rawResult = JSON.parse(result.content);
+      let rawResult: unknown;
+      try {
+        rawResult = JSON.parse(result.content);
+      } catch {
+        // If it's not JSON, it might already be formatted or an error message
+        return {
+          success: true,
+          content: result.content,
+        };
+      }
+
       let formattedContent: string;
       switch (operation) {
         case "goToDefinition":

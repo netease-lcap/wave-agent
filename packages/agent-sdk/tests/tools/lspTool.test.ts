@@ -3,13 +3,13 @@ import { lspTool } from "../../src/tools/lspTool.js";
 import { ToolContext } from "../../src/tools/types.js";
 
 describe("lspTool", () => {
-  const mockLspManager = {
-    execute: vi.fn(),
+  const mockMcpManager = {
+    executeMcpTool: vi.fn(),
   };
 
   const context: ToolContext = {
     workdir: "/test/workdir",
-    lspManager: mockLspManager as unknown as ToolContext["lspManager"],
+    mcpManager: mockMcpManager as unknown as ToolContext["mcpManager"],
   };
 
   beforeEach(() => {
@@ -24,7 +24,7 @@ describe("lspTool", () => {
     ).toContain("operation");
   });
 
-  it("should call LSP manager and format goToDefinition result", async () => {
+  it("should call MCP tool and format goToDefinition result", async () => {
     const mockLspResult = {
       uri: "file:///test/workdir/src/index.ts",
       range: {
@@ -33,7 +33,7 @@ describe("lspTool", () => {
       },
     };
 
-    mockLspManager.execute.mockResolvedValue({
+    mockMcpManager.executeMcpTool.mockResolvedValue({
       success: true,
       content: JSON.stringify(mockLspResult),
     });
@@ -50,15 +50,12 @@ describe("lspTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("Defined in src/index.ts:11:6");
-    expect(mockLspManager.execute).toHaveBeenCalledWith(
-      {
-        operation: "goToDefinition",
-        filePath: "src/main.ts",
-        line: 5,
-        character: 10,
-      },
-      undefined,
-    );
+    expect(mockMcpManager.executeMcpTool).toHaveBeenCalledWith("LSP", {
+      operation: "goToDefinition",
+      filePath: "src/main.ts",
+      line: 5,
+      character: 10,
+    });
   });
 
   it("should handle multiple definitions", async () => {
@@ -79,7 +76,7 @@ describe("lspTool", () => {
       },
     ];
 
-    mockLspManager.execute.mockResolvedValue({
+    mockMcpManager.executeMcpTool.mockResolvedValue({
       success: true,
       content: JSON.stringify(mockLspResult),
     });
@@ -109,7 +106,7 @@ describe("lspTool", () => {
       },
     };
 
-    mockLspManager.execute.mockResolvedValue({
+    mockMcpManager.executeMcpTool.mockResolvedValue({
       success: true,
       content: JSON.stringify(mockLspResult),
     });
@@ -129,8 +126,8 @@ describe("lspTool", () => {
     expect(result.content).toContain("This is a hover message");
   });
 
-  it("should handle LSP manager failure", async () => {
-    mockLspManager.execute.mockResolvedValue({
+  it("should handle MCP tool failure", async () => {
+    mockMcpManager.executeMcpTool.mockResolvedValue({
       success: false,
       content: "LSP server not found",
     });
@@ -147,5 +144,25 @@ describe("lspTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("LSP server not found");
+  });
+
+  it("should handle non-JSON response from MCP tool", async () => {
+    mockMcpManager.executeMcpTool.mockResolvedValue({
+      success: true,
+      content: "Already formatted message",
+    });
+
+    const result = await lspTool.execute(
+      {
+        operation: "hover",
+        filePath: "src/main.ts",
+        line: 5,
+        character: 3,
+      },
+      context,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toBe("Already formatted message");
   });
 });
