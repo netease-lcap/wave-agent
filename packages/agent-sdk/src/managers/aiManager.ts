@@ -35,6 +35,7 @@ export interface AIManagerOptions {
   callbacks?: AIManagerCallbacks;
   workdir: string;
   systemPrompt?: string;
+  defaultHeaders?: Record<string, string>;
   subagentType?: string; // Optional subagent type for hook context
   /**Whether to use streaming mode for AI responses - defaults to true */
   stream?: boolean;
@@ -56,6 +57,7 @@ export class AIManager {
   private hookManager?: HookManager;
   private workdir: string;
   private systemPrompt?: string;
+  private defaultHeaders?: Record<string, string>;
   private subagentType?: string; // Store subagent type for hook context
   private stream: boolean; // Streaming mode flag
 
@@ -73,6 +75,7 @@ export class AIManager {
     this.logger = options.logger;
     this.workdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
+    this.defaultHeaders = options.defaultHeaders;
     this.subagentType = options.subagentType; // Store subagent type
     this.stream = options.stream ?? true; // Default to true if not specified
     this.callbacks = options.callbacks ?? {};
@@ -86,7 +89,17 @@ export class AIManager {
 
   // Getter methods for accessing dynamic configuration
   public getGatewayConfig(): GatewayConfig {
-    return this.getGatewayConfigFn();
+    const config = this.getGatewayConfigFn();
+    if (this.defaultHeaders) {
+      return {
+        ...config,
+        defaultHeaders: {
+          ...config.defaultHeaders,
+          ...this.defaultHeaders,
+        },
+      };
+    }
+    return config;
   }
 
   public getModelConfig(): ModelConfig {
