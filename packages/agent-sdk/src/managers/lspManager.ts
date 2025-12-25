@@ -4,6 +4,7 @@ import {
   LspConfig,
   LspServerConfig,
   ILspManager,
+  LspCallHierarchyItem,
 } from "../types/index.js";
 import { join, isAbsolute, extname } from "path";
 import { promises as fs } from "fs";
@@ -326,6 +327,75 @@ export class LspManager implements ILspManager {
             },
           );
           break;
+        case "workspaceSymbol":
+          result = await this.sendRequest(lspProc, "workspace/symbol", {
+            query: "", // For now, use empty query to get all symbols or let server decide
+          });
+          break;
+        case "goToImplementation":
+          result = await this.sendRequest(
+            lspProc,
+            "textDocument/implementation",
+            {
+              textDocument: { uri },
+              position,
+            },
+          );
+          break;
+        case "prepareCallHierarchy":
+          result = await this.sendRequest(
+            lspProc,
+            "textDocument/prepareCallHierarchy",
+            {
+              textDocument: { uri },
+              position,
+            },
+          );
+          break;
+        case "incomingCalls": {
+          const items = (await this.sendRequest(
+            lspProc,
+            "textDocument/prepareCallHierarchy",
+            {
+              textDocument: { uri },
+              position,
+            },
+          )) as LspCallHierarchyItem[];
+          if (items && items.length > 0) {
+            result = await this.sendRequest(
+              lspProc,
+              "callHierarchy/incomingCalls",
+              {
+                item: items[0],
+              },
+            );
+          } else {
+            result = [];
+          }
+          break;
+        }
+        case "outgoingCalls": {
+          const items = (await this.sendRequest(
+            lspProc,
+            "textDocument/prepareCallHierarchy",
+            {
+              textDocument: { uri },
+              position,
+            },
+          )) as LspCallHierarchyItem[];
+          if (items && items.length > 0) {
+            result = await this.sendRequest(
+              lspProc,
+              "callHierarchy/outgoingCalls",
+              {
+                item: items[0],
+              },
+            );
+          } else {
+            result = [];
+          }
+          break;
+        }
         // Add more operations as needed
         default:
           return {
