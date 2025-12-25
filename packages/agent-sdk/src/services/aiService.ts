@@ -130,7 +130,6 @@ export interface CallAgentOptions {
   tools?: ChatCompletionFunctionTool[]; // Tool configuration
   model?: string; // Custom model
   systemPrompt?: string; // Custom system prompt
-
   // NEW: Streaming callbacks
   onContentUpdate?: (content: string) => void;
   onToolUpdate?: (toolCall: {
