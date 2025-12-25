@@ -158,12 +158,17 @@ export class LspManager implements ILspManager {
       });
 
       // Initialize
-      await this.sendRequest(lspProc, "initialize", {
-        processId: process.pid,
-        rootUri: `file://${this.workdir}`,
-        capabilities: {},
-        initializationOptions: config.initializationOptions,
-      });
+      await this.sendRequest(
+        lspProc,
+        "initialize",
+        {
+          processId: process.pid,
+          rootUri: `file://${this.workdir}`,
+          capabilities: {},
+          initializationOptions: config.initializationOptions,
+        },
+        config.startupTimeout,
+      );
       await this.sendNotification(lspProc, "initialized", {});
       lspProc.initialized = true;
 
@@ -197,6 +202,7 @@ export class LspManager implements ILspManager {
     lspProc: LspProcess,
     method: string,
     params: unknown,
+    timeout?: number,
   ): Promise<unknown> {
     const id = lspProc.requestId++;
     const message = {
@@ -210,7 +216,26 @@ export class LspManager implements ILspManager {
     const header = `Content-Length: ${Buffer.byteLength(json, "utf-8")}\r\n\r\n`;
 
     return new Promise((resolve, reject) => {
-      lspProc.pendingRequests.set(id, { resolve, reject });
+      let timer: NodeJS.Timeout | undefined;
+      if (timeout) {
+        timer = setTimeout(() => {
+          lspProc.pendingRequests.delete(id);
+          reject(
+            new Error(`LSP request ${method} timed out after ${timeout}ms`),
+          );
+        }, timeout);
+      }
+
+      lspProc.pendingRequests.set(id, {
+        resolve: (value) => {
+          if (timer) clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (reason) => {
+          if (timer) clearTimeout(timer);
+          reject(reason);
+        },
+      });
       lspProc.process.stdin!.write(header + json);
     });
   }
@@ -316,8 +341,23 @@ export class LspManager implements ILspManager {
   }
 
   async cleanup(): Promise<void> {
-    for (const lspProc of this.processes.values()) {
-      lspProc.process.kill();
+    for (const [language, lspProc] of this.processes.entries()) {
+      try {
+        // Try graceful shutdown
+        const timeout = lspProc.config.shutdownTimeout || 2000;
+        await this.sendRequest(lspProc, "shutdown", {}, timeout);
+        await this.sendNotification(lspProc, "exit", {});
+        // Give it a moment to exit
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } catch (error) {
+        this.logger?.debug(
+          `Failed to gracefully shutdown LSP for ${language}: ${error}`,
+        );
+      } finally {
+        if (!lspProc.process.killed) {
+          lspProc.process.kill();
+        }
+      }
     }
     this.processes.clear();
   }

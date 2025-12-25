@@ -101,4 +101,31 @@ describe("LspManager", () => {
     expect(result.success).toBe(true);
     expect(JSON.parse(result.content)).toEqual({ uri: "file://test" });
   });
+
+  it("should timeout if the server takes too long to initialize", async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const mockProcess = new EventEmitter() as unknown as ChildProcess;
+    mockProcess.stdin = stdin;
+    mockProcess.stdout = stdout;
+    mockProcess.stderr = stderr;
+    mockProcess.kill = vi.fn();
+
+    // Don't write any response to stdout to trigger timeout
+
+    vi.mocked(spawn).mockReturnValue(mockProcess);
+
+    lspManager.registerServer("typescript", {
+      command: "typescript-language-server",
+      args: ["--stdio"],
+      extensionToLanguage: { ".ts": "typescript" },
+      startupTimeout: 100,
+    });
+
+    const lspProcPromise = lspManager.getProcessForFile(
+      "/mock/workdir/test.ts",
+    );
+    await expect(lspProcPromise).resolves.toBeNull();
+  });
 });
