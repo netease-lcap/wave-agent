@@ -21,6 +21,7 @@ import {
 import type { WaveConfiguration, ValidationResult } from "../types/hooks.js";
 import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
 import { ConfigurationService } from "../services/configurationService.js";
+import { ensureGlobalGitIgnore } from "../utils/fileUtils.js";
 
 import type { ConfigurationLoadResult } from "../types/configuration.js";
 
@@ -97,6 +98,9 @@ export class LiveConfigManager {
       if (projectPaths) {
         for (const projectPath of projectPaths) {
           if (existsSync(projectPath)) {
+            if (projectPath.endsWith("settings.local.json")) {
+              await ensureGlobalGitIgnore("**/.wave/settings.local.json");
+            }
             this.logger?.debug(
               `Live Config: Starting to watch project config: ${projectPath}`,
             );
@@ -443,6 +447,14 @@ export class LiveConfigManager {
         this.logger?.info(
           `Live Config: ${source} config file ${event.type}: ${event.path}`,
         );
+
+        if (
+          source === "project" &&
+          event.path.endsWith("settings.local.json") &&
+          event.type === "create"
+        ) {
+          await ensureGlobalGitIgnore("**/.wave/settings.local.json");
+        }
 
         // Add small delay to ensure file write is complete
         await new Promise((resolve) => setTimeout(resolve, 50));

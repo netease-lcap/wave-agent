@@ -1,5 +1,8 @@
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
+import path from "node:path";
+import { execSync } from "node:child_process";
+import { homedir } from "node:os";
 
 /**
  * Reads the first line of a file efficiently using Node.js readline.
@@ -109,5 +112,49 @@ export async function getLastLine(
     if (fileHandle) {
       await fileHandle.close();
     }
+  }
+}
+
+/**
+ * Ensures that a pattern is present in the global git ignore file.
+ *
+ * @param {string} pattern - The pattern to add to global git ignore.
+ */
+export async function ensureGlobalGitIgnore(pattern: string): Promise<void> {
+  try {
+    let globalIgnorePath: string;
+    try {
+      globalIgnorePath = execSync("git config --get core.excludesfile", {
+        encoding: "utf8",
+      }).trim();
+    } catch {
+      // If not set, use default paths
+      const xdgConfigHome =
+        process.env.XDG_CONFIG_HOME || path.join(homedir(), ".config");
+      globalIgnorePath = path.join(xdgConfigHome, "git", "ignore");
+    }
+
+    if (!globalIgnorePath) return;
+
+    // Ensure directory exists
+    await fs.mkdir(path.dirname(globalIgnorePath), { recursive: true });
+
+    let content = "";
+    try {
+      content = await fs.readFile(globalIgnorePath, "utf8");
+    } catch {
+      // File doesn't exist
+    }
+
+    const lines = content.split("\n").map((line) => line.trim());
+    if (!lines.includes(pattern)) {
+      const newContent =
+        content.endsWith("\n") || content === ""
+          ? `${content}${pattern}\n`
+          : `${content}\n${pattern}\n`;
+      await fs.writeFile(globalIgnorePath, newContent, "utf8");
+    }
+  } catch {
+    // Ignore errors
   }
 }
