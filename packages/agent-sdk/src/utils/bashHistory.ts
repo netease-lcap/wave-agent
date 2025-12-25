@@ -153,7 +153,7 @@ export const searchBashHistory = (
     if (!normalizedQuery) {
       // If no search query, return recent commands (deduplicated)
       const deduped = deduplicateCommands(filteredCommands);
-      return deduped.slice(-limit).reverse(); // Latest first
+      return deduped.slice(0, limit); // Latest first
     }
 
     // Search by relevance
@@ -226,9 +226,9 @@ const deduplicateCommands = (
     }
   }
 
-  // Sort by timestamp and return
+  // Sort by timestamp and return (new to old)
   return Array.from(commandMap.values()).sort(
-    (a, b) => a.timestamp - b.timestamp,
+    (a, b) => b.timestamp - a.timestamp,
   );
 };
 
@@ -247,7 +247,7 @@ export const getRecentBashCommands = (
 
     // Return recent commands after deduplication
     const deduped = deduplicateCommands(filtered);
-    return deduped.slice(-limit).reverse(); // Latest first
+    return deduped.slice(0, limit); // Latest first
   } catch (error) {
     logger.debug("Failed to get recent bash commands:", error);
     return [];
