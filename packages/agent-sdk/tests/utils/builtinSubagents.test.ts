@@ -76,7 +76,7 @@ describe("Built-in Subagents", () => {
       expect(explore?.tools).toContain("Read");
       expect(explore?.tools).toContain("Bash");
       expect(explore?.tools).toContain("LS");
-      expect(explore?.tools).toContain("Skill");
+      expect(explore?.tools).toContain("LSP");
       expect(explore?.tools).not.toContain("Write");
       expect(explore?.tools).not.toContain("Edit");
     });
