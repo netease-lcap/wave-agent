@@ -197,7 +197,6 @@ export class LspManager implements ILspManager {
     lspProc: LspProcess,
     method: string,
     params: unknown,
-    abortSignal?: AbortSignal,
   ): Promise<unknown> {
     const id = lspProc.requestId++;
     const message = {
@@ -210,39 +209,8 @@ export class LspManager implements ILspManager {
     const json = JSON.stringify(message);
     const header = `Content-Length: ${Buffer.byteLength(json, "utf-8")}\r\n\r\n`;
 
-    if (abortSignal?.aborted) {
-      throw new Error("Request aborted");
-    }
-
     return new Promise((resolve, reject) => {
-      const onAbort = () => {
-        lspProc.pendingRequests.delete(id);
-        this.sendNotification(lspProc, "$/cancelRequest", { id }).catch(
-          (err) => {
-            this.logger?.error(`Failed to send cancelRequest: ${err}`);
-          },
-        );
-        reject(new Error("Request aborted"));
-      };
-
-      if (abortSignal) {
-        abortSignal.addEventListener("abort", onAbort, { once: true });
-      }
-
-      lspProc.pendingRequests.set(id, {
-        resolve: (val) => {
-          if (abortSignal) {
-            abortSignal.removeEventListener("abort", onAbort);
-          }
-          resolve(val);
-        },
-        reject: (err) => {
-          if (abortSignal) {
-            abortSignal.removeEventListener("abort", onAbort);
-          }
-          reject(err);
-        },
-      });
+      lspProc.pendingRequests.set(id, { resolve, reject });
       lspProc.process.stdin!.write(header + json);
     });
   }
@@ -263,15 +231,12 @@ export class LspManager implements ILspManager {
     lspProc.process.stdin!.write(header + json);
   }
 
-  async execute(
-    args: {
-      operation: string;
-      filePath: string;
-      line: number;
-      character: number;
-    },
-    abortSignal?: AbortSignal,
-  ): Promise<{ success: boolean; content: string }> {
+  async execute(args: {
+    operation: string;
+    filePath: string;
+    line: number;
+    character: number;
+  }): Promise<{ success: boolean; content: string }> {
     const { operation, filePath, line, character } = args;
     const absolutePath = isAbsolute(filePath)
       ? filePath
@@ -309,38 +274,23 @@ export class LspManager implements ILspManager {
       let result: unknown;
       switch (operation) {
         case "goToDefinition":
-          result = await this.sendRequest(
-            lspProc,
-            "textDocument/definition",
-            {
-              textDocument: { uri },
-              position,
-            },
-            abortSignal,
-          );
+          result = await this.sendRequest(lspProc, "textDocument/definition", {
+            textDocument: { uri },
+            position,
+          });
           break;
         case "hover":
-          result = await this.sendRequest(
-            lspProc,
-            "textDocument/hover",
-            {
-              textDocument: { uri },
-              position,
-            },
-            abortSignal,
-          );
+          result = await this.sendRequest(lspProc, "textDocument/hover", {
+            textDocument: { uri },
+            position,
+          });
           break;
         case "findReferences":
-          result = await this.sendRequest(
-            lspProc,
-            "textDocument/references",
-            {
-              textDocument: { uri },
-              position,
-              context: { includeDeclaration: true },
-            },
-            abortSignal,
-          );
+          result = await this.sendRequest(lspProc, "textDocument/references", {
+            textDocument: { uri },
+            position,
+            context: { includeDeclaration: true },
+          });
           break;
         case "documentSymbol":
           result = await this.sendRequest(
@@ -349,59 +299,6 @@ export class LspManager implements ILspManager {
             {
               textDocument: { uri },
             },
-            abortSignal,
-          );
-          break;
-        case "workspaceSymbol":
-          result = await this.sendRequest(
-            lspProc,
-            "workspace/symbol",
-            {
-              query: "", // The tool doesn't currently provide a query, maybe it should?
-            },
-            abortSignal,
-          );
-          break;
-        case "goToImplementation":
-          result = await this.sendRequest(
-            lspProc,
-            "textDocument/implementation",
-            {
-              textDocument: { uri },
-              position,
-            },
-            abortSignal,
-          );
-          break;
-        case "prepareCallHierarchy":
-          result = await this.sendRequest(
-            lspProc,
-            "textDocument/prepareCallHierarchy",
-            {
-              textDocument: { uri },
-              position,
-            },
-            abortSignal,
-          );
-          break;
-        case "incomingCalls":
-          result = await this.sendRequest(
-            lspProc,
-            "callHierarchy/incomingCalls",
-            {
-              item: args, // This is tricky, incomingCalls usually takes a CallHierarchyItem
-            },
-            abortSignal,
-          );
-          break;
-        case "outgoingCalls":
-          result = await this.sendRequest(
-            lspProc,
-            "callHierarchy/outgoingCalls",
-            {
-              item: args, // Same here
-            },
-            abortSignal,
           );
           break;
         // Add more operations as needed
@@ -414,10 +311,7 @@ export class LspManager implements ILspManager {
 
       return { success: true, content: JSON.stringify(result) };
     } catch (error) {
-      return {
-        success: false,
-        content: `LSP error: ${error instanceof Error ? error.message : String(error)}`,
-      };
+      return { success: false, content: `LSP error: ${JSON.stringify(error)}` };
     }
   }
 
