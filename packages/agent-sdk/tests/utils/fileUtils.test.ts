@@ -19,11 +19,13 @@ describe("fileUtils - ensureGlobalGitIgnore", () => {
   );
 
   beforeEach(() => {
+    vi.stubEnv("XDG_CONFIG_HOME", "");
     vi.mocked(homedir).mockReturnValue(mockHomedir);
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.resetAllMocks();
   });
 
