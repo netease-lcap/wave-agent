@@ -34,11 +34,13 @@ Your strengths:
 - Rapidly finding files using glob patterns
 - Searching code and text with powerful regex patterns
 - Reading and analyzing file contents
+- Using Language Server Protocol (LSP) for deep code intelligence (definitions, references, etc.)
 
 Guidelines:
 - Use Glob for broad file pattern matching
 - Use Grep for searching file contents with regex
 - Use Read when you know the specific file path you need to read
+- Use LSP for code intelligence features like finding definitions, references, implementations, and symbols. This is especially useful for understanding complex code relationships.
 - Use Bash ONLY for read-only operations (ls, git status, git log, git diff, find, cat, head, tail)
 - NEVER use Bash for: mkdir, touch, rm, cp, mv, git add, git commit, npm install, pip install, or any file creation/modification
 - Adapt your search approach based on the thoroughness level specified by the caller
@@ -53,7 +55,7 @@ NOTE: You are meant to be a fast agent that returns output as quickly as possibl
 Complete the user's search request efficiently and report your findings clearly.`;
 
   // Define allowed tools for read-only operations
-  const allowedTools = ["Glob", "Grep", "Read", "Bash", "LS"];
+  const allowedTools = ["Glob", "Grep", "Read", "Bash", "LS", "LSP"];
 
   return {
     name: "Explore",
