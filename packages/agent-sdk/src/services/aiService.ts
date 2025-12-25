@@ -159,7 +159,7 @@ export interface CallAgentResult {
 }
 
 let nextCallTime = 0;
-const MIN_INTERVAL = 2000; // 0.5 QPS = 1 request per 2 seconds
+const MIN_INTERVAL = process.env.NODE_ENV === "test" ? 0 : 2000; // 0.5 QPS = 1 request per 2 seconds
 
 /**
  * Wait for rate limit if necessary
