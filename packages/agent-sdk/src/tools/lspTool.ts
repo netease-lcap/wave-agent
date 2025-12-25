@@ -558,11 +558,6 @@ Note: LSP servers must be configured for the file type. If no server is availabl
       };
     }
 
-    const timeoutSignal = AbortSignal.timeout(30000);
-    const combinedSignal = context.abortSignal
-      ? AbortSignal.any([context.abortSignal, timeoutSignal])
-      : timeoutSignal;
-
     try {
       const result = await context.lspManager.execute(
         {
@@ -571,7 +566,7 @@ Note: LSP servers must be configured for the file type. If no server is availabl
           line,
           character,
         },
-        combinedSignal,
+        context.abortSignal,
       );
 
       if (!result.success) {

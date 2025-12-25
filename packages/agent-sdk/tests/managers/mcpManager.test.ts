@@ -391,7 +391,6 @@ describe("McpManager", () => {
           name: "test_tool",
           arguments: { param: "value" },
         },
-        undefined,
         { signal: undefined },
       );
     });
@@ -442,7 +441,6 @@ describe("McpManager", () => {
           name: "screenshot_tool",
           arguments: { action: "capture" },
         },
-        undefined,
         { signal: undefined },
       );
     });
