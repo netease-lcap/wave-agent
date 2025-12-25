@@ -59,7 +59,7 @@ describe("Agent Memory Functionality", () => {
   const setupFsMock = (
     implementation: (
       ...args: Parameters<typeof fs.readFile>
-    ) => Promise<string | Buffer>,
+    ) => Promise<string | Buffer<ArrayBuffer>>,
   ) => {
     vi.mocked(fs.readFile).mockImplementation(implementation);
     vi.mocked(fsPromises.readFile).mockImplementation(implementation);
