@@ -203,6 +203,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             [subagentId]: [...messages],
           }));
         },
+        onPermissionModeChange: (mode) => {
+          setPermissionModeState(mode);
+        },
       };
 
       try {

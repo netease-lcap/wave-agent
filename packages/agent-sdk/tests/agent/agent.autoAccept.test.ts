@@ -117,6 +117,19 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     expect(mockCallback).not.toHaveBeenCalled();
   });
 
+  it("should trigger onPermissionModeChange callback when mode changes", async () => {
+    const mockModeCallback = vi.fn();
+    const agent = await Agent.create({
+      workdir: tempDir,
+      callbacks: {
+        onPermissionModeChange: mockModeCallback,
+      },
+    });
+
+    agent.setPermissionMode("acceptEdits");
+    expect(mockModeCallback).toHaveBeenCalledWith("acceptEdits");
+  });
+
   it("should merge global and local rules", async () => {
     // 1. Setup global config
     const userHome = await fs.mkdtemp(
