@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import { searchBashHistory, type BashHistoryEntry } from "wave-agent-sdk";
+import {
+  searchBashHistory,
+  deleteBashCommandFromHistory,
+  type BashHistoryEntry,
+} from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 
 export interface BashHistorySelectorProps {
@@ -20,6 +24,7 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [commands, setCommands] = useState<BashHistoryEntry[]>([]);
+  const [refreshCounter, setRefreshCounter] = useState(0);
 
   // Search bash history
   useEffect(() => {
@@ -30,8 +35,9 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
       searchQuery,
       workdir,
       resultCount: results.length,
+      refreshCounter,
     });
-  }, [searchQuery, workdir]);
+  }, [searchQuery, workdir, refreshCounter]);
 
   useInput((input, key) => {
     logger.debug("BashHistorySelector useInput:", {
@@ -75,6 +81,22 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
 
     if (key.downArrow) {
       setSelectedIndex(Math.min(commands.length - 1, selectedIndex + 1));
+      return;
+    }
+
+    if (key.delete) {
+      if (commands.length > 0 && selectedIndex < commands.length) {
+        const selectedCommand = commands[selectedIndex];
+        deleteBashCommandFromHistory(
+          selectedCommand.command,
+          selectedCommand.workdir,
+        );
+        setRefreshCounter((prev) => prev + 1);
+        // Adjust selectedIndex if we deleted the last item
+        if (selectedIndex >= commands.length - 1 && selectedIndex > 0) {
+          setSelectedIndex(selectedIndex - 1);
+        }
+      }
       return;
     }
   });
@@ -155,7 +177,8 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
 
       <Box>
         <Text dimColor>
-          Use ↑↓ to navigate, Enter to execute, Tab to insert, Escape to cancel
+          Use ↑↓ to navigate, Enter to execute, Tab to insert, Delete to remove,
+          Escape to cancel
         </Text>
       </Box>
     </Box>

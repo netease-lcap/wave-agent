@@ -255,6 +255,30 @@ export const getRecentBashCommands = (
 };
 
 /**
+ * Delete a specific command from bash history
+ */
+export const deleteBashCommandFromHistory = (
+  command: string,
+  workdir: string,
+): void => {
+  try {
+    const history = loadBashHistory();
+    const initialLength = history.commands.length;
+
+    history.commands = history.commands.filter(
+      (entry) => !(entry.command === command && entry.workdir === workdir),
+    );
+
+    if (history.commands.length !== initialLength) {
+      saveBashHistory(history);
+      logger.debug("Deleted bash command from history:", { command, workdir });
+    }
+  } catch (error) {
+    logger.debug("Failed to delete bash command from history:", error);
+  }
+};
+
+/**
  * Clear bash history
  */
 export const clearBashHistory = (): void => {
