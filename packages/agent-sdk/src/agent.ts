@@ -47,6 +47,7 @@ import { ConfigurationService } from "./services/configurationService.js";
 import * as fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { ClientOptions } from "openai";
 
 /**
  * Configuration options for Agent instances
@@ -59,8 +60,8 @@ export interface AgentOptions {
   apiKey?: string;
   baseURL?: string;
   defaultHeaders?: Record<string, string>;
-  fetchOptions?: import("openai").OpenAI["fetchOptions"];
-  fetch?: import("openai").OpenAI["fetch"];
+  fetchOptions?: ClientOptions["fetchOptions"];
+  fetch?: ClientOptions["fetch"];
   agentModel?: string;
   fastModel?: string;
   tokenLimit?: number;

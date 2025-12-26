@@ -35,6 +35,7 @@ import {
   CONFIG_ERRORS,
 } from "../types/index.js";
 import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
+import { ClientOptions } from "openai";
 
 /**
  * Default ConfigurationService implementation
@@ -287,8 +288,8 @@ export class ConfigurationService {
     apiKey?: string,
     baseURL?: string,
     defaultHeaders?: Record<string, string>,
-    fetchOptions?: import("openai").OpenAI["fetchOptions"],
-    fetch?: import("openai").OpenAI["fetch"],
+    fetchOptions?: ClientOptions["fetchOptions"],
+    fetch?: ClientOptions["fetch"],
   ): GatewayConfig {
     // Resolve API key: constructor > env (settings.json) > process.env
     // Note: Explicitly provided empty strings should be treated as invalid, not fall back to env
