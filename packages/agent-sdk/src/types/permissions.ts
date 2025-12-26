@@ -12,6 +12,10 @@ export interface PermissionDecision {
   behavior: "allow" | "deny";
   /** Optional message explaining the decision (required for deny) */
   message?: string;
+  /** Signal to change the session's permission mode */
+  newPermissionMode?: PermissionMode;
+  /** Signal to persist a new allowed rule */
+  newPermissionRule?: string;
 }
 
 /** Callback function for custom permission logic */

@@ -256,7 +256,18 @@ export class Agent {
             }
 
             // Call the original callback
-            return options.canUseTool!(context);
+            const decision = await options.canUseTool!(context);
+
+            // Handle state changes from decision
+            if (decision.newPermissionMode) {
+              this.setPermissionMode(decision.newPermissionMode);
+            }
+
+            if (decision.newPermissionRule) {
+              await this.addPermissionRule(decision.newPermissionRule);
+            }
+
+            return decision;
           }
         : undefined;
 
@@ -273,6 +284,7 @@ export class Agent {
       workdir: this.workdir,
       logger: this.logger,
       hookManager: this.hookManager,
+      permissionManager: this.permissionManager,
       configurationService: this.configurationService,
     }); // Initialize live configuration manager
 
@@ -594,6 +606,19 @@ export class Agent {
         );
         this.permissionManager.updateConfiguredDefaultMode(
           currentConfig.defaultMode,
+        );
+      }
+
+      // Update permission manager with configuration-based allowed rules
+      if (currentConfig?.permissions?.allow) {
+        this.logger?.debug(
+          "Applying configured allowed rules to PermissionManager",
+          {
+            count: currentConfig.permissions.allow.length,
+          },
+        );
+        this.permissionManager.updateAllowedRules(
+          currentConfig.permissions.allow,
         );
       }
     } catch (error) {
@@ -1076,5 +1101,28 @@ export class Agent {
    */
   public setPermissionMode(mode: PermissionMode): void {
     this.toolManager.setPermissionMode(mode);
+  }
+
+  /**
+   * Add a persistent permission rule
+   * @param rule - The rule to add (e.g., "Bash(ls)")
+   */
+  private async addPermissionRule(rule: string): Promise<void> {
+    // 1. Update PermissionManager state
+    const currentRules = this.permissionManager.getAllowedRules();
+    if (!currentRules.includes(rule)) {
+      this.permissionManager.updateAllowedRules([...currentRules, rule]);
+
+      // 2. Persist to settings.local.json
+      try {
+        await this.configurationService.addAllowedRule(this.workdir, rule);
+        this.logger?.debug("Persistent permission rule added", { rule });
+      } catch (error) {
+        this.logger?.error("Failed to persist permission rule", {
+          rule,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 }

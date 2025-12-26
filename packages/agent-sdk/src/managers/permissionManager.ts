@@ -20,15 +20,19 @@ export interface PermissionManagerOptions {
   logger?: Logger;
   /** Configured default permission mode from settings */
   configuredDefaultMode?: PermissionMode;
+  /** Allowed rules from settings */
+  allowedRules?: string[];
 }
 
 export class PermissionManager {
   private logger?: Logger;
   private configuredDefaultMode?: PermissionMode;
+  private allowedRules: string[] = [];
 
   constructor(options: PermissionManagerOptions = {}) {
     this.logger = options.logger;
     this.configuredDefaultMode = options.configuredDefaultMode;
+    this.allowedRules = options.allowedRules || [];
   }
 
   /**
@@ -40,6 +44,23 @@ export class PermissionManager {
       new: defaultMode,
     });
     this.configuredDefaultMode = defaultMode;
+  }
+
+  /**
+   * Get all currently allowed rules
+   */
+  public getAllowedRules(): string[] {
+    return [...this.allowedRules];
+  }
+
+  /**
+   * Update the allowed rules (e.g., when configuration reloads)
+   */
+  updateAllowedRules(rules: string[]): void {
+    this.logger?.debug("Updating allowed permission rules", {
+      count: rules.length,
+    });
+    this.allowedRules = rules;
   }
 
   /**
@@ -110,6 +131,14 @@ export class PermissionManager {
         );
         return { behavior: "allow" };
       }
+    }
+
+    // 1.2 Check if tool call matches any allowed rule
+    if (this.isAllowedByRule(context)) {
+      this.logger?.debug("Permission allowed by persistent rule", {
+        toolName: context.toolName,
+      });
+      return { behavior: "allow" };
     }
 
     // 2. If not a restricted tool, always allow
@@ -198,5 +227,17 @@ export class PermissionManager {
     });
 
     return context;
+  }
+
+  /**
+   * Check if a tool call is allowed by persistent rules
+   */
+  private isAllowedByRule(context: ToolPermissionContext): boolean {
+    if (context.toolName === "Bash" && context.toolInput?.command) {
+      const rule = `Bash(${context.toolInput.command})`;
+      return this.allowedRules.includes(rule);
+    }
+    // Add other tools if needed in the future
+    return false;
   }
 }

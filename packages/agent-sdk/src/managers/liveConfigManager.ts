@@ -14,6 +14,7 @@ import {
   type FileWatchEvent,
 } from "../services/fileWatcher.js";
 import type { HookManager } from "./hookManager.js";
+import type { PermissionManager } from "./permissionManager.js";
 import {
   getProjectConfigPaths,
   getUserConfigPaths,
@@ -29,6 +30,7 @@ export interface LiveConfigManagerOptions {
   workdir: string;
   logger?: Logger;
   hookManager?: HookManager;
+  permissionManager?: PermissionManager;
   configurationService?: ConfigurationService;
 }
 
@@ -36,6 +38,7 @@ export class LiveConfigManager {
   private readonly workdir: string;
   private readonly logger?: Logger;
   private readonly hookManager?: HookManager;
+  private readonly permissionManager?: PermissionManager;
   private isInitialized: boolean = false;
   private readonly configurationService: ConfigurationService;
 
@@ -54,6 +57,7 @@ export class LiveConfigManager {
     this.workdir = options.workdir;
     this.logger = options.logger;
     this.hookManager = options.hookManager;
+    this.permissionManager = options.permissionManager;
     this.configurationService =
       options.configurationService || new ConfigurationService();
     this.fileWatcher = new FileWatcherService(this.logger);
@@ -339,6 +343,20 @@ export class LiveConfigManager {
         this.hookManager.loadConfigurationFromWaveConfig(
           this.currentConfiguration,
         );
+      }
+
+      // Update permission manager if available
+      if (this.permissionManager) {
+        if (this.currentConfiguration.defaultMode) {
+          this.permissionManager.updateConfiguredDefaultMode(
+            this.currentConfiguration.defaultMode,
+          );
+        }
+        if (this.currentConfiguration.permissions?.allow) {
+          this.permissionManager.updateAllowedRules(
+            this.currentConfiguration.permissions.allow,
+          );
+        }
       }
 
       this.logger?.info(
