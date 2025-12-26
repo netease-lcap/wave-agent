@@ -99,6 +99,108 @@ describe("PermissionManager", () => {
       });
     });
 
+    describe("acceptEdits mode", () => {
+      it("should allow file tools in acceptEdits mode", async () => {
+        const fileTools = ["Edit", "MultiEdit", "Delete", "Write"];
+
+        for (const toolName of fileTools) {
+          const context: ToolPermissionContext = {
+            toolName,
+            permissionMode: "acceptEdits",
+          };
+
+          const result = await permissionManager.checkPermission(context);
+
+          expect(result).toEqual({ behavior: "allow" });
+          expect(mockLogger.debug).toHaveBeenCalledWith(
+            "Permission automatically accepted for tool in acceptEdits mode",
+            { toolName },
+          );
+        }
+      });
+
+      it("should still require permission for Bash in acceptEdits mode", async () => {
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "acceptEdits",
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain("requires permission approval");
+      });
+    });
+
+    describe("persistent rules (permissions.allow)", () => {
+      it("should allow Bash command if it matches an allowed rule", async () => {
+        permissionManager.updateAllowedRules(["Bash(ls -la)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls -la" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result).toEqual({ behavior: "allow" });
+        expect(mockLogger.debug).toHaveBeenCalledWith(
+          "Permission allowed by persistent rule",
+          { toolName: "Bash" },
+        );
+      });
+
+      it("should deny Bash command if it does not match any allowed rule", async () => {
+        permissionManager.updateAllowedRules(["Bash(ls -la)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "rm -rf /" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should handle missing toolInput or command gracefully", async () => {
+        permissionManager.updateAllowedRules(["Bash(ls -la)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should support multiple allowed rules", async () => {
+        permissionManager.updateAllowedRules(["Bash(ls)", "Bash(pwd)"]);
+
+        const context1: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls" },
+        };
+        const context2: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "pwd" },
+        };
+
+        expect(
+          (await permissionManager.checkPermission(context1)).behavior,
+        ).toBe("allow");
+        expect(
+          (await permissionManager.checkPermission(context2)).behavior,
+        ).toBe("allow");
+      });
+    });
+
     describe("default mode with unrestricted tools", () => {
       it("should allow unrestricted tools without callback", async () => {
         const unrestrictedTools = ["Read", "Grep", "LS", "Glob", "TodoWrite"];

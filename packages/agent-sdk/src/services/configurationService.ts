@@ -5,7 +5,8 @@
  * Replaces distributed configuration logic previously embedded in hook.ts.
  */
 
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, promises as fs } from "fs";
+import * as path from "path";
 import type {
   WaveConfiguration,
   PartialHookConfiguration,
@@ -198,6 +199,27 @@ export class ConfigurationService {
         result.errors.push(
           `Invalid defaultMode: "${config.defaultMode}". Must be "default", "bypassPermissions" or "acceptEdits"`,
         );
+      }
+    }
+
+    // Validate permissions if present
+    if (config.permissions !== undefined) {
+      if (
+        typeof config.permissions !== "object" ||
+        config.permissions === null
+      ) {
+        result.isValid = false;
+        result.errors.push("Permissions configuration must be an object");
+      } else if (config.permissions.allow !== undefined) {
+        if (!Array.isArray(config.permissions.allow)) {
+          result.isValid = false;
+          result.errors.push("Permissions allow must be an array of strings");
+        } else if (
+          !config.permissions.allow.every((rule) => typeof rule === "string")
+        ) {
+          result.isValid = false;
+          result.errors.push("All permission rules must be strings");
+        }
       }
     }
 
@@ -421,6 +443,45 @@ export class ConfigurationService {
       existingPaths: existingPaths.existingPaths,
     };
   }
+
+  /**
+   * Add a permission rule to the project's settings.local.json
+   */
+  async addAllowedRule(workdir: string, rule: string): Promise<void> {
+    const localConfigPath = path.join(workdir, ".wave", "settings.local.json");
+
+    // Ensure .wave directory exists
+    const waveDir = path.join(workdir, ".wave");
+    if (!existsSync(waveDir)) {
+      await fs.mkdir(waveDir, { recursive: true });
+    }
+
+    let config: WaveConfiguration = {};
+    if (existsSync(localConfigPath)) {
+      try {
+        const content = await fs.readFile(localConfigPath, "utf-8");
+        config = JSON.parse(content);
+      } catch {
+        // If file is corrupted, start with empty config
+      }
+    }
+
+    if (!config.permissions) {
+      config.permissions = {};
+    }
+    if (!config.permissions.allow) {
+      config.permissions.allow = [];
+    }
+
+    if (!config.permissions.allow.includes(rule)) {
+      config.permissions.allow.push(rule);
+      await fs.writeFile(
+        localConfigPath,
+        JSON.stringify(config, null, 2),
+        "utf-8",
+      );
+    }
+  }
 }
 // =============================================================================
 // Extracted Configuration Functions
@@ -575,6 +636,7 @@ export function loadWaveConfigFromFile(
       hooks: config.hooks || undefined,
       env: config.env || undefined,
       defaultMode: config.defaultMode,
+      permissions: config.permissions || undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -678,6 +740,14 @@ export function loadMergedWaveConfig(
     mergedHooks[event] = [...userEventConfigs, ...projectEventConfigs];
   }
 
+  // Merge permissions (combine allow arrays)
+  const mergedPermissions: { allow?: string[] } = {};
+  const userAllow = userConfig.permissions?.allow || [];
+  const projectAllow = projectConfig.permissions?.allow || [];
+  if (userAllow.length > 0 || projectAllow.length > 0) {
+    mergedPermissions.allow = [...new Set([...userAllow, ...projectAllow])];
+  }
+
   return {
     hooks: Object.keys(mergedHooks).length > 0 ? mergedHooks : undefined,
     env:
@@ -686,5 +756,7 @@ export function loadMergedWaveConfig(
         : undefined,
     // Project defaultMode takes precedence over user defaultMode
     defaultMode: projectConfig.defaultMode ?? userConfig.defaultMode,
+    permissions:
+      Object.keys(mergedPermissions).length > 0 ? mergedPermissions : undefined,
   };
 }
