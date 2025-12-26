@@ -16,6 +16,9 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "format": "prettier --write .",
+    "version:patch": "pnpm -r version:patch",
+    "version:minor": "pnpm -r version:minor",
+    "version:major": "pnpm -r version:major",
     "prepare": "husky"
   },
   "devDependencies": {
