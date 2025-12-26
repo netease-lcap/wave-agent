@@ -222,6 +222,11 @@ class ToolManager {
    * Get the current permission mode
    */
   public getPermissionMode(): PermissionMode {
+    if (this.permissionManager) {
+      return this.permissionManager.getCurrentEffectiveMode(
+        this.permissionMode,
+      );
+    }
     return this.permissionMode || "default";
   }
 

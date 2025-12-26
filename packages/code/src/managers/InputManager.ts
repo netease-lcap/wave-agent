@@ -878,13 +878,10 @@ export class InputManager {
   }
 
   cyclePermissionMode(): void {
-    const modes: PermissionMode[] = [
-      "default",
-      "acceptEdits",
-      "bypassPermissions",
-    ];
+    const modes: PermissionMode[] = ["default", "acceptEdits"];
     const currentIndex = modes.indexOf(this.permissionMode);
-    const nextIndex = (currentIndex + 1) % modes.length;
+    const nextIndex =
+      currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length;
     const nextMode = modes[nextIndex];
     this.logger?.debug("Cycling permission mode", {
       from: this.permissionMode,

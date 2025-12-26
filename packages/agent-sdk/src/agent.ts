@@ -220,6 +220,9 @@ export class Agent {
 
     // Initialize permission manager
     this.permissionManager = new PermissionManager({ logger: this.logger });
+    this.permissionManager.setOnConfiguredDefaultModeChange((mode) => {
+      this.options.callbacks?.onPermissionModeChange?.(mode);
+    });
 
     // Initialize configuration service and hooks manager
     this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
