@@ -57,17 +57,16 @@ Users can create commands that accept arguments and use parameter substitution t
 
 ### User Story 4 - Command Configuration and Model Selection (Priority: P2)
 
-Users can configure custom commands with specific AI models and tool restrictions using YAML frontmatter.
+Users can configure custom commands with specific AI models using YAML frontmatter.
 
-**Why this priority**: Enables optimization of commands for specific use cases and provides security controls by limiting available tools.
+**Why this priority**: Enables optimization of commands for specific use cases.
 
-**Independent Test**: Can be tested by creating a command with frontmatter specifying a model and allowedTools, then verifying the AI uses the specified configuration during execution.
+**Independent Test**: Can be tested by creating a command with frontmatter specifying a model, then verifying the AI uses the specified configuration during execution.
 
 **Acceptance Scenarios**:
 
 1. **Given** a command has `model: gpt-4` in its frontmatter, **When** the command executes, **Then** the AI uses the specified model instead of the default
-2. **Given** a command specifies `allowedTools: [Read, Write]`, **When** the command runs, **Then** the AI can only use the specified tools
-3. **Given** a command has a custom description in frontmatter, **When** command selector is shown, **Then** the custom description appears instead of auto-generated text
+2. **Given** a command has a custom description in frontmatter, **When** command selector is shown, **Then** the custom description appears instead of auto-generated text
 
 ---
 
@@ -100,7 +99,7 @@ Users can define commands at both project level (`.wave/commands/`) and user lev
 ### Functional Requirements
 
 - **FR-001**: System MUST automatically discover and load custom commands from `.wave/commands/` directories in both project root and user home directory
-- **FR-002**: System MUST support markdown files with YAML frontmatter for command configuration including model selection and tool restrictions  
+- **FR-002**: System MUST support markdown files with YAML frontmatter for command configuration including model selection  
 - **FR-003**: System MUST provide parameter substitution using `$ARGUMENTS` for all arguments and `$1`, `$2`, etc. for positional arguments
 - **FR-004**: System MUST parse quoted arguments correctly, treating quoted strings as single parameters even when containing spaces
 - **FR-005**: System MUST execute embedded bash commands within command content and replace them with their output
@@ -116,7 +115,7 @@ Users can define commands at both project level (`.wave/commands/`) and user lev
 
 - **SlashCommand**: Represents any executable command with id, name, description, and handler function
 - **CustomSlashCommand**: Extends SlashCommand with file path, markdown content, and configuration metadata
-- **CustomSlashCommandConfig**: Configuration options including AI model preference, allowed tools list, and custom description
+- **CustomSlashCommandConfig**: Configuration options including AI model preference and custom description
 - **SlashCommandManager**: Central orchestrator for command registration, discovery, execution, and lifecycle management
 - **CommandSelector**: User interface component for command discovery and selection with search functionality
 

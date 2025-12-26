@@ -59,12 +59,10 @@
 **Purpose**: YAML frontmatter configuration for command behavior customization
 
 **Fields**:
-- `allowedTools?: string[]` - Whitelist of tools AI can use during execution
 - `model?: string` - Preferred AI model for command processing
 - `description?: string` - Custom description overriding auto-generated text
 
 **Validation Rules**:
-- `allowedTools` elements must match available tool names
 - `model` must be supported by AI provider
 - `description` should be descriptive and concise
 
@@ -75,7 +73,6 @@
 
 **Default Behavior**:
 - Missing fields inherit system defaults
-- Empty `allowedTools` array means no tool restrictions
 - Undefined `model` uses default AI model configuration
 
 ## Command Registry Structure
@@ -127,7 +124,6 @@
 name: optional-override
 description: Custom description text  
 model: gpt-4
-allowedTools: [Read, Write, Bash]
 ---
 
 # Command Content

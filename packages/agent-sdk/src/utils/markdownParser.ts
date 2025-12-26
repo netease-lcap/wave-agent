@@ -37,18 +37,7 @@ function parseFrontmatter(content: string): {
       const key = trimmedLine.slice(0, colonIndex).trim();
       const value = trimmedLine.slice(colonIndex + 1).trim();
 
-      // Handle array values for allowed-tools
-      if (key === "allowed-tools" && value) {
-        // Simple array parsing: "tool1, tool2, tool3" or "[tool1, tool2]"
-        let arrayValue = value;
-        if (arrayValue.startsWith("[") && arrayValue.endsWith("]")) {
-          arrayValue = arrayValue.slice(1, -1);
-        }
-        frontmatter[key] = arrayValue
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-      } else if (value) {
+      if (value) {
         frontmatter[key] = value;
       }
     }
@@ -72,13 +61,6 @@ export function parseMarkdownFile(filePath: string): ParsedMarkdownFile {
 
     if (frontmatter) {
       config = {};
-
-      if (
-        frontmatter["allowed-tools"] &&
-        Array.isArray(frontmatter["allowed-tools"])
-      ) {
-        config.allowedTools = frontmatter["allowed-tools"] as string[];
-      }
 
       if (frontmatter.model && typeof frontmatter.model === "string") {
         config.model = frontmatter.model;

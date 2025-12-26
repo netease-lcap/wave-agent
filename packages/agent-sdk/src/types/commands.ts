@@ -11,7 +11,6 @@ export interface SlashCommand {
 }
 
 export interface CustomSlashCommandConfig {
-  allowedTools?: string[];
   model?: string;
   description?: string;
 }

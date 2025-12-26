@@ -111,11 +111,6 @@ Since this feature is already implemented, this research documents the existing 
 
 ## Security Considerations
 
-### Decision: Tool Restriction Support
-**Rationale**: Commands can specify `allowedTools` in frontmatter to limit AI capabilities during execution, providing security boundary for potentially dangerous operations.
-
-**Implementation**: Configuration passed to AI manager during command execution to enforce tool access restrictions.
-
 ### Decision: Bash Execution in Working Directory
 **Rationale**: Bash commands execute in project working directory context, providing expected file system access while maintaining process isolation.
 
