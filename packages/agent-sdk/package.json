@@ -25,6 +25,9 @@
     "test": "vitest run",
     "lint": "eslint --cache",
     "format": "prettier --write .",
+    "version:patch": "node ../../scripts/version.js patch",
+    "version:minor": "node ../../scripts/version.js minor",
+    "version:major": "node ../../scripts/version.js major",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
