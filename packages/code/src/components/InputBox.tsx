@@ -8,6 +8,7 @@ import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
 import { BashShellManager } from "./BashShellManager.js";
 import { McpManager } from "./McpManager.js";
 import { useInputManager } from "../hooks/useInputManager.js";
+import { useChat } from "../contexts/useChat.js";
 
 import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
 
@@ -56,6 +57,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
   // Get current working directory - memoized to avoid repeated process.cwd() calls
   const currentWorkdir = useMemo(() => workdir || process.cwd(), [workdir]);
 
+  const {
+    permissionMode: chatPermissionMode,
+    setPermissionMode: setChatPermissionMode,
+  } = useChat();
+
   // Input manager with all input state and functionality (including images)
   const {
     inputText,
@@ -90,6 +96,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showMcpManager,
     setShowBashManager,
     setShowMcpManager,
+    // Permission mode
+    permissionMode,
+    setPermissionMode,
     // Input history
     setUserInputHistory,
     // Complex handlers combining multiple operations
@@ -103,7 +112,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onHasSlashCommand: hasSlashCommand,
     onSaveMemory: saveMemory,
     onAbortMessage: abortMessage,
+    onPermissionModeChange: setChatPermissionMode,
   });
+
+  // Sync permission mode from useChat to InputManager
+  useEffect(() => {
+    setPermissionMode(chatPermissionMode);
+  }, [chatPermissionMode, setPermissionMode]);
 
   // Set user input history when it changes
   useEffect(() => {
@@ -198,20 +213,28 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
       {showBashManager || showMcpManager || (
-        <Box borderStyle="single" borderColor="gray" paddingX={1}>
-          <Text color={isPlaceholder ? "gray" : "white"}>
-            {shouldShowCursor ? (
-              <>
-                {beforeCursor}
-                <Text backgroundColor="white" color="black">
-                  {atCursor}
-                </Text>
-                {afterCursor}
-              </>
-            ) : (
-              displayText
-            )}
-          </Text>
+        <Box flexDirection="column">
+          <Box borderStyle="single" borderColor="gray" paddingX={1}>
+            <Text color={isPlaceholder ? "gray" : "white"}>
+              {shouldShowCursor ? (
+                <>
+                  {beforeCursor}
+                  <Text backgroundColor="white" color="black">
+                    {atCursor}
+                  </Text>
+                  {afterCursor}
+                </>
+              ) : (
+                displayText
+              )}
+            </Text>
+          </Box>
+          <Box paddingX={1}>
+            <Text color="gray">
+              Mode: <Text color="cyan">{permissionMode}</Text> (Shift+Tab to
+              cycle)
+            </Text>
+          </Box>
         </Box>
       )}
     </Box>

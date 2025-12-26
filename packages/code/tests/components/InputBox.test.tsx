@@ -8,6 +8,13 @@ import {
 import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers.js";
 import type { SlashCommand } from "wave-agent-sdk";
 
+vi.mock("../../src/contexts/useChat.js", () => ({
+  useChat: () => ({
+    permissionMode: "default",
+    setPermissionMode: vi.fn(),
+  }),
+}));
+
 describe("InputBox Smoke Tests", () => {
   describe("Basic Functionality", () => {
     it("should show placeholder text when empty", async () => {

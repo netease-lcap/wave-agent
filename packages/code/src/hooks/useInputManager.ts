@@ -6,6 +6,8 @@ import {
   AttachedImage,
 } from "../managers/InputManager.js";
 import { FileItem } from "../components/FileSelector.js";
+import { PermissionMode } from "wave-agent-sdk";
+import { logger } from "../utils/logger.js";
 
 export const useInputManager = (
   callbacks: Partial<InputManagerCallbacks> = {},
@@ -38,6 +40,8 @@ export const useInputManager = (
   });
   const [showBashManager, setShowBashManager] = useState(false);
   const [showMcpManager, setShowMcpManager] = useState(false);
+  const [permissionMode, setPermissionModeState] =
+    useState<PermissionMode>("default");
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
 
   // Create InputManager on mount and update callbacks when they change
@@ -45,6 +49,7 @@ export const useInputManager = (
     if (!managerRef.current) {
       // Create InputManager on first mount
       const manager = new InputManager({
+        logger,
         onInputTextChange: setInputText,
         onCursorPositionChange: setCursorPosition,
         onFileSelectorStateChange: (show, files, query, position) => {
@@ -64,6 +69,10 @@ export const useInputManager = (
         },
         onMcpManagerStateChange: (show) => {
           setShowMcpManager(show);
+        },
+        onPermissionModeChange: (mode) => {
+          setPermissionModeState(mode);
+          callbacks.onPermissionModeChange?.(mode);
         },
         onImagesStateChange: setAttachedImages,
         onShowBashManager: () => setShowBashManager(true),
@@ -76,6 +85,7 @@ export const useInputManager = (
     } else {
       // Update callbacks on existing manager
       managerRef.current.updateCallbacks({
+        logger,
         onInputTextChange: setInputText,
         onCursorPositionChange: setCursorPosition,
         onFileSelectorStateChange: (show, files, query, position) => {
@@ -95,6 +105,10 @@ export const useInputManager = (
         },
         onMcpManagerStateChange: (show) => {
           setShowMcpManager(show);
+        },
+        onPermissionModeChange: (mode) => {
+          setPermissionModeState(mode);
+          callbacks.onPermissionModeChange?.(mode);
         },
         onImagesStateChange: setAttachedImages,
         onShowBashManager: () => setShowBashManager(true),
@@ -328,6 +342,7 @@ export const useInputManager = (
     memoryMessage: memoryTypeSelectorState.message,
     showBashManager,
     showMcpManager,
+    permissionMode,
     attachedImages,
     isManagerReady,
 
@@ -383,6 +398,10 @@ export const useInputManager = (
     }, []),
     setShowMcpManager: useCallback((show: boolean) => {
       managerRef.current?.setShowMcpManager(show);
+    }, []),
+    setPermissionMode: useCallback((mode: PermissionMode) => {
+      setPermissionModeState(mode);
+      managerRef.current?.setPermissionMode(mode);
     }, []),
 
     // Image management

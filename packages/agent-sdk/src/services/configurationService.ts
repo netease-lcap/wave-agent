@@ -188,11 +188,15 @@ export class ConfigurationService {
 
     // Validate defaultMode if present
     if (config.defaultMode !== undefined) {
-      if (typeof config.defaultMode !== "string") {
+      if (
+        config.defaultMode !== "default" &&
+        config.defaultMode !== "bypassPermissions" &&
+        config.defaultMode !== "acceptEdits"
+      ) {
         result.isValid = false;
-        result.errors.push("defaultMode must be a string");
-      } else if (config.defaultMode.length === 0) {
-        result.warnings.push("defaultMode is empty");
+        result.errors.push(
+          `Invalid defaultMode: "${config.defaultMode}". Must be "default", "bypassPermissions" or "acceptEdits"`,
+        );
       }
     }
 
