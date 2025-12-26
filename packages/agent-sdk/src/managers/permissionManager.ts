@@ -261,8 +261,14 @@ export class PermissionManager {
    */
   private isAllowedByRule(context: ToolPermissionContext): boolean {
     if (context.toolName === "Bash" && context.toolInput?.command) {
-      const rule = `Bash(${context.toolInput.command})`;
-      return this.allowedRules.includes(rule);
+      const action = `Bash(${context.toolInput.command})`;
+      return this.allowedRules.some((rule) => {
+        if (rule.endsWith(":*)")) {
+          const prefix = rule.slice(0, -3);
+          return action.startsWith(prefix);
+        }
+        return action === rule;
+      });
     }
     // Add other tools if needed in the future
     return false;
