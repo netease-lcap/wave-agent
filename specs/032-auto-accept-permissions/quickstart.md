@@ -9,7 +9,7 @@ Selecting this will allow all subsequent file edits in the current session witho
 
 ### Persisting Bash Commands
 When prompted for a `Bash` command, you will see:
-`2. Yes, and don't ask again for [command] commands in this workdir`
+`2. Yes, and don't ask again for this command in this workdir`
 Selecting this will save the command to `.wave/settings.local.json`. Future executions of the exact same command in this project will be automatically allowed.
 
 ### Global Permissions

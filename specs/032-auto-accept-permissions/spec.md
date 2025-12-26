@@ -29,11 +29,11 @@ As a user, when I am prompted to confirm a Bash command, I want to be able to al
 
 **Why this priority**: This allows users to build a "whitelist" of trusted commands for a specific project, balancing security and convenience.
 
-**Independent Test**: Can be tested by triggering a `Bash` command, selecting "Yes, and don't ask again for ...", verifying that `.wave/settings.local.json` is updated, and then running the same command again to see it execute without a prompt.
+**Independent Test**: Can be tested by triggering a `Bash` command, selecting "Yes, and don't ask again for this command in this workdir", verifying that `.wave/settings.local.json` is updated, and then running the same command again to see it execute without a prompt.
 
 **Acceptance Scenarios**:
 
-1. **Given** the agent is in `default` mode, **When** the agent attempts a `Bash` operation with command `ls`, **Then** the confirmation prompt shows three options: "1. Yes", "2. Yes, and don't ask again for ls commands in this workdir", and "3. [Alternative/Feedback]".
+1. **Given** the agent is in `default` mode, **When** the agent attempts a `Bash` operation with command `ls`, **Then** the confirmation prompt shows three options: "1. Yes", "2. Yes, and don't ask again for this command in this workdir", and "3. [Alternative/Feedback]".
 2. **Given** the confirmation prompt for `Bash` command `ls` is shown, **When** the user selects "Yes, and don't ask again...", **Then** the command is executed, and `Bash(ls)` is added to the `permissions.allow` array in `.wave/settings.local.json`.
 3. **Given** `Bash(ls)` is in the `permissions.allow` array of the local project settings, **When** the agent attempts a `Bash` operation with command `ls`, **Then** it is executed without a prompt.
 4. **Given** `Bash(ls)` is in the `permissions.allow` array, **When** the agent attempts a `Bash` operation with command `rm -rf /`, **Then** the user is still prompted for permission.
@@ -68,7 +68,7 @@ As a user, I want my allowed command rules to be respected whether they are defi
 
 - **FR-001**: The confirmation prompt for file system tools (`Write`, `Edit`, `MultiEdit`, `Delete`) MUST include a second option: "Yes, and auto-accept edits".
 - **FR-002**: Selecting "Yes, and auto-accept edits" MUST set the current session's permission mode to `acceptEdits`.
-- **FR-003**: The confirmation prompt for the `Bash` tool MUST include a second option: "Yes, and don't ask again for [command] commands in this workdir".
+- **FR-003**: The confirmation prompt for the `Bash` tool MUST include a second option: "Yes, and don't ask again for this command in this workdir".
 - **FR-004**: Selecting the persistent Bash option MUST save the rule `Bash([command])` to the `permissions.allow` array in `.wave/settings.local.json`.
 - **FR-005**: The system MUST create the `.wave` directory and `settings.local.json` file if they do not exist when saving a local permission rule.
 - **FR-006**: On startup, the system MUST load `permissions.allow` from all applicable `settings.json` files (user-level and project-level).

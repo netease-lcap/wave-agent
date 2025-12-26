@@ -56,7 +56,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
 
   const getAutoOptionText = () => {
     if (toolName === "Bash") {
-      return `Yes, and don't ask again for ${toolInput?.command || "this"} commands in this workdir`;
+      return "Yes, and don't ask again for this command in this workdir";
     }
     return "Yes, and auto-accept edits";
   };

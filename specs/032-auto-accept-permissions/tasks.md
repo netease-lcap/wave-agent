@@ -29,7 +29,7 @@
 ## Phase 4: User Story 2 - Persistent Bash Command Permission (Priority: P1)
 
 **Goal**: Allow users to persist specific Bash commands to `.wave/settings.local.json`.
-**Independent Test**: Trigger a `Bash` tool, select "Yes, and don't ask again...", verify `.wave/settings.local.json` is created/updated, then run the same command again.
+**Independent Test**: Trigger a `Bash` tool, select "Yes, and don't ask again for this command in this workdir", verify `.wave/settings.local.json` is created/updated, then run the same command again.
 
 - [X] T011 [P] [US2] Update `Confirmation` component to support the persistent option for Bash commands in `packages/code/src/components/Confirmation.tsx`
 - [X] T012 [US2] Implement `persistPermissionRule` method in `Agent` class in `packages/agent-sdk/src/agent.ts`
