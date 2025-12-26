@@ -7,7 +7,6 @@ export interface SubagentConfiguration {
   description: string;
   tools?: string[];
   model?: string;
-  defaultHeaders?: Record<string, string>;
   systemPrompt: string;
   filePath: string;
   scope: "project" | "user" | "builtin";
@@ -19,7 +18,6 @@ interface SubagentFrontmatter {
   description?: string;
   tools?: string[];
   model?: string;
-  defaultHeaders?: Record<string, string>;
 }
 
 /**
@@ -50,30 +48,9 @@ function parseYamlFrontmatter(yamlContent: string): SubagentFrontmatter {
 
   try {
     const lines = yamlContent.split("\n");
-    let currentKey: string | null = null;
-
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
-
-      // Check for indentation to handle nested objects like defaultHeaders
-      const indentation = line.match(/^\s*/)?.[0].length || 0;
-
-      if (indentation > 0 && currentKey === "defaultHeaders") {
-        const colonIndex = trimmed.indexOf(":");
-        if (colonIndex !== -1) {
-          const key = trimmed.substring(0, colonIndex).trim();
-          const value = trimmed
-            .substring(colonIndex + 1)
-            .trim()
-            .replace(/^["']|["']$/g, "");
-          if (key && value) {
-            if (!frontmatter.defaultHeaders) frontmatter.defaultHeaders = {};
-            frontmatter.defaultHeaders[key] = value;
-          }
-        }
-        continue;
-      }
 
       const colonIndex = trimmed.indexOf(":");
       if (colonIndex === -1) continue;
@@ -83,8 +60,6 @@ function parseYamlFrontmatter(yamlContent: string): SubagentFrontmatter {
         .substring(colonIndex + 1)
         .trim()
         .replace(/^["']|["']$/g, "");
-
-      currentKey = key;
 
       if (key && value) {
         // Handle array values for tools
@@ -102,8 +77,6 @@ function parseYamlFrontmatter(yamlContent: string): SubagentFrontmatter {
             frontmatter[key] = value;
           }
         }
-      } else if (key === "defaultHeaders") {
-        frontmatter.defaultHeaders = {};
       }
     }
   } catch {
@@ -166,7 +139,6 @@ function parseSubagentFile(
       description: frontmatter.description!,
       tools: frontmatter.tools,
       model: frontmatter.model,
-      defaultHeaders: frontmatter.defaultHeaders,
       systemPrompt: body,
       filePath,
       scope,
