@@ -1,5 +1,9 @@
 import { FileItem } from "../components/FileSelector.js";
-import { searchFiles as searchFilesUtil } from "wave-agent-sdk";
+import {
+  searchFiles as searchFilesUtil,
+  PermissionMode,
+  Logger,
+} from "wave-agent-sdk";
 import { readClipboardImage } from "../utils/clipboard.js";
 import type { Key } from "ink";
 
@@ -42,6 +46,8 @@ export interface InputManagerCallbacks {
   onSaveMemory?: (message: string, type: "project" | "user") => Promise<void>;
   onAbortMessage?: () => void;
   onResetHistoryNavigation?: () => void;
+  onPermissionModeChange?: (mode: PermissionMode) => void;
+  logger?: Logger;
 }
 
 export class InputManager {
@@ -93,18 +99,26 @@ export class InputManager {
   private showBashManager: boolean = false;
   private showMcpManager: boolean = false;
 
+  // Permission mode state
+  private permissionMode: PermissionMode = "default";
+
   // Flag to prevent handleInput conflicts when selector selection occurs
   private selectorJustUsed: boolean = false;
 
   private callbacks: InputManagerCallbacks;
+  private logger?: Logger;
 
   constructor(callbacks: InputManagerCallbacks = {}) {
     this.callbacks = callbacks;
+    this.logger = callbacks.logger;
   }
 
   // Update callbacks
   updateCallbacks(callbacks: Partial<InputManagerCallbacks>) {
     this.callbacks = { ...this.callbacks, ...callbacks };
+    if (callbacks.logger) {
+      this.logger = callbacks.logger;
+    }
   }
 
   // Core input methods
@@ -854,6 +868,32 @@ export class InputManager {
     this.callbacks.onMcpManagerStateChange?.(show);
   }
 
+  // Permission mode methods
+  getPermissionMode(): PermissionMode {
+    return this.permissionMode;
+  }
+
+  setPermissionMode(mode: PermissionMode): void {
+    this.permissionMode = mode;
+  }
+
+  cyclePermissionMode(): void {
+    const modes: PermissionMode[] = [
+      "default",
+      "acceptEdits",
+      "bypassPermissions",
+    ];
+    const currentIndex = modes.indexOf(this.permissionMode);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    const nextMode = modes[nextIndex];
+    this.logger?.debug("Cycling permission mode", {
+      from: this.permissionMode,
+      to: nextMode,
+    });
+    this.permissionMode = nextMode;
+    this.callbacks.onPermissionModeChange?.(this.permissionMode);
+  }
+
   // Handle submit logic
   async handleSubmit(
     attachedImages: Array<{ id: number; path: string; mimeType: string }>,
@@ -1085,6 +1125,13 @@ export class InputManager {
     if (key.escape && (isLoading || isCommandRunning)) {
       // Unified interrupt for AI message generation and command execution
       this.callbacks.onAbortMessage?.();
+      return true;
+    }
+
+    // Handle Shift+Tab for permission mode cycling
+    if (key.tab && key.shift) {
+      this.logger?.debug("Shift+Tab detected, cycling permission mode");
+      this.cyclePermissionMode();
       return true;
     }
 

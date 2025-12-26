@@ -217,6 +217,21 @@ class ToolManager {
     const mcpToolsConfig = this.mcpManager.getMcpToolsConfig();
     return [...builtInToolsConfig, ...mcpToolsConfig];
   }
+
+  /**
+   * Get the current permission mode
+   */
+  public getPermissionMode(): PermissionMode {
+    return this.permissionMode || "default";
+  }
+
+  /**
+   * Set the permission mode
+   * @param mode - The new permission mode
+   */
+  public setPermissionMode(mode: PermissionMode): void {
+    this.permissionMode = mode;
+  }
 }
 
 // Export tool registry class and types

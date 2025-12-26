@@ -483,10 +483,11 @@ export class LiveConfigManager {
     if (config.defaultMode !== undefined) {
       if (
         config.defaultMode !== "default" &&
-        config.defaultMode !== "bypassPermissions"
+        config.defaultMode !== "bypassPermissions" &&
+        config.defaultMode !== "acceptEdits"
       ) {
         errors.push(
-          `Invalid defaultMode: "${config.defaultMode}". Must be "default" or "bypassPermissions"`,
+          `Invalid defaultMode: "${config.defaultMode}". Must be "default", "bypassPermissions" or "acceptEdits"`,
         );
       }
     }

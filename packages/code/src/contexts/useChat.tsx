@@ -14,6 +14,7 @@ import type {
   BackgroundShell,
   SlashCommand,
   PermissionDecision,
+  PermissionMode,
 } from "wave-agent-sdk";
 import {
   Agent,
@@ -57,6 +58,9 @@ export interface ChatContextType {
   hasSlashCommand: (commandId: string) => boolean;
   // Subagent messages
   subagentMessages: Record<string, Message[]>;
+  // Permission functionality
+  permissionMode: PermissionMode;
+  setPermissionMode: (mode: PermissionMode) => void;
   // Permission confirmation state
   isConfirmationVisible: boolean;
   confirmingTool?: { name: string; input?: Record<string, unknown> };
@@ -117,6 +121,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [subagentMessages, setSubagentMessages] = useState<
     Record<string, Message[]>
   >({});
+
+  // Permission state
+  const [permissionMode, setPermissionModeState] =
+    useState<PermissionMode>("default");
 
   // Confirmation state with queue-based architecture
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
@@ -238,6 +246,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setIsCommandRunning(agent.isCommandRunning);
         setIsCompressing(agent.isCompressing);
         setUserInputHistory(agent.userInputHistory);
+        setPermissionModeState(agent.getPermissionMode());
 
         // Get initial MCP servers state
         const mcpServers = agent.getMcpServers?.() || [];
@@ -354,6 +363,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     [],
   );
 
+  // Permission management methods
+  const setPermissionMode = useCallback((mode: PermissionMode) => {
+    setPermissionModeState((prev) => {
+      if (prev === mode) return prev;
+      if (agentRef.current && agentRef.current.getPermissionMode() !== mode) {
+        agentRef.current.setPermissionMode(mode);
+      }
+      return mode;
+    });
+  }, []);
+
   // MCP management methods - delegate to Agent
   const connectMcpServer = useCallback(async (serverName: string) => {
     return (await agentRef.current?.connectMcpServer(serverName)) ?? false;
@@ -457,6 +477,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     slashCommands,
     hasSlashCommand,
     subagentMessages,
+    permissionMode,
+    setPermissionMode,
     isConfirmationVisible,
     confirmingTool,
     showConfirmation,

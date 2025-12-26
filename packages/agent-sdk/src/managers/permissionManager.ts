@@ -19,12 +19,12 @@ export interface PermissionManagerOptions {
   /** Logger for debugging permission decisions */
   logger?: Logger;
   /** Configured default permission mode from settings */
-  configuredDefaultMode?: "default" | "bypassPermissions";
+  configuredDefaultMode?: PermissionMode;
 }
 
 export class PermissionManager {
   private logger?: Logger;
-  private configuredDefaultMode?: "default" | "bypassPermissions";
+  private configuredDefaultMode?: PermissionMode;
 
   constructor(options: PermissionManagerOptions = {}) {
     this.logger = options.logger;
@@ -34,9 +34,7 @@ export class PermissionManager {
   /**
    * Update the configured default mode (e.g., when configuration reloads)
    */
-  updateConfiguredDefaultMode(
-    defaultMode?: "default" | "bypassPermissions",
-  ): void {
+  updateConfiguredDefaultMode(defaultMode?: PermissionMode): void {
     this.logger?.debug("Updating configured default permission mode", {
       previous: this.configuredDefaultMode,
       new: defaultMode,
@@ -47,9 +45,7 @@ export class PermissionManager {
   /**
    * Get the current effective permission mode for tool execution context
    */
-  getCurrentEffectiveMode(
-    cliPermissionMode?: "default" | "bypassPermissions",
-  ): "default" | "bypassPermissions" {
+  getCurrentEffectiveMode(cliPermissionMode?: PermissionMode): PermissionMode {
     return this.resolveEffectivePermissionMode(cliPermissionMode);
   }
 
@@ -57,8 +53,8 @@ export class PermissionManager {
    * Resolve the effective permission mode based on CLI override and configured default
    */
   resolveEffectivePermissionMode(
-    cliPermissionMode?: "default" | "bypassPermissions",
-  ): "default" | "bypassPermissions" {
+    cliPermissionMode?: PermissionMode,
+  ): PermissionMode {
     // CLI override takes highest precedence
     if (cliPermissionMode !== undefined) {
       this.logger?.debug("Using CLI permission mode override", {
@@ -100,6 +96,20 @@ export class PermissionManager {
         toolName: context.toolName,
       });
       return { behavior: "allow" };
+    }
+
+    // 1.1 If acceptEdits mode, allow Edit, MultiEdit, Delete, Write
+    if (context.permissionMode === "acceptEdits") {
+      const autoAcceptedTools = ["Edit", "MultiEdit", "Delete", "Write"];
+      if (autoAcceptedTools.includes(context.toolName)) {
+        this.logger?.debug(
+          "Permission automatically accepted for tool in acceptEdits mode",
+          {
+            toolName: context.toolName,
+          },
+        );
+        return { behavior: "allow" };
+      }
     }
 
     // 2. If not a restricted tool, always allow

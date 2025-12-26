@@ -30,7 +30,7 @@ export interface HookEventConfig {
 export interface WaveConfiguration {
   hooks?: Partial<Record<HookEvent, HookEventConfig[]>>;
   env?: Record<string, string>; // Environment variables key-value pairs
-  defaultMode?: "default" | "bypassPermissions"; // Default permission mode for restricted tools
+  defaultMode?: "default" | "bypassPermissions" | "acceptEdits"; // Default permission mode for restricted tools
 }
 
 // Legacy alias for backward compatibility - will be deprecated
