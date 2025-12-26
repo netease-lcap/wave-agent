@@ -49,14 +49,12 @@ YAML frontmatter configuration for command behavior customization.
 
 ```typescript
 export interface CustomSlashCommandConfig {
-  allowedTools?: string[]  // Whitelist of tools AI can use
   model?: string          // Preferred AI model for processing
   description?: string    // Custom description override
 }
 ```
 
 **Contract Requirements**:
-- `allowedTools` elements must match available tool names
 - `model` must be supported by AI provider
 - All fields are optional with system defaults
 

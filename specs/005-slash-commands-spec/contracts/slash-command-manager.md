@@ -147,14 +147,12 @@ description: string       # Custom description for UI
 
 # AI behavior configuration  
 model: string            # AI model preference
-allowedTools: string[]   # Tool whitelist for security
 
 # Example
 ---
 name: project-info
 description: "Show current project information"
 model: gpt-4
-allowedTools: [Read, Bash]
 ---
 ```
 
@@ -166,14 +164,12 @@ interface ConfigurationProcessing {
   
   // Validation
   validation: {
-    allowedTools: "must-match-available-tools"
     model: "must-be-supported-by-ai-provider"
     description: "optional-string"
   }
   
   // Defaults
   defaults: {
-    allowedTools: null      // No restrictions
     model: "system-default"
     description: "auto-generated"
   }

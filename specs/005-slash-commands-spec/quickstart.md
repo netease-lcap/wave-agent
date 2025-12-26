@@ -147,7 +147,6 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
 name: project-info
 description: "Display current project information"  
 model: gpt-4
-allowedTools: [Read, Bash]
 ---
 
 # Project Information Command
@@ -291,7 +290,6 @@ const filteredCommands = useMemo(() =>
 
 - **Initialization**: SlashCommandManager created during Agent constructor
 - **Message Flow**: Commands execute in main agent context, not sub-agents
-- **Tool Access**: Commands can restrict AI tools via `allowedTools` configuration
 - **Error Handling**: Errors displayed in chat interface as error blocks
 
 ### 2. CLI UI Integration
@@ -347,17 +345,6 @@ private async executeBashCommands(content: string): Promise<string> {
 ```typescript
 // Validate YAML frontmatter configuration
 private validateCommandConfig(config: CustomSlashCommandConfig): boolean {
-  if (config.allowedTools) {
-    const availableTools = this.getAvailableTools();
-    const invalidTools = config.allowedTools.filter(
-      tool => !availableTools.includes(tool)
-    );
-    if (invalidTools.length > 0) {
-      this.logger?.warn(`Invalid tools specified: ${invalidTools.join(", ")}`);
-      return false;
-    }
-  }
-  
   if (config.model && !this.isSupportedModel(config.model)) {
     this.logger?.warn(`Unsupported model: ${config.model}`);
     return false;

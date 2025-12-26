@@ -207,7 +207,6 @@ describe("Mixed Flat and Nested Command Discovery", () => {
             config: {
               description: "Compile and package the project",
               model: "gpt-4",
-              allowedTools: ["bash", "read", "write"],
             },
           };
         }
@@ -242,11 +241,6 @@ describe("Mixed Flat and Nested Command Discovery", () => {
         "Compile and package the project",
       );
       expect(buildCommand?.config?.model).toBe("gpt-4");
-      expect(buildCommand?.config?.allowedTools).toEqual([
-        "bash",
-        "read",
-        "write",
-      ]);
     });
   });
 

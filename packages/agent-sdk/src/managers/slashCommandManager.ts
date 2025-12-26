@@ -218,7 +218,7 @@ export class SlashCommandManager {
   private async executeCustomCommandInMainAgent(
     commandName: string,
     content: string,
-    config?: { model?: string; allowedTools?: string[] },
+    config?: { model?: string },
     args?: string,
   ): Promise<void> {
     try {
@@ -272,7 +272,6 @@ export class SlashCommandManager {
       // Execute the AI conversation with custom configuration
       await this.aiManager.sendAIMessage({
         model: config?.model,
-        allowedTools: config?.allowedTools,
       });
     } catch (error) {
       this.logger?.error(
