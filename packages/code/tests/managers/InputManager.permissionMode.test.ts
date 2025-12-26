@@ -50,14 +50,7 @@ describe("InputManager Permission Mode", () => {
       "acceptEdits",
     );
 
-    // Second Shift+Tab: acceptEdits -> bypassPermissions
-    await manager.handleInput("", shiftTabKey, []);
-    expect(manager.getPermissionMode()).toBe("bypassPermissions");
-    expect(mockCallbacks.onPermissionModeChange).toHaveBeenCalledWith(
-      "bypassPermissions",
-    );
-
-    // Third Shift+Tab: bypassPermissions -> default
+    // Second Shift+Tab: acceptEdits -> default
     await manager.handleInput("", shiftTabKey, []);
     expect(manager.getPermissionMode()).toBe("default");
     expect(mockCallbacks.onPermissionModeChange).toHaveBeenCalledWith(
@@ -70,5 +63,33 @@ describe("InputManager Permission Mode", () => {
     expect(managerWithoutCallback.getPermissionMode()).toBe("default");
     managerWithoutCallback.cyclePermissionMode();
     expect(managerWithoutCallback.getPermissionMode()).toBe("acceptEdits");
+  });
+
+  it("should transition from 'bypassPermissions' to 'default' when Shift+Tab is pressed", async () => {
+    const shiftTabKey: Key = {
+      tab: true,
+      shift: true,
+      upArrow: false,
+      downArrow: false,
+      leftArrow: false,
+      rightArrow: false,
+      return: false,
+      escape: false,
+      ctrl: false,
+      backspace: false,
+      delete: false,
+      pageDown: false,
+      pageUp: false,
+      meta: false,
+    };
+
+    manager.setPermissionMode("bypassPermissions");
+    expect(manager.getPermissionMode()).toBe("bypassPermissions");
+
+    await manager.handleInput("", shiftTabKey, []);
+    expect(manager.getPermissionMode()).toBe("default");
+    expect(mockCallbacks.onPermissionModeChange).toHaveBeenCalledWith(
+      "default",
+    );
   });
 });

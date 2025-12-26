@@ -28,6 +28,7 @@ export class PermissionManager {
   private logger?: Logger;
   private configuredDefaultMode?: PermissionMode;
   private allowedRules: string[] = [];
+  private onConfiguredDefaultModeChange?: (mode: PermissionMode) => void;
 
   constructor(options: PermissionManagerOptions = {}) {
     this.logger = options.logger;
@@ -36,14 +37,40 @@ export class PermissionManager {
   }
 
   /**
+   * Set a callback to be notified when the effective permission mode changes due to configuration updates
+   */
+  public setOnConfiguredDefaultModeChange(
+    callback: (mode: PermissionMode) => void,
+  ): void {
+    this.onConfiguredDefaultModeChange = callback;
+  }
+
+  /**
    * Update the configured default mode (e.g., when configuration reloads)
    */
   updateConfiguredDefaultMode(defaultMode?: PermissionMode): void {
+    const oldEffectiveMode = this.getCurrentEffectiveMode();
+
     this.logger?.debug("Updating configured default permission mode", {
       previous: this.configuredDefaultMode,
       new: defaultMode,
     });
     this.configuredDefaultMode = defaultMode;
+
+    const newEffectiveMode = this.getCurrentEffectiveMode();
+    if (
+      oldEffectiveMode !== newEffectiveMode &&
+      this.onConfiguredDefaultModeChange
+    ) {
+      this.logger?.debug(
+        "Effective permission mode changed due to configuration update",
+        {
+          oldMode: oldEffectiveMode,
+          newMode: newEffectiveMode,
+        },
+      );
+      this.onConfiguredDefaultModeChange(newEffectiveMode);
+    }
   }
 
   /**
