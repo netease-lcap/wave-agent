@@ -10,6 +10,7 @@ export interface GatewayConfig {
   baseURL: string;
   defaultHeaders?: Record<string, string>;
   fetchOptions?: OpenAI["fetchOptions"];
+  fetch?: OpenAI["fetch"];
 }
 
 export interface ModelConfig {

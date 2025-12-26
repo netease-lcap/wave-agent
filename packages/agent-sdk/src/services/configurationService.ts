@@ -279,6 +279,7 @@ export class ConfigurationService {
    * @param baseURL - Base URL from constructor (optional)
    * @param defaultHeaders - HTTP headers from constructor (optional)
    * @param fetchOptions - Fetch options from constructor (optional)
+   * @param fetch - Custom fetch implementation from constructor (optional)
    * @returns Resolved gateway configuration
    * @throws ConfigurationError if required configuration is missing after fallbacks
    */
@@ -287,6 +288,7 @@ export class ConfigurationService {
     baseURL?: string,
     defaultHeaders?: Record<string, string>,
     fetchOptions?: import("openai").OpenAI["fetchOptions"],
+    fetch?: import("openai").OpenAI["fetch"],
   ): GatewayConfig {
     // Resolve API key: constructor > env (settings.json) > process.env
     // Note: Explicitly provided empty strings should be treated as invalid, not fall back to env
@@ -343,6 +345,7 @@ export class ConfigurationService {
       baseURL: resolvedBaseURL,
       defaultHeaders,
       fetchOptions,
+      fetch,
     };
   }
 
