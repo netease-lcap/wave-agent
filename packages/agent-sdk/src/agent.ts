@@ -60,6 +60,7 @@ export interface AgentOptions {
   baseURL?: string;
   defaultHeaders?: Record<string, string>;
   fetchOptions?: import("openai").OpenAI["fetchOptions"];
+  fetch?: import("openai").OpenAI["fetch"];
   agentModel?: string;
   fastModel?: string;
   tokenLimit?: number;
@@ -126,6 +127,7 @@ export class Agent {
       this.options.baseURL,
       this.options.defaultHeaders,
       this.options.fetchOptions,
+      this.options.fetch,
     );
   }
 
@@ -157,6 +159,7 @@ export class Agent {
         config.gateway.defaultHeaders ?? this.options.defaultHeaders;
       this.options.fetchOptions =
         config.gateway.fetchOptions ?? this.options.fetchOptions;
+      this.options.fetch = config.gateway.fetch ?? this.options.fetch;
     }
 
     if (config.model) {
@@ -460,6 +463,8 @@ export class Agent {
    * @param options.apiKey - API key for the AI service (or set WAVE_API_KEY env var)
    * @param options.baseURL - Base URL for the AI service (or set WAVE_BASE_URL env var)
    * @param options.defaultHeaders - Optional HTTP headers to pass to the AI service
+   * @param options.fetchOptions - Optional fetch options to pass to the AI service
+   * @param options.fetch - Optional custom fetch implementation
    * @param options.callbacks - Optional callbacks for various Agent events
    * @param options.restoreSessionId - Optional session ID to restore from
    * @param options.continueLastSession - Whether to continue the last session automatically
