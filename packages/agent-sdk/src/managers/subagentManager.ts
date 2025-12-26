@@ -185,7 +185,6 @@ export class SubagentManager {
       logger: this.logger,
       workdir: this.workdir,
       systemPrompt: configuration.systemPrompt,
-      defaultHeaders: configuration.defaultHeaders,
       subagentType: parameters.subagent_type, // Pass subagent type for hook context
       hookManager: this.hookManager,
       getGatewayConfig: this.getGatewayConfig,
@@ -482,7 +481,6 @@ export class SubagentManager {
           logger: this.logger,
           workdir: this.workdir,
           systemPrompt: configuration.systemPrompt,
-          defaultHeaders: configuration.defaultHeaders,
           subagentType: configuration.name, // Use configuration name as subagent type for restored instances
           hookManager: this.hookManager,
           getGatewayConfig: this.getGatewayConfig,
