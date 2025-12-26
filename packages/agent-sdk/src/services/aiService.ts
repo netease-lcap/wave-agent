@@ -158,43 +158,6 @@ export interface CallAgentResult {
   additionalFields?: Record<string, unknown>;
 }
 
-let nextCallTime = 0;
-const MIN_INTERVAL = 2000; // 0.5 QPS = 1 request per 2 seconds
-
-/**
- * Wait for rate limit if necessary
- * @param abortSignal Optional abort signal to cancel waiting
- */
-async function waitRateLimit(abortSignal?: AbortSignal): Promise<void> {
-  if (abortSignal?.aborted) {
-    const error = new Error("Request was aborted");
-    error.name = "AbortError";
-    throw error;
-  }
-
-  const now = Date.now();
-  const waitTime = Math.max(0, nextCallTime - now);
-  nextCallTime = Math.max(now, nextCallTime) + MIN_INTERVAL;
-
-  if (waitTime > 0) {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        abortSignal?.removeEventListener("abort", onAbort);
-        resolve();
-      }, waitTime);
-
-      const onAbort = () => {
-        clearTimeout(timeout);
-        const error = new Error("Request was aborted");
-        error.name = "AbortError";
-        reject(error);
-      };
-
-      abortSignal?.addEventListener("abort", onAbort, { once: true });
-    });
-  }
-}
-
 export async function callAgent(
   options: CallAgentOptions,
 ): Promise<CallAgentResult> {
@@ -224,8 +187,6 @@ export async function callAgent(
   let processedTools: ChatCompletionFunctionTool[] | undefined;
 
   try {
-    await waitRateLimit(abortSignal);
-
     // Create OpenAI client with injected configuration
     const openai = new OpenAI({
       apiKey: gatewayConfig.apiKey,
@@ -804,7 +765,6 @@ export async function compressMessages(
   });
 
   try {
-    await waitRateLimit(abortSignal);
     const response = await openai.chat.completions.create(
       {
         ...openaiModelConfig,
