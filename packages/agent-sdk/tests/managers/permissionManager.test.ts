@@ -199,6 +199,78 @@ describe("PermissionManager", () => {
           (await permissionManager.checkPermission(context2)).behavior,
         ).toBe("allow");
       });
+
+      it("should allow Bash command with prefix match using :*", async () => {
+        permissionManager.updateAllowedRules(["Bash(git commit:*)"]);
+
+        const context1: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: 'git commit -m "feat: add prefix matching"' },
+        };
+
+        const context2: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "git commit --amend" },
+        };
+
+        expect(
+          (await permissionManager.checkPermission(context1)).behavior,
+        ).toBe("allow");
+        expect(
+          (await permissionManager.checkPermission(context2)).behavior,
+        ).toBe("allow");
+      });
+
+      it("should deny Bash command if prefix does not match", async () => {
+        permissionManager.updateAllowedRules(["Bash(git commit:*)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "git push" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should treat :* as literal if not at the end", async () => {
+        permissionManager.updateAllowedRules(["Bash(echo :* test)"]);
+
+        const context1: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "echo hello test" },
+        };
+
+        const context2: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "echo :* test" },
+        };
+
+        expect(
+          (await permissionManager.checkPermission(context1)).behavior,
+        ).toBe("deny");
+        expect(
+          (await permissionManager.checkPermission(context2)).behavior,
+        ).toBe("allow");
+      });
+
+      it("should handle empty prefix with :*", async () => {
+        permissionManager.updateAllowedRules(["Bash(:*)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "any command" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+        expect(result.behavior).toBe("allow");
+      });
     });
 
     describe("default mode with unrestricted tools", () => {
