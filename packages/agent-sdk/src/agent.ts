@@ -91,7 +91,9 @@ export interface AgentCallbacks
   extends MessageManagerCallbacks,
     BackgroundBashManagerCallbacks,
     McpManagerCallbacks,
-    SubagentManagerCallbacks {}
+    SubagentManagerCallbacks {
+  onPermissionModeChange?: (mode: PermissionMode) => void;
+}
 
 export class Agent {
   private messageManager: MessageManager;
@@ -1101,6 +1103,7 @@ export class Agent {
    */
   public setPermissionMode(mode: PermissionMode): void {
     this.toolManager.setPermissionMode(mode);
+    this.options.callbacks?.onPermissionModeChange?.(mode);
   }
 
   /**
