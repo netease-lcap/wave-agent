@@ -101,6 +101,31 @@ describe("Confirmation", () => {
       const frame = lastFrame();
       expect(frame).toContain("Use ↑↓ or 1-3 to navigate • ESC to cancel");
     });
+
+    it("should show correct auto-accept text for Bash without repeating command", async () => {
+      const { lastFrame } = render(
+        <Confirmation
+          toolName="Bash"
+          toolInput={{ command: "ls -la" }}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
+        />,
+      );
+
+      await waitForText(
+        lastFrame,
+        "2. Yes, and don't ask again for this command in this workdir",
+      );
+
+      const frame = lastFrame();
+      expect(frame).toContain(
+        "2. Yes, and don't ask again for this command in this workdir",
+      );
+      expect(frame).not.toContain(
+        "2. Yes, and don't ask again for ls -la commands in this workdir",
+      );
+    });
   });
 
   describe("User Interaction Tests", () => {
