@@ -1,6 +1,6 @@
 {
   "name": "wave-agent-sdk",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "SDK for building AI-powered development tools and agents",
   "keywords": [
     "ai",
@@ -42,7 +42,7 @@
     "vitest": "^3.2.4"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22.0.0"
   },
   "license": "MIT"
 }

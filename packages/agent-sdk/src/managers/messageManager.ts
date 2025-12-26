@@ -41,6 +41,8 @@ export interface MessageManagerCallbacks {
   onAssistantMessageAdded?: () => void;
   // NEW: Streaming content callback - FR-001: receives chunk and accumulated content
   onAssistantContentUpdated?: (chunk: string, accumulated: string) => void;
+  // NEW: Streaming reasoning callback
+  onAssistantReasoningUpdated?: (chunk: string, accumulated: string) => void;
   onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
   onErrorBlockAdded?: (error: string) => void;
   onCompressBlockAdded?: (insertIndex: number, content: string) => void;
@@ -286,11 +288,13 @@ export class MessageManager {
     content?: string,
     toolCalls?: ChatCompletionMessageFunctionToolCall[],
     usage?: Usage,
-    metadata?: Record<string, unknown>,
+    additionalFields?: Record<string, unknown>,
   ): void {
-    const metadataRecord = metadata
+    const additionalFieldsRecord = additionalFields
       ? Object.fromEntries(
-          Object.entries(metadata).filter(([, value]) => value !== undefined),
+          Object.entries(additionalFields).filter(
+            ([, value]) => value !== undefined,
+          ),
         )
       : undefined;
 
@@ -299,7 +303,7 @@ export class MessageManager {
       content,
       toolCalls,
       usage,
-      metadataRecord,
+      additionalFieldsRecord,
     );
     this.setMessages(newMessages);
     this.callbacks.onAssistantMessageAdded?.();
@@ -307,8 +311,10 @@ export class MessageManager {
     // Note: Subagent-specific callbacks are now handled by SubagentManager
   }
 
-  public mergeAssistantMetadata(metadata: Record<string, unknown>): void {
-    if (!metadata || Object.keys(metadata).length === 0) {
+  public mergeAssistantAdditionalFields(
+    additionalFields: Record<string, unknown>,
+  ): void {
+    if (!additionalFields || Object.keys(additionalFields).length === 0) {
       return;
     }
 
@@ -316,22 +322,22 @@ export class MessageManager {
     for (let i = newMessages.length - 1; i >= 0; i--) {
       const message = newMessages[i];
       if (message.role === "assistant") {
-        const mergedMetadata = {
-          ...(message.metadata || {}),
+        const mergedAdditionalFields = {
+          ...(message.additionalFields || {}),
         } as Record<string, unknown>;
 
-        for (const [key, value] of Object.entries(metadata)) {
+        for (const [key, value] of Object.entries(additionalFields)) {
           if (value === undefined) {
             continue;
           }
-          mergedMetadata[key] = value;
+          mergedAdditionalFields[key] = value;
         }
 
-        if (Object.keys(mergedMetadata).length === 0) {
+        if (Object.keys(mergedAdditionalFields).length === 0) {
           return;
         }
 
-        message.metadata = mergedMetadata;
+        message.additionalFields = mergedAdditionalFields;
         this.setMessages(newMessages);
         return;
       }
@@ -554,7 +560,7 @@ export class MessageManager {
       };
     } else {
       // Add new text block if none exists
-      lastMessage.blocks.unshift({
+      lastMessage.blocks.push({
         type: "text",
         content: newAccumulatedContent,
       });
@@ -564,6 +570,56 @@ export class MessageManager {
     this.callbacks.onAssistantContentUpdated?.(chunk, newAccumulatedContent);
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
+
+    this.callbacks.onMessagesChange?.([...this.messages]); // Still need to notify of changes
+  }
+
+  /**
+   * Update the current assistant message reasoning during streaming
+   * This method updates the last assistant message's reasoning content without creating a new message
+   */
+  public updateCurrentMessageReasoning(newAccumulatedReasoning: string): void {
+    if (this.messages.length === 0) return;
+
+    const lastMessage = this.messages[this.messages.length - 1];
+    if (lastMessage.role !== "assistant") return;
+
+    // Get the current reasoning content to calculate the chunk
+    const reasoningBlockIndex = lastMessage.blocks.findIndex(
+      (block) => block.type === "reasoning",
+    );
+    const currentReasoning =
+      reasoningBlockIndex >= 0
+        ? (
+            lastMessage.blocks[reasoningBlockIndex] as {
+              type: "reasoning";
+              content: string;
+            }
+          ).content || ""
+        : "";
+
+    // Calculate the chunk (new content since last update)
+    const chunk = newAccumulatedReasoning.slice(currentReasoning.length);
+
+    if (reasoningBlockIndex >= 0) {
+      // Update existing reasoning block
+      lastMessage.blocks[reasoningBlockIndex] = {
+        type: "reasoning",
+        content: newAccumulatedReasoning,
+      };
+    } else {
+      // Add new reasoning block if none exists
+      lastMessage.blocks.push({
+        type: "reasoning",
+        content: newAccumulatedReasoning,
+      });
+    }
+
+    // Trigger callbacks with chunk and accumulated reasoning content
+    this.callbacks.onAssistantReasoningUpdated?.(
+      chunk,
+      newAccumulatedReasoning,
+    );
 
     this.callbacks.onMessagesChange?.([...this.messages]); // Still need to notify of changes
   }

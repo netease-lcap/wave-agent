@@ -181,7 +181,7 @@ export const multiEditTool: ToolPlugin = {
           return {
             success: false,
             content: "",
-            error: `Edit operation ${i + 1}: old_string not found in current content: "${edit.old_string}"`,
+            error: `Edit operation ${i + 1}: old_string not found in current content`,
           };
         }
 

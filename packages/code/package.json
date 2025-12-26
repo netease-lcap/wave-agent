@@ -1,6 +1,6 @@
 {
   "name": "wave-code",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "CLI-based code assistant powered by AI, built with React and Ink",
   "keywords": [
     "ai",
@@ -60,7 +60,7 @@
     "react": ">=18.0.0"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=22.0.0"
   },
   "license": "MIT"
 }

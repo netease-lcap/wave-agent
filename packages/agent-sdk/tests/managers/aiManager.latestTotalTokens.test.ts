@@ -56,7 +56,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
       addAssistantMessage: vi.fn(),
       updateCurrentMessageContent: vi.fn(),
       updateToolBlock: vi.fn(),
-      mergeAssistantMetadata: vi.fn(),
+      mergeAssistantAdditionalFields: vi.fn(),
       setMessages: vi.fn(),
       addErrorBlock: vi.fn(),
       setlatestTotalTokens: vi.fn(),

@@ -18,6 +18,11 @@ export default defineConfig(() => {
       exclude: ["node_modules", "dist"],
       // Enable retry in CI environment: failed tests will retry up to 2 times
       retry: isCI ? 2 : 0,
+      reporters: ["dot"],
+      env: {
+        AIGW_TOKEN: "test-token",
+        AIGW_URL: "http://localhost:8080",
+      },
     },
     resolve: {
       alias: {

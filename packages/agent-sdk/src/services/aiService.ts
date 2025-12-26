@@ -22,6 +22,41 @@ import * as fs from "fs";
 import * as path from "path";
 
 /**
+ * Interface for debug data saved during 400 errors
+ */
+interface DebugData {
+  originalMessages: ChatCompletionMessageParam[];
+  timestamp: string;
+  model: string;
+  workdir: string;
+  sessionId?: string;
+  gatewayConfig: {
+    baseURL?: string;
+    defaultHeaders?: Record<string, string>;
+  };
+  processedMessages?: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+  createParams?:
+    | ChatCompletionCreateParamsNonStreaming
+    | ChatCompletionCreateParamsStreaming;
+  tools?: ChatCompletionFunctionTool[];
+}
+
+/**
+ * Interface for error data saved during 400 errors
+ */
+interface ErrorData {
+  error: {
+    message?: string;
+    status?: number;
+    type?: string;
+    code?: string;
+    body?: unknown;
+    stack?: string;
+  };
+  timestamp: string;
+}
+
+/**
  * Use parametersChunk as compact param for better performance
  * Instead of parsing JSON, we use the raw chunk for efficient streaming
  */
@@ -95,7 +130,6 @@ export interface CallAgentOptions {
   tools?: ChatCompletionFunctionTool[]; // Tool configuration
   model?: string; // Custom model
   systemPrompt?: string; // Custom system prompt
-
   // NEW: Streaming callbacks
   onContentUpdate?: (content: string) => void;
   onToolUpdate?: (toolCall: {
@@ -105,11 +139,13 @@ export interface CallAgentOptions {
     parametersChunk?: string;
     stage?: "start" | "streaming" | "running" | "end";
   }) => void;
+  onReasoningUpdate?: (content: string) => void;
 }
 
 export interface CallAgentResult {
   content?: string;
   tool_calls?: ChatCompletionMessageToolCall[];
+  reasoning_content?: string;
   usage?: ClaudeUsage;
   finish_reason?:
     | "stop"
@@ -119,7 +155,44 @@ export interface CallAgentResult {
     | "function_call"
     | null;
   response_headers?: Record<string, string>;
-  metadata?: Record<string, unknown>;
+  additionalFields?: Record<string, unknown>;
+}
+
+let nextCallTime = 0;
+const MIN_INTERVAL = process.env.NODE_ENV === "test" ? 0 : 2000; // 0.5 QPS = 1 request per 2 seconds
+
+/**
+ * Wait for rate limit if necessary
+ * @param abortSignal Optional abort signal to cancel waiting
+ */
+async function waitRateLimit(abortSignal?: AbortSignal): Promise<void> {
+  if (abortSignal?.aborted) {
+    const error = new Error("Request was aborted");
+    error.name = "AbortError";
+    throw error;
+  }
+
+  const now = Date.now();
+  const waitTime = Math.max(0, nextCallTime - now);
+  nextCallTime = Math.max(now, nextCallTime) + MIN_INTERVAL;
+
+  if (waitTime > 0) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        abortSignal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, waitTime);
+
+      const onAbort = () => {
+        clearTimeout(timeout);
+        const error = new Error("Request was aborted");
+        error.name = "AbortError";
+        reject(error);
+      };
+
+      abortSignal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
 }
 
 export async function callAgent(
@@ -137,9 +210,22 @@ export async function callAgent(
     systemPrompt,
     onContentUpdate,
     onToolUpdate,
+    onReasoningUpdate,
   } = options;
 
+  // Declare variables outside try block for error handling access
+  let openaiMessages:
+    | OpenAI.Chat.Completions.ChatCompletionMessageParam[]
+    | undefined;
+  let createParams:
+    | ChatCompletionCreateParamsNonStreaming
+    | ChatCompletionCreateParamsStreaming
+    | undefined;
+  let processedTools: ChatCompletionFunctionTool[] | undefined;
+
   try {
+    await waitRateLimit(abortSignal);
+
     // Create OpenAI client with injected configuration
     const openai = new OpenAI({
       apiKey: gatewayConfig.apiKey,
@@ -185,15 +271,12 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     };
 
     // ChatCompletionMessageParam[] is already in OpenAI format, add system prompt to the beginning
-    let openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      systemMessage,
-      ...messages,
-    ];
+    openaiMessages = [systemMessage, ...messages];
 
     // Apply cache control for Claude models
     const currentModel = model || modelConfig.agentModel;
 
-    let processedTools = tools;
+    processedTools = tools;
 
     if (isClaudeModel(currentModel)) {
       openaiMessages = transformMessagesForClaudeCache(
@@ -213,10 +296,14 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     });
 
     // Determine if streaming is needed
-    const isStreaming = !!(onContentUpdate || onToolUpdate);
+    const isStreaming = !!(
+      onContentUpdate ||
+      onToolUpdate ||
+      onReasoningUpdate
+    );
 
     // Prepare API call parameters
-    const createParams = {
+    createParams = {
       ...openaiModelConfig,
       messages: openaiMessages,
       stream: isStreaming,
@@ -247,6 +334,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
         stream,
         onContentUpdate,
         onToolUpdate,
+        onReasoningUpdate,
         abortSignal,
         responseHeaders,
         currentModel,
@@ -291,11 +379,24 @@ Today's date: ${new Date().toISOString().split("T")[0]}
         const {
           content: finalContent,
           tool_calls: finalToolCalls,
+          reasoning_content: finalReasoningContent,
           ...otherFields
-        } = finalMessage;
+        } = finalMessage as unknown as {
+          content?: string;
+          tool_calls?: ChatCompletionMessageToolCall[];
+          reasoning_content?: string;
+          [key: string]: unknown;
+        };
 
         if (typeof finalContent === "string" && finalContent.length > 0) {
           result.content = finalContent;
+        }
+
+        if (
+          typeof finalReasoningContent === "string" &&
+          finalReasoningContent.length > 0
+        ) {
+          result.reasoning_content = finalReasoningContent;
         }
 
         if (Array.isArray(finalToolCalls) && finalToolCalls.length > 0) {
@@ -303,14 +404,14 @@ Today's date: ${new Date().toISOString().split("T")[0]}
         }
 
         if (Object.keys(otherFields).length > 0) {
-          const metadata: Record<string, unknown> = {};
+          const additionalFields: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(otherFields)) {
             if (value !== undefined && key !== "role") {
-              metadata[key] = value;
+              additionalFields[key] = value;
             }
           }
-          if (Object.keys(metadata).length > 0) {
-            result.metadata = metadata;
+          if (Object.keys(additionalFields).length > 0) {
+            result.additionalFields = additionalFields;
           }
         }
       }
@@ -333,6 +434,98 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     if ((error as Error).name === "AbortError") {
       throw new Error("Request was aborted");
     }
+
+    // Check if it's a 400 error and save messages to temp directory
+    if (
+      error &&
+      typeof error === "object" &&
+      "status" in error &&
+      error.status === 400
+    ) {
+      try {
+        // Create temp directory for error debugging
+        const tempDir = fs.mkdtempSync(
+          path.join(os.tmpdir(), "callAgent-400-error-"),
+        );
+        const messagesFile = path.join(tempDir, "messages.json");
+        const errorFile = path.join(tempDir, "error.json");
+
+        // Save complete messages to temp file
+        const debugData: DebugData = {
+          originalMessages: messages,
+          timestamp: new Date().toISOString(),
+          model: model || modelConfig.agentModel,
+          workdir,
+          sessionId: options.sessionId,
+          gatewayConfig: {
+            baseURL: gatewayConfig.baseURL,
+            // Don't include apiKey for security
+            defaultHeaders: gatewayConfig.defaultHeaders,
+          },
+        };
+
+        // Add processed messages if they exist
+        if (typeof openaiMessages !== "undefined") {
+          debugData.processedMessages = openaiMessages;
+        }
+
+        // Add create params if they exist
+        if (typeof createParams !== "undefined") {
+          debugData.createParams = createParams;
+        }
+
+        // Add tools if they exist
+        if (processedTools) {
+          debugData.tools = processedTools;
+        }
+
+        fs.writeFileSync(messagesFile, JSON.stringify(debugData, null, 2));
+
+        // Save error details
+        const errorData: ErrorData = {
+          error: {
+            message:
+              error && typeof error === "object" && "message" in error
+                ? String(error.message)
+                : undefined,
+            status:
+              error && typeof error === "object" && "status" in error
+                ? Number(error.status)
+                : undefined,
+            type:
+              error && typeof error === "object" && "type" in error
+                ? String(error.type)
+                : undefined,
+            code:
+              error && typeof error === "object" && "code" in error
+                ? String(error.code)
+                : undefined,
+            body:
+              error && typeof error === "object" && "body" in error
+                ? error.body
+                : undefined,
+            stack:
+              error && typeof error === "object" && "stack" in error
+                ? String(error.stack)
+                : undefined,
+          },
+          timestamp: new Date().toISOString(),
+        };
+
+        fs.writeFileSync(errorFile, JSON.stringify(errorData, null, 2));
+
+        logger.error(
+          "callAgent 400 error occurred. Debug files saved to:",
+          tempDir,
+        );
+        logger.error("Messages file:", messagesFile);
+        logger.error("Error file:", errorFile);
+        logger.error("Error details:", error);
+      } catch (saveError) {
+        logger.error("Failed to save 400 error debug files:", saveError);
+      }
+    }
+
     logger.error("Failed to call OpenAI:", error);
     throw error;
   }
@@ -358,11 +551,13 @@ async function processStreamingResponse(
     parametersChunk?: string;
     stage?: "start" | "streaming" | "running" | "end";
   }) => void,
+  onReasoningUpdate?: (content: string) => void,
   abortSignal?: AbortSignal,
   responseHeaders?: Record<string, string>,
   modelName?: string,
 ): Promise<CallAgentResult> {
   let accumulatedContent = "";
+  let accumulatedReasoningContent = "";
   const toolCalls: {
     id: string;
     type: "function";
@@ -415,10 +610,12 @@ async function processStreamingResponse(
       const {
         content,
         tool_calls: toolCallUpdates,
+        reasoning_content,
         ...deltaMetadata
       } = delta as unknown as {
         content?: string;
         tool_calls?: ChatCompletionChunk.Choice.Delta.ToolCall[];
+        reasoning_content?: string;
         [key: string]: unknown;
       };
 
@@ -432,6 +629,16 @@ async function processStreamingResponse(
         accumulatedContent += content;
         if (onContentUpdate) {
           onContentUpdate(accumulatedContent);
+        }
+      }
+
+      if (
+        typeof reasoning_content === "string" &&
+        reasoning_content.length > 0
+      ) {
+        accumulatedReasoningContent += reasoning_content;
+        if (onReasoningUpdate) {
+          onReasoningUpdate(accumulatedReasoningContent);
         }
       }
 
@@ -523,6 +730,10 @@ async function processStreamingResponse(
     result.content = accumulatedContent.trim();
   }
 
+  if (accumulatedReasoningContent) {
+    result.reasoning_content = accumulatedReasoningContent.trim();
+  }
+
   if (toolCalls.length > 0) {
     result.tool_calls = toolCalls;
   }
@@ -540,14 +751,14 @@ async function processStreamingResponse(
   }
 
   if (Object.keys(additionalDeltaFields).length > 0) {
-    result.metadata = {};
+    result.additionalFields = {};
     for (const [key, value] of Object.entries(additionalDeltaFields)) {
       if (value !== undefined && key !== "role") {
-        result.metadata[key] = value;
+        result.additionalFields[key] = value;
       }
     }
-    if (Object.keys(result.metadata).length === 0) {
-      delete result.metadata;
+    if (Object.keys(result.additionalFields).length === 0) {
+      delete result.additionalFields;
     }
   }
 
@@ -593,6 +804,7 @@ export async function compressMessages(
   });
 
   try {
+    await waitRateLimit(abortSignal);
     const response = await openai.chat.completions.create(
       {
         ...openaiModelConfig,

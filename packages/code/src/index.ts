@@ -70,7 +70,6 @@ export async function main() {
       const lastSessions = sessions.slice(0, 5);
 
       for (const session of lastSessions) {
-        const startedAt = new Date(session.lastActiveAt).toLocaleString();
         const lastActiveAt = new Date(session.lastActiveAt).toLocaleString();
         const filePath = await getSessionFilePath(session.id, session.workdir);
 
@@ -90,7 +89,6 @@ export async function main() {
         console.log(`ID: ${session.id}`);
         console.log(`  Workdir: ${session.workdir}`);
         console.log(`  File Path: ${filePath}`);
-        console.log(`  Started: ${startedAt}`);
         console.log(`  Last Active: ${lastActiveAt}`);
         console.log(`  Last Message Tokens: ${session.latestTotalTokens}`);
         console.log(`  First Message: ${truncatedContent}`);

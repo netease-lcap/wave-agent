@@ -10,6 +10,7 @@ import {
 } from "./managers/subagentManager.js";
 import * as memory from "./services/memory.js";
 import { McpManager, type McpManagerCallbacks } from "./managers/mcpManager.js";
+import { LspManager } from "./managers/lspManager.js";
 import { BashManager } from "./managers/bashManager.js";
 import {
   BackgroundBashManager,
@@ -17,7 +18,11 @@ import {
 } from "./managers/backgroundBashManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
-import type { SlashCommand, CustomSlashCommand } from "./types/index.js";
+import type {
+  SlashCommand,
+  CustomSlashCommand,
+  ILspManager,
+} from "./types/index.js";
 import type {
   Message,
   Logger,
@@ -76,6 +81,8 @@ export interface AgentOptions {
   canUseTool?: PermissionCallback;
   /**Whether to use streaming mode for AI responses - defaults to true */
   stream?: boolean;
+  /**Optional custom LSP manager - if not provided, a standalone one will be created */
+  lspManager?: ILspManager;
 }
 
 export interface AgentCallbacks
@@ -93,6 +100,7 @@ export class Agent {
   private logger?: Logger; // Add optional logger property
   private toolManager: ToolManager; // Add tool registry instance
   private mcpManager: McpManager; // Add MCP manager instance
+  private lspManager: ILspManager; // Add LSP manager instance
   private permissionManager: PermissionManager; // Add permission manager instance
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
@@ -133,6 +141,39 @@ export class Agent {
   }
 
   /**
+   * Update agent configuration dynamically
+   *
+   * @param config - Configuration updates for gateway, model, and token limit
+   */
+  public updateConfig(config: {
+    gateway?: Partial<GatewayConfig>;
+    model?: Partial<ModelConfig>;
+    tokenLimit?: number;
+  }): void {
+    if (config.gateway) {
+      this.options.apiKey = config.gateway.apiKey ?? this.options.apiKey;
+      this.options.baseURL = config.gateway.baseURL ?? this.options.baseURL;
+      this.options.defaultHeaders =
+        config.gateway.defaultHeaders ?? this.options.defaultHeaders;
+      this.options.fetchOptions =
+        config.gateway.fetchOptions ?? this.options.fetchOptions;
+    }
+
+    if (config.model) {
+      this.options.agentModel =
+        config.model.agentModel ?? this.options.agentModel;
+      this.options.fastModel = config.model.fastModel ?? this.options.fastModel;
+    }
+
+    if (config.tokenLimit !== undefined) {
+      this.options.tokenLimit = config.tokenLimit;
+    }
+
+    // Re-validate configuration after update
+    this.resolveAndValidateConfig();
+  }
+
+  /**
    * Agent constructor - handles configuration resolution and validation
    *
    * IMPORTANT: This constructor is private. Use Agent.create() instead for proper
@@ -156,34 +197,9 @@ export class Agent {
     // Initialize configuration service
     this.configurationService = new ConfigurationService();
 
-    // Resolve configuration from constructor args and environment variables
-    const gatewayConfig = this.configurationService.resolveGatewayConfig(
-      options.apiKey,
-      options.baseURL,
-      options.defaultHeaders,
-    );
-    const modelConfig = this.configurationService.resolveModelConfig(
-      options.agentModel,
-      options.fastModel,
-    );
-    const tokenLimit = this.configurationService.resolveTokenLimit(
-      options.tokenLimit,
-    );
-
-    // Validate resolved configuration
-    configValidator.validateGatewayConfig(gatewayConfig);
-    configValidator.validateTokenLimit(tokenLimit);
-    configValidator.validateModelConfig(
-      modelConfig.agentModel,
-      modelConfig.fastModel,
-    );
-
     this.logger = logger; // Save the passed logger
     this.systemPrompt = systemPrompt; // Save custom system prompt
     this.stream = stream; // Save streaming mode flag
-
-    // Set global logger for SDK-wide access
-    setGlobalLogger(logger || null);
 
     // Store options for dynamic configuration resolution
     this.options = options;
@@ -193,6 +209,8 @@ export class Agent {
       workdir: this.workdir,
     });
     this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
+    this.lspManager =
+      options.lspManager || new LspManager({ logger: this.logger }); // Initialize LSP manager
 
     // Initialize permission manager
     this.permissionManager = new PermissionManager({ logger: this.logger });
@@ -241,6 +259,7 @@ export class Agent {
     // Initialize tool manager with permission context
     this.toolManager = new ToolManager({
       mcpManager: this.mcpManager,
+      lspManager: this.lspManager,
       logger: this.logger,
       permissionManager: this.permissionManager,
       permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
@@ -265,6 +284,8 @@ export class Agent {
           callbacks.onSubagentAssistantMessageAdded,
         onSubagentAssistantContentUpdated:
           callbacks.onSubagentAssistantContentUpdated,
+        onSubagentAssistantReasoningUpdated:
+          callbacks.onSubagentAssistantReasoningUpdated,
         onSubagentToolBlockUpdated: callbacks.onSubagentToolBlockUpdated,
         onSubagentMessagesChange: callbacks.onSubagentMessagesChange,
       }, // Pass subagent callbacks for forwarding
@@ -458,7 +479,7 @@ export class Agent {
    * ```
    */
   static async create(options: AgentOptions): Promise<Agent> {
-    // Create Agent instance - configuration resolution and validation now happens in constructor
+    // Create Agent instance
     const instance = new Agent(options);
     await instance.initialize({
       restoreSessionId: options.restoreSessionId,
@@ -466,6 +487,27 @@ export class Agent {
       messages: options.messages,
     });
     return instance;
+  }
+
+  /**
+   * Resolve and validate configuration from constructor args, environment variables,
+   * and loaded settings.json.
+   *
+   * This is called during initialization after settings.json has been loaded.
+   */
+  private resolveAndValidateConfig(): void {
+    // Resolve configuration from constructor args and environment variables (including settings.json)
+    const gatewayConfig = this.getGatewayConfig();
+    const modelConfig = this.getModelConfig();
+    const tokenLimit = this.getTokenLimit();
+
+    // Validate resolved configuration
+    configValidator.validateGatewayConfig(gatewayConfig);
+    configValidator.validateTokenLimit(tokenLimit);
+    configValidator.validateModelConfig(
+      modelConfig.agentModel,
+      modelConfig.fastModel,
+    );
   }
 
   /** Private initialization method, handles async initialization logic */
@@ -499,6 +541,9 @@ export class Agent {
     // Initialize MCP servers with auto-connect
     try {
       await this.mcpManager.initialize(this.workdir, true);
+      if (this.lspManager instanceof LspManager) {
+        await this.lspManager.initialize(this.workdir);
+      }
     } catch (error) {
       this.logger?.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
@@ -510,6 +555,7 @@ export class Agent {
       this.logger?.debug("Loading hooks configuration...");
       const configResult =
         await this.configurationService.loadMergedConfiguration(this.workdir);
+
       this.hookManager.loadConfigurationFromWaveConfig(
         configResult.configuration,
       );
@@ -518,6 +564,12 @@ export class Agent {
       this.logger?.error("Failed to initialize hooks system:", error);
       // Don't throw error to prevent app startup failure
     }
+
+    // Resolve and validate configuration after loading settings.json
+    this.resolveAndValidateConfig();
+
+    // Set global logger for SDK-wide access after validation
+    setGlobalLogger(this.logger || null);
 
     // Initialize live configuration reload
     try {
@@ -781,6 +833,10 @@ export class Agent {
     this.backgroundBashManager.cleanup();
     // Cleanup MCP connections
     await this.mcpManager.cleanup();
+    // Cleanup LSP connections
+    if (this.lspManager instanceof LspManager) {
+      await this.lspManager.cleanup();
+    }
     // Cleanup subagent manager
     this.subagentManager.cleanup();
     // Cleanup live configuration reload

@@ -352,7 +352,7 @@ describe("Command Output Message Operations", () => {
 
       expect(result).toHaveLength(2);
       expect(result[1]).toEqual({
-        role: "assistant",
+        role: "user",
         blocks: [
           {
             type: "command_output",
@@ -375,7 +375,7 @@ describe("Command Output Message Operations", () => {
 
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
-        role: "assistant",
+        role: "user",
         blocks: [
           {
             type: "command_output",
@@ -411,7 +411,7 @@ describe("Command Output Message Operations", () => {
     it("should update output in the correct command block", () => {
       const initialMessages: Message[] = [
         {
-          role: "assistant",
+          role: "user",
           blocks: [
             {
               type: "command_output",
@@ -442,7 +442,7 @@ describe("Command Output Message Operations", () => {
     it("should update the correct command when multiple commands exist", () => {
       const initialMessages: Message[] = [
         {
-          role: "assistant",
+          role: "user",
           blocks: [
             {
               type: "command_output",
@@ -454,7 +454,7 @@ describe("Command Output Message Operations", () => {
           ],
         },
         {
-          role: "assistant",
+          role: "user",
           blocks: [
             {
               type: "command_output",
@@ -491,7 +491,7 @@ describe("Command Output Message Operations", () => {
     it("should trim the output", () => {
       const initialMessages: Message[] = [
         {
-          role: "assistant",
+          role: "user",
           blocks: [
             {
               type: "command_output",
@@ -518,7 +518,7 @@ describe("Command Output Message Operations", () => {
     it("should not update if no matching running command is found", () => {
       const initialMessages: Message[] = [
         {
-          role: "assistant",
+          role: "user",
           blocks: [
             {
               type: "command_output",
@@ -549,7 +549,7 @@ describe("Command Output Message Operations", () => {
     it("should mark command as completed with exit code", () => {
       const initialMessages: Message[] = [
         {
-          role: "assistant",
+          role: "user",
           blocks: [
             {
               type: "command_output",
@@ -580,7 +580,7 @@ describe("Command Output Message Operations", () => {
     it("should handle error exit codes", () => {
       const initialMessages: Message[] = [
         {
-          role: "assistant",
+          role: "user",
           blocks: [
             {
               type: "command_output",
@@ -608,7 +608,7 @@ describe("Command Output Message Operations", () => {
     it("should complete the correct command when multiple commands exist", () => {
       const initialMessages: Message[] = [
         {
-          role: "assistant",
+          role: "user",
           blocks: [
             {
               type: "command_output",
@@ -620,7 +620,7 @@ describe("Command Output Message Operations", () => {
           ],
         },
         {
-          role: "assistant",
+          role: "user",
           blocks: [
             {
               type: "command_output",
@@ -657,7 +657,7 @@ describe("Command Output Message Operations", () => {
     it("should not modify if no matching running command is found", () => {
       const initialMessages: Message[] = [
         {
-          role: "assistant",
+          role: "user",
           blocks: [
             {
               type: "command_output",

@@ -36,6 +36,12 @@ export interface SubagentManagerCallbacks {
     chunk: string,
     accumulated: string,
   ) => void;
+  /** Triggered during subagent reasoning streaming updates */
+  onSubagentAssistantReasoningUpdated?: (
+    subagentId: string,
+    chunk: string,
+    accumulated: string,
+  ) => void;
   /** Triggered when subagent tool block is updated */
   onSubagentToolBlockUpdated?: (
     subagentId: string,
@@ -179,6 +185,7 @@ export class SubagentManager {
       logger: this.logger,
       workdir: this.workdir,
       systemPrompt: configuration.systemPrompt,
+      defaultHeaders: configuration.defaultHeaders,
       subagentType: parameters.subagent_type, // Pass subagent type for hook context
       hookManager: this.hookManager,
       getGatewayConfig: this.getGatewayConfig,
@@ -476,6 +483,7 @@ export class SubagentManager {
           logger: this.logger,
           workdir: this.workdir,
           systemPrompt: configuration.systemPrompt,
+          defaultHeaders: configuration.defaultHeaders,
           subagentType: configuration.name, // Use configuration name as subagent type for restored instances
           hookManager: this.hookManager,
           getGatewayConfig: this.getGatewayConfig,
@@ -540,6 +548,16 @@ export class SubagentManager {
         // Forward assistant content updates to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentAssistantContentUpdated) {
           this.callbacks.onSubagentAssistantContentUpdated(
+            subagentId,
+            chunk,
+            accumulated,
+          );
+        }
+      },
+      onAssistantReasoningUpdated: (chunk: string, accumulated: string) => {
+        // Forward assistant reasoning updates to parent via SubagentManager callbacks
+        if (this.callbacks?.onSubagentAssistantReasoningUpdated) {
+          this.callbacks.onSubagentAssistantReasoningUpdated(
             subagentId,
             chunk,
             accumulated,

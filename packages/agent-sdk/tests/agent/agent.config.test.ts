@@ -313,4 +313,102 @@ describe("Agent Configuration", () => {
       expect(agent).toBeDefined();
     });
   });
+
+  describe("Dynamic Configuration Update", () => {
+    beforeEach(() => {
+      // Provide required gateway config
+      process.env.AIGW_TOKEN = "test-api-key";
+      process.env.AIGW_URL = "https://test-gateway.com/api";
+    });
+
+    it("should update gateway configuration", async () => {
+      const agent = await Agent.create({
+        apiKey: "initial-api-key",
+        baseURL: "https://initial-gateway.com/api",
+      });
+
+      expect(agent.getGatewayConfig().apiKey).toBe("initial-api-key");
+      expect(agent.getGatewayConfig().baseURL).toBe(
+        "https://initial-gateway.com/api",
+      );
+
+      agent.updateConfig({
+        gateway: {
+          apiKey: "updated-api-key",
+          baseURL: "https://updated-gateway.com/api",
+        },
+      });
+
+      expect(agent.getGatewayConfig().apiKey).toBe("updated-api-key");
+      expect(agent.getGatewayConfig().baseURL).toBe(
+        "https://updated-gateway.com/api",
+      );
+    });
+
+    it("should update model configuration", async () => {
+      const agent = await Agent.create({
+        agentModel: "initial-agent-model",
+        fastModel: "initial-fast-model",
+      });
+
+      expect(agent.getModelConfig().agentModel).toBe("initial-agent-model");
+      expect(agent.getModelConfig().fastModel).toBe("initial-fast-model");
+
+      agent.updateConfig({
+        model: {
+          agentModel: "updated-agent-model",
+          fastModel: "updated-fast-model",
+        },
+      });
+
+      expect(agent.getModelConfig().agentModel).toBe("updated-agent-model");
+      expect(agent.getModelConfig().fastModel).toBe("updated-fast-model");
+    });
+
+    it("should update token limit", async () => {
+      const agent = await Agent.create({
+        tokenLimit: 1000,
+      });
+
+      expect(agent.getTokenLimit()).toBe(1000);
+
+      agent.updateConfig({
+        tokenLimit: 2000,
+      });
+
+      expect(agent.getTokenLimit()).toBe(2000);
+    });
+
+    it("should partially update gateway configuration", async () => {
+      const agent = await Agent.create({
+        apiKey: "initial-api-key",
+        baseURL: "https://initial-gateway.com/api",
+      });
+
+      agent.updateConfig({
+        gateway: {
+          apiKey: "updated-api-key",
+        },
+      });
+
+      expect(agent.getGatewayConfig().apiKey).toBe("updated-api-key");
+      expect(agent.getGatewayConfig().baseURL).toBe(
+        "https://initial-gateway.com/api",
+      );
+    });
+
+    it("should validate configuration after update", async () => {
+      const agent = await Agent.create({
+        apiKey: "initial-api-key",
+        baseURL: "https://initial-gateway.com/api",
+      });
+
+      // Updating with invalid token limit should throw
+      expect(() => {
+        agent.updateConfig({
+          tokenLimit: -1,
+        });
+      }).toThrow(/positive/);
+    });
+  });
 });

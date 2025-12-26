@@ -45,14 +45,31 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
   }
 
   let agent: Agent;
+  let isReasoning = false;
+  let isContent = false;
+  const subagentReasoningStates = new Map<string, boolean>();
+  const subagentContentStates = new Map<string, boolean>();
 
   // Setup callbacks for agent
   const callbacks: AgentCallbacks = {
     onAssistantMessageAdded: () => {
+      isReasoning = false;
+      isContent = false;
       // Assistant message started - no content to output yet
       process.stdout.write("\n");
     },
+    onAssistantReasoningUpdated: (chunk: string) => {
+      if (!isReasoning) {
+        process.stdout.write("💭 Reasoning:\n");
+        isReasoning = true;
+      }
+      process.stdout.write(chunk);
+    },
     onAssistantContentUpdated: (chunk: string) => {
+      if (isReasoning && !isContent) {
+        process.stdout.write("\n\n📝 Response:\n");
+        isContent = true;
+      }
       // FR-001: Stream content updates for real-time display - output only the new chunk
       process.stdout.write(chunk);
     },
@@ -89,11 +106,30 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       process.stdout.write(`   ${statusIcon} Subagent status: ${status}\n`);
     },
     // Subagent message callbacks
-    onSubagentAssistantMessageAdded: () => {
+    onSubagentAssistantMessageAdded: (subagentId: string) => {
+      subagentReasoningStates.set(subagentId, false);
+      subagentContentStates.set(subagentId, false);
       // Subagent assistant message started - add indentation
       process.stdout.write("\n   ");
     },
-    onSubagentAssistantContentUpdated: (_subagentId: string, chunk: string) => {
+    onSubagentAssistantReasoningUpdated: (
+      subagentId: string,
+      chunk: string,
+    ) => {
+      if (!subagentReasoningStates.get(subagentId)) {
+        process.stdout.write("💭 Reasoning: ");
+        subagentReasoningStates.set(subagentId, true);
+      }
+      process.stdout.write(chunk);
+    },
+    onSubagentAssistantContentUpdated: (subagentId: string, chunk: string) => {
+      if (
+        subagentReasoningStates.get(subagentId) &&
+        !subagentContentStates.get(subagentId)
+      ) {
+        process.stdout.write("\n   📝 Response: ");
+        subagentContentStates.set(subagentId, true);
+      }
       // Stream subagent content with indentation - output only the new chunk
       process.stdout.write(chunk);
     },

@@ -214,7 +214,7 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
             completion_tokens: 15,
             total_tokens: 40,
           },
-          metadata: {
+          additionalFields: {
             model: "gpt-4",
             temperature: 0.7,
           },
@@ -254,7 +254,7 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
         completion_tokens: 15,
         total_tokens: 40,
       });
-      expect(readMessages[1].metadata).toEqual({
+      expect(readMessages[1].additionalFields).toEqual({
         model: "gpt-4",
         temperature: 0.7,
       });

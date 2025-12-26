@@ -173,7 +173,7 @@ export function convertMessagesForAPI(
           role: "assistant",
           content: hasContent ? content : undefined,
           tool_calls,
-          ...(message.metadata ? { ...message.metadata } : {}),
+          ...(message.additionalFields ? { ...message.additionalFields } : {}),
         };
 
         recentMessages.unshift(assistantMessage);

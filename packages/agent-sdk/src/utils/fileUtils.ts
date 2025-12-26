@@ -1,4 +1,5 @@
-import fs from "node:fs";
+import fs from "node:fs/promises";
+import { createReadStream } from "node:fs";
 
 /**
  * Reads the first line of a file efficiently using Node.js readline.
@@ -7,7 +8,6 @@ import fs from "node:fs";
  * @return {Promise<string>} - The first non-empty line of the file, or an empty string otherwise.
  */
 export async function readFirstLine(filePath: string): Promise<string> {
-  const { createReadStream } = fs;
   const { createInterface } = await import("node:readline");
 
   const fileStream = createReadStream(filePath);
@@ -34,32 +34,80 @@ export async function readFirstLine(filePath: string): Promise<string> {
 }
 
 /**
- * Reads a file from the end and returns the first non-empty line.
+ * Reads a file from the end and returns the last non-empty line.
+ *
+ * This version supports files that end with:
+ *   - "\n" (Unix-style, including modern macOS)
+ *   - "\r\n" (Windows-style)
+ *   - "\r" (older Mac-style, HL7, etc.)
  *
  * @param {string} filePath - The path to the file.
+ * @param {number} [minLength=1] - Minimum length for the returned line.
  * @return {Promise<string>} - The last non-empty line of the file, or an empty string if no non-empty lines found.
  */
-export async function getLastLine(filePath: string): Promise<string> {
-  const { exec } = await import("child_process");
-  const { promisify } = await import("util");
-  const execAsync = promisify(exec);
-
+export async function getLastLine(
+  filePath: string,
+  minLength = 1,
+): Promise<string> {
+  let fileHandle;
   try {
-    // Use tail with multiple lines to handle cases where the last line might be empty
-    const { stdout } = await execAsync(`tail -n 3 "${filePath}"`);
-    const lines = stdout.split(/\r?\n/);
+    const stats = await fs.stat(filePath);
+    const fileSize = stats.size;
 
-    // Find the first non-empty line working backwards
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i].trim();
-      if (line.length > 0) {
-        return line;
+    if (fileSize === 0) return "";
+
+    fileHandle = await fs.open(filePath, "r");
+    const bufferSize = 8 * 1024; // 8KB buffer is usually enough for the last line
+    const buffer = Buffer.alloc(bufferSize);
+
+    let lineEnd: number | null = null;
+    let lineStart: number | null = null;
+    let currentPosition = fileSize;
+
+    while (currentPosition > 0 && lineStart === null) {
+      const readSize = Math.min(bufferSize, currentPosition);
+      currentPosition -= readSize;
+
+      const { bytesRead } = await fileHandle.read(
+        buffer,
+        0,
+        readSize,
+        currentPosition,
+      );
+
+      for (let i = bytesRead - 1; i >= 0; i--) {
+        const charCode = buffer[i];
+        if (lineEnd === null) {
+          // Still looking for the end of the last non-empty line (skip trailing newlines and whitespace)
+          if (charCode > 32) {
+            lineEnd = currentPosition + i + 1;
+          }
+        } else {
+          // Looking for the start of the line (the newline before it)
+          if (charCode === 10 || charCode === 13) {
+            lineStart = currentPosition + i + 1;
+            break;
+          }
+        }
       }
     }
 
-    return "";
+    if (lineEnd === null) return "";
+    if (lineStart === null) lineStart = 0;
+
+    const length = lineEnd - lineStart;
+    if (length < minLength) return "";
+
+    const resultBuffer = Buffer.alloc(length);
+    await fileHandle.read(resultBuffer, 0, length, lineStart);
+    const result = resultBuffer.toString("utf8").trim();
+    return result.length >= minLength ? result : "";
   } catch {
-    // If tail fails (e.g., file doesn't exist), return empty string
+    // If reading fails (e.g., file doesn't exist), return empty string
     return "";
+  } finally {
+    if (fileHandle) {
+      await fileHandle.close();
+    }
   }
 }

@@ -41,6 +41,7 @@ export interface AIManagerOptions {
   callbacks?: AIManagerCallbacks;
   workdir: string;
   systemPrompt?: string;
+  defaultHeaders?: Record<string, string>;
   subagentType?: string; // Optional subagent type for hook context
   /**Whether to use streaming mode for AI responses - defaults to true */
   stream?: boolean;
@@ -69,6 +70,7 @@ export class AIManager {
   private hookManager?: HookManager;
   private workdir: string;
   private systemPrompt?: string;
+  private defaultHeaders?: Record<string, string>;
   private subagentType?: string; // Store subagent type for hook context
   private stream: boolean; // Streaming mode flag
   private messageStore: WeakMap<Message, SendAIMessageOptions> = new WeakMap();
@@ -87,6 +89,7 @@ export class AIManager {
     this.logger = options.logger;
     this.workdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
+    this.defaultHeaders = options.defaultHeaders;
     this.subagentType = options.subagentType; // Store subagent type
     this.stream = options.stream ?? true; // Default to true if not specified
     this.callbacks = options.callbacks ?? {};
@@ -100,7 +103,17 @@ export class AIManager {
 
   // Getter methods for accessing dynamic configuration
   public getGatewayConfig(): GatewayConfig {
-    return this.getGatewayConfigFn();
+    const config = this.getGatewayConfigFn();
+    if (this.defaultHeaders) {
+      return {
+        ...config,
+        defaultHeaders: {
+          ...config.defaultHeaders,
+          ...this.defaultHeaders,
+        },
+      };
+    }
+    return config;
   }
 
   public getModelConfig(): ModelConfig {
@@ -368,8 +381,8 @@ export class AIManager {
         this.workdir,
       );
 
-      // Add assistant message first (for streaming updates)
-      this.messageManager.addAssistantMessage();
+      // Track if assistant message has been created
+      let assistantMessageCreated = false;
 
       this.logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
@@ -390,9 +403,20 @@ export class AIManager {
       // Add streaming callbacks only if streaming is enabled
       if (this.stream) {
         callAgentOptions.onContentUpdate = (content: string) => {
+          // Create assistant message on first chunk if not already created
+          if (!assistantMessageCreated) {
+            this.messageManager.addAssistantMessage();
+            assistantMessageCreated = true;
+          }
           this.messageManager.updateCurrentMessageContent(content);
         };
         callAgentOptions.onToolUpdate = (toolCall) => {
+          // Create assistant message on first tool update if not already created
+          if (!assistantMessageCreated) {
+            this.messageManager.addAssistantMessage();
+            assistantMessageCreated = true;
+          }
+
           // Use parametersChunk as compact param for better performance
           // No need to extract params or generate compact params during streaming
 
@@ -406,9 +430,29 @@ export class AIManager {
             stage: toolCall.stage || "streaming", // Default to streaming if stage not provided
           });
         };
+        callAgentOptions.onReasoningUpdate = (reasoning: string) => {
+          // Create assistant message on first reasoning update if not already created
+          if (!assistantMessageCreated) {
+            this.messageManager.addAssistantMessage();
+            assistantMessageCreated = true;
+          }
+          this.messageManager.updateCurrentMessageReasoning(reasoning);
+        };
       }
 
       const result = await callAgent(callAgentOptions);
+      const createdByStreaming = assistantMessageCreated;
+
+      // For non-streaming mode, create assistant message after callAgent returns
+      // Also create if streaming mode but no streaming callbacks were called (e.g., when content comes directly in result)
+      if (
+        !this.stream ||
+        (!assistantMessageCreated &&
+          (result.content || result.tool_calls || result.reasoning_content))
+      ) {
+        this.messageManager.addAssistantMessage();
+        assistantMessageCreated = true;
+      }
 
       // Log finish reason and response headers if available
       if (result.finish_reason) {
@@ -423,12 +467,24 @@ export class AIManager {
         this.logger?.debug("AI response headers:", result.response_headers);
       }
 
-      if (result.metadata && Object.keys(result.metadata).length > 0) {
-        this.messageManager.mergeAssistantMetadata(result.metadata);
+      if (
+        result.additionalFields &&
+        Object.keys(result.additionalFields).length > 0
+      ) {
+        this.messageManager.mergeAssistantAdditionalFields(
+          result.additionalFields,
+        );
+      }
+
+      // Handle result reasoning content from non-streaming mode
+      if (result.reasoning_content && !createdByStreaming) {
+        this.messageManager.updateCurrentMessageReasoning(
+          result.reasoning_content,
+        );
       }
 
       // Handle result content from non-streaming mode
-      if (result.content) {
+      if (result.content && !createdByStreaming) {
         this.messageManager.updateCurrentMessageContent(result.content);
       }
 

@@ -15,7 +15,7 @@ export interface Message {
   role: "user" | "assistant";
   blocks: MessageBlock[];
   usage?: Usage; // Usage data for this message's AI operation (assistant messages only)
-  metadata?: Record<string, unknown>; // Additional metadata from AI responses
+  additionalFields?: Record<string, unknown>; // Additional metadata from AI responses
 }
 
 export type MessageBlock =
@@ -26,7 +26,8 @@ export type MessageBlock =
   | CommandOutputBlock
   | CompressBlock
   | MemoryBlock
-  | SubagentBlock;
+  | SubagentBlock
+  | ReasoningBlock;
 
 export interface TextBlock {
   type: "text";
@@ -100,4 +101,9 @@ export interface SubagentBlock {
   status: "active" | "completed" | "error" | "aborted";
   sessionId: string;
   configuration: SubagentConfiguration;
+}
+
+export interface ReasoningBlock {
+  type: "reasoning";
+  content: string;
 }

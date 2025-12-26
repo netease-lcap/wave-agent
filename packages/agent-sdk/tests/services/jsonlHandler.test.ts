@@ -159,7 +159,7 @@ describe("JsonlHandler.append()", () => {
         completion_tokens: 20,
         total_tokens: 30,
       },
-      metadata: {
+      additionalFields: {
         model: "test-model",
         temperature: 0.7,
       },
@@ -175,7 +175,7 @@ describe("JsonlHandler.append()", () => {
       role: complexMessage.role,
       blocks: complexMessage.blocks,
       usage: complexMessage.usage,
-      metadata: complexMessage.metadata,
+      additionalFields: complexMessage.additionalFields,
     };
     expect(mockAppendFile).toHaveBeenCalledWith(
       "/test/file.jsonl",
@@ -351,7 +351,7 @@ invalid json line
           completion_tokens: 20,
           total_tokens: 30,
         },
-        metadata: {
+        additionalFields: {
           model: "test-model",
           temperature: 0.7,
         },
@@ -366,7 +366,9 @@ invalid json line
       expect(result[0].role).toBe("assistant");
       expect(result[0].blocks).toHaveLength(2);
       expect(result[0].usage).toEqual(complexMessage.usage);
-      expect(result[0].metadata).toEqual(complexMessage.metadata);
+      expect(result[0].additionalFields).toEqual(
+        complexMessage.additionalFields,
+      );
     });
 
     it("should handle messages with minimal properties", async () => {
@@ -385,7 +387,7 @@ invalid json line
       expect(result[0].role).toBe("user");
       expect(result[0].blocks).toHaveLength(1);
       expect(result[0].usage).toBeUndefined();
-      expect(result[0].metadata).toBeUndefined();
+      expect(result[0].additionalFields).toBeUndefined();
     });
 
     it("should handle messages with special characters", async () => {
