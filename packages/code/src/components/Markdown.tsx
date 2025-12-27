@@ -211,6 +211,24 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
           }
           case "code": {
             const t = token as Tokens.Code;
+            if (t.lang !== undefined) {
+              const lines = token.raw.replace(/\n$/, "").split("\n");
+              const opening = lines[0];
+              const closing = lines[lines.length - 1];
+              const content = lines.slice(1, -1).join("\n");
+              return (
+                <Box
+                  key={index}
+                  flexDirection="column"
+                  paddingX={1}
+                  marginBottom={1}
+                >
+                  <Text color="gray">{opening}</Text>
+                  {content && <Text>{content}</Text>}
+                  <Text color="gray">{closing}</Text>
+                </Box>
+              );
+            }
             return (
               <Box
                 key={index}
@@ -218,13 +236,6 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
                 paddingX={1}
                 marginBottom={1}
               >
-                {t.lang && (
-                  <Box>
-                    <Text color="gray" italic>
-                      {t.lang}
-                    </Text>
-                  </Box>
-                )}
                 <Text>{t.text}</Text>
               </Box>
             );
