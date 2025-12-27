@@ -19,6 +19,7 @@ import {
   splitBashCommand,
   stripEnvVars,
   stripRedirections,
+  getSmartPrefix,
 } from "../utils/bashParser.js";
 import { isPathInside } from "../utils/pathSafety.js";
 
@@ -248,11 +249,23 @@ export class PermissionManager {
     callback?: PermissionCallback,
     toolInput?: Record<string, unknown>,
   ): ToolPermissionContext {
+    let suggestedPrefix: string | undefined;
+    if (toolName === "Bash" && toolInput?.command) {
+      const command = String(toolInput.command);
+      const parts = splitBashCommand(command);
+      // Only suggest prefix for single commands to avoid confusion with complex chains
+      if (parts.length === 1) {
+        const processedPart = stripRedirections(stripEnvVars(parts[0]));
+        suggestedPrefix = getSmartPrefix(processedPart) ?? undefined;
+      }
+    }
+
     const context: ToolPermissionContext = {
       toolName,
       permissionMode,
       canUseToolCallback: callback,
       toolInput,
+      suggestedPrefix,
     };
 
     this.logger?.debug("Created permission context", {
@@ -260,6 +273,7 @@ export class PermissionManager {
       permissionMode,
       hasCallback: !!callback,
       hasToolInput: !!toolInput,
+      suggestedPrefix,
     });
 
     return context;
@@ -383,7 +397,12 @@ export class PermissionManager {
       }
 
       if (!isSafe) {
-        rules.push(`Bash(${processedPart})`);
+        const smartPrefix = getSmartPrefix(processedPart);
+        if (smartPrefix) {
+          rules.push(`Bash(${smartPrefix}:*)`);
+        } else {
+          rules.push(`Bash(${processedPart})`);
+        }
       }
     }
 

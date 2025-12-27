@@ -63,10 +63,15 @@ export interface ChatContextType {
   setPermissionMode: (mode: PermissionMode) => void;
   // Permission confirmation state
   isConfirmationVisible: boolean;
-  confirmingTool?: { name: string; input?: Record<string, unknown> };
+  confirmingTool?: {
+    name: string;
+    input?: Record<string, unknown>;
+    suggestedPrefix?: string;
+  };
   showConfirmation: (
     toolName: string,
     toolInput?: Record<string, unknown>,
+    suggestedPrefix?: string,
   ) => Promise<PermissionDecision>;
   hideConfirmation: () => void;
   handleConfirmationDecision: (decision: PermissionDecision) => void;
@@ -129,12 +134,18 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Confirmation state with queue-based architecture
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
   const [confirmingTool, setConfirmingTool] = useState<
-    { name: string; input?: Record<string, unknown> } | undefined
+    | {
+        name: string;
+        input?: Record<string, unknown>;
+        suggestedPrefix?: string;
+      }
+    | undefined
   >();
   const [confirmationQueue, setConfirmationQueue] = useState<
     Array<{
       toolName: string;
       toolInput?: Record<string, unknown>;
+      suggestedPrefix?: string;
       resolver: (decision: PermissionDecision) => void;
       reject: () => void;
     }>
@@ -142,6 +153,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [currentConfirmation, setCurrentConfirmation] = useState<{
     toolName: string;
     toolInput?: Record<string, unknown>;
+    suggestedPrefix?: string;
     resolver: (decision: PermissionDecision) => void;
     reject: () => void;
   } | null>(null);
@@ -153,11 +165,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     async (
       toolName: string,
       toolInput?: Record<string, unknown>,
+      suggestedPrefix?: string,
     ): Promise<PermissionDecision> => {
       return new Promise<PermissionDecision>((resolve, reject) => {
         const queueItem = {
           toolName,
           toolInput,
+          suggestedPrefix,
           resolver: resolve,
           reject,
         };
@@ -219,6 +233,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                 return await showConfirmation(
                   context.toolName,
                   context.toolInput,
+                  context.suggestedPrefix,
                 );
               } catch {
                 // If confirmation was cancelled or failed, deny the operation
@@ -407,7 +422,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     if (confirmationQueue.length > 0 && !isConfirmationVisible) {
       const next = confirmationQueue[0];
       setCurrentConfirmation(next);
-      setConfirmingTool({ name: next.toolName, input: next.toolInput });
+      setConfirmingTool({
+        name: next.toolName,
+        input: next.toolInput,
+        suggestedPrefix: next.suggestedPrefix,
+      });
       setIsConfirmationVisible(true);
       setConfirmationQueue((prev) => prev.slice(1));
     }
