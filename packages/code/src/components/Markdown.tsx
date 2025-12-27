@@ -216,8 +216,6 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
                 key={index}
                 flexDirection="column"
                 paddingX={1}
-                borderStyle="round"
-                borderColor="gray"
                 marginBottom={1}
               >
                 {t.lang && (
