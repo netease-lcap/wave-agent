@@ -49,6 +49,7 @@ export const ChatInterface: React.FC = () => {
             toolName={confirmingTool!.name}
             toolInput={confirmingTool!.input}
             suggestedPrefix={confirmingTool!.suggestedPrefix}
+            hidePersistentOption={confirmingTool!.hidePersistentOption}
             onDecision={handleConfirmationDecision}
             onCancel={handleConfirmationCancel}
             onAbort={abortMessage}

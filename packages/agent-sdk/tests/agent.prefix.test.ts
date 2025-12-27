@@ -42,7 +42,7 @@ describe("Agent Prefix Matching Integration", () => {
     expect(decision.behavior).toBe("allow");
   });
 
-  it("should NOT use prefix rules for blacklisted commands", async () => {
+  it("should NOT save blacklisted commands as persistent rules", async () => {
     const agent = await Agent.create({
       workdir,
       permissionMode: "default",
@@ -52,20 +52,10 @@ describe("Agent Prefix Matching Integration", () => {
     // @ts-expect-error - accessing private method for testing
     await agent.addPermissionRule("Bash(rm file.txt)");
 
-    // 2. Verify it was saved as an EXACT rule, not a prefix rule
+    // 2. Verify it was NOT saved at all
     // @ts-expect-error - accessing private property for testing
     const rules = agent.permissionManager.getAllowedRules();
-    expect(rules).toContain("Bash(rm file.txt)");
+    expect(rules).not.toContain("Bash(rm file.txt)");
     expect(rules).not.toContain("Bash(rm:*)");
-
-    // 3. Verify a different rm command is NOT allowed
-    // @ts-expect-error - accessing private property for testing
-    const decision = await agent.permissionManager.checkPermission({
-      toolName: "Bash",
-      permissionMode: "default",
-      toolInput: { command: "rm other.txt", workdir },
-    });
-
-    expect(decision.behavior).toBe("deny");
   });
 });

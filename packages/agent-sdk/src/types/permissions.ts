@@ -35,6 +35,8 @@ export interface ToolPermissionContext {
   toolInput?: Record<string, unknown>;
   /** Suggested prefix for bash commands */
   suggestedPrefix?: string;
+  /** Whether to hide the persistent permission option (e.g., "Don't ask again") in the UI */
+  hidePersistentOption?: boolean;
 }
 
 /** List of tools that require permission checks in default mode */
