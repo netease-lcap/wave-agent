@@ -1002,4 +1002,61 @@ describe("PermissionManager", () => {
       expect(result.behavior).toBe("deny");
     });
   });
+
+  describe("expandBashRule method", () => {
+    const workdir = "/home/user/project";
+
+    beforeEach(() => {
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr.includes("src")) return "/home/user/project/src";
+        if (pathStr.includes("..") || pathStr === "/home/user")
+          return "/home/user";
+        if (pathStr === "/etc") return "/etc";
+        return "/home/user/project";
+      });
+    });
+
+    it("should split chained commands and filter safe ones", () => {
+      const command = "mkdir test && cd test";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual(["Bash(mkdir test)"]);
+    });
+
+    it("should handle multiple non-safe commands", () => {
+      const command = "npm install | grep error";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual(["Bash(npm install)", "Bash(grep error)"]);
+    });
+
+    it("should return empty array for only safe commands", () => {
+      const command = "cd src && ls";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual([]);
+    });
+
+    it("should handle subshells", () => {
+      const command = "(mkdir test && cd test) || ls";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual(["Bash(mkdir test)"]);
+    });
+
+    it("should strip env vars and redirections from rules", () => {
+      const command = "VAR=val npm install > out.txt";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual(["Bash(npm install)"]);
+    });
+
+    it("should identify unsafe paths in cd/ls as non-safe", () => {
+      const command = "cd /etc && ls ..";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual(["Bash(cd /etc)", "Bash(ls ..)"]);
+    });
+
+    it("should handle pwd as safe", () => {
+      const command = "pwd && echo hello";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual(["Bash(echo hello)"]);
+    });
+  });
 });
