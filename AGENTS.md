@@ -7,12 +7,12 @@ This is the AI assistant's memory file, recording important information and cont
 - `packages/*/examples` directories contain real test ts or tsx files that are hard to mock:
   - need to create temporary directories
   - test by sending real messages
-  - cd to `packages/\*` and run locally with pnpm tsx
+  - run example like this: `pnpm -F xxx exec tsx examples/hi.ts`
   - never access private properties directly with `(agent as any)`
 - `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
   - Task vitest-expert to write tests
   - Testing framework is vitest
-  - Run test use `cd packages/* && pnpm test your_test_file`
+  - Run test use `pnpm -F xxx test test_file`
   - Use HookTester to test hooks
   - Use waitHelpers to wait UI change
   - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify type check, for example: 
