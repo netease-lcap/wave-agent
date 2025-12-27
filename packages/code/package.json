@@ -42,13 +42,11 @@
     "glob": "^13.0.0",
     "ink": "^6.5.1",
     "marked": "^11.2.0",
-    "marked-terminal": "^7.3.0",
     "react": "^19.1.0",
     "wave-agent-sdk": "workspace:*",
     "yargs": "^17.7.2"
   },
   "devDependencies": {
-    "@types/marked-terminal": "^6.1.1",
     "@types/react": "^19.1.8",
     "@types/yargs": "^17.0.0",
     "eslint-plugin-react": "^7.37.5",
