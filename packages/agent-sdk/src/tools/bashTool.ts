@@ -1,8 +1,10 @@
 import { spawn, ChildProcess } from "child_process";
 import { logger } from "../utils/globalLogger.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
-import { handleLargeOutput } from "../utils/largeOutputHandler.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
+
+const MAX_OUTPUT_LENGTH = 30000;
+const BASH_DEFAULT_TIMEOUT_MS = 120000;
 
 /**
  * Bash command execution tool - supports both foreground and background execution
@@ -13,8 +15,52 @@ export const bashTool: ToolPlugin = {
     type: "function",
     function: {
       name: "Bash",
-      description:
-        "Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.",
+      description: `Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
+
+IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
+
+Before executing the command, please follow these steps:
+
+1. Directory Verification:
+   - If the command will create new directories or files, first use \`ls\` to verify the parent directory exists and is the correct location
+   - For example, before running "mkdir foo/bar", first use \`ls foo\` to check that "foo" exists and is the intended parent directory
+
+2. Command Execution:
+   - Always quote file paths that contain spaces with double quotes (e.g., cd "path with spaces/file.txt")
+   - Examples of proper quoting:
+     - cd "/Users/name/My Documents" (correct)
+     - cd /Users/name/My Documents (incorrect - will fail)
+     - python "/path/with spaces/script.py" (correct)
+     - python /path/with spaces/script.py (incorrect - will fail)
+   - After ensuring proper quoting, execute the command.
+   - Capture the output of the command.
+
+Usage notes:
+  - The command argument is required.
+  - You can specify an optional timeout in milliseconds (up to ${BASH_DEFAULT_TIMEOUT_MS}ms / ${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes). If not specified, commands will timeout after ${BASH_DEFAULT_TIMEOUT_MS}ms (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes).
+  - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
+  - If the output exceeds ${MAX_OUTPUT_LENGTH} characters, output will be truncated before being returned to you.
+  - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the Bash tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
+  - Avoid using Bash with the \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
+    - File search: Use Glob (NOT find or ls)
+    - Content search: Use Grep (NOT grep or rg)
+    - Read files: Use Read (NOT cat/head/tail)
+    - Edit files: Use Edit (NOT sed/awk)
+    - Write files: Use Write (NOT echo >/cat <<EOF)
+    - Communication: Output text directly (NOT echo/printf)
+  - When issuing multiple commands:
+    - If the commands are independent and can run in parallel, make multiple Bash tool calls in a single message. For example, if you need to run "git status" and "git diff", send a single message with two Bash tool calls in parallel.
+    - If the commands depend on each other and must run sequentially, use a single Bash call with '&&' to chain them together (e.g., \`git add . && git commit -m "message" && git push\`). For instance, if one operation must complete before another starts (like mkdir before cp, Write before Bash for git operations, or git add before git commit), run these operations sequentially instead.
+    - Use ';' only when you need to run commands sequentially but don't care if earlier commands fail
+    - DO NOT use newlines to separate commands (newlines are ok in quoted strings)
+  - Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it.
+    <good-example>
+    pytest /foo/bar/tests
+    </good-example>
+    <bad-example>
+    cd /foo/bar && pytest tests
+    </bad-example>
+`,
       parameters: {
         type: "object",
         properties: {
@@ -48,10 +94,10 @@ export const bashTool: ToolPlugin = {
     const command = args.command as string;
     const runInBackground = args.run_in_background as boolean | undefined;
     const description = args.description as string | undefined;
-    // Set default timeout: 60s for foreground, no timeout for background
+    // Set default timeout: BASH_DEFAULT_TIMEOUT_MS for foreground, no timeout for background
     const timeout =
       (args.timeout as number | undefined) ??
-      (runInBackground ? undefined : 60000);
+      (runInBackground ? undefined : BASH_DEFAULT_TIMEOUT_MS);
 
     if (!command || typeof command !== "string") {
       return {
@@ -239,32 +285,23 @@ export const bashTool: ToolPlugin = {
           const combinedOutput =
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
 
-          // Handle large output by writing to temp file if needed
+          // Handle large output by truncation if needed
           const finalOutput =
             combinedOutput || `Command executed with exit code: ${exitCode}`;
-          handleLargeOutput(finalOutput)
-            .then(({ content, filePath }) => {
-              resolve({
-                success: exitCode === 0,
-                content,
-                filePath,
-                error:
-                  exitCode !== 0
-                    ? `Command failed with exit code: ${exitCode}`
-                    : undefined,
-              });
-            })
-            .catch((error) => {
-              logger.warn(`Error handling large output: ${error}`);
-              resolve({
-                success: exitCode === 0,
-                content: finalOutput,
-                error:
-                  exitCode !== 0
-                    ? `Command failed with exit code: ${exitCode}`
-                    : undefined,
-              });
-            });
+          const content =
+            finalOutput.length > MAX_OUTPUT_LENGTH
+              ? finalOutput.substring(0, MAX_OUTPUT_LENGTH) +
+                "\n\n... (output truncated)"
+              : finalOutput;
+
+          resolve({
+            success: exitCode === 0,
+            content,
+            error:
+              exitCode !== 0
+                ? `Command failed with exit code: ${exitCode}`
+                : undefined,
+          });
         }
       });
 
@@ -375,13 +412,15 @@ export const bashOutputTool: ToolPlugin = {
     }
 
     const finalContent = content || "No output available";
-    const { content: processedContent, filePath } =
-      await handleLargeOutput(finalContent);
+    const processedContent =
+      finalContent.length > MAX_OUTPUT_LENGTH
+        ? finalContent.substring(0, MAX_OUTPUT_LENGTH) +
+          "\n\n... (output truncated)"
+        : finalContent;
 
     return {
       success: true,
       content: processedContent,
-      filePath,
       shortResult: `${bashId}: ${output.status}${shell.exitCode !== undefined ? ` (${shell.exitCode})` : ""}`,
       error: undefined,
     };
