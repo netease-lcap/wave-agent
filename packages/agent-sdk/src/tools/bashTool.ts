@@ -90,6 +90,7 @@ export const bashTool: ToolPlugin = {
               description,
               run_in_background: runInBackground,
               timeout,
+              workdir: context.workdir,
             },
           );
           const permissionResult =

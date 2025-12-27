@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fs from "node:fs";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
 import { RESTRICTED_TOOLS } from "../../src/types/permissions.js";
 import type {
@@ -795,6 +796,210 @@ describe("PermissionManager", () => {
 
       expect(result.behavior).toBe("allow");
       expect(result.message).toBeUndefined();
+    });
+  });
+
+  describe("Complex Bash Commands", () => {
+    it("should allow complex command if all parts are allowed", async () => {
+      permissionManager.updateAllowedRules(["Bash(ls)", "Bash(pwd)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls && pwd" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should deny complex command if any part is not allowed", async () => {
+      permissionManager.updateAllowedRules(["Bash(ls)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls && rm -rf /" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should strip env vars and redirections before checking rules", async () => {
+      permissionManager.updateAllowedRules(["Bash(ls)", "Bash(echo hello)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: {
+          command: "VAR=val ls > out.txt && echo hello 2> /dev/null",
+        },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should handle complex operators like || and ;", async () => {
+      permissionManager.updateAllowedRules([
+        "Bash(ls)",
+        "Bash(pwd)",
+        "Bash(echo done)",
+      ]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls || pwd; echo done" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should deny if a part with prefix match doesn't match", async () => {
+      permissionManager.updateAllowedRules(["Bash(ls)", "Bash(git commit:*)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls && git push" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should allow if all parts match prefix rules", async () => {
+      permissionManager.updateAllowedRules(["Bash(ls:*)", "Bash(git:*)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls -la && git status" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should handle piped commands", async () => {
+      permissionManager.updateAllowedRules(["Bash(ls)", "Bash(grep pattern)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls | grep pattern" },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should call callback if any part is not allowed", async () => {
+      permissionManager.updateAllowedRules(["Bash(ls)"]);
+      const mockCallback: PermissionCallback = vi.fn().mockResolvedValue({
+        behavior: "allow",
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls && pwd" },
+        canUseToolCallback: mockCallback,
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+      expect(mockCallback).toHaveBeenCalled();
+    });
+  });
+
+  describe("Safe Commands", () => {
+    const workdir = "/home/user/project";
+
+    it("should allow 'cd src' if src is inside workdir", async () => {
+      // Mock fs.realpathSync to return paths that are inside workdir
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        if (p.toString().includes("src")) return "/home/user/project/src";
+        return "/home/user/project";
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cd src", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should deny 'cd ..' if it goes outside workdir", async () => {
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr === "/home/user") return "/home/user";
+        return "/home/user/project";
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cd ..", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should deny 'ls /etc' if it is outside workdir", async () => {
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr === "/etc") return "/etc";
+        return "/home/user/project";
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls /etc", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should allow 'cd src && ls' if both are safe", async () => {
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        if (p.toString().includes("src")) return "/home/user/project/src";
+        return "/home/user/project";
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cd src && ls", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should deny 'cd src && rm -rf /' because rm is not safe", async () => {
+      vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+        if (p.toString().includes("src")) return "/home/user/project/src";
+        return "/home/user/project";
+      });
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "cd src && rm -rf /", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
     });
   });
 });
