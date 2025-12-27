@@ -285,3 +285,155 @@ export function stripRedirections(command: string): string {
 
   return result.trim();
 }
+
+/**
+ * Extracts a "smart prefix" from a bash command based on common developer tools.
+ * Returns null if the command is blacklisted or cannot be safely prefix-matched.
+ */
+export function getSmartPrefix(command: string): string | null {
+  const parts = splitBashCommand(command);
+  if (parts.length === 0) return null;
+
+  // For now, we only support prefix matching for single commands or the first command in a chain
+  // to keep it simple and safe.
+  const firstCommand = parts[0];
+  let stripped = stripRedirections(stripEnvVars(firstCommand));
+
+  // Handle sudo
+  if (stripped.startsWith("sudo ")) {
+    stripped = stripped.substring(5).trim();
+  }
+
+  const tokens = stripped.split(/\s+/);
+  if (tokens.length === 0) return null;
+
+  const exe = tokens[0];
+  const sub = tokens[1];
+
+  // Blacklist - Hard blacklist for dangerous commands
+  const blacklist = [
+    "rm",
+    "mv",
+    "chmod",
+    "chown",
+    "sh",
+    "bash",
+    "sudo",
+    "dd",
+    "apt",
+    "apt-get",
+    "yum",
+    "dnf",
+  ];
+  if (blacklist.includes(exe)) return null;
+
+  // Node/JS
+  if (["npm", "pnpm", "yarn", "deno", "bun"].includes(exe)) {
+    if (
+      [
+        "install",
+        "i",
+        "add",
+        "remove",
+        "test",
+        "t",
+        "build",
+        "start",
+        "dev",
+      ].includes(sub)
+    ) {
+      return `${exe} ${sub}`;
+    }
+    if (sub === "run" && tokens[2]) {
+      return `${exe} run ${tokens[2]}`;
+    }
+    return exe;
+  }
+
+  // Git
+  if (exe === "git") {
+    if (
+      [
+        "commit",
+        "push",
+        "pull",
+        "checkout",
+        "add",
+        "status",
+        "diff",
+        "branch",
+        "merge",
+        "rebase",
+        "log",
+        "fetch",
+        "remote",
+        "stash",
+      ].includes(sub)
+    ) {
+      return `${exe} ${sub}`;
+    }
+    return exe;
+  }
+
+  // Python
+  if (["python", "python3", "pip", "pip3", "poetry", "conda"].includes(exe)) {
+    if (exe === "python" || exe === "python3") {
+      if (sub === "-m" && tokens[2] === "pip" && tokens[3] === "install") {
+        return `${exe} -m pip install`;
+      }
+      return exe;
+    }
+    if (["install", "add", "remove", "test", "run"].includes(sub)) {
+      return `${exe} ${sub}`;
+    }
+    return exe;
+  }
+
+  // Java
+  if (["mvn", "gradle"].includes(exe)) {
+    if (sub && !sub.startsWith("-")) {
+      return `${exe} ${sub}`;
+    }
+    return exe;
+  }
+  if (exe === "java") {
+    if (sub === "-jar") return "java -jar";
+    return "java";
+  }
+
+  // Rust & Go
+  if (exe === "cargo") {
+    if (["build", "test", "run", "add", "check"].includes(sub)) {
+      return `${exe} ${sub}`;
+    }
+    return exe;
+  }
+  if (exe === "go") {
+    if (["build", "test", "run", "get", "mod"].includes(sub)) {
+      return `${exe} ${sub}`;
+    }
+    return exe;
+  }
+
+  // Containers & Infrastructure
+  if (exe === "docker" || exe === "docker-compose") {
+    if (["run", "build", "ps", "exec", "up", "down"].includes(sub)) {
+      return `${exe} ${sub}`;
+    }
+    return exe;
+  }
+  if (exe === "kubectl") {
+    if (["get", "describe", "apply", "logs"].includes(sub)) {
+      return `${exe} ${sub}`;
+    }
+    return exe;
+  }
+  if (exe === "terraform") {
+    if (["plan", "apply", "destroy", "init"].includes(sub)) {
+      return `${exe} ${sub}`;
+    }
+    return exe;
+  }
+
+  return null;
+}

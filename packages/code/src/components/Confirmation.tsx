@@ -30,6 +30,7 @@ const getActionDescription = (
 export interface ConfirmationProps {
   toolName: string;
   toolInput?: Record<string, unknown>;
+  suggestedPrefix?: string;
   onDecision: (decision: PermissionDecision) => void;
   onCancel: () => void;
   onAbort: () => void;
@@ -44,18 +45,22 @@ interface ConfirmationState {
 export const Confirmation: React.FC<ConfirmationProps> = ({
   toolName,
   toolInput,
+  suggestedPrefix,
   onDecision,
   onCancel,
   onAbort,
 }) => {
   const [state, setState] = useState<ConfirmationState>({
     selectedOption: "allow",
-    alternativeText: "",
-    hasUserInput: false,
+    alternativeText: suggestedPrefix || "",
+    hasUserInput: !!suggestedPrefix,
   });
 
   const getAutoOptionText = () => {
     if (toolName === "Bash") {
+      if (suggestedPrefix) {
+        return `Yes, and don't ask again for: ${suggestedPrefix}`;
+      }
       return "Yes, and don't ask again for this command in this workdir";
     }
     return "Yes, and auto-accept edits";
@@ -75,9 +80,12 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
         onDecision({ behavior: "allow" });
       } else if (state.selectedOption === "auto") {
         if (toolName === "Bash") {
+          const rule = suggestedPrefix
+            ? `Bash(${suggestedPrefix}:*)`
+            : `Bash(${toolInput?.command})`;
           onDecision({
             behavior: "allow",
-            newPermissionRule: `Bash(${toolInput?.command})`,
+            newPermissionRule: rule,
           });
         } else {
           onDecision({
@@ -105,9 +113,12 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       }
       if (input === "2") {
         if (toolName === "Bash") {
+          const rule = suggestedPrefix
+            ? `Bash(${suggestedPrefix}:*)`
+            : `Bash(${toolInput?.command})`;
           onDecision({
             behavior: "allow",
-            newPermissionRule: `Bash(${toolInput?.command})`,
+            newPermissionRule: rule,
           });
         } else {
           onDecision({

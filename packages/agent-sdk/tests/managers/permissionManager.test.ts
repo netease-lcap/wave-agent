@@ -1026,7 +1026,7 @@ describe("PermissionManager", () => {
     it("should handle multiple non-safe commands", () => {
       const command = "npm install | grep error";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(npm install)", "Bash(grep error)"]);
+      expect(rules).toEqual(["Bash(npm install:*)", "Bash(grep error)"]);
     });
 
     it("should return empty array for only safe commands", () => {
@@ -1044,7 +1044,7 @@ describe("PermissionManager", () => {
     it("should strip env vars and redirections from rules", () => {
       const command = "VAR=val npm install > out.txt";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(npm install)"]);
+      expect(rules).toEqual(["Bash(npm install:*)"]);
     });
 
     it("should identify unsafe paths in cd/ls as non-safe", () => {

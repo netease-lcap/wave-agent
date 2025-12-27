@@ -33,6 +33,8 @@ export interface ToolPermissionContext {
   canUseToolCallback?: PermissionCallback;
   /** Tool input parameters for better context */
   toolInput?: Record<string, unknown>;
+  /** Suggested prefix for bash commands */
+  suggestedPrefix?: string;
 }
 
 /** List of tools that require permission checks in default mode */
