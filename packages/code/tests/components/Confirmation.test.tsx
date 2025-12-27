@@ -126,6 +126,28 @@ describe("Confirmation", () => {
         "2. Yes, and don't ask again for ls -la commands in this workdir",
       );
     });
+
+    it("should hide auto-accept option when hidePersistentOption is true", async () => {
+      const { lastFrame } = render(
+        <Confirmation
+          toolName="Bash"
+          toolInput={{ command: "rm -rf /" }}
+          hidePersistentOption={true}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
+        />,
+      );
+
+      await waitForText(lastFrame, "1. Yes");
+
+      const frame = lastFrame();
+      expect(frame).toContain("1. Yes");
+      expect(frame).not.toContain("2. Yes, and don't ask again");
+      expect(frame).toContain(
+        "2. Type here to tell Wave what to do differently",
+      );
+    });
   });
 
   describe("User Interaction Tests", () => {

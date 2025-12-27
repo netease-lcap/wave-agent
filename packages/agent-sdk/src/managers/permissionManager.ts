@@ -20,6 +20,7 @@ import {
   stripEnvVars,
   stripRedirections,
   getSmartPrefix,
+  DANGEROUS_COMMANDS,
 } from "../utils/bashParser.js";
 import { isPathInside } from "../utils/pathSafety.js";
 
@@ -268,6 +269,46 @@ export class PermissionManager {
       suggestedPrefix,
     };
 
+    // Set hidePersistentOption for dangerous or out-of-bounds bash commands
+    if (toolName === "Bash" && toolInput?.command) {
+      const command = String(toolInput.command);
+      const workdir = toolInput.workdir as string | undefined;
+      const parts = splitBashCommand(command);
+
+      const isDangerous = parts.some((part) => {
+        const processedPart = stripRedirections(stripEnvVars(part));
+        const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
+        if (commandMatch) {
+          const cmd = commandMatch[1];
+          const args = commandMatch[2]?.trim() || "";
+
+          // Check blacklist
+          if (DANGEROUS_COMMANDS.includes(cmd)) {
+            return true;
+          }
+
+          // Check out-of-bounds for cd and ls
+          if (workdir && (cmd === "cd" || cmd === "ls")) {
+            const pathArgs =
+              (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
+                (arg) => !arg.startsWith("-"),
+              ) || [];
+
+            return pathArgs.some((pathArg) => {
+              const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
+              const absolutePath = path.resolve(workdir, cleanPath);
+              return !isPathInside(absolutePath, workdir);
+            });
+          }
+        }
+        return false;
+      });
+
+      if (isDangerous) {
+        context.hidePersistentOption = true;
+      }
+    }
+
     this.logger?.debug("Created permission context", {
       toolName,
       permissionMode,
@@ -397,6 +438,34 @@ export class PermissionManager {
       }
 
       if (!isSafe) {
+        // Check if command is dangerous or out-of-bounds
+        const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
+        if (commandMatch) {
+          const cmd = commandMatch[1];
+          const args = commandMatch[2]?.trim() || "";
+
+          if (DANGEROUS_COMMANDS.includes(cmd)) {
+            continue;
+          }
+
+          if (cmd === "cd" || cmd === "ls") {
+            const pathArgs =
+              (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
+                (arg) => !arg.startsWith("-"),
+              ) || [];
+
+            const isOutOfBounds = pathArgs.some((pathArg) => {
+              const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
+              const absolutePath = path.resolve(workdir, cleanPath);
+              return !isPathInside(absolutePath, workdir);
+            });
+
+            if (isOutOfBounds) {
+              continue;
+            }
+          }
+        }
+
         const smartPrefix = getSmartPrefix(processedPart);
         if (smartPrefix) {
           rules.push(`Bash(${smartPrefix}:*)`);

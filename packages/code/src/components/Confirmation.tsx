@@ -31,6 +31,7 @@ export interface ConfirmationProps {
   toolName: string;
   toolInput?: Record<string, unknown>;
   suggestedPrefix?: string;
+  hidePersistentOption?: boolean;
   onDecision: (decision: PermissionDecision) => void;
   onCancel: () => void;
   onAbort: () => void;
@@ -46,6 +47,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
   toolName,
   toolInput,
   suggestedPrefix,
+  hidePersistentOption,
   onDecision,
   onCancel,
   onAbort,
@@ -112,23 +114,29 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
         return;
       }
       if (input === "2") {
-        if (toolName === "Bash") {
-          const rule = suggestedPrefix
-            ? `Bash(${suggestedPrefix}:*)`
-            : `Bash(${toolInput?.command})`;
-          onDecision({
-            behavior: "allow",
-            newPermissionRule: rule,
-          });
+        if (!hidePersistentOption) {
+          if (toolName === "Bash") {
+            const rule = suggestedPrefix
+              ? `Bash(${suggestedPrefix}:*)`
+              : `Bash(${toolInput?.command})`;
+            onDecision({
+              behavior: "allow",
+              newPermissionRule: rule,
+            });
+          } else {
+            onDecision({
+              behavior: "allow",
+              newPermissionMode: "acceptEdits",
+            });
+          }
+          return;
         } else {
-          onDecision({
-            behavior: "allow",
-            newPermissionMode: "acceptEdits",
-          });
+          // If auto option is hidden, '2' selects alternative
+          setState((prev) => ({ ...prev, selectedOption: "alternative" }));
+          return;
         }
-        return;
       }
-      if (input === "3") {
+      if (input === "3" && !hidePersistentOption) {
         setState((prev) => ({ ...prev, selectedOption: "alternative" }));
         return;
       }
@@ -137,8 +145,12 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     // Handle arrow keys for navigation
     if (key.upArrow) {
       setState((prev) => {
-        if (prev.selectedOption === "alternative")
-          return { ...prev, selectedOption: "auto" };
+        if (prev.selectedOption === "alternative") {
+          return {
+            ...prev,
+            selectedOption: hidePersistentOption ? "allow" : "auto",
+          };
+        }
         if (prev.selectedOption === "auto")
           return { ...prev, selectedOption: "allow" };
         return prev;
@@ -148,8 +160,12 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
 
     if (key.downArrow) {
       setState((prev) => {
-        if (prev.selectedOption === "allow")
-          return { ...prev, selectedOption: "auto" };
+        if (prev.selectedOption === "allow") {
+          return {
+            ...prev,
+            selectedOption: hidePersistentOption ? "alternative" : "auto",
+          };
+        }
         if (prev.selectedOption === "auto")
           return { ...prev, selectedOption: "alternative" };
         return prev;
@@ -219,18 +235,20 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
         </Box>
 
         {/* Option 2: Auto-accept/Persistent */}
-        <Box key="auto-option">
-          <Text
-            color={state.selectedOption === "auto" ? "black" : "white"}
-            backgroundColor={
-              state.selectedOption === "auto" ? "yellow" : undefined
-            }
-            bold={state.selectedOption === "auto"}
-          >
-            {state.selectedOption === "auto" ? "> " : "  "}2.{" "}
-            {getAutoOptionText()}
-          </Text>
-        </Box>
+        {!hidePersistentOption && (
+          <Box key="auto-option">
+            <Text
+              color={state.selectedOption === "auto" ? "black" : "white"}
+              backgroundColor={
+                state.selectedOption === "auto" ? "yellow" : undefined
+              }
+              bold={state.selectedOption === "auto"}
+            >
+              {state.selectedOption === "auto" ? "> " : "  "}2.{" "}
+              {getAutoOptionText()}
+            </Text>
+          </Box>
+        )}
 
         {/* Option 3: Alternative */}
         <Box key="alternative-option">
@@ -241,7 +259,8 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
             }
             bold={state.selectedOption === "alternative"}
           >
-            {state.selectedOption === "alternative" ? "> " : "  "}3.{" "}
+            {state.selectedOption === "alternative" ? "> " : "  "}
+            {hidePersistentOption ? "2. " : "3. "}
             {showPlaceholder ? (
               <Text color="gray" dimColor>
                 {placeholderText}
@@ -257,7 +276,10 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       </Box>
 
       <Box marginTop={1}>
-        <Text dimColor>Use ↑↓ or 1-3 to navigate • ESC to cancel</Text>
+        <Text dimColor>
+          Use ↑↓ or 1-{hidePersistentOption ? "2" : "3"} to navigate • ESC to
+          cancel
+        </Text>
       </Box>
     </Box>
   );

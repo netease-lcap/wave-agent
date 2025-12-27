@@ -651,6 +651,93 @@ describe("PermissionManager", () => {
         expect(context.permissionMode).toBe("default");
       }
     });
+
+    describe("hidePersistentOption logic", () => {
+      const workdir = "/home/user/project";
+
+      it("should set hidePersistentOption for dangerous commands", () => {
+        const context = permissionManager.createContext(
+          "Bash",
+          "default",
+          undefined,
+          {
+            command: "rm -rf /",
+            workdir,
+          },
+        );
+
+        expect(context.hidePersistentOption).toBe(true);
+      });
+
+      it("should set hidePersistentOption for out-of-bounds cd", () => {
+        vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+          if (p.toString() === "/home/user") return "/home/user";
+          return "/home/user/project";
+        });
+
+        const context = permissionManager.createContext(
+          "Bash",
+          "default",
+          undefined,
+          {
+            command: "cd ..",
+            workdir,
+          },
+        );
+
+        expect(context.hidePersistentOption).toBe(true);
+      });
+
+      it("should set hidePersistentOption for out-of-bounds ls", () => {
+        vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
+          if (p.toString() === "/etc") return "/etc";
+          return "/home/user/project";
+        });
+
+        const context = permissionManager.createContext(
+          "Bash",
+          "default",
+          undefined,
+          {
+            command: "ls /etc",
+            workdir,
+          },
+        );
+
+        expect(context.hidePersistentOption).toBe(true);
+      });
+
+      it("should NOT set hidePersistentOption for safe commands", () => {
+        vi.spyOn(fs, "realpathSync").mockImplementation(
+          () => "/home/user/project/src",
+        );
+
+        const context = permissionManager.createContext(
+          "Bash",
+          "default",
+          undefined,
+          {
+            command: "ls src",
+            workdir,
+          },
+        );
+
+        expect(context.hidePersistentOption).toBeFalsy();
+      });
+
+      it("should NOT set hidePersistentOption for non-Bash tools", () => {
+        const context = permissionManager.createContext(
+          "Edit",
+          "default",
+          undefined,
+          {
+            file_path: "src/index.ts",
+          },
+        );
+
+        expect(context.hidePersistentOption).toBeFalsy();
+      });
+    });
   });
 
   describe("Logger Integration", () => {
@@ -1047,16 +1134,28 @@ describe("PermissionManager", () => {
       expect(rules).toEqual(["Bash(npm install:*)"]);
     });
 
-    it("should identify unsafe paths in cd/ls as non-safe", () => {
+    it("should identify unsafe paths in cd/ls as non-safe and filter them out", () => {
       const command = "cd /etc && ls ..";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(cd /etc)", "Bash(ls ..)"]);
+      expect(rules).toEqual([]);
     });
 
     it("should handle pwd as safe", () => {
       const command = "pwd && echo hello";
       const rules = permissionManager.expandBashRule(command, workdir);
       expect(rules).toEqual(["Bash(echo hello)"]);
+    });
+
+    it("should refuse to expand dangerous commands", () => {
+      const command = "rm -rf / && ls";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual([]); // rm is dangerous, ls is safe
+    });
+
+    it("should refuse to expand out-of-bounds commands", () => {
+      const command = "cd /etc && ls";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual([]); // cd /etc is out-of-bounds, ls is safe
     });
   });
 });

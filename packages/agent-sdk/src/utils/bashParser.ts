@@ -287,6 +287,25 @@ export function stripRedirections(command: string): string {
 }
 
 /**
+ * Blacklist of dangerous commands that should not be safely prefix-matched
+ * and should not have persistent permissions.
+ */
+export const DANGEROUS_COMMANDS = [
+  "rm",
+  "mv",
+  "chmod",
+  "chown",
+  "sh",
+  "bash",
+  "sudo",
+  "dd",
+  "apt",
+  "apt-get",
+  "yum",
+  "dnf",
+];
+
+/**
  * Extracts a "smart prefix" from a bash command based on common developer tools.
  * Returns null if the command is blacklisted or cannot be safely prefix-matched.
  */
@@ -311,21 +330,7 @@ export function getSmartPrefix(command: string): string | null {
   const sub = tokens[1];
 
   // Blacklist - Hard blacklist for dangerous commands
-  const blacklist = [
-    "rm",
-    "mv",
-    "chmod",
-    "chown",
-    "sh",
-    "bash",
-    "sudo",
-    "dd",
-    "apt",
-    "apt-get",
-    "yum",
-    "dnf",
-  ];
-  if (blacklist.includes(exe)) return null;
+  if (DANGEROUS_COMMANDS.includes(exe)) return null;
 
   // Node/JS
   if (["npm", "pnpm", "yarn", "deno", "bun"].includes(exe)) {
