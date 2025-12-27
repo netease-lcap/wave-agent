@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 
 const type = process.argv[2] || 'patch';
 const pkgPath = path.resolve(process.cwd(), 'package.json');
@@ -31,3 +32,11 @@ pkg.version = newVersion;
 
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 console.log(`${pkg.name}: ${oldVersion} -> ${newVersion}`);
+
+try {
+  execSync('git rev-parse --is-inside-work-tree', { stdio: 'ignore' });
+  execSync(`git add ${pkgPath}`, { stdio: 'inherit' });
+  execSync(`git commit -m "chore: bump ${pkg.name} to v${newVersion}"`, { stdio: 'inherit' });
+} catch (error) {
+  // Ignore errors if git is not available or nothing to commit
+}
