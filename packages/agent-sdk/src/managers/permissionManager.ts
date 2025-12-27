@@ -6,6 +6,7 @@
  * handles custom callback integration.
  */
 
+import path from "node:path";
 import type {
   PermissionDecision,
   ToolPermissionContext,
@@ -14,6 +15,14 @@ import type {
 } from "../types/permissions.js";
 import { RESTRICTED_TOOLS } from "../types/permissions.js";
 import type { Logger } from "../types/index.js";
+import {
+  splitBashCommand,
+  stripEnvVars,
+  stripRedirections,
+} from "../utils/bashParser.js";
+import { isPathInside } from "../utils/pathSafety.js";
+
+const SAFE_COMMANDS = ["cd", "ls", "pwd"];
 
 export interface PermissionManagerOptions {
   /** Logger for debugging permission decisions */
@@ -261,13 +270,63 @@ export class PermissionManager {
    */
   private isAllowedByRule(context: ToolPermissionContext): boolean {
     if (context.toolName === "Bash" && context.toolInput?.command) {
-      const action = `Bash(${context.toolInput.command})`;
-      return this.allowedRules.some((rule) => {
-        if (rule.endsWith(":*)")) {
-          const prefix = rule.slice(0, -3);
-          return action.startsWith(prefix);
+      const command = String(context.toolInput.command);
+      const parts = splitBashCommand(command);
+      if (parts.length === 0) return false;
+
+      const workdir = context.toolInput?.workdir as string | undefined;
+
+      return parts.every((part) => {
+        const processedPart = stripRedirections(stripEnvVars(part));
+
+        // Check for safe commands
+        const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
+        if (commandMatch) {
+          const cmd = commandMatch[1];
+          const args = commandMatch[2]?.trim() || "";
+
+          if (SAFE_COMMANDS.includes(cmd)) {
+            if (workdir) {
+              if (cmd === "pwd") {
+                return true;
+              }
+
+              // For cd and ls, check paths
+              const pathArgs =
+                (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
+                  (arg) => !arg.startsWith("-"),
+                ) || [];
+
+              if (pathArgs.length === 0) {
+                // cd or ls without arguments operates on current dir (workdir)
+                return true;
+              }
+
+              const allPathsSafe = pathArgs.every((pathArg) => {
+                // Remove quotes if present
+                const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
+                const absolutePath = path.resolve(workdir, cleanPath);
+                return isPathInside(absolutePath, workdir);
+              });
+
+              if (allPathsSafe) {
+                return true;
+              }
+            }
+          }
         }
-        return action === rule;
+
+        const action = `${context.toolName}(${processedPart})`;
+        const allowedByRule = this.allowedRules.some((rule) => {
+          if (rule.endsWith(":*)")) {
+            const prefix = rule.slice(0, -3);
+            return action.startsWith(prefix);
+          }
+          return action === rule;
+        });
+
+        if (allowedByRule) return true;
+        return !this.isRestrictedTool(context.toolName);
       });
     }
     // Add other tools if needed in the future

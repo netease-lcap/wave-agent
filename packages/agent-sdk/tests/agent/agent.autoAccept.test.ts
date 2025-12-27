@@ -56,31 +56,43 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     const toolManager = (agent as unknown as { toolManager: ToolManager })
       .toolManager;
 
-    await toolManager.execute("Bash", { command: "ls" }, { workdir: tempDir });
+    await toolManager.execute(
+      "Bash",
+      { command: "rm test.txt" },
+      { workdir: tempDir },
+    );
 
     expect(agent.getPermissionMode()).toBe("acceptEdits");
 
     // 2. Test persistent rule
     mockCallback.mockResolvedValueOnce({
       behavior: "allow",
-      newPermissionRule: "Bash(pwd)",
+      newPermissionRule: "Bash(whoami)",
     });
 
     // Switch back to default mode to test rule matching
     agent.setPermissionMode("default");
 
-    await toolManager.execute("Bash", { command: "pwd" }, { workdir: tempDir });
+    await toolManager.execute(
+      "Bash",
+      { command: "whoami" },
+      { workdir: tempDir },
+    );
 
     // Check if rule was persisted to settings.local.json
     const configPath = path.join(tempDir, ".wave", "settings.local.json");
     const configContent = await fs.readFile(configPath, "utf-8");
     const config = JSON.parse(configContent);
 
-    expect(config.permissions.allow).toContain("Bash(pwd)");
+    expect(config.permissions.allow).toContain("Bash(whoami)");
 
     // 3. Test that the rule actually allows the command without calling the callback
     mockCallback.mockClear();
-    await toolManager.execute("Bash", { command: "pwd" }, { workdir: tempDir });
+    await toolManager.execute(
+      "Bash",
+      { command: "whoami" },
+      { workdir: tempDir },
+    );
     expect(mockCallback).not.toHaveBeenCalled();
   });
 
@@ -90,7 +102,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     await fs.mkdir(waveDir, { recursive: true });
     const config = {
       permissions: {
-        allow: ["Bash(ls -la)"],
+        allow: ["Bash(rm -rf /tmp/test)"],
       },
     };
     await fs.writeFile(
@@ -111,7 +123,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
       .toolManager;
     await toolManager.execute(
       "Bash",
-      { command: "ls -la" },
+      { command: "rm -rf /tmp/test" },
       { workdir: tempDir },
     );
     expect(mockCallback).not.toHaveBeenCalled();
