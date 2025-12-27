@@ -1114,20 +1114,35 @@ export class Agent {
    * @param rule - The rule to add (e.g., "Bash(ls)")
    */
   private async addPermissionRule(rule: string): Promise<void> {
-    // 1. Update PermissionManager state
-    const currentRules = this.permissionManager.getAllowedRules();
-    if (!currentRules.includes(rule)) {
-      this.permissionManager.updateAllowedRules([...currentRules, rule]);
+    // 1. Expand rule if it's a Bash command
+    let rulesToAdd = [rule];
+    const bashMatch = rule.match(/^Bash\((.*)\)$/);
+    if (bashMatch) {
+      const command = bashMatch[1];
+      rulesToAdd = this.permissionManager.expandBashRule(command, this.workdir);
+    }
 
-      // 2. Persist to settings.local.json
-      try {
-        await this.configurationService.addAllowedRule(this.workdir, rule);
-        this.logger?.debug("Persistent permission rule added", { rule });
-      } catch (error) {
-        this.logger?.error("Failed to persist permission rule", {
-          rule,
-          error: error instanceof Error ? error.message : String(error),
-        });
+    for (const ruleToAdd of rulesToAdd) {
+      // 2. Update PermissionManager state
+      const currentRules = this.permissionManager.getAllowedRules();
+      if (!currentRules.includes(ruleToAdd)) {
+        this.permissionManager.updateAllowedRules([...currentRules, ruleToAdd]);
+
+        // 3. Persist to settings.local.json
+        try {
+          await this.configurationService.addAllowedRule(
+            this.workdir,
+            ruleToAdd,
+          );
+          this.logger?.debug("Persistent permission rule added", {
+            rule: ruleToAdd,
+          });
+        } catch (error) {
+          this.logger?.error("Failed to persist permission rule", {
+            rule: ruleToAdd,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
   }

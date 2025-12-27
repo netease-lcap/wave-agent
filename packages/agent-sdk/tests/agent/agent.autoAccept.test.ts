@@ -192,4 +192,52 @@ describe("Agent Auto-Accept Permissions Integration", () => {
 
     await fs.rm(userHome, { recursive: true, force: true });
   });
+
+  it("should split chained bash commands and filter safe ones when persisting rules", async () => {
+    const mockCallback = vi.fn();
+    const agent = await Agent.create({
+      workdir: tempDir,
+      permissionMode: "default",
+      canUseTool: mockCallback as unknown as PermissionCallback,
+    });
+
+    const toolManager = (agent as unknown as { toolManager: ToolManager })
+      .toolManager;
+
+    // 1. Trigger permission check for a chained command
+    mockCallback.mockResolvedValueOnce({
+      behavior: "allow",
+      newPermissionRule: "Bash(mkdir -p test && cd test)",
+    });
+
+    // Create the directory so cd test is considered safe
+    await fs.mkdir(path.join(tempDir, "test"));
+
+    await toolManager.execute(
+      "Bash",
+      { command: "mkdir -p test && cd test" },
+      { workdir: tempDir },
+    );
+
+    // 2. Check if rules were split and filtered in settings.local.json
+    const configPath = path.join(tempDir, ".wave", "settings.local.json");
+    const configContent = await fs.readFile(configPath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    // Should contain mkdir -p test but NOT cd test
+    expect(config.permissions.allow).toContain("Bash(mkdir -p test)");
+    expect(config.permissions.allow).not.toContain("Bash(cd test)");
+    expect(config.permissions.allow).not.toContain(
+      "Bash(mkdir -p test && cd test)",
+    );
+
+    // 3. Verify that mkdir -p test is now auto-allowed
+    mockCallback.mockClear();
+    await toolManager.execute(
+      "Bash",
+      { command: "mkdir -p test" },
+      { workdir: tempDir },
+    );
+    expect(mockCallback).not.toHaveBeenCalled();
+  });
 });

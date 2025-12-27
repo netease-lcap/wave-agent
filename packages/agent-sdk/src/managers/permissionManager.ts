@@ -332,4 +332,61 @@ export class PermissionManager {
     // Add other tools if needed in the future
     return false;
   }
+
+  /**
+   * Expand a bash command into individual permission rules, filtering out safe commands.
+   * Used when saving permissions to the allow list.
+   *
+   * @param command The full bash command string
+   * @param workdir The working directory for path safety checks
+   * @returns Array of permission rules in "Bash(cmd)" format
+   */
+  public expandBashRule(command: string, workdir: string): string[] {
+    const parts = splitBashCommand(command);
+    const rules: string[] = [];
+
+    for (const part of parts) {
+      const processedPart = stripRedirections(stripEnvVars(part));
+
+      // Check for safe commands
+      const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
+      let isSafe = false;
+
+      if (commandMatch) {
+        const cmd = commandMatch[1];
+        const args = commandMatch[2]?.trim() || "";
+
+        if (SAFE_COMMANDS.includes(cmd)) {
+          if (cmd === "pwd") {
+            isSafe = true;
+          } else {
+            // For cd and ls, check paths
+            const pathArgs =
+              (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
+                (arg) => !arg.startsWith("-"),
+              ) || [];
+
+            if (pathArgs.length === 0) {
+              isSafe = true;
+            } else {
+              const allPathsSafe = pathArgs.every((pathArg) => {
+                const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
+                const absolutePath = path.resolve(workdir, cleanPath);
+                return isPathInside(absolutePath, workdir);
+              });
+              if (allPathsSafe) {
+                isSafe = true;
+              }
+            }
+          }
+        }
+      }
+
+      if (!isSafe) {
+        rules.push(`Bash(${processedPart})`);
+      }
+    }
+
+    return rules;
+  }
 }
