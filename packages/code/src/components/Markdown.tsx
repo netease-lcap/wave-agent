@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 import { marked, type Token, type Tokens } from "marked";
 
 export interface MarkdownProps {
@@ -80,6 +80,104 @@ const InlineRenderer = ({ tokens }: { tokens: Token[] }) => {
         }
       })}
     </>
+  );
+};
+
+const TableRenderer = ({ token }: { token: Tokens.Table }) => {
+  const { stdout } = useStdout();
+  const terminalWidth = (stdout?.columns || 80) - 2;
+
+  const columnWidths = useMemo(() => {
+    const numCols = token.header.length;
+    const minWidth = 5;
+    const maxColWidth = 40;
+    const widths = token.header.map((h) =>
+      Math.min(maxColWidth, Math.max(minWidth, h.text.length)),
+    );
+
+    token.rows.forEach((row) => {
+      row.forEach((cell, i) => {
+        widths[i] = Math.min(
+          maxColWidth,
+          Math.max(widths[i] || minWidth, cell.text.length),
+        );
+      });
+    });
+
+    const paddedWidths = widths.map((w) => w + 2);
+    const totalWidth = paddedWidths.reduce((a, b) => a + b, 0) + numCols + 1;
+
+    if (totalWidth <= terminalWidth) {
+      return paddedWidths;
+    }
+
+    // If table is too wide, scale down columns proportionally
+    const availableWidth = terminalWidth - numCols - 1;
+    const scaleFactor = availableWidth / (totalWidth - numCols - 1);
+    return paddedWidths.map((w) =>
+      Math.max(minWidth, Math.floor(w * scaleFactor)),
+    );
+  }, [token, terminalWidth]);
+
+  return (
+    <Box
+      flexDirection="column"
+      marginBottom={1}
+      borderStyle="single"
+      borderColor="gray"
+      width={columnWidths.reduce((a, b) => a + b, 0) + token.header.length + 1}
+    >
+      {/* Header */}
+      <Box
+        flexDirection="row"
+        borderStyle="single"
+        borderBottom
+        borderTop={false}
+        borderLeft={false}
+        borderRight={false}
+        borderColor="gray"
+      >
+        {token.header.map((cell, i) => (
+          <Box
+            key={i}
+            width={columnWidths[i]}
+            paddingX={1}
+            borderStyle="single"
+            borderLeft={i > 0}
+            borderRight={false}
+            borderTop={false}
+            borderBottom={false}
+            borderColor="gray"
+          >
+            <Text bold wrap="wrap">
+              <InlineRenderer tokens={cell.tokens} />
+            </Text>
+          </Box>
+        ))}
+      </Box>
+      {/* Rows */}
+      {token.rows.map((row, rowIndex) => (
+        <Box key={rowIndex} flexDirection="row">
+          {row.map((cell, i) => (
+            <Box
+              key={i}
+              width={columnWidths[i]}
+              paddingX={1}
+              borderStyle="single"
+              borderLeft={i > 0}
+              borderRight={false}
+              borderTop={false}
+              borderBottom={false}
+              borderColor="gray"
+            >
+              <Text wrap="wrap">
+                <InlineRenderer tokens={cell.tokens} />
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      ))}
+    </Box>
   );
 };
 
@@ -204,6 +302,8 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
                 <Text color="gray">{"─".repeat(20)}</Text>
               </Box>
             );
+          case "table":
+            return <TableRenderer key={index} token={token as Tokens.Table} />;
           case "space":
             return null;
           default:
