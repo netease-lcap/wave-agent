@@ -54,8 +54,8 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
 }) => {
   const [state, setState] = useState<ConfirmationState>({
     selectedOption: "allow",
-    alternativeText: suggestedPrefix || "",
-    hasUserInput: !!suggestedPrefix,
+    alternativeText: "",
+    hasUserInput: false,
   });
 
   const getAutoOptionText = () => {
