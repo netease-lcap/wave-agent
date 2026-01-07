@@ -1,0 +1,23 @@
+# Tasks: LSP Integration Support
+
+- [x] Define LSP configuration and process types <!-- id: 0 -->
+- [x] Implement `LspManager` for process lifecycle and JSON-RPC communication <!-- id: 1 -->
+- [x] Implement JSON-RPC message framing (Content-Length) <!-- id: 2 -->
+- [x] Implement `textDocument/didOpen` synchronization in `LspManager` <!-- id: 3 -->
+- [x] Create `lspTool` with support for core LSP operations <!-- id: 4 -->
+    - [x] `goToDefinition` <!-- id: 5 -->
+    - [x] `hover` <!-- id: 6 -->
+    - [x] `findReferences` <!-- id: 7 -->
+    - [x] `documentSymbol` <!-- id: 8 -->
+- [x] `goToImplementation` <!-- id: 19 -->
+- [x] Implement response formatting for LSP results in `lspTool` <!-- id: 9 -->
+- [x] Add support for call hierarchy operations <!-- id: 10 -->
+    - [x] `prepareCallHierarchy` <!-- id: 11 -->
+    - [x] `incomingCalls` <!-- id: 12 -->
+    - [x] `outgoingCalls` <!-- id: 13 -->
+- [x] Integrate `LspManager` into `Agent` class <!-- id: 14 -->
+- [x] Update `ToolManager` to support `LspManager` injection <!-- id: 15 -->
+- [x] Add unit tests for `LspManager` <!-- id: 16 -->
+- [x] Add unit tests for `lspTool` <!-- id: 17 -->
+- [x] Support loading configuration from `.lsp.json` <!-- id: 18 -->
+- [x] Implement graceful shutdown in `LspManager` <!-- id: 21 -->
