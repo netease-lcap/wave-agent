@@ -44,10 +44,12 @@ export function mcpToolToOpenAITool(
     unknown
   >;
 
+  const prefixedName = `mcp__${serverName}__${mcpTool.name}`;
+
   return {
     type: "function",
     function: {
-      name: mcpTool.name,
+      name: prefixedName,
       description: `${mcpTool.description || `Tool from MCP server ${serverName}`} (MCP: ${serverName})`,
       parameters: cleanInputSchema,
     },
@@ -70,8 +72,9 @@ export function createMcpToolPlugin(
     images?: Array<{ data: string; mediaType?: string }>;
   }>,
 ): ToolPlugin {
+  const prefixedName = `mcp__${serverName}__${mcpTool.name}`;
   return {
-    name: mcpTool.name,
+    name: prefixedName,
     config: mcpToolToOpenAITool(mcpTool, serverName),
     async execute(
       args: Record<string, unknown>,
@@ -82,7 +85,7 @@ export function createMcpToolPlugin(
         if (context) {
           // Future: Could pass working directory or other context to MCP tools
         }
-        const result = await executeTool(mcpTool.name, args);
+        const result = await executeTool(prefixedName, args);
         return {
           success: true,
           content: result.content || `Executed ${mcpTool.name}`,

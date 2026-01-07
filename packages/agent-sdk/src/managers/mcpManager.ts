@@ -353,70 +353,101 @@ export class McpManager {
     serverName?: string;
     images?: Array<{ data: string; mediaType?: string }>;
   }> {
-    // Find which server has this tool
-    for (const [serverName, server] of this.servers.entries()) {
-      if (server.status === "connected" && server.tools) {
-        const tool = server.tools.find((t) => t.name === toolName);
-        if (tool) {
-          const connection = this.connections.get(serverName);
-          if (connection) {
-            try {
-              const result = await connection.client.callTool({
-                name: toolName,
-                arguments: args,
-              });
+    // Check if it's a prefixed name: mcp__[serverName]__[toolName]
+    if (!toolName.startsWith("mcp__")) {
+      throw new Error(
+        `Invalid MCP tool name: ${toolName}. Must start with 'mcp__'`,
+      );
+    }
 
-              // Separate text content and image data
-              const textContent: string[] = [];
-              const images: Array<{ data: string; mediaType?: string }> = [];
+    const parts = toolName.split("__");
+    if (parts.length < 3) {
+      throw new Error(
+        `Invalid MCP tool name format: ${toolName}. Expected 'mcp__[server]__[tool]'`,
+      );
+    }
 
-              if (Array.isArray(result.content)) {
-                result.content.forEach(
-                  (c: {
-                    type: string;
-                    text?: string;
-                    data?: string;
-                    resource?: { uri: string };
-                    [key: string]: unknown;
-                  }) => {
-                    if (c.type === "text") {
-                      textContent.push(c.text || "");
-                    } else if (c.type === "image" && c.data) {
-                      images.push({
-                        data: c.data,
-                        mediaType: "image/png", // Default to PNG, can be adjusted according to actual situation
-                      });
-                    } else if (c.type === "resource") {
-                      textContent.push(`[Resource: ${c.resource?.uri || ""}]`);
-                    } else {
-                      textContent.push(JSON.stringify(c));
-                    }
-                  },
-                );
-              } else if (result.content) {
-                textContent.push(String(result.content));
-              }
+    const targetServerName = parts[1];
+    const actualToolName = parts.slice(2).join("__");
 
-              return {
-                success: true,
-                content:
-                  textContent.length > 0
-                    ? textContent.join("\n")
-                    : "No content",
-                images: images.length > 0 ? images : undefined,
-                serverName,
-              };
-            } catch (error) {
-              throw new Error(
-                `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
-              );
-            }
-          }
+    const server = this.servers.get(targetServerName);
+    if (server && server.status === "connected" && server.tools) {
+      const tool = server.tools.find((t) => t.name === actualToolName);
+      if (tool) {
+        const connection = this.connections.get(targetServerName);
+        if (connection) {
+          return this.executeToolOnConnection(
+            connection,
+            actualToolName,
+            args,
+            targetServerName,
+          );
         }
       }
     }
 
     throw new Error(`Tool ${toolName} not found on any connected MCP server`);
+  }
+
+  private async executeToolOnConnection(
+    connection: McpConnection,
+    toolName: string,
+    args: Record<string, unknown>,
+    serverName: string,
+  ): Promise<{
+    success: boolean;
+    content: string;
+    serverName?: string;
+    images?: Array<{ data: string; mediaType?: string }>;
+  }> {
+    try {
+      const result = await connection.client.callTool({
+        name: toolName,
+        arguments: args,
+      });
+
+      // Separate text content and image data
+      const textContent: string[] = [];
+      const images: Array<{ data: string; mediaType?: string }> = [];
+
+      if (Array.isArray(result.content)) {
+        result.content.forEach(
+          (c: {
+            type: string;
+            text?: string;
+            data?: string;
+            resource?: { uri: string };
+            [key: string]: unknown;
+          }) => {
+            if (c.type === "text") {
+              textContent.push(c.text || "");
+            } else if (c.type === "image" && c.data) {
+              images.push({
+                data: c.data,
+                mediaType: "image/png", // Default to PNG
+              });
+            } else if (c.type === "resource") {
+              textContent.push(`[Resource: ${c.resource?.uri || ""}]`);
+            } else {
+              textContent.push(JSON.stringify(c));
+            }
+          },
+        );
+      } else if (result.content) {
+        textContent.push(String(result.content));
+      }
+
+      return {
+        success: true,
+        content: textContent.length > 0 ? textContent.join("\n") : "No content",
+        images: images.length > 0 ? images : undefined,
+        serverName,
+      };
+    } catch (error) {
+      throw new Error(
+        `Tool execution failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   // Cleanup all connections
@@ -448,7 +479,7 @@ export class McpManager {
         const plugin = createMcpToolPlugin(tool, server.name, (name, args) =>
           this.executeMcpTool(name, args),
         );
-        mcpTools.set(tool.name, plugin);
+        mcpTools.set(plugin.name, plugin);
       }
     }
 
@@ -487,7 +518,17 @@ export class McpManager {
    * Check if a tool name belongs to an MCP tool
    */
   isMcpTool(name: string): boolean {
-    const connectedTools = this.getAllConnectedTools();
-    return connectedTools.some((tool) => tool.name === name);
+    if (!name.startsWith("mcp__")) return false;
+
+    for (const server of this.servers.values()) {
+      if (server.status === "connected" && server.tools) {
+        for (const tool of server.tools) {
+          if (`mcp__${server.name}__${tool.name}` === name) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 }
