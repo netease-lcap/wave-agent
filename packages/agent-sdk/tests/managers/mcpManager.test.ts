@@ -376,9 +376,12 @@ describe("McpManager", () => {
 
       await mcpManager.connectServer("test-server");
 
-      const result = await mcpManager.executeMcpTool("test_tool", {
-        param: "value",
-      });
+      const result = await mcpManager.executeMcpTool(
+        "mcp__test-server__test_tool",
+        {
+          param: "value",
+        },
+      );
 
       expect(result).toEqual({
         success: true,
@@ -417,9 +420,12 @@ describe("McpManager", () => {
 
       await mcpManager.connectServer("test-server");
 
-      const result = await mcpManager.executeMcpTool("screenshot_tool", {
-        action: "capture",
-      });
+      const result = await mcpManager.executeMcpTool(
+        "mcp__test-server__screenshot_tool",
+        {
+          action: "capture",
+        },
+      );
 
       expect(result).toEqual({
         success: true,
@@ -468,9 +474,12 @@ describe("McpManager", () => {
 
       await mcpManager.connectServer("test-server");
 
-      const result = await mcpManager.executeMcpTool("multi_screenshot_tool", {
-        count: 2,
-      });
+      const result = await mcpManager.executeMcpTool(
+        "mcp__test-server__multi_screenshot_tool",
+        {
+          count: 2,
+        },
+      );
 
       expect(result).toEqual({
         success: true,
@@ -519,7 +528,10 @@ describe("McpManager", () => {
 
       await mcpManager.connectServer("test-server");
 
-      const result = await mcpManager.executeMcpTool("mixed_content_tool", {});
+      const result = await mcpManager.executeMcpTool(
+        "mcp__test-server__mixed_content_tool",
+        {},
+      );
 
       expect(result).toEqual({
         success: true,
@@ -559,7 +571,10 @@ describe("McpManager", () => {
 
       await mcpManager.connectServer("test-server");
 
-      const result = await mcpManager.executeMcpTool("image_only_tool", {});
+      const result = await mcpManager.executeMcpTool(
+        "mcp__test-server__image_only_tool",
+        {},
+      );
 
       expect(result).toEqual({
         success: true,
@@ -601,7 +616,7 @@ describe("McpManager", () => {
       await mcpManager.connectServer("test-server");
 
       const result = await mcpManager.executeMcpTool(
-        "unknown_content_tool",
+        "mcp__test-server__unknown_content_tool",
         {},
       );
 
@@ -618,9 +633,9 @@ describe("McpManager", () => {
       await mcpManager.connectServer("test-server");
 
       await expect(
-        mcpManager.executeMcpTool("non_existent_tool", {}),
+        mcpManager.executeMcpTool("mcp__test-server__non_existent_tool", {}),
       ).rejects.toThrow(
-        "Tool non_existent_tool not found on any connected MCP server",
+        "Tool mcp__test-server__non_existent_tool not found on any connected MCP server",
       );
     });
 
@@ -639,9 +654,9 @@ describe("McpManager", () => {
 
       await mcpManager.connectServer("test-server");
 
-      await expect(mcpManager.executeMcpTool("test_tool", {})).rejects.toThrow(
-        "Tool execution failed: Tool execution failed",
-      );
+      await expect(
+        mcpManager.executeMcpTool("mcp__test-server__test_tool", {}),
+      ).rejects.toThrow("Tool execution failed: Tool execution failed");
     });
   });
 
