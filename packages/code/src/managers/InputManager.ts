@@ -944,7 +944,7 @@ export class InputManager {
 
   // Handle selector input (when any selector is active)
   handleSelectorInput(input: string, key: Key): boolean {
-    if (key.backspace || (key.delete && !this.showBashHistorySelector)) {
+    if (key.backspace || key.delete) {
       if (this.cursorPosition > 0) {
         this.deleteCharAtCursor((newInput, newCursorPosition) => {
           // Check for special character deletion
