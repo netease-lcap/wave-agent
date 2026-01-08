@@ -38,5 +38,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Configure npm for OIDC
+        run: |
+          echo "//registry.npmjs.org/:aud=https://github.com/netease-lcap" >> ./.npmrc
+          echo "//registry.npmjs.org/:_authToken=\${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" >> ./.npmrc
+
       - name: Publish
         run: pnpm -r publish --no-git-checks --access public
