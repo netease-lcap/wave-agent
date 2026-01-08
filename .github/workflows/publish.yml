@@ -27,6 +27,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          registry-url: 'https://registry.npmjs.org'
       
       - name: Setup pnpm and install dependencies
         run: |
@@ -51,3 +52,5 @@ jobs:
           else
             pnpm -r publish --dry-run --no-git-checks
           fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
