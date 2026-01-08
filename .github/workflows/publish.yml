@@ -48,8 +48,19 @@ jobs:
       - name: Publish
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            pnpm -r publish --no-git-checks --access public --provenance
+            TAG="latest"
+            DRY_RUN=""
           else
-            # 在测试分支，我们还是用 dry-run，但加上 --no-git-checks
-            pnpm -r publish --dry-run --no-git-checks --access public --provenance
+            TAG="test-only"
+            DRY_RUN="--dry-run"
           fi
+
+          for dir in packages/*; do
+            if [ -d "$dir" ]; then
+              echo "Publishing $dir with tag $TAG $DRY_RUN..."
+              cd "$dir"
+              # 使用 npm 原生命令，它对 OIDC 支持最好
+              npm publish --tag "$TAG" $DRY_RUN --access public --provenance --no-git-checks
+              cd ../..
+            fi
+          done
