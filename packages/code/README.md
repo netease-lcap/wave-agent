@@ -36,20 +36,11 @@ export WAVE_BASE_URL="https://your-api-gateway-url.com"
 ### Optional Environment Variables
 
 ```bash
-# Specify AI model (optional, defaults to system configured model)
-export WAVE_MODEL="gemini-2.5-flash"
+# Specify AI model (optional, defaults to gemini-3-flash)
+export WAVE_MODEL="gemini-3-flash"
 
-# Specify fast AI model (optional, for quick response scenarios)
-export WAVE_FAST_MODEL="gemini-1.5-flash"
-
-# Log level (optional, defaults to info)
-export LOG_LEVEL="debug"
-
-# Log file path (optional)
-export LOG_FILE="/path/to/your/logfile.log"
-
-# Maximum log file size (optional, defaults to 10MB)
-export LOG_MAX_FILE_SIZE="10485760"
+# Specify fast AI model (optional, defaults to gemini-2.5-flash)
+export WAVE_FAST_MODEL="gemini-2.5-flash"
 
 # Token limit (optional, defaults to 96000)
 export WAVE_MAX_INPUT_TOKENS="96000"
