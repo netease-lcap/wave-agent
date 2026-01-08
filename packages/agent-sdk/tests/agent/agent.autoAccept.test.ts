@@ -24,8 +24,8 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "wave-agent-test-"));
     process.env = {
       ...originalEnv,
-      AIGW_TOKEN: "test-token",
-      AIGW_URL: "https://test.api",
+      WAVE_API_KEY: "test-token",
+      WAVE_BASE_URL: "https://test.api",
     };
     vi.mocked(os.homedir).mockReturnValue(os.tmpdir());
   });

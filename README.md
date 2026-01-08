@@ -46,8 +46,8 @@ Core Node.js SDK providing AI services, tools, and utilities used by the CLI fro
 4. **Set up environment variables**:
 
    ```bash
-   export AIGW_TOKEN="your_token_here"
-   export AIGW_URL="https://your-api-gateway-url.com"
+   export WAVE_API_KEY="your_token_here"
+   export WAVE_BASE_URL="https://your-api-gateway-url.com"
    ```
 
 5. **Start using**:

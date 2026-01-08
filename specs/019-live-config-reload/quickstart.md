@@ -166,7 +166,7 @@ class LiveConfigurationService {
   },
   "env": {
     "AIGW_MODEL": "claude-sonnet-4-20250514",  // Overrides user setting
-    "AIGW_TOKEN": "project-api-key",
+    "WAVE_API_KEY": "project-api-key",
     "WAVE_MAX_INPUT_TOKENS": "64000"
   }
 }

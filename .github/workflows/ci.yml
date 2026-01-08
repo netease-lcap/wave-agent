@@ -41,8 +41,8 @@ jobs:
       - name: Build
         run: pnpm build
         env:
-          AIGW_TOKEN: test-token-for-ci
-          AIGW_URL: https://mock-api.test.com
+          WAVE_API_KEY: test-token-for-ci
+          WAVE_BASE_URL: https://mock-api.test.com
       
       - name: Type check
         run: pnpm type-check
@@ -53,5 +53,5 @@ jobs:
       - name: Test
         run: pnpm test
         env:
-          AIGW_TOKEN: test-token-for-ci
-          AIGW_URL: https://mock-api.test.com
+          WAVE_API_KEY: test-token-for-ci
+          WAVE_BASE_URL: https://mock-api.test.com

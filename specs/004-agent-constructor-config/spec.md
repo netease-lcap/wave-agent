@@ -61,8 +61,8 @@ Developers need to specify default AI models (agent model and fast model) throug
 
 ### Functional Requirements
 
-- **FR-001**: Agent constructor MUST accept optional `apiKey` string parameter with fallback to AIGW_TOKEN environment variable
-- **FR-002**: Agent constructor MUST accept optional `baseURL` string parameter with fallback to AIGW_URL environment variable
+- **FR-001**: Agent constructor MUST accept optional `apiKey` string parameter with fallback to WAVE_API_KEY environment variable
+- **FR-002**: Agent constructor MUST accept optional `baseURL` string parameter with fallback to WAVE_BASE_URL environment variable
 - **FR-003**: Agent constructor MUST accept optional `agentModel` string parameter with fallback to AIGW_MODEL environment variable
 - **FR-004**: Agent constructor MUST accept optional `fastModel` string parameter with fallback to AIGW_FAST_MODEL environment variable
 - **FR-005**: Agent constructor MUST accept optional `maxInputTokens` number parameter with fallback to WAVE_MAX_INPUT_TOKENS environment variable
@@ -88,4 +88,4 @@ Developers need to specify default AI models (agent model and fast model) throug
 - **SC-004**: Constructor parameters override environment variables when both are present
 - **SC-005**: Testing-related environment variables (NODE_ENV, VITEST, WAVE_TEST_HOOKS_EXECUTION) continue to work as before
 - **SC-006**: Service uses resolved configuration instead of direct environment variable access
-- **SC-006**: Code no longer directly accesses AI-related environment variables (AIGW_TOKEN, AIGW_URL, AIGW_MODEL, etc.)
+- **SC-006**: Code no longer directly accesses AI-related environment variables (WAVE_API_KEY, WAVE_BASE_URL, AIGW_MODEL, etc.)

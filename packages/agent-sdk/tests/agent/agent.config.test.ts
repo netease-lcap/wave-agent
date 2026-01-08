@@ -32,8 +32,8 @@ describe("Agent Configuration", () => {
   describe("Gateway Configuration", () => {
     it("should use constructor parameters over environment variables", async () => {
       // Set environment variables
-      process.env.AIGW_TOKEN = "env-api-key";
-      process.env.AIGW_URL = "https://env-gateway.com/api";
+      process.env.WAVE_API_KEY = "env-api-key";
+      process.env.WAVE_BASE_URL = "https://env-gateway.com/api";
 
       const agent = await Agent.create({
         apiKey: "constructor-api-key",
@@ -45,8 +45,8 @@ describe("Agent Configuration", () => {
     });
 
     it("should fall back to environment variables when constructor params not provided", async () => {
-      process.env.AIGW_TOKEN = "env-api-key";
-      process.env.AIGW_URL = "https://env-gateway.com/api";
+      process.env.WAVE_API_KEY = "env-api-key";
+      process.env.WAVE_BASE_URL = "https://env-gateway.com/api";
 
       const agent = await Agent.create({});
 
@@ -54,15 +54,15 @@ describe("Agent Configuration", () => {
     });
 
     it("should throw error when neither constructor nor environment provides apiKey", async () => {
-      delete process.env.AIGW_TOKEN;
-      process.env.AIGW_URL = "https://test-gateway.com/api";
+      delete process.env.WAVE_API_KEY;
+      process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
 
       await expect(Agent.create({})).rejects.toThrow(/apiKey/);
     });
 
     it("should throw error when neither constructor nor environment provides baseURL", async () => {
-      process.env.AIGW_TOKEN = "test-api-key";
-      delete process.env.AIGW_URL;
+      process.env.WAVE_API_KEY = "test-api-key";
+      delete process.env.WAVE_BASE_URL;
 
       await expect(Agent.create({})).rejects.toThrow(/baseURL/);
     });
@@ -89,8 +89,8 @@ describe("Agent Configuration", () => {
   describe("Token Limit Configuration", () => {
     beforeEach(() => {
       // Provide required gateway config
-      process.env.AIGW_TOKEN = "test-api-key";
-      process.env.AIGW_URL = "https://test-gateway.com/api";
+      process.env.WAVE_API_KEY = "test-api-key";
+      process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
     });
 
     it("should use constructor maxInputTokens over environment variable", async () => {
@@ -147,8 +147,8 @@ describe("Agent Configuration", () => {
   describe("Model Configuration", () => {
     beforeEach(() => {
       // Provide required gateway config
-      process.env.AIGW_TOKEN = "test-api-key";
-      process.env.AIGW_URL = "https://test-gateway.com/api";
+      process.env.WAVE_API_KEY = "test-api-key";
+      process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
     });
 
     it("should use constructor model parameters over environment variables", async () => {
@@ -219,7 +219,7 @@ describe("Agent Configuration", () => {
 
     it("should handle mixed constructor and environment configuration", async () => {
       // Set some environment variables
-      process.env.AIGW_TOKEN = "env-api-key";
+      process.env.WAVE_API_KEY = "env-api-key";
       process.env.AIGW_FAST_MODEL = "env-fast-model";
       process.env.WAVE_MAX_INPUT_TOKENS = "48000";
 
@@ -233,8 +233,8 @@ describe("Agent Configuration", () => {
     });
 
     it("should handle environment-only configuration", async () => {
-      process.env.AIGW_TOKEN = "env-api-key";
-      process.env.AIGW_URL = "https://env-gateway.com/api";
+      process.env.WAVE_API_KEY = "env-api-key";
+      process.env.WAVE_BASE_URL = "https://env-gateway.com/api";
       process.env.AIGW_MODEL = "env-agent-model";
       process.env.AIGW_FAST_MODEL = "env-fast-model";
       process.env.WAVE_MAX_INPUT_TOKENS = "32000";
@@ -245,8 +245,8 @@ describe("Agent Configuration", () => {
     });
 
     it("should preserve existing AgentOptions functionality", async () => {
-      process.env.AIGW_TOKEN = "test-api-key";
-      process.env.AIGW_URL = "https://test-gateway.com/api";
+      process.env.WAVE_API_KEY = "test-api-key";
+      process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
 
       const agent = await Agent.create({
         workdir: "/custom/workdir",
@@ -261,22 +261,22 @@ describe("Agent Configuration", () => {
   describe("Configuration Validation", () => {
     it("should validate configuration early in constructor", async () => {
       // Missing both constructor and environment config should fail fast
-      delete process.env.AIGW_TOKEN;
-      delete process.env.AIGW_URL;
+      delete process.env.WAVE_API_KEY;
+      delete process.env.WAVE_BASE_URL;
 
       await expect(Agent.create({})).rejects.toThrow();
     });
 
     it("should provide descriptive error messages", async () => {
-      delete process.env.AIGW_TOKEN;
-      process.env.AIGW_URL = "https://test-gateway.com/api";
+      delete process.env.WAVE_API_KEY;
+      process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
 
-      await expect(Agent.create({})).rejects.toThrow(/apiKey.*AIGW_TOKEN/);
+      await expect(Agent.create({})).rejects.toThrow(/apiKey.*WAVE_API_KEY/);
     });
 
     it("should handle environment variable parsing errors gracefully", async () => {
-      process.env.AIGW_TOKEN = "test-api-key";
-      process.env.AIGW_URL = "https://test-gateway.com/api";
+      process.env.WAVE_API_KEY = "test-api-key";
+      process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
       process.env.WAVE_MAX_INPUT_TOKENS = "not-a-number";
 
       // Should use default token limit when environment variable is invalid
@@ -288,8 +288,8 @@ describe("Agent Configuration", () => {
 
   describe("Backward Compatibility", () => {
     it("should work with existing code that doesn't use new configuration", async () => {
-      process.env.AIGW_TOKEN = "env-api-key";
-      process.env.AIGW_URL = "https://env-gateway.com/api";
+      process.env.WAVE_API_KEY = "env-api-key";
+      process.env.WAVE_BASE_URL = "https://env-gateway.com/api";
 
       // This is how existing code creates agents
       const agent = await Agent.create({
@@ -300,8 +300,8 @@ describe("Agent Configuration", () => {
     });
 
     it("should not break when new config options are mixed with existing options", async () => {
-      process.env.AIGW_TOKEN = "env-api-key";
-      process.env.AIGW_URL = "https://env-gateway.com/api";
+      process.env.WAVE_API_KEY = "env-api-key";
+      process.env.WAVE_BASE_URL = "https://env-gateway.com/api";
 
       const agent = await Agent.create({
         apiKey: "custom-api-key", // New configuration option
@@ -317,8 +317,8 @@ describe("Agent Configuration", () => {
   describe("Dynamic Configuration Update", () => {
     beforeEach(() => {
       // Provide required gateway config
-      process.env.AIGW_TOKEN = "test-api-key";
-      process.env.AIGW_URL = "https://test-gateway.com/api";
+      process.env.WAVE_API_KEY = "test-api-key";
+      process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
     });
 
     it("should update gateway configuration", async () => {

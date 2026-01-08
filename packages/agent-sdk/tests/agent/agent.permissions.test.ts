@@ -20,8 +20,8 @@ describe("Agent Permission Integration", () => {
     process.env = { ...originalEnv };
 
     // Set required environment variables for agent creation
-    process.env.AIGW_TOKEN = "test-api-key";
-    process.env.AIGW_URL = "https://test-gateway.com/api";
+    process.env.WAVE_API_KEY = "test-api-key";
+    process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
 
     // Mock stdout and stderr to suppress output during testing
     originalStdoutWrite = process.stdout.write;

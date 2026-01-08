@@ -36,8 +36,8 @@ vi.mock("@/utils/constants", () => ({
 // Mock environment variables
 vi.mock("process", () => ({
   env: {
-    AIGW_TOKEN: "test-token",
-    AIGW_URL: "https://test-url.com",
+    WAVE_API_KEY: "test-token",
+    WAVE_BASE_URL: "https://test-url.com",
   },
   cwd: () => "/test/cwd",
 }));

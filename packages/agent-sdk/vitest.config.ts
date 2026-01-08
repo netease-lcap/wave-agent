@@ -20,8 +20,8 @@ export default defineConfig(() => {
       retry: isCI ? 2 : 0,
       reporters: ["dot"],
       env: {
-        AIGW_TOKEN: "test-token",
-        AIGW_URL: "http://localhost:8080",
+        WAVE_API_KEY: "test-token",
+        WAVE_BASE_URL: "http://localhost:8080",
       },
     },
     resolve: {
