@@ -396,15 +396,15 @@ export class ConfigurationService {
     // Resolve agent model: constructor > env (settings.json) > process.env > default
     const resolvedAgentModel =
       agentModel ||
-      this.env.AIGW_MODEL ||
-      process.env.AIGW_MODEL ||
+      this.env.WAVE_MODEL ||
+      process.env.WAVE_MODEL ||
       DEFAULT_AGENT_MODEL;
 
     // Resolve fast model: constructor > env (settings.json) > process.env > default
     const resolvedFastModel =
       fastModel ||
-      this.env.AIGW_FAST_MODEL ||
-      process.env.AIGW_FAST_MODEL ||
+      this.env.WAVE_FAST_MODEL ||
+      process.env.WAVE_FAST_MODEL ||
       DEFAULT_FAST_MODEL;
 
     // Resolve max output tokens

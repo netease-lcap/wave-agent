@@ -115,8 +115,8 @@ function validateGatewayConfig(apiKey?: string, baseURL?: string): void {
 **Environment Variable Mapping**:
 - `apiKey` ↔ `process.env.WAVE_API_KEY`
 - `baseURL` ↔ `process.env.WAVE_BASE_URL`
-- `agentModel` ↔ `process.env.AIGW_MODEL`
-- `fastModel` ↔ `process.env.AIGW_FAST_MODEL`
+- `agentModel` ↔ `process.env.WAVE_MODEL`
+- `fastModel` ↔ `process.env.WAVE_FAST_MODEL`
 - `maxInputTokens` ↔ `process.env.WAVE_MAX_INPUT_TOKENS`
 
 **Built-in Defaults**:

@@ -37,10 +37,10 @@ export WAVE_BASE_URL="https://your-api-gateway-url.com"
 
 ```bash
 # Specify AI model (optional, defaults to system configured model)
-export AIGW_MODEL="gemini-2.5-flash"
+export WAVE_MODEL="gemini-2.5-flash"
 
 # Specify fast AI model (optional, for quick response scenarios)
-export AIGW_FAST_MODEL="gemini-1.5-flash"
+export WAVE_FAST_MODEL="gemini-1.5-flash"
 
 # Log level (optional, defaults to info)
 export LOG_LEVEL="debug"

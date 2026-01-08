@@ -35,8 +35,8 @@ describe("Subagent Dynamic Configuration Tests", () => {
     // Clear environment variables that might interfere
     delete process.env.WAVE_API_KEY;
     delete process.env.WAVE_BASE_URL;
-    delete process.env.AIGW_MODEL;
-    delete process.env.AIGW_FAST_MODEL;
+    delete process.env.WAVE_MODEL;
+    delete process.env.WAVE_FAST_MODEL;
     delete process.env.WAVE_MAX_INPUT_TOKENS;
     // Reset and setup loadMergedWaveConfig mock
     vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
@@ -57,7 +57,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       // Set initial environment variables
       process.env.WAVE_API_KEY = "parent-token";
       process.env.WAVE_BASE_URL = "https://parent.url";
-      process.env.AIGW_MODEL = "parent-model";
+      process.env.WAVE_MODEL = "parent-model";
       process.env.WAVE_MAX_INPUT_TOKENS = "40000";
 
       // Create parent agent
@@ -108,7 +108,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       // Update parent environment variables
       process.env.WAVE_API_KEY = "updated-parent-token";
       process.env.WAVE_BASE_URL = "https://updated-parent.url";
-      process.env.AIGW_MODEL = "updated-parent-model";
+      process.env.WAVE_MODEL = "updated-parent-model";
       process.env.WAVE_MAX_INPUT_TOKENS = "50000";
 
       // Verify subagent AIManager gets updated values through parent's dynamic getters
@@ -127,8 +127,8 @@ describe("Subagent Dynamic Configuration Tests", () => {
       // Set parent environment variables
       process.env.WAVE_API_KEY = "parent-token";
       process.env.WAVE_BASE_URL = "https://parent.url";
-      process.env.AIGW_MODEL = "parent-model";
-      process.env.AIGW_FAST_MODEL = "parent-fast-model";
+      process.env.WAVE_MODEL = "parent-model";
+      process.env.WAVE_FAST_MODEL = "parent-fast-model";
 
       // Create parent agent
       agent = await Agent.create({
@@ -180,7 +180,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
 
       // Update parent environment variables
       process.env.WAVE_API_KEY = "updated-parent-token";
-      process.env.AIGW_FAST_MODEL = "updated-parent-fast-model";
+      process.env.WAVE_FAST_MODEL = "updated-parent-fast-model";
 
       // Verify subagent still uses override model but gets updated inherited values
       const updatedModelConfig = subagentAIManager.getModelConfig();
@@ -196,7 +196,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       // Set initial environment variables
       process.env.WAVE_API_KEY = "multi-token";
       process.env.WAVE_BASE_URL = "https://multi.url";
-      process.env.AIGW_MODEL = "multi-model";
+      process.env.WAVE_MODEL = "multi-model";
 
       // Create parent agent
       agent = await Agent.create({
@@ -256,7 +256,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
 
       // Update environment
       process.env.WAVE_API_KEY = "multi-updated-token";
-      process.env.AIGW_MODEL = "multi-updated-model";
+      process.env.WAVE_MODEL = "multi-updated-model";
 
       // Verify both subagents get updated values
       expect(subagent1.aiManager.getGatewayConfig().apiKey).toBe(

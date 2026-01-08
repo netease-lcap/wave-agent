@@ -71,13 +71,13 @@ async function validateAgentConfiguration() {
 
   // Set some environment variables
   process.env.WAVE_BASE_URL = "https://env-gateway.com";
-  process.env.AIGW_FAST_MODEL = "env-fast-model";
+  process.env.WAVE_FAST_MODEL = "env-fast-model";
   process.env.WAVE_MAX_INPUT_TOKENS = "96000";
 
   try {
     const agent = await Agent.create({
       apiKey: "explicit-key", // Overrides WAVE_API_KEY
-      agentModel: "custom-model", // Overrides AIGW_MODEL
+      agentModel: "custom-model", // Overrides WAVE_MODEL
       maxInputTokens: 32000, // Overrides WAVE_MAX_INPUT_TOKENS
       workdir: "./project",
     });
@@ -208,7 +208,7 @@ async function validateAgentConfiguration() {
   // Set environment variables
   process.env.WAVE_API_KEY = "env-key";
   process.env.WAVE_BASE_URL = "https://env-url.com";
-  process.env.AIGW_MODEL = "env-model";
+  process.env.WAVE_MODEL = "env-model";
 
   try {
     const agent = await Agent.create({

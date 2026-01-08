@@ -26,7 +26,7 @@ const agent = await Agent.create({
   // apiKey: uses WAVE_API_KEY
   // baseURL: uses WAVE_BASE_URL  
   // maxInputTokens:uses WAVE_MAX_INPUT_TOKENS or defaults to 96000
-  // models: use AIGW_MODEL, AIGW_FAST_MODEL or built-in defaults
+  // models: use WAVE_MODEL, WAVE_FAST_MODEL or built-in defaults
 });
 ```
 
@@ -37,8 +37,8 @@ const agent = await Agent.create({
 const agent = await Agent.create({
   apiKey: 'explicit-key',        // Overrides WAVE_API_KEY
   // baseURL uses WAVE_BASE_URL environment variable
-  agentModel: 'custom-model',    // Overrides AIGW_MODEL
-  // fastModel uses AIGW_FAST_MODEL or default
+  agentModel: 'custom-model',    // Overrides WAVE_MODEL
+  // fastModel uses WAVE_FAST_MODEL or default
   maxInputTokens:32000,             // Overrides WAVE_MAX_INPUT_TOKENS
   workdir: './project'
 });
@@ -120,13 +120,13 @@ const modernAgent = await Agent.create({
 ## Configuration Precedence Examples
 
 ```typescript
-// Environment: WAVE_API_KEY=env-key, WAVE_BASE_URL=env-url, AIGW_MODEL=env-model
+// Environment: WAVE_API_KEY=env-key, WAVE_BASE_URL=env-url, WAVE_MODEL=env-model
 
 // Constructor values override environment
 const agent1 = await Agent.create({
   apiKey: 'constructor-key',     // Uses constructor value
   baseURL: 'constructor-url',    // Uses constructor value
-  // agentModel uses AIGW_MODEL from environment
+  // agentModel uses WAVE_MODEL from environment
 });
 
 // Partial override example  

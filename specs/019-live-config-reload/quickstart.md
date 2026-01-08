@@ -146,7 +146,7 @@ class LiveConfigurationService {
     ]
   },
   "env": {
-    "AIGW_MODEL": "gpt-4o-mini",
+    "WAVE_MODEL": "gpt-4o-mini",
     "LOG_LEVEL": "debug",
     "USER_PREFERENCE": "theme_dark"
   }
@@ -165,7 +165,7 @@ class LiveConfigurationService {
     ]
   },
   "env": {
-    "AIGW_MODEL": "claude-sonnet-4-20250514",  // Overrides user setting
+    "WAVE_MODEL": "claude-sonnet-4-20250514",  // Overrides user setting
     "WAVE_API_KEY": "project-api-key",
     "WAVE_MAX_INPUT_TOKENS": "64000"
   }
@@ -239,7 +239,7 @@ async function testLiveReload() {
   // Initial configuration
   let config = {
     "env": {
-      "AIGW_MODEL": "gpt-4o-mini"
+      "WAVE_MODEL": "gpt-4o-mini"
     }
   };
   
@@ -247,7 +247,7 @@ async function testLiveReload() {
   const agent = await Agent.create({ workdir: process.cwd() });
   
   // Update configuration while agent is running
-  config.env.AIGW_MODEL = "claude-sonnet-4-20250514";
+  config.env.WAVE_MODEL = "claude-sonnet-4-20250514";
   await writeFile('.wave/settings.json', JSON.stringify(config, null, 2));
   
   // Wait for file watcher (300ms debounce)
