@@ -20,11 +20,11 @@ const agent = await Agent.create({
 
 ```typescript
 // No constructor config - uses environment variables
-// Requires AIGW_TOKEN and AIGW_URL environment variables
+// Requires WAVE_API_KEY and WAVE_BASE_URL environment variables
 const agent = await Agent.create({
   workdir: './project'
-  // apiKey: uses AIGW_TOKEN
-  // baseURL: uses AIGW_URL  
+  // apiKey: uses WAVE_API_KEY
+  // baseURL: uses WAVE_BASE_URL  
   // maxInputTokens:uses WAVE_MAX_INPUT_TOKENS or defaults to 96000
   // models: use AIGW_MODEL, AIGW_FAST_MODEL or built-in defaults
 });
@@ -35,8 +35,8 @@ const agent = await Agent.create({
 ```typescript
 // Some explicit, some from environment
 const agent = await Agent.create({
-  apiKey: 'explicit-key',        // Overrides AIGW_TOKEN
-  // baseURL uses AIGW_URL environment variable
+  apiKey: 'explicit-key',        // Overrides WAVE_API_KEY
+  // baseURL uses WAVE_BASE_URL environment variable
   agentModel: 'custom-model',    // Overrides AIGW_MODEL
   // fastModel uses AIGW_FAST_MODEL or default
   maxInputTokens:32000,             // Overrides WAVE_MAX_INPUT_TOKENS
@@ -67,11 +67,11 @@ try {
   // Missing both constructor args and environment variables
   const agent = await Agent.create({
     workdir: './project'
-    // No apiKey provided and AIGW_TOKEN not set
-    // No baseURL provided and AIGW_URL not set
+    // No apiKey provided and WAVE_API_KEY not set
+    // No baseURL provided and WAVE_BASE_URL not set
   });
 } catch (error) {
-  // Error: "Gateway configuration requires apiKey. Provide via constructor or AIGW_TOKEN environment variable."
+  // Error: "Gateway configuration requires apiKey. Provide via constructor or WAVE_API_KEY environment variable."
   console.error(error.message);
 }
 
@@ -100,7 +100,7 @@ try {
 
 ```typescript
 // Existing code continues to work if environment variables are set
-// AIGW_TOKEN=token, AIGW_URL=url, etc.
+// WAVE_API_KEY=token, WAVE_BASE_URL=url, etc.
 const legacyAgent = await Agent.create({
   workdir: './project',
   logger: console
@@ -109,8 +109,8 @@ const legacyAgent = await Agent.create({
 
 // New code can override specific environment variables
 const modernAgent = await Agent.create({
-  apiKey: 'explicit-key',     // Overrides AIGW_TOKEN
-  baseURL: 'https://new-url', // Overrides AIGW_URL
+  apiKey: 'explicit-key',     // Overrides WAVE_API_KEY
+  baseURL: 'https://new-url', // Overrides WAVE_BASE_URL
   // Other config uses environment variables
   workdir: './project',
   logger: console
@@ -120,7 +120,7 @@ const modernAgent = await Agent.create({
 ## Configuration Precedence Examples
 
 ```typescript
-// Environment: AIGW_TOKEN=env-key, AIGW_URL=env-url, AIGW_MODEL=env-model
+// Environment: WAVE_API_KEY=env-key, WAVE_BASE_URL=env-url, AIGW_MODEL=env-model
 
 // Constructor values override environment
 const agent1 = await Agent.create({
@@ -131,8 +131,8 @@ const agent1 = await Agent.create({
 
 // Partial override example  
 const agent2 = await Agent.create({
-  apiKey: 'constructor-key',     // Overrides AIGW_TOKEN
-  // baseURL uses AIGW_URL from environment
+  apiKey: 'constructor-key',     // Overrides WAVE_API_KEY
+  // baseURL uses WAVE_BASE_URL from environment
   // models use environment variables or defaults
 });
 

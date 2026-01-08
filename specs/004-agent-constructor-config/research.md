@@ -63,14 +63,14 @@ interface AgentOptions {
 ### Implementation Pattern:
 ```typescript
 function validateGatewayConfig(apiKey?: string, baseURL?: string): void {
-  const finalApiKey = apiKey || process.env.AIGW_TOKEN;
-  const finalBaseURL = baseURL || process.env.AIGW_URL;
+  const finalApiKey = apiKey || process.env.WAVE_API_KEY;
+  const finalBaseURL = baseURL || process.env.WAVE_BASE_URL;
   
   if (!finalApiKey) {
-    throw new Error('Gateway configuration requires apiKey. Provide via constructor or AIGW_TOKEN environment variable.');
+    throw new Error('Gateway configuration requires apiKey. Provide via constructor or WAVE_API_KEY environment variable.');
   }
   if (!finalBaseURL) {
-    throw new Error('Gateway configuration requires baseURL. Provide via constructor or AIGW_URL environment variable.');
+    throw new Error('Gateway configuration requires baseURL. Provide via constructor or WAVE_BASE_URL environment variable.');
   }
 }
 ```
@@ -113,8 +113,8 @@ function validateGatewayConfig(apiKey?: string, baseURL?: string): void {
 3. Built-in defaults (lowest precedence)
 
 **Environment Variable Mapping**:
-- `apiKey` ↔ `process.env.AIGW_TOKEN`
-- `baseURL` ↔ `process.env.AIGW_URL`
+- `apiKey` ↔ `process.env.WAVE_API_KEY`
+- `baseURL` ↔ `process.env.WAVE_BASE_URL`
 - `agentModel` ↔ `process.env.AIGW_MODEL`
 - `fastModel` ↔ `process.env.AIGW_FAST_MODEL`
 - `maxInputTokens` ↔ `process.env.WAVE_MAX_INPUT_TOKENS`

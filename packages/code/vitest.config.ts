@@ -25,8 +25,8 @@ export default defineConfig(() => {
         // Set shorter debounce time to accelerate tests
         FILE_SELECTOR_DEBOUNCE_MS: "0",
         PASTE_DEBOUNCE_MS: "0",
-        AIGW_TOKEN: "test-token",
-        AIGW_URL: "http://localhost:8080",
+        WAVE_API_KEY: "test-token",
+        WAVE_BASE_URL: "http://localhost:8080",
       },
     },
     resolve: {

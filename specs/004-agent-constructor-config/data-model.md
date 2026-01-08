@@ -9,8 +9,8 @@
 Extended interface for Agent constructor parameters.
 
 **Fields**:
-- `apiKey?: string` - Gateway API key (optional, fallback to AIGW_TOKEN)
-- `baseURL?: string` - Gateway endpoint URL (optional, fallback to AIGW_URL)
+- `apiKey?: string` - Gateway API key (optional, fallback to WAVE_API_KEY)
+- `baseURL?: string` - Gateway endpoint URL (optional, fallback to WAVE_BASE_URL)
 - `agentModel?: string` - Model ID for main operations (optional, fallback to AIGW_MODEL)
 - `fastModel?: string` - Model ID for fast operations (optional, fallback to AIGW_FAST_MODEL)
 - `maxInputTokens?: number` - Token limit for compression (optional, fallback to WAVE_MAX_INPUT_TOKENS, default: 96000)
@@ -76,8 +76,8 @@ Configuration values resolved in this order:
    - `AgentOptions.maxInputTokens`
 
 2. **Environment Variables** (fallback)
-   - `process.env.AIGW_TOKEN` → `apiKey`
-   - `process.env.AIGW_URL` → `baseURL`
+   - `process.env.WAVE_API_KEY` → `apiKey`
+   - `process.env.WAVE_BASE_URL` → `baseURL`
    - `process.env.AIGW_MODEL` → `agentModel`
    - `process.env.AIGW_FAST_MODEL` → `fastModel`
    - `process.env.WAVE_MAX_INPUT_TOKENS` → `maxInputTokens`
@@ -100,8 +100,8 @@ Constructor Called → Validate Config → Resolve Values → Initialize Service
 - `Invalid Format`: Configuration values malformed
 
 **Error States**:
-- Missing apiKey: No constructor arg and no AIGW_TOKEN environment variable
-- Missing baseURL: No constructor arg and no AIGW_URL environment variable
+- Missing apiKey: No constructor arg and no WAVE_API_KEY environment variable
+- Missing baseURL: No constructor arg and no WAVE_BASE_URL environment variable
 - Invalid token limit: Constructor throws with validation error
 
 ## Testing Entities

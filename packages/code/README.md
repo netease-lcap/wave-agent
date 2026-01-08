@@ -27,10 +27,10 @@ Before use, you need to configure the following environment variables for AI mod
 
 ```bash
 # AI Gateway access token (required)
-export AIGW_TOKEN="your_token_here"
+export WAVE_API_KEY="your_token_here"
 
 # AI Gateway API URL (required)
-export AIGW_URL="https://your-api-gateway-url.com"
+export WAVE_BASE_URL="https://your-api-gateway-url.com"
 ```
 
 ### Optional Environment Variables

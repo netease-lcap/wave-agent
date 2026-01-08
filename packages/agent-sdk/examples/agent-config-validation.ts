@@ -39,11 +39,11 @@ async function validateAgentConfiguration() {
   console.log("\n2. Testing: Minimal Configuration with Environment Variables");
 
   // Set environment variables for this test
-  const originalToken = process.env.AIGW_TOKEN;
-  const originalUrl = process.env.AIGW_URL;
+  const originalToken = process.env.WAVE_API_KEY;
+  const originalUrl = process.env.WAVE_BASE_URL;
 
-  process.env.AIGW_TOKEN = "env-test-token";
-  process.env.AIGW_URL = "https://env-test-gateway.com";
+  process.env.WAVE_API_KEY = "env-test-token";
+  process.env.WAVE_BASE_URL = "https://env-test-gateway.com";
 
   try {
     const agent = await Agent.create({
@@ -61,22 +61,22 @@ async function validateAgentConfiguration() {
   }
 
   // Restore environment
-  if (originalToken) process.env.AIGW_TOKEN = originalToken;
-  else delete process.env.AIGW_TOKEN;
-  if (originalUrl) process.env.AIGW_URL = originalUrl;
-  else delete process.env.AIGW_URL;
+  if (originalToken) process.env.WAVE_API_KEY = originalToken;
+  else delete process.env.WAVE_API_KEY;
+  if (originalUrl) process.env.WAVE_BASE_URL = originalUrl;
+  else delete process.env.WAVE_BASE_URL;
 
   // Test 3: Mixed Configuration (Partial Override)
   console.log("\n3. Testing: Mixed Configuration");
 
   // Set some environment variables
-  process.env.AIGW_URL = "https://env-gateway.com";
+  process.env.WAVE_BASE_URL = "https://env-gateway.com";
   process.env.AIGW_FAST_MODEL = "env-fast-model";
   process.env.WAVE_MAX_INPUT_TOKENS = "96000";
 
   try {
     const agent = await Agent.create({
-      apiKey: "explicit-key", // Overrides AIGW_TOKEN
+      apiKey: "explicit-key", // Overrides WAVE_API_KEY
       agentModel: "custom-model", // Overrides AIGW_MODEL
       maxInputTokens: 32000, // Overrides WAVE_MAX_INPUT_TOKENS
       workdir: "./project",
@@ -118,8 +118,8 @@ async function validateAgentConfiguration() {
   console.log("\n5. Testing: Error Handling - Missing Configuration");
 
   // Clear environment variables
-  delete process.env.AIGW_TOKEN;
-  delete process.env.AIGW_URL;
+  delete process.env.WAVE_API_KEY;
+  delete process.env.WAVE_BASE_URL;
 
   try {
     await Agent.create({
@@ -130,7 +130,7 @@ async function validateAgentConfiguration() {
     if (
       error instanceof Error &&
       error.message.includes("apiKey") &&
-      error.message.includes("AIGW_TOKEN")
+      error.message.includes("WAVE_API_KEY")
     ) {
       console.log("   ✅ Missing apiKey error handling works");
     } else {
@@ -184,8 +184,8 @@ async function validateAgentConfiguration() {
   console.log("\n8. Testing: Backward Compatibility");
 
   // Set environment variables like legacy code would expect
-  process.env.AIGW_TOKEN = "legacy-token";
-  process.env.AIGW_URL = "https://legacy-gateway.com";
+  process.env.WAVE_API_KEY = "legacy-token";
+  process.env.WAVE_BASE_URL = "https://legacy-gateway.com";
 
   try {
     const legacyAgent = await Agent.create({
@@ -206,8 +206,8 @@ async function validateAgentConfiguration() {
   console.log("\n9. Testing: Configuration Precedence");
 
   // Set environment variables
-  process.env.AIGW_TOKEN = "env-key";
-  process.env.AIGW_URL = "https://env-url.com";
+  process.env.WAVE_API_KEY = "env-key";
+  process.env.WAVE_BASE_URL = "https://env-url.com";
   process.env.AIGW_MODEL = "env-model";
 
   try {

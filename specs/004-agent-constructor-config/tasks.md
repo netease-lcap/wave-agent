@@ -56,7 +56,7 @@
 - [x] T008 [US1] Update Agent.create method in packages/agent-sdk/src/agent.ts to resolve gateway configuration from constructor args and environment variables
 - [x] T009 [US1] Update AIManager constructor in packages/agent-sdk/src/managers/aiManager.ts to accept resolved GatewayConfig
 - [x] T010 [US1] Update AIService constructor in packages/agent-sdk/src/services/aiService.ts to use injected GatewayConfig instead of process.env
-- [x] T011 [US1] Remove direct process.env access for AIGW_TOKEN and AIGW_URL from packages/agent-sdk/src/services/aiService.ts
+- [x] T011 [US1] Remove direct process.env access for WAVE_API_KEY and WAVE_BASE_URL from packages/agent-sdk/src/services/aiService.ts
 - [x] T012 [US1] Add configuration validation and error handling for missing gateway configuration in Agent.create method
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - Agent can be created with explicit gateway configuration and falls back to environment variables

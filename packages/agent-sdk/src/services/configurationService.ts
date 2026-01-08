@@ -319,14 +319,14 @@ export class ConfigurationService {
     if (apiKey !== undefined) {
       resolvedApiKey = apiKey;
     } else {
-      resolvedApiKey = this.env.AIGW_TOKEN || process.env.AIGW_TOKEN || "";
+      resolvedApiKey = this.env.WAVE_API_KEY || process.env.WAVE_API_KEY || "";
     }
 
     if (!resolvedApiKey && apiKey === undefined) {
       throw new ConfigurationError(CONFIG_ERRORS.MISSING_API_KEY, "apiKey", {
         constructor: apiKey,
-        environment: process.env.AIGW_TOKEN,
-        settings: this.env.AIGW_TOKEN,
+        environment: process.env.WAVE_API_KEY,
+        settings: this.env.WAVE_API_KEY,
       });
     }
 
@@ -344,14 +344,15 @@ export class ConfigurationService {
     if (baseURL !== undefined) {
       resolvedBaseURL = baseURL;
     } else {
-      resolvedBaseURL = this.env.AIGW_URL || process.env.AIGW_URL || "";
+      resolvedBaseURL =
+        this.env.WAVE_BASE_URL || process.env.WAVE_BASE_URL || "";
     }
 
     if (!resolvedBaseURL && baseURL === undefined) {
       throw new ConfigurationError(CONFIG_ERRORS.MISSING_BASE_URL, "baseURL", {
         constructor: baseURL,
-        environment: process.env.AIGW_URL,
-        settings: this.env.AIGW_URL,
+        environment: process.env.WAVE_BASE_URL,
+        settings: this.env.WAVE_BASE_URL,
       });
     }
 

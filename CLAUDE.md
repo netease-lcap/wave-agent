@@ -20,8 +20,8 @@ pnpm build
 cd packages/code && npm link
 
 # Set up required environment variables
-export AIGW_TOKEN="your_token_here"
-export AIGW_URL="https://your-api-gateway-url.com"
+export WAVE_API_KEY="your_token_here"
+export WAVE_BASE_URL="https://your-api-gateway-url.com"
 ```
 
 ### Development Workflow
