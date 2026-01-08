@@ -1,0 +1,58 @@
+name: Publish Package
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: github.repository == 'netease-lcap/wave-agent'
+    strategy:
+      matrix:
+        node-version: [22]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: 'https://registry.npmjs.org'
+      
+      - name: Setup pnpm and install dependencies
+        run: |
+          npm install -g pnpm@9
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Publish
+        run: |
+          for dir in packages/*; do
+            if [ -d "$dir" ]; then
+              echo "Checking $dir..."
+              cd "$dir"
+              # 使用 npm publish，它对 OIDC 支持最稳
+              # 如果版本号已存在，npm publish 会报错，我们用 || true 忽略它，确保流程继续
+              npm publish --access public --provenance --no-git-checks || echo "Skip: $(basename $dir) might already be published."
+              cd ../..
+            fi
+          done
