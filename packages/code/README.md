@@ -52,7 +52,7 @@ export LOG_FILE="/path/to/your/logfile.log"
 export LOG_MAX_FILE_SIZE="10485760"
 
 # Token limit (optional, defaults to 96000)
-export TOKEN_LIMIT="96000"
+export WAVE_MAX_INPUT_TOKENS="96000"
 
 ```
 

@@ -21,7 +21,7 @@ async function validateAgentConfiguration() {
       baseURL: "https://test-gateway.com",
       agentModel: "claude-sonnet-4-20250514",
       fastModel: "gemini-2.5-flash",
-      tokenLimit: 50000,
+      maxInputTokens: 50000,
       workdir: "./project",
     });
     // Verify agent was created successfully
@@ -72,13 +72,13 @@ async function validateAgentConfiguration() {
   // Set some environment variables
   process.env.AIGW_URL = "https://env-gateway.com";
   process.env.AIGW_FAST_MODEL = "env-fast-model";
-  process.env.TOKEN_LIMIT = "96000";
+  process.env.WAVE_MAX_INPUT_TOKENS = "96000";
 
   try {
     const agent = await Agent.create({
       apiKey: "explicit-key", // Overrides AIGW_TOKEN
       agentModel: "custom-model", // Overrides AIGW_MODEL
-      tokenLimit: 32000, // Overrides TOKEN_LIMIT
+      maxInputTokens: 32000, // Overrides WAVE_MAX_INPUT_TOKENS
       workdir: "./project",
     });
     // Verify mixed configuration works
@@ -100,7 +100,7 @@ async function validateAgentConfiguration() {
       baseURL: "http://localhost:3000/mock-ai",
       agentModel: "test-model",
       fastModel: "test-fast-model",
-      tokenLimit: 1000,
+      maxInputTokens: 1000,
       messages: [],
     });
     // Verify test configuration works
@@ -166,7 +166,7 @@ async function validateAgentConfiguration() {
     await Agent.create({
       apiKey: "valid-key",
       baseURL: "https://api.example.com",
-      tokenLimit: -1000,
+      maxInputTokens: -1000,
     });
     console.log("   ❌ Expected error but agent was created");
   } catch (error) {
@@ -241,7 +241,7 @@ async function validateAgentConfiguration() {
           ? "claude-sonnet-4-20250514"
           : "gemini-2.5-flash",
       fastModel: "gemini-2.5-flash",
-      tokenLimit: process.env.NODE_ENV === "production" ? 96000 : 10000,
+      maxInputTokens: process.env.NODE_ENV === "production" ? 96000 : 10000,
       workdir: process.cwd(),
     });
     // Verify advanced configuration works

@@ -16,7 +16,7 @@
 - `baseURL?: string` - Existing: Base URL for gateway communication
 - `agentModel?: string` - Existing: Model configuration for agent operations
 - `fastModel?: string` - Existing: Model configuration for fast operations
-- `tokenLimit?: number` - Existing: Token limit configuration
+- `maxInputTokens?: number` - Existing: Token limit configuration
 - `callbacks?: AgentCallbacks` - Existing: Event callbacks
 - `restoreSessionId?: string` - Existing: Session restoration
 - `continueLastSession?: boolean` - Existing: Continue last session flag

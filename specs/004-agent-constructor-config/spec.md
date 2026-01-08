@@ -65,7 +65,7 @@ Developers need to specify default AI models (agent model and fast model) throug
 - **FR-002**: Agent constructor MUST accept optional `baseURL` string parameter with fallback to AIGW_URL environment variable
 - **FR-003**: Agent constructor MUST accept optional `agentModel` string parameter with fallback to AIGW_MODEL environment variable
 - **FR-004**: Agent constructor MUST accept optional `fastModel` string parameter with fallback to AIGW_FAST_MODEL environment variable
-- **FR-005**: Agent constructor MUST accept optional `tokenLimit` number parameter with fallback to TOKEN_LIMIT environment variable
+- **FR-005**: Agent constructor MUST accept optional `maxInputTokens` number parameter with fallback to WAVE_MAX_INPUT_TOKENS environment variable
 - **FR-006**: System MUST validate resolved configuration and throw clear errors for missing/invalid values
 - **FR-007**: System MUST prioritize constructor-provided values over environment variables when both exist
 - **FR-008**: System MUST preserve existing environment variable behavior for testing-related variables (NODE_ENV, VITEST, WAVE_TEST_HOOKS_EXECUTION)
@@ -74,7 +74,7 @@ Developers need to specify default AI models (agent model and fast model) throug
 
 ### Key Entities *(include if feature involves data)*
 
-- **AgentConfig**: Flattened configuration parameters directly in AgentOptions (apiKey, baseURL, agentModel, fastModel, tokenLimit)
+- **AgentConfig**: Flattened configuration parameters directly in AgentOptions (apiKey, baseURL, agentModel, fastModel, maxInputTokens)
 - **GatewayConfig**: Resolved configuration for gateway service including authentication and endpoint details
 - **ModelConfig**: Resolved model selection configuration specifying which models to use for different operations
 

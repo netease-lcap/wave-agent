@@ -29,4 +29,4 @@ export const USER_MEMORY_FILE = path.join(DATA_DIRECTORY, "AGENTS.md");
 /**
  * AI related constants
  */
-export const DEFAULT_TOKEN_LIMIT = 96000; // Default token limit
+export const DEFAULT_WAVE_MAX_INPUT_TOKENS = 96000; // Default token limit

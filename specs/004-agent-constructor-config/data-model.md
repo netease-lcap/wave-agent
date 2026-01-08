@@ -13,7 +13,7 @@ Extended interface for Agent constructor parameters.
 - `baseURL?: string` - Gateway endpoint URL (optional, fallback to AIGW_URL)
 - `agentModel?: string` - Model ID for main operations (optional, fallback to AIGW_MODEL)
 - `fastModel?: string` - Model ID for fast operations (optional, fallback to AIGW_FAST_MODEL)
-- `tokenLimit?: number` - Token limit for compression (optional, fallback to TOKEN_LIMIT, default: 96000)
+- `maxInputTokens?: number` - Token limit for compression (optional, fallback to WAVE_MAX_INPUT_TOKENS, default: 96000)
 - `callbacks?: AgentCallbacks` - Existing callback handlers
 - `restoreSessionId?: string` - Existing session restoration
 - `continueLastSession?: boolean` - Existing session continuation
@@ -24,7 +24,7 @@ Extended interface for Agent constructor parameters.
 
 **Validation Rules**:
 - If neither constructor arg nor environment variable provided for apiKey/baseURL, Agent creation fails
-- `tokenLimit` must be positive integer if provided
+- `maxInputTokens` must be positive integer if provided
 - All existing validation rules preserved
 
 ### GatewayConfig Interface
@@ -73,14 +73,14 @@ Configuration values resolved in this order:
    - `AgentOptions.baseURL`
    - `AgentOptions.agentModel`
    - `AgentOptions.fastModel`
-   - `AgentOptions.tokenLimit`
+   - `AgentOptions.maxInputTokens`
 
 2. **Environment Variables** (fallback)
    - `process.env.AIGW_TOKEN` → `apiKey`
    - `process.env.AIGW_URL` → `baseURL`
    - `process.env.AIGW_MODEL` → `agentModel`
    - `process.env.AIGW_FAST_MODEL` → `fastModel`
-   - `process.env.TOKEN_LIMIT` → `tokenLimit`
+   - `process.env.WAVE_MAX_INPUT_TOKENS` → `maxInputTokens`
 
 3. **Built-in Defaults** (lowest precedence)
    - Token limit: 96000

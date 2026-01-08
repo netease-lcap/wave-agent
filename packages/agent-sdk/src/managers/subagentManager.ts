@@ -70,7 +70,7 @@ export interface SubagentManagerOptions {
   logger?: Logger;
   getGatewayConfig: () => GatewayConfig;
   getModelConfig: () => ModelConfig;
-  getTokenLimit: () => number;
+  getMaxInputTokens: () => number;
   hookManager?: HookManager;
   onUsageAdded?: (usage: Usage) => void;
 }
@@ -86,7 +86,7 @@ export class SubagentManager {
   private logger?: Logger;
   private getGatewayConfig: () => GatewayConfig;
   private getModelConfig: () => ModelConfig;
-  private getTokenLimit: () => number;
+  private getMaxInputTokens: () => number;
   private hookManager?: HookManager;
   private onUsageAdded?: (usage: Usage) => void;
 
@@ -98,7 +98,7 @@ export class SubagentManager {
     this.logger = options.logger;
     this.getGatewayConfig = options.getGatewayConfig;
     this.getModelConfig = options.getModelConfig;
-    this.getTokenLimit = options.getTokenLimit;
+    this.getMaxInputTokens = options.getMaxInputTokens;
     this.hookManager = options.hookManager;
     this.onUsageAdded = options.onUsageAdded;
   }
@@ -209,7 +209,7 @@ export class SubagentManager {
           agentModel: modelToUse,
         };
       },
-      getTokenLimit: this.getTokenLimit,
+      getMaxInputTokens: this.getMaxInputTokens,
       callbacks: {
         onUsageAdded: this.onUsageAdded,
       },
@@ -488,7 +488,7 @@ export class SubagentManager {
             ...parentModelConfig,
             agentModel: modelToUse,
           }),
-          getTokenLimit: this.getTokenLimit,
+          getMaxInputTokens: this.getMaxInputTokens,
           callbacks: {
             onUsageAdded: this.onUsageAdded,
           },

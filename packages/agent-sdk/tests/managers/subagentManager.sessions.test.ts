@@ -107,7 +107,7 @@ describe("SubagentManager - Session Functionality", () => {
       parentMessageManager,
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
-      getTokenLimit: () => 1000,
+      getMaxInputTokens: () => 1000,
     });
 
     await subagentManager.initialize();

@@ -64,7 +64,7 @@ export interface AgentOptions {
   fetch?: ClientOptions["fetch"];
   agentModel?: string;
   fastModel?: string;
-  tokenLimit?: number;
+  maxInputTokens?: number;
 
   // Existing options (preserved)
   callbacks?: AgentCallbacks;
@@ -141,8 +141,10 @@ export class Agent {
     );
   }
 
-  public getTokenLimit(): number {
-    return this.configurationService.resolveTokenLimit(this.options.tokenLimit);
+  public getMaxInputTokens(): number {
+    return this.configurationService.resolveMaxInputTokens(
+      this.options.maxInputTokens,
+    );
   }
 
   /**
@@ -153,7 +155,7 @@ export class Agent {
   public updateConfig(config: {
     gateway?: Partial<GatewayConfig>;
     model?: Partial<ModelConfig>;
-    tokenLimit?: number;
+    maxInputTokens?: number;
   }): void {
     if (config.gateway) {
       this.options.apiKey = config.gateway.apiKey ?? this.options.apiKey;
@@ -171,8 +173,8 @@ export class Agent {
       this.options.fastModel = config.model.fastModel ?? this.options.fastModel;
     }
 
-    if (config.tokenLimit !== undefined) {
-      this.options.tokenLimit = config.tokenLimit;
+    if (config.maxInputTokens !== undefined) {
+      this.options.maxInputTokens = config.maxInputTokens;
     }
 
     // Re-validate configuration after update
@@ -313,7 +315,7 @@ export class Agent {
       logger: this.logger,
       getGatewayConfig: () => this.getGatewayConfig(),
       getModelConfig: () => this.getModelConfig(),
-      getTokenLimit: () => this.getTokenLimit(),
+      getMaxInputTokens: () => this.getMaxInputTokens(),
       hookManager: this.hookManager,
       onUsageAdded: (usage) => this.addUsage(usage),
     });
@@ -336,7 +338,7 @@ export class Agent {
       stream: this.stream, // Pass streaming mode flag
       getGatewayConfig: () => this.getGatewayConfig(),
       getModelConfig: () => this.getModelConfig(),
-      getTokenLimit: () => this.getTokenLimit(),
+      getMaxInputTokens: () => this.getMaxInputTokens(),
       getEnvironmentVars: () => this.configurationService.getEnvironmentVars(), // Provide access to configuration environment variables
     });
 
@@ -522,11 +524,11 @@ export class Agent {
     // Resolve configuration from constructor args and environment variables (including settings.json)
     const gatewayConfig = this.getGatewayConfig();
     const modelConfig = this.getModelConfig();
-    const tokenLimit = this.getTokenLimit();
+    const maxInputTokens = this.getMaxInputTokens();
 
     // Validate resolved configuration
     configValidator.validateGatewayConfig(gatewayConfig);
-    configValidator.validateTokenLimit(tokenLimit);
+    configValidator.validateMaxInputTokens(maxInputTokens);
     configValidator.validateModelConfig(
       modelConfig.agentModel,
       modelConfig.fastModel,

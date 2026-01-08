@@ -67,15 +67,15 @@
 
 **Goal**: Enable developers to configure custom token limits through Agent constructor to control message compression behavior
 
-**Independent Test**: Create Agent with custom tokenLimit, verify compression triggers at specified limit instead of environment variable or default
+**Independent Test**: Create Agent with custom maxInputTokens, verify compression triggers at specified limit instead of environment variable or default
 
 ### Implementation for User Story 2
 
-- [x] T013 [P] [US2] Update Agent.create method in packages/agent-sdk/src/agent.ts to resolve tokenLimit from constructor args, environment variables, or defaults
-- [x] T014 [US2] Update AIManager constructor in packages/agent-sdk/src/managers/aiManager.ts to accept resolved tokenLimit parameter
-- [x] T015 [US2] Remove direct process.env.TOKEN_LIMIT access from packages/agent-sdk/src/managers/aiManager.ts
+- [x] T013 [P] [US2] Update Agent.create method in packages/agent-sdk/src/agent.ts to resolve maxInputTokens from constructor args, environment variables, or defaults
+- [x] T014 [US2] Update AIManager constructor in packages/agent-sdk/src/managers/aiManager.ts to accept resolved maxInputTokens parameter
+- [x] T015 [US2] Remove direct process.env.WAVE_MAX_INPUT_TOKENS access from packages/agent-sdk/src/managers/aiManager.ts
 - [x] T016 [US2] Update token limit validation logic to use resolved configuration in packages/agent-sdk/src/utils/configValidator.ts
-- [x] T017 [US2] Update message compression logic to use injected tokenLimit in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T017 [US2] Update message compression logic to use injected maxInputTokens in packages/agent-sdk/src/managers/aiManager.ts
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - Agent supports both gateway configuration and token limit configuration
 
@@ -152,7 +152,7 @@
 
 ```bash
 # These US2 tasks can run in parallel after foundational phase:
-Task: "Update Agent.create method to resolve tokenLimit (T013)"
+Task: "Update Agent.create method to resolve maxInputTokens (T013)"
 Task: "Update token limit validation logic (T016)" 
 ```
 

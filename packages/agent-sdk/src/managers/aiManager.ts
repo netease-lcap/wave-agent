@@ -41,7 +41,7 @@ export interface AIManagerOptions {
   // Dynamic configuration getters
   getGatewayConfig: () => GatewayConfig;
   getModelConfig: () => ModelConfig;
-  getTokenLimit: () => number;
+  getMaxInputTokens: () => number;
   getEnvironmentVars?: () => Record<string, string>; // Get configuration environment variables for hooks
 }
 
@@ -62,7 +62,7 @@ export class AIManager {
   // Configuration properties (replaced with getter function storage)
   private getGatewayConfigFn: () => GatewayConfig;
   private getModelConfigFn: () => ModelConfig;
-  private getTokenLimitFn: () => number;
+  private getMaxInputTokensFn: () => number;
   private getEnvironmentVarsFn?: () => Record<string, string>;
 
   constructor(options: AIManagerOptions) {
@@ -80,7 +80,7 @@ export class AIManager {
     // Store configuration getter functions for dynamic resolution
     this.getGatewayConfigFn = options.getGatewayConfig;
     this.getModelConfigFn = options.getModelConfig;
-    this.getTokenLimitFn = options.getTokenLimit;
+    this.getMaxInputTokensFn = options.getMaxInputTokens;
     this.getEnvironmentVarsFn = options.getEnvironmentVars;
   }
 
@@ -93,8 +93,8 @@ export class AIManager {
     return this.getModelConfigFn();
   }
 
-  public getTokenLimit(): number {
-    return this.getTokenLimitFn();
+  public getMaxInputTokens(): number {
+    return this.getMaxInputTokensFn();
   }
 
   private isCompressing: boolean = false;
@@ -178,10 +178,10 @@ export class AIManager {
       usage.total_tokens +
         (usage.cache_read_input_tokens || 0) +
         (usage.cache_creation_input_tokens || 0) >
-      this.getTokenLimit()
+      this.getMaxInputTokens()
     ) {
       this.logger?.debug(
-        `Token usage exceeded ${this.getTokenLimit()}, compressing messages...`,
+        `Token usage exceeded ${this.getMaxInputTokens()}, compressing messages...`,
       );
 
       // Check if messages need compression

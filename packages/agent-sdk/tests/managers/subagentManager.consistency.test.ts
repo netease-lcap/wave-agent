@@ -70,7 +70,7 @@ describe("SubagentManager Consistency", () => {
         agentModel: "claude-3-5-sonnet",
         fastModel: "claude-3-haiku",
       }),
-      getTokenLimit: () => 200000,
+      getMaxInputTokens: () => 200000,
     });
 
     // Mock configurations

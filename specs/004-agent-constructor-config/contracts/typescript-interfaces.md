@@ -9,7 +9,7 @@ export interface AgentOptions {
   baseURL?: string;
   agentModel?: string;
   fastModel?: string;
-  tokenLimit?: number;
+  maxInputTokens?: number;
   
   // Existing options (preserved)
   callbacks?: AgentCallbacks;
@@ -39,7 +39,7 @@ export interface ManagerOptions {
   // Resolved configuration
   gatewayConfig: GatewayConfig;
   modelConfig: ModelConfig;
-  tokenLimit: number;
+  maxInputTokens:number;
   
   // Existing parameters (preserved)
   messageManager: MessageManager;
@@ -95,7 +95,7 @@ export interface ConfigurationResolver {
    * @param constructorLimit - Token limit from constructor (optional)
    * @returns Resolved token limit
    */
-  resolveTokenLimit(constructorLimit?: number): number;
+  resolveMaxInputTokens(constructorLimit?: number): number;
 }
 ```
 
@@ -112,10 +112,10 @@ export interface ConfigurationValidator {
   
   /**
    * Validates token limit value
-   * @param tokenLimit - Token limit to validate
+   * @param maxInputTokens - Token limit to validate
    * @throws Error if invalid
    */
-  validateTokenLimit(tokenLimit: number): void;
+  validateMaxInputTokens(maxInputTokens:number): void;
 }
 ```
 
@@ -137,7 +137,7 @@ export class ConfigurationError extends Error {
 export const CONFIG_ERRORS = {
   MISSING_API_KEY: 'Gateway configuration requires apiKey. Provide via constructor or AIGW_TOKEN environment variable.',
   MISSING_BASE_URL: 'Gateway configuration requires baseURL. Provide via constructor or AIGW_URL environment variable.',
-  INVALID_TOKEN_LIMIT: 'Token limit must be a positive integer.',
+  INVALID_WAVE_MAX_INPUT_TOKENS: 'Token limit must be a positive integer.',
   EMPTY_API_KEY: 'API key cannot be empty string.',
   EMPTY_BASE_URL: 'Base URL cannot be empty string.',
 } as const;

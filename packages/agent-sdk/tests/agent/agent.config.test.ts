@@ -93,52 +93,52 @@ describe("Agent Configuration", () => {
       process.env.AIGW_URL = "https://test-gateway.com/api";
     });
 
-    it("should use constructor tokenLimit over environment variable", async () => {
-      process.env.TOKEN_LIMIT = "32000";
+    it("should use constructor maxInputTokens over environment variable", async () => {
+      process.env.WAVE_MAX_INPUT_TOKENS = "32000";
 
       const agent = await Agent.create({
-        tokenLimit: 128000,
+        maxInputTokens: 128000,
       });
 
       expect(agent).toBeDefined();
     });
 
-    it("should fall back to environment variable for tokenLimit", async () => {
-      process.env.TOKEN_LIMIT = "32000";
+    it("should fall back to environment variable for maxInputTokens", async () => {
+      process.env.WAVE_MAX_INPUT_TOKENS = "32000";
 
       const agent = await Agent.create({});
 
       expect(agent).toBeDefined();
     });
 
-    it("should use default tokenLimit when not provided", async () => {
-      delete process.env.TOKEN_LIMIT;
+    it("should use default maxInputTokens when not provided", async () => {
+      delete process.env.WAVE_MAX_INPUT_TOKENS;
 
       const agent = await Agent.create({});
 
       expect(agent).toBeDefined();
     });
 
-    it("should throw error for invalid tokenLimit", async () => {
+    it("should throw error for invalid maxInputTokens", async () => {
       await expect(
         Agent.create({
-          tokenLimit: -1000,
+          maxInputTokens: -1000,
         }),
       ).rejects.toThrow(/positive/);
     });
 
-    it("should throw error for zero tokenLimit", async () => {
+    it("should throw error for zero maxInputTokens", async () => {
       await expect(
         Agent.create({
-          tokenLimit: 0,
+          maxInputTokens: 0,
         }),
       ).rejects.toThrow(/positive/);
     });
 
-    it("should throw error for non-integer tokenLimit", async () => {
+    it("should throw error for non-integer maxInputTokens", async () => {
       await expect(
         Agent.create({
-          tokenLimit: 96000.5,
+          maxInputTokens: 96000.5,
         }),
       ).rejects.toThrow(/integer/);
     });
@@ -209,7 +209,7 @@ describe("Agent Configuration", () => {
         baseURL: "https://constructor-gateway.com/api",
         agentModel: "constructor-agent-model",
         fastModel: "constructor-fast-model",
-        tokenLimit: 96000,
+        maxInputTokens: 96000,
       };
 
       const agent = await Agent.create(options);
@@ -221,7 +221,7 @@ describe("Agent Configuration", () => {
       // Set some environment variables
       process.env.AIGW_TOKEN = "env-api-key";
       process.env.AIGW_FAST_MODEL = "env-fast-model";
-      process.env.TOKEN_LIMIT = "48000";
+      process.env.WAVE_MAX_INPUT_TOKENS = "48000";
 
       // Provide some constructor parameters
       const agent = await Agent.create({
@@ -237,7 +237,7 @@ describe("Agent Configuration", () => {
       process.env.AIGW_URL = "https://env-gateway.com/api";
       process.env.AIGW_MODEL = "env-agent-model";
       process.env.AIGW_FAST_MODEL = "env-fast-model";
-      process.env.TOKEN_LIMIT = "32000";
+      process.env.WAVE_MAX_INPUT_TOKENS = "32000";
 
       const agent = await Agent.create({});
 
@@ -277,7 +277,7 @@ describe("Agent Configuration", () => {
     it("should handle environment variable parsing errors gracefully", async () => {
       process.env.AIGW_TOKEN = "test-api-key";
       process.env.AIGW_URL = "https://test-gateway.com/api";
-      process.env.TOKEN_LIMIT = "not-a-number";
+      process.env.WAVE_MAX_INPUT_TOKENS = "not-a-number";
 
       // Should use default token limit when environment variable is invalid
       const agent = await Agent.create({});
@@ -307,7 +307,7 @@ describe("Agent Configuration", () => {
         apiKey: "custom-api-key", // New configuration option
         workdir: process.cwd(), // Existing option
         systemPrompt: "Custom prompt", // Existing option
-        tokenLimit: 48000, // New configuration option
+        maxInputTokens: 48000, // New configuration option
       });
 
       expect(agent).toBeDefined();
@@ -367,16 +367,16 @@ describe("Agent Configuration", () => {
 
     it("should update token limit", async () => {
       const agent = await Agent.create({
-        tokenLimit: 1000,
+        maxInputTokens: 1000,
       });
 
-      expect(agent.getTokenLimit()).toBe(1000);
+      expect(agent.getMaxInputTokens()).toBe(1000);
 
       agent.updateConfig({
-        tokenLimit: 2000,
+        maxInputTokens: 2000,
       });
 
-      expect(agent.getTokenLimit()).toBe(2000);
+      expect(agent.getMaxInputTokens()).toBe(2000);
     });
 
     it("should partially update gateway configuration", async () => {
@@ -406,7 +406,7 @@ describe("Agent Configuration", () => {
       // Updating with invalid token limit should throw
       expect(() => {
         agent.updateConfig({
-          tokenLimit: -1,
+          maxInputTokens: -1,
         });
       }).toThrow(/positive/);
     });

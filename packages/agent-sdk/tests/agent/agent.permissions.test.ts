@@ -95,7 +95,7 @@ describe("Agent Permission Integration", () => {
         workdir: process.cwd(),
         systemPrompt: "Custom system prompt",
         messages: [],
-        tokenLimit: 96000,
+        maxInputTokens: 96000,
         // No permission-related options - should use defaults
       };
 

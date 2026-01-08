@@ -35,7 +35,7 @@ import {
   ConfigurationError,
   CONFIG_ERRORS,
 } from "../types/index.js";
-import { DEFAULT_TOKEN_LIMIT } from "../utils/constants.js";
+import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "../utils/constants.js";
 import { ClientOptions } from "openai";
 
 /**
@@ -410,23 +410,24 @@ export class ConfigurationService {
    * @param constructorLimit - Token limit from constructor (optional)
    * @returns Resolved token limit
    */
-  resolveTokenLimit(constructorLimit?: number): number {
+  resolveMaxInputTokens(constructorLimit?: number): number {
     // If constructor value provided, use it
     if (constructorLimit !== undefined) {
       return constructorLimit;
     }
 
     // Try env (settings.json) first, then process.env
-    const envTokenLimit = this.env.TOKEN_LIMIT || process.env.TOKEN_LIMIT;
-    if (envTokenLimit) {
-      const parsed = parseInt(envTokenLimit, 10);
+    const envMaxInputTokens =
+      this.env.WAVE_MAX_INPUT_TOKENS || process.env.WAVE_MAX_INPUT_TOKENS;
+    if (envMaxInputTokens) {
+      const parsed = parseInt(envMaxInputTokens, 10);
       if (!isNaN(parsed)) {
         return parsed;
       }
     }
 
     // Use default
-    return DEFAULT_TOKEN_LIMIT;
+    return DEFAULT_WAVE_MAX_INPUT_TOKENS;
   }
 
   /**
