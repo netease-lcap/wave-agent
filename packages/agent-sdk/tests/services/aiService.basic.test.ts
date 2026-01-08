@@ -236,6 +236,37 @@ describe("AI Service - Basic CallAgent", () => {
       });
     });
 
+    it("should pass max_tokens to OpenAI from modelConfig", async () => {
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          maxTokens: 1234,
+        },
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.max_tokens).toBe(1234);
+    });
+
+    it("should prioritize maxTokens from callAgent options over modelConfig", async () => {
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: {
+          ...TEST_MODEL_CONFIG,
+          maxTokens: 1234,
+        },
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        maxTokens: 5678,
+      });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.max_tokens).toBe(5678);
+    });
+
     it("should handle different finish_reason values", async () => {
       const mockWithResponse = vi.fn().mockResolvedValue({
         data: {

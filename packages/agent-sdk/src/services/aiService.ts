@@ -130,6 +130,7 @@ export interface CallAgentOptions {
   tools?: ChatCompletionFunctionTool[]; // Tool configuration
   model?: string; // Custom model
   systemPrompt?: string; // Custom system prompt
+  maxTokens?: number; // Maximum output tokens
 
   // NEW: Streaming callbacks
   onContentUpdate?: (content: string) => void;
@@ -238,6 +239,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
 
     // Apply cache control for Claude models
     const currentModel = model || modelConfig.agentModel;
+    const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
 
     processedTools = tools;
 
@@ -256,6 +258,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     // Get model configuration - use injected modelConfig with optional override
     const openaiModelConfig = getModelConfig(model || modelConfig.agentModel, {
       temperature: 0,
+      max_tokens: resolvedMaxTokens,
     });
 
     // Determine if streaming is needed

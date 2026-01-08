@@ -65,6 +65,7 @@ export interface AgentOptions {
   agentModel?: string;
   fastModel?: string;
   maxInputTokens?: number;
+  maxTokens?: number;
 
   // Existing options (preserved)
   callbacks?: AgentCallbacks;
@@ -138,6 +139,7 @@ export class Agent {
     return this.configurationService.resolveModelConfig(
       this.options.agentModel,
       this.options.fastModel,
+      this.options.maxTokens,
     );
   }
 
@@ -156,6 +158,7 @@ export class Agent {
     gateway?: Partial<GatewayConfig>;
     model?: Partial<ModelConfig>;
     maxInputTokens?: number;
+    maxTokens?: number;
   }): void {
     if (config.gateway) {
       this.options.apiKey = config.gateway.apiKey ?? this.options.apiKey;
@@ -171,10 +174,15 @@ export class Agent {
       this.options.agentModel =
         config.model.agentModel ?? this.options.agentModel;
       this.options.fastModel = config.model.fastModel ?? this.options.fastModel;
+      this.options.maxTokens = config.model.maxTokens ?? this.options.maxTokens;
     }
 
     if (config.maxInputTokens !== undefined) {
       this.options.maxInputTokens = config.maxInputTokens;
+    }
+
+    if (config.maxTokens !== undefined) {
+      this.options.maxTokens = config.maxTokens;
     }
 
     // Re-validate configuration after update
