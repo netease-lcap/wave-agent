@@ -16,4 +16,5 @@ export interface GatewayConfig {
 export interface ModelConfig {
   agentModel: string;
   fastModel: string;
+  maxTokens?: number;
 }

@@ -35,7 +35,10 @@ import {
   ConfigurationError,
   CONFIG_ERRORS,
 } from "../types/index.js";
-import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "../utils/constants.js";
+import {
+  DEFAULT_WAVE_MAX_INPUT_TOKENS,
+  DEFAULT_WAVE_MAX_OUTPUT_TOKENS,
+} from "../utils/constants.js";
 import { ClientOptions } from "openai";
 
 /**
@@ -378,9 +381,14 @@ export class ConfigurationService {
    * Resolution priority: options > env (from settings.json) > process.env > default
    * @param agentModel - Agent model from constructor (optional)
    * @param fastModel - Fast model from constructor (optional)
+   * @param maxTokens - Max output tokens from constructor (optional)
    * @returns Resolved model configuration with defaults
    */
-  resolveModelConfig(agentModel?: string, fastModel?: string): ModelConfig {
+  resolveModelConfig(
+    agentModel?: string,
+    fastModel?: string,
+    maxTokens?: number,
+  ): ModelConfig {
     // Default values as per data-model.md
     const DEFAULT_AGENT_MODEL = "claude-sonnet-4-20250514";
     const DEFAULT_FAST_MODEL = "gemini-2.5-flash";
@@ -399,9 +407,13 @@ export class ConfigurationService {
       process.env.AIGW_FAST_MODEL ||
       DEFAULT_FAST_MODEL;
 
+    // Resolve max output tokens
+    const resolvedMaxTokens = this.resolveMaxOutputTokens(maxTokens);
+
     return {
       agentModel: resolvedAgentModel,
       fastModel: resolvedFastModel,
+      maxTokens: resolvedMaxTokens,
     };
   }
 
@@ -429,6 +441,32 @@ export class ConfigurationService {
 
     // Use default
     return DEFAULT_WAVE_MAX_INPUT_TOKENS;
+  }
+
+  /**
+   * Resolves max output tokens with fallbacks
+   * Resolution priority: options > env (from settings.json) > process.env > default
+   * @param constructorLimit - Max output tokens from constructor (optional)
+   * @returns Resolved max output tokens
+   */
+  resolveMaxOutputTokens(constructorLimit?: number): number {
+    // If constructor value provided, use it
+    if (constructorLimit !== undefined) {
+      return constructorLimit;
+    }
+
+    // Try env (settings.json) first, then process.env
+    const envMaxOutputTokens =
+      this.env.WAVE_MAX_OUTPUT_TOKENS || process.env.WAVE_MAX_OUTPUT_TOKENS;
+    if (envMaxOutputTokens) {
+      const parsed = parseInt(envMaxOutputTokens, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+
+    // Use default
+    return DEFAULT_WAVE_MAX_OUTPUT_TOKENS;
   }
 
   /**

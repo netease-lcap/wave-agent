@@ -258,9 +258,10 @@ export class AIManager {
       recursionDepth?: number;
       model?: string;
       allowedTools?: string[];
+      maxTokens?: number;
     } = {},
   ): Promise<void> {
-    const { recursionDepth = 0, model, allowedTools } = options;
+    const { recursionDepth = 0, model, allowedTools, maxTokens } = options;
 
     // Only check isLoading for the initial call (recursionDepth === 0)
     if (recursionDepth === 0 && this.isLoading) {
@@ -321,6 +322,7 @@ export class AIManager {
         tools: this.getFilteredToolsConfig(allowedTools), // Pass filtered tool configuration
         model: model, // Use passed model
         systemPrompt: this.systemPrompt, // Pass custom system prompt
+        maxTokens: maxTokens, // Pass max tokens override
       };
 
       // Add streaming callbacks only if streaming is enabled
@@ -608,6 +610,7 @@ export class AIManager {
             recursionDepth: recursionDepth + 1,
             model,
             allowedTools,
+            maxTokens,
           });
         }
       }
@@ -647,6 +650,7 @@ export class AIManager {
               recursionDepth: 0,
               model,
               allowedTools,
+              maxTokens,
             });
           }
         }
