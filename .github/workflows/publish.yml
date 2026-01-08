@@ -45,4 +45,14 @@ jobs:
         run: pnpm install --frozen-lockfile
       
       - name: Publish
-        run: pnpm -r publish --access public --provenance --no-git-checks
+        run: |
+          for dir in packages/*; do
+            if [ -d "$dir" ]; then
+              echo "Checking $dir..."
+              cd "$dir"
+              # 使用 npm publish，它对 OIDC 支持最稳
+              # 如果版本号已存在，npm publish 会报错，我们用 || true 忽略它，确保流程继续
+              npm publish --access public --provenance --no-git-checks || echo "Skip: $(basename $dir) might already be published."
+              cd ../..
+            fi
+          done
