@@ -1,0 +1,66 @@
+name: Publish Package
+
+on:
+  push:
+    branches:
+      - 'test-*'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  id-token: write  # Required for OIDC
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [22]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          registry-url: 'https://registry.npmjs.org'
+      
+      - name: Setup pnpm and install dependencies
+        run: |
+          npm install -g pnpm@9
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Publish
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="latest"
+            DRY_RUN=""
+          else
+            TAG="test-only"
+            DRY_RUN="--dry-run"
+          fi
+
+          for dir in packages/*; do
+            if [ -d "$dir" ]; then
+              echo "Publishing $dir with tag $TAG $DRY_RUN..."
+              cd "$dir"
+              # 使用 npm 原生命令，它对 OIDC 支持最好
+              npm publish --tag "$TAG" $DRY_RUN --access public --provenance --no-git-checks
+              cd ../..
+            fi
+          done
