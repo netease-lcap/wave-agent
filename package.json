@@ -19,9 +19,7 @@
     "version:patch": "pnpm -r version:patch",
     "version:minor": "pnpm -r version:minor",
     "version:major": "pnpm -r version:major",
-    "release:patch": "pnpm version:patch && node scripts/version.js none --tag --push",
-    "release:minor": "pnpm version:minor && node scripts/version.js none --tag --push",
-    "release:major": "pnpm version:major && node scripts/version.js none --tag --push",
+    "tag": "node scripts/version.js none --tag",
     "prepare": "husky"
   },
   "devDependencies": {
