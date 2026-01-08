@@ -55,4 +55,4 @@ jobs:
           WAVE_BASE_URL: https://mock-api.test.com
 
       - name: Publish
-        run: pnpm -r publish --no-git-checks --access public --provenance
+        run: pnpm -r publish --no-git-checks --access public
