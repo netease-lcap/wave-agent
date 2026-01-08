@@ -2,8 +2,6 @@ name: Publish Package
 
 on:
   push:
-    branches:
-      - 'test-*'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -48,19 +46,12 @@ jobs:
       - name: Publish
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            TAG="latest"
-            DRY_RUN=""
-          else
-            TAG="test-only"
-            DRY_RUN="--dry-run"
+            for dir in packages/*; do
+              if [ -d "$dir" ]; then
+                echo "Publishing $dir..."
+                cd "$dir"
+                npm publish --access public --provenance --no-git-checks
+                cd ../..
+              fi
+            done
           fi
-
-          for dir in packages/*; do
-            if [ -d "$dir" ]; then
-              echo "Publishing $dir with tag $TAG $DRY_RUN..."
-              cd "$dir"
-              # 使用 npm 原生命令，它对 OIDC 支持最好
-              npm publish --tag "$TAG" $DRY_RUN --access public --provenance --no-git-checks
-              cd ../..
-            fi
-          done
