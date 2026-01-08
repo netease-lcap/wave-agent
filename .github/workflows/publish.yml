@@ -53,7 +53,7 @@ jobs:
             DRY_RUN=""
           else
             TAG="test-only"
-            DRY_RUN="--dry-run"
+            DRY_RUN=""
           fi
 
           for dir in packages/*; do
