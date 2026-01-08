@@ -50,5 +50,6 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             pnpm -r publish --no-git-checks --access public --provenance
           else
-            pnpm -r publish --no-git-checks --access public --provenance --tag test-only
+            # 在测试分支，我们还是用 dry-run，但加上 --no-git-checks
+            pnpm -r publish --dry-run --no-git-checks --access public --provenance
           fi
