@@ -2,8 +2,8 @@ name: Publish Package
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -13,6 +13,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    if: github.repository == 'netease-lcap/wave-agent'
     strategy:
       matrix:
         node-version: [22]
@@ -44,14 +45,4 @@ jobs:
         run: pnpm install --frozen-lockfile
       
       - name: Publish
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            for dir in packages/*; do
-              if [ -d "$dir" ]; then
-                echo "Publishing $dir..."
-                cd "$dir"
-                npm publish --access public --provenance --no-git-checks
-                cd ../..
-              fi
-            done
-          fi
+        run: pnpm -r publish --access public --provenance --no-git-checks
