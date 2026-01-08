@@ -2,10 +2,10 @@
 
 import { Agent } from "../src/agent.js";
 
-// Create Agent instance with Claude model to test cache control
+// Create Agent instance with Gemini model to test cache control
 const agent = await Agent.create({
-  // Use Claude model to enable cache control features
-  agentModel: "claude-sonnet-4-20250514",
+  // Use Gemini model to enable cache control features
+  agentModel: "gemini-3-flash",
 
   callbacks: {
     onUsagesChange: (usages) => {
