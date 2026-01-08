@@ -49,5 +49,5 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             pnpm -r publish --no-git-checks --provenance
           else
-            pnpm -r publish --dry-run --no-git-checks --provenance
+            pnpm -r publish --no-git-checks --provenance --tag test-only
           fi
