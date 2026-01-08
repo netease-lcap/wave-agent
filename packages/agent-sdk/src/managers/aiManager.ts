@@ -488,15 +488,18 @@ export class AIManager {
                 toolArgs = JSON.parse(argsString);
               } catch (parseError) {
                 // For non-empty but malformed JSON, still throw exception
-                const errorMessage = `Failed to parse tool arguments, finish_reason: ${result.finish_reason}`;
-                const fullErrorMessage = `${errorMessage}\nAI response headers:, ${JSON.stringify(result.response_headers)}`;
-                this.logger?.error(fullErrorMessage, parseError);
+                let errorMessage = `Failed to parse tool arguments`;
+                if (result.finish_reason === "length") {
+                  errorMessage +=
+                    " (output truncated, please reduce your output)";
+                }
+                this.logger?.error(errorMessage, parseError);
                 this.messageManager.updateToolBlock({
                   id: toolId,
                   parameters: argsString,
                   result: errorMessage,
                   success: false,
-                  error: fullErrorMessage,
+                  error: errorMessage,
                   stage: "end",
                   name: toolName,
                   compactParams: "",
