@@ -18,6 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node.js
+        id: setup-node
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -38,10 +39,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Configure npm for OIDC
-        run: |
-          echo "//registry.npmjs.org/:aud=https://github.com/netease-lcap" >> ./.npmrc
-          echo "//registry.npmjs.org/:_authToken=\${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" >> ./.npmrc
-
       - name: Publish
-        run: pnpm -r publish --no-git-checks --access public
+        run: pnpm -r publish --no-git-checks --access public --provenance
+        env:
+          NPM_CONFIG_PROVENANCE: true
