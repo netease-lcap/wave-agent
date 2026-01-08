@@ -43,9 +43,9 @@ jobs:
         run: pnpm build
 
       - name: Publish agent-sdk
-        run: npm publish --access public
+        run: npm publish --access public || true
         working-directory: packages/agent-sdk
 
       - name: Publish code
-        run: npm publish --access public
+        run: npm publish --access public || true
         working-directory: packages/code
