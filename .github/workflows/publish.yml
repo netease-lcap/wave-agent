@@ -18,10 +18,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Node.js
-        id: setup-node
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Setup pnpm and install dependencies
         run: |
@@ -39,7 +39,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Publish
-        run: pnpm -r publish --no-git-checks --access public --provenance
-        env:
-          NPM_CONFIG_PROVENANCE: true
+      - name: Build
+        run: pnpm build
+
+      - name: Publish agent-sdk
+        run: npm publish --access public
+        working-directory: packages/agent-sdk
+
+      - name: Publish code
+        run: npm publish --access public
+        working-directory: packages/code
