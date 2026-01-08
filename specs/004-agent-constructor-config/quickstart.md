@@ -9,7 +9,7 @@ import { Agent } from 'wave-agent-sdk';
 const agent = await Agent.create({
   apiKey: 'your-api-key-here',
   baseURL: 'https://your-gateway.com',
-  agentModel: 'claude-sonnet-4-20250514',
+  agentModel: 'gemini-3-flash',
   fastModel: 'gemini-2.5-flash',
   maxInputTokens:50000,
   workdir: './project'
@@ -153,7 +153,7 @@ const agent = await Agent.create({
     ? 'https://prod-gateway.com'
     : 'https://dev-gateway.com',
   agentModel: process.env.NODE_ENV === 'production'
-    ? 'claude-sonnet-4-20250514'
+    ? 'gemini-3-flash'
     : 'gemini-2.5-flash', // Cheaper model for development
   fastModel: 'gemini-2.5-flash',
   maxInputTokens:process.env.NODE_ENV === 'production' ? 96000 : 10000,

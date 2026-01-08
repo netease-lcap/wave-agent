@@ -19,7 +19,7 @@ async function validateAgentConfiguration() {
     const agent = await Agent.create({
       apiKey: "test-api-key-here",
       baseURL: "https://test-gateway.com",
-      agentModel: "claude-sonnet-4-20250514",
+      agentModel: "gemini-3-flash",
       fastModel: "gemini-2.5-flash",
       maxInputTokens: 50000,
       workdir: "./project",
@@ -238,7 +238,7 @@ async function validateAgentConfiguration() {
           : "https://dev-gateway.com",
       agentModel:
         process.env.NODE_ENV === "production"
-          ? "claude-sonnet-4-20250514"
+          ? "gemini-3-flash"
           : "gemini-2.5-flash",
       fastModel: "gemini-2.5-flash",
       maxInputTokens: process.env.NODE_ENV === "production" ? 96000 : 10000,

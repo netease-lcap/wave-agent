@@ -121,5 +121,5 @@ function validateGatewayConfig(apiKey?: string, baseURL?: string): void {
 
 **Built-in Defaults**:
 - Token limit: 96000
-- Agent model: "claude-sonnet-4-20250514"
+- Agent model: "gemini-3-flash"
 - Fast model: "gemini-2.5-flash"

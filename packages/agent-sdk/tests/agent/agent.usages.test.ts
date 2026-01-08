@@ -97,7 +97,7 @@ describe("Agent Usage Tracking", () => {
         prompt_tokens: 100,
         completion_tokens: 50,
         total_tokens: 150,
-        model: "claude-sonnet-4-20250514",
+        model: "gemini-3-flash",
         operation_type: "agent",
       };
 

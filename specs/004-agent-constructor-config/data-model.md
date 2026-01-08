@@ -56,7 +56,7 @@ Resolved configuration for model selection.
 - No format validation (service validates model availability)
 
 **Default Values**:
-- `agentModel`: "claude-sonnet-4-20250514"
+- `agentModel`: "gemini-3-flash"
 - `fastModel`: "gemini-2.5-flash"
 
 **Relationships**:
@@ -84,7 +84,7 @@ Configuration values resolved in this order:
 
 3. **Built-in Defaults** (lowest precedence)
    - Token limit: 96000
-   - Agent model: "claude-sonnet-4-20250514"
+   - Agent model: "gemini-3-flash"
    - Fast model: "gemini-2.5-flash"
 
 ### State Transitions

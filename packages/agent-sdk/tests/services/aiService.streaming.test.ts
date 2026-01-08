@@ -9,7 +9,7 @@ const TEST_GATEWAY_CONFIG: GatewayConfig = {
 };
 
 const TEST_MODEL_CONFIG: ModelConfig = {
-  agentModel: "claude-sonnet-4-20250514",
+  agentModel: "gemini-3-flash",
   fastModel: "gemini-2.5-flash",
 };
 

@@ -165,7 +165,7 @@ class LiveConfigurationService {
     ]
   },
   "env": {
-    "WAVE_MODEL": "claude-sonnet-4-20250514",  // Overrides user setting
+    "WAVE_MODEL": "gemini-3-flash",  // Overrides user setting
     "WAVE_API_KEY": "project-api-key",
     "WAVE_MAX_INPUT_TOKENS": "64000"
   }
@@ -247,7 +247,7 @@ async function testLiveReload() {
   const agent = await Agent.create({ workdir: process.cwd() });
   
   // Update configuration while agent is running
-  config.env.WAVE_MODEL = "claude-sonnet-4-20250514";
+  config.env.WAVE_MODEL = "gemini-3-flash";
   await writeFile('.wave/settings.json', JSON.stringify(config, null, 2));
   
   // Wait for file watcher (300ms debounce)

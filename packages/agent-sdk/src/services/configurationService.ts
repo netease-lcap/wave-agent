@@ -390,7 +390,7 @@ export class ConfigurationService {
     maxTokens?: number,
   ): ModelConfig {
     // Default values as per data-model.md
-    const DEFAULT_AGENT_MODEL = "claude-sonnet-4-20250514";
+    const DEFAULT_AGENT_MODEL = "gemini-3-flash";
     const DEFAULT_FAST_MODEL = "gemini-2.5-flash";
 
     // Resolve agent model: constructor > env (settings.json) > process.env > default
