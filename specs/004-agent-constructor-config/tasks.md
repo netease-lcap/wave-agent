@@ -92,7 +92,7 @@
 - [x] T018 [P] [US3] Update Agent.create method in packages/agent-sdk/src/agent.ts to resolve model configuration from constructor args, environment variables, or defaults
 - [x] T019 [US3] Update AIManager constructor in packages/agent-sdk/src/managers/aiManager.ts to accept resolved ModelConfig
 - [x] T020 [US3] Update AIService to use injected ModelConfig instead of constants from packages/agent-sdk/src/utils/constants.ts
-- [x] T021 [US3] Remove direct process.env access for AIGW_MODEL and AIGW_FAST_MODEL from packages/agent-sdk/src/utils/constants.ts
+- [x] T021 [US3] Remove direct process.env access for WAVE_MODEL and WAVE_FAST_MODEL from packages/agent-sdk/src/utils/constants.ts
 - [x] T022 [US3] Update model selection logic in packages/agent-sdk/src/services/aiService.ts to use injected configuration
 - [x] T023 [US3] Update constants.ts to support configuration injection while maintaining backward compatibility
 

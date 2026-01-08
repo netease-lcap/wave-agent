@@ -152,8 +152,8 @@ describe("Agent Configuration", () => {
     });
 
     it("should use constructor model parameters over environment variables", async () => {
-      process.env.AIGW_MODEL = "env-agent-model";
-      process.env.AIGW_FAST_MODEL = "env-fast-model";
+      process.env.WAVE_MODEL = "env-agent-model";
+      process.env.WAVE_FAST_MODEL = "env-fast-model";
 
       const agent = await Agent.create({
         agentModel: "constructor-agent-model",
@@ -164,8 +164,8 @@ describe("Agent Configuration", () => {
     });
 
     it("should fall back to environment variables for models", async () => {
-      process.env.AIGW_MODEL = "env-agent-model";
-      process.env.AIGW_FAST_MODEL = "env-fast-model";
+      process.env.WAVE_MODEL = "env-agent-model";
+      process.env.WAVE_FAST_MODEL = "env-fast-model";
 
       const agent = await Agent.create({});
 
@@ -173,8 +173,8 @@ describe("Agent Configuration", () => {
     });
 
     it("should use default models when not provided", async () => {
-      delete process.env.AIGW_MODEL;
-      delete process.env.AIGW_FAST_MODEL;
+      delete process.env.WAVE_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
 
       const agent = await Agent.create({});
 
@@ -182,7 +182,7 @@ describe("Agent Configuration", () => {
     });
 
     it("should accept only agentModel with fastModel from environment", async () => {
-      process.env.AIGW_FAST_MODEL = "env-fast-model";
+      process.env.WAVE_FAST_MODEL = "env-fast-model";
 
       const agent = await Agent.create({
         agentModel: "custom-agent-model",
@@ -192,7 +192,7 @@ describe("Agent Configuration", () => {
     });
 
     it("should accept only fastModel with agentModel from environment", async () => {
-      process.env.AIGW_MODEL = "env-agent-model";
+      process.env.WAVE_MODEL = "env-agent-model";
 
       const agent = await Agent.create({
         fastModel: "custom-fast-model",
@@ -220,7 +220,7 @@ describe("Agent Configuration", () => {
     it("should handle mixed constructor and environment configuration", async () => {
       // Set some environment variables
       process.env.WAVE_API_KEY = "env-api-key";
-      process.env.AIGW_FAST_MODEL = "env-fast-model";
+      process.env.WAVE_FAST_MODEL = "env-fast-model";
       process.env.WAVE_MAX_INPUT_TOKENS = "48000";
 
       // Provide some constructor parameters
@@ -235,8 +235,8 @@ describe("Agent Configuration", () => {
     it("should handle environment-only configuration", async () => {
       process.env.WAVE_API_KEY = "env-api-key";
       process.env.WAVE_BASE_URL = "https://env-gateway.com/api";
-      process.env.AIGW_MODEL = "env-agent-model";
-      process.env.AIGW_FAST_MODEL = "env-fast-model";
+      process.env.WAVE_MODEL = "env-agent-model";
+      process.env.WAVE_FAST_MODEL = "env-fast-model";
       process.env.WAVE_MAX_INPUT_TOKENS = "32000";
 
       const agent = await Agent.create({});

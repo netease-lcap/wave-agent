@@ -105,7 +105,7 @@ User Input → ChatInterface → useChat hook → Agent.sendMessage()
 ### Configuration
 Three-tier resolution (highest to lowest priority):
 1. Constructor options
-2. Environment variables (`AIGW_*`, `LOG_*`)
+2. Environment variables (`WAVE_*`, `LOG_*`)
 3. Wave config files (`settings.json`, `.wave/config`)
 
 ## Testing Guidelines

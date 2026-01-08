@@ -11,8 +11,8 @@ Extended interface for Agent constructor parameters.
 **Fields**:
 - `apiKey?: string` - Gateway API key (optional, fallback to WAVE_API_KEY)
 - `baseURL?: string` - Gateway endpoint URL (optional, fallback to WAVE_BASE_URL)
-- `agentModel?: string` - Model ID for main operations (optional, fallback to AIGW_MODEL)
-- `fastModel?: string` - Model ID for fast operations (optional, fallback to AIGW_FAST_MODEL)
+- `agentModel?: string` - Model ID for main operations (optional, fallback to WAVE_MODEL)
+- `fastModel?: string` - Model ID for fast operations (optional, fallback to WAVE_FAST_MODEL)
 - `maxInputTokens?: number` - Token limit for compression (optional, fallback to WAVE_MAX_INPUT_TOKENS, default: 96000)
 - `callbacks?: AgentCallbacks` - Existing callback handlers
 - `restoreSessionId?: string` - Existing session restoration
@@ -78,8 +78,8 @@ Configuration values resolved in this order:
 2. **Environment Variables** (fallback)
    - `process.env.WAVE_API_KEY` → `apiKey`
    - `process.env.WAVE_BASE_URL` → `baseURL`
-   - `process.env.AIGW_MODEL` → `agentModel`
-   - `process.env.AIGW_FAST_MODEL` → `fastModel`
+   - `process.env.WAVE_MODEL` → `agentModel`
+   - `process.env.WAVE_FAST_MODEL` → `fastModel`
    - `process.env.WAVE_MAX_INPUT_TOKENS` → `maxInputTokens`
 
 3. **Built-in Defaults** (lowest precedence)

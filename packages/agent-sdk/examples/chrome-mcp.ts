@@ -10,7 +10,7 @@ console.log("🌐 Testing Chrome MCP screenshot functionality...\n");
 let tempDir: string;
 let agent: Agent;
 
-process.env.AIGW_MODEL = "gemini-2.5-flash";
+process.env.WAVE_MODEL = "gemini-2.5-flash";
 
 async function setupTest() {
   // Create temporary directory
