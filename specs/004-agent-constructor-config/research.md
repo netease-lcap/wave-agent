@@ -23,7 +23,7 @@ interface AgentOptions {
   baseURL?: string;
   agentModel?: string;
   fastModel?: string;
-  tokenLimit?: number;
+  maxInputTokens?: number;
 }
 ```
 
@@ -45,7 +45,7 @@ interface AgentOptions {
   baseURL?: string;
   agentModel?: string;
   fastModel?: string;
-  tokenLimit?: number;
+  maxInputTokens?: number;
   // ... existing options
 }
 ```
@@ -117,7 +117,7 @@ function validateGatewayConfig(apiKey?: string, baseURL?: string): void {
 - `baseURL` ↔ `process.env.AIGW_URL`
 - `agentModel` ↔ `process.env.AIGW_MODEL`
 - `fastModel` ↔ `process.env.AIGW_FAST_MODEL`
-- `tokenLimit` ↔ `process.env.TOKEN_LIMIT`
+- `maxInputTokens` ↔ `process.env.WAVE_MAX_INPUT_TOKENS`
 
 **Built-in Defaults**:
 - Token limit: 96000

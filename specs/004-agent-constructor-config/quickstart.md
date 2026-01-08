@@ -11,7 +11,7 @@ const agent = await Agent.create({
   baseURL: 'https://your-gateway.com',
   agentModel: 'claude-sonnet-4-20250514',
   fastModel: 'gemini-2.5-flash',
-  tokenLimit: 50000,
+  maxInputTokens:50000,
   workdir: './project'
 });
 ```
@@ -25,7 +25,7 @@ const agent = await Agent.create({
   workdir: './project'
   // apiKey: uses AIGW_TOKEN
   // baseURL: uses AIGW_URL  
-  // tokenLimit: uses TOKEN_LIMIT or defaults to 96000
+  // maxInputTokens:uses WAVE_MAX_INPUT_TOKENS or defaults to 96000
   // models: use AIGW_MODEL, AIGW_FAST_MODEL or built-in defaults
 });
 ```
@@ -39,7 +39,7 @@ const agent = await Agent.create({
   // baseURL uses AIGW_URL environment variable
   agentModel: 'custom-model',    // Overrides AIGW_MODEL
   // fastModel uses AIGW_FAST_MODEL or default
-  tokenLimit: 32000,             // Overrides TOKEN_LIMIT
+  maxInputTokens:32000,             // Overrides WAVE_MAX_INPUT_TOKENS
   workdir: './project'
 });
 ```
@@ -55,7 +55,7 @@ const testAgent = await Agent.create({
   baseURL: 'http://localhost:3000/mock-ai',
   agentModel: 'test-model',
   fastModel: 'test-fast-model',
-  tokenLimit: 1000, // Lower limit for testing
+  maxInputTokens:1000, // Lower limit for testing
   messages: [], // Start with empty messages
 });
 ```
@@ -88,7 +88,7 @@ try {
 try {
   const agent = await Agent.create({
     apiKey: 'valid-key',
-    tokenLimit: -1000 // Invalid token limit
+    maxInputTokens:-1000 // Invalid token limit
   });
 } catch (error) {
   // Error: "Token limit must be a positive integer."
@@ -156,7 +156,7 @@ const agent = await Agent.create({
     ? 'claude-sonnet-4-20250514'
     : 'gemini-2.5-flash', // Cheaper model for development
   fastModel: 'gemini-2.5-flash',
-  tokenLimit: process.env.NODE_ENV === 'production' ? 96000 : 10000,
+  maxInputTokens:process.env.NODE_ENV === 'production' ? 96000 : 10000,
   workdir: process.cwd(),
   logger: customLogger
 });

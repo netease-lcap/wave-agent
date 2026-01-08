@@ -37,7 +37,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
     delete process.env.AIGW_URL;
     delete process.env.AIGW_MODEL;
     delete process.env.AIGW_FAST_MODEL;
-    delete process.env.TOKEN_LIMIT;
+    delete process.env.WAVE_MAX_INPUT_TOKENS;
     // Reset and setup loadMergedWaveConfig mock
     vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
   });
@@ -58,7 +58,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       process.env.AIGW_TOKEN = "parent-token";
       process.env.AIGW_URL = "https://parent.url";
       process.env.AIGW_MODEL = "parent-model";
-      process.env.TOKEN_LIMIT = "40000";
+      process.env.WAVE_MAX_INPUT_TOKENS = "40000";
 
       // Create parent agent
       agent = await Agent.create({
@@ -103,13 +103,13 @@ describe("Subagent Dynamic Configuration Tests", () => {
       expect(subagentAIManager.getModelConfig().agentModel).toBe(
         "parent-model",
       );
-      expect(subagentAIManager.getTokenLimit()).toBe(40000);
+      expect(subagentAIManager.getMaxInputTokens()).toBe(40000);
 
       // Update parent environment variables
       process.env.AIGW_TOKEN = "updated-parent-token";
       process.env.AIGW_URL = "https://updated-parent.url";
       process.env.AIGW_MODEL = "updated-parent-model";
-      process.env.TOKEN_LIMIT = "50000";
+      process.env.WAVE_MAX_INPUT_TOKENS = "50000";
 
       // Verify subagent AIManager gets updated values through parent's dynamic getters
       expect(subagentAIManager.getGatewayConfig()).toEqual({
@@ -120,7 +120,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       expect(subagentAIManager.getModelConfig().agentModel).toBe(
         "updated-parent-model",
       );
-      expect(subagentAIManager.getTokenLimit()).toBe(50000);
+      expect(subagentAIManager.getMaxInputTokens()).toBe(50000);
     });
 
     it("should handle subagent-specific model override with dynamic configuration", async () => {
@@ -176,7 +176,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       expect(modelConfig.fastModel).toBe("parent-fast-model");
 
       // Should inherit token limit from parent (using default since not specified)
-      expect(subagentAIManager.getTokenLimit()).toBe(96000); // Default value
+      expect(subagentAIManager.getMaxInputTokens()).toBe(96000); // Default value
 
       // Update parent environment variables
       process.env.AIGW_TOKEN = "updated-parent-token";

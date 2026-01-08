@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import type { Usage } from "@/types/index.js";
-import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
+import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "@/utils/constants.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -346,9 +346,9 @@ describe("Agent Usage Tracking", () => {
       mockCallAgent.mockResolvedValue({
         content: "Response that triggers compression",
         usage: {
-          prompt_tokens: DEFAULT_TOKEN_LIMIT - 20000,
+          prompt_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS - 20000,
           completion_tokens: 30000,
-          total_tokens: DEFAULT_TOKEN_LIMIT + 10000, // Exceeds default token limit
+          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 10000, // Exceeds default token limit
         },
       });
 

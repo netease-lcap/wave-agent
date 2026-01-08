@@ -16,7 +16,7 @@ export interface AgentOptions {
   baseURL?: string;
   agentModel?: string;
   fastModel?: string;  
-  tokenLimit?: number;
+  maxInputTokens?: number;
 
   // Agent behavior options
   callbacks?: AgentCallbacks;

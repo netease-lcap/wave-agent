@@ -98,7 +98,7 @@ export const CONFIG_ERRORS = {
     "Gateway configuration requires apiKey. Provide via constructor or AIGW_TOKEN environment variable.",
   MISSING_BASE_URL:
     "Gateway configuration requires baseURL. Provide via constructor or AIGW_URL environment variable.",
-  INVALID_TOKEN_LIMIT: "Token limit must be a positive integer.",
+  INVALID_WAVE_MAX_INPUT_TOKENS: "Token limit must be a positive integer.",
   EMPTY_API_KEY: "API key cannot be empty string.",
   EMPTY_BASE_URL: "Base URL cannot be empty string.",
 } as const;

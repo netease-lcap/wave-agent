@@ -79,7 +79,7 @@ describe("SubagentManager - Callback Integration", () => {
       callbacks,
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
-      getTokenLimit: () => 1000,
+      getMaxInputTokens: () => 1000,
     });
 
     await subagentManager.initialize();
@@ -456,7 +456,7 @@ describe("SubagentManager - Callback Integration", () => {
         callbacks: errorCallbacks,
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
-        getTokenLimit: () => 1000,
+        getMaxInputTokens: () => 1000,
       });
 
       await errorSubagentManager.initialize();
@@ -501,7 +501,7 @@ describe("SubagentManager - Callback Integration", () => {
         // No callbacks provided
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
-        getTokenLimit: () => 1000,
+        getMaxInputTokens: () => 1000,
       });
 
       await noCallbackManager.initialize();

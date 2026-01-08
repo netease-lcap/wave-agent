@@ -39,7 +39,7 @@ export class ConfigurationError extends Error {
 export const CONFIG_ERRORS: {
   readonly MISSING_API_KEY: string;
   readonly MISSING_BASE_URL: string;
-  readonly INVALID_TOKEN_LIMIT: string;
+  readonly INVALID_WAVE_MAX_INPUT_TOKENS: string;
   readonly EMPTY_API_KEY: string;
   readonly EMPTY_BASE_URL: string;
 } as const;

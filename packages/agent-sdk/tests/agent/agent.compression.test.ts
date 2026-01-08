@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { Message } from "@/types/index.js";
-import { DEFAULT_TOKEN_LIMIT } from "@/utils/constants.js";
+import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "@/utils/constants.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
 import { MessageManager } from "@/managers/messageManager.js";
 
@@ -79,7 +79,7 @@ describe("Agent Message Compression Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // Exceed default limit to trigger compression
+          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000, // Exceed default limit to trigger compression
         },
       };
     });
@@ -237,7 +237,7 @@ describe("Agent Message Compression Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // Exceed default limit to trigger compression
+          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000, // Exceed default limit to trigger compression
         },
       };
     });
@@ -308,7 +308,7 @@ describe("Agent Message Compression Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // Exceed default limit to trigger compression
+          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000, // Exceed default limit to trigger compression
         },
       };
     });
@@ -569,7 +569,7 @@ describe("Agent Message Compression Tests", () => {
         usage: {
           prompt_tokens: 50000,
           completion_tokens: 20000,
-          total_tokens: DEFAULT_TOKEN_LIMIT + 6000, // Exceed default limit to trigger compression
+          total_tokens: DEFAULT_WAVE_MAX_INPUT_TOKENS + 6000, // Exceed default limit to trigger compression
         },
       };
     });

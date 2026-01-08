@@ -90,7 +90,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
       workdir: "/test/workdir",
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
-      getTokenLimit: () => 96000,
+      getMaxInputTokens: () => 96000,
     });
   });
 

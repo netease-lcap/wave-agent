@@ -29,7 +29,7 @@ export interface AgentOptions {
   baseURL?: string;
   agentModel?: string;
   fastModel?: string;
-  tokenLimit?: number;
+  maxInputTokens?: number;
   callbacks?: AgentCallbacks;
   restoreSessionId?: string;
   continueLastSession?: boolean;

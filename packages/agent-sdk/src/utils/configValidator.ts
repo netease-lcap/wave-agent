@@ -64,31 +64,31 @@ export class ConfigValidator {
 
   /**
    * Validates token limit value
-   * @param tokenLimit - Token limit to validate
+   * @param maxInputTokens - Token limit to validate
    * @throws ConfigurationError if invalid
    */
-  static validateTokenLimit(tokenLimit: number): void {
-    if (typeof tokenLimit !== "number") {
+  static validateMaxInputTokens(maxInputTokens: number): void {
+    if (typeof maxInputTokens !== "number") {
       throw new ConfigurationError(
-        CONFIG_ERRORS.INVALID_TOKEN_LIMIT,
-        "tokenLimit",
-        tokenLimit,
+        CONFIG_ERRORS.INVALID_WAVE_MAX_INPUT_TOKENS,
+        "maxInputTokens",
+        maxInputTokens,
       );
     }
 
-    if (!Number.isInteger(tokenLimit)) {
+    if (!Number.isInteger(maxInputTokens)) {
       throw new ConfigurationError(
-        CONFIG_ERRORS.INVALID_TOKEN_LIMIT,
-        "tokenLimit",
-        tokenLimit,
+        CONFIG_ERRORS.INVALID_WAVE_MAX_INPUT_TOKENS,
+        "maxInputTokens",
+        maxInputTokens,
       );
     }
 
-    if (tokenLimit <= 0) {
+    if (maxInputTokens <= 0) {
       throw new ConfigurationError(
-        CONFIG_ERRORS.INVALID_TOKEN_LIMIT,
-        "tokenLimit",
-        tokenLimit,
+        CONFIG_ERRORS.INVALID_WAVE_MAX_INPUT_TOKENS,
+        "maxInputTokens",
+        maxInputTokens,
       );
     }
   }
@@ -132,6 +132,6 @@ export class ConfigValidator {
  */
 export const configValidator = {
   validateGatewayConfig: ConfigValidator.validateGatewayConfig,
-  validateTokenLimit: ConfigValidator.validateTokenLimit,
+  validateMaxInputTokens: ConfigValidator.validateMaxInputTokens,
   validateModelConfig: ConfigValidator.validateModelConfig,
 };
