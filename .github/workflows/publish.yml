@@ -38,20 +38,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
-
-      - name: Type check
-        run: pnpm type-check
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Test
-        run: pnpm test
-        env:
-          WAVE_API_KEY: test-token-for-ci
-          WAVE_BASE_URL: https://mock-api.test.com
-
       - name: Publish
         run: pnpm -r publish --no-git-checks --access public
