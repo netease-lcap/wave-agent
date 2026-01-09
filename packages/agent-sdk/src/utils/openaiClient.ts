@@ -33,23 +33,25 @@ export class OpenAIClient {
             ? AsyncIterable<ChatCompletionChunk>
             : ChatCompletion
         > => {
-          const promise = (async () => {
-            const { data } = await this._create(params, options);
-            return data;
-          })() as Promise<unknown> & {
-            withResponse(): Promise<APIResponse<unknown>>;
-          };
-          promise.withResponse = async () => {
-            return (await this._create(
-              params,
-              options,
-            )) as APIResponse<unknown>;
-          };
-          return promise as APIPromise<
+          const responsePromise = this._create(params, options);
+          const promise = responsePromise.then(
+            (res) => res.data,
+          ) as unknown as APIPromise<
             P extends ChatCompletionCreateParamsStreaming
               ? AsyncIterable<ChatCompletionChunk>
               : ChatCompletion
           >;
+          promise.withResponse = () =>
+            responsePromise as Promise<
+              APIResponse<
+                P extends ChatCompletionCreateParamsStreaming
+                  ? AsyncIterable<ChatCompletionChunk>
+                  : ChatCompletion
+              >
+            >;
+          // Prevent unhandled rejection if only withResponse() is used
+          promise.catch(() => {});
+          return promise;
         },
       },
     };
