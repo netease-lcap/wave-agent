@@ -40,6 +40,7 @@ import {
   DEFAULT_WAVE_MAX_OUTPUT_TOKENS,
 } from "../utils/constants.js";
 import { ClientOptions } from "openai";
+import { parseCustomHeaders } from "../utils/stringUtils.js";
 
 /**
  * Default ConfigurationService implementation
@@ -367,10 +368,22 @@ export class ConfigurationService {
       );
     }
 
+    // Resolve custom headers from environment: env (settings.json) > process.env
+    const envCustomHeaders =
+      this.env.WAVE_CUSTOM_HEADERS || process.env.WAVE_CUSTOM_HEADERS || "";
+    const parsedEnvHeaders = parseCustomHeaders(envCustomHeaders);
+
+    // Merge headers: env headers < constructor defaultHeaders
+    const resolvedHeaders = {
+      ...parsedEnvHeaders,
+      ...defaultHeaders,
+    };
+
     return {
       apiKey: resolvedApiKey,
       baseURL: resolvedBaseURL,
-      defaultHeaders,
+      defaultHeaders:
+        Object.keys(resolvedHeaders).length > 0 ? resolvedHeaders : undefined,
       fetchOptions,
       fetch,
     };
