@@ -352,7 +352,7 @@ export function getSmartPrefix(command: string): string | null {
     if (sub === "run" && tokens[2]) {
       return `${exe} run ${tokens[2]}`;
     }
-    return exe;
+    return null;
   }
 
   // Git
@@ -377,7 +377,7 @@ export function getSmartPrefix(command: string): string | null {
     ) {
       return `${exe} ${sub}`;
     }
-    return exe;
+    return null;
   }
 
   // Python
@@ -386,12 +386,12 @@ export function getSmartPrefix(command: string): string | null {
       if (sub === "-m" && tokens[2] === "pip" && tokens[3] === "install") {
         return `${exe} -m pip install`;
       }
-      return exe;
+      return null;
     }
     if (["install", "add", "remove", "test", "run"].includes(sub)) {
       return `${exe} ${sub}`;
     }
-    return exe;
+    return null;
   }
 
   // Java
@@ -399,7 +399,7 @@ export function getSmartPrefix(command: string): string | null {
     if (sub && !sub.startsWith("-")) {
       return `${exe} ${sub}`;
     }
-    return exe;
+    return null;
   }
   if (exe === "java") {
     if (sub === "-jar") return "java -jar";
@@ -411,13 +411,13 @@ export function getSmartPrefix(command: string): string | null {
     if (["build", "test", "run", "add", "check"].includes(sub)) {
       return `${exe} ${sub}`;
     }
-    return exe;
+    return null;
   }
   if (exe === "go") {
     if (["build", "test", "run", "get", "mod"].includes(sub)) {
       return `${exe} ${sub}`;
     }
-    return exe;
+    return null;
   }
 
   // Containers & Infrastructure
@@ -425,19 +425,19 @@ export function getSmartPrefix(command: string): string | null {
     if (["run", "build", "ps", "exec", "up", "down"].includes(sub)) {
       return `${exe} ${sub}`;
     }
-    return exe;
+    return null;
   }
   if (exe === "kubectl") {
     if (["get", "describe", "apply", "logs"].includes(sub)) {
       return `${exe} ${sub}`;
     }
-    return exe;
+    return null;
   }
   if (exe === "terraform") {
     if (["plan", "apply", "destroy", "init"].includes(sub)) {
       return `${exe} ${sub}`;
     }
-    return exe;
+    return null;
   }
 
   return null;
