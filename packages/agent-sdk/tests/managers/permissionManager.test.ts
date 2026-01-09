@@ -1163,5 +1163,18 @@ describe("PermissionManager", () => {
       const rules = permissionManager.expandBashRule(command, workdir);
       expect(rules).toEqual([]); // cd /etc is out-of-bounds, ls is safe
     });
+
+    it("should not return broad prefix rules for unknown subcommands", () => {
+      const command = "npm list";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toContain("Bash(npm list)");
+      expect(rules).not.toContain("Bash(npm:*)");
+    });
+
+    it("should still return prefix rules for known safe subcommands", () => {
+      const command = "npm install lodash";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual(["Bash(npm install:*)"]);
+    });
   });
 });
