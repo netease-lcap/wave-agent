@@ -94,11 +94,8 @@ export class ConfigurationError extends Error {
 
 // Standard error messages
 export const CONFIG_ERRORS = {
-  MISSING_API_KEY:
-    "Gateway configuration requires apiKey. Provide via constructor or WAVE_API_KEY environment variable.",
   MISSING_BASE_URL:
     "Gateway configuration requires baseURL. Provide via constructor or WAVE_BASE_URL environment variable.",
   INVALID_WAVE_MAX_INPUT_TOKENS: "Token limit must be a positive integer.",
-  EMPTY_API_KEY: "API key cannot be empty string.",
   EMPTY_BASE_URL: "Base URL cannot be empty string.",
 } as const;

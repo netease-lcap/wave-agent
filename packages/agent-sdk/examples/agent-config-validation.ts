@@ -114,8 +114,8 @@ async function validateAgentConfiguration() {
     );
   }
 
-  // Test 5: Error Handling - Missing configuration
-  console.log("\n5. Testing: Error Handling - Missing Configuration");
+  // Test 5: Error Handling - Missing baseURL
+  console.log("\n5. Testing: Error Handling - Missing baseURL");
 
   // Clear environment variables
   delete process.env.WAVE_API_KEY;
@@ -123,16 +123,17 @@ async function validateAgentConfiguration() {
 
   try {
     await Agent.create({
+      apiKey: "test-key",
       workdir: "./project",
     });
     console.log("   ❌ Expected error but agent was created");
   } catch (error) {
     if (
       error instanceof Error &&
-      error.message.includes("apiKey") &&
-      error.message.includes("WAVE_API_KEY")
+      error.message.includes("baseURL") &&
+      error.message.includes("WAVE_BASE_URL")
     ) {
-      console.log("   ✅ Missing apiKey error handling works");
+      console.log("   ✅ Missing baseURL error handling works");
     } else {
       console.log(
         "   ⚠️  Error message different than expected:",
@@ -141,23 +142,21 @@ async function validateAgentConfiguration() {
     }
   }
 
-  // Test 6: Error Handling - Empty string
-  console.log("\n6. Testing: Error Handling - Empty API Key");
+  // Test 6: Optional API Key
+  console.log("\n6. Testing: Optional API Key");
   try {
-    await Agent.create({
+    const agent = await Agent.create({
       apiKey: "",
       baseURL: "https://api.example.com",
     });
-    console.log("   ❌ Expected error but agent was created");
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("empty")) {
-      console.log("   ✅ Empty API key error handling works");
-    } else {
-      console.log(
-        "   ⚠️  Error message different than expected:",
-        error instanceof Error ? error.message : String(error),
-      );
+    if (agent) {
+      console.log("   ✅ Empty API key is now allowed");
     }
+  } catch (error) {
+    console.log(
+      "   ❌ Empty API key failed:",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 
   // Test 7: Error Handling - Invalid token limit

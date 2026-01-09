@@ -5,6 +5,12 @@
 **Status**: Draft  
 **Input**: User description: "sdk should support setting headers from env"
 
+## Clarifications
+
+### Session 2026-01-09
+- Q: Should the mandatory apiKey validation be removed since users might use custom headers for auth? → A: Remove mandatory apiKey validation entirely.
+- Q: What should the SDK do if no authentication is provided (neither apiKey nor custom headers)? → A: Proceed and let the server handle missing auth (401/403).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Configure SDK Headers via Environment Variables (Priority: P1)
@@ -48,10 +54,12 @@ As a developer, I want to provide multiple headers in a single environment varia
 
 - **FR-001**: SDK MUST read the environment variable `WAVE_CUSTOM_HEADERS`.
 - **FR-002**: SDK MUST split the value of `WAVE_CUSTOM_HEADERS` by newlines (`\n` or `\r\n`).
-- **FR-003**: SDK MUST parse each non-empty line as an HTTP header (typically `Key: Value`).
+- **FR-003**: SDK MUST parse each non-empty line as an HTTP header in `Key: Value` format.
 - **FR-004**: SDK MUST include these headers in all outgoing HTTP requests made by the agent.
 - **FR-005**: Explicitly configured headers in the SDK constructor or request options MUST take precedence over environment-provided headers.
 - **FR-006**: SDK MUST ignore malformed lines that do not follow the `Key: Value` format.
+- **FR-007**: SDK MUST NOT enforce the presence of an `apiKey` during initialization, allowing for alternative authentication methods via custom headers.
+- **FR-008**: SDK MUST NOT perform client-side validation for the presence of authentication headers; it MUST proceed with the request and allow the server to handle missing or invalid credentials.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -64,6 +72,7 @@ As a developer, I want to provide multiple headers in a single environment varia
 - [x] Parse multi-line headers in `Key: Value` format.
 - [x] Merge environment headers with constructor headers (constructor takes precedence).
 - [x] Support headers from `settings.json` (via `env` property).
+- [x] Remove mandatory apiKey validation and allow alternative auth.
 - [x] Comprehensive unit and integration tests.
 
 ## Success Criteria

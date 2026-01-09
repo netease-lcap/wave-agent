@@ -6,7 +6,7 @@
 import OpenAI from "openai";
 
 export interface GatewayConfig {
-  apiKey: string;
+  apiKey?: string;
   baseURL: string;
   defaultHeaders?: Record<string, string>;
   fetchOptions?: OpenAI["fetchOptions"];

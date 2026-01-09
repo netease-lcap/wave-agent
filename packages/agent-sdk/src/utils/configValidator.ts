@@ -16,21 +16,15 @@ export class ConfigValidator {
    * @throws ConfigurationError with descriptive message if invalid
    */
   static validateGatewayConfig(config: GatewayConfig): void {
-    // Validate API key
-    if (!config.apiKey || typeof config.apiKey !== "string") {
-      throw new ConfigurationError(
-        CONFIG_ERRORS.EMPTY_API_KEY,
-        "apiKey",
-        config.apiKey,
-      );
-    }
-
-    if (config.apiKey.trim() === "") {
-      throw new ConfigurationError(
-        CONFIG_ERRORS.EMPTY_API_KEY,
-        "apiKey",
-        config.apiKey,
-      );
+    // Validate API key if provided
+    if (config.apiKey !== undefined) {
+      if (typeof config.apiKey !== "string") {
+        throw new ConfigurationError(
+          "API key must be a string if provided.",
+          "apiKey",
+          config.apiKey,
+        );
+      }
     }
 
     // Validate base URL
