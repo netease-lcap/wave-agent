@@ -38,6 +38,40 @@ export function removeCodeBlockWrappers(content: string): string {
 }
 
 /**
+ * Parse custom headers from a string (typically from environment variables)
+ * Format: Key: Value, separated by newlines
+ * @param headersString String containing headers
+ * @returns Record of headers
+ */
+export function parseCustomHeaders(
+  headersString: string,
+): Record<string, string> {
+  if (!headersString || typeof headersString !== "string") {
+    return {};
+  }
+
+  const headers: Record<string, string> = {};
+  const lines = headersString.split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+
+    const colonIndex = trimmedLine.indexOf(":");
+    if (colonIndex === -1) continue;
+
+    const key = trimmedLine.slice(0, colonIndex).trim();
+    const value = trimmedLine.slice(colonIndex + 1).trim();
+
+    if (key) {
+      headers[key] = value;
+    }
+  }
+
+  return headers;
+}
+
+/**
  * Function to remove ANSI color codes
  * @param text Text containing ANSI color codes
  * @returns Plain text with color codes removed
