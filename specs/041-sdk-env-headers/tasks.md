@@ -30,7 +30,15 @@
 - [x] T006 [US2] Add multi-line test cases to `packages/agent-sdk/tests/utils/stringUtils.test.ts`
 - [x] T007 [US2] Add multi-line integration test in `packages/agent-sdk/tests/agent/agent.headers.test.ts`
 
-## Phase 5: Polish & Cross-Cutting Concerns
+## Phase 5: Authentication Flexibility (FR-007, FR-008)
+
+**Goal**: Remove mandatory apiKey validation to allow alternative auth via custom headers.
+**Independent Test Criteria**: Call `Agent.create()` without an `apiKey` but with a custom auth header, and verify no validation error is thrown.
+
+- [x] T010 [FR-007] Remove mandatory `apiKey` validation in `ConfigurationService`
+- [x] T011 [FR-008] Update `Agent` initialization tests to verify success without `apiKey`
+
+## Phase 6: Polish & Cross-Cutting Concerns
 
 - [x] T008 Run `pnpm run type-check` and `pnpm lint` in `packages/agent-sdk`
 - [x] T009 Run all tests in `packages/agent-sdk` to ensure no regressions

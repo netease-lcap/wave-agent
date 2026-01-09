@@ -319,27 +319,11 @@ export class ConfigurationService {
   ): GatewayConfig {
     // Resolve API key: constructor > env (settings.json) > process.env
     // Note: Explicitly provided empty strings should be treated as invalid, not fall back to env
-    let resolvedApiKey: string;
+    let resolvedApiKey: string | undefined;
     if (apiKey !== undefined) {
       resolvedApiKey = apiKey;
     } else {
-      resolvedApiKey = this.env.WAVE_API_KEY || process.env.WAVE_API_KEY || "";
-    }
-
-    if (!resolvedApiKey && apiKey === undefined) {
-      throw new ConfigurationError(CONFIG_ERRORS.MISSING_API_KEY, "apiKey", {
-        constructor: apiKey,
-        environment: process.env.WAVE_API_KEY,
-        settings: this.env.WAVE_API_KEY,
-      });
-    }
-
-    if (resolvedApiKey.trim() === "") {
-      throw new ConfigurationError(
-        CONFIG_ERRORS.EMPTY_API_KEY,
-        "apiKey",
-        resolvedApiKey,
-      );
+      resolvedApiKey = this.env.WAVE_API_KEY || process.env.WAVE_API_KEY;
     }
 
     // Resolve base URL: constructor > env (settings.json) > process.env

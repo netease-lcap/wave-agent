@@ -53,11 +53,13 @@ describe("Agent Configuration", () => {
       expect(agent).toBeDefined();
     });
 
-    it("should throw error when neither constructor nor environment provides apiKey", async () => {
+    it("should NOT throw error when neither constructor nor environment provides apiKey", async () => {
       delete process.env.WAVE_API_KEY;
       process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
 
-      await expect(Agent.create({})).rejects.toThrow(/apiKey/);
+      const agent = await Agent.create({});
+      expect(agent).toBeDefined();
+      expect(agent.getGatewayConfig().apiKey).toBeUndefined();
     });
 
     it("should throw error when neither constructor nor environment provides baseURL", async () => {
@@ -67,13 +69,13 @@ describe("Agent Configuration", () => {
       await expect(Agent.create({})).rejects.toThrow(/baseURL/);
     });
 
-    it("should throw error for empty apiKey", async () => {
-      await expect(
-        Agent.create({
-          apiKey: "",
-          baseURL: "https://test-gateway.com/api",
-        }),
-      ).rejects.toThrow(/empty/);
+    it("should NOT throw error for empty apiKey", async () => {
+      const agent = await Agent.create({
+        apiKey: "",
+        baseURL: "https://test-gateway.com/api",
+      });
+      expect(agent).toBeDefined();
+      expect(agent.getGatewayConfig().apiKey).toBe("");
     });
 
     it("should throw error for empty baseURL", async () => {
@@ -260,18 +262,18 @@ describe("Agent Configuration", () => {
 
   describe("Configuration Validation", () => {
     it("should validate configuration early in constructor", async () => {
-      // Missing both constructor and environment config should fail fast
+      // Missing baseURL should fail fast
       delete process.env.WAVE_API_KEY;
       delete process.env.WAVE_BASE_URL;
 
-      await expect(Agent.create({})).rejects.toThrow();
+      await expect(Agent.create({})).rejects.toThrow(/baseURL/);
     });
 
-    it("should provide descriptive error messages", async () => {
-      delete process.env.WAVE_API_KEY;
-      process.env.WAVE_BASE_URL = "https://test-gateway.com/api";
+    it("should provide descriptive error messages for missing baseURL", async () => {
+      process.env.WAVE_API_KEY = "test-api-key";
+      delete process.env.WAVE_BASE_URL;
 
-      await expect(Agent.create({})).rejects.toThrow(/apiKey.*WAVE_API_KEY/);
+      await expect(Agent.create({})).rejects.toThrow(/baseURL.*WAVE_BASE_URL/);
     });
 
     it("should handle environment variable parsing errors gracefully", async () => {

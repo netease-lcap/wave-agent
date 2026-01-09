@@ -323,8 +323,8 @@ describe("Agent - Global Logger Integration", () => {
       // This should fail but not affect the global logger
       await expect(
         Agent.create({
-          apiKey: "", // Invalid empty API key
-          baseURL: "https://test.com",
+          apiKey: "test-key",
+          baseURL: "", // Invalid empty baseURL
           logger: mockLogger2,
         }),
       ).rejects.toThrow();
