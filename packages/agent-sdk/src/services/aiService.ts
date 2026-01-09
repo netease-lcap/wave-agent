@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { ChatCompletionMessageToolCall } from "openai/resources";
 import {
   ChatCompletionCreateParamsNonStreaming,
@@ -7,6 +6,7 @@ import {
   ChatCompletionFunctionTool,
   ChatCompletionChunk,
 } from "openai/resources.js";
+import { OpenAIClient } from "../utils/openaiClient.js";
 import { logger } from "../utils/globalLogger.js";
 import type { GatewayConfig, ModelConfig } from "../types/index.js";
 import {
@@ -34,7 +34,7 @@ interface DebugData {
     baseURL?: string;
     defaultHeaders?: Record<string, string>;
   };
-  processedMessages?: OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+  processedMessages?: ChatCompletionMessageParam[];
   createParams?:
     | ChatCompletionCreateParamsNonStreaming
     | ChatCompletionCreateParamsStreaming;
@@ -179,9 +179,7 @@ export async function callAgent(
   } = options;
 
   // Declare variables outside try block for error handling access
-  let openaiMessages:
-    | OpenAI.Chat.Completions.ChatCompletionMessageParam[]
-    | undefined;
+  let openaiMessages: ChatCompletionMessageParam[] | undefined;
   let createParams:
     | ChatCompletionCreateParamsNonStreaming
     | ChatCompletionCreateParamsStreaming
@@ -190,7 +188,7 @@ export async function callAgent(
 
   try {
     // Create OpenAI client with injected configuration
-    const openai = new OpenAI({
+    const openai = new OpenAIClient({
       apiKey: gatewayConfig.apiKey,
       baseURL: gatewayConfig.baseURL,
       defaultHeaders: gatewayConfig.defaultHeaders,
@@ -229,7 +227,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     }
 
     // Add system prompt
-    const systemMessage: OpenAI.Chat.Completions.ChatCompletionMessageParam = {
+    const systemMessage: ChatCompletionMessageParam = {
       role: "system",
       content: systemContent,
     };
@@ -292,7 +290,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
 
       // Extract response headers
       const responseHeaders: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
+      (response.headers as Headers).forEach((value: string, key: string) => {
         responseHeaders[key] = value;
       });
 
@@ -316,7 +314,7 @@ Today's date: ${new Date().toISOString().split("T")[0]}
 
       // Extract response headers
       const responseHeaders: Record<string, string> = {};
-      rawResponse.headers.forEach((value, key) => {
+      (rawResponse.headers as Headers).forEach((value: string, key: string) => {
         responseHeaders[key] = value;
       });
 
@@ -756,7 +754,7 @@ export async function compressMessages(
   const { gatewayConfig, modelConfig, messages, abortSignal } = options;
 
   // Create OpenAI client with injected configuration
-  const openai = new OpenAI({
+  const openai = new OpenAIClient({
     apiKey: gatewayConfig.apiKey,
     baseURL: gatewayConfig.baseURL,
     defaultHeaders: gatewayConfig.defaultHeaders,

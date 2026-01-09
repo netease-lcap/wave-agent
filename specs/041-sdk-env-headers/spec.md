@@ -73,6 +73,7 @@ As a developer, I want to provide multiple headers in a single environment varia
 - [x] Merge environment headers with constructor headers (constructor takes precedence).
 - [x] Support headers from `settings.json` (via `env` property).
 - [x] Remove mandatory apiKey validation and allow alternative auth.
+- [x] Replace OpenAI SDK with custom fetch-based implementation to skip internal apiKey validation.
 - [x] Comprehensive unit and integration tests.
 
 ## Success Criteria

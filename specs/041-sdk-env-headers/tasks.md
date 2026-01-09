@@ -37,6 +37,7 @@
 
 - [x] T010 [FR-007] Remove mandatory `apiKey` validation in `ConfigurationService`
 - [x] T011 [FR-008] Update `Agent` initialization tests to verify success without `apiKey`
+- [x] T012 Replace OpenAI SDK with custom fetch-based implementation to skip internal apiKey validation
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
