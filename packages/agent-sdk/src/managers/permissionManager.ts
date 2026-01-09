@@ -24,7 +24,7 @@ import {
 } from "../utils/bashParser.js";
 import { isPathInside } from "../utils/pathSafety.js";
 
-const SAFE_COMMANDS = ["cd", "ls", "pwd"];
+const SAFE_COMMANDS = ["cd", "ls", "pwd", "true", "false"];
 
 export interface PermissionManagerOptions {
   /** Logger for debugging permission decisions */
@@ -341,11 +341,11 @@ export class PermissionManager {
           const args = commandMatch[2]?.trim() || "";
 
           if (SAFE_COMMANDS.includes(cmd)) {
-            if (workdir) {
-              if (cmd === "pwd") {
-                return true;
-              }
+            if (cmd === "pwd" || cmd === "true" || cmd === "false") {
+              return true;
+            }
 
+            if (workdir) {
               // For cd and ls, check paths
               const pathArgs =
                 (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
@@ -412,7 +412,7 @@ export class PermissionManager {
         const args = commandMatch[2]?.trim() || "";
 
         if (SAFE_COMMANDS.includes(cmd)) {
-          if (cmd === "pwd") {
+          if (cmd === "pwd" || cmd === "true" || cmd === "false") {
             isSafe = true;
           } else {
             // For cd and ls, check paths
