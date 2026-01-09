@@ -24,8 +24,8 @@ const mockOpenAI = {
 };
 
 // Mock OpenAI constructor
-vi.mock("openai", () => ({
-  default: vi.fn().mockImplementation(() => mockOpenAI),
+vi.mock("@/utils/openaiClient.js", () => ({
+  OpenAIClient: vi.fn().mockImplementation(() => mockOpenAI),
 }));
 
 // Mock constants
