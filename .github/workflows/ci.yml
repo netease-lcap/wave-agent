@@ -34,7 +34,6 @@ jobs:
       - name: Build
         run: pnpm build
         env:
-          WAVE_API_KEY: test-token-for-ci
           WAVE_BASE_URL: https://mock-api.test.com
       
       - name: Type check
@@ -46,5 +45,4 @@ jobs:
       - name: Test
         run: pnpm test
         env:
-          WAVE_API_KEY: test-token-for-ci
           WAVE_BASE_URL: https://mock-api.test.com
