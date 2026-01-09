@@ -993,7 +993,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "ls && pwd" },
+        toolInput: { command: "ls && mkdir test" },
         canUseToolCallback: mockCallback,
       };
 
@@ -1144,6 +1144,12 @@ describe("PermissionManager", () => {
       const command = "pwd && echo hello";
       const rules = permissionManager.expandBashRule(command, workdir);
       expect(rules).toEqual(["Bash(echo hello)"]);
+    });
+
+    it("should handle true and false as safe", () => {
+      const command = "ls || true && false";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual([]);
     });
 
     it("should refuse to expand dangerous commands", () => {
