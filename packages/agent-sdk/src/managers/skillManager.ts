@@ -314,4 +314,22 @@ export class SkillManager {
       )
       .join("\n");
   }
+
+  /**
+   * Register skills provided by a plugin
+   */
+  registerPluginSkills(skills: Skill[]): void {
+    for (const skill of skills) {
+      this.skillMetadata.set(skill.name, {
+        name: skill.name,
+        description: skill.description,
+        type: skill.type,
+        skillPath: skill.skillPath,
+      });
+      this.skillContent.set(skill.name, skill);
+    }
+    this.logger?.debug(
+      `Registered ${skills.length} plugin skills. Total skills: ${this.skillMetadata.size}`,
+    );
+  }
 }

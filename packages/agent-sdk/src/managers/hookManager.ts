@@ -13,7 +13,7 @@ import {
   type HookExecutionContext,
   type ExtendedHookExecutionContext,
   type HookExecutionResult,
-  type ValidationResult,
+  type HookValidationResult,
   HookConfigurationError,
   isValidHookEvent,
   isValidHookEventConfig,
@@ -411,7 +411,7 @@ export class HookManager {
   /**
    * Validate Wave configuration structure and content
    */
-  validateConfiguration(config: WaveConfiguration): ValidationResult {
+  validateConfiguration(config: WaveConfiguration): HookValidationResult {
     const errors: string[] = [];
 
     if (!config || typeof config !== "object") {
@@ -478,7 +478,7 @@ export class HookManager {
    */
   private validatePartialConfiguration(
     config: PartialHookConfiguration,
-  ): ValidationResult {
+  ): HookValidationResult {
     const errors: string[] = [];
 
     if (!config || typeof config !== "object") {
@@ -540,7 +540,7 @@ export class HookManager {
   private validateExecutionContext(
     event: HookEvent,
     context: HookExecutionContext,
-  ): ValidationResult {
+  ): HookValidationResult {
     const errors: string[] = [];
 
     // Validate basic context structure
@@ -776,5 +776,20 @@ export class HookManager {
       totalCommands,
       eventBreakdown,
     };
+  }
+
+  /**
+   * Register hooks provided by a plugin
+   */
+  registerPluginHooks(hooks: PartialHookConfiguration): void {
+    if (!this.configuration) {
+      this.configuration = {};
+    }
+
+    this.mergeHooksConfiguration(this.configuration, hooks);
+
+    this.logger?.debug(
+      `Registered plugin hooks. Total event types: ${Object.keys(this.configuration).length}`,
+    );
   }
 }

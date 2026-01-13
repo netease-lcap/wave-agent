@@ -1,0 +1,8 @@
+{
+  "name": "complex-plugin",
+  "description": "A plugin demonstrating all capabilities: commands, skills, LSP, MCP, and hooks.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Wave Team"
+  }
+}

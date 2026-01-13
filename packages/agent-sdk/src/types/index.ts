@@ -24,6 +24,7 @@ export * from "./config.js";
 export * from "./session.js";
 export * from "./environment.js";
 export * from "./configuration.js"; // New configuration management types
+export * from "./hooks.js";
 export * from "./permissions.js";
 export * from "./tools.js"; // Tool parameter types
 export * from "./fileSearch.js"; // File search types

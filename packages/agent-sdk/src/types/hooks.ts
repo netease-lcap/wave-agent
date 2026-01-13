@@ -76,7 +76,7 @@ export interface HookExecutionOptions {
 }
 
 // Validation result for hook configuration
-export interface ValidationResult {
+export interface HookValidationResult {
   valid: boolean;
   errors: string[];
 }
