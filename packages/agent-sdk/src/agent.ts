@@ -114,6 +114,7 @@ export class Agent {
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private pluginManager: PluginManager; // Add plugin manager instance
+  private skillManager: SkillManager; // Add skill manager instance
   private hookManager: HookManager; // Add hooks manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private configurationService: ConfigurationService; // Add configuration service
@@ -242,6 +243,12 @@ export class Agent {
     // Initialize configuration service and hooks manager
     this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
 
+    // Initialize skill manager
+    this.skillManager = new SkillManager({
+      logger: this.logger,
+      workdir: this.workdir,
+    });
+
     // Initialize MessageManager
     this.messageManager = new MessageManager({
       callbacks,
@@ -367,6 +374,12 @@ export class Agent {
     this.pluginManager = new PluginManager({
       workdir: this.workdir,
       logger: this.logger,
+      slashCommandManager: this.slashCommandManager,
+      mcpManager: this.mcpManager,
+      lspManager:
+        this.lspManager instanceof LspManager ? this.lspManager : undefined,
+      hookManager: this.hookManager,
+      skillManager: this.skillManager,
     });
 
     // Initialize bash manager
@@ -563,11 +576,7 @@ export class Agent {
     // Initialize managers first
     try {
       // Initialize SkillManager
-      const skillManager = new SkillManager({
-        logger: this.logger,
-        workdir: this.workdir,
-      });
-      await skillManager.initialize();
+      await this.skillManager.initialize();
 
       // Initialize SubagentManager (load and cache configurations)
       await this.subagentManager.initialize();
@@ -575,18 +584,12 @@ export class Agent {
       // Initialize built-in tools with dependencies
       this.toolManager.initializeBuiltInTools({
         subagentManager: this.subagentManager,
-        skillManager: skillManager,
+        skillManager: this.skillManager,
       });
 
       // Initialize plugins
       if (this.options.plugins && this.options.plugins.length > 0) {
         await this.pluginManager.loadPlugins(this.options.plugins);
-        for (const plugin of this.pluginManager.getPlugins()) {
-          this.slashCommandManager.registerPluginCommands(
-            plugin.name,
-            plugin.commands,
-          );
-        }
       }
     } catch (error) {
       this.logger?.error("Failed to initialize managers and tools:", error);
