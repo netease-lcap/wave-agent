@@ -93,10 +93,36 @@ describe("AI Service - CompressMessages", () => {
       const callArgs = mockCreate.mock.calls[0][0];
 
       // Verify model configuration
-      expect(callArgs.model).toBe(TEST_MODEL_CONFIG.fastModel);
+      expect(callArgs.model).toBe(TEST_MODEL_CONFIG.agentModel);
       expect(callArgs.temperature).toBe(0.1);
       expect(callArgs.max_tokens).toBe(2048);
       expect(callArgs.stream).toBe(false);
+    });
+
+    it("should use custom model if provided", async () => {
+      const messages = [
+        {
+          role: "user" as const,
+          content: "Hello, this is a test message",
+        },
+      ];
+      const customModel = "custom-model";
+
+      await compressMessages({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages,
+        model: customModel,
+      });
+
+      // Verify that create was called
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+
+      // Get the actual call arguments
+      const callArgs = mockCreate.mock.calls[0][0];
+
+      // Verify model configuration
+      expect(callArgs.model).toBe(customModel);
     });
 
     it("should include system message and user messages in correct order", async () => {
