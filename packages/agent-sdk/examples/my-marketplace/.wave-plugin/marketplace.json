@@ -1,0 +1,13 @@
+{
+  "name": "my-plugins",
+  "owner": {
+    "name": "Your Name"
+  },
+  "plugins": [
+    {
+      "name": "review-plugin",
+      "source": "./plugins/review-plugin",
+      "description": "Adds a /review command for quick code reviews"
+    }
+  ]
+}
