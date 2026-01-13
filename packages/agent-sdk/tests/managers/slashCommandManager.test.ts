@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
+import { CustomSlashCommand } from "../../src/types/index.js";
 
 describe("SlashCommandManager", () => {
   let slashCommandManager: SlashCommandManager;
@@ -140,6 +141,29 @@ describe("SlashCommandManager", () => {
       expect(console.error).toHaveBeenCalled();
 
       console.error = originalConsoleError;
+    });
+  });
+
+  describe("registerPluginCommands", () => {
+    it("should register plugin commands with colon separator", () => {
+      const pluginName = "test-plugin";
+      const commands = [
+        {
+          id: "cmd1",
+          name: "cmd1",
+          description: "desc1",
+          content: "content1",
+        },
+      ];
+
+      slashCommandManager.registerPluginCommands(
+        pluginName,
+        commands as unknown as CustomSlashCommand[],
+      );
+
+      expect(slashCommandManager.hasCommand("test-plugin:cmd1")).toBe(true);
+      const cmd = slashCommandManager.getCommand("test-plugin:cmd1");
+      expect(cmd?.name).toBe("test-plugin:cmd1");
     });
   });
 });

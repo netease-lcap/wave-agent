@@ -17,8 +17,10 @@ import { HookManager } from "../../src/managers/hookManager.js";
 import { LspManager } from "../../src/managers/lspManager.js";
 import { McpManager } from "../../src/managers/mcpManager.js";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
+import { MarketplaceService } from "../../src/services/MarketplaceService.js";
 
 vi.mock("../../src/services/pluginLoader.js");
+vi.mock("../../src/services/MarketplaceService.js");
 
 describe("PluginManager", () => {
   let pluginManager: PluginManager;
@@ -50,6 +52,12 @@ describe("PluginManager", () => {
     mockSlashCommandManager = {
       registerPluginCommands: vi.fn(),
     } as unknown as SlashCommandManager;
+
+    vi.mocked(MarketplaceService).mockImplementation(() => {
+      return {
+        getInstalledPlugins: vi.fn().mockResolvedValue({ plugins: [] }),
+      } as unknown as MarketplaceService;
+    });
 
     pluginManager = new PluginManager({
       workdir,
@@ -189,7 +197,7 @@ describe("PluginManager", () => {
       expect(pluginManager.getPlugins()).toHaveLength(0);
       expect(mockLogger.error).toHaveBeenCalledWith(
         expect.stringContaining(
-          "Failed to load plugin from plugins/invalid-plugin",
+          `Failed to load plugin from ${path.resolve(workdir, configs[0].path)}`,
         ),
         error,
       );

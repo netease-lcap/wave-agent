@@ -588,9 +588,7 @@ export class Agent {
       });
 
       // Initialize plugins
-      if (this.options.plugins && this.options.plugins.length > 0) {
-        await this.pluginManager.loadPlugins(this.options.plugins);
-      }
+      await this.pluginManager.loadPlugins(this.options.plugins || []);
     } catch (error) {
       this.logger?.error("Failed to initialize managers and tools:", error);
       // Don't throw error to prevent app startup failure
