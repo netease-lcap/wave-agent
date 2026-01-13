@@ -737,6 +737,7 @@ export interface CompressMessagesOptions {
   // Existing parameters
   messages: ChatCompletionMessageParam[];
   abortSignal?: AbortSignal;
+  model?: string;
 }
 
 export interface CompressMessagesResult {
@@ -762,11 +763,14 @@ export async function compressMessages(
     fetch: gatewayConfig.fetch,
   });
 
-  // Get model configuration - use injected fast model
-  const openaiModelConfig = getModelConfig(modelConfig.fastModel, {
-    temperature: 0.1,
-    max_tokens: 2048,
-  });
+  // Get model configuration - use injected agent model
+  const openaiModelConfig = getModelConfig(
+    options.model || modelConfig.agentModel,
+    {
+      temperature: 0.1,
+      max_tokens: 2048,
+    },
+  );
 
   try {
     const response = await openai.chat.completions.create(

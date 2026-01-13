@@ -129,7 +129,7 @@ describe("Agent Message Compression Tests", () => {
       prompt_tokens: 1000,
       completion_tokens: 500,
       total_tokens: 1500,
-      model: "gemini-2.5-flash", // The default fast model
+      model: "gemini-3-flash", // The default agent model
       operation_type: "compress",
     });
 
