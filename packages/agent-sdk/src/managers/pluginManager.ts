@@ -70,6 +70,9 @@ export class PluginManager {
 
       if (this.plugins.has(manifest.name)) {
         // If already loaded (e.g. via explicit config), skip
+        this.logger?.warn(
+          `Plugin with name '${manifest.name}' is already loaded`,
+        );
         return;
       }
 
@@ -116,7 +119,7 @@ export class PluginManager {
       this.plugins.set(manifest.name, plugin);
       this.logger?.info(`Loaded plugin: ${manifest.name} v${manifest.version}`);
     } catch (error) {
-      this.logger?.error(`Failed to load plugin from ${absolutePath}:`, error);
+      this.logger?.error(`Failed to load plugin from ${absolutePath}`, error);
     }
   }
 
