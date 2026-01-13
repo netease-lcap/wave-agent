@@ -7,13 +7,15 @@ interface AppProps {
   restoreSessionId?: string;
   continueLastSession?: boolean;
   bypassPermissions?: boolean;
+  pluginDirs?: string[];
 }
 
-const AppWithProviders: React.FC<{ bypassPermissions?: boolean }> = ({
-  bypassPermissions,
-}) => {
+const AppWithProviders: React.FC<{
+  bypassPermissions?: boolean;
+  pluginDirs?: string[];
+}> = ({ bypassPermissions, pluginDirs }) => {
   return (
-    <ChatProvider bypassPermissions={bypassPermissions}>
+    <ChatProvider bypassPermissions={bypassPermissions} pluginDirs={pluginDirs}>
       <ChatInterface />
     </ChatProvider>
   );
@@ -23,13 +25,17 @@ export const App: React.FC<AppProps> = ({
   restoreSessionId,
   continueLastSession,
   bypassPermissions,
+  pluginDirs,
 }) => {
   return (
     <AppProvider
       restoreSessionId={restoreSessionId}
       continueLastSession={continueLastSession}
     >
-      <AppWithProviders bypassPermissions={bypassPermissions} />
+      <AppWithProviders
+        bypassPermissions={bypassPermissions}
+        pluginDirs={pluginDirs}
+      />
     </AppProvider>
   );
 };

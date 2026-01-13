@@ -7,6 +7,7 @@ export interface PrintCliOptions {
   message?: string;
   showStats?: boolean;
   bypassPermissions?: boolean;
+  pluginDirs?: string[];
 }
 
 function displayTimingInfo(startTime: Date, showStats: boolean): void {
@@ -31,6 +32,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     message,
     showStats = false,
     bypassPermissions,
+    pluginDirs,
   } = options;
 
   if (
@@ -151,6 +153,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       restoreSessionId,
       continueLastSession,
       permissionMode: bypassPermissions ? "bypassPermissions" : undefined,
+      plugins: pluginDirs?.map((path) => ({ type: "local", path })),
       // 保持流式模式以获得更好的命令行用户体验
     });
 
