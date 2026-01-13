@@ -1,0 +1,9 @@
+{
+  "testlang": {
+    "command": "echo",
+    "args": ["test-lsp"],
+    "extensionToLanguage": {
+      ".test": "testlang"
+    }
+  }
+}

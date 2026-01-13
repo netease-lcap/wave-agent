@@ -8,9 +8,9 @@ import {
 } from "../../src/services/hook.js";
 import type {
   WaveConfiguration,
-  PartialHookConfiguration,
   HookExecutionContext,
   HookExecutionResult,
+  HookValidationResult,
 } from "../../src/types/hooks.js";
 
 // Mock the hook services
@@ -71,8 +71,7 @@ describe("HookManager", () => {
         },
       };
 
-      // Load just the hooks portion for now (until HookManager is updated)
-      manager.loadConfiguration(waveConfig.hooks);
+      manager.loadConfigurationFromWaveConfig(waveConfig);
       const loadedConfig = manager.getConfiguration();
 
       expect(loadedConfig?.PostToolUse).toBeDefined();
@@ -90,7 +89,7 @@ describe("HookManager", () => {
         },
       };
 
-      manager.loadConfiguration(waveConfig.hooks);
+      manager.loadConfigurationFromWaveConfig(waveConfig);
       const loadedConfig = manager.getConfiguration();
 
       expect(loadedConfig?.PostToolUse).toBeDefined();
@@ -108,7 +107,7 @@ describe("HookManager", () => {
         },
       };
 
-      manager.loadConfiguration(waveConfig.hooks);
+      manager.loadConfigurationFromWaveConfig(waveConfig);
       expect(manager.getConfiguration()).not.toBeUndefined();
 
       manager.clearConfiguration();
@@ -129,7 +128,7 @@ describe("HookManager", () => {
         },
       };
 
-      manager.loadConfiguration(waveConfig.hooks);
+      manager.loadConfigurationFromWaveConfig(waveConfig);
 
       const context: HookExecutionContext = {
         event: "PostToolUse",
@@ -166,7 +165,7 @@ describe("HookManager", () => {
         },
       };
 
-      manager.loadConfiguration(waveConfig.hooks);
+      manager.loadConfigurationFromWaveConfig(waveConfig);
 
       const context: HookExecutionContext = {
         event: "Stop", // Different event
@@ -179,17 +178,55 @@ describe("HookManager", () => {
     });
   });
 
+  describe("Validation", () => {
+    it("should validate a correct configuration", () => {
+      const config: WaveConfiguration = {
+        hooks: {
+          PostToolUse: [
+            {
+              matcher: "Edit",
+              hooks: [{ type: "command", command: "test-hook" }],
+            },
+          ],
+        },
+      };
+
+      const result: HookValidationResult =
+        manager.validateConfiguration(config);
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should return errors for invalid configuration", () => {
+      const config = {
+        hooks: {
+          PostToolUse: [
+            {
+              // Missing hooks array
+              matcher: "Edit",
+            },
+          ],
+        },
+      } as unknown as WaveConfiguration;
+
+      const result: HookValidationResult =
+        manager.validateConfiguration(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.length).toBeGreaterThan(0);
+    });
+  });
+
   describe("Error Handling", () => {
     it("should handle invalid wave configuration gracefully", () => {
       // This should not throw
-      manager.loadConfiguration({});
-      expect(manager.getConfiguration()).toEqual({});
+      manager.loadConfigurationFromWaveConfig({});
+      expect(manager.getConfiguration()).toBeUndefined();
     });
 
     it("should handle null wave configuration", () => {
       // This should not throw
-      manager.loadConfiguration(null as unknown as PartialHookConfiguration);
-      expect(manager.getConfiguration()).toEqual({});
+      manager.loadConfigurationFromWaveConfig(null);
+      expect(manager.getConfiguration()).toBeUndefined();
     });
   });
 });

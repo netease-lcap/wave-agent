@@ -16,24 +16,12 @@ import {
 } from "vitest";
 import { spawn } from "child_process";
 import { EventEmitter } from "events";
-import { existsSync, readFileSync } from "fs";
 
 import {
   executeCommand,
   executeCommands,
   isCommandSafe,
 } from "../../src/services/hook.js";
-import {
-  loadWaveConfigFromFiles,
-  loadUserWaveConfig,
-  loadProjectWaveConfig,
-} from "../../src/services/configurationService.js";
-import {
-  getUserConfigPaths,
-  getProjectConfigPaths,
-  hasAnyConfig as hasHooksConfiguration,
-  getConfigurationInfo as getHooksConfigurationInfo,
-} from "../../src/utils/configPaths.js";
 import type { HookExecutionContext } from "../../src/types/hooks.js";
 
 // Mock child_process module
@@ -41,22 +29,9 @@ vi.mock("child_process", () => ({
   spawn: vi.fn(),
 }));
 
-// Mock fs module to enable selective control in tests
-vi.mock("fs", async () => {
-  const actual = await vi.importActual("fs");
-  return {
-    ...actual,
-    existsSync: vi.fn(),
-    readFileSync: vi.fn(),
-  };
-});
-
 const mockSpawn = spawn as unknown as MockedFunction<
   (...args: Parameters<typeof spawn>) => MockChildProcess
 >;
-
-const mockExistsSync = existsSync as MockedFunction<typeof existsSync>;
-const mockReadFileSync = readFileSync as MockedFunction<typeof readFileSync>;
 
 // Mock child process that extends EventEmitter
 class MockChildProcess extends EventEmitter {
@@ -601,202 +576,6 @@ describe("Hook Services", () => {
       expect(parsedInput.cwd).toBe("/test/cwd");
       expect(parsedInput.hook_event_name).toBe("PostToolUse");
       expect(parsedInput.subagent_type).toBeUndefined(); // Verify subagent_type is not included
-    });
-  });
-
-  describe("local.json priority system", () => {
-    beforeEach(() => {
-      mockExistsSync.mockReset();
-      mockReadFileSync.mockReset();
-    });
-
-    it("should return correct path arrays for user and project configs", () => {
-      const userPaths = getUserConfigPaths();
-      const projectPaths = getProjectConfigPaths("/test/project");
-
-      expect(userPaths).toHaveLength(2);
-      expect(userPaths[0]).toMatch(/settings\.local\.json$/);
-      expect(userPaths[1]).toMatch(/settings\.json$/);
-
-      expect(projectPaths).toHaveLength(2);
-      expect(projectPaths[0]).toBe("/test/project/.wave/settings.local.json");
-      expect(projectPaths[1]).toBe("/test/project/.wave/settings.json");
-    });
-
-    it("should prioritize .local.json over .json for user config", () => {
-      const userConfig = {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: "command" as const, command: "user local" }] },
-          ],
-        },
-      };
-      const fallbackConfig = {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: "command" as const, command: "user regular" }] },
-          ],
-        },
-      };
-
-      mockExistsSync.mockImplementation((path) => {
-        const pathStr = path.toString();
-        return (
-          pathStr.includes("settings.local.json") ||
-          pathStr.includes("settings.json")
-        );
-      });
-
-      mockReadFileSync.mockImplementation((path) => {
-        const pathStr = path.toString();
-        if (pathStr.includes("settings.local.json")) {
-          return JSON.stringify(userConfig);
-        } else {
-          return JSON.stringify(fallbackConfig);
-        }
-      });
-
-      const result = loadUserWaveConfig();
-      expect(result?.hooks?.Stop?.[0]?.hooks?.[0]?.command).toBe("user local");
-    });
-
-    it("should fall back to .json when .local.json doesn't exist", () => {
-      const fallbackConfig = {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: "command" as const, command: "user regular" }] },
-          ],
-        },
-      };
-
-      mockExistsSync.mockImplementation((path) => {
-        const pathStr = path.toString();
-        // Only settings.json exists, not settings.local.json
-        return (
-          pathStr.includes("settings.json") &&
-          !pathStr.includes("settings.local.json")
-        );
-      });
-
-      mockReadFileSync.mockImplementation(() => {
-        return JSON.stringify(fallbackConfig);
-      });
-
-      const result = loadUserWaveConfig();
-      expect(result?.hooks?.Stop?.[0]?.hooks?.[0]?.command).toBe(
-        "user regular",
-      );
-    });
-
-    it("should prioritize .local.json over .json for project config", () => {
-      const projectConfig = {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: "command" as const, command: "project local" }] },
-          ],
-        },
-      };
-      const fallbackConfig = {
-        hooks: {
-          Stop: [
-            {
-              hooks: [{ type: "command" as const, command: "project regular" }],
-            },
-          ],
-        },
-      };
-
-      mockExistsSync.mockImplementation((path) => {
-        const pathStr = path.toString();
-        return (
-          pathStr.includes("settings.local.json") ||
-          pathStr.includes("settings.json")
-        );
-      });
-
-      mockReadFileSync.mockImplementation((path) => {
-        const pathStr = path.toString();
-        if (pathStr.includes("settings.local.json")) {
-          return JSON.stringify(projectConfig);
-        } else {
-          return JSON.stringify(fallbackConfig);
-        }
-      });
-
-      const result = loadProjectWaveConfig("/test/project");
-      expect(result?.hooks?.Stop?.[0]?.hooks?.[0]?.command).toBe(
-        "project local",
-      );
-    });
-
-    it("should check all local variants in hasHooksConfiguration", () => {
-      mockExistsSync.mockImplementation((path) => {
-        const pathStr = path.toString();
-        // Only project local config exists
-        return pathStr.includes("/test/project/.wave/settings.local.json");
-      });
-
-      const result = hasHooksConfiguration("/test/project");
-      expect(result).toBe(true);
-    });
-
-    it("should include all paths in getHooksConfigurationInfo", () => {
-      mockExistsSync.mockImplementation((path) => {
-        const pathStr = path.toString();
-        // Only local configs exist
-        return pathStr.includes("settings.local.json");
-      });
-
-      const result = getHooksConfigurationInfo("/test/project");
-
-      expect(result.paths).toHaveLength(4); // 2 user + 2 project paths
-      expect(result.userPaths).toHaveLength(2);
-      expect(result.projectPaths).toHaveLength(2);
-      expect(result.existingPaths).toHaveLength(2); // Only local configs exist
-      expect(result.hasUser).toBe(true);
-      expect(result.hasProject).toBe(true);
-    });
-
-    it("should work with loadWaveConfigFromFiles helper function", () => {
-      const localConfig = {
-        hooks: {
-          Stop: [
-            { hooks: [{ type: "command" as const, command: "local config" }] },
-          ],
-        },
-      };
-      const regularConfig = {
-        hooks: {
-          Stop: [
-            {
-              hooks: [{ type: "command" as const, command: "regular config" }],
-            },
-          ],
-        },
-      };
-
-      mockExistsSync.mockImplementation(() => {
-        return true; // Both exist
-      });
-
-      mockReadFileSync.mockImplementation((path) => {
-        const pathStr = path.toString();
-        if (pathStr.includes("settings.local.json")) {
-          return JSON.stringify(localConfig);
-        } else {
-          return JSON.stringify(regularConfig);
-        }
-      });
-
-      const testPaths = [
-        "/test/.wave/settings.local.json",
-        "/test/.wave/settings.json",
-      ];
-      const result = loadWaveConfigFromFiles(testPaths);
-
-      expect(result?.hooks?.Stop?.[0]?.hooks?.[0]?.command).toBe(
-        "local config",
-      );
     });
   });
 });

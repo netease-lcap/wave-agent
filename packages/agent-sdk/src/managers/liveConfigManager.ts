@@ -19,7 +19,10 @@ import {
   getProjectConfigPaths,
   getUserConfigPaths,
 } from "@/utils/configPaths.js";
-import type { WaveConfiguration, ValidationResult } from "../types/hooks.js";
+import type {
+  WaveConfiguration,
+  HookValidationResult,
+} from "../types/hooks.js";
 import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ensureGlobalGitIgnore } from "../utils/fileUtils.js";
@@ -490,7 +493,9 @@ export class LiveConfigManager {
   /**
    * Validate configuration structure and content
    */
-  private validateConfiguration(config: WaveConfiguration): ValidationResult {
+  private validateConfiguration(
+    config: WaveConfiguration,
+  ): HookValidationResult {
     const errors: string[] = [];
 
     if (!config || typeof config !== "object") {

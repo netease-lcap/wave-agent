@@ -142,16 +142,16 @@
 
 **Purpose**: Ensure refactoring maintains functionality and passes all validation
 
-- [ ] T041 [P] Create ConfigurationService tests in packages/agent-sdk/tests/services/configurationService.test.ts
-- [ ] T042 [P] Create EnvironmentService tests in packages/agent-sdk/tests/services/environmentService.test.ts
-- [ ] T043 [P] Update hook.test.ts to remove config-related tests in packages/agent-sdk/tests/services/hook.test.ts
-- [ ] T044 [P] Update hookManager.test.ts for new integration in packages/agent-sdk/tests/managers/hookManager.test.ts
-- [ ] T045 [P] Update liveConfigManager.test.ts for new service integration in packages/agent-sdk/tests/managers/liveConfigManager.test.ts
-- [ ] T046 Run full test suite `pnpm test` and verify all tests pass
-- [ ] T047 Run type checking `pnpm run type-check` and resolve any issues
-- [ ] T048 Run linting `pnpm run lint` and resolve any issues
-- [ ] T049 Build agent-sdk `pnpm build` and verify successful compilation
-- [ ] T050 Manual testing of configuration loading and hook execution per quickstart.md
+- [x] T041 [P] Create ConfigurationService tests in packages/agent-sdk/tests/services/configurationService.test.ts
+- [x] T042 [P] Create EnvironmentService tests in packages/agent-sdk/tests/services/environmentService.test.ts
+- [x] T043 [P] Update hook.test.ts to remove config-related tests in packages/agent-sdk/tests/services/hook.test.ts
+- [x] T044 [P] Update hookManager.test.ts for new integration in packages/agent-sdk/tests/managers/hookManager.test.ts
+- [x] T045 [P] Update liveConfigManager.test.ts for new service integration in packages/agent-sdk/tests/managers/liveConfigManager.test.ts
+- [x] T046 Run full test suite `pnpm test` and verify all tests pass
+- [x] T047 Run type checking `pnpm run type-check` and resolve any issues
+- [x] T048 Run linting `pnpm run lint` and resolve any issues
+- [x] T049 Build agent-sdk `pnpm build` and verify successful compilation
+- [x] T050 Manual testing of configuration loading and hook execution per quickstart.md
 
 ---
 

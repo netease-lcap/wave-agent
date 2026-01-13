@@ -1,20 +1,40 @@
 import { Plugin, PluginConfig, Logger } from "../types/index.js";
 import { PluginLoader } from "../services/pluginLoader.js";
 import * as path from "path";
+import { SkillManager } from "./skillManager.js";
+import { HookManager } from "./hookManager.js";
+import { LspManager } from "./lspManager.js";
+import { McpManager } from "./mcpManager.js";
+import { SlashCommandManager } from "./slashCommandManager.js";
 
 export interface PluginManagerOptions {
   workdir: string;
   logger?: Logger;
+  skillManager?: SkillManager;
+  hookManager?: HookManager;
+  lspManager?: LspManager;
+  mcpManager?: McpManager;
+  slashCommandManager?: SlashCommandManager;
 }
 
 export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private workdir: string;
   private logger?: Logger;
+  private skillManager?: SkillManager;
+  private hookManager?: HookManager;
+  private lspManager?: LspManager;
+  private mcpManager?: McpManager;
+  private slashCommandManager?: SlashCommandManager;
 
   constructor(options: PluginManagerOptions) {
     this.workdir = options.workdir;
     this.logger = options.logger;
+    this.skillManager = options.skillManager;
+    this.hookManager = options.hookManager;
+    this.lspManager = options.lspManager;
+    this.mcpManager = options.mcpManager;
+    this.slashCommandManager = options.slashCommandManager;
   }
 
   /**
@@ -46,7 +66,41 @@ export class PluginManager {
           ...manifest,
           path: absolutePath,
           commands: PluginLoader.loadCommands(absolutePath),
+          skills: await PluginLoader.loadSkills(absolutePath),
+          lspConfig: await PluginLoader.loadLspConfig(absolutePath),
+          mcpConfig: await PluginLoader.loadMcpConfig(absolutePath),
+          hooksConfig: await PluginLoader.loadHooksConfig(absolutePath),
         };
+
+        // Register components with managers
+        if (this.slashCommandManager && plugin.commands.length > 0) {
+          this.slashCommandManager.registerPluginCommands(
+            plugin.name,
+            plugin.commands,
+          );
+        }
+
+        if (this.skillManager && plugin.skills.length > 0) {
+          this.skillManager.registerPluginSkills(plugin.skills);
+        }
+
+        if (this.lspManager && plugin.lspConfig) {
+          for (const [language, config] of Object.entries(plugin.lspConfig)) {
+            this.lspManager.registerServer(language, config);
+          }
+        }
+
+        if (this.mcpManager && plugin.mcpConfig) {
+          for (const [name, config] of Object.entries(
+            plugin.mcpConfig.mcpServers,
+          )) {
+            this.mcpManager.addServer(name, config);
+          }
+        }
+
+        if (this.hookManager && plugin.hooksConfig) {
+          this.hookManager.registerPluginHooks(plugin.hooksConfig);
+        }
 
         this.plugins.set(manifest.name, plugin);
         this.logger?.info(

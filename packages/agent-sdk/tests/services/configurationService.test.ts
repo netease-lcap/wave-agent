@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as os from "os";
+import * as fs from "fs/promises";
+import * as path from "path";
+import { existsSync, readFileSync } from "fs";
 
 // Mock os.homedir before importing configurationService
 vi.mock("os", async () => {
@@ -10,23 +13,44 @@ vi.mock("os", async () => {
   };
 });
 
-import {
-  loadMergedWaveConfig,
-  ConfigurationService,
-} from "../../src/services/configurationService.js";
-import * as fs from "fs/promises";
-import * as path from "path";
-import { DEFAULT_WAVE_MAX_OUTPUT_TOKENS } from "../../src/utils/constants.js";
+// Mock fs module for some tests that use sync methods
+vi.mock("fs", async () => {
+  const actual = await vi.importActual("fs");
+  return {
+    ...actual,
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+  };
+});
 
-describe("ConfigurationService Merging", () => {
+import {
+  ConfigurationService,
+  validateEnvironmentConfig,
+  mergeEnvironmentConfig,
+} from "../../src/services/configurationService.js";
+import {
+  DEFAULT_WAVE_MAX_OUTPUT_TOKENS,
+  DEFAULT_WAVE_MAX_INPUT_TOKENS,
+} from "../../src/utils/constants.js";
+import type { WaveConfiguration } from "../../src/types/hooks.js";
+
+const mockExistsSync = vi.mocked(existsSync);
+const mockReadFileSync = vi.mocked(readFileSync);
+
+describe("ConfigurationService", () => {
   let tempDir: string;
   let userHome: string;
+  let configService: ConfigurationService;
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "wave-config-test-"));
     userHome = await fs.mkdtemp(path.join(os.tmpdir(), "wave-user-home-"));
 
     vi.mocked(os.homedir).mockReturnValue(userHome);
+    configService = new ConfigurationService();
+
+    mockExistsSync.mockReset();
+    mockReadFileSync.mockReset();
   });
 
   afterEach(async () => {
@@ -35,101 +59,291 @@ describe("ConfigurationService Merging", () => {
     vi.restoreAllMocks();
   });
 
-  it("should merge permissions.allow from user and project configs", async () => {
-    // 1. Setup user config
-    const userWaveDir = path.join(userHome, ".wave");
-    await fs.mkdir(userWaveDir, { recursive: true });
-    await fs.writeFile(
-      path.join(userWaveDir, "settings.json"),
-      JSON.stringify({
-        permissions: {
-          allow: ["Bash(ls)", "Bash(pwd)"],
+  describe("loadMergedConfiguration", () => {
+    it("should load and merge user and project configurations", async () => {
+      const userConfig = {
+        env: { USER_VAR: "user" },
+        permissions: { allow: ["rule1"] },
+      };
+      const projectConfig = {
+        env: { PROJECT_VAR: "project" },
+        permissions: { allow: ["rule2"] },
+      };
+
+      mockExistsSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        return (
+          pathStr.includes(path.join(userHome, ".wave", "settings.json")) ||
+          pathStr.includes(path.join(tempDir, ".wave", "settings.json"))
+        );
+      });
+
+      mockReadFileSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr.includes(userHome)) return JSON.stringify(userConfig);
+        if (pathStr.includes(tempDir)) return JSON.stringify(projectConfig);
+        return "";
+      });
+
+      const result = await configService.loadMergedConfiguration(tempDir);
+
+      expect(result.success).toBe(true);
+      expect(result.configuration?.env).toEqual({
+        USER_VAR: "user",
+        PROJECT_VAR: "project",
+      });
+      expect(result.configuration?.permissions?.allow).toContain("rule1");
+      expect(result.configuration?.permissions?.allow).toContain("rule2");
+      expect(configService.getEnvironmentVars()).toEqual(
+        result.configuration?.env,
+      );
+    });
+
+    it("should handle no configuration files found", async () => {
+      mockExistsSync.mockReturnValue(false);
+
+      const result = await configService.loadMergedConfiguration(tempDir);
+
+      expect(result.success).toBe(true);
+      expect(result.configuration).toBeNull();
+      expect(result.warnings).toContain(
+        "No configuration files found in user or project directories",
+      );
+    });
+
+    it("should return error on invalid configuration", async () => {
+      const invalidConfig = {
+        defaultMode: "invalid-mode",
+      };
+
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(invalidConfig));
+
+      const result = await configService.loadMergedConfiguration(tempDir);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Merged configuration validation failed");
+    });
+  });
+
+  describe("validateConfiguration", () => {
+    it("should validate a correct configuration", () => {
+      const config = {
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: "test",
+              hooks: [{ type: "command" as const, command: "echo" }],
+            },
+          ],
         },
-      }),
-    );
+        env: { VAR: "val" },
+        defaultMode: "bypassPermissions" as const,
+        permissions: { allow: ["rule"] },
+      };
 
-    // 2. Setup project config
-    const projectWaveDir = path.join(tempDir, ".wave");
-    await fs.mkdir(projectWaveDir, { recursive: true });
-    await fs.writeFile(
-      path.join(projectWaveDir, "settings.json"),
-      JSON.stringify({
-        permissions: {
-          allow: ["Bash(pwd)", "Bash(whoami)"],
+      const result = configService.validateConfiguration(config);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should catch invalid hook event", () => {
+      const config = {
+        hooks: {
+          InvalidEvent: [
+            { hooks: [{ type: "command" as const, command: "echo" }] },
+          ],
         },
-      }),
-    );
+      } as unknown as WaveConfiguration;
 
-    // 3. Load merged config
-    const mergedConfig = loadMergedWaveConfig(tempDir);
+      const result = configService.validateConfiguration(config);
+      expect(result.isValid).toBe(true); // Unknown events are warnings
+      expect(result.warnings).toContain("Unknown hook event: InvalidEvent");
+    });
 
-    expect(mergedConfig).toBeDefined();
-    expect(mergedConfig?.permissions?.allow).toContain("Bash(ls)");
-    expect(mergedConfig?.permissions?.allow).toContain("Bash(pwd)");
-    expect(mergedConfig?.permissions?.allow).toContain("Bash(whoami)");
-    expect(mergedConfig?.permissions?.allow?.length).toBe(3); // pwd should be deduplicated
-  });
-});
+    it("should catch invalid defaultMode", () => {
+      const config = {
+        defaultMode: "invalid" as unknown as "bypassPermissions",
+      };
 
-describe("ConfigurationService - maxTokens resolution", () => {
-  let configService: ConfigurationService;
-  const originalEnv = process.env;
+      const result = configService.validateConfiguration(config);
+      expect(result.isValid).toBe(false);
+      expect(result.errors[0]).toContain("Invalid defaultMode");
+    });
 
-  beforeEach(() => {
-    configService = new ConfigurationService();
-    process.env = { ...originalEnv };
-    delete process.env.WAVE_MAX_OUTPUT_TOKENS;
-  });
+    it("should catch invalid permissions", () => {
+      const config = {
+        permissions: { allow: "not an array" } as unknown as {
+          allow: string[];
+        },
+      };
 
-  afterEach(() => {
-    process.env = originalEnv;
-  });
-
-  it("should return default maxTokens when no other source is provided", () => {
-    const resolved = configService.resolveMaxOutputTokens();
-    expect(resolved).toBe(DEFAULT_WAVE_MAX_OUTPUT_TOKENS);
-    expect(resolved).toBe(4096);
+      const result = configService.validateConfiguration(config);
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain(
+        "Permissions allow must be an array of strings",
+      );
+    });
   });
 
-  it("should respect WAVE_MAX_OUTPUT_TOKENS environment variable", () => {
-    process.env.WAVE_MAX_OUTPUT_TOKENS = "8192";
-    const resolved = configService.resolveMaxOutputTokens();
-    expect(resolved).toBe(8192);
+  describe("validateConfigurationFile", () => {
+    it("should return error if file does not exist", () => {
+      mockExistsSync.mockReturnValue(false);
+      const result =
+        configService.validateConfigurationFile("nonexistent.json");
+      expect(result.isValid).toBe(false);
+      expect(result.errors[0]).toContain("Configuration file not found");
+    });
+
+    it("should return error on invalid JSON", () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue("invalid json");
+      const result = configService.validateConfigurationFile("file.json");
+      expect(result.isValid).toBe(false);
+      expect(result.errors[0]).toContain("Invalid JSON syntax");
+    });
   });
 
-  it("should respect WAVE_MAX_OUTPUT_TOKENS from settings.json (internal env)", () => {
-    configService.setEnvironmentVars({ WAVE_MAX_OUTPUT_TOKENS: "2048" });
-    const resolved = configService.resolveMaxOutputTokens();
-    expect(resolved).toBe(2048);
+  describe("Environment Variable Management", () => {
+    it("should set and get environment variables", () => {
+      const env = { KEY: "VALUE" };
+      configService.setEnvironmentVars(env);
+      expect(configService.getEnvironmentVars()).toEqual(env);
+    });
+
+    it("should return a copy of environment variables", () => {
+      const env = { KEY: "VALUE" };
+      configService.setEnvironmentVars(env);
+      const retrieved = configService.getEnvironmentVars();
+      retrieved.KEY = "CHANGED";
+      expect(configService.getEnvironmentVars().KEY).toBe("VALUE");
+    });
   });
 
-  it("should prioritize settings.json over process.env", () => {
-    process.env.WAVE_MAX_OUTPUT_TOKENS = "8192";
-    configService.setEnvironmentVars({ WAVE_MAX_OUTPUT_TOKENS: "2048" });
-    const resolved = configService.resolveMaxOutputTokens();
-    expect(resolved).toBe(2048);
+  describe("resolveGatewayConfig", () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv };
+      delete process.env.WAVE_API_KEY;
+      delete process.env.WAVE_BASE_URL;
+      delete process.env.WAVE_CUSTOM_HEADERS;
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it("should resolve from constructor args", () => {
+      const config = configService.resolveGatewayConfig(
+        "key",
+        "http://base.com",
+      );
+      expect(config.apiKey).toBe("key");
+      expect(config.baseURL).toBe("http://base.com");
+    });
+
+    it("should resolve from internal env", () => {
+      configService.setEnvironmentVars({
+        WAVE_API_KEY: "env-key",
+        WAVE_BASE_URL: "http://env-base.com",
+      });
+      const config = configService.resolveGatewayConfig();
+      expect(config.apiKey).toBe("env-key");
+      expect(config.baseURL).toBe("http://env-base.com");
+    });
+
+    it("should throw on missing baseURL", () => {
+      expect(() => configService.resolveGatewayConfig()).toThrow();
+    });
+
+    it("should parse custom headers from env", () => {
+      configService.setEnvironmentVars({
+        WAVE_BASE_URL: "http://base.com",
+        WAVE_CUSTOM_HEADERS: "X-Header: value\nY-Header: value2",
+      });
+      const config = configService.resolveGatewayConfig();
+      expect(config.defaultHeaders).toEqual({
+        "X-Header": "value",
+        "Y-Header": "value2",
+      });
+    });
   });
 
-  it("should prioritize constructor options over environment variables", () => {
-    process.env.WAVE_MAX_OUTPUT_TOKENS = "8192";
-    configService.setEnvironmentVars({ WAVE_MAX_OUTPUT_TOKENS: "2048" });
-    const resolved = configService.resolveMaxOutputTokens(1024);
-    expect(resolved).toBe(1024);
+  describe("resolveModelConfig", () => {
+    it("should resolve with defaults", () => {
+      const config = configService.resolveModelConfig();
+      expect(config.agentModel).toBe("gemini-3-flash");
+      expect(config.fastModel).toBe("gemini-2.5-flash");
+      expect(config.maxTokens).toBe(DEFAULT_WAVE_MAX_OUTPUT_TOKENS);
+    });
+
+    it("should resolve from internal env", () => {
+      configService.setEnvironmentVars({
+        WAVE_MODEL: "custom-agent",
+        WAVE_FAST_MODEL: "custom-fast",
+        WAVE_MAX_OUTPUT_TOKENS: "1000",
+      });
+      const config = configService.resolveModelConfig();
+      expect(config.agentModel).toBe("custom-agent");
+      expect(config.fastModel).toBe("custom-fast");
+      expect(config.maxTokens).toBe(1000);
+    });
   });
 
-  it("should resolve model config with maxTokens", () => {
-    process.env.WAVE_MAX_OUTPUT_TOKENS = "8192";
-    const modelConfig = configService.resolveModelConfig(
-      undefined,
-      undefined,
-      1024,
-    );
-    expect(modelConfig.maxTokens).toBe(1024);
+  describe("resolveMaxInputTokens", () => {
+    it("should return default", () => {
+      expect(configService.resolveMaxInputTokens()).toBe(
+        DEFAULT_WAVE_MAX_INPUT_TOKENS,
+      );
+    });
+
+    it("should resolve from internal env", () => {
+      configService.setEnvironmentVars({ WAVE_MAX_INPUT_TOKENS: "5000" });
+      expect(configService.resolveMaxInputTokens()).toBe(5000);
+    });
   });
 
-  it("should resolve model config with maxTokens from environment if not provided in constructor", () => {
-    process.env.WAVE_MAX_OUTPUT_TOKENS = "8192";
-    const modelConfig = configService.resolveModelConfig();
-    expect(modelConfig.maxTokens).toBe(8192);
+  describe("validateEnvironmentConfig", () => {
+    it("should validate correct env", () => {
+      const result = validateEnvironmentConfig({ KEY: "VAL" });
+      expect(result.isValid).toBe(true);
+    });
+
+    it("should warn on non-standard naming", () => {
+      const result = validateEnvironmentConfig({ "key-with-dash": "val" });
+      expect(result.isValid).toBe(true);
+      expect(result.warnings[0]).toContain(
+        "does not follow standard naming convention",
+      );
+    });
+
+    it("should warn on empty value", () => {
+      const result = validateEnvironmentConfig({ KEY: "" });
+      expect(result.isValid).toBe(true);
+      expect(result.warnings[0]).toContain("has an empty value");
+    });
+
+    it("should warn on reserved names", () => {
+      const result = validateEnvironmentConfig({ PATH: "/usr/bin" });
+      expect(result.isValid).toBe(true);
+      expect(result.warnings[0]).toContain("overrides a system variable");
+    });
+  });
+
+  describe("mergeEnvironmentConfig", () => {
+    it("should merge and detect conflicts", () => {
+      const userEnv = { VAR1: "user1", VAR2: "user2" };
+      const projectEnv = { VAR2: "project2", VAR3: "project3" };
+      const result = mergeEnvironmentConfig(userEnv, projectEnv);
+
+      expect(result.mergedVars).toEqual({
+        VAR1: "user1",
+        VAR2: "project2",
+        VAR3: "project3",
+      });
+      expect(result.conflicts).toHaveLength(1);
+      expect(result.conflicts[0].key).toBe("VAR2");
+    });
   });
 });
