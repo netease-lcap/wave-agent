@@ -1,5 +1,6 @@
 import type { Message, Usage } from "../types/index.js";
 import { MessageSource } from "../types/index.js";
+import { DEFAULT_KEEP_LAST_MESSAGES_COUNT } from "./constants.js";
 import type { SubagentConfiguration } from "./subagentParser.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
@@ -388,7 +389,7 @@ export const countValidBlocksFromEnd = (
  */
 export const getMessagesToCompress = (
   messages: Message[],
-  keepLastCount: number = 7,
+  keepLastCount: number = DEFAULT_KEEP_LAST_MESSAGES_COUNT,
 ): { messagesToCompress: Message[]; insertIndex: number } => {
   // Calculate message position to keep from end to beginning
   const { messageIndex } = countValidBlocksFromEnd(messages, keepLastCount);

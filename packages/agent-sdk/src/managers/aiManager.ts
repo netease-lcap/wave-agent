@@ -187,7 +187,6 @@ export class AIManager {
       // Check if messages need compression
       const { messagesToCompress, insertIndex } = getMessagesToCompress(
         this.messageManager.getMessages(),
-        7,
       );
 
       // If there are messages to compress, perform compression
