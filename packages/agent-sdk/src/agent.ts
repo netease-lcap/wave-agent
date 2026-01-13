@@ -17,11 +17,13 @@ import {
   type BackgroundBashManagerCallbacks,
 } from "./managers/backgroundBashManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
+import { PluginManager } from "./managers/pluginManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
 import type {
   SlashCommand,
   CustomSlashCommand,
   ILspManager,
+  PluginConfig,
 } from "./types/index.js";
 import type {
   Message,
@@ -86,6 +88,8 @@ export interface AgentOptions {
   stream?: boolean;
   /**Optional custom LSP manager - if not provided, a standalone one will be created */
   lspManager?: ILspManager;
+  /**Optional local plugins to load */
+  plugins?: PluginConfig[];
 }
 
 export interface AgentCallbacks
@@ -109,6 +113,7 @@ export class Agent {
   private permissionManager: PermissionManager; // Add permission manager instance
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
+  private pluginManager: PluginManager; // Add plugin manager instance
   private hookManager: HookManager; // Add hooks manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private configurationService: ConfigurationService; // Add configuration service
@@ -358,6 +363,12 @@ export class Agent {
       logger: this.logger,
     });
 
+    // Initialize plugin manager
+    this.pluginManager = new PluginManager({
+      workdir: this.workdir,
+      logger: this.logger,
+    });
+
     // Initialize bash manager
     this.bashManager = new BashManager({
       messageManager: this.messageManager,
@@ -566,6 +577,17 @@ export class Agent {
         subagentManager: this.subagentManager,
         skillManager: skillManager,
       });
+
+      // Initialize plugins
+      if (this.options.plugins && this.options.plugins.length > 0) {
+        await this.pluginManager.loadPlugins(this.options.plugins);
+        for (const plugin of this.pluginManager.getPlugins()) {
+          this.slashCommandManager.registerPluginCommands(
+            plugin.name,
+            plugin.commands,
+          );
+        }
+      }
     } catch (error) {
       this.logger?.error("Failed to initialize managers and tools:", error);
       // Don't throw error to prevent app startup failure

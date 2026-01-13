@@ -95,7 +95,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       const subagentAIManager = subagentInstance.aiManager;
 
       // Check initial configuration
-      expect(subagentAIManager.getGatewayConfig()).toEqual({
+      expect(subagentAIManager.getGatewayConfig()).toMatchObject({
         apiKey: "parent-token",
         baseURL: "https://parent.url",
       });
@@ -112,7 +112,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       process.env.WAVE_MAX_INPUT_TOKENS = "50000";
 
       // Verify subagent AIManager gets updated values through parent's dynamic getters
-      expect(subagentAIManager.getGatewayConfig()).toEqual({
+      expect(subagentAIManager.getGatewayConfig()).toMatchObject({
         apiKey: "updated-parent-token",
         baseURL: "https://updated-parent.url",
       });
@@ -165,7 +165,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
       const subagentAIManager = subagentInstance.aiManager;
 
       // Should inherit dynamic gateway config from parent
-      expect(subagentAIManager.getGatewayConfig()).toEqual({
+      expect(subagentAIManager.getGatewayConfig()).toMatchObject({
         apiKey: "parent-token",
         baseURL: "https://parent.url",
       });

@@ -106,6 +106,51 @@ export class SlashCommandManager {
   }
 
   /**
+   * Register commands from a plugin with namespacing
+   */
+  public registerPluginCommands(
+    pluginName: string,
+    commands: CustomSlashCommand[],
+  ): void {
+    for (const command of commands) {
+      const namespacedId = `${pluginName}:${command.id}`;
+      const namespacedName = `${pluginName}:${command.name}`;
+
+      this.customCommands.set(namespacedId, command);
+
+      // Generate description: prioritize custom description, otherwise use default description
+      const description =
+        command.description ||
+        `Plugin command: ${namespacedName}${hasParameterPlaceholders(command.content) ? " (supports parameters)" : ""}`;
+
+      // Register as a regular command with a handler that executes the custom command
+      this.registerCommand({
+        id: namespacedId,
+        name: namespacedName,
+        description,
+        handler: async (args?: string) => {
+          // Substitute parameters in the command content
+          const processedContent =
+            hasParameterPlaceholders(command.content) && args
+              ? substituteCommandParameters(command.content, args)
+              : command.content;
+
+          await this.executeCustomCommandInMainAgent(
+            namespacedName,
+            processedContent,
+            command.config,
+            args,
+          );
+        },
+      });
+    }
+
+    this.logger?.debug(
+      `Registered ${commands.length} commands from plugin '${pluginName}'`,
+    );
+  }
+
+  /**
    * Reload custom commands (useful for development)
    */
   public reloadCustomCommands(): void {

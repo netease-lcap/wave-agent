@@ -38,6 +38,11 @@ export async function main() {
       type: "boolean",
       default: false,
     })
+    .option("plugin-dir", {
+      description: "Load a plugin from a specific directory",
+      type: "array",
+      string: true,
+    })
     .version()
     .alias("v", "version")
     .example("$0", "Start CLI with default settings")
@@ -115,6 +120,7 @@ export async function main() {
       message: argv.print,
       showStats: argv.showStats,
       bypassPermissions: argv.dangerouslySkipPermissions,
+      pluginDirs: argv.pluginDir as string[],
     });
   }
 
@@ -122,6 +128,7 @@ export async function main() {
     restoreSessionId: argv.restore,
     continueLastSession: argv.continue,
     bypassPermissions: argv.dangerouslySkipPermissions,
+    pluginDirs: argv.pluginDir as string[],
   });
 }
 

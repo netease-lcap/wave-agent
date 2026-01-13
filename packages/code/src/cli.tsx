@@ -7,10 +7,16 @@ export interface CliOptions {
   restoreSessionId?: string;
   continueLastSession?: boolean;
   bypassPermissions?: boolean;
+  pluginDirs?: string[];
 }
 
 export async function startCli(options: CliOptions): Promise<void> {
-  const { restoreSessionId, continueLastSession, bypassPermissions } = options;
+  const {
+    restoreSessionId,
+    continueLastSession,
+    bypassPermissions,
+    pluginDirs,
+  } = options;
 
   // Continue with ink-based UI for normal mode
   // Global cleanup tracker
@@ -65,6 +71,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       restoreSessionId={restoreSessionId}
       continueLastSession={continueLastSession}
       bypassPermissions={bypassPermissions}
+      pluginDirs={pluginDirs}
     />,
   );
 

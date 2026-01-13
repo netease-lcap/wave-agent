@@ -30,7 +30,7 @@ export function getUserCommandsDir(): string {
  * @param dirPath - Root commands directory path
  * @param maxDepth - Maximum nesting depth to scan (default: 1)
  */
-function scanCommandsDirectory(
+export function scanCommandsDirectory(
   dirPath: string,
   maxDepth: number = 1,
 ): CustomSlashCommand[] {
