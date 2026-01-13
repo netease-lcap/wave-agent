@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { Message } from "@/types/index.js";
-import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "@/utils/constants.js";
+import {
+  DEFAULT_WAVE_MAX_INPUT_TOKENS,
+  DEFAULT_KEEP_LAST_MESSAGES_COUNT,
+} from "@/utils/constants.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
 import { MessageManager } from "@/managers/messageManager.js";
 
@@ -339,7 +342,7 @@ describe("Agent Message Compression Tests", () => {
     // Verify compressCall messages should be from 7th to last to previous compression message
     const messagesToCompress = compressCall[0].messages;
 
-    // Check compressed message range: should be from after compression message to 8th to last message (keeping recent 7)
+    // Check compressed message range: should be from after compression message to the message before the kept ones
     const userMessages = messagesToCompress.filter(
       (msg) => msg.role === "user",
     );
@@ -475,13 +478,14 @@ describe("Agent Message Compression Tests", () => {
     // Get compressed message list
     const messagesAfterCompression = agent.messages;
 
-    // Verify that the eighth message from the end becomes a compressed message
-    const eighthLastMessage =
-      messagesAfterCompression[messagesAfterCompression.length - 8];
-    expect(eighthLastMessage.role).toBe("assistant");
-    expect(eighthLastMessage.blocks[0].type).toBe("compress");
+    // Verify that the message at the compression point becomes a compressed message
+    const compressedMessageIndex =
+      messagesAfterCompression.length - (DEFAULT_KEEP_LAST_MESSAGES_COUNT + 1);
+    const compressedMessage = messagesAfterCompression[compressedMessageIndex];
+    expect(compressedMessage.role).toBe("assistant");
+    expect(compressedMessage.blocks[0].type).toBe("compress");
     // Type assertion to access the content property of CompressBlock
-    const compressBlock = eighthLastMessage.blocks[0] as {
+    const compressBlock = compressedMessage.blocks[0] as {
       type: "compress";
       content: string;
       sessionId: string;
