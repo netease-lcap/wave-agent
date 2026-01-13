@@ -40,6 +40,13 @@ export function getUserConfigPaths(): string[] {
 }
 
 /**
+ * Get the plugins directory path
+ */
+export function getPluginsDir(): string {
+  return join(homedir(), ".wave", "plugins");
+}
+
+/**
  * Get the project-specific configuration file paths in priority order
  * Returns array with .local.json first, then .json
  */
