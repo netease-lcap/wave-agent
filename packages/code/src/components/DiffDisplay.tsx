@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useStdout } from "ink";
 import { transformToolBlockToChanges } from "../utils/toolParameterTransforms.js";
 import { diffLines, diffWords } from "diff";
 import type { ToolBlock } from "wave-agent-sdk";
@@ -9,6 +9,11 @@ interface DiffDisplayProps {
 }
 
 export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
+  const { stdout } = useStdout();
+  const maxHeight = useMemo(() => {
+    return Math.max(5, (stdout?.rows || 24) - 10);
+  }, [stdout?.rows]);
+
   const showDiff =
     ["running", "end"].includes(toolBlock.stage) &&
     toolBlock.name &&
@@ -98,158 +103,162 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
     try {
       if (changes.length === 0) return null;
 
+      const allElements: React.ReactNode[] = [];
+
+      changes.forEach((change, changeIndex) => {
+        try {
+          // Get line-level diff to understand the structure
+          const lineDiffs = diffLines(
+            change.oldContent || "",
+            change.newContent || "",
+          );
+
+          const diffElements: React.ReactNode[] = [];
+
+          // Process line diffs and apply word-level diff to changed lines
+          lineDiffs.forEach((part, partIndex) => {
+            if (part.added) {
+              const lines = part.value
+                .split("\n")
+                .filter((line) => line !== "");
+              lines.forEach((line, lineIndex) => {
+                diffElements.push(
+                  <Box
+                    key={`add-${changeIndex}-${partIndex}-${lineIndex}`}
+                    flexDirection="row"
+                  >
+                    <Text color="green">+</Text>
+                    <Text color="green">{line}</Text>
+                  </Box>,
+                );
+              });
+            } else if (part.removed) {
+              const lines = part.value
+                .split("\n")
+                .filter((line) => line !== "");
+              lines.forEach((line, lineIndex) => {
+                diffElements.push(
+                  <Box
+                    key={`remove-${changeIndex}-${partIndex}-${lineIndex}`}
+                    flexDirection="row"
+                  >
+                    <Text color="red">-</Text>
+                    <Text color="red">{line}</Text>
+                  </Box>,
+                );
+              });
+            } else {
+              // Context lines - show unchanged content
+              const lines = part.value
+                .split("\n")
+                .filter((line) => line !== "");
+              lines.forEach((line, lineIndex) => {
+                diffElements.push(
+                  <Box
+                    key={`context-${changeIndex}-${partIndex}-${lineIndex}`}
+                    flexDirection="row"
+                  >
+                    <Text color="white"> </Text>
+                    <Text color="white">{line}</Text>
+                  </Box>,
+                );
+              });
+            }
+          });
+
+          // Now look for pairs of removed/added lines that can be word-diffed
+          let i = 0;
+
+          while (i < diffElements.length) {
+            const current = diffElements[i];
+            const next =
+              i + 1 < diffElements.length ? diffElements[i + 1] : null;
+
+            // Check if we have a removed line followed by an added line
+            const currentKey = React.isValidElement(current) ? current.key : "";
+            const nextKey = React.isValidElement(next) ? next.key : "";
+
+            const isCurrentRemoved =
+              typeof currentKey === "string" && currentKey.includes("remove-");
+            const isNextAdded =
+              typeof nextKey === "string" && nextKey.includes("add-");
+
+            if (
+              isCurrentRemoved &&
+              isNextAdded &&
+              React.isValidElement(current) &&
+              React.isValidElement(next)
+            ) {
+              // Extract the text content from the removed and added lines
+              const removedText = extractTextFromElement(current);
+              const addedText = extractTextFromElement(next);
+
+              if (removedText && addedText) {
+                // Apply word-level diff
+                const { removedParts, addedParts } = renderWordLevelDiff(
+                  removedText,
+                  addedText,
+                  `word-${changeIndex}-${i}`,
+                );
+
+                allElements.push(
+                  <Box
+                    key={`word-diff-removed-${changeIndex}-${i}`}
+                    flexDirection="row"
+                  >
+                    <Text color="red">-</Text>
+                    {removedParts}
+                  </Box>,
+                );
+                allElements.push(
+                  <Box
+                    key={`word-diff-added-${changeIndex}-${i}`}
+                    flexDirection="row"
+                  >
+                    <Text color="green">+</Text>
+                    {addedParts}
+                  </Box>,
+                );
+
+                i += 2; // Skip the next element since we processed it
+              } else {
+                // Fallback to original elements
+                allElements.push(current);
+                i += 1;
+              }
+            } else {
+              allElements.push(current);
+              i += 1;
+            }
+          }
+        } catch (error) {
+          console.warn(
+            `Error rendering diff for change ${changeIndex}:`,
+            error,
+          );
+          // Fallback to simple display
+          allElements.push(
+            <Box key={`fallback-${changeIndex}`} flexDirection="column">
+              <Text color="red">-{change.oldContent || ""}</Text>
+              <Text color="green">+{change.newContent || ""}</Text>
+            </Box>,
+          );
+        }
+      });
+
+      const isTruncated = allElements.length > maxHeight;
+      const displayElements = isTruncated
+        ? allElements.slice(0, maxHeight - 1)
+        : allElements;
+
       return (
         <Box flexDirection="column">
-          {changes.map((change, changeIndex) => {
-            try {
-              // Get line-level diff to understand the structure
-              const lineDiffs = diffLines(
-                change.oldContent || "",
-                change.newContent || "",
-              );
-
-              const diffElements: React.ReactNode[] = [];
-
-              // Process line diffs and apply word-level diff to changed lines
-              lineDiffs.forEach((part, partIndex) => {
-                if (part.added) {
-                  const lines = part.value
-                    .split("\n")
-                    .filter((line) => line !== "");
-                  lines.forEach((line, lineIndex) => {
-                    diffElements.push(
-                      <Box
-                        key={`add-${changeIndex}-${partIndex}-${lineIndex}`}
-                        flexDirection="row"
-                      >
-                        <Text color="green">+</Text>
-                        <Text color="green">{line}</Text>
-                      </Box>,
-                    );
-                  });
-                } else if (part.removed) {
-                  const lines = part.value
-                    .split("\n")
-                    .filter((line) => line !== "");
-                  lines.forEach((line, lineIndex) => {
-                    diffElements.push(
-                      <Box
-                        key={`remove-${changeIndex}-${partIndex}-${lineIndex}`}
-                        flexDirection="row"
-                      >
-                        <Text color="red">-</Text>
-                        <Text color="red">{line}</Text>
-                      </Box>,
-                    );
-                  });
-                } else {
-                  // Context lines - show unchanged content
-                  const lines = part.value
-                    .split("\n")
-                    .filter((line) => line !== "");
-                  lines.forEach((line, lineIndex) => {
-                    diffElements.push(
-                      <Box
-                        key={`context-${changeIndex}-${partIndex}-${lineIndex}`}
-                        flexDirection="row"
-                      >
-                        <Text color="white"> </Text>
-                        <Text color="white">{line}</Text>
-                      </Box>,
-                    );
-                  });
-                }
-              });
-
-              // Now look for pairs of removed/added lines that can be word-diffed
-              const processedElements: React.ReactNode[] = [];
-              let i = 0;
-
-              while (i < diffElements.length) {
-                const current = diffElements[i];
-                const next =
-                  i + 1 < diffElements.length ? diffElements[i + 1] : null;
-
-                // Check if we have a removed line followed by an added line
-                const currentKey = React.isValidElement(current)
-                  ? current.key
-                  : "";
-                const nextKey = React.isValidElement(next) ? next.key : "";
-
-                const isCurrentRemoved =
-                  typeof currentKey === "string" &&
-                  currentKey.includes("remove-");
-                const isNextAdded =
-                  typeof nextKey === "string" && nextKey.includes("add-");
-
-                if (
-                  isCurrentRemoved &&
-                  isNextAdded &&
-                  React.isValidElement(current) &&
-                  React.isValidElement(next)
-                ) {
-                  // Extract the text content from the removed and added lines
-                  const removedText = extractTextFromElement(current);
-                  const addedText = extractTextFromElement(next);
-
-                  if (removedText && addedText) {
-                    // Apply word-level diff
-                    const { removedParts, addedParts } = renderWordLevelDiff(
-                      removedText,
-                      addedText,
-                      `word-${changeIndex}-${i}`,
-                    );
-
-                    processedElements.push(
-                      <Box
-                        key={`word-diff-removed-${changeIndex}-${i}`}
-                        flexDirection="row"
-                      >
-                        <Text color="red">-</Text>
-                        {removedParts}
-                      </Box>,
-                    );
-                    processedElements.push(
-                      <Box
-                        key={`word-diff-added-${changeIndex}-${i}`}
-                        flexDirection="row"
-                      >
-                        <Text color="green">+</Text>
-                        {addedParts}
-                      </Box>,
-                    );
-
-                    i += 2; // Skip the next element since we processed it
-                  } else {
-                    // Fallback to original elements
-                    processedElements.push(current);
-                    i += 1;
-                  }
-                } else {
-                  processedElements.push(current);
-                  i += 1;
-                }
-              }
-
-              return (
-                <Box key={changeIndex} flexDirection="column">
-                  {processedElements}
-                </Box>
-              );
-            } catch (error) {
-              console.warn(
-                `Error rendering diff for change ${changeIndex}:`,
-                error,
-              );
-              // Fallback to simple display
-              return (
-                <Box key={changeIndex} flexDirection="column">
-                  <Text color="red">-{change.oldContent || ""}</Text>
-                  <Text color="green">+{change.newContent || ""}</Text>
-                </Box>
-              );
-            }
-          })}
+          {displayElements}
+          {isTruncated && (
+            <Text color="yellow" dimColor>
+              ... (truncated {allElements.length - (maxHeight - 1)} more lines)
+            </Text>
+          )}
         </Box>
       );
     } catch (error) {
