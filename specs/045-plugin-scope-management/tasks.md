@@ -50,6 +50,7 @@ We will follow an incremental delivery approach, starting with the core configur
 - [X] T015 Implement error handling for invalid scopes and missing `.wave` directories in `ConfigurationService`
 - [X] T016 Run `pnpm build` in `agent-sdk` and verify CLI integration
 - [X] T017 Run `pnpm run type-check` and `pnpm lint` across the workspace
+- [X] T018 Update default scope to `user` for `enable`, `disable`, and `install` commands in `packages/code/src/index.ts` and update `spec.md`
 
 ## Dependencies
 
