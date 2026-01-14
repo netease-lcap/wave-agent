@@ -34,6 +34,11 @@ export interface WaveConfiguration {
   permissions?: {
     allow?: string[];
     defaultMode?: "default" | "bypassPermissions" | "acceptEdits"; // Default permission mode for restricted tools
+    /**
+     * List of directories that are considered part of the Safe Zone.
+     * File operations within these directories can be auto-accepted.
+     */
+    additionalDirectories?: string[];
   };
   /** New field for scoped plugin management */
   enabledPlugins?: Record<string, boolean>;
