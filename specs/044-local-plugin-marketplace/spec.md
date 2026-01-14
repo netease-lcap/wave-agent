@@ -60,7 +60,7 @@ As a user, I want to install a plugin from a registered local marketplace so tha
 - **FR-005**: System MUST support relative paths for plugin sources within the `marketplace.json` file.
 - **FR-006**: System MUST copy plugin files from the local source to a central installation directory during installation to ensure a stable snapshot of the plugin.
 - **FR-007**: System MUST allow updating an installed plugin by re-running the `wave plugin install [plugin-name]@[marketplace-name]` command.
-- **FR-008**: System MUST ensure that commands from installed plugins are prefixed with the plugin name (e.g., `/plugin-name:command`) as per the implementation in `042-local-plugin-support`.
+- **FR-009**: System MUST list all available plugins from all registered marketplaces via `wave plugin list`, indicating their installation and enabled status.
 
 ### Key Entities *(include if feature involves data)*
 
