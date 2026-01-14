@@ -360,6 +360,11 @@ export class LiveConfigManager {
             this.currentConfiguration.permissions.allow,
           );
         }
+        if (this.currentConfiguration.permissions?.additionalDirectories) {
+          this.permissionManager.updateAdditionalDirectories(
+            this.currentConfiguration.permissions.additionalDirectories,
+          );
+        }
       }
 
       this.logger?.info(

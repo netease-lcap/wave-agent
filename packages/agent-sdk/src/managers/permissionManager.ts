@@ -33,18 +33,26 @@ export interface PermissionManagerOptions {
   configuredDefaultMode?: PermissionMode;
   /** Allowed rules from settings */
   allowedRules?: string[];
+  /** Additional directories considered part of the Safe Zone */
+  additionalDirectories?: string[];
+  /** The main working directory */
+  workdir?: string;
 }
 
 export class PermissionManager {
   private logger?: Logger;
   private configuredDefaultMode?: PermissionMode;
   private allowedRules: string[] = [];
+  private additionalDirectories: string[] = [];
+  private workdir?: string;
   private onConfiguredDefaultModeChange?: (mode: PermissionMode) => void;
 
   constructor(options: PermissionManagerOptions = {}) {
     this.logger = options.logger;
     this.configuredDefaultMode = options.configuredDefaultMode;
     this.allowedRules = options.allowedRules || [];
+    this.additionalDirectories = options.additionalDirectories || [];
+    this.workdir = options.workdir;
   }
 
   /**
@@ -99,6 +107,56 @@ export class PermissionManager {
       count: rules.length,
     });
     this.allowedRules = rules;
+  }
+
+  /**
+   * Update the additional directories (e.g., when configuration reloads)
+   */
+  updateAdditionalDirectories(directories: string[]): void {
+    this.logger?.debug("Updating additional directories", {
+      count: directories.length,
+    });
+    this.additionalDirectories = directories;
+  }
+
+  /**
+   * Update the working directory
+   */
+  updateWorkdir(workdir: string): void {
+    this.logger?.debug("Updating working directory", {
+      workdir,
+    });
+    this.workdir = workdir;
+  }
+
+  /**
+   * Check if a path is inside the Safe Zone (workdir + additionalDirectories)
+   */
+  private isInsideSafeZone(
+    targetPath: string,
+    workdir?: string,
+  ): { isInside: boolean; resolvedPath: string } {
+    const effectiveWorkdir = workdir || this.workdir;
+
+    // Resolve the target path relative to effectiveWorkdir if it's not absolute
+    const absolutePath =
+      effectiveWorkdir && !path.isAbsolute(targetPath)
+        ? path.resolve(effectiveWorkdir, targetPath)
+        : path.resolve(targetPath);
+
+    // Check workdir
+    if (effectiveWorkdir && isPathInside(absolutePath, effectiveWorkdir)) {
+      return { isInside: true, resolvedPath: absolutePath };
+    }
+
+    // Check additional directories
+    for (const dir of this.additionalDirectories) {
+      if (isPathInside(absolutePath, dir)) {
+        return { isInside: true, resolvedPath: absolutePath };
+      }
+    }
+
+    return { isInside: false, resolvedPath: absolutePath };
   }
 
   /**
@@ -161,6 +219,32 @@ export class PermissionManager {
     if (context.permissionMode === "acceptEdits") {
       const autoAcceptedTools = ["Edit", "MultiEdit", "Delete", "Write"];
       if (autoAcceptedTools.includes(context.toolName)) {
+        // Enforce Safe Zone for file operations
+        const targetPath = (context.toolInput?.file_path ||
+          context.toolInput?.target_file) as string | undefined;
+        const workdir = context.toolInput?.workdir as string | undefined;
+
+        if (targetPath) {
+          const { isInside, resolvedPath } = this.isInsideSafeZone(
+            targetPath,
+            workdir,
+          );
+          if (!isInside) {
+            this.logger?.warn(
+              "File operation outside the Safe Zone in acceptEdits mode",
+              {
+                toolName: context.toolName,
+                targetPath,
+                resolvedPath,
+              },
+            );
+            return {
+              behavior: "deny",
+              message: `Tool '${context.toolName}' attempted to modify a file outside the Safe Zone: ${targetPath}. Operations outside the Safe Zone always require manual confirmation.`,
+            };
+          }
+        }
+
         this.logger?.debug(
           "Permission automatically accepted for tool in acceptEdits mode",
           {
@@ -288,7 +372,7 @@ export class PermissionManager {
           }
 
           // Check out-of-bounds for cd and ls
-          if (workdir && (cmd === "cd" || cmd === "ls")) {
+          if (cmd === "cd" || cmd === "ls") {
             const pathArgs =
               (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
                 (arg) => !arg.startsWith("-"),
@@ -296,8 +380,8 @@ export class PermissionManager {
 
             return pathArgs.some((pathArg) => {
               const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
-              const absolutePath = path.resolve(workdir, cleanPath);
-              return !isPathInside(absolutePath, workdir);
+              const { isInside } = this.isInsideSafeZone(cleanPath, workdir);
+              return !isInside;
             });
           }
         }
@@ -360,8 +444,8 @@ export class PermissionManager {
               const allPathsSafe = pathArgs.every((pathArg) => {
                 // Remove quotes if present
                 const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
-                const absolutePath = path.resolve(workdir, cleanPath);
-                return isPathInside(absolutePath, workdir);
+                const { isInside } = this.isInsideSafeZone(cleanPath, workdir);
+                return isInside;
               });
 
               if (allPathsSafe) {
@@ -426,8 +510,8 @@ export class PermissionManager {
             } else {
               const allPathsSafe = pathArgs.every((pathArg) => {
                 const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
-                const absolutePath = path.resolve(workdir, cleanPath);
-                return isPathInside(absolutePath, workdir);
+                const { isInside } = this.isInsideSafeZone(cleanPath, workdir);
+                return isInside;
               });
               if (allPathsSafe) {
                 isSafe = true;
@@ -456,8 +540,8 @@ export class PermissionManager {
 
             const isOutOfBounds = pathArgs.some((pathArg) => {
               const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
-              const absolutePath = path.resolve(workdir, cleanPath);
-              return !isPathInside(absolutePath, workdir);
+              const { isInside } = this.isInsideSafeZone(cleanPath, workdir);
+              return !isInside;
             });
 
             if (isOutOfBounds) {

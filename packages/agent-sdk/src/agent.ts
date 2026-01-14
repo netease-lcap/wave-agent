@@ -235,7 +235,10 @@ export class Agent {
       options.lspManager || new LspManager({ logger: this.logger }); // Initialize LSP manager
 
     // Initialize permission manager
-    this.permissionManager = new PermissionManager({ logger: this.logger });
+    this.permissionManager = new PermissionManager({
+      logger: this.logger,
+      workdir: this.workdir,
+    });
     this.permissionManager.setOnConfiguredDefaultModeChange((mode) => {
       this.options.callbacks?.onPermissionModeChange?.(mode);
     });

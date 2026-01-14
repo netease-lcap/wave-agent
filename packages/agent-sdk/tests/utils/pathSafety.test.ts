@@ -39,11 +39,25 @@ describe("pathSafety utils", () => {
       expect(isPathInside("/link", "/a/b")).toBe(true);
     });
 
-    it("should return false if fs.realpathSync throws (path doesn't exist)", () => {
-      vi.mocked(fs.realpathSync).mockImplementation(() => {
-        throw new Error("File not found");
+    it("should return true if target doesn't exist but its parent is inside", () => {
+      vi.mocked(fs.realpathSync).mockImplementation((p) => {
+        if (p.toString() === path.resolve("/a/b")) return "/a/b";
+        if (p.toString() === path.resolve("/a/b/new"))
+          throw new Error("ENOENT");
+        return p.toString();
       });
-      expect(isPathInside("/nonexistent", "/a/b")).toBe(false);
+      expect(isPathInside("/a/b/new", "/a/b")).toBe(true);
+    });
+
+    it("should return false if target doesn't exist and its parent is outside", () => {
+      vi.mocked(fs.realpathSync).mockImplementation((p) => {
+        if (p.toString() === path.resolve("/a/b")) return "/a/b";
+        if (p.toString() === path.resolve("/a/c")) return "/a/c";
+        if (p.toString() === path.resolve("/a/c/new"))
+          throw new Error("ENOENT");
+        return p.toString();
+      });
+      expect(isPathInside("/a/c/new", "/a/b")).toBe(false);
     });
 
     it("should handle relative paths", () => {
