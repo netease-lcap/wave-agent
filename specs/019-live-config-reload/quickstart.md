@@ -51,7 +51,7 @@ class ConfigurationWatcher extends EventEmitter {
     });
 
     this.watcher.on('change', (filePath) => {
-      this.logger?.info(`Live Config: Configuration file changed: ${filePath}`);
+      this.logger?.debug(`Live Config: Configuration file changed: ${filePath}`);
       this.emit('configChanged', filePath);
     });
 
@@ -88,11 +88,11 @@ class LiveConfigurationService {
   // Runtime monitoring
   private logPerformanceMetrics(): void {
     const stats = this.memoryStoreService.getStats();
-    this.logger?.info(`Live Config: Memory store - Size: ${stats.contentSize / 1024}KB, Updates: ${stats.updateCount}`);
+    this.logger?.debug(`Live Config: Memory store - Size: ${stats.contentSize / 1024}KB, Updates: ${stats.updateCount}`);
 
     const watcherStatuses = this.fileWatcherService.getAllWatcherStatuses();
     const activeWatchers = watcherStatuses.filter(w => w.isActive).length;
-    this.logger?.info(`Live Config: File watchers - Active: ${activeWatchers}/${watcherStatuses.length}`);
+    this.logger?.debug(`Live Config: File watchers - Active: ${activeWatchers}/${watcherStatuses.length}`);
   }
 
   // Runtime error handling
@@ -121,7 +121,7 @@ class LiveConfigurationService {
   }
 
   private setupPollingFallback(path: string): void {
-    this.logger?.info(`Live Config: Setting up polling fallback for ${path}`);
+    this.logger?.debug(`Live Config: Setting up polling fallback for ${path}`);
     setInterval(() => {
       this.checkConfigurationChanges(path);
     }, 5000);
