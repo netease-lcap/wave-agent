@@ -77,7 +77,7 @@ export class LiveConfigManager {
     projectPaths?: string[],
   ): Promise<void> {
     try {
-      this.logger?.info("Live Config: Initializing configuration watching...");
+      this.logger?.debug("Live Config: Initializing configuration watching...");
 
       this.userConfigPaths = userPaths;
       this.projectConfigPaths = projectPaths;
@@ -123,7 +123,7 @@ export class LiveConfigManager {
       }
 
       this.isWatching = true;
-      this.logger?.info(
+      this.logger?.debug(
         "Live Config: Configuration watching initialized successfully",
       );
     } catch (error) {
@@ -157,7 +157,7 @@ export class LiveConfigManager {
       await this.initializeWatching(userPaths, projectPaths);
 
       this.isInitialized = true;
-      this.logger?.info(
+      this.logger?.debug(
         "Live configuration management initialized with file watching",
       );
     } catch (error) {
@@ -175,7 +175,7 @@ export class LiveConfigManager {
     }
 
     try {
-      this.logger?.info("Live Config: Shutting down configuration manager...");
+      this.logger?.debug("Live Config: Shutting down configuration manager...");
 
       this.isWatching = false;
 
@@ -187,7 +187,7 @@ export class LiveConfigManager {
       this.lastValidConfiguration = null;
 
       this.isInitialized = false;
-      this.logger?.info("Live configuration management shutdown completed");
+      this.logger?.debug("Live configuration management shutdown completed");
     } catch (error) {
       this.logger?.error(`Error during shutdown: ${(error as Error).message}`);
       throw error;
@@ -231,7 +231,7 @@ export class LiveConfigManager {
 
         // Use fallback configuration if available
         if (this.lastValidConfiguration) {
-          this.logger?.info(
+          this.logger?.debug(
             "Live Config: Using previous valid configuration due to loading errors",
           );
           this.currentConfiguration = this.lastValidConfiguration;
@@ -262,7 +262,7 @@ export class LiveConfigManager {
 
       // Log success with detailed information
       if (newConfig) {
-        this.logger?.info(
+        this.logger?.debug(
           `Live Config: Configuration loaded successfully from ${loadResult.sourcePath || "merged sources"}`,
         );
 
@@ -273,7 +273,7 @@ export class LiveConfigManager {
           `Live Config: Loaded ${hookCount} hook events and ${envCount} environment variables`,
         );
       } else {
-        this.logger?.info(
+        this.logger?.debug(
           "Live Config: No configuration found (using empty configuration)",
         );
       }
@@ -294,7 +294,7 @@ export class LiveConfigManager {
 
           // Use previous valid configuration for error recovery
           if (this.lastValidConfiguration) {
-            this.logger?.info(
+            this.logger?.debug(
               "Live Config: Using previous valid configuration due to validation errors",
             );
             this.currentConfiguration = this.lastValidConfiguration;
@@ -367,7 +367,7 @@ export class LiveConfigManager {
         }
       }
 
-      this.logger?.info(
+      this.logger?.debug(
         `Live Config: Configuration reload completed successfully with ${Object.keys(newConfig?.hooks || {}).length} event types and ${Object.keys(newConfig?.env || {}).length} environment variables`,
       );
 
@@ -378,7 +378,7 @@ export class LiveConfigManager {
 
       // Use previous valid configuration for error recovery
       if (this.lastValidConfiguration) {
-        this.logger?.info(
+        this.logger?.debug(
           "Live Config: Using previous valid configuration due to reload exception",
         );
         this.currentConfiguration = this.lastValidConfiguration;
@@ -413,7 +413,7 @@ export class LiveConfigManager {
    * Reload configuration from files (public method)
    */
   async reload(): Promise<WaveConfiguration> {
-    this.logger?.info("Manually reloading configuration...");
+    this.logger?.debug("Manually reloading configuration...");
     return await this.reloadConfiguration();
   }
 
@@ -460,7 +460,7 @@ export class LiveConfigManager {
     try {
       // Handle file deletion
       if (event.type === "delete") {
-        this.logger?.info(
+        this.logger?.debug(
           `Live Config: ${source} config file deleted: ${event.path}`,
         );
         // Reload configuration without the deleted file
@@ -470,7 +470,7 @@ export class LiveConfigManager {
 
       // Handle file creation or modification
       if (event.type === "change" || event.type === "create") {
-        this.logger?.info(
+        this.logger?.debug(
           `Live Config: ${source} config file ${event.type}: ${event.path}`,
         );
 
