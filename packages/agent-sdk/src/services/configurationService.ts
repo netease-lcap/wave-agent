@@ -7,10 +7,7 @@
 
 import { readFileSync, existsSync, promises as fs } from "fs";
 import * as path from "path";
-import type {
-  WaveConfiguration,
-  PartialHookConfiguration,
-} from "../types/hooks.js";
+import type { WaveConfiguration } from "../types/hooks.js";
 import { isValidHookEvent } from "../types/hooks.js";
 import type {
   ConfigurationLoadResult,
@@ -177,6 +174,33 @@ export class ConfigurationService {
                 `Hook configuration ${i} for event '${event}' must be an object`,
               );
             }
+          }
+        }
+      }
+    }
+
+    // Validate enabledPlugins if present
+    if (config.enabledPlugins !== undefined) {
+      if (
+        typeof config.enabledPlugins !== "object" ||
+        config.enabledPlugins === null
+      ) {
+        result.isValid = false;
+        result.errors.push("enabledPlugins configuration must be an object");
+      } else {
+        for (const [pluginId, enabled] of Object.entries(
+          config.enabledPlugins,
+        )) {
+          if (typeof enabled !== "boolean") {
+            result.isValid = false;
+            result.errors.push(
+              `Value for plugin '${pluginId}' in enabledPlugins must be a boolean`,
+            );
+          }
+          if (!pluginId.includes("@")) {
+            result.warnings.push(
+              `Plugin ID '${pluginId}' in enabledPlugins should follow 'name@marketplace' format`,
+            );
           }
         }
       }
@@ -519,6 +543,61 @@ export class ConfigurationService {
       );
     }
   }
+
+  /**
+   * Update the enabled state of a plugin in the specified scope
+   */
+  async updateEnabledPlugin(
+    workdir: string,
+    scope: "user" | "project" | "local",
+    pluginId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    if (scope !== "user" && !existsSync(workdir)) {
+      throw new Error(`Working directory does not exist: ${workdir}`);
+    }
+
+    let configPath: string;
+    if (scope === "user") {
+      configPath = getUserConfigPaths()[1]; // settings.json
+    } else if (scope === "project") {
+      configPath = getProjectConfigPaths(workdir)[1]; // settings.json
+    } else {
+      configPath = getProjectConfigPaths(workdir)[0]; // settings.local.json
+    }
+
+    // Ensure directory exists
+    const configDir = path.dirname(configPath);
+    if (!existsSync(configDir)) {
+      await fs.mkdir(configDir, { recursive: true });
+    }
+
+    let config: WaveConfiguration = {};
+    if (existsSync(configPath)) {
+      try {
+        const content = await fs.readFile(configPath, "utf-8");
+        config = JSON.parse(content);
+      } catch {
+        // Start with empty config if file is corrupted
+      }
+    }
+
+    if (!config.enabledPlugins) {
+      config.enabledPlugins = {};
+    }
+
+    config.enabledPlugins[pluginId] = enabled;
+
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
+  }
+
+  /**
+   * Get merged enabled plugins from all scopes
+   */
+  getMergedEnabledPlugins(workdir: string): Record<string, boolean> {
+    const mergedConfig = loadMergedWaveConfig(workdir);
+    return mergedConfig?.enabledPlugins || {};
+  }
 }
 // =============================================================================
 // Extracted Configuration Functions
@@ -674,6 +753,7 @@ export function loadWaveConfigFromFile(
       env: config.env || undefined,
       defaultMode: config.defaultMode,
       permissions: config.permissions || undefined,
+      enabledPlugins: config.enabledPlugins || undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -727,73 +807,97 @@ export function loadProjectWaveConfig(
 export function loadMergedWaveConfig(
   workdir: string,
 ): WaveConfiguration | null {
-  const userConfig = loadUserWaveConfig();
-  const projectConfig = loadProjectWaveConfig(workdir);
+  const userPaths = getUserConfigPaths(); // [local, json]
+  const projectPaths = getProjectConfigPaths(workdir); // [local, json]
 
-  // No configuration found
-  if (!userConfig && !projectConfig) {
+  // Priority order (lowest to highest):
+  // user settings.json -> user settings.local.json -> project settings.json -> project settings.local.json
+  const pathsToLoad = [
+    userPaths[1], // user settings.json
+    userPaths[0], // user settings.local.json
+    projectPaths[1], // project settings.json
+    projectPaths[0], // project settings.local.json
+  ];
+
+  const configs: WaveConfiguration[] = [];
+  for (const path of pathsToLoad) {
+    const config = loadWaveConfigFromFile(path);
+    if (config) {
+      configs.push(config);
+    }
+  }
+
+  if (configs.length === 0) {
     return null;
   }
 
-  // Only one configuration found
-  if (!userConfig) return projectConfig;
-  if (!projectConfig) return userConfig;
+  // Merge all configurations in order
+  const mergedConfig: WaveConfiguration = {};
 
-  // Merge configurations (project overrides user)
-  const mergedHooks: PartialHookConfiguration = {};
+  for (const config of configs) {
+    // Merge hooks
+    if (config.hooks) {
+      if (!mergedConfig.hooks) mergedConfig.hooks = {};
+      for (const [event, eventConfigs] of Object.entries(config.hooks)) {
+        if (!isValidHookEvent(event)) continue;
+        if (!mergedConfig.hooks[event]) mergedConfig.hooks[event] = [];
+        mergedConfig.hooks[event]!.push(...eventConfigs);
+      }
+    }
 
-  // Merge environment variables using the new mergeEnvironmentConfig function
-  const environmentContext = mergeEnvironmentConfig(
-    userConfig.env,
-    projectConfig.env,
-    { includeConflictWarnings: true },
-  );
+    // Merge env
+    if (config.env) {
+      const environmentContext = mergeEnvironmentConfig(
+        mergedConfig.env,
+        config.env,
+        { includeConflictWarnings: true },
+      );
+      mergedConfig.env = environmentContext.mergedVars;
+    }
 
-  // Log environment variable conflicts if any
-  if (environmentContext.conflicts.length > 0) {
-    console.warn(
-      `Environment variable conflicts detected (project values take precedence):\n${environmentContext.conflicts
-        .map(
-          (conflict) =>
-            `- ${conflict.key}: "${conflict.userValue}" → "${conflict.projectValue}"`,
-        )
-        .join("\n")}`,
-    );
-  }
+    // Merge defaultMode (last one wins)
+    if (config.defaultMode !== undefined) {
+      mergedConfig.defaultMode = config.defaultMode;
+    }
 
-  // Merge hooks (combine arrays, project configs come after user configs)
-  const allEvents = new Set([
-    ...Object.keys(userConfig.hooks || {}),
-    ...Object.keys(projectConfig.hooks || {}),
-  ]);
+    // Merge permissions
+    if (config.permissions?.allow) {
+      if (!mergedConfig.permissions) mergedConfig.permissions = {};
+      if (!mergedConfig.permissions.allow) mergedConfig.permissions.allow = [];
+      mergedConfig.permissions.allow = [
+        ...new Set([
+          ...mergedConfig.permissions.allow,
+          ...config.permissions.allow,
+        ]),
+      ];
+    }
 
-  for (const event of allEvents) {
-    if (!isValidHookEvent(event)) continue;
-
-    const userEventConfigs = userConfig.hooks?.[event] || [];
-    const projectEventConfigs = projectConfig.hooks?.[event] || [];
-
-    // Project configurations take precedence
-    mergedHooks[event] = [...userEventConfigs, ...projectEventConfigs];
-  }
-
-  // Merge permissions (combine allow arrays)
-  const mergedPermissions: { allow?: string[] } = {};
-  const userAllow = userConfig.permissions?.allow || [];
-  const projectAllow = projectConfig.permissions?.allow || [];
-  if (userAllow.length > 0 || projectAllow.length > 0) {
-    mergedPermissions.allow = [...new Set([...userAllow, ...projectAllow])];
+    // Merge enabledPlugins
+    if (config.enabledPlugins) {
+      if (!mergedConfig.enabledPlugins) mergedConfig.enabledPlugins = {};
+      Object.assign(mergedConfig.enabledPlugins, config.enabledPlugins);
+    }
   }
 
   return {
-    hooks: Object.keys(mergedHooks).length > 0 ? mergedHooks : undefined,
-    env:
-      Object.keys(environmentContext.mergedVars).length > 0
-        ? environmentContext.mergedVars
+    hooks:
+      mergedConfig.hooks && Object.keys(mergedConfig.hooks).length > 0
+        ? mergedConfig.hooks
         : undefined,
-    // Project defaultMode takes precedence over user defaultMode
-    defaultMode: projectConfig.defaultMode ?? userConfig.defaultMode,
+    env:
+      mergedConfig.env && Object.keys(mergedConfig.env).length > 0
+        ? mergedConfig.env
+        : undefined,
+    defaultMode: mergedConfig.defaultMode,
     permissions:
-      Object.keys(mergedPermissions).length > 0 ? mergedPermissions : undefined,
+      mergedConfig.permissions &&
+      Object.keys(mergedConfig.permissions).length > 0
+        ? mergedConfig.permissions
+        : undefined,
+    enabledPlugins:
+      mergedConfig.enabledPlugins &&
+      Object.keys(mergedConfig.enabledPlugins).length > 0
+        ? mergedConfig.enabledPlugins
+        : undefined,
   };
 }

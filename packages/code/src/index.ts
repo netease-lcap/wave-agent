@@ -63,24 +63,10 @@ export async function main() {
                     });
                   },
                   async (argv) => {
-                    const { MarketplaceService } = await import(
-                      "wave-agent-sdk"
+                    const { addMarketplaceCommand } = await import(
+                      "./commands/plugin/marketplace.js"
                     );
-                    const service = new MarketplaceService();
-                    try {
-                      const marketplace = await service.addMarketplace(
-                        argv.path as string,
-                      );
-                      console.log(
-                        `Successfully added marketplace: ${marketplace.name} (${marketplace.path})`,
-                      );
-                      process.exit(0);
-                    } catch (error) {
-                      const message =
-                        error instanceof Error ? error.message : String(error);
-                      console.error(`Failed to add marketplace: ${message}`);
-                      process.exit(1);
-                    }
+                    await addMarketplaceCommand(argv as { path: string });
                   },
                 )
                 .command(
@@ -88,20 +74,10 @@ export async function main() {
                   "List registered marketplaces",
                   {},
                   async () => {
-                    const { MarketplaceService } = await import(
-                      "wave-agent-sdk"
+                    const { listMarketplacesCommand } = await import(
+                      "./commands/plugin/marketplace.js"
                     );
-                    const service = new MarketplaceService();
-                    const marketplaces = await service.listMarketplaces();
-                    if (marketplaces.length === 0) {
-                      console.log("No marketplaces registered.");
-                    } else {
-                      console.log("Registered Marketplaces:");
-                      marketplaces.forEach((m) => {
-                        console.log(`- ${m.name}: ${m.path}`);
-                      });
-                    }
-                    process.exit(0);
+                    await listMarketplacesCommand();
                   },
                 );
             },
@@ -111,45 +87,94 @@ export async function main() {
             "install <plugin>",
             "Install a plugin from a marketplace",
             (yargs) => {
-              return yargs.positional("plugin", {
-                describe: "Plugin to install (format: name@marketplace)",
-                type: "string",
-              });
+              return yargs
+                .positional("plugin", {
+                  describe: "Plugin to install (format: name@marketplace)",
+                  type: "string",
+                })
+                .option("scope", {
+                  alias: "s",
+                  describe: "Scope to enable the plugin in",
+                  choices: ["user", "project", "local"],
+                  type: "string",
+                });
             },
             async (argv) => {
-              const { MarketplaceService } = await import("wave-agent-sdk");
-              const service = new MarketplaceService();
-              try {
-                const installed = await service.installPlugin(
-                  argv.plugin as string,
-                );
-                console.log(
-                  `Successfully installed plugin: ${installed.name} v${installed.version} from ${installed.marketplace}`,
-                );
-                console.log(`Cache path: ${installed.cachePath}`);
-                process.exit(0);
-              } catch (error) {
-                const message =
-                  error instanceof Error ? error.message : String(error);
-                console.error(`Failed to install plugin: ${message}`);
-                process.exit(1);
-              }
+              const { installPluginCommand } = await import(
+                "./commands/plugin/install.js"
+              );
+              await installPluginCommand(
+                argv as {
+                  plugin: string;
+                  scope?: "user" | "project" | "local";
+                },
+              );
             },
           )
           .command("list", "List installed plugins", {}, async () => {
-            const { MarketplaceService } = await import("wave-agent-sdk");
-            const service = new MarketplaceService();
-            const plugins = await service.getInstalledPlugins();
-            if (plugins.plugins.length === 0) {
-              console.log("No plugins installed.");
-            } else {
-              console.log("Installed Plugins:");
-              plugins.plugins.forEach((p) => {
-                console.log(`- ${p.name} v${p.version} (@${p.marketplace})`);
-              });
-            }
-            process.exit(0);
-          });
+            const { listPluginsCommand } = await import(
+              "./commands/plugin/list.js"
+            );
+            await listPluginsCommand();
+          })
+          .command(
+            "enable <plugin>",
+            "Enable a plugin in a specific scope",
+            (yargs) => {
+              return yargs
+                .positional("plugin", {
+                  describe: "Plugin ID (format: name@marketplace)",
+                  type: "string",
+                })
+                .option("scope", {
+                  alias: "s",
+                  describe: "Scope to enable the plugin in",
+                  choices: ["user", "project", "local"],
+                  default: "local",
+                  type: "string",
+                });
+            },
+            async (argv) => {
+              const { enablePluginCommand } = await import(
+                "./commands/plugin/enable.js"
+              );
+              await enablePluginCommand(
+                argv as {
+                  plugin: string;
+                  scope: "user" | "project" | "local";
+                },
+              );
+            },
+          )
+          .command(
+            "disable <plugin>",
+            "Disable a plugin in a specific scope",
+            (yargs) => {
+              return yargs
+                .positional("plugin", {
+                  describe: "Plugin ID (format: name@marketplace)",
+                  type: "string",
+                })
+                .option("scope", {
+                  alias: "s",
+                  describe: "Scope to disable the plugin in",
+                  choices: ["user", "project", "local"],
+                  default: "local",
+                  type: "string",
+                });
+            },
+            async (argv) => {
+              const { disablePluginCommand } = await import(
+                "./commands/plugin/disable.js"
+              );
+              await disablePluginCommand(
+                argv as {
+                  plugin: string;
+                  scope: "user" | "project" | "local";
+                },
+              );
+            },
+          );
       },
       () => {},
     )

@@ -202,6 +202,48 @@ describe("PluginManager", () => {
         error,
       );
     });
+
+    it("should filter out disabled plugins from marketplace", async () => {
+      const installedPlugins = [
+        { name: "plugin1", marketplace: "m1", cachePath: "/path/1" },
+        { name: "plugin2", marketplace: "m1", cachePath: "/path/2" },
+      ];
+
+      vi.mocked(MarketplaceService).mockImplementation(() => {
+        return {
+          getInstalledPlugins: vi
+            .fn()
+            .mockResolvedValue({ plugins: installedPlugins }),
+        } as unknown as MarketplaceService;
+      });
+
+      pluginManager.updateEnabledPlugins({
+        "plugin1@m1": false,
+        "plugin2@m1": true,
+      });
+
+      vi.mocked(PluginLoader.loadManifest).mockImplementation(
+        async (p) =>
+          ({
+            name: p === "/path/1" ? "plugin1" : "plugin2",
+            version: "1.0.0",
+            description: "desc",
+          }) as PluginManifest,
+      );
+      vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
+      vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+
+      await pluginManager.loadPlugins([]);
+
+      expect(pluginManager.getPlugins()).toHaveLength(1);
+      expect(pluginManager.getPlugin("plugin2")).toBeDefined();
+      expect(pluginManager.getPlugin("plugin1")).toBeUndefined();
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Plugin plugin1@m1 is disabled via configuration",
+        ),
+      );
+    });
   });
 
   describe("getPlugins and getPlugin", () => {

@@ -615,6 +615,14 @@ export class Agent {
       this.hookManager.loadConfigurationFromWaveConfig(
         configResult.configuration,
       );
+
+      // Update plugin manager with enabled plugins configuration
+      if (configResult.configuration?.enabledPlugins) {
+        this.pluginManager.updateEnabledPlugins(
+          configResult.configuration.enabledPlugins,
+        );
+      }
+
       this.logger?.debug("Hooks system initialized successfully");
     } catch (error) {
       this.logger?.error("Failed to initialize hooks system:", error);
