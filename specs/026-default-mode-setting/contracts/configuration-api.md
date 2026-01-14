@@ -6,7 +6,10 @@
 interface WaveConfiguration {
   hooks?: Hook[];
   env?: Record<string, string>;
-  defaultMode?: "default" | "bypassPermissions";
+  permissions?: {
+    defaultMode?: "default" | "bypassPermissions" | "acceptEdits";
+    allow?: string[];
+  };
 }
 ```
 
@@ -26,13 +29,13 @@ function validateDefaultMode(value: unknown): ValidationResult {
     return { valid: true, value: undefined };
   }
   
-  if (value === "default" || value === "bypassPermissions") {
+  if (value === "default" || value === "bypassPermissions" || value === "acceptEdits") {
     return { valid: true, value };
   }
   
   return { 
     valid: false, 
-    error: `Invalid defaultMode: "${value}". Must be "default" or "bypassPermissions"`,
+    error: `Invalid defaultMode: "${value}". Must be "default", "bypassPermissions" or "acceptEdits"`,
     fallback: undefined
   };
 }
@@ -109,6 +112,6 @@ function resolvePermissionMode(
     return "bypassPermissions";
   }
   
-  return config.defaultMode ?? "default";
+  return config.permissions?.defaultMode ?? "default";
 }
 ```

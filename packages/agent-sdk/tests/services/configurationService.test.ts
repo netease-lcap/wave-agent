@@ -114,7 +114,9 @@ describe("ConfigurationService", () => {
 
     it("should return error on invalid configuration", async () => {
       const invalidConfig = {
-        defaultMode: "invalid-mode",
+        permissions: {
+          defaultMode: "invalid-mode",
+        },
       };
 
       mockExistsSync.mockReturnValue(true);
@@ -142,32 +144,34 @@ describe("ConfigurationService", () => {
         enabledPlugins: { "plugin1@market": true, "plugin2@market": true },
         hooks: { PreToolUse: [{ matcher: "user", hooks: [] }] },
         env: { VAR1: "user", VAR2: "user" },
-        defaultMode: "default",
-        permissions: { allow: ["rule-user"] },
+        permissions: { allow: ["rule-user"], defaultMode: "default" },
       };
 
       const userLocal = {
         enabledPlugins: { "plugin2@market": false, "plugin3@market": true },
         hooks: { PreToolUse: [{ matcher: "user-local", hooks: [] }] },
         env: { VAR2: "user-local", VAR3: "user-local" },
-        defaultMode: "bypassPermissions",
-        permissions: { allow: ["rule-user-local"] },
+        permissions: {
+          allow: ["rule-user-local"],
+          defaultMode: "bypassPermissions",
+        },
       };
 
       const projectSettings = {
         enabledPlugins: { "plugin3@market": false, "plugin4@market": true },
         hooks: { PreToolUse: [{ matcher: "project", hooks: [] }] },
         env: { VAR3: "project", VAR4: "project" },
-        defaultMode: "acceptEdits",
-        permissions: { allow: ["rule-project"] },
+        permissions: { allow: ["rule-project"], defaultMode: "acceptEdits" },
       };
 
       const projectLocal = {
         enabledPlugins: { "plugin4@market": false, "plugin5@market": true },
         hooks: { PreToolUse: [{ matcher: "project-local", hooks: [] }] },
         env: { VAR4: "project-local", VAR5: "project-local" },
-        defaultMode: "bypassPermissions",
-        permissions: { allow: ["rule-project-local"] },
+        permissions: {
+          allow: ["rule-project-local"],
+          defaultMode: "bypassPermissions",
+        },
       };
 
       mockExistsSync.mockImplementation((p) => {
@@ -222,7 +226,7 @@ describe("ConfigurationService", () => {
       });
 
       // Verify defaultMode (highest priority wins)
-      expect(result?.defaultMode).toBe("bypassPermissions"); // from projectLocal
+      expect(result?.permissions?.defaultMode).toBe("bypassPermissions"); // from projectLocal
 
       // Verify permissions.allow (combined)
       expect(result?.permissions?.allow).toEqual(
@@ -249,8 +253,10 @@ describe("ConfigurationService", () => {
           ],
         },
         env: { VAR: "val" },
-        defaultMode: "bypassPermissions" as const,
-        permissions: { allow: ["rule"] },
+        permissions: {
+          allow: ["rule"],
+          defaultMode: "bypassPermissions" as const,
+        },
       };
 
       const result = configService.validateConfiguration(config);
@@ -274,7 +280,9 @@ describe("ConfigurationService", () => {
 
     it("should catch invalid defaultMode", () => {
       const config = {
-        defaultMode: "invalid" as unknown as "bypassPermissions",
+        permissions: {
+          defaultMode: "invalid" as unknown as "bypassPermissions",
+        },
       };
 
       const result = configService.validateConfiguration(config);

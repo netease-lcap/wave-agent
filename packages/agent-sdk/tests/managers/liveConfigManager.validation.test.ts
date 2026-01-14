@@ -84,7 +84,9 @@ describe("LiveConfigManager - Validation", () => {
       expectedValid: boolean,
     ) => {
       const mockConfig = {
-        defaultMode,
+        permissions: {
+          defaultMode,
+        },
       } as unknown as WaveConfiguration;
 
       const mockResult: ConfigurationLoadResult = {

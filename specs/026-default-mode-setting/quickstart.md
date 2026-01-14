@@ -8,7 +8,9 @@
    ```json
    // settings.json (project root)
    {
-     "defaultMode": "bypassPermissions"
+     "permissions": {
+       "defaultMode": "bypassPermissions"
+     }
    }
    ```
 
@@ -16,7 +18,9 @@
    ```json
    // settings.local.json (project root, gitignored)
    {
-     "defaultMode": "default"
+     "permissions": {
+       "defaultMode": "default"
+     }
    }
    ```
 
@@ -24,7 +28,9 @@
    ```json
    // ~/.wave/settings.json
    {
-     "defaultMode": "bypassPermissions"
+     "permissions": {
+       "defaultMode": "bypassPermissions"
+     }
    }
    ```
 
@@ -51,7 +57,9 @@ wave-agent  # Will respect configured defaultMode
    interface WaveConfiguration {
      hooks?: Hook[];
      env?: Record<string, string>;
-     defaultMode?: "default" | "bypassPermissions"; // ✅ IMPLEMENTED
+     permissions?: {
+       defaultMode?: "default" | "bypassPermissions" | "acceptEdits"; // ✅ IMPLEMENTED
+     };
    }
    ```
 
@@ -108,7 +116,7 @@ The system now supports three levels of configuration with proper precedence:
 1. **Basic Configuration Test**:
    ```bash
    # Create project settings
-   echo '{"defaultMode": "bypassPermissions"}' > settings.json
+   echo '{"permissions": {"defaultMode": "bypassPermissions"}}' > settings.json
    
    # Run wave-agent - should bypass permissions by default
    wave-agent --print "test message"
@@ -124,10 +132,10 @@ The system now supports three levels of configuration with proper precedence:
    ```bash
    # Create user config
    mkdir -p ~/.wave
-   echo '{"defaultMode": "default"}' > ~/.wave/settings.json
+   echo '{"permissions": {"defaultMode": "default"}}' > ~/.wave/settings.json
    
    # Create project override  
-   echo '{"defaultMode": "bypassPermissions"}' > settings.json
+   echo '{"permissions": {"defaultMode": "bypassPermissions"}}' > settings.json
    
    # Project should win (bypassPermissions behavior)
    wave-agent --print "test message"
@@ -141,12 +149,16 @@ The system now supports three levels of configuration with proper precedence:
 ```json
 // settings.json (committed)
 {
-  "defaultMode": "default"
+  "permissions": {
+    "defaultMode": "default"
+  }
 }
 
 // settings.local.json (developer's machine, gitignored)  
 {
-  "defaultMode": "bypassPermissions"
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  }
 }
 ```
 **Result**: Developer bypasses permissions, other team members get prompts.
@@ -155,7 +167,9 @@ The system now supports three levels of configuration with proper precedence:
 ```json
 // ~/.wave/settings.json (user config)
 {
-  "defaultMode": "bypassPermissions"
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  }
 }
 ```
 **Result**: User bypasses permissions in all projects by default.
