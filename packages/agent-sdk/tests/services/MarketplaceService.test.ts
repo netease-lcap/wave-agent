@@ -44,11 +44,13 @@ describe("MarketplaceService", () => {
   let mockGitService: {
     clone: ReturnType<typeof vi.fn>;
     pull: ReturnType<typeof vi.fn>;
+    isGitAvailable: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     userHome = "/mock/home";
     vi.mocked(os.homedir).mockReturnValue(userHome);
     vi.mocked(fsPromises.mkdtemp).mockResolvedValue(userHome);
@@ -56,6 +58,7 @@ describe("MarketplaceService", () => {
     mockGitService = {
       clone: vi.fn(),
       pull: vi.fn(),
+      isGitAvailable: vi.fn().mockResolvedValue(true),
     };
     vi.mocked(GitService).mockImplementation(
       () => mockGitService as unknown as GitService,
@@ -269,6 +272,38 @@ describe("MarketplaceService", () => {
         /Some marketplaces failed to update/,
       );
       expect(mockGitService.pull).toHaveBeenCalledTimes(2);
+    });
+
+    it("should skip GitHub marketplaces if git is not available", async () => {
+      const marketplaces = [
+        { name: "m1", source: { source: "github", repo: "o1/r1" } },
+        { name: "m2", source: { source: "directory", path: "/p2" } },
+      ];
+
+      mockReadFile.mockImplementation(async (p) => {
+        if (p.toString().includes("known_marketplaces.json")) {
+          return JSON.stringify({ marketplaces });
+        }
+        if (p.toString().includes("marketplace.json")) {
+          return JSON.stringify({ name: "mock", plugins: [] });
+        }
+        return "";
+      });
+
+      mockExistsSync.mockReturnValue(true);
+      mockGitService.isGitAvailable.mockResolvedValue(false);
+
+      await service.updateMarketplace();
+
+      expect(mockGitService.pull).not.toHaveBeenCalled();
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Skipping update for GitHub marketplace "m1"'),
+      );
+      // Should still update the directory one (by re-validating manifest)
+      expect(mockReadFile).toHaveBeenCalledWith(
+        expect.stringContaining("p2"),
+        "utf-8",
+      );
     });
   });
 

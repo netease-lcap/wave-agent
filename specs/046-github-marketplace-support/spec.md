@@ -74,13 +74,14 @@ As a user, I want to update the local cache of one or all registered marketplace
 ### Edge Cases
 
 - **What happens if the GitHub repository is private?** The system should attempt to use the user's local Git credentials or provide a clear error message if access is denied.
+- **What happens if Git is not installed?** The system should provide a clear error message when attempting to add a GitHub marketplace and gracefully skip GitHub marketplaces during bulk updates, while still allowing local directory marketplaces to function.
 - **What happens if the `marketplace.json` is missing in the GitHub repository?** The system should return an error indicating that the repository is not a valid Wave marketplace.
 - **How are rate limits handled?** The system should gracefully handle GitHub API rate limits and inform the user if they are exceeded.
 - **What if the `source` in `marketplace.json` uses an unsupported source type?** The system should ignore or report an error for that specific plugin while allowing others to be listed if possible.
 
 ## Assumptions
 
-- The system has `git` installed and available in the environment to handle repository cloning/fetching.
+- The system SHOULD have `git` installed to use GitHub-based marketplaces. If `git` is missing, GitHub-related operations will be disabled with clear user feedback.
 - GitHub repositories are public by default for this feature, or the user has configured SSH/HTTPS credentials for private repos.
 - The `marketplace.json` file is expected to be at `.wave-plugin/marketplace.json` in the root of the repository.
 
@@ -97,6 +98,9 @@ As a user, I want to update the local cache of one or all registered marketplace
 - **FR-007**: System MUST support updating a specific marketplace via `wave plugin marketplace update [name]`.
 - **FR-008**: System MUST support updating all registered marketplaces via `wave plugin marketplace update` (when no name is specified).
 - **FR-009**: System SHOULD automatically update the marketplace manifest during `wave plugin install` if the local cache is missing or significantly outdated.
+- **FR-010**: System MUST check for Git availability before performing any GitHub-related operations.
+- **FR-011**: System MUST provide a clear error message if a user attempts to add a GitHub marketplace when Git is not installed.
+- **FR-012**: System MUST gracefully skip GitHub marketplaces during `wave plugin marketplace update` if Git is not installed, while continuing to update local marketplaces.
 
 ### Key Entities *(include if feature involves data)*
 

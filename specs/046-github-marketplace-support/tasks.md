@@ -49,7 +49,7 @@
 
 - [x] T018 [P] Implement robust error handling for GitHub rate limits and private repositories in `packages/agent-sdk/src/services/MarketplaceService.ts`
 - [x] T019 Run `pnpm run type-check` and `pnpm lint` across the monorepo
-- [x] T020 Verify all acceptance scenarios from `spec.md` using the `quickstart.md` guide
+- [x] T021 Ensure compatibility with non-git systems by skipping GitHub operations when git is missing
 
 ## Dependencies
 

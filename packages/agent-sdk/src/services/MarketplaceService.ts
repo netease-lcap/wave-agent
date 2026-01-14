@@ -245,10 +245,17 @@ export class MarketplaceService {
       throw new Error(`Marketplace ${name} not found`);
     }
 
+    const isGitAvailable = await this.gitService.isGitAvailable();
     const errors: string[] = [];
     for (const marketplace of toUpdate) {
       try {
         if (marketplace.source.source === "github") {
+          if (!isGitAvailable) {
+            console.warn(
+              `Skipping update for GitHub marketplace "${marketplace.name}" because Git is not installed.`,
+            );
+            continue;
+          }
           const targetPath = this.getMarketplacePath(marketplace);
           await this.gitService.pull(targetPath);
         }
