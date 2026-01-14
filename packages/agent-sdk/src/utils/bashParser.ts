@@ -334,48 +334,96 @@ export function getSmartPrefix(command: string): string | null {
 
   // Node/JS
   if (["npm", "pnpm", "yarn", "deno", "bun"].includes(exe)) {
-    if (
-      [
-        "install",
-        "i",
-        "add",
-        "remove",
-        "test",
-        "t",
-        "build",
-        "start",
-        "dev",
-      ].includes(sub)
+    let currentIdx = 1;
+    const prefixParts = [exe];
+
+    // Handle workspace/filter flags
+    if (exe === "pnpm") {
+      while (
+        (tokens[currentIdx] === "-F" || tokens[currentIdx] === "--filter") &&
+        tokens[currentIdx + 1]
+      ) {
+        prefixParts.push(tokens[currentIdx], tokens[currentIdx + 1]);
+        currentIdx += 2;
+      }
+    } else if (
+      exe === "npm" &&
+      (tokens[currentIdx] === "--prefix" || tokens[currentIdx] === "-C") &&
+      tokens[currentIdx + 1]
     ) {
-      return `${exe} ${sub}`;
+      prefixParts.push(tokens[currentIdx], tokens[currentIdx + 1]);
+      currentIdx += 2;
+    } else if (
+      exe === "yarn" &&
+      tokens[currentIdx] === "workspace" &&
+      tokens[currentIdx + 1]
+    ) {
+      prefixParts.push(tokens[currentIdx], tokens[currentIdx + 1]);
+      currentIdx += 2;
     }
-    if (sub === "run" && tokens[2]) {
-      return `${exe} run ${tokens[2]}`;
+
+    const subCommand = tokens[currentIdx];
+    const safeSubcommands = [
+      "install",
+      "i",
+      "add",
+      "remove",
+      "rm",
+      "uninstall",
+      "un",
+      "test",
+      "t",
+      "build",
+      "start",
+      "dev",
+    ];
+
+    if (safeSubcommands.includes(subCommand)) {
+      prefixParts.push(subCommand);
+      return prefixParts.join(" ");
+    }
+    if (
+      (subCommand === "run" || (exe === "deno" && subCommand === "task")) &&
+      tokens[currentIdx + 1]
+    ) {
+      prefixParts.push(subCommand, tokens[currentIdx + 1]);
+      return prefixParts.join(" ");
     }
     return null;
   }
 
   // Git
   if (exe === "git") {
-    if (
-      [
-        "commit",
-        "push",
-        "pull",
-        "checkout",
-        "add",
-        "status",
-        "diff",
-        "branch",
-        "merge",
-        "rebase",
-        "log",
-        "fetch",
-        "remote",
-        "stash",
-      ].includes(sub)
-    ) {
-      return `${exe} ${sub}`;
+    let currentIdx = 1;
+    const prefixParts = [exe];
+
+    // Handle -C <path>
+    if (tokens[currentIdx] === "-C" && tokens[currentIdx + 1]) {
+      prefixParts.push(tokens[currentIdx], tokens[currentIdx + 1]);
+      currentIdx += 2;
+    }
+
+    const subCommand = tokens[currentIdx];
+    const safeGitSubcommands = [
+      "commit",
+      "push",
+      "pull",
+      "checkout",
+      "add",
+      "status",
+      "diff",
+      "branch",
+      "merge",
+      "rebase",
+      "log",
+      "fetch",
+      "remote",
+      "stash",
+    ];
+
+    if (safeGitSubcommands.includes(subCommand)) {
+      prefixParts.push(subCommand);
+      return prefixParts.join(" ");
     }
     return null;
   }
@@ -383,8 +431,11 @@ export function getSmartPrefix(command: string): string | null {
   // Python
   if (["python", "python3", "pip", "pip3", "poetry", "conda"].includes(exe)) {
     if (exe === "python" || exe === "python3") {
-      if (sub === "-m" && tokens[2] === "pip" && tokens[3] === "install") {
-        return `${exe} -m pip install`;
+      if (tokens[1] === "-m" && tokens[2]) {
+        if (tokens[2] === "pip" && tokens[3] === "install") {
+          return `${exe} -m pip install`;
+        }
+        return `${exe} -m ${tokens[2]}`;
       }
       return null;
     }
