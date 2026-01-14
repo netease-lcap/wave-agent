@@ -144,7 +144,7 @@ export class MarketplaceService {
   /**
    * Resolves the local path for a marketplace
    */
-  private getMarketplacePath(marketplace: KnownMarketplace): string {
+  public getMarketplacePath(marketplace: KnownMarketplace): string {
     if (marketplace.source.source === "directory") {
       return marketplace.source.path;
     } else {

@@ -54,6 +54,7 @@ We will follow an incremental delivery approach, focusing on the core marketplac
 - [X] T019 Ensure proper command prefixing for installed plugins in `packages/agent-sdk/src/managers/PluginManager.ts`
 - [X] T020 Run `pnpm run type-check` and `pnpm lint` across the workspace
 - [X] T021 Verify full end-to-end flow using the `quickstart.md` scenarios
+- [X] T022 Update `wave plugin list` to show all available plugins from registered marketplaces including uninstalled ones
 
 ## Dependencies
 

@@ -37,6 +37,19 @@ vi.mock("wave-agent-sdk", async () => {
           { name: "test-plugin", marketplace: "market", version: "1.0.0" },
         ],
       }),
+      listMarketplaces: vi.fn().mockResolvedValue([
+        {
+          name: "market",
+          source: { source: "directory", path: "/mock/market" },
+        },
+      ]),
+      getMarketplacePath: vi.fn().mockReturnValue("/mock/market"),
+      loadMarketplaceManifest: vi.fn().mockResolvedValue({
+        name: "market",
+        plugins: [
+          { name: "test-plugin", source: "./test-plugin", description: "test" },
+        ],
+      }),
     })),
   };
 });

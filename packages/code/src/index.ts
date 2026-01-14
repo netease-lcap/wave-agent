@@ -14,45 +14,54 @@ export async function main() {
       alias: "r",
       description: "Restore session by ID",
       type: "string",
+      global: false,
     })
     .option("continue", {
       alias: "c",
       description: "Continue from last session",
       type: "boolean",
+      global: false,
     })
     .option("print", {
       alias: "p",
       description: "Print response without interactive mode",
       type: "string",
+      global: false,
     })
     .option("show-stats", {
       description: "Show timing and usage statistics in print mode",
       type: "boolean",
+      global: false,
     })
     .option("list-sessions", {
       description: "List all available sessions",
       type: "boolean",
+      global: false,
     })
     .option("dangerously-skip-permissions", {
       description: "Skip all permission checks (dangerous)",
       type: "boolean",
       default: false,
+      global: false,
     })
     .option("plugin-dir", {
       description: "Load a plugin from a specific directory",
       type: "array",
       string: true,
+      global: false,
     })
     .command(
       "plugin",
       "Manage plugins and marketplaces",
       (yargs) => {
         return yargs
+          .help()
           .command(
             "marketplace",
             "Manage plugin marketplaces",
             (yargs) => {
               return yargs
+                .help()
                 .command(
                   "add <input>",
                   "Add a plugin marketplace (local path or owner/repo)",
@@ -96,7 +105,8 @@ export async function main() {
                     );
                     await listMarketplacesCommand();
                   },
-                );
+                )
+                .demandCommand(1, "Please specify a marketplace subcommand");
             },
             () => {},
           )
@@ -129,12 +139,17 @@ export async function main() {
               );
             },
           )
-          .command("list", "List installed plugins", {}, async () => {
-            const { listPluginsCommand } = await import(
-              "./commands/plugin/list.js"
-            );
-            await listPluginsCommand();
-          })
+          .command(
+            "list",
+            "List all available plugins from marketplaces",
+            {},
+            async () => {
+              const { listPluginsCommand } = await import(
+                "./commands/plugin/list.js"
+              );
+              await listPluginsCommand();
+            },
+          )
           .command(
             "enable <plugin>",
             "Enable a plugin in a specific scope",
@@ -192,7 +207,8 @@ export async function main() {
                 },
               );
             },
-          );
+          )
+          .demandCommand(1, "Please specify a plugin subcommand");
       },
       () => {},
     )
@@ -208,6 +224,8 @@ export async function main() {
     )
     .example("$0 --list-sessions", "List all available sessions")
     .help("h")
+    .recommendCommands()
+    .strict()
     .parseAsync();
 
   // Handle list sessions command
