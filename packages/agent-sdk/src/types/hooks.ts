@@ -5,6 +5,13 @@
  * enabling automated actions at specific workflow points.
  */
 
+export type {
+  WaveConfiguration,
+  HookConfiguration,
+  PartialHookConfiguration,
+  HookConfigurationRecord,
+} from "./configuration.js";
+
 // Hook event types - trigger points in the AI workflow
 export type HookEvent =
   | "PreToolUse"
@@ -25,37 +32,6 @@ export interface HookEventConfig {
   matcher?: string; // Required for PreToolUse/PostToolUse, omitted for others
   hooks: HookCommand[];
 }
-
-// Root configuration structure for all Wave Agent settings including hooks and environment variables
-export interface WaveConfiguration {
-  hooks?: Partial<Record<HookEvent, HookEventConfig[]>>;
-  env?: Record<string, string>; // Environment variables key-value pairs
-  /** New field for persistent permissions */
-  permissions?: {
-    allow?: string[];
-    defaultMode?: "default" | "bypassPermissions" | "acceptEdits"; // Default permission mode for restricted tools
-    /**
-     * List of directories that are considered part of the Safe Zone.
-     * File operations within these directories can be auto-accepted.
-     */
-    additionalDirectories?: string[];
-  };
-  /** New field for scoped plugin management */
-  enabledPlugins?: Record<string, boolean>;
-}
-
-// Legacy alias for backward compatibility - will be deprecated
-export interface HookConfiguration extends WaveConfiguration {
-  hooks: Partial<Record<HookEvent, HookEventConfig[]>>;
-}
-
-// Partial hook configuration for loading/merging scenarios
-export type PartialHookConfiguration = Partial<
-  Record<HookEvent, HookEventConfig[]>
->;
-
-// Direct hook configuration record (for test convenience)
-export type HookConfigurationRecord = Record<HookEvent, HookEventConfig[]>;
 
 // Context passed to hook during execution
 export interface HookExecutionContext {

@@ -3,7 +3,7 @@ import * as os from "os";
 import { existsSync, readFileSync, promises as fs } from "fs";
 import * as path from "path";
 import { ConfigurationService } from "../../src/services/configurationService.js";
-import { WaveConfiguration } from "../../src/types/hooks.js";
+import { WaveConfiguration } from "../../src/types/configuration.js";
 
 vi.mock("os", async () => {
   const actual = await vi.importActual("os");

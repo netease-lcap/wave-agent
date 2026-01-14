@@ -33,7 +33,7 @@ import {
   DEFAULT_WAVE_MAX_OUTPUT_TOKENS,
   DEFAULT_WAVE_MAX_INPUT_TOKENS,
 } from "../../src/utils/constants.js";
-import type { WaveConfiguration } from "../../src/types/hooks.js";
+import type { WaveConfiguration } from "../../src/types/configuration.js";
 
 const mockExistsSync = vi.mocked(existsSync);
 const mockReadFileSync = vi.mocked(readFileSync);

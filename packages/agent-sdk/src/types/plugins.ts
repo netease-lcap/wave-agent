@@ -2,7 +2,7 @@ import { CustomSlashCommand } from "./commands.js";
 import { Skill } from "./skills.js";
 import { LspConfig } from "./lsp.js";
 import { McpConfig } from "./mcp.js";
-import { PartialHookConfiguration } from "./hooks.js";
+import { PartialHookConfiguration } from "./configuration.js";
 
 /**
  * Plugin manifest structure (.wave-plugin/plugin.json)

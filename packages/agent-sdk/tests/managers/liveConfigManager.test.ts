@@ -13,7 +13,7 @@ import { ConfigurationService } from "../../src/services/configurationService.js
 import { FileWatcherService } from "../../src/services/fileWatcher.js";
 import * as configPaths from "../../src/utils/configPaths.js";
 import { ensureGlobalGitIgnore } from "../../src/utils/fileUtils.js";
-import type { WaveConfiguration } from "../../src/types/hooks.js";
+import type { WaveConfiguration } from "../../src/types/configuration.js";
 import type { ConfigurationLoadResult } from "../../src/types/configuration.js";
 import { existsSync } from "fs";
 

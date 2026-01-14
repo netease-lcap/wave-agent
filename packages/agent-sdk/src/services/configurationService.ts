@@ -7,12 +7,12 @@
 
 import { readFileSync, existsSync, promises as fs } from "fs";
 import * as path from "path";
-import type { WaveConfiguration } from "../types/hooks.js";
 import { isValidHookEvent } from "../types/hooks.js";
 import type {
   ConfigurationLoadResult,
   ValidationResult,
   ConfigurationPaths,
+  WaveConfiguration,
 } from "../types/configuration.js";
 import {
   getAllConfigPaths,
