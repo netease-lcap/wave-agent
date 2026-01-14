@@ -47,6 +47,8 @@ describe("MarketplaceService", () => {
   };
 
   beforeEach(async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
     userHome = "/mock/home";
     vi.mocked(os.homedir).mockReturnValue(userHome);
     vi.mocked(fsPromises.mkdtemp).mockResolvedValue(userHome);
