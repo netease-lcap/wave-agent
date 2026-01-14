@@ -216,20 +216,6 @@ export class ConfigurationService {
       result.warnings.push(...envValidation.warnings);
     }
 
-    // Validate defaultMode if present
-    if (config.defaultMode !== undefined) {
-      if (
-        config.defaultMode !== "default" &&
-        config.defaultMode !== "bypassPermissions" &&
-        config.defaultMode !== "acceptEdits"
-      ) {
-        result.isValid = false;
-        result.errors.push(
-          `Invalid defaultMode: "${config.defaultMode}". Must be "default", "bypassPermissions" or "acceptEdits"`,
-        );
-      }
-    }
-
     // Validate permissions if present
     if (config.permissions !== undefined) {
       if (
@@ -238,15 +224,32 @@ export class ConfigurationService {
       ) {
         result.isValid = false;
         result.errors.push("Permissions configuration must be an object");
-      } else if (config.permissions.allow !== undefined) {
-        if (!Array.isArray(config.permissions.allow)) {
-          result.isValid = false;
-          result.errors.push("Permissions allow must be an array of strings");
-        } else if (
-          !config.permissions.allow.every((rule) => typeof rule === "string")
-        ) {
-          result.isValid = false;
-          result.errors.push("All permission rules must be strings");
+      } else {
+        // Validate allow if present
+        if (config.permissions.allow !== undefined) {
+          if (!Array.isArray(config.permissions.allow)) {
+            result.isValid = false;
+            result.errors.push("Permissions allow must be an array of strings");
+          } else if (
+            !config.permissions.allow.every((rule) => typeof rule === "string")
+          ) {
+            result.isValid = false;
+            result.errors.push("All permission rules must be strings");
+          }
+        }
+
+        // Validate defaultMode if present
+        if (config.permissions.defaultMode !== undefined) {
+          if (
+            config.permissions.defaultMode !== "default" &&
+            config.permissions.defaultMode !== "bypassPermissions" &&
+            config.permissions.defaultMode !== "acceptEdits"
+          ) {
+            result.isValid = false;
+            result.errors.push(
+              `Invalid defaultMode: "${config.permissions.defaultMode}". Must be "default", "bypassPermissions" or "acceptEdits"`,
+            );
+          }
         }
       }
     }
@@ -751,7 +754,6 @@ export function loadWaveConfigFromFile(
     return {
       hooks: config.hooks || undefined,
       env: config.env || undefined,
-      defaultMode: config.defaultMode,
       permissions: config.permissions || undefined,
       enabledPlugins: config.enabledPlugins || undefined,
     };
@@ -855,21 +857,26 @@ export function loadMergedWaveConfig(
       mergedConfig.env = environmentContext.mergedVars;
     }
 
-    // Merge defaultMode (last one wins)
-    if (config.defaultMode !== undefined) {
-      mergedConfig.defaultMode = config.defaultMode;
-    }
-
     // Merge permissions
-    if (config.permissions?.allow) {
+    if (config.permissions) {
       if (!mergedConfig.permissions) mergedConfig.permissions = {};
-      if (!mergedConfig.permissions.allow) mergedConfig.permissions.allow = [];
-      mergedConfig.permissions.allow = [
-        ...new Set([
-          ...mergedConfig.permissions.allow,
-          ...config.permissions.allow,
-        ]),
-      ];
+
+      // Merge allow rules
+      if (config.permissions.allow) {
+        if (!mergedConfig.permissions.allow)
+          mergedConfig.permissions.allow = [];
+        mergedConfig.permissions.allow = [
+          ...new Set([
+            ...mergedConfig.permissions.allow,
+            ...config.permissions.allow,
+          ]),
+        ];
+      }
+
+      // Merge defaultMode (last one wins)
+      if (config.permissions.defaultMode !== undefined) {
+        mergedConfig.permissions.defaultMode = config.permissions.defaultMode;
+      }
     }
 
     // Merge enabledPlugins
@@ -888,7 +895,6 @@ export function loadMergedWaveConfig(
       mergedConfig.env && Object.keys(mergedConfig.env).length > 0
         ? mergedConfig.env
         : undefined,
-    defaultMode: mergedConfig.defaultMode,
     permissions:
       mergedConfig.permissions &&
       Object.keys(mergedConfig.permissions).length > 0

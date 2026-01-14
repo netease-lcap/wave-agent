@@ -643,15 +643,15 @@ export class Agent {
 
       // Update permission manager with configuration-based defaultMode
       const currentConfig = this.liveConfigManager.getCurrentConfiguration();
-      if (currentConfig?.defaultMode) {
+      if (currentConfig?.permissions?.defaultMode) {
         this.logger?.debug(
           "Applying configured defaultMode to PermissionManager",
           {
-            defaultMode: currentConfig.defaultMode,
+            defaultMode: currentConfig.permissions.defaultMode,
           },
         );
         this.permissionManager.updateConfiguredDefaultMode(
-          currentConfig.defaultMode,
+          currentConfig.permissions.defaultMode,
         );
       }
 

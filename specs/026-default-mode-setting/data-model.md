@@ -9,10 +9,10 @@
 **Attributes**:
 - `hooks`: Hook[] - Existing hook configurations
 - `env`: Record<string, string> - Existing environment variables  
-- `defaultMode`: "default" | "bypassPermissions" | undefined - New optional permission default
+- `permissions`: { defaultMode: "default" | "bypassPermissions" | "acceptEdits" | undefined, allow: string[] | undefined } - New optional permission default and allow rules
 
 **Validation Rules**:
-- `defaultMode` must be either "default", "bypassPermissions", or undefined
+- `permissions.defaultMode` must be either "default", "bypassPermissions", "acceptEdits", or undefined
 - Invalid values trigger validation warning and fallback to undefined
 - Missing field treated as undefined (no default permission override)
 
@@ -58,7 +58,9 @@ effectiveMode = cliOverride ? cliMode : (configuredMode ?? "default")
 {
   "hooks": [...],
   "env": {...},
-  "defaultMode": "bypassPermissions"
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  }
 }
 ```
 
@@ -86,7 +88,7 @@ effectiveMode = cliOverride ? cliMode : (configuredMode ?? "default")
 
 ## Relationships
 
-- **WaveConfiguration** contains **defaultMode** setting
+- **WaveConfiguration** contains **permissions.defaultMode** setting
 - **PermissionManager** consumes **PermissionContext**
 - **ConfigurationWatcher** validates and provides **WaveConfiguration**
 - **Agent** orchestrates configuration → permission manager flow

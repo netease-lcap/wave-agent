@@ -18,8 +18,8 @@ A developer who frequently needs to bypass permissions for their development wor
 **Acceptance Scenarios**:
 
 1. **Given** a project with no defaultMode setting, **When** user runs agent commands, **Then** default permission mode behavior applies (requires confirmation for restricted tools)
-2. **Given** settings.json contains `"defaultMode": "bypassPermissions"`, **When** user runs agent commands, **Then** permissions are bypassed without prompting
-3. **Given** settings.json contains `"defaultMode": "default"`, **When** user runs agent commands, **Then** user is prompted for confirmation on restricted tools
+2. **Given** settings.json contains `"permissions": {"defaultMode": "bypassPermissions"}`, **When** user runs agent commands, **Then** permissions are bypassed without prompting
+3. **Given** settings.json contains `"permissions": {"defaultMode": "default"}`, **When** user runs agent commands, **Then** user is prompted for confirmation on restricted tools
 4. **Given** settings.json contains an invalid defaultMode value, **When** agent starts, **Then** system falls back to default permission behavior and logs a warning
 
 ---
@@ -34,8 +34,8 @@ A developer with a default permission mode configured still wants the ability to
 
 **Acceptance Scenarios**:
 
-1. **Given** settings.json has `"defaultMode": "default"`, **When** user runs with `--dangerously-skip-permissions`, **Then** permissions are bypassed for that run only
-2. **Given** settings.json has `"defaultMode": "bypassPermissions"`, **When** user runs without any permission flags, **Then** permissions are bypassed as configured
+1. **Given** settings.json has `"permissions": {"defaultMode": "default"}`, **When** user runs with `--dangerously-skip-permissions`, **Then** permissions are bypassed for that run only
+2. **Given** settings.json has `"permissions": {"defaultMode": "bypassPermissions"}`, **When** user runs without any permission flags, **Then** permissions are bypassed as configured
 
 ---
 
@@ -49,7 +49,7 @@ A developer setting up the defaultMode configuration wants clear feedback when t
 
 **Acceptance Scenarios**:
 
-1. **Given** settings.json contains `"defaultMode": "invalid"`, **When** agent loads configuration, **Then** system logs a clear error message explaining valid values and falls back to default behavior
+1. **Given** settings.json contains `"permissions": {"defaultMode": "invalid"}`, **When** agent loads configuration, **Then** system logs a clear error message explaining valid values and falls back to default behavior
 2. **Given** settings.json has malformed JSON, **When** agent loads configuration, **Then** system handles the error gracefully and uses default permission behavior
 
 ---
@@ -65,7 +65,7 @@ A developer setting up the defaultMode configuration wants clear feedback when t
 
 ### Functional Requirements
 
-- **FR-001**: System MUST support a `defaultMode` setting in settings.json with values "default" or "bypassPermissions"
+- **FR-001**: System MUST support a `defaultMode` setting in `permissions` object in settings.json with values "default" or "bypassPermissions"
 - **FR-002**: System MUST apply the configured defaultMode as the default permission behavior when no command-line permission flags are provided
 - **FR-003**: Command-line permission flags MUST override any configured defaultMode setting for that specific execution
 - **FR-004**: System MUST validate defaultMode values and fall back to standard default behavior for invalid configurations
@@ -77,7 +77,7 @@ A developer setting up the defaultMode configuration wants clear feedback when t
 
 ### Key Entities
 
-- **DefaultMode Setting**: A configuration value in settings.json that specifies the default permission behavior, accepting values "default" or "bypassPermissions"
+- **DefaultMode Setting**: A configuration value in `permissions` object in settings.json that specifies the default permission behavior, accepting values "default" or "bypassPermissions"
 - **Settings Configuration**: The existing settings.json and settings.local.json configuration structure that will be extended to include the defaultMode property
 - **Permission Context**: The runtime context that determines whether to use configured defaults or command-line overrides for permission handling
 

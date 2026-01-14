@@ -105,6 +105,7 @@
 - [x] T026 [P] Run pnpm lint to ensure code quality standards
 - [x] T027 Run full test suite with pnpm test to validate all functionality
 - [x] T028 [P] Validate quickstart.md examples against implemented functionality
+- [x] T029 Move defaultMode to permissions.defaultMode in WaveConfiguration and update all references
 
 
 ---

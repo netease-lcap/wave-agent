@@ -350,9 +350,9 @@ export class LiveConfigManager {
 
       // Update permission manager if available
       if (this.permissionManager) {
-        if (this.currentConfiguration.defaultMode) {
+        if (this.currentConfiguration.permissions?.defaultMode) {
           this.permissionManager.updateConfiguredDefaultMode(
-            this.currentConfiguration.defaultMode,
+            this.currentConfiguration.permissions.defaultMode,
           );
         }
         if (this.currentConfiguration.permissions?.allow) {
@@ -502,16 +502,30 @@ export class LiveConfigManager {
       return { valid: false, errors: ["Configuration must be an object"] };
     }
 
-    // Validate defaultMode if present
-    if (config.defaultMode !== undefined) {
-      if (
-        config.defaultMode !== "default" &&
-        config.defaultMode !== "bypassPermissions" &&
-        config.defaultMode !== "acceptEdits"
-      ) {
-        errors.push(
-          `Invalid defaultMode: "${config.defaultMode}". Must be "default", "bypassPermissions" or "acceptEdits"`,
-        );
+    // Validate permissions if present
+    if (config.permissions) {
+      if (typeof config.permissions !== "object") {
+        errors.push("permissions property must be an object");
+      } else {
+        // Validate defaultMode if present
+        if (config.permissions.defaultMode !== undefined) {
+          if (
+            config.permissions.defaultMode !== "default" &&
+            config.permissions.defaultMode !== "bypassPermissions" &&
+            config.permissions.defaultMode !== "acceptEdits"
+          ) {
+            errors.push(
+              `Invalid defaultMode: "${config.permissions.defaultMode}". Must be "default", "bypassPermissions" or "acceptEdits"`,
+            );
+          }
+        }
+
+        // Validate allow if present
+        if (config.permissions.allow) {
+          if (!Array.isArray(config.permissions.allow)) {
+            errors.push("permissions.allow must be an array");
+          }
+        }
       }
     }
 
