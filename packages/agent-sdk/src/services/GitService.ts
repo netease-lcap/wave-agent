@@ -5,9 +5,26 @@ const execAsync = promisify(exec);
 
 export class GitService {
   /**
+   * Checks if git is installed and available in the system path
+   */
+  async isGitAvailable(): Promise<boolean> {
+    try {
+      await execAsync("git --version");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Clones a GitHub repository to a local path
    */
   async clone(repo: string, targetPath: string): Promise<void> {
+    if (!(await this.isGitAvailable())) {
+      throw new Error(
+        "Git is not installed or not found in PATH. Please install Git to use GitHub marketplaces.",
+      );
+    }
     const url = `https://github.com/${repo}.git`;
     try {
       await execAsync(`LC_ALL=C git clone --depth 1 ${url} "${targetPath}"`);
@@ -20,6 +37,11 @@ export class GitService {
    * Pulls the latest changes in a local repository
    */
   async pull(targetPath: string): Promise<void> {
+    if (!(await this.isGitAvailable())) {
+      throw new Error(
+        "Git is not installed or not found in PATH. Please install Git to use GitHub marketplaces.",
+      );
+    }
     try {
       await execAsync(`LC_ALL=C git -C "${targetPath}" pull`);
     } catch (error) {

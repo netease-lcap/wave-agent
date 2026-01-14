@@ -16,7 +16,7 @@ The goal is to extend the Wave Agent's plugin marketplace system to support GitH
 **Target Platform**: Linux/macOS/Windows (Node.js environment)
 **Project Type**: CLI / Monorepo
 **Performance Goals**: Marketplace listing should be near-instant (using cache); updates and installs should be limited by network/git speed.
-**Constraints**: Must handle GitHub rate limits, network failures, and invalid repository structures.
+**Constraints**: Must handle GitHub rate limits, network failures, and invalid repository structures. Must handle environments where `git` is not installed by providing clear feedback and skipping remote operations.
 **Scale/Scope**: Support for multiple concurrent marketplaces (local and remote).
 
 ## Constitution Check
