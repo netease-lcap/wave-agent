@@ -20,6 +20,37 @@ describe("getSmartPrefix", () => {
       expect(getSmartPrefix("npm run dev")).toBe("npm run dev");
       expect(getSmartPrefix("pnpm run test:unit")).toBe("pnpm run test:unit");
     });
+
+    it("should handle pnpm -F/--filter", () => {
+      expect(getSmartPrefix("pnpm -F @wave-agent/agent-sdk test")).toBe(
+        "pnpm -F @wave-agent/agent-sdk test",
+      );
+      expect(getSmartPrefix("pnpm --filter agent-sdk build")).toBe(
+        "pnpm --filter agent-sdk build",
+      );
+      expect(getSmartPrefix("pnpm -F pkg1 -F pkg2 test")).toBe(
+        "pnpm -F pkg1 -F pkg2 test",
+      );
+    });
+
+    it("should handle npm --prefix/-C", () => {
+      expect(getSmartPrefix("npm --prefix packages/agent-sdk test")).toBe(
+        "npm --prefix packages/agent-sdk test",
+      );
+      expect(getSmartPrefix("npm -C packages/agent-sdk install")).toBe(
+        "npm -C packages/agent-sdk install",
+      );
+    });
+
+    it("should handle yarn workspace", () => {
+      expect(getSmartPrefix("yarn workspace @wave-agent/agent-sdk test")).toBe(
+        "yarn workspace @wave-agent/agent-sdk test",
+      );
+    });
+
+    it("should handle deno task", () => {
+      expect(getSmartPrefix("deno task dev")).toBe("deno task dev");
+    });
   });
 
   describe("Python", () => {
@@ -34,8 +65,12 @@ describe("getSmartPrefix", () => {
       );
     });
 
-    it("should handle poetry run", () => {
-      expect(getSmartPrefix("poetry run python main.py")).toBe("poetry run");
+    it("should handle python -m <module>", () => {
+      expect(getSmartPrefix("python -m pytest")).toBe("python -m pytest");
+      expect(getSmartPrefix("python -m venv .venv")).toBe("python -m venv");
+      expect(getSmartPrefix("python3 -m http.server 8000")).toBe(
+        "python3 -m http.server",
+      );
     });
 
     it("should handle conda install", () => {
@@ -68,14 +103,13 @@ describe("getSmartPrefix", () => {
   });
 
   describe("Version Control (git)", () => {
-    it("should extract prefix for common git commands", () => {
-      expect(getSmartPrefix("git commit -m 'feat: add something'")).toBe(
-        "git commit",
+    it("should handle git -C <path> <subcommand>", () => {
+      expect(getSmartPrefix("git -C /path/to/repo status")).toBe(
+        "git -C /path/to/repo status",
       );
-      expect(getSmartPrefix("git push origin main")).toBe("git push");
-      expect(getSmartPrefix("git checkout -b feature/branch")).toBe(
-        "git checkout",
-      );
+      expect(
+        getSmartPrefix("git -C ./repo commit -m 'feat: add something'"),
+      ).toBe("git -C ./repo commit");
     });
   });
 
@@ -115,6 +149,13 @@ describe("getSmartPrefix", () => {
     it("should return null for unknown commands (no smart prefix)", () => {
       expect(getSmartPrefix("ls -la")).toBeNull();
       expect(getSmartPrefix("mkdir new_dir")).toBeNull();
+    });
+
+    it("should return null for incomplete or unsafe git/python commands", () => {
+      expect(getSmartPrefix("git -C /path/to/repo")).toBe(null);
+      expect(getSmartPrefix("git unknown-cmd")).toBe(null);
+      expect(getSmartPrefix("python -m")).toBe(null);
+      expect(getSmartPrefix("python -c 'print(1)'")).toBe(null);
     });
   });
 });
