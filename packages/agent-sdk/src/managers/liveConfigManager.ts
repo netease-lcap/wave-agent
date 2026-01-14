@@ -19,15 +19,15 @@ import {
   getProjectConfigPaths,
   getUserConfigPaths,
 } from "@/utils/configPaths.js";
-import type {
-  WaveConfiguration,
-  HookValidationResult,
-} from "../types/hooks.js";
+import type { HookValidationResult } from "../types/hooks.js";
 import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ensureGlobalGitIgnore } from "../utils/fileUtils.js";
 
-import type { ConfigurationLoadResult } from "../types/configuration.js";
+import type {
+  ConfigurationLoadResult,
+  WaveConfiguration,
+} from "../types/configuration.js";
 
 export interface LiveConfigManagerOptions {
   workdir: string;

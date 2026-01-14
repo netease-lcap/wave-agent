@@ -8,8 +8,6 @@
 import {
   type HookEvent,
   type HookEventConfig,
-  type WaveConfiguration,
-  type PartialHookConfiguration,
   type HookExecutionContext,
   type ExtendedHookExecutionContext,
   type HookExecutionResult,
@@ -18,6 +16,10 @@ import {
   isValidHookEvent,
   isValidHookEventConfig,
 } from "../types/hooks.js";
+import type {
+  WaveConfiguration,
+  PartialHookConfiguration,
+} from "../types/configuration.js";
 import { HookMatcher } from "../utils/hookMatcher.js";
 import { executeCommand, isCommandSafe } from "../services/hook.js";
 import type { Logger } from "../types/index.js";
