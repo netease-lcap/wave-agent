@@ -16,6 +16,7 @@ export interface PluginManagerOptions {
   lspManager?: LspManager;
   mcpManager?: McpManager;
   slashCommandManager?: SlashCommandManager;
+  enabledPlugins?: Record<string, boolean>;
 }
 
 export class PluginManager {
@@ -27,6 +28,7 @@ export class PluginManager {
   private lspManager?: LspManager;
   private mcpManager?: McpManager;
   private slashCommandManager?: SlashCommandManager;
+  private enabledPlugins: Record<string, boolean>;
 
   constructor(options: PluginManagerOptions) {
     this.workdir = options.workdir;
@@ -36,6 +38,14 @@ export class PluginManager {
     this.lspManager = options.lspManager;
     this.mcpManager = options.mcpManager;
     this.slashCommandManager = options.slashCommandManager;
+    this.enabledPlugins = options.enabledPlugins || {};
+  }
+
+  /**
+   * Update enabled plugins configuration
+   */
+  updateEnabledPlugins(enabledPlugins: Record<string, boolean>): void {
+    this.enabledPlugins = enabledPlugins;
   }
 
   /**
@@ -46,15 +56,13 @@ export class PluginManager {
       const marketplaceService = new MarketplaceService();
       const installedRegistry = await marketplaceService.getInstalledPlugins();
 
-      const configs: PluginConfig[] = installedRegistry.plugins.map((p) => ({
-        type: "local",
-        path: p.cachePath,
-      }));
-
-      // We use a modified version of the loading logic to avoid recursion
-      // and handle the fact that these are already absolute paths
-      for (const config of configs) {
-        await this.loadSinglePlugin(config.path);
+      for (const p of installedRegistry.plugins) {
+        const pluginId = `${p.name}@${p.marketplace}`;
+        if (this.enabledPlugins[pluginId] === false) {
+          this.logger?.info(`Plugin ${pluginId} is disabled via configuration`);
+          continue;
+        }
+        await this.loadSinglePlugin(p.cachePath);
       }
     } catch (error) {
       this.logger?.error("Failed to load installed plugins:", error);

@@ -35,6 +35,8 @@ export interface WaveConfiguration {
   permissions?: {
     allow?: string[];
   };
+  /** New field for scoped plugin management */
+  enabledPlugins?: Record<string, boolean>;
 }
 
 // Legacy alias for backward compatibility - will be deprecated
