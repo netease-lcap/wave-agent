@@ -317,7 +317,7 @@ describe("LiveConfigManager - Configuration Management", () => {
 
       await liveConfigManager.reload();
       expect(liveConfigManager.getCurrentConfiguration()).toEqual(validConfig);
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogger.debug).toHaveBeenCalledWith(
         expect.stringContaining(
           "Using previous valid configuration due to loading errors",
         ),
