@@ -15,9 +15,19 @@ export interface MarketplaceManifest {
   plugins: MarketplacePluginEntry[];
 }
 
+export type MarketplaceSource =
+  | {
+      source: "directory";
+      path: string;
+    }
+  | {
+      source: "github";
+      repo: string;
+    };
+
 export interface KnownMarketplace {
   name: string;
-  path: string;
+  source: MarketplaceSource;
 }
 
 export interface KnownMarketplacesRegistry {

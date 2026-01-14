@@ -54,11 +54,12 @@ export async function main() {
             (yargs) => {
               return yargs
                 .command(
-                  "add <path>",
-                  "Add a local plugin marketplace",
+                  "add <input>",
+                  "Add a plugin marketplace (local path or owner/repo)",
                   (yargs) => {
-                    return yargs.positional("path", {
-                      describe: "Path to the local marketplace directory",
+                    return yargs.positional("input", {
+                      describe:
+                        "Path to local marketplace or GitHub owner/repo",
                       type: "string",
                     });
                   },
@@ -66,7 +67,23 @@ export async function main() {
                     const { addMarketplaceCommand } = await import(
                       "./commands/plugin/marketplace.js"
                     );
-                    await addMarketplaceCommand(argv as { path: string });
+                    await addMarketplaceCommand(argv as { input: string });
+                  },
+                )
+                .command(
+                  "update [name]",
+                  "Update registered marketplace(s)",
+                  (yargs) => {
+                    return yargs.positional("name", {
+                      describe: "Name of the marketplace to update",
+                      type: "string",
+                    });
+                  },
+                  async (argv) => {
+                    const { updateMarketplaceCommand } = await import(
+                      "./commands/plugin/marketplace.js"
+                    );
+                    await updateMarketplaceCommand(argv as { name?: string });
                   },
                 )
                 .command(
