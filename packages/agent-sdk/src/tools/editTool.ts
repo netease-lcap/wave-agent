@@ -2,6 +2,10 @@ import { readFile, writeFile } from "fs/promises";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
+import {
+  findIndentationInsensitiveMatch,
+  escapeRegExp,
+} from "../utils/editUtils.js";
 
 /**
  * Format compact parameter display
@@ -110,8 +114,13 @@ export const editTool: ToolPlugin = {
         };
       }
 
-      // Check if old_string exists
-      if (!originalContent.includes(oldString)) {
+      // Check if old_string exists (with smart indentation matching)
+      const matchedOldString = findIndentationInsensitiveMatch(
+        originalContent,
+        oldString,
+      );
+
+      if (!matchedOldString) {
         return {
           success: false,
           content: "",
@@ -124,12 +133,12 @@ export const editTool: ToolPlugin = {
 
       if (replaceAll) {
         // Replace all matches
-        const regex = new RegExp(escapeRegExp(oldString), "g");
+        const regex = new RegExp(escapeRegExp(matchedOldString), "g");
         newContent = originalContent.replace(regex, newString);
         replacementCount = (originalContent.match(regex) || []).length;
       } else {
         // Replace only the first match, but first check if it's unique
-        const matches = originalContent.split(oldString).length - 1;
+        const matches = originalContent.split(matchedOldString).length - 1;
         if (matches > 1) {
           return {
             success: false,
@@ -138,7 +147,7 @@ export const editTool: ToolPlugin = {
           };
         }
 
-        newContent = originalContent.replace(oldString, newString);
+        newContent = originalContent.replace(matchedOldString, newString);
         replacementCount = 1;
       }
 
@@ -218,10 +227,3 @@ export const editTool: ToolPlugin = {
     }
   },
 };
-
-/**
- * Escape regular expression special characters
- */
-function escapeRegExp(string: string): string {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
