@@ -52,7 +52,7 @@ export async function listPluginsCommand() {
             : "disabled"
           : "not installed";
         const versionStr = p.version ? ` v${p.version}` : "";
-        console.log(`- ${p.name}${versionStr} (@${p.marketplace}) [${status}]`);
+        console.log(`- ${pluginId}${versionStr} [${status}]`);
       });
     }
     process.exit(0);
