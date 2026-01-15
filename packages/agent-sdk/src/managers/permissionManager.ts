@@ -57,8 +57,8 @@ export class PermissionManager {
     this.configuredDefaultMode = options.configuredDefaultMode;
     this.allowedRules = options.allowedRules || [];
     this.deniedRules = options.deniedRules || [];
-    this.additionalDirectories = options.additionalDirectories || [];
     this.workdir = options.workdir;
+    this.updateAdditionalDirectories(options.additionalDirectories || []);
   }
 
   /**
@@ -151,7 +151,12 @@ export class PermissionManager {
     this.logger?.debug("Updating additional directories", {
       count: directories.length,
     });
-    this.additionalDirectories = directories;
+    this.additionalDirectories = directories.map((dir) => {
+      if (this.workdir && !path.isAbsolute(dir)) {
+        return path.resolve(this.workdir, dir);
+      }
+      return path.resolve(dir);
+    });
   }
 
   /**
@@ -190,6 +195,12 @@ export class PermissionManager {
         return { isInside: true, resolvedPath: absolutePath };
       }
     }
+
+    this.logger?.debug("Path is outside Safe Zone", {
+      absolutePath,
+      workdir: effectiveWorkdir,
+      additionalDirectories: this.additionalDirectories,
+    });
 
     return { isInside: false, resolvedPath: absolutePath };
   }

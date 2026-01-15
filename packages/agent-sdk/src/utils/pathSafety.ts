@@ -29,7 +29,7 @@ export function isPathInside(target: string, parent: string): boolean {
     const absoluteParent = path.resolve(parent);
 
     const realTarget = getSafeRealPath(absoluteTarget);
-    const realParent = fs.realpathSync(absoluteParent);
+    const realParent = getSafeRealPath(absoluteParent);
 
     const relative = path.relative(realParent, realTarget);
 

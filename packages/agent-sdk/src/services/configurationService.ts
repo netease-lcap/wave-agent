@@ -901,6 +901,18 @@ export function loadMergedWaveConfig(
       if (config.permissions.defaultMode !== undefined) {
         mergedConfig.permissions.defaultMode = config.permissions.defaultMode;
       }
+
+      // Merge additionalDirectories
+      if (config.permissions.additionalDirectories) {
+        if (!mergedConfig.permissions.additionalDirectories)
+          mergedConfig.permissions.additionalDirectories = [];
+        mergedConfig.permissions.additionalDirectories = [
+          ...new Set([
+            ...mergedConfig.permissions.additionalDirectories,
+            ...config.permissions.additionalDirectories,
+          ]),
+        ];
+      }
     }
 
     // Merge enabledPlugins
