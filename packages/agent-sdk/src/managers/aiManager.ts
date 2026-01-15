@@ -20,6 +20,7 @@ import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
+import type { PermissionManager } from "./permissionManager.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -32,6 +33,7 @@ export interface AIManagerOptions {
   logger?: Logger;
   backgroundBashManager?: BackgroundBashManager;
   hookManager?: HookManager;
+  permissionManager?: PermissionManager;
   callbacks?: AIManagerCallbacks;
   workdir: string;
   systemPrompt?: string;
@@ -54,6 +56,7 @@ export class AIManager {
   private messageManager: MessageManager;
   private backgroundBashManager?: BackgroundBashManager;
   private hookManager?: HookManager;
+  private permissionManager?: PermissionManager;
   private workdir: string;
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
@@ -70,6 +73,7 @@ export class AIManager {
     this.toolManager = options.toolManager;
     this.backgroundBashManager = options.backgroundBashManager;
     this.hookManager = options.hookManager;
+    this.permissionManager = options.permissionManager;
     this.logger = options.logger;
     this.workdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
@@ -293,6 +297,9 @@ export class AIManager {
     // Only set loading state for the initial call
     if (recursionDepth === 0) {
       this.setIsLoading(true);
+      if (allowedTools && allowedTools.length > 0) {
+        this.permissionManager?.addTemporaryRules(allowedTools);
+      }
     }
 
     // Get recent message history
@@ -633,6 +640,9 @@ export class AIManager {
         await this.messageManager.saveSession();
         // Set loading to false first
         this.setIsLoading(false);
+
+        // Clear temporary rules
+        this.permissionManager?.clearTemporaryRules();
 
         // Clear abort controllers
         this.abortController = null;

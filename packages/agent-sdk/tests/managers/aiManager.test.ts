@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AIManager } from "../../src/managers/aiManager.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
+import type { PermissionManager } from "../../src/managers/permissionManager.js";
 import type {
   Logger,
   GatewayConfig,
@@ -210,6 +211,107 @@ describe("AIManager", () => {
 
       // Verify that saveSession was still called despite tool failure
       expect(mockMessageManager.saveSession).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("Temporary Permissions", () => {
+    it("should add temporary rules when allowedTools is provided", async () => {
+      const mockPermissionManager = {
+        addTemporaryRules: vi.fn(),
+        clearTemporaryRules: vi.fn(),
+      };
+
+      const aiManagerWithPermissions = new AIManager({
+        messageManager: mockMessageManager,
+        toolManager: mockToolManager,
+        logger: mockLogger,
+        permissionManager:
+          mockPermissionManager as unknown as PermissionManager,
+        workdir: "/test/workdir",
+        getGatewayConfig: () => mockGatewayConfig,
+        getModelConfig: () => mockModelConfig,
+        getMaxInputTokens: () => 96000,
+      });
+
+      const { callAgent } = await import("../../src/services/aiService.js");
+      vi.mocked(callAgent).mockResolvedValue({
+        content: "Test response",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [],
+      });
+
+      await aiManagerWithPermissions.sendAIMessage({
+        allowedTools: ["Edit", "Bash"],
+      });
+
+      expect(mockPermissionManager.addTemporaryRules).toHaveBeenCalledWith([
+        "Edit",
+        "Bash",
+      ]);
+      expect(mockPermissionManager.clearTemporaryRules).toHaveBeenCalled();
+    });
+
+    it("should only add temporary rules at recursionDepth 0", async () => {
+      const mockPermissionManager = {
+        addTemporaryRules: vi.fn(),
+        clearTemporaryRules: vi.fn(),
+      };
+
+      const aiManagerWithPermissions = new AIManager({
+        messageManager: mockMessageManager,
+        toolManager: mockToolManager,
+        logger: mockLogger,
+        permissionManager:
+          mockPermissionManager as unknown as PermissionManager,
+        workdir: "/test/workdir",
+        getGatewayConfig: () => mockGatewayConfig,
+        getModelConfig: () => mockModelConfig,
+        getMaxInputTokens: () => 96000,
+      });
+
+      const { callAgent } = await import("../../src/services/aiService.js");
+      vi.mocked(callAgent).mockResolvedValue({
+        content: "Test response",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [],
+      });
+
+      await aiManagerWithPermissions.sendAIMessage({
+        allowedTools: ["Edit"],
+        recursionDepth: 1,
+      });
+
+      expect(mockPermissionManager.addTemporaryRules).not.toHaveBeenCalled();
+      expect(mockPermissionManager.clearTemporaryRules).not.toHaveBeenCalled();
+    });
+
+    it("should clear temporary rules even if AI call fails", async () => {
+      const mockPermissionManager = {
+        addTemporaryRules: vi.fn(),
+        clearTemporaryRules: vi.fn(),
+      };
+
+      const aiManagerWithPermissions = new AIManager({
+        messageManager: mockMessageManager,
+        toolManager: mockToolManager,
+        logger: mockLogger,
+        permissionManager:
+          mockPermissionManager as unknown as PermissionManager,
+        workdir: "/test/workdir",
+        getGatewayConfig: () => mockGatewayConfig,
+        getModelConfig: () => mockModelConfig,
+        getMaxInputTokens: () => 96000,
+      });
+
+      const { callAgent } = await import("../../src/services/aiService.js");
+      vi.mocked(callAgent).mockRejectedValue(new Error("AI service error"));
+
+      await aiManagerWithPermissions.sendAIMessage({
+        allowedTools: ["Edit"],
+      });
+
+      expect(mockPermissionManager.addTemporaryRules).toHaveBeenCalled();
+      expect(mockPermissionManager.clearTemporaryRules).toHaveBeenCalled();
     });
   });
 });
