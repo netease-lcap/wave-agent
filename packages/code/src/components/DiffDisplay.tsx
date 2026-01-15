@@ -11,7 +11,7 @@ interface DiffDisplayProps {
 export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
   const { stdout } = useStdout();
   const maxHeight = useMemo(() => {
-    return Math.max(5, (stdout?.rows || 24) - 10);
+    return Math.max(5, (stdout?.rows || 24) - 20);
   }, [stdout?.rows]);
 
   const showDiff =
