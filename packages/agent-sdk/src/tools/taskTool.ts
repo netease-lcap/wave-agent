@@ -6,45 +6,50 @@ import type { SubagentManager } from "../managers/subagentManager.js";
  * Note: SubagentManager should be initialized before calling this function
  */
 export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
-  // Get available subagents from the initialized subagent manager
-  const availableSubagents = subagentManager.getConfigurations();
-  const subagentList = availableSubagents
-    .map((config) => `- ${config.name}: ${config.description}`)
-    .join("\n");
+  // Ensure SubagentManager is initialized
+  subagentManager.getConfigurations();
 
-  const description = `Delegate a task to a specialized subagent. Use this when you need specialized expertise or want to break down complex work into focused subtasks.
+  return {
+    name: "Task",
+    get config() {
+      // Get available subagents from the initialized subagent manager
+      const availableSubagents = subagentManager.getConfigurations();
+      const subagentList = availableSubagents
+        .map((config) => `- ${config.name}: ${config.description}`)
+        .join("\n");
+
+      const description = `Delegate a task to a specialized subagent. Use this when you need specialized expertise or want to break down complex work into focused subtasks.
 
 Available subagents:
 ${subagentList || "No subagents configured"}`;
 
-  return {
-    name: "Task",
-    config: {
-      type: "function",
-      function: {
-        name: "Task",
-        description,
-        parameters: {
-          type: "object",
-          properties: {
-            description: {
-              type: "string",
-              description:
-                "A clear, concise description of what needs to be accomplished",
+      return {
+        type: "function" as const,
+        function: {
+          name: "Task",
+          description,
+          parameters: {
+            type: "object",
+            properties: {
+              description: {
+                type: "string",
+                description:
+                  "A clear, concise description of what needs to be accomplished",
+              },
+              prompt: {
+                type: "string",
+                description:
+                  "The specific instructions or prompt to send to the subagent",
+              },
+              subagent_type: {
+                type: "string",
+                description: `The type or name of subagent to use. Available options: ${availableSubagents.map((c) => c.name).join(", ") || "none"}`,
+              },
             },
-            prompt: {
-              type: "string",
-              description:
-                "The specific instructions or prompt to send to the subagent",
-            },
-            subagent_type: {
-              type: "string",
-              description: `The type or name of subagent to use. Available options: ${availableSubagents.map((c) => c.name).join(", ") || "none"}`,
-            },
+            required: ["description", "prompt", "subagent_type"],
           },
-          required: ["description", "prompt", "subagent_type"],
         },
-      },
+      };
     },
 
     execute: async (
