@@ -17,6 +17,7 @@ export interface WaveConfiguration {
   /** New field for persistent permissions */
   permissions?: {
     allow?: string[];
+    deny?: string[];
     defaultMode?: "default" | "bypassPermissions" | "acceptEdits"; // Default permission mode for restricted tools
     /**
      * List of directories that are considered part of the Safe Zone.

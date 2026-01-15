@@ -183,6 +183,25 @@ export const readTool: ToolPlugin = {
       };
     }
 
+    // Check permissions
+    if (context.permissionManager) {
+      const permissionContext = context.permissionManager.createContext(
+        "Read",
+        context.permissionMode || "default",
+        context.canUseToolCallback,
+        args,
+      );
+      const decision =
+        await context.permissionManager.checkPermission(permissionContext);
+      if (decision.behavior === "deny") {
+        return {
+          success: false,
+          content: "",
+          error: decision.message || "Permission denied",
+        };
+      }
+    }
+
     // Check if this is an image file
     if (isImageFile(filePath)) {
       return processImageFile(filePath, context);

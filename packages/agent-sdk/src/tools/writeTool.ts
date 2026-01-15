@@ -99,38 +99,30 @@ export const writeTool: ToolPlugin = {
       }
 
       // Permission check after validation but before real operation
-      if (
-        context.permissionManager &&
-        context.permissionMode &&
-        context.permissionMode !== "bypassPermissions"
-      ) {
-        if (context.permissionManager.isRestrictedTool("Write")) {
-          try {
-            const permissionContext = context.permissionManager.createContext(
-              "Write",
-              context.permissionMode,
-              context.canUseToolCallback,
-              { file_path: filePath, content },
-            );
-            const permissionResult =
-              await context.permissionManager.checkPermission(
-                permissionContext,
-              );
+      if (context.permissionManager) {
+        try {
+          const permissionContext = context.permissionManager.createContext(
+            "Write",
+            context.permissionMode || "default",
+            context.canUseToolCallback,
+            { file_path: filePath, content },
+          );
+          const permissionResult =
+            await context.permissionManager.checkPermission(permissionContext);
 
-            if (permissionResult.behavior === "deny") {
-              return {
-                success: false,
-                content: "",
-                error: `Write operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
-              };
-            }
-          } catch {
+          if (permissionResult.behavior === "deny") {
             return {
               success: false,
               content: "",
-              error: "Permission check failed",
+              error: `Write operation denied, reason: ${permissionResult.message || "No reason provided"}`,
             };
           }
+        } catch {
+          return {
+            success: false,
+            content: "",
+            error: "Permission check failed",
+          };
         }
       }
 

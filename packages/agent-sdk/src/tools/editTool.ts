@@ -152,43 +152,35 @@ export const editTool: ToolPlugin = {
       }
 
       // Permission check after validation but before real operation
-      if (
-        context.permissionManager &&
-        context.permissionMode &&
-        context.permissionMode !== "bypassPermissions"
-      ) {
-        if (context.permissionManager.isRestrictedTool("Edit")) {
-          try {
-            const permissionContext = context.permissionManager.createContext(
-              "Edit",
-              context.permissionMode,
-              context.canUseToolCallback,
-              {
-                file_path: filePath,
-                old_string: oldString,
-                new_string: newString,
-                replace_all: replaceAll,
-              },
-            );
-            const permissionResult =
-              await context.permissionManager.checkPermission(
-                permissionContext,
-              );
+      if (context.permissionManager) {
+        try {
+          const permissionContext = context.permissionManager.createContext(
+            "Edit",
+            context.permissionMode || "default",
+            context.canUseToolCallback,
+            {
+              file_path: filePath,
+              old_string: oldString,
+              new_string: newString,
+              replace_all: replaceAll,
+            },
+          );
+          const permissionResult =
+            await context.permissionManager.checkPermission(permissionContext);
 
-            if (permissionResult.behavior === "deny") {
-              return {
-                success: false,
-                content: "",
-                error: `Edit operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
-              };
-            }
-          } catch {
+          if (permissionResult.behavior === "deny") {
             return {
               success: false,
               content: "",
-              error: "Permission check failed",
+              error: `Edit operation denied, reason: ${permissionResult.message || "No reason provided"}`,
             };
           }
+        } catch {
+          return {
+            success: false,
+            content: "",
+            error: "Permission check failed",
+          };
         }
       }
 

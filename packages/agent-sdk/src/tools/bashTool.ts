@@ -120,42 +120,36 @@ Usage notes:
     }
 
     // Permission check after validation but before real operation
-    if (
-      context.permissionManager &&
-      context.permissionMode &&
-      context.permissionMode !== "bypassPermissions"
-    ) {
-      if (context.permissionManager.isRestrictedTool("Bash")) {
-        try {
-          const permissionContext = context.permissionManager.createContext(
-            "Bash",
-            context.permissionMode,
-            context.canUseToolCallback,
-            {
-              command,
-              description,
-              run_in_background: runInBackground,
-              timeout,
-              workdir: context.workdir,
-            },
-          );
-          const permissionResult =
-            await context.permissionManager.checkPermission(permissionContext);
+    if (context.permissionManager) {
+      try {
+        const permissionContext = context.permissionManager.createContext(
+          "Bash",
+          context.permissionMode || "default",
+          context.canUseToolCallback,
+          {
+            command,
+            description,
+            run_in_background: runInBackground,
+            timeout,
+            workdir: context.workdir,
+          },
+        );
+        const permissionResult =
+          await context.permissionManager.checkPermission(permissionContext);
 
-          if (permissionResult.behavior === "deny") {
-            return {
-              success: false,
-              content: "",
-              error: `Bash operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
-            };
-          }
-        } catch {
+        if (permissionResult.behavior === "deny") {
           return {
             success: false,
             content: "",
-            error: "Permission check failed",
+            error: `Bash operation denied, reason: ${permissionResult.message || "No reason provided"}`,
           };
         }
+      } catch {
+        return {
+          success: false,
+          content: "",
+          error: "Permission check failed",
+        };
       }
     }
 

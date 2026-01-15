@@ -7,6 +7,7 @@
  */
 
 import path from "node:path";
+import { minimatch } from "minimatch";
 import type {
   PermissionDecision,
   ToolPermissionContext,
@@ -33,6 +34,8 @@ export interface PermissionManagerOptions {
   configuredDefaultMode?: PermissionMode;
   /** Allowed rules from settings */
   allowedRules?: string[];
+  /** Denied rules from settings */
+  deniedRules?: string[];
   /** Additional directories considered part of the Safe Zone */
   additionalDirectories?: string[];
   /** The main working directory */
@@ -43,6 +46,7 @@ export class PermissionManager {
   private logger?: Logger;
   private configuredDefaultMode?: PermissionMode;
   private allowedRules: string[] = [];
+  private deniedRules: string[] = [];
   private temporaryRules: string[] = [];
   private additionalDirectories: string[] = [];
   private workdir?: string;
@@ -52,6 +56,7 @@ export class PermissionManager {
     this.logger = options.logger;
     this.configuredDefaultMode = options.configuredDefaultMode;
     this.allowedRules = options.allowedRules || [];
+    this.deniedRules = options.deniedRules || [];
     this.additionalDirectories = options.additionalDirectories || [];
     this.workdir = options.workdir;
   }
@@ -108,6 +113,16 @@ export class PermissionManager {
       count: rules.length,
     });
     this.allowedRules = rules;
+  }
+
+  /**
+   * Update the denied rules (e.g., when configuration reloads)
+   */
+  updateDeniedRules(rules: string[]): void {
+    this.logger?.debug("Updating denied permission rules", {
+      count: rules.length,
+    });
+    this.deniedRules = rules;
   }
 
   /**
@@ -226,6 +241,20 @@ export class PermissionManager {
       permissionMode: context.permissionMode,
       hasCallback: !!context.canUseToolCallback,
     });
+
+    // 0. Check denied rules first - Deny always takes precedence
+    for (const rule of this.deniedRules) {
+      if (this.matchesRule(context, rule)) {
+        this.logger?.warn("Permission denied by rule", {
+          toolName: context.toolName,
+          rule,
+        });
+        return {
+          behavior: "deny",
+          message: `Access to tool '${context.toolName}' is explicitly denied by rule: ${rule}`,
+        };
+      }
+    }
 
     // 1. If bypassPermissions mode, always allow
     if (context.permissionMode === "bypassPermissions") {
@@ -425,6 +454,54 @@ export class PermissionManager {
   }
 
   /**
+   * Check if a tool call matches a specific permission rule
+   */
+  private matchesRule(context: ToolPermissionContext, rule: string): boolean {
+    // 1. Simple tool name match (e.g., "Bash", "Write")
+    if (rule === context.toolName) {
+      return true;
+    }
+
+    // 2. Tool with pattern match (e.g., "Bash(rm:*)", "Read(**/*.env)")
+    const match = rule.match(/^(\w+)\((.*)\)$/);
+    if (!match) {
+      return false;
+    }
+
+    const [, toolName, pattern] = match;
+    if (toolName !== context.toolName) {
+      return false;
+    }
+
+    // Handle Bash command rules
+    if (toolName === "Bash") {
+      const command = String(context.toolInput?.command || "");
+      const parts = splitBashCommand(command);
+      return parts.some((part) => {
+        const processedPart = stripRedirections(stripEnvVars(part));
+        if (pattern.endsWith(":*")) {
+          return processedPart.startsWith(pattern.slice(0, -2));
+        }
+        return processedPart === pattern;
+      });
+    }
+
+    // Handle path-based rules (e.g., "Read(**/*.env)")
+    const pathTools = ["Read", "Write", "Edit", "MultiEdit", "Delete", "LS"];
+    if (pathTools.includes(toolName)) {
+      const targetPath = (context.toolInput?.file_path ||
+        context.toolInput?.target_file ||
+        context.toolInput?.path) as string | undefined;
+
+      if (targetPath) {
+        return minimatch(targetPath, pattern, { dot: true });
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Check if a tool call is allowed by persistent rules
    */
   private isAllowedByRule(context: ToolPermissionContext): boolean {
@@ -480,21 +557,23 @@ export class PermissionManager {
           }
         }
 
-        const action = `${context.toolName}(${processedPart})`;
-        const allowedByRule = this.allowedRules.some((rule) => {
-          if (rule.endsWith(":*)")) {
-            const prefix = rule.slice(0, -3);
-            return action.startsWith(prefix);
-          }
-          return action === rule;
-        });
+        // Check if this specific part is allowed by any rule
+        // We create a temporary context with just this part of the command
+        const partContext = {
+          ...context,
+          toolInput: { ...context.toolInput, command: processedPart },
+        };
+        const allowedByRule = this.allowedRules.some((rule) =>
+          this.matchesRule(partContext, rule),
+        );
 
         if (allowedByRule) return true;
         return !this.isRestrictedTool(context.toolName);
       });
     }
-    // Add other tools if needed in the future
-    return false;
+
+    // For other tools, check if any rule matches
+    return this.allowedRules.some((rule) => this.matchesRule(context, rule));
   }
 
   /**

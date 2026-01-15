@@ -47,38 +47,31 @@ export const deleteFileTool: ToolPlugin = {
       const filePath = resolvePath(targetFile, context.workdir);
 
       // Permission check after validation but before real operation
-      if (
-        context.permissionManager &&
-        context.permissionMode &&
-        context.permissionMode !== "bypassPermissions"
-      ) {
-        if (context.permissionManager.isRestrictedTool("Delete")) {
-          try {
-            const permissionContext = context.permissionManager.createContext(
-              "Delete",
-              context.permissionMode,
-              context.canUseToolCallback,
-              { target_file: targetFile },
-            );
-            const permissionResult =
-              await context.permissionManager.checkPermission(
-                permissionContext,
-              );
+      // Permission check after validation but before real operation
+      if (context.permissionManager) {
+        try {
+          const permissionContext = context.permissionManager.createContext(
+            "Delete",
+            context.permissionMode || "default",
+            context.canUseToolCallback,
+            { target_file: targetFile },
+          );
+          const permissionResult =
+            await context.permissionManager.checkPermission(permissionContext);
 
-            if (permissionResult.behavior === "deny") {
-              return {
-                success: false,
-                content: "",
-                error: `Delete operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
-              };
-            }
-          } catch {
+          if (permissionResult.behavior === "deny") {
             return {
               success: false,
               content: "",
-              error: "Permission check failed",
+              error: `Delete operation denied, reason: ${permissionResult.message || "No reason provided"}`,
             };
           }
+        } catch {
+          return {
+            success: false,
+            content: "",
+            error: "Permission check failed",
+          };
         }
       }
 
