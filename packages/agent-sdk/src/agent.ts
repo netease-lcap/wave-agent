@@ -671,6 +671,19 @@ export class Agent {
           currentConfig.permissions.allow,
         );
       }
+
+      // Update permission manager with configuration-based additionalDirectories
+      if (currentConfig?.permissions?.additionalDirectories) {
+        this.logger?.debug(
+          "Applying configured additionalDirectories to PermissionManager",
+          {
+            count: currentConfig.permissions.additionalDirectories.length,
+          },
+        );
+        this.permissionManager.updateAdditionalDirectories(
+          currentConfig.permissions.additionalDirectories,
+        );
+      }
     } catch (error) {
       this.logger?.error(
         "Failed to initialize live configuration reload:",

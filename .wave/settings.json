@@ -1,0 +1,35 @@
+{
+  "env": {
+    "AIGW_MODEL": "gemini-3-flash"
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(pnpm:*)",
+      "Bash(.specify/scripts/bash/:*)",
+      "Bash(git:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(npx tsx:*)",
+      "Bash(gh auth status)",
+      "Bash(gh workflow list)",
+      "Bash(sleep:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(tail:*)",
+      "Bash(gh run watch:*)",
+      "Bash(grep:*)",
+      "Bash(npm:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(touch:*)",
+      "Bash(node packages/code/dist/index.js :*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr status)"
+    ],
+    "additionalDirectories": ["../wave-plugins-official"]
+  }
+}
