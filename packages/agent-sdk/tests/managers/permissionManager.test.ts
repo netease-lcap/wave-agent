@@ -47,6 +47,138 @@ describe("PermissionManager", () => {
   });
 
   describe("checkPermission method", () => {
+    describe("explicit denial (permissions.deny)", () => {
+      it("should deny tool if it is in deniedRules", async () => {
+        permissionManager.updateDeniedRules(["Bash"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain("explicitly denied by rule: Bash");
+      });
+
+      it("should deny unrestricted tool if it is in deniedRules", async () => {
+        permissionManager.updateDeniedRules(["Read"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Read",
+          permissionMode: "default",
+          toolInput: { file_path: "test.txt" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain("explicitly denied by rule: Read");
+      });
+
+      it("should deny Bash command if it matches a denied rule", async () => {
+        permissionManager.updateDeniedRules(["Bash(rm:*)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "rm -rf /" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain(
+          "explicitly denied by rule: Bash(rm:*)",
+        );
+      });
+
+      it("should deny path-based access if it matches a denied rule", async () => {
+        permissionManager.updateDeniedRules(["Read(**/*.env)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Read",
+          permissionMode: "default",
+          toolInput: { file_path: "src/.env" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain(
+          "explicitly denied by rule: Read(**/*.env)",
+        );
+      });
+
+      it("should allow tool if it does not match any denied rule", async () => {
+        permissionManager.updateDeniedRules(["Bash(rm:*)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        // Should fall through to default behavior (which is deny for Bash without callback)
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain("requires permission approval");
+      });
+    });
+
+    describe("precedence of deny over allow", () => {
+      it("should deny if tool is in both allow and deny rules", async () => {
+        permissionManager.updateAllowedRules(["Bash"]);
+        permissionManager.updateDeniedRules(["Bash"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "ls" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain("explicitly denied by rule: Bash");
+      });
+
+      it("should deny even in bypassPermissions mode", async () => {
+        permissionManager.updateDeniedRules(["Bash"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "bypassPermissions",
+          toolInput: { command: "ls" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain("explicitly denied by rule: Bash");
+      });
+
+      it("should deny even in acceptEdits mode", async () => {
+        permissionManager.updateDeniedRules(["Write(/etc/**)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Write",
+          permissionMode: "acceptEdits",
+          toolInput: { file_path: "/etc/passwd" },
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain(
+          "explicitly denied by rule: Write(/etc/**)",
+        );
+      });
+    });
+
     describe("bypassPermissions mode", () => {
       it("should allow all tools in bypassPermissions mode", async () => {
         const context: ToolPermissionContext = {

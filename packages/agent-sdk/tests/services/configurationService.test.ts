@@ -100,6 +100,36 @@ describe("ConfigurationService", () => {
       );
     });
 
+    it("should merge deny rules from all sources", async () => {
+      const userConfig = {
+        permissions: { deny: ["rule1"] },
+      };
+      const projectConfig = {
+        permissions: { deny: ["rule2"] },
+      };
+
+      mockExistsSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        return (
+          pathStr.includes(path.join(userHome, ".wave", "settings.json")) ||
+          pathStr.includes(path.join(tempDir, ".wave", "settings.json"))
+        );
+      });
+
+      mockReadFileSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr.includes(userHome)) return JSON.stringify(userConfig);
+        if (pathStr.includes(tempDir)) return JSON.stringify(projectConfig);
+        return "";
+      });
+
+      const result = await configService.loadMergedConfiguration(tempDir);
+
+      expect(result.success).toBe(true);
+      expect(result.configuration?.permissions?.deny).toContain("rule1");
+      expect(result.configuration?.permissions?.deny).toContain("rule2");
+    });
+
     it("should handle no configuration files found", async () => {
       mockExistsSync.mockReturnValue(false);
 

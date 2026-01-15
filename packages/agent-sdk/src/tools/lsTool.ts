@@ -62,6 +62,25 @@ export const lsTool: ToolPlugin = {
       };
     }
 
+    // Check permissions
+    if (context.permissionManager) {
+      const permissionContext = context.permissionManager.createContext(
+        "LS",
+        context.permissionMode || "default",
+        context.canUseToolCallback,
+        args,
+      );
+      const decision =
+        await context.permissionManager.checkPermission(permissionContext);
+      if (decision.behavior === "deny") {
+        return {
+          success: false,
+          content: "",
+          error: decision.message || "Permission denied",
+        };
+      }
+    }
+
     try {
       // Check if path exists and is a directory
       const stats = await fs.promises.stat(targetPath);

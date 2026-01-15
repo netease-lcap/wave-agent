@@ -234,7 +234,20 @@ export class ConfigurationService {
             !config.permissions.allow.every((rule) => typeof rule === "string")
           ) {
             result.isValid = false;
-            result.errors.push("All permission rules must be strings");
+            result.errors.push("All permission allow rules must be strings");
+          }
+        }
+
+        // Validate deny if present
+        if (config.permissions.deny !== undefined) {
+          if (!Array.isArray(config.permissions.deny)) {
+            result.isValid = false;
+            result.errors.push("Permissions deny must be an array of strings");
+          } else if (
+            !config.permissions.deny.every((rule) => typeof rule === "string")
+          ) {
+            result.isValid = false;
+            result.errors.push("All permission deny rules must be strings");
           }
         }
 
@@ -869,6 +882,17 @@ export function loadMergedWaveConfig(
           ...new Set([
             ...mergedConfig.permissions.allow,
             ...config.permissions.allow,
+          ]),
+        ];
+      }
+
+      // Merge deny rules
+      if (config.permissions.deny) {
+        if (!mergedConfig.permissions.deny) mergedConfig.permissions.deny = [];
+        mergedConfig.permissions.deny = [
+          ...new Set([
+            ...mergedConfig.permissions.deny,
+            ...config.permissions.deny,
           ]),
         ];
       }
