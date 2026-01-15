@@ -23,7 +23,7 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
 
   // Search bash history
   useEffect(() => {
-    const results = searchBashHistory(searchQuery, 10, workdir);
+    const results = searchBashHistory(searchQuery, 10);
     setCommands(results);
     setSelectedIndex(0);
     logger.debug("Bash history search:", {

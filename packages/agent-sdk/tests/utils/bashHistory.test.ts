@@ -1,33 +1,68 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import fs from "fs";
 import {
   searchBashHistory,
-  addBashCommandToHistory,
+  getRecentBashCommands,
 } from "../../src/utils/bashHistory.js";
 
-describe("searchBashHistory", () => {
-  it("should require workdir parameter", () => {
-    const testWorkdir = "/test/workdir";
+vi.mock("fs");
+vi.mock("../../src/utils/constants.js", () => ({
+  BASH_HISTORY_FILE: "/mock/path/bash-history.json",
+  DATA_DIRECTORY: "/mock/path",
+}));
 
-    // This should work fine
-    const results = searchBashHistory("test", 10, testWorkdir);
-    expect(Array.isArray(results)).toBe(true);
+// Mock logger to suppress output
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
+
+describe("bashHistory search and recent", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NODE_ENV = "development";
   });
 
-  it("should filter commands by workdir", () => {
-    const workdir1 = "/test/workdir1";
-    const workdir2 = "/test/workdir2";
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+  });
 
-    // Add some test commands to different workdirs
-    addBashCommandToHistory("echo workdir1", workdir1);
-    addBashCommandToHistory("echo workdir2", workdir2);
+  const mockHistory = {
+    version: 1,
+    commands: [
+      { command: "ls", timestamp: 1000, workdir: "/dir1" },
+      { command: "cd ..", timestamp: 2000, workdir: "/dir2" },
+      { command: "grep test", timestamp: 3000, workdir: "/dir1" },
+    ],
+  };
 
-    // Search should only return commands from the specified workdir
-    const results1 = searchBashHistory("echo", 10, workdir1);
-    const results2 = searchBashHistory("echo", 10, workdir2);
+  it("searchBashHistory should not filter by workdir", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockHistory));
 
-    // In test environment, history isn't saved to file, so we can't test the actual filtering
-    // But we can verify the function accepts the workdir parameter
-    expect(Array.isArray(results1)).toBe(true);
-    expect(Array.isArray(results2)).toBe(true);
+    // Search from /dir2 should still find commands from /dir1
+    const results = searchBashHistory("ls", 10);
+    expect(results).toHaveLength(1);
+    expect(results[0].command).toBe("ls");
+    expect(results[0].workdir).toBe("/dir1");
+  });
+
+  it("getRecentBashCommands should not filter by workdir", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockHistory));
+
+    // Get recent from /dir2 should return all commands
+    const results = getRecentBashCommands(10);
+    expect(results).toHaveLength(3);
+    // Should be sorted by timestamp descending
+    expect(results[0].command).toBe("grep test");
+    expect(results[1].command).toBe("cd ..");
+    expect(results[2].command).toBe("ls");
   });
 });

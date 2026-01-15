@@ -78,6 +78,29 @@ describe("deleteBashCommandFromHistory", () => {
     ).toBeUndefined();
   });
 
+  it("should delete all instances of a command if workdir is not provided", () => {
+    const mockHistory = {
+      version: 1,
+      commands: [
+        { command: "ls", timestamp: 1000, workdir: "/dir1" },
+        { command: "cd ..", timestamp: 2000, workdir: "/dir2" },
+        { command: "ls", timestamp: 3000, workdir: "/dir3" },
+      ],
+    };
+
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockHistory));
+
+    deleteBashCommandFromHistory("ls");
+
+    expect(fs.writeFileSync).toHaveBeenCalled();
+    const [, data] = vi.mocked(fs.writeFileSync).mock.calls[0];
+    const savedHistory = JSON.parse(data as string) as BashHistory;
+
+    expect(savedHistory.commands).toHaveLength(1);
+    expect(savedHistory.commands[0].command).toBe("cd ..");
+  });
+
   it("should not save if command is not found", () => {
     const workdir = "/test/workdir";
     const mockHistory = {
