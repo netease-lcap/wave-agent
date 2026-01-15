@@ -67,6 +67,14 @@ packages/agent-sdk/
 
 **Structure Decision**: Monorepo package structure (agent-sdk).
 
+## Phase 8: Dynamic Tool Definitions
+
+Goal: Ensure that tools like `Skill` and `Task` dynamically reflect the current set of available components (skills, subagents) even if they are added after the tool is initialized.
+
+- T029 [P] Modify `Skill` tool to use a getter for its `config` property to dynamically reflect available skills.
+- T030 [P] Modify `Task` tool to use a getter for its `config` property to dynamically reflect available subagents.
+- T031 [P] Add unit tests to verify dynamic tool definitions.
+
 ## Complexity Tracking
 
 *Fill ONLY if Constitution Check has violations that must be justified*

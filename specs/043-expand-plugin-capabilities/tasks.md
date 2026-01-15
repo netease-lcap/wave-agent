@@ -56,6 +56,13 @@ Goal: Final verification, documentation, and cleanup.
 - [X] T027 [P] Run `pnpm test`, `pnpm run type-check`, and `pnpm lint` across the workspace
 - [X] T028 [P] Ensure all "Claude" references in new code/logs are replaced with "Agent"
 
+## Phase 8: Dynamic Tool Definitions
+Goal: Ensure that tools like `Skill` and `Task` dynamically reflect the current set of available components (skills, subagents) even if they are added after the tool is initialized.
+
+- [X] T029 [P] Modify `Skill` tool to use a getter for its `config` property to dynamically reflect available skills.
+- [X] T030 [P] Modify `Task` tool to use a getter for its `config` property to dynamically reflect available subagents.
+- [X] T031 [P] Add unit tests to verify dynamic tool definitions.
+
 ## Dependencies
 - Phase 2 must be completed before Phase 3, 4, 5, and 6.
 - Phase 3, 4, 5, and 6 can be implemented in parallel after Phase 2 is complete.

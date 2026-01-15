@@ -41,6 +41,18 @@ The `PluginManifest` interface in `packages/agent-sdk/src/types/plugins.ts` will
 - **Separation of Concerns**: Managers remain responsible for the runtime behavior of components, while the plugin system handles their discovery and registration.
 - **Validation**: Centralized validation in `PluginLoader` ensures that plugins follow the required directory structure.
 
+## Decision: Dynamic Tool Definitions
+
+### Summary
+Tools that depend on a dynamic list of components (like `Skill` and `Task` tools) will use getters for their `config` property.
+
+### Rationale
+When plugins are loaded after the initial tool registration, static tool definitions become stale. By using a getter for the `config` property, the tool definition (including descriptions and parameter enums) is dynamically generated every time it is requested by the AI, ensuring it always reflects the current state of the system (including components added by plugins).
+
+### Alternatives Considered
+- **Re-initializing tools**: Re-running the tool initialization logic after plugins are loaded. Rejected because it's more complex to orchestrate and doesn't handle live configuration changes as cleanly as getters.
+- **Event-driven updates**: Having tools listen for changes in their respective managers. Rejected as over-engineered for this specific use case.
+
 ### Alternatives Considered
 - **Manifest-based registration**: Requiring all components to be explicitly listed in `plugin.json`. Rejected because file-system discovery is more developer-friendly and consistent with how `commands/` and `skills/` already work in the core system.
 - **Dynamic loading on demand**: Loading components only when needed. Rejected because most components (LSP, MCP, Hooks) need to be registered at startup to function correctly.

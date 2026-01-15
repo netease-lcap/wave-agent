@@ -124,6 +124,7 @@ A developer wants to ensure their plugin is correctly structured to avoid common
 - **FR-008**: System MUST support a `commands/` directory at the plugin root for slash commands as Markdown files.
 - **FR-009**: System MUST enforce that only `plugin.json` is located inside the `.claude-plugin/` directory.
 - **FR-010**: System MUST load these components when the plugin is installed or Agent Code is restarted.
+- **FR-011**: System MUST ensure that tool definitions (e.g., `Skill`, `Task`) dynamically reflect components added by plugins without requiring a tool re-initialization.
 
 ### Key Entities *(include if feature involves data)*
 
