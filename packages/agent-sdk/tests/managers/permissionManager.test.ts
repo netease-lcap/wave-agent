@@ -274,6 +274,62 @@ describe("PermissionManager", () => {
       });
     });
 
+    describe("temporary rules (addTemporaryRules)", () => {
+      it("should allow a restricted tool if it is in temporary rules", async () => {
+        permissionManager.addTemporaryRules(["Edit"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Edit",
+          permissionMode: "default",
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result).toEqual({ behavior: "allow" });
+      });
+
+      it("should allow Bash if it is in temporary rules", async () => {
+        permissionManager.addTemporaryRules(["Bash"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "rm -rf /" }, // Even dangerous commands are allowed if tool is in temporary rules
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result).toEqual({ behavior: "allow" });
+      });
+
+      it("should not affect other tools not in the list", async () => {
+        permissionManager.addTemporaryRules(["Edit"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Delete",
+          permissionMode: "default",
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+      });
+
+      it("should clear temporary rules", async () => {
+        permissionManager.addTemporaryRules(["Edit"]);
+        permissionManager.clearTemporaryRules();
+
+        const context: ToolPermissionContext = {
+          toolName: "Edit",
+          permissionMode: "default",
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("deny");
+      });
+    });
+
     describe("default mode with unrestricted tools", () => {
       it("should allow unrestricted tools without callback", async () => {
         const unrestrictedTools = ["Read", "Grep", "LS", "Glob", "TodoWrite"];

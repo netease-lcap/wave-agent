@@ -23,13 +23,26 @@ function parseFrontmatter(content: string): {
   const [, frontmatterStr, bodyContent] = match;
 
   try {
-    // Simple YAML parser for our use case (only supports key: value pairs)
+    // Simple YAML parser for our use case (supports key: value and list items)
     const frontmatter: Record<string, unknown> = {};
     const lines = frontmatterStr.split("\n");
+    let currentKey: string | null = null;
 
     for (const line of lines) {
       const trimmedLine = line.trim();
       if (!trimmedLine || trimmedLine.startsWith("#")) continue;
+
+      // Check if it's a list item
+      if (trimmedLine.startsWith("-") && currentKey) {
+        const value = trimmedLine.slice(1).trim();
+        if (value) {
+          if (!Array.isArray(frontmatter[currentKey])) {
+            frontmatter[currentKey] = [];
+          }
+          (frontmatter[currentKey] as unknown[]).push(value);
+        }
+        continue;
+      }
 
       const colonIndex = trimmedLine.indexOf(":");
       if (colonIndex === -1) continue;
@@ -37,6 +50,7 @@ function parseFrontmatter(content: string): {
       const key = trimmedLine.slice(0, colonIndex).trim();
       const value = trimmedLine.slice(colonIndex + 1).trim();
 
+      currentKey = key;
       if (value) {
         frontmatter[key] = value;
       }
@@ -71,6 +85,15 @@ export function parseMarkdownFile(filePath: string): ParsedMarkdownFile {
         typeof frontmatter.description === "string"
       ) {
         config.description = frontmatter.description;
+      }
+
+      if (
+        frontmatter["allowed-tools"] &&
+        Array.isArray(frontmatter["allowed-tools"])
+      ) {
+        config.allowedTools = frontmatter["allowed-tools"].filter(
+          (item): item is string => typeof item === "string",
+        );
       }
     }
 

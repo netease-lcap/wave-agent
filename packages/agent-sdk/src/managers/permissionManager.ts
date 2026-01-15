@@ -43,6 +43,7 @@ export class PermissionManager {
   private logger?: Logger;
   private configuredDefaultMode?: PermissionMode;
   private allowedRules: string[] = [];
+  private temporaryRules: string[] = [];
   private additionalDirectories: string[] = [];
   private workdir?: string;
   private onConfiguredDefaultModeChange?: (mode: PermissionMode) => void;
@@ -107,6 +108,25 @@ export class PermissionManager {
       count: rules.length,
     });
     this.allowedRules = rules;
+  }
+
+  /**
+   * Add temporary rules for the current session
+   */
+  public addTemporaryRules(rules: string[]): void {
+    this.logger?.debug("Adding temporary permission rules", {
+      count: rules.length,
+      rules,
+    });
+    this.temporaryRules.push(...rules);
+  }
+
+  /**
+   * Clear all temporary rules
+   */
+  public clearTemporaryRules(): void {
+    this.logger?.debug("Clearing temporary permission rules");
+    this.temporaryRules = [];
   }
 
   /**
@@ -408,6 +428,11 @@ export class PermissionManager {
    * Check if a tool call is allowed by persistent rules
    */
   private isAllowedByRule(context: ToolPermissionContext): boolean {
+    // Check temporary rules first (simple tool name match)
+    if (this.temporaryRules.includes(context.toolName)) {
+      return true;
+    }
+
     if (context.toolName === "Bash" && context.toolInput?.command) {
       const command = String(context.toolInput.command);
       const parts = splitBashCommand(command);

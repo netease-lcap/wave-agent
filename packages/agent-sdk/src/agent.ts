@@ -350,6 +350,7 @@ export class Agent {
       logger: this.logger,
       backgroundBashManager: this.backgroundBashManager,
       hookManager: this.hookManager,
+      permissionManager: this.permissionManager,
       callbacks: {
         ...callbacks,
         onUsageAdded: (usage: Usage) => {
