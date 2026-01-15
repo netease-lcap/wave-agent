@@ -31,5 +31,8 @@
       "Bash(gh pr status)"
     ],
     "additionalDirectories": ["../wave-plugins-official"]
+  },
+  "enabledPlugins": {
+    "typescript-lsp@wave-plugins-official": true
   }
 }
