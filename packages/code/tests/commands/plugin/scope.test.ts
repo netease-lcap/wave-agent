@@ -138,7 +138,7 @@ describe("Plugin Scope Integration Tests", () => {
     await listPluginsCommand();
 
     expect(mockLog).toHaveBeenCalledWith(
-      expect.stringContaining("- test-plugin v1.0.0 (@market) [enabled]"),
+      expect.stringContaining("- test-plugin@market v1.0.0 [enabled]"),
     );
   });
 
@@ -157,7 +157,7 @@ describe("Plugin Scope Integration Tests", () => {
     await listPluginsCommand();
 
     expect(mockLog).toHaveBeenCalledWith(
-      expect.stringContaining("- test-plugin v1.0.0 (@market) [disabled]"),
+      expect.stringContaining("- test-plugin@market v1.0.0 [disabled]"),
     );
   });
 });
