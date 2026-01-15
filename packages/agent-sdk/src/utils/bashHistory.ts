@@ -137,18 +137,12 @@ export const addBashCommandToHistory = (
 export const searchBashHistory = (
   query: string,
   limit: number = 10,
-  workdir: string,
 ): BashHistoryEntry[] => {
   try {
     const history = loadBashHistory();
     const normalizedQuery = query.toLowerCase().trim();
 
-    let filteredCommands = history.commands;
-
-    // Working directory filter
-    filteredCommands = filteredCommands.filter(
-      (entry) => entry.workdir === workdir,
-    );
+    const filteredCommands = history.commands;
 
     if (!normalizedQuery) {
       // If no search query, return recent commands (deduplicated)
@@ -236,17 +230,13 @@ const deduplicateCommands = (
  * Get recently used bash commands
  */
 export const getRecentBashCommands = (
-  workdir: string,
   limit: number = 10,
 ): BashHistoryEntry[] => {
   try {
     const history = loadBashHistory();
-    const filtered = history.commands.filter(
-      (entry) => entry.workdir === workdir,
-    );
 
     // Return recent commands after deduplication
-    const deduped = deduplicateCommands(filtered);
+    const deduped = deduplicateCommands(history.commands);
     return deduped.slice(0, limit); // Latest first
   } catch (error) {
     logger.debug("Failed to get recent bash commands:", error);
@@ -259,15 +249,18 @@ export const getRecentBashCommands = (
  */
 export const deleteBashCommandFromHistory = (
   command: string,
-  workdir: string,
+  workdir?: string,
 ): void => {
   try {
     const history = loadBashHistory();
     const initialLength = history.commands.length;
 
-    history.commands = history.commands.filter(
-      (entry) => !(entry.command === command && entry.workdir === workdir),
-    );
+    history.commands = history.commands.filter((entry) => {
+      if (workdir) {
+        return !(entry.command === command && entry.workdir === workdir);
+      }
+      return entry.command !== command;
+    });
 
     if (history.commands.length !== initialLength) {
       saveBashHistory(history);
