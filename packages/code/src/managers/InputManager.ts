@@ -878,7 +878,7 @@ export class InputManager {
   }
 
   cyclePermissionMode(): void {
-    const modes: PermissionMode[] = ["default", "acceptEdits"];
+    const modes: PermissionMode[] = ["default", "acceptEdits", "plan"];
     const currentIndex = modes.indexOf(this.permissionMode);
     const nextIndex =
       currentIndex === -1 ? 0 : (currentIndex + 1) % modes.length;

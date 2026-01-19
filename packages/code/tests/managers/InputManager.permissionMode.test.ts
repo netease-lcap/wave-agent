@@ -50,7 +50,12 @@ describe("InputManager Permission Mode", () => {
       "acceptEdits",
     );
 
-    // Second Shift+Tab: acceptEdits -> default
+    // Second Shift+Tab: acceptEdits -> plan
+    await manager.handleInput("", shiftTabKey, []);
+    expect(manager.getPermissionMode()).toBe("plan");
+    expect(mockCallbacks.onPermissionModeChange).toHaveBeenCalledWith("plan");
+
+    // Third Shift+Tab: plan -> default
     await manager.handleInput("", shiftTabKey, []);
     expect(manager.getPermissionMode()).toBe("default");
     expect(mockCallbacks.onPermissionModeChange).toHaveBeenCalledWith(

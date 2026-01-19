@@ -19,6 +19,7 @@ import {
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
+import { PlanManager } from "./managers/planManager.js";
 import type {
   SlashCommand,
   CustomSlashCommand,
@@ -111,6 +112,7 @@ export class Agent {
   private mcpManager: McpManager; // Add MCP manager instance
   private lspManager: ILspManager; // Add LSP manager instance
   private permissionManager: PermissionManager; // Add permission manager instance
+  private planManager: PlanManager; // Add plan manager instance
   private subagentManager: SubagentManager; // Add subagent manager instance
   private slashCommandManager: SlashCommandManager; // Add slash command manager instance
   private pluginManager: PluginManager; // Add plugin manager instance
@@ -146,6 +148,7 @@ export class Agent {
       this.options.agentModel,
       this.options.fastModel,
       this.options.maxTokens,
+      this.getPermissionMode(),
     );
   }
 
@@ -242,6 +245,9 @@ export class Agent {
     this.permissionManager.setOnConfiguredDefaultModeChange((mode) => {
       this.options.callbacks?.onPermissionModeChange?.(mode);
     });
+
+    // Initialize plan manager
+    this.planManager = new PlanManager(this.logger);
 
     // Initialize configuration service and hooks manager
     this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
@@ -1163,7 +1169,23 @@ export class Agent {
    * @param mode - The new permission mode
    */
   public setPermissionMode(mode: PermissionMode): void {
+    this.logger?.debug("Setting permission mode", { mode });
     this.toolManager.setPermissionMode(mode);
+
+    if (mode === "plan") {
+      this.planManager
+        .getOrGeneratePlanFilePath()
+        .then(({ path }) => {
+          this.logger?.debug("Plan file path generated", { path });
+          this.permissionManager.setPlanFilePath(path);
+        })
+        .catch((error) => {
+          this.logger?.error("Failed to generate plan file path", error);
+        });
+    } else {
+      this.permissionManager.setPlanFilePath(undefined);
+    }
+
     this.options.callbacks?.onPermissionModeChange?.(mode);
   }
 

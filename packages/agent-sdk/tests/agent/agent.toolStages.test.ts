@@ -1,18 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
+import { createMockToolManager } from "../helpers/mockFactories.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
 
 // Mock tool registry to control tool execution
-let mockToolExecute: ReturnType<typeof vi.fn>;
+const { instance: mockToolManagerInstance, execute: mockToolExecute } =
+  createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn().mockImplementation(() => ({
-    execute: (mockToolExecute = vi.fn()),
-    list: vi.fn(() => []),
-    getToolsConfig: vi.fn(() => []),
-  })),
+  ToolManager: vi.fn().mockImplementation(() => mockToolManagerInstance),
 }));
 
 describe("Agent Tool Stage Tests", () => {

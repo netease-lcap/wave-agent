@@ -31,6 +31,7 @@ import {
   ModelConfig,
   ConfigurationError,
   CONFIG_ERRORS,
+  PermissionMode,
 } from "../types/index.js";
 import {
   DEFAULT_WAVE_MAX_INPUT_TOKENS,
@@ -425,6 +426,7 @@ export class ConfigurationService {
     agentModel?: string,
     fastModel?: string,
     maxTokens?: number,
+    permissionMode?: PermissionMode,
   ): ModelConfig {
     // Default values as per data-model.md
     const DEFAULT_AGENT_MODEL = "gemini-3-flash";
@@ -451,6 +453,7 @@ export class ConfigurationService {
       agentModel: resolvedAgentModel,
       fastModel: resolvedFastModel,
       maxTokens: resolvedMaxTokens,
+      permissionMode,
     };
   }
 

@@ -7,6 +7,7 @@ import { getMessagesToCompress } from "../utils/messageOperations.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
 import * as memory from "../services/memory.js";
+import * as fs from "node:fs/promises";
 import type {
   Logger,
   GatewayConfig,
@@ -318,6 +319,29 @@ export class AIManager {
 
       this.logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
+      // Get current permission mode and plan file path
+      const currentMode = this.permissionManager?.getCurrentEffectiveMode(
+        this.getModelConfig().permissionMode,
+      );
+      let effectiveSystemPrompt = this.systemPrompt;
+
+      if (currentMode === "plan") {
+        const planFilePath = this.permissionManager?.getPlanFilePath();
+        if (planFilePath) {
+          let planExists = false;
+          try {
+            await fs.access(planFilePath);
+            planExists = true;
+          } catch {
+            planExists = false;
+          }
+
+          const reminder = `\n\n## Plan File Info:\n${planExists ? `A plan file already exists at ${planFilePath}. You can read it and make incremental edits using the Edit tool if you need to.` : `No plan file exists yet. You should create your plan at ${planFilePath} using the Write tool if you need to.`}\nYou should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.`;
+
+          effectiveSystemPrompt = (effectiveSystemPrompt || "") + reminder;
+        }
+      }
+
       // Call AI service with streaming callbacks if enabled
       const callAgentOptions: CallAgentOptions = {
         gatewayConfig: this.getGatewayConfig(),
@@ -329,7 +353,7 @@ export class AIManager {
         workdir: this.workdir, // Pass working directory
         tools: this.getFilteredToolsConfig(allowedTools), // Pass filtered tool configuration
         model: model, // Use passed model
-        systemPrompt: this.systemPrompt, // Pass custom system prompt
+        systemPrompt: effectiveSystemPrompt, // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override
       };
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { HookManager } from "@/managers/hookManager.js";
+import { createMockToolManager } from "../../helpers/mockFactories.js";
 import type { MessageBlock } from "@/types/messaging.js";
 
 // Type guard helper function
@@ -15,13 +16,10 @@ function hasContent(
 vi.mock("@/services/aiService");
 
 // Get access to the mocked tool manager
-let mockToolExecute: ReturnType<typeof vi.fn>;
+const { instance: mockToolManagerInstance, execute: mockToolExecute } =
+  createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn().mockImplementation(() => ({
-    execute: (mockToolExecute = vi.fn()),
-    list: vi.fn(() => []),
-    getToolsConfig: vi.fn(() => []),
-  })),
+  ToolManager: vi.fn().mockImplementation(() => mockToolManagerInstance),
 }));
 
 describe("Hook Blocking Error Behavior (User Story 2)", () => {

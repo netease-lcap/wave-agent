@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
+import { createMockToolManager } from "../helpers/mockFactories.js";
 import type { Usage } from "@/types/index.js";
 import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "@/utils/constants.js";
 
@@ -8,12 +9,9 @@ import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "@/utils/constants.js";
 vi.mock("@/services/aiService");
 
 // Mock tool registry
+const { instance: mockToolManagerInstance } = createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn().mockImplementation(() => ({
-    execute: vi.fn(),
-    list: vi.fn(() => []),
-    getToolsConfig: vi.fn(() => []),
-  })),
+  ToolManager: vi.fn().mockImplementation(() => mockToolManagerInstance),
 }));
 
 describe("Agent Usage Tracking", () => {

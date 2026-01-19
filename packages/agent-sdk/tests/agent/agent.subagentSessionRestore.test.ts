@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "../../src/agent.js";
+import { createMockToolManager } from "../helpers/mockFactories.js";
 import type { SubagentInstance } from "../../src/managers/subagentManager.js";
 import { randomUUID } from "crypto";
 
@@ -8,11 +9,9 @@ vi.mock("@/services/aiService", () => ({
   createChatCompletion: vi.fn(),
 }));
 
+const { instance: mockToolManagerInstance } = createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn(() => ({
-    list: vi.fn(() => []),
-    initializeBuiltInTools: vi.fn(),
-  })),
+  ToolManager: vi.fn(() => mockToolManagerInstance),
 }));
 
 // Mock session service functions
