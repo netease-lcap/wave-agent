@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
+import { DEFAULT_SYSTEM_PROMPT } from "@/constants/prompts.js";
 
 // Mock the aiService module
 vi.mock("@/services/aiService");
@@ -88,10 +89,10 @@ describe("Agent - System Prompt", () => {
 
     await agent.sendMessage("Help me with development");
 
-    // Verify that callAgent was called without systemPrompt (should be undefined)
+    // Verify that callAgent was called with the default systemPrompt
     expect(mockCallAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemPrompt: undefined,
+        systemPrompt: DEFAULT_SYSTEM_PROMPT,
       }),
     );
   });
