@@ -22,6 +22,7 @@ import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
+import { DEFAULT_SYSTEM_PROMPT } from "../constants/prompts.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -323,7 +324,7 @@ export class AIManager {
       const currentMode = this.permissionManager?.getCurrentEffectiveMode(
         this.getModelConfig().permissionMode,
       );
-      let effectiveSystemPrompt = this.systemPrompt;
+      let effectiveSystemPrompt = this.systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
       if (currentMode === "plan") {
         const planFilePath = this.permissionManager?.getPlanFilePath();

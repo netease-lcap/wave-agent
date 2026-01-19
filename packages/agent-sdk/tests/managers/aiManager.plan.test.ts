@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mocked } from "vitest";
 import { AIManager } from "../../src/managers/aiManager.js";
 import fs from "node:fs/promises";
 import { callAgent } from "../../src/services/aiService.js";
+import { DEFAULT_SYSTEM_PROMPT } from "../../src/constants/prompts.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
@@ -52,12 +53,12 @@ describe("AIManager Plan Mode Prompt", () => {
     });
   });
 
-  it("should not add plan reminder in default mode", async () => {
+  it("should use default system prompt in default mode", async () => {
     await aiManager.sendAIMessage();
 
     expect(callAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemPrompt: undefined,
+        systemPrompt: DEFAULT_SYSTEM_PROMPT,
       }),
     );
   });
