@@ -5,6 +5,7 @@ import { editTool } from "../tools/editTool.js";
 import { multiEditTool } from "../tools/multiEditTool.js";
 import { writeTool } from "../tools/writeTool.js";
 import { exitPlanModeTool } from "../tools/exitPlanMode.js";
+import { askUserQuestionTool } from "../tools/askUserQuestion.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
@@ -106,6 +107,7 @@ class ToolManager {
       multiEditTool,
       writeTool,
       exitPlanModeTool,
+      askUserQuestionTool,
       globTool,
       grepTool,
       lsTool,

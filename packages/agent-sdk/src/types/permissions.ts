@@ -3,6 +3,12 @@
  * Dependencies: None
  */
 
+import {
+  AskUserQuestion,
+  AskUserQuestionInput,
+  AskUserQuestionOption,
+} from "./tools.js";
+
 /** Permission mode configuration */
 export type PermissionMode =
   | "default"
@@ -51,7 +57,10 @@ export const RESTRICTED_TOOLS = [
   "Bash",
   "Write",
   "ExitPlanMode",
+  "AskUserQuestion",
 ] as const;
 
 /** Type for restricted tool names */
 export type RestrictedTool = (typeof RESTRICTED_TOOLS)[number];
+
+export { AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption };

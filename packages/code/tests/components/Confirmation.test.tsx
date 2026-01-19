@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "ink-testing-library";
 import { Confirmation } from "../../src/components/Confirmation.js";
-import { waitForText } from "../helpers/waitHelpers.js";
+import { waitForText, waitFor } from "../helpers/waitHelpers.js";
 import type { PermissionDecision } from "wave-agent-sdk";
 
 describe("Confirmation", () => {
@@ -823,6 +823,153 @@ describe("Confirmation", () => {
       expect(frame).toContain("> 3."); // Should auto-select alternative
       expect(frame).toContain("x"); // Should contain the typed character
       expect(frame).toContain("  1. Yes"); // Allow should no longer be selected
+    });
+  });
+
+  describe("AskUserQuestion Tests", () => {
+    const mockQuestions = {
+      questions: [
+        {
+          question: "What is your favorite color?",
+          header: "Color",
+          options: [{ label: "Red" }, { label: "Blue" }],
+        },
+        {
+          question: "Select your skills",
+          header: "Skills",
+          multiSelect: true,
+          options: [{ label: "TypeScript" }, { label: "React" }],
+        },
+      ],
+    };
+
+    it("should render the first question correctly", async () => {
+      const { lastFrame } = render(
+        <Confirmation
+          toolName="AskUserQuestion"
+          toolInput={mockQuestions as unknown as Record<string, unknown>}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
+        />,
+      );
+
+      await waitForText(lastFrame, "COLOR");
+      const frame = lastFrame();
+      expect(frame).toContain("What is your favorite color?");
+      expect(frame).toContain("1. Red");
+      expect(frame).toContain("2. Blue");
+      expect(frame).toContain("3. Other");
+      expect(frame).toContain("Question 1 of 2");
+    });
+
+    it("should handle single-choice selection and move to next question", async () => {
+      const { stdin, lastFrame } = render(
+        <Confirmation
+          toolName="AskUserQuestion"
+          toolInput={mockQuestions as unknown as Record<string, unknown>}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
+        />,
+      );
+
+      await waitForText(lastFrame, "What is your favorite color?");
+
+      // Select "Blue" (Option 2)
+      stdin.write("2");
+      await waitForText(lastFrame, "2. Blue");
+
+      // Press Enter
+      stdin.write("\r");
+
+      // Should move to next question
+      await waitForText(lastFrame, "Select your skills");
+      const frame = lastFrame();
+      expect(frame).toContain("SKILLS");
+      expect(frame).toContain("Question 2 of 2");
+    });
+
+    it("should handle multi-select with Space key", async () => {
+      const { stdin, lastFrame } = render(
+        <Confirmation
+          toolName="AskUserQuestion"
+          toolInput={mockQuestions as unknown as Record<string, unknown>}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
+        />,
+      );
+
+      await waitForText(lastFrame, "What is your favorite color?");
+      stdin.write("1");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      stdin.write("\r");
+
+      await waitForText(lastFrame, "Select your skills");
+
+      // Toggle TypeScript (Option 1) using numeric key
+      stdin.write("1");
+      await waitForText(lastFrame, "[x] 1. TypeScript");
+
+      // Toggle React (Option 2) using Space key
+      // First navigate to it
+      stdin.write("\u001b[B"); // Down arrow
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      stdin.write(" ");
+      await waitForText(lastFrame, "[x] 2. React");
+
+      // Confirm
+      stdin.write("\r");
+
+      await waitFor(() => mockOnDecision.mock.calls.length > 0);
+      expect(mockOnDecision).toHaveBeenCalled();
+      const call = mockOnDecision.mock.calls[0][0];
+      expect(call.behavior).toBe("allow");
+      const message = JSON.parse(call.message);
+      expect(message["What is your favorite color?"]).toBe("Red");
+      expect(message["Select your skills"]).toContain("TypeScript");
+      expect(message["Select your skills"]).toContain("React");
+    });
+
+    it("should handle 'Other' option with text input", async () => {
+      const { stdin, lastFrame } = render(
+        <Confirmation
+          toolName="AskUserQuestion"
+          toolInput={mockQuestions as unknown as Record<string, unknown>}
+          onDecision={mockOnDecision}
+          onCancel={mockOnCancel}
+          onAbort={mockOnAbort}
+        />,
+      );
+
+      await waitForText(lastFrame, "What is your favorite color?");
+
+      // Select "Other" (Option 3) using arrow keys
+      stdin.write("\u001b[B"); // Down to Blue
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      stdin.write("\u001b[B"); // Down to Other
+      await waitForText(lastFrame, "[Type your answer...]");
+
+      // Type "Green"
+      stdin.write("Green");
+      await waitForText(lastFrame, "Green");
+
+      // Confirm
+      stdin.write("\r");
+
+      await waitForText(lastFrame, "Select your skills");
+      // (Just finish the second question to trigger onDecision)
+      stdin.write("1");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      stdin.write("\r");
+
+      await waitFor(() => mockOnDecision.mock.calls.length > 0);
+      expect(mockOnDecision).toHaveBeenCalled();
+      const call = mockOnDecision.mock.calls[0][0];
+      expect(call.behavior).toBe("allow");
+      const message = JSON.parse(call.message);
+      expect(message["What is your favorite color?"]).toBe("Green");
     });
   });
 });
