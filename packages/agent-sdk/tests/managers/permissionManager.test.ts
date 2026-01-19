@@ -1032,6 +1032,7 @@ describe("PermissionManager", () => {
         "Delete",
         "Bash",
         "Write",
+        "ExitPlanMode",
       ]);
     });
   });
