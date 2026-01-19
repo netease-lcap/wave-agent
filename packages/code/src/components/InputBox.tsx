@@ -231,8 +231,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
           </Box>
           <Box paddingX={1}>
             <Text color="gray">
-              Mode: <Text color="cyan">{permissionMode}</Text> (Shift+Tab to
-              cycle)
+              Mode:{" "}
+              <Text color={permissionMode === "plan" ? "yellow" : "cyan"}>
+                {permissionMode}
+              </Text>{" "}
+              (Shift+Tab to cycle)
             </Text>
           </Box>
         </Box>

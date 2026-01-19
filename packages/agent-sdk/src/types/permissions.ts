@@ -4,7 +4,11 @@
  */
 
 /** Permission mode configuration */
-export type PermissionMode = "default" | "bypassPermissions" | "acceptEdits";
+export type PermissionMode =
+  | "default"
+  | "bypassPermissions"
+  | "acceptEdits"
+  | "plan";
 
 /** Result of a permission check */
 export interface PermissionDecision {

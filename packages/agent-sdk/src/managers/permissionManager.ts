@@ -40,6 +40,8 @@ export interface PermissionManagerOptions {
   additionalDirectories?: string[];
   /** The main working directory */
   workdir?: string;
+  /** Path to the current plan file */
+  planFilePath?: string;
 }
 
 export class PermissionManager {
@@ -50,6 +52,7 @@ export class PermissionManager {
   private temporaryRules: string[] = [];
   private additionalDirectories: string[] = [];
   private workdir?: string;
+  private planFilePath?: string;
   private onConfiguredDefaultModeChange?: (mode: PermissionMode) => void;
 
   constructor(options: PermissionManagerOptions = {}) {
@@ -58,6 +61,7 @@ export class PermissionManager {
     this.allowedRules = options.allowedRules || [];
     this.deniedRules = options.deniedRules || [];
     this.workdir = options.workdir;
+    this.planFilePath = options.planFilePath;
     this.updateAdditionalDirectories(options.additionalDirectories || []);
   }
 
@@ -170,6 +174,21 @@ export class PermissionManager {
   }
 
   /**
+   * Set the current plan file path
+   */
+  public setPlanFilePath(path: string | undefined): void {
+    this.logger?.debug("Setting plan file path", { path });
+    this.planFilePath = path;
+  }
+
+  /**
+   * Get the current plan file path
+   */
+  public getPlanFilePath(): string | undefined {
+    return this.planFilePath;
+  }
+
+  /**
    * Check if a path is inside the Safe Zone (workdir + additionalDirectories)
    */
   private isInsideSafeZone(
@@ -209,7 +228,13 @@ export class PermissionManager {
    * Get the current effective permission mode for tool execution context
    */
   getCurrentEffectiveMode(cliPermissionMode?: PermissionMode): PermissionMode {
-    return this.resolveEffectivePermissionMode(cliPermissionMode);
+    const mode = this.resolveEffectivePermissionMode(cliPermissionMode);
+    this.logger?.debug("getCurrentEffectiveMode", {
+      cliPermissionMode,
+      configuredDefaultMode: this.configuredDefaultMode,
+      resolvedMode: mode,
+    });
+    return mode;
   }
 
   /**
@@ -312,6 +337,47 @@ export class PermissionManager {
           },
         );
         return { behavior: "allow" };
+      }
+    }
+
+    // 1.3 If plan mode, allow Read-only tools and Edit/Write for plan file
+    if (context.permissionMode === "plan") {
+      if (context.toolName === "Bash") {
+        return {
+          behavior: "deny",
+          message: "Bash commands are not allowed in plan mode.",
+        };
+      }
+
+      if (context.toolName === "Delete") {
+        return {
+          behavior: "deny",
+          message: "Delete operations are not allowed in plan mode.",
+        };
+      }
+
+      const writeTools = ["Edit", "MultiEdit", "Write"];
+      if (writeTools.includes(context.toolName)) {
+        const targetPath = (context.toolInput?.file_path ||
+          context.toolInput?.target_file) as string | undefined;
+
+        if (this.planFilePath && targetPath) {
+          const absoluteTargetPath = path.resolve(targetPath);
+          const absolutePlanPath = path.resolve(this.planFilePath);
+
+          if (absoluteTargetPath === absolutePlanPath) {
+            this.logger?.debug("Allowing write to plan file in plan mode", {
+              toolName: context.toolName,
+              targetPath,
+            });
+            return { behavior: "allow" };
+          }
+        }
+
+        return {
+          behavior: "deny",
+          message: `In plan mode, you are only allowed to edit the designated plan file: ${this.planFilePath || "not set"}.`,
+        };
       }
     }
 

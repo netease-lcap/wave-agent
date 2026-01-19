@@ -1,17 +1,15 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
+import { createMockToolManager } from "../helpers/mockFactories.js";
 
 // Mock the aiService module
 vi.mock("@/services/aiService");
 
 // Mock the toolManager
+const { instance: mockToolManagerInstance } = createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn().mockImplementation(() => ({
-    execute: vi.fn(),
-    list: vi.fn(() => []),
-    getToolsConfig: vi.fn(() => []),
-  })),
+  ToolManager: vi.fn().mockImplementation(() => mockToolManagerInstance),
 }));
 
 // Mock logger

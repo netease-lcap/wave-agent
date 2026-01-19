@@ -1,10 +1,10 @@
 <!--
 Sync Impact Report:
-- Version change: 1.6.0 → 1.7.0
-- Added principles: X. Data Model Minimalism (new principle for concise entity modeling)
-- Modified sections: Core Principles (added new principle), Quality Standards (added data modeling requirements)
-- Templates requiring updates: ✅ plan-template.md (maintains compatibility), ✅ spec-template.md (maintains compatibility), ✅ tasks-template.md (maintains compatibility)
-- Follow-up TODOs: None - all placeholders filled
+- Version change: 1.7.0 → 1.8.0
+- Modified principles: III. Test Alignment (added mandatory unit and integration tests), VIII. Test-Driven Development (made testing mandatory)
+- Modified sections: Quality Standards (updated testing requirements), Development Workflow (updated TDD process)
+- Templates requiring updates: ✅ tasks-template.md (updated test requirement from optional to required)
+- Follow-up TODOs: None
 -->
 
 # Wave Agent Constitution
@@ -22,9 +22,9 @@ All code MUST be written in TypeScript with strict type checking enabled. No `an
 **Rationale**: Type safety prevents runtime errors and improves developer experience in an AI-assisted development environment.
 
 ### III. Test Alignment
-Test file organization MUST follow logical patterns for discoverability. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. All tests MUST be in `packages/*/tests` directories. Focus on essential functionality testing rather than comprehensive coverage to enable faster development iterations.
+Test file organization MUST follow logical patterns for discoverability. Both unit tests and integration tests are REQUIRED for all new functionality. Unit tests MUST focus on individual components and pure functions. Integration tests MUST verify the interaction between multiple components or packages. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. All tests MUST be in `packages/*/tests` directories. Focus on essential functionality testing rather than comprehensive coverage to enable faster development iterations.
 
-**Rationale**: Flexible test organization enables both predictable discovery and manageable test suites. Essential testing provides confidence while maintaining development velocity.
+**Rationale**: Flexible test organization enables both predictable discovery and manageable test suites. Essential testing provides confidence while maintaining development velocity. Mandatory unit and integration tests ensure both component-level correctness and system-level stability.
 
 ### IV. Build Dependencies
 After modifying `agent-sdk`, MUST run `pnpm build` before testing changes in dependent packages. Use `pnpm` exclusively for package management, never `npm`.
@@ -47,9 +47,9 @@ Package source code MUST follow established patterns for maintainability and dis
 **Rationale**: Consistent source code organization enables developers to quickly locate and understand code purpose, reducing cognitive load and improving maintainability.
 
 ### VIII. Test-Driven Development
-For critical functionality, MAY follow TDD workflow: Red (write failing test), Green (minimal implementation), Refactor (improve code while maintaining tests). Tests SHOULD focus on essential behavior and edge cases rather than comprehensive coverage. Test names MUST clearly describe behavior using "should" statements. Each test MUST focus on a single responsibility. Test isolation MUST be maintained - no test should depend on another test's state. Mock external dependencies in tests to ensure fast execution and reliable outcomes. Testing is encouraged but not required for all functionality to maintain development velocity.
+For critical functionality, SHOULD follow TDD workflow: Red (write failing test), Green (minimal implementation), Refactor (improve code while maintaining tests). Both unit and integration tests are REQUIRED for all functionality to ensure reliability and prevent regressions. Test names MUST clearly describe behavior using "should" statements. Each test MUST focus on a single responsibility. Test isolation MUST be maintained - no test should depend on another test's state. Mock external dependencies in tests to ensure fast execution and reliable outcomes.
 
-**Rationale**: Essential testing provides confidence in critical functionality while allowing faster iteration. Full TDD can slow development; selective testing of key behaviors offers the best balance of quality and speed.
+**Rationale**: Essential testing provides confidence in critical functionality while allowing faster iteration. Mandatory testing of key behaviors offers the best balance of quality and speed.
 
 ### IX. Type System Evolution
 When adding functionality, MUST modify existing types or interfaces rather than creating new ones whenever possible. New types or interfaces may only be created when extending existing ones would violate single responsibility principle or create semantic inconsistencies. Type extensions MUST use composition, union types, or generic constraints to build upon existing type definitions.
@@ -66,9 +66,10 @@ Data models MUST be kept concise and focused on essential attributes only. Avoid
 All code MUST pass TypeScript compilation without errors or warnings. All existing tests MUST pass before merging. Code MUST follow the established linting and formatting rules enforced by ESLint and Prettier. Quality gates (type-check and lint) MUST be run and pass after every modification.
 
 **Testing Requirements**: 
+- Unit tests and integration tests are REQUIRED for all functionality
 - Test essential functionality and critical edge cases
 - Focus on behavior verification rather than coverage metrics
-- TDD encouraged for complex or critical components but not mandated for all features
+- TDD SHOULD be used for complex or critical components
 - Test coverage: Prioritize high-risk areas over comprehensive coverage
 
 **Type Evolution Requirements**:
@@ -87,11 +88,11 @@ All code MUST pass TypeScript compilation without errors or warnings. All existi
 **Package Management**: Use `pnpm` for all dependency management operations. Never use `npm` directly.
 
 **TDD Development Process**:
-1. Identify critical functionality that requires testing
+1. Identify functionality that requires testing (unit and integration)
 2. Write focused tests for essential behavior and edge cases
 3. Run tests to ensure they pass with implementation
 4. Refactor code while keeping tests passing
-5. Optional: Add additional tests for complex components
+5. REQUIRED: Ensure both unit and integration tests are present
 
 **Type Evolution Process**:
 1. Identify existing types that could be extended or modified
@@ -128,4 +129,4 @@ This constitution supersedes all other development practices. All pull requests 
 
 **Version Control**: Use semantic versioning for constitution updates. Breaking changes to principles require major version bump.
 
-**Version**: 1.7.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2025-12-08
+**Version**: 1.8.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2026-01-19
