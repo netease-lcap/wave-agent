@@ -4,6 +4,7 @@ import { deleteFileTool } from "../tools/deleteFileTool.js";
 import { editTool } from "../tools/editTool.js";
 import { multiEditTool } from "../tools/multiEditTool.js";
 import { writeTool } from "../tools/writeTool.js";
+import { exitPlanModeTool } from "../tools/exitPlanMode.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
@@ -104,6 +105,7 @@ class ToolManager {
       editTool,
       multiEditTool,
       writeTool,
+      exitPlanModeTool,
       globTool,
       grepTool,
       lsTool,
@@ -211,9 +213,15 @@ class ToolManager {
   }
 
   getToolsConfig(): ChatCompletionFunctionTool[] {
-    const builtInToolsConfig = Array.from(this.tools.values()).map(
-      (tool) => tool.config,
-    );
+    const effectivePermissionMode = this.getPermissionMode();
+    const builtInToolsConfig = Array.from(this.tools.values())
+      .filter((tool) => {
+        if (tool.name === "ExitPlanMode") {
+          return effectivePermissionMode === "plan";
+        }
+        return true;
+      })
+      .map((tool) => tool.config);
     const mcpToolsConfig = this.mcpManager.getMcpToolsConfig();
     return [...builtInToolsConfig, ...mcpToolsConfig];
   }

@@ -22,6 +22,8 @@ const getActionDescription = (
       return `Delete file: ${toolInput.target_file || "unknown file"}`;
     case "Write":
       return `Write to file: ${toolInput.file_path || "unknown file"}`;
+    case "ExitPlanMode":
+      return "Review and approve the plan";
     default:
       return "Execute operation";
   }
@@ -59,6 +61,9 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
   });
 
   const getAutoOptionText = () => {
+    if (toolName === "ExitPlanMode") {
+      return "Yes, and auto-accept edits";
+    }
     if (toolName === "Bash") {
       if (suggestedPrefix) {
         return `Yes, and don't ask again for: ${suggestedPrefix}`;
@@ -79,7 +84,11 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     // Handle Enter to confirm selection
     if (key.return) {
       if (state.selectedOption === "allow") {
-        onDecision({ behavior: "allow" });
+        if (toolName === "ExitPlanMode") {
+          onDecision({ behavior: "allow", newPermissionMode: "default" });
+        } else {
+          onDecision({ behavior: "allow" });
+        }
       } else if (state.selectedOption === "auto") {
         if (toolName === "Bash") {
           const rule = suggestedPrefix
@@ -110,7 +119,11 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     // Handle numeric keys for quick selection (only if not typing in alternative)
     if (state.selectedOption !== "alternative" || !state.hasUserInput) {
       if (input === "1") {
-        onDecision({ behavior: "allow" });
+        if (toolName === "ExitPlanMode") {
+          onDecision({ behavior: "allow", newPermissionMode: "default" });
+        } else {
+          onDecision({ behavior: "allow" });
+        }
         return;
       }
       if (input === "2") {
@@ -216,6 +229,21 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       </Text>
       <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
 
+      {toolName === "ExitPlanMode" && !!toolInput?.plan_content && (
+        <Box
+          flexDirection="column"
+          marginTop={1}
+          paddingX={1}
+          borderStyle="round"
+          borderColor="gray"
+        >
+          <Text color="cyan" bold>
+            Plan Content:
+          </Text>
+          <Text>{toolInput.plan_content as string}</Text>
+        </Box>
+      )}
+
       <Box marginTop={1}>
         <Text>Do you want to proceed?</Text>
       </Box>
@@ -230,7 +258,10 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
             }
             bold={state.selectedOption === "allow"}
           >
-            {state.selectedOption === "allow" ? "> " : "  "}1. Yes
+            {state.selectedOption === "allow" ? "> " : "  "}1.{" "}
+            {toolName === "ExitPlanMode"
+              ? "Yes, proceed with default mode"
+              : "Yes"}
           </Text>
         </Box>
 
