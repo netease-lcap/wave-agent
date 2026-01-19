@@ -336,7 +336,7 @@ export class AIManager {
             planExists = false;
           }
 
-          const reminder = `\n\n## Plan File Info:\n${planExists ? `A plan file already exists at ${planFilePath}. You can read it and make incremental edits using the Edit tool if you need to.` : `No plan file exists yet. You should create your plan at ${planFilePath} using the Write tool if you need to.`}\nYou should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.`;
+          const reminder = `\n\n## Plan File Info:\n${planExists ? `A plan file already exists at ${planFilePath}. You can read it and make incremental edits using the Edit tool if you need to.` : `No plan file exists yet. You should create your plan at ${planFilePath} using the Write tool if you need to.`}\nYou should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions. You may also use the AskUserQuestion tool to gather requirements or clarify intent before finalizing your plan.`;
 
           effectiveSystemPrompt = (effectiveSystemPrompt || "") + reminder;
         }

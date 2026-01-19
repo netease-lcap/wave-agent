@@ -1033,6 +1033,7 @@ describe("PermissionManager", () => {
         "Bash",
         "Write",
         "ExitPlanMode",
+        "AskUserQuestion",
       ]);
     });
   });

@@ -3,6 +3,26 @@
  */
 
 /**
+ * Input types for AskUserQuestion tool
+ */
+export interface AskUserQuestionOption {
+  label: string;
+  description?: string;
+  isRecommended?: boolean;
+}
+
+export interface AskUserQuestion {
+  question: string;
+  header: string;
+  options: AskUserQuestionOption[];
+  multiSelect?: boolean;
+}
+
+export interface AskUserQuestionInput {
+  questions: AskUserQuestion[];
+}
+
+/**
  * Parameters for the Write tool
  */
 export interface WriteToolParameters {

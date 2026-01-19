@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
-import type { PermissionDecision } from "wave-agent-sdk";
+import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
 
 // Helper function to generate descriptive action text
 const getActionDescription = (
@@ -24,9 +24,20 @@ const getActionDescription = (
       return `Write to file: ${toolInput.file_path || "unknown file"}`;
     case "ExitPlanMode":
       return "Review and approve the plan";
+    case "AskUserQuestion":
+      return "Answer questions to clarify intent";
     default:
       return "Execute operation";
   }
+};
+
+const getHeaderColor = (header: string) => {
+  const colors = ["red", "green", "blue", "magenta", "cyan"] as const;
+  let hash = 0;
+  for (let i = 0; i < header.length; i++) {
+    hash = header.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
 };
 
 export interface ConfirmationProps {
@@ -60,6 +71,19 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     hasUserInput: false,
   });
 
+  // Specialized state for AskUserQuestion
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState(0);
+  const [selectedOptionIndices, setSelectedOptionIndices] = useState<
+    Set<number>
+  >(new Set());
+  const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
+  const [otherText, setOtherText] = useState("");
+
+  const questions =
+    (toolInput as unknown as AskUserQuestionInput)?.questions || [];
+  const currentQuestion = questions[currentQuestionIndex];
+
   const getAutoOptionText = () => {
     if (toolName === "ExitPlanMode") {
       return "Yes, and auto-accept edits";
@@ -78,6 +102,115 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     if (key.escape) {
       onCancel();
       onAbort();
+      return;
+    }
+
+    if (toolName === "AskUserQuestion") {
+      if (!currentQuestion) return;
+
+      const options = [...currentQuestion.options, { label: "Other" }];
+      const isMultiSelect = !!currentQuestion.multiSelect;
+
+      if (key.return) {
+        const isOtherFocused = selectedOptionIndex === options.length - 1;
+        let answer = "";
+        if (isMultiSelect) {
+          const selectedLabels = Array.from(selectedOptionIndices)
+            .filter((i) => i < currentQuestion.options.length)
+            .map((i) => currentQuestion.options[i].label);
+
+          const isOtherChecked = selectedOptionIndices.has(options.length - 1);
+          if (isOtherChecked && otherText.trim()) {
+            selectedLabels.push(otherText.trim());
+          }
+          answer = selectedLabels.join(", ");
+        } else {
+          if (isOtherFocused) {
+            answer = otherText.trim();
+          } else {
+            answer = options[selectedOptionIndex].label;
+          }
+        }
+
+        if (!answer) return;
+
+        const newAnswers = {
+          ...userAnswers,
+          [currentQuestion.question]: answer,
+        };
+        setUserAnswers(newAnswers);
+
+        if (currentQuestionIndex < questions.length - 1) {
+          setCurrentQuestionIndex(currentQuestionIndex + 1);
+          setSelectedOptionIndex(0);
+          setSelectedOptionIndices(new Set());
+          setOtherText("");
+        } else {
+          // All questions answered
+          onDecision({
+            behavior: "allow",
+            message: JSON.stringify(newAnswers),
+          });
+        }
+        return;
+      }
+
+      if (input === " ") {
+        if (isMultiSelect) {
+          setSelectedOptionIndices((prev) => {
+            const next = new Set(prev);
+            if (next.has(selectedOptionIndex)) {
+              next.delete(selectedOptionIndex);
+            } else {
+              next.add(selectedOptionIndex);
+            }
+            return next;
+          });
+        }
+        return;
+      }
+
+      if (key.upArrow) {
+        if (selectedOptionIndex > 0) {
+          setSelectedOptionIndex(selectedOptionIndex - 1);
+        }
+        return;
+      }
+
+      if (key.downArrow) {
+        if (selectedOptionIndex < options.length - 1) {
+          setSelectedOptionIndex(selectedOptionIndex + 1);
+        }
+        return;
+      }
+
+      if (input >= "1" && input <= String(options.length)) {
+        const index = parseInt(input) - 1;
+        setSelectedOptionIndex(index);
+        if (isMultiSelect) {
+          setSelectedOptionIndices((prev) => {
+            const next = new Set(prev);
+            if (next.has(index)) {
+              next.delete(index);
+            } else {
+              next.add(index);
+            }
+            return next;
+          });
+        }
+        return;
+      }
+
+      const isOtherFocused = selectedOptionIndex === options.length - 1;
+      if (isOtherFocused) {
+        if (key.backspace || key.delete) {
+          setOtherText((prev) => prev.slice(0, -1));
+        } else if (input && !key.ctrl && !key.meta) {
+          setOtherText((prev) => prev + input);
+        }
+        return;
+      }
+
       return;
     }
 
@@ -229,89 +362,169 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       </Text>
       <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
 
-      {toolName === "ExitPlanMode" && !!toolInput?.plan_content && (
-        <Box
-          flexDirection="column"
-          marginTop={1}
-          paddingX={1}
-          borderStyle="round"
-          borderColor="gray"
-        >
-          <Text color="cyan" bold>
-            Plan Content:
-          </Text>
-          <Text>{toolInput.plan_content as string}</Text>
+      {toolName === "AskUserQuestion" && currentQuestion && (
+        <Box flexDirection="column" marginTop={1}>
+          <Box marginBottom={1}>
+            <Box
+              backgroundColor={getHeaderColor(currentQuestion.header)}
+              paddingX={1}
+              marginRight={1}
+            >
+              <Text color="black" bold>
+                {currentQuestion.header.slice(0, 12).toUpperCase()}
+              </Text>
+            </Box>
+            <Text bold>{currentQuestion.question}</Text>
+          </Box>
+
+          <Box flexDirection="column">
+            {(() => {
+              const isMultiSelect = !!currentQuestion.multiSelect;
+              return [...currentQuestion.options, { label: "Other" }].map(
+                (option, index) => {
+                  const isSelected = selectedOptionIndex === index;
+                  const isChecked = isMultiSelect
+                    ? selectedOptionIndices.has(index)
+                    : isSelected;
+                  const isOther = index === currentQuestion.options.length;
+                  const isRecommended = !isOther && option.isRecommended;
+
+                  return (
+                    <Box key={index}>
+                      <Text
+                        color={isSelected ? "black" : "white"}
+                        backgroundColor={isSelected ? "yellow" : undefined}
+                      >
+                        {isSelected ? "> " : "  "}
+                        {isMultiSelect ? (isChecked ? "[x] " : "[ ] ") : ""}
+                        {index + 1}. {option.label}
+                        {isRecommended && (
+                          <Text color="green" bold>
+                            {" "}
+                            (Recommended)
+                          </Text>
+                        )}
+                        {option.description ? ` - ${option.description}` : ""}
+                        {isOther && isSelected && (
+                          <Text>
+                            :{" "}
+                            {otherText || (
+                              <Text color="gray" dimColor>
+                                [Type your answer...]
+                              </Text>
+                            )}
+                          </Text>
+                        )}
+                      </Text>
+                    </Box>
+                  );
+                },
+              );
+            })()}
+          </Box>
+
+          <Box marginTop={1}>
+            <Text dimColor>
+              Question {currentQuestionIndex + 1} of {questions.length} •
+              {currentQuestion.multiSelect ? " Space to toggle •" : ""} Use ↑↓
+              or 1-{currentQuestion.options.length + 1} to navigate • Enter to
+              confirm
+            </Text>
+          </Box>
         </Box>
       )}
 
-      <Box marginTop={1}>
-        <Text>Do you want to proceed?</Text>
-      </Box>
-
-      <Box marginTop={1} flexDirection="column">
-        {/* Option 1: Yes */}
-        <Box key="allow-option">
-          <Text
-            color={state.selectedOption === "allow" ? "black" : "white"}
-            backgroundColor={
-              state.selectedOption === "allow" ? "yellow" : undefined
-            }
-            bold={state.selectedOption === "allow"}
+      {toolName !== "AskUserQuestion" &&
+        toolName === "ExitPlanMode" &&
+        !!toolInput?.plan_content && (
+          <Box
+            flexDirection="column"
+            marginTop={1}
+            paddingX={1}
+            borderStyle="round"
+            borderColor="gray"
           >
-            {state.selectedOption === "allow" ? "> " : "  "}1.{" "}
-            {toolName === "ExitPlanMode"
-              ? "Yes, proceed with default mode"
-              : "Yes"}
-          </Text>
-        </Box>
-
-        {/* Option 2: Auto-accept/Persistent */}
-        {!hidePersistentOption && (
-          <Box key="auto-option">
-            <Text
-              color={state.selectedOption === "auto" ? "black" : "white"}
-              backgroundColor={
-                state.selectedOption === "auto" ? "yellow" : undefined
-              }
-              bold={state.selectedOption === "auto"}
-            >
-              {state.selectedOption === "auto" ? "> " : "  "}2.{" "}
-              {getAutoOptionText()}
+            <Text color="cyan" bold>
+              Plan Content:
             </Text>
+            <Text>{toolInput.plan_content as string}</Text>
           </Box>
         )}
 
-        {/* Option 3: Alternative */}
-        <Box key="alternative-option">
-          <Text
-            color={state.selectedOption === "alternative" ? "black" : "white"}
-            backgroundColor={
-              state.selectedOption === "alternative" ? "yellow" : undefined
-            }
-            bold={state.selectedOption === "alternative"}
-          >
-            {state.selectedOption === "alternative" ? "> " : "  "}
-            {hidePersistentOption ? "2. " : "3. "}
-            {showPlaceholder ? (
-              <Text color="gray" dimColor>
-                {placeholderText}
-              </Text>
-            ) : (
-              <Text>
-                {state.alternativeText ||
-                  "Type here to tell Wave what to do differently"}
-              </Text>
-            )}
-          </Text>
-        </Box>
-      </Box>
+      {toolName !== "AskUserQuestion" && (
+        <>
+          <Box marginTop={1}>
+            <Text>Do you want to proceed?</Text>
+          </Box>
 
-      <Box marginTop={1}>
-        <Text dimColor>
-          Use ↑↓ or 1-{hidePersistentOption ? "2" : "3"} to navigate • ESC to
-          cancel
-        </Text>
-      </Box>
+          <Box marginTop={1} flexDirection="column">
+            {/* Option 1: Yes */}
+            <Box key="allow-option">
+              <Text
+                color={state.selectedOption === "allow" ? "black" : "white"}
+                backgroundColor={
+                  state.selectedOption === "allow" ? "yellow" : undefined
+                }
+                bold={state.selectedOption === "allow"}
+              >
+                {state.selectedOption === "allow" ? "> " : "  "}1.{" "}
+                {toolName === "ExitPlanMode"
+                  ? "Yes, proceed with default mode"
+                  : "Yes"}
+              </Text>
+            </Box>
+
+            {/* Option 2: Auto-accept/Persistent */}
+            {!hidePersistentOption && (
+              <Box key="auto-option">
+                <Text
+                  color={state.selectedOption === "auto" ? "black" : "white"}
+                  backgroundColor={
+                    state.selectedOption === "auto" ? "yellow" : undefined
+                  }
+                  bold={state.selectedOption === "auto"}
+                >
+                  {state.selectedOption === "auto" ? "> " : "  "}2.{" "}
+                  {getAutoOptionText()}
+                </Text>
+              </Box>
+            )}
+
+            {/* Option 3: Alternative */}
+            <Box key="alternative-option">
+              <Text
+                color={
+                  state.selectedOption === "alternative" ? "black" : "white"
+                }
+                backgroundColor={
+                  state.selectedOption === "alternative" ? "yellow" : undefined
+                }
+                bold={state.selectedOption === "alternative"}
+              >
+                {state.selectedOption === "alternative" ? "> " : "  "}
+                {hidePersistentOption ? "2. " : "3. "}
+                {showPlaceholder ? (
+                  <Text color="gray" dimColor>
+                    {placeholderText}
+                  </Text>
+                ) : (
+                  <Text>
+                    {state.alternativeText ||
+                      "Type here to tell Wave what to do differently"}
+                  </Text>
+                )}
+              </Text>
+            </Box>
+          </Box>
+
+          <Box marginTop={1}>
+            <Text dimColor>
+              Use ↑↓ or 1-{hidePersistentOption ? "2" : "3"} to navigate • ESC
+              to cancel
+            </Text>
+          </Box>
+        </>
+      )}
     </Box>
   );
 };
