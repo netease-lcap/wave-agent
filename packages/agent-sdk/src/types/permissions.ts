@@ -50,6 +50,7 @@ export const RESTRICTED_TOOLS = [
   "Delete",
   "Bash",
   "Write",
+  "ExitPlanMode",
 ] as const;
 
 /** Type for restricted tool names */

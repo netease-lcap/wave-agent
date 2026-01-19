@@ -397,6 +397,11 @@ export class Agent {
       messageManager: this.messageManager,
       workdir: this.workdir,
     });
+
+    // Set initial permission mode if provided
+    if (options.permissionMode) {
+      this.setPermissionMode(options.permissionMode);
+    }
   }
 
   // Public getter methods
