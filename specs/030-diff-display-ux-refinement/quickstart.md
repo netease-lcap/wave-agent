@@ -1,6 +1,6 @@
-# Quickstart: Consolidate Diff Display
+# Quickstart: Diff Display UX Refinement
 
-**Feature**: 030-consolidate-diff-display  
+**Feature**: 030-diff-display-ux-refinement  
 **Goal**: Consolidate diff display functionality into ToolResultDisplay component with unlimited display
 
 ## Implementation Overview

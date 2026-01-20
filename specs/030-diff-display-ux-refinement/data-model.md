@@ -1,6 +1,6 @@
-# Data Model: Consolidate Diff Display
+# Data Model: Diff Display UX Refinement
 
-**Feature**: 030-consolidate-diff-display  
+**Feature**: 030-diff-display-ux-refinement  
 **Date**: 2025-12-11
 
 ## Entities

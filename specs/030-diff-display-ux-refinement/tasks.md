@@ -1,6 +1,6 @@
-# Tasks: Consolidate Diff Display
+# Tasks: Diff Display UX Refinement
 
-**Input**: Design documents from `/specs/030-consolidate-diff-display/`  
+**Input**: Design documents from `/specs/030-diff-display-ux-refinement/`  
 **Prerequisites**: plan.md, spec.md, data-model.md, contracts/  
 **Tests**: Not explicitly requested in specification  
 **Organization**: Tasks grouped by user story for independent implementation

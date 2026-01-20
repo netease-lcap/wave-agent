@@ -1,7 +1,7 @@
-# Research: Consolidate Diff Display
+# Research: Diff Display UX Refinement
 
 **Date**: 2025-12-11  
-**Feature**: 030-consolidate-diff-display
+**Feature**: 030-diff-display-ux-refinement
 
 ## Performance Requirements
 
