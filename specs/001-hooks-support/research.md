@@ -84,6 +84,44 @@ interface HookConfiguration {
 - Blocking failure mode: Rejected as it could make Wave unreliable due to hook issues
 - Silent failure mode: Rejected as it provides no debugging feedback to users
 
+
+---
+
+## Session System Integration
+
+### Decision: Transcript Path via Session ID
+**Rationale**: Provide hooks with access to the full conversation history by passing the absolute path to the session's JSON file, enabling context-aware hook logic.
+
+**Implementation Approach**:
+- Capture session ID in Agent instance
+- Use existing `getSessionFilePath()` utility to derive transcript path
+- Include `transcript_path` in the JSON data passed to hooks
+
+## Integration Points Analysis (JSON Input)
+
+### Available Context Data
+- **Session ID**: Available in agent/manager instances
+- **Tool Input/Output**: Available in `aiManager` during tool execution
+- **User Prompts**: Available in `agent.ts` during prompt processing
+- **Current Working Directory**: Already passed as `context.projectDir`
+
+### Hook Trigger Locations
+1. **PreToolUse**: `aiManager.ts` - Access to `toolName`, tool arguments, session context
+2. **PostToolUse**: `aiManager.ts` - Access to tool result, original input, session context  
+3. **UserPromptSubmit**: `agent.ts` - Access to user prompt content, session context
+4. **Stop**: `aiManager.ts` - Minimal context, session ending
+
+## Technical Approach: JSON Input Support
+
+### Decision: JSON Data via Stdin
+**Rationale**: Pass structured data to hook processes via stdin to enable complex context sharing without hitting environment variable size limits or requiring hooks to poll for state.
+
+**Implementation Approach**:
+- Extend `HookExecutionContext` with optional session and tool data
+- Modify `HookExecutor` to write JSON payload to child process stdin
+- Ensure non-blocking stdin handling for backward compatibility
+- Use `jq` for concise testing of JSON input in hook commands
+
 ## Performance Considerations
 
 ### Decision: Asynchronous Hook Execution with Timeout
