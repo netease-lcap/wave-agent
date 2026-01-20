@@ -7,7 +7,7 @@
 
 ## Summary
 
-Implement a hooks system for Wave Code that allows users to configure automated actions at specific points in the AI workflow. The system will support PreToolUse, PostToolUse, UserPromptSubmit, and Stop hooks with configurable commands that execute at user-level and project-level settings. This enables automated code quality checks, prompt validation, and post-processing workflows.
+Implement a hooks system for Wave Code that allows users to configure automated actions at specific points in the AI workflow. The system will support PreToolUse, PostToolUse, UserPromptSubmit, and Stop hooks with configurable commands that execute at user-level and project-level settings. This enables automated code quality checks, prompt validation, and post-processing workflows. Additionally, hooks receive structured JSON data via stdin containing session information and event-specific data for enhanced context.
 
 ## Technical Context
 
@@ -71,12 +71,14 @@ packages/
 ├── agent-sdk/                 # Core hooks system
 │   ├── src/
 │   │   ├── hooks/            # Hook system implementation
-│   │   │   ├── manager.ts    # HookManager class
-│   │   │   ├── executor.ts   # Hook execution logic
+│   │   │   ├── manager.ts    # HookManager class (Pass additional context)
+│   │   │   ├── executor.ts   # Hook execution logic (Add JSON stdin support)
 │   │   │   ├── matcher.ts    # Pattern matching
-│   │   │   └── types.ts      # Hook type definitions
-│   │   ├── services/         # Existing services
-│   │   └── agent.ts          # Integration points
+│   │   │   └── types.ts      # Hook type definitions (Add JSON input types)
+│   │   ├── services/         # Existing services (Session path logic)
+│   │   ├── managers/
+│   │   │   └── aiManager.ts  # Integration (Pass tool input/response)
+│   │   └── agent.ts          # Integration (Pass user prompt data)
 │   ├── tests/
 │   │   └── hooks/            # Unit tests for hooks
 │   └── examples/

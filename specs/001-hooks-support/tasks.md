@@ -108,6 +108,128 @@
 
 ---
 
+---
+
+## Phase 7: Setup (JSON Input)
+
+**Purpose**: Project initialization and basic structure for JSON input
+
+- [x] T036 Create JSON input type definitions in packages/agent-sdk/src/hooks/types.ts
+- [x] T037 [P] Add session path utility import from session.ts to types.ts
+
+---
+
+## Phase 8: Foundational (JSON Input)
+
+**Purpose**: Core infrastructure for JSON input
+
+- [x] T038 Extend HookExecutionContext interface in packages/agent-sdk/src/hooks/types.ts
+- [x] T039 Implement JSON input builder function in packages/agent-sdk/src/hooks/executor.ts
+- [x] T040 Add stdin JSON write functionality to HookExecutor in packages/agent-sdk/src/hooks/executor.ts
+- [x] T041 [P] Update HookManager to pass extended context in packages/agent-sdk/src/hooks/manager.ts
+- [x] T042 [P] Build and validate agent-sdk package with pnpm build
+
+**Checkpoint**: Foundation ready - user story implementation can now begin in parallel
+
+---
+
+## Phase 9: User Story 4 - PreToolUse Hook Data Access (Priority: P1) 🎯 MVP
+
+**Goal**: Hooks receive JSON with session context, tool name, and tool input for PreToolUse events
+
+**Independent Test**: `jq -r '.session_id, .transcript_path, .cwd, .hook_event_name, .tool_name, .tool_input'`
+
+### Implementation for User Story 4
+
+- [x] T043 [US4] Collect tool input data in aiManager PreToolUse execution in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T044 [US4] Pass sessionId and toolInput through extended context in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T045 [US4] Create PreToolUse hook example script in packages/agent-sdk/examples/hook-json-input.ts
+- [x] T046 [US4] Run type-check and lint validation: pnpm run type-check && pnpm run lint
+
+**Checkpoint**: At this point, PreToolUse hooks receive complete JSON data and can be tested with jq
+
+---
+
+## Phase 10: User Story 5 - PostToolUse Hook Response Analysis (Priority: P2)
+
+**Goal**: Hooks receive JSON with tool input, tool response, and session context for PostToolUse events
+
+**Independent Test**: `jq -r '.tool_input, .tool_response'`
+
+### Implementation for User Story 5
+
+- [x] T047 [US5] Collect tool response data in aiManager PostToolUse execution in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T048 [US5] Pass toolResponse through extended context in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T049 [US5] Add PostToolUse hook example script in packages/agent-sdk/examples/hook-json-input.ts
+- [x] T050 [US5] Run type-check and lint validation: pnpm run type-check && pnpm run lint
+
+**Checkpoint**: At this point, PostToolUse hooks receive tool input and response data and can be tested with jq
+
+---
+
+## Phase 11: User Story 6 - Session Access via Transcript Path (Priority: P2)
+
+**Goal**: Hooks can access complete conversation history using transcript_path field
+
+**Independent Test**: `jq -r '.transcript_path' | xargs cat | jq '.state.messages'`
+
+### Implementation for User Story 6
+
+- [x] T051 [US6] Implement session ID collection in Agent class in packages/agent-sdk/src/agent.ts
+- [x] T052 [US6] Pass sessionId to all hook manager calls in packages/agent-sdk/src/agent.ts
+- [x] T053 [US6] Add transcript path generation using getSessionFilePath in packages/agent-sdk/src/hooks/executor.ts
+- [x] T054 [US6] Add session access example in packages/agent-sdk/examples/hook-json-input.ts
+- [x] T055 [US6] Run type-check and lint validation: pnpm run type-check && pnpm run lint
+
+**Checkpoint**: At this point, hooks can access session data via transcript_path
+
+---
+
+## Phase 12: User Story 7 - UserPromptSubmit Hook Monitoring (Priority: P3)
+
+**Goal**: Hooks receive user prompt text and session context for UserPromptSubmit events
+
+**Independent Test**: `jq -r '.prompt'`
+
+### Implementation for User Story 7
+
+- [ ] T056 [US7] Collect user prompt data in Agent handleUserPrompt in packages/agent-sdk/src/agent.ts
+- [ ] T057 [US7] Pass userPrompt through extended context in packages/agent-sdk/src/agent.ts
+- [ ] T058 [US7] Add UserPromptSubmit hook example script in packages/agent-sdk/examples/hook-json-input.ts
+- [ ] T059 [US7] Run type-check and lint validation: pnpm run type-check && pnpm run lint
+
+**Checkpoint**: At this point, UserPromptSubmit hooks receive prompt text and session context
+
+---
+
+## Phase 13: User Story 8 - Stop Hook Cleanup Actions (Priority: P3)
+
+**Goal**: Hooks receive minimal JSON for session termination with cleanup capabilities
+
+**Independent Test**: `jq -r '.hook_event_name'`
+
+### Implementation for User Story 8
+
+- [ ] T060 [US8] Ensure Stop hook receives sessionId in aiManager stop execution in packages/agent-sdk/src/managers/aiManager.ts
+- [ ] T061 [US8] Add Stop hook example script in packages/agent-sdk/examples/hook-json-input.ts
+- [ ] T062 [US8] Run type-check and lint validation: pnpm run type-check && pnpm run lint
+
+**Checkpoint**: All user stories should now be independently functional
+
+---
+
+## Phase 14: Polish (JSON Input)
+
+**Purpose**: Improvements that affect multiple user stories
+
+- [ ] T063 [P] Complete hook-json-input.ts example with all event types in packages/agent-sdk/examples/hook-json-input.ts
+- [ ] T064 [P] Test example execution with pnpm tsx examples/hook-json-input.ts
+- [ ] T065 Add error handling for JSON construction failures in packages/agent-sdk/src/hooks/executor.ts
+- [ ] T066 Add error handling for stdin write failures in packages/agent-sdk/src/hooks/executor.ts
+- [ ] T067 Final type-check and lint validation: pnpm run type-check && pnpm run lint
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

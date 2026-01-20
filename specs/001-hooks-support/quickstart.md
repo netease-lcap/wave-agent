@@ -179,6 +179,75 @@ export class Agent {
 }
 ```
 
+---
+
+## JSON Input Support
+
+Hooks receive structured JSON data via stdin containing session information and event-specific data.
+
+### JSON Input Format
+
+#### Universal Fields
+All hook events receive these base fields:
+```bash
+echo '{}' | jq -r '.session_id'      # Session identifier
+echo '{}' | jq -r '.transcript_path' # Path to session file  
+echo '{}' | jq -r '.cwd'             # Current working directory
+echo '{}' | jq -r '.hook_event_name' # Event type
+```
+
+#### Event-Specific Fields
+- **PreToolUse/PostToolUse**: `tool_name`, `tool_input`, `tool_response` (Post only)
+- **UserPromptSubmit**: `prompt`
+
+### Hook Examples (JSON Processing)
+
+#### 1. File Write Protection Hook
+```bash
+#!/bin/bash
+stdin_json=$(cat)
+tool_name=$(echo "$stdin_json" | jq -r '.tool_name')
+file_path=$(echo "$stdin_json" | jq -r '.tool_input.file_path // empty')
+
+# Block writes to sensitive directories
+if [[ "$tool_name" == "Write" && "$file_path" == /etc/* ]]; then
+    echo "ERROR: Write to /etc/ blocked by security policy" >&2
+    exit 1
+fi
+exit 0
+```
+
+#### 2. Session Analysis Hook
+```bash
+#!/bin/bash
+stdin_json=$(cat)
+transcript_path=$(echo "$stdin_json" | jq -r '.transcript_path')
+
+# Analyze conversation history  
+message_count=$(cat "$transcript_path" | jq '.state.messages | length')
+echo "Processing prompt (conversation has $message_count messages)" >&2
+exit 0
+```
+
+### Migration from Environment Variables
+
+#### Before (Environment Variables Only)
+```bash
+#!/bin/bash
+echo "Project: $WAVE_PROJECT_DIR"
+```
+
+#### After (JSON Input + Environment Variables)  
+```bash
+#!/bin/bash
+stdin_json=$(cat)
+session_id=$(echo "$stdin_json" | jq -r '.session_id')
+cwd=$(echo "$stdin_json" | jq -r '.cwd')
+
+echo "Project: $WAVE_PROJECT_DIR (same as $cwd)"
+echo "Session: $session_id"
+```
+
 ## Key Implementation Considerations
 
 ### Non-Blocking Execution

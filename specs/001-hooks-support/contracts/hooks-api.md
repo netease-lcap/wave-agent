@@ -47,6 +47,26 @@ interface HookExecutionContext {
   timestamp: Date;
 }
 
+// Extended execution context with additional data for JSON input construction
+interface ExtendedHookExecutionContext extends HookExecutionContext {
+  sessionId?: string;
+  toolInput?: unknown;
+  toolResponse?: unknown;
+  userPrompt?: string;
+}
+
+// JSON data structure passed to hook processes via stdin
+interface HookJsonInput {
+  session_id: string;
+  transcript_path: string;
+  cwd: string;
+  hook_event_name: HookEvent;
+  tool_name?: string;
+  tool_input?: unknown;
+  tool_response?: unknown;
+  prompt?: string;
+}
+
 // Result of hook execution
 interface HookExecutionResult {
   success: boolean;
