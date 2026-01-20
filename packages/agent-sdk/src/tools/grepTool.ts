@@ -119,7 +119,7 @@ export const grepTool: ToolPlugin = {
 
     try {
       const workdir = context.workdir;
-      const rgArgs: string[] = ["--color=never"];
+      const rgArgs: string[] = ["--color=never", "--max-columns=500"];
 
       // Set output mode
       if (outputMode === "files_with_matches") {
