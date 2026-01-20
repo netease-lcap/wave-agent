@@ -21,7 +21,10 @@ import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
 
-import { DEFAULT_SYSTEM_PROMPT } from "../constants/prompts.js";
+import {
+  DEFAULT_SYSTEM_PROMPT,
+  buildSystemPrompt,
+} from "../constants/prompts.js";
 
 /**
  * Interface for debug data saved during 400 errors
@@ -199,7 +202,10 @@ export async function callAgent(
     });
 
     // Build system prompt content
-    let systemContent = systemPrompt || DEFAULT_SYSTEM_PROMPT;
+    let systemContent = buildSystemPrompt(
+      systemPrompt || DEFAULT_SYSTEM_PROMPT,
+      tools || [],
+    );
 
     // Always add environment information
     systemContent += `
