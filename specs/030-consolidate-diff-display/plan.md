@@ -7,7 +7,7 @@
 
 ## Summary
 
-Remove separate DiffViewer component and consolidate diff display functionality directly into ToolResultDisplay. Agent-sdk will export a transformation function to convert ToolBlock to Change[] array, keeping UI layer clean from tool parameter knowledge. Display unlimited diffs in both collapsed and expanded states during "running" and "end" tool execution stages.
+Remove separate DiffViewer component and consolidate diff display functionality directly into ToolResultDisplay. Agent-sdk will export a transformation function to convert ToolBlock to Change[] array, keeping UI layer clean from tool parameter knowledge. Display unlimited diffs in the confirmation dialog and in the tool results display (only after completion).
 
 ## Technical Context
 
@@ -75,7 +75,9 @@ packages/
 ├── code/                        # CLI interface (ADD diff package dependency)
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── ToolResultDisplay.tsx    # Main integration target + diff logic
+│   │   │   ├── ToolResultDisplay.tsx    # Main integration target + diff logic (only for "end" stage)
+│   │   │   ├── Confirmation.tsx         # Render diff display for user approval
+│   │   │   ├── DiffDisplay.tsx          # Consolidated diff display component
 │   │   │   ├── DiffViewer.tsx           # TO BE REMOVED
 │   │   │   └── MessageItem.tsx          # Remove diff rendering logic
 │   │   └── ...

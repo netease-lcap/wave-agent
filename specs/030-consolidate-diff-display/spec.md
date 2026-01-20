@@ -3,7 +3,7 @@
 **Feature Branch**: `030-consolidate-diff-display`  
 **Created**: 2025-12-11  
 **Status**: Draft  
-**Input**: User description: "remove diffblock and packages/code/src/components/DiffViewer.tsx and all related code, show diff in packages/code/src/components/ToolResultDisplay.tsx when stage is running or end. diff should based on parameters"
+**Input**: User description: "remove diffblock and packages/code/src/components/DiffViewer.tsx and all related code, show diff in packages/code/src/components/Confirmation.tsx and ToolResultDisplay.tsx when stage is end. diff should based on parameters"
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -13,13 +13,14 @@ As a user interacting with the Wave agent, I want to see file differences direct
 
 **Why this priority**: This is the core functionality that consolidates diff display into a single, consistent location, improving user experience and code maintainability.
 
-**Independent Test**: Can be fully tested by executing any tool that produces file changes and verifying the differences appear within the tool results display when the tool is running or has completed.
+**Independent Test**: Can be fully tested by executing any tool that produces file changes and verifying the differences appear within the tool results display when the tool has completed, or within the confirmation dialog before execution.
 
 **Acceptance Scenarios**:
 
-1. **Given** a tool execution that modifies files, **When** the tool is running, **Then** the file differences should be displayed within the tool results area in both collapsed and expanded states
-2. **Given** a tool execution has completed with file changes, **When** viewing the tool result, **Then** the differences should be visible in both collapsed and expanded tool results
-3. **Given** a tool execution with no file changes, **When** viewing the result, **Then** no file differences should be displayed in any state
+    1. **Given** a tool execution that modifies files, **When** the tool is running, **Then** the file differences should NOT be displayed within the tool results area (to keep the UI clean during execution)
+    2. **Given** a tool execution has completed with file changes, **When** viewing the tool result, **Then** the differences should be visible in the tool results display
+    3. **Given** a tool execution requires user confirmation, **When** the confirmation dialog is shown, **Then** the file differences should be displayed within the confirmation dialog to allow user review before execution
+    4. **Given** a tool execution with no file changes, **When** viewing the result or confirmation, **Then** no file differences should be displayed in any state
 
 ---
 
@@ -35,7 +36,7 @@ As a developer maintaining the codebase, I want the separate difference display 
 
 1. **Given** the consolidation is complete, **When** searching for separate difference display imports, **Then** no interface sections should import or reference the removed difference display functionality
 2. **Given** the old difference display code is removed, **When** the application runs, **Then** difference functionality should work exclusively through the unified tool results display
-3. **Given** message display no longer renders difference blocks, **When** a difference needs to be displayed, **Then** it should only appear in the tool results area
+    3. **Given** message display no longer renders difference blocks, **When** a difference needs to be displayed, **Then** it should only appear in the tool results area or confirmation dialog
 
 ---
 
@@ -79,8 +80,9 @@ As a user, I want file difference display to show appropriate content based on t
 
 - **FR-001**: System MUST remove the existing separate file difference display interface
 - **FR-002**: System MUST remove all separate difference block functionality and references throughout the application
-- **FR-003**: System MUST integrate file difference display functionality directly into the tool results display area
-- **FR-004**: System MUST display file differences within tool results when tool execution stage is "running" or "end"
+- **FR-003**: System MUST integrate file difference display functionality into the tool results display area and confirmation dialog
+- **FR-004**: System MUST display file differences within tool results ONLY when tool execution stage is "end"
+- **FR-004b**: System MUST display file differences within the confirmation dialog when a tool requires user approval
 - **FR-005**: System MUST determine file difference display content based solely on tool parameters (Write shows content parameter as new additions, Edit shows old_string vs new_string comparison, MultiEdit shows each old_string vs new_string pair from edits array)
 - **FR-006**: System MUST maintain existing file difference visualization capabilities (word-level comparison, context handling, visual styling) within the tool results display
 - **FR-007**: System MUST ensure no functionality loss during the consolidation process

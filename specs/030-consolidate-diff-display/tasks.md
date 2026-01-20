@@ -104,6 +104,9 @@
 - [x] T033 Test unsupported tool types return no diff display
 - [x] T034 Test error handling for malformed tool parameters
 - [x] T035 Validate color scheme matches original DiffViewer.tsx exactly
+- [x] T036 Refactor DiffDisplay to accept toolName and parameters props
+- [x] T037 Update ToolResultDisplay to only show DiffDisplay when stage is "end"
+- [x] T038 Update Confirmation to render DiffDisplay for user approval
 
 ---
 
