@@ -243,6 +243,7 @@ export class Agent {
       workdir: this.workdir,
     });
     this.permissionManager.setOnConfiguredDefaultModeChange((mode) => {
+      this.handlePlanModeTransition(mode);
       this.options.callbacks?.onPermissionModeChange?.(mode);
     });
 
@@ -1177,6 +1178,16 @@ export class Agent {
     this.logger?.debug("Setting permission mode", { mode });
     this.toolManager.setPermissionMode(mode);
 
+    this.handlePlanModeTransition(mode);
+
+    this.options.callbacks?.onPermissionModeChange?.(mode);
+  }
+
+  /**
+   * Handle plan mode transition, generating or clearing plan file path
+   * @param mode - The current effective permission mode
+   */
+  private handlePlanModeTransition(mode: PermissionMode): void {
     if (mode === "plan") {
       this.planManager
         .getOrGeneratePlanFilePath()
@@ -1190,8 +1201,6 @@ export class Agent {
     } else {
       this.permissionManager.setPlanFilePath(undefined);
     }
-
-    this.options.callbacks?.onPermissionModeChange?.(mode);
   }
 
   /**
