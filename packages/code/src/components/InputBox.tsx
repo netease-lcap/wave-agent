@@ -236,7 +236,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
               )}
             </Text>
           </Box>
-          <Box paddingX={1}>
+          <Box paddingRight={1}>
             <Text color="gray">
               Mode:{" "}
               <Text color={permissionMode === "plan" ? "yellow" : "cyan"}>
