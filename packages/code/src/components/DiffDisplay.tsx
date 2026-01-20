@@ -1,5 +1,10 @@
 import React, { useMemo } from "react";
 import { Box, Text, useStdout } from "ink";
+import {
+  WRITE_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+} from "wave-agent-sdk";
 import { transformToolBlockToChanges } from "../utils/toolParameterTransforms.js";
 import { diffLines, diffWords } from "diff";
 
@@ -18,7 +23,8 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
   }, [stdout?.rows]);
 
   const showDiff =
-    toolName && ["Write", "Edit", "MultiEdit"].includes(toolName);
+    toolName &&
+    [WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME].includes(toolName);
 
   // Diff detection and transformation using typed parameters
   const changes = useMemo(() => {

@@ -24,6 +24,15 @@ import {
   DANGEROUS_COMMANDS,
 } from "../utils/bashParser.js";
 import { isPathInside } from "../utils/pathSafety.js";
+import {
+  BASH_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+  DELETE_FILE_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  READ_TOOL_NAME,
+  LS_TOOL_NAME,
+} from "../constants/tools.js";
 
 const SAFE_COMMANDS = ["cd", "ls", "pwd", "true", "false"];
 
@@ -302,7 +311,12 @@ export class PermissionManager {
 
     // 1.1 If acceptEdits mode, allow Edit, MultiEdit, Delete, Write
     if (context.permissionMode === "acceptEdits") {
-      const autoAcceptedTools = ["Edit", "MultiEdit", "Delete", "Write"];
+      const autoAcceptedTools = [
+        EDIT_TOOL_NAME,
+        MULTI_EDIT_TOOL_NAME,
+        DELETE_FILE_TOOL_NAME,
+        WRITE_TOOL_NAME,
+      ];
       if (autoAcceptedTools.includes(context.toolName)) {
         // Enforce Safe Zone for file operations
         const targetPath = (context.toolInput?.file_path ||
@@ -342,14 +356,19 @@ export class PermissionManager {
 
     // 1.3 If plan mode, allow Read-only tools and Edit/Write for plan file
     if (context.permissionMode === "plan") {
-      if (context.toolName === "Bash") {
+      if (context.toolName === BASH_TOOL_NAME) {
         return {
           behavior: "deny",
           message: "Bash commands are not allowed in plan mode.",
         };
       }
 
-      const writeTools = ["Edit", "MultiEdit", "Write", "Delete"];
+      const writeTools = [
+        EDIT_TOOL_NAME,
+        MULTI_EDIT_TOOL_NAME,
+        WRITE_TOOL_NAME,
+        DELETE_FILE_TOOL_NAME,
+      ];
       if (writeTools.includes(context.toolName)) {
         const targetPath = (context.toolInput?.file_path ||
           context.toolInput?.target_file) as string | undefined;
@@ -457,7 +476,7 @@ export class PermissionManager {
     toolInput?: Record<string, unknown>,
   ): ToolPermissionContext {
     let suggestedPrefix: string | undefined;
-    if (toolName === "Bash" && toolInput?.command) {
+    if (toolName === BASH_TOOL_NAME && toolInput?.command) {
       const command = String(toolInput.command);
       const parts = splitBashCommand(command);
       // Only suggest prefix for single commands to avoid confusion with complex chains
@@ -476,7 +495,7 @@ export class PermissionManager {
     };
 
     // Set hidePersistentOption for dangerous or out-of-bounds bash commands
-    if (toolName === "Bash" && toolInput?.command) {
+    if (toolName === BASH_TOOL_NAME && toolInput?.command) {
       const command = String(toolInput.command);
       const workdir = toolInput.workdir as string | undefined;
       const parts = splitBashCommand(command);
@@ -547,7 +566,7 @@ export class PermissionManager {
     }
 
     // Handle Bash command rules
-    if (toolName === "Bash") {
+    if (toolName === BASH_TOOL_NAME) {
       const command = String(context.toolInput?.command || "");
       const parts = splitBashCommand(command);
       return parts.some((part) => {
@@ -560,7 +579,14 @@ export class PermissionManager {
     }
 
     // Handle path-based rules (e.g., "Read(**/*.env)")
-    const pathTools = ["Read", "Write", "Edit", "MultiEdit", "Delete", "LS"];
+    const pathTools = [
+      READ_TOOL_NAME,
+      WRITE_TOOL_NAME,
+      EDIT_TOOL_NAME,
+      MULTI_EDIT_TOOL_NAME,
+      DELETE_FILE_TOOL_NAME,
+      LS_TOOL_NAME,
+    ];
     if (pathTools.includes(toolName)) {
       const targetPath = (context.toolInput?.file_path ||
         context.toolInput?.target_file ||
@@ -583,7 +609,7 @@ export class PermissionManager {
       return true;
     }
 
-    if (context.toolName === "Bash" && context.toolInput?.command) {
+    if (context.toolName === BASH_TOOL_NAME && context.toolInput?.command) {
       const command = String(context.toolInput.command);
       const parts = splitBashCommand(command);
       if (parts.length === 0) return false;

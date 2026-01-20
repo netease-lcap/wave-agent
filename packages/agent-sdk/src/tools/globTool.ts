@@ -3,18 +3,18 @@ import { stat } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
 import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
+import { GLOB_TOOL_NAME, TASK_TOOL_NAME } from "../constants/tools.js";
 
 /**
  * Glob Tool Plugin - Fast file pattern matching
  */
 export const globTool: ToolPlugin = {
-  name: "Glob",
+  name: GLOB_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: "Glob",
-      description:
-        '- Fast file pattern matching tool that works with any codebase size\n- Supports glob patterns like "**/*.js" or "src/**/*.ts"\n- Returns matching file paths sorted by modification time\n- Use this tool when you need to find files by name patterns\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead\n- You have the capability to call multiple tools in a single response. It is always better to speculatively perform multiple searches as a batch that are potentially useful.',
+      name: GLOB_TOOL_NAME,
+      description: `- Fast file pattern matching tool that works with any codebase size\n- Supports glob patterns like "**/*.js" or "src/**/*.ts"\n- Returns matching file paths sorted by modification time\n- Use this tool when you need to find files by name patterns\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the ${TASK_TOOL_NAME} tool instead\n- You have the capability to call multiple tools in a single response. It is always better to speculatively perform multiple searches as a batch that are potentially useful.`,
       parameters: {
         type: "object",
         properties: {

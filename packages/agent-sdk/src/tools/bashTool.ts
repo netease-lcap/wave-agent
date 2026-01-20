@@ -2,6 +2,16 @@ import { spawn, ChildProcess } from "child_process";
 import { logger } from "../utils/globalLogger.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
+import {
+  BASH_TOOL_NAME,
+  BASH_OUTPUT_TOOL_NAME,
+  KILL_BASH_TOOL_NAME,
+  GLOB_TOOL_NAME,
+  GREP_TOOL_NAME,
+  READ_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  WRITE_TOOL_NAME,
+} from "../constants/tools.js";
 
 const MAX_OUTPUT_LENGTH = 30000;
 const BASH_DEFAULT_TIMEOUT_MS = 120000;
@@ -10,11 +20,11 @@ const BASH_DEFAULT_TIMEOUT_MS = 120000;
  * Bash command execution tool - supports both foreground and background execution
  */
 export const bashTool: ToolPlugin = {
-  name: "Bash",
+  name: BASH_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: "Bash",
+      name: BASH_TOOL_NAME,
       description: `Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
 
 IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
@@ -40,17 +50,17 @@ Usage notes:
   - You can specify an optional timeout in milliseconds (up to ${BASH_DEFAULT_TIMEOUT_MS}ms / ${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes). If not specified, commands will timeout after ${BASH_DEFAULT_TIMEOUT_MS}ms (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes).
   - It is very helpful if you write a clear, concise description of what this command does in 5-10 words.
   - If the output exceeds ${MAX_OUTPUT_LENGTH} characters, output will be truncated before being returned to you.
-  - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the Bash tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
-  - Avoid using Bash with the \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
-    - File search: Use Glob (NOT find or ls)
-    - Content search: Use Grep (NOT grep or rg)
-    - Read files: Use Read (NOT cat/head/tail)
-    - Edit files: Use Edit (NOT sed/awk)
-    - Write files: Use Write (NOT echo >/cat <<EOF)
+  - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${BASH_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
+  - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
+    - File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
+    - Content search: Use ${GREP_TOOL_NAME} (NOT grep or rg)
+    - Read files: Use ${READ_TOOL_NAME} (NOT cat/head/tail)
+    - Edit files: Use ${EDIT_TOOL_NAME} (NOT sed/awk)
+    - Write files: Use ${WRITE_TOOL_NAME} (NOT echo >/cat <<EOF)
     - Communication: Output text directly (NOT echo/printf)
   - When issuing multiple commands:
-    - If the commands are independent and can run in parallel, make multiple Bash tool calls in a single message. For example, if you need to run "git status" and "git diff", send a single message with two Bash tool calls in parallel.
-    - If the commands depend on each other and must run sequentially, use a single Bash call with '&&' to chain them together (e.g., \`git add . && git commit -m "message" && git push\`). For instance, if one operation must complete before another starts (like mkdir before cp, Write before Bash for git operations, or git add before git commit), run these operations sequentially instead.
+    - If the commands are independent and can run in parallel, make multiple ${BASH_TOOL_NAME} tool calls in a single message. For example, if you need to run "git status" and "git diff", send a single message with two ${BASH_TOOL_NAME} tool calls in parallel.
+    - If the commands depend on each other and must run sequentially, use a single ${BASH_TOOL_NAME} call with '&&' to chain them together (e.g., \`git add . && git commit -m "message" && git push\`). For instance, if one operation must complete before another starts (like mkdir before cp, ${WRITE_TOOL_NAME} before ${BASH_TOOL_NAME} for git operations, or git add before git commit), run these operations sequentially instead.
     - Use ';' only when you need to run commands sequentially but don't care if earlier commands fail
     - DO NOT use newlines to separate commands (newlines are ok in quoted strings)
   - Try to maintain your current working directory throughout the session by using absolute paths and avoiding usage of \`cd\`. You may use \`cd\` if the User explicitly requests it.
@@ -79,8 +89,7 @@ Usage notes:
           },
           run_in_background: {
             type: "boolean",
-            description:
-              "Set to true to run this command in the background. Use BashOutput to read the output later.",
+            description: `Set to true to run this command in the background. Use ${BASH_OUTPUT_TOOL_NAME} to read the output later.`,
           },
         },
         required: ["command"],
@@ -123,7 +132,7 @@ Usage notes:
     if (context.permissionManager) {
       try {
         const permissionContext = context.permissionManager.createContext(
-          "Bash",
+          BASH_TOOL_NAME,
           context.permissionMode || "default",
           context.canUseToolCallback,
           {
@@ -141,7 +150,7 @@ Usage notes:
           return {
             success: false,
             content: "",
-            error: `Bash operation denied, reason: ${permissionResult.message || "No reason provided"}`,
+            error: `${BASH_TOOL_NAME} operation denied, reason: ${permissionResult.message || "No reason provided"}`,
           };
         }
       } catch {
@@ -167,7 +176,7 @@ Usage notes:
       const shellId = backgroundBashManager.startShell(command, timeout);
       return {
         success: true,
-        content: `Command started in background with ID: ${shellId}. Use BashOutput tool with bash_id="${shellId}" to monitor output.`,
+        content: `Command started in background with ID: ${shellId}. Use ${BASH_OUTPUT_TOOL_NAME} tool with bash_id="${shellId}" to monitor output.`,
         shortResult: `Background process ${shellId} started`,
       };
     }
@@ -330,11 +339,11 @@ Usage notes:
  * BashOutput tool - retrieves output from background bash shells
  */
 export const bashOutputTool: ToolPlugin = {
-  name: "BashOutput",
+  name: BASH_OUTPUT_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: "BashOutput",
+      name: BASH_OUTPUT_TOOL_NAME,
       description:
         "Retrieves output from a running or completed background bash shell",
       parameters: {
@@ -430,11 +439,11 @@ export const bashOutputTool: ToolPlugin = {
  * KillBash tool - kills a running background bash shell
  */
 export const killBashTool: ToolPlugin = {
-  name: "KillBash",
+  name: KILL_BASH_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: "KillBash",
+      name: KILL_BASH_TOOL_NAME,
       description: "Kills a running background bash shell by its ID",
       parameters: {
         type: "object",

@@ -1,16 +1,17 @@
 import { readFile } from "fs/promises";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
+import { EXIT_PLAN_MODE_TOOL_NAME } from "../constants/tools.js";
 
 /**
  * Exit Plan Mode Tool Plugin
  */
 export const exitPlanModeTool: ToolPlugin = {
-  name: "ExitPlanMode",
+  name: EXIT_PLAN_MODE_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: "ExitPlanMode",
+      name: EXIT_PLAN_MODE_TOOL_NAME,
       description:
         "Use this tool when you are in plan mode and have finished writing your plan to the plan file and are ready for user approval. This tool will read the plan from the file specified in the system message and present it to the user for confirmation. You should have already written your plan to that file before calling this tool.",
       parameters: {
@@ -56,7 +57,7 @@ export const exitPlanModeTool: ToolPlugin = {
 
       // Permission check triggers the 3-option UI
       const permissionContext = context.permissionManager.createContext(
-        "ExitPlanMode",
+        EXIT_PLAN_MODE_TOOL_NAME,
         context.permissionMode || "plan",
         context.canUseToolCallback,
         { plan_content: planContent },

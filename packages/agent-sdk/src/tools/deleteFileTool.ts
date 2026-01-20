@@ -2,16 +2,17 @@ import { unlink } from "fs/promises";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
+import { DELETE_FILE_TOOL_NAME } from "../constants/tools.js";
 
 /**
  * Delete file tool plugin
  */
 export const deleteFileTool: ToolPlugin = {
-  name: "Delete",
+  name: DELETE_FILE_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: "Delete",
+      name: DELETE_FILE_TOOL_NAME,
       description: `Deletes a file at the specified path. The operation will fail gracefully if:
     - The file doesn't exist
     - The operation is rejected for security reasons
@@ -51,7 +52,7 @@ export const deleteFileTool: ToolPlugin = {
       if (context.permissionManager) {
         try {
           const permissionContext = context.permissionManager.createContext(
-            "Delete",
+            DELETE_FILE_TOOL_NAME,
             context.permissionMode || "default",
             context.canUseToolCallback,
             { target_file: targetFile },
@@ -63,7 +64,7 @@ export const deleteFileTool: ToolPlugin = {
             return {
               success: false,
               content: "",
-              error: `Delete operation denied, reason: ${permissionResult.message || "No reason provided"}`,
+              error: `${DELETE_FILE_TOOL_NAME} operation denied, reason: ${permissionResult.message || "No reason provided"}`,
             };
           }
         } catch {

@@ -2,6 +2,7 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { relative } from "path";
 import { logger } from "../utils/globalLogger.js";
 import { getDisplayPath } from "../utils/path.js";
+import { LSP_TOOL_NAME } from "../constants/tools.js";
 import type {
   LspLocation as Location,
   LspLocationLink as LocationLink,
@@ -480,11 +481,11 @@ function formatOutgoingCallsResult(
  * LSP tool plugin - interact with LSP servers for code intelligence
  */
 export const lspTool: ToolPlugin = {
-  name: "LSP",
+  name: LSP_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: "LSP",
+      name: LSP_TOOL_NAME,
       description: `Interact with Language Server Protocol (LSP) servers to get code intelligence features.
 
 Supported operations:
