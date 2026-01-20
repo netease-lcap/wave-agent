@@ -214,7 +214,12 @@ export const InputBox: React.FC<InputBoxProps> = ({
       )}
       {showBashManager || showMcpManager || (
         <Box flexDirection="column">
-          <Box borderStyle="single" borderColor="gray" paddingX={1}>
+          <Box
+            borderStyle="single"
+            borderColor="gray"
+            borderLeft={false}
+            borderRight={false}
+          >
             <Text color={isPlaceholder ? "gray" : "white"}>
               {shouldShowCursor ? (
                 <>
