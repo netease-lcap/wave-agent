@@ -61,10 +61,13 @@
 **Fields**:
 - `model?: string` - Preferred AI model for command processing
 - `description?: string` - Custom description overriding auto-generated text
+- `allowedTools?: string[]` - List of tool permission rules (e.g., `Bash(git status:*)`)
 
 **Validation Rules**:
 - `model` must be supported by AI provider
 - `description` should be descriptive and concise
+- `allowedTools` must be an array of strings
+- Each `allowedTools` string should follow the `ToolName(pattern)` format
 
 **Relationships**:
 - Embedded within `CustomSlashCommand`
@@ -83,6 +86,18 @@
 **Internal State**:
 - `commands: Map<string, SlashCommand>` - Active command registry
 - `customCommands: Map<string, CustomSlashCommand>` - Custom command metadata cache
+
+### PermissionManager (State Extension)
+**Purpose**: Manages persistent and temporary tool execution permissions
+
+**Internal State**:
+- `allowedRules: string[]` - Persistent rules from settings
+- `temporaryRules: string[]` - In-memory rules added for the duration of a slash command
+
+**Operations**:
+- `addTemporaryRules(rules: string[])` - Add rules for the current session
+- `clearTemporaryRules()` - Remove all temporary rules
+- `checkPermission(toolName: string, args: any)` - Validate against both rule sets
 
 **Operations**:
 - `registerCommand(command: SlashCommand)` - Add command to registry
@@ -165,6 +180,9 @@ echo "Current directory: $(pwd)"
    a. Append arguments to the end of command content
 5. Execute any embedded bash commands
 6. Send processed content to AI manager
+7. **AI Cycle Start**: `PermissionManager.addTemporaryRules()` is called with the extracted `allowedTools`.
+8. **Tool Execution**: `PermissionManager.checkPermission()` matches against both `allowedRules` and `temporaryRules`.
+9. **AI Cycle End**: `PermissionManager.clearTemporaryRules()` is called in the `finally` block of `sendAIMessage`.
 
 ## Error States and Recovery
 
