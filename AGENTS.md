@@ -14,13 +14,14 @@ This is the AI assistant's memory file, recording important information and cont
   - Testing framework is vitest
   - Run test use `pnpm -F xxx test test_file`
   - Use HookTester to test hooks
-  - Use waitHelpers to wait UI change
+  - Use waitHelpers (`waitFor`, `waitForText`) to wait for UI changes in Ink components
   - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify type check, for example: 
     - `vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);`
     - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`
   - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
   - MUST not write `mkdtemp` in test, use mocking instead
   - Mock stdout and stderr to suppress output during testing and restore mocks after tests
+  - Avoid unnecessary `setTimeout` or `sleep` in tests to keep them fast; prefer awaiting promises or using `vi.waitFor` if needed
 - `packages/code/src/components` contains Ink components
 - After modifying agent-sdk, need to build before using in code
 - For type and eslint errors:
