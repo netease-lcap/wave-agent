@@ -90,6 +90,18 @@ Since this feature is already implemented, this research documents the existing 
 
 **Implementation**: Pre-execution parsing identifies bash commands, executes them in working directory context, replaces placeholders with output.
 
+## Decision: PermissionManager API Extension
+**Decision**: Extend `PermissionManager` with `addTemporaryRules(rules: string[])` and `clearTemporaryRules()` methods.
+**Rationale**: `PermissionManager` already has `allowedRules` and `isAllowedByRule` logic. Adding a separate `temporaryRules` array allows us to merge them during permission checks without affecting the persistent `allowedRules` or requiring disk I/O.
+
+## Decision: Slash Command Metadata Extraction
+**Decision**: Update `CustomSlashCommandConfig` type to include `allowedTools?: string[]` and update `parseFrontmatter` in `markdownParser.ts` to support array parsing.
+**Rationale**: Slash commands are defined in markdown files with YAML frontmatter. The `markdownParser.ts` already handles `model` and `description`. Extending it to handle `allowed-tools` is the most natural fit.
+
+## Decision: Recursion Lifecycle Management
+**Decision**: Wrap the `sendAIMessage` recursion in `AIManager.ts` using a `try...finally` block at the top-level call (`recursionDepth === 0`).
+**Rationale**: The `finally` block in `sendAIMessage` is already used for cleanup (resetting `isLoading`, etc.). It's the most reliable place to ensure `clearTemporaryRules()` is called, even if the AI cycle fails or is aborted.
+
 ## Performance Optimizations
 
 ### Decision: In-Memory Command Registry

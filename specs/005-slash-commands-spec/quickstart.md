@@ -164,7 +164,28 @@ find . -name "package.json" -maxdepth 2
 Additional context: $ARGUMENTS
 ```
 
-### 2. Error Handling Patterns
+### 2. Define a Slash Command with Allowed Tools
+Create a markdown file in `.wave/commands/my-command.md`:
+
+```markdown
+---
+description: A command that checks git status automatically
+allowed-tools:
+  - Bash(git status)
+  - Bash(git diff:*)
+---
+
+Check the git status and diff for me.
+```
+
+When you trigger `/my-command`, the AI will now be able to run `git status` and `git diff` without prompting you for permission. Other restricted tools (like `Write` or `Delete`) will still require confirmation unless they are also listed in `allowed-tools` or your `settings.json`.
+
+**Security Note**:
+- Permissions are **temporary**. They are revoked as soon as the AI finishes its response cycle for the slash command.
+- Permissions are **scoped**. They only apply to the tools and patterns you explicitly list.
+- Wildcards are supported (e.g., `Bash(git:*)`).
+
+### 3. Core Manager Integration
 
 ```typescript
 // Graceful degradation for command loading

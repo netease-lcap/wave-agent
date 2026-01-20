@@ -87,6 +87,22 @@ Users can define commands at both project level (`.wave/commands/`) and user lev
 
 ---
 
+### User Story 6 - Auto-approved Tool Execution (Priority: P1)
+
+As a user, I want the AI to execute specific tools automatically when I trigger a slash command, so that I don't have to manually confirm every step of a known workflow.
+
+**Why this priority**: This is a high-value enhancement that reduces friction for common automated tasks.
+
+**Independent Test**: Can be tested by triggering a slash command with `allowed-tools` and verifying that the AI executes those tools without prompting the user for confirmation.
+
+**Acceptance Scenarios**:
+
+1. **Given** a slash command defined with `allowed-tools: Bash(git status:*)`, **When** the user triggers this command and the AI calls `Bash(git status)`, **Then** the tool should execute immediately without a confirmation prompt.
+2. **Given** a slash command with `allowed-tools`, **When** the AI calls a tool NOT in the list (e.g., `Write`), **Then** the system MUST prompt the user for confirmation as usual (unless it's already allowed in `settings.json`).
+3. **Given** an active slash command session with `allowed-tools`, **When** the AI finishes its task and the response cycle ends, **Then** all subsequent tool executions MUST require manual confirmation.
+
+---
+
 ### Edge Cases
 
 - What happens when a command file contains invalid YAML frontmatter?
@@ -94,6 +110,10 @@ Users can define commands at both project level (`.wave/commands/`) and user lev
 - What occurs when a command references non-existent parameters (e.g., `$5` when only 2 arguments provided)?
 - How are commands with identical names handled during reload operations?
 - What happens when bash commands within custom commands fail or timeout?
+- **Empty Allowed Tools**: If a slash command is defined without `allowed-tools`, all tool executions MUST require manual confirmation.
+- **Invalid Pattern Syntax**: If an `allowed-tools` pattern is syntactically invalid, the system SHOULD ignore that specific pattern and default to manual confirmation for matching tools.
+- **Session Persistence**: If the user starts a new task or switches context, any active `allowed-tools` privileges from a previous slash command MUST be revoked.
+- **Overlapping Patterns**: If multiple patterns match a tool execution, the most permissive one (auto-approval) takes precedence.
 
 ## Requirements *(mandatory)*
 
@@ -112,6 +132,10 @@ Users can define commands at both project level (`.wave/commands/`) and user lev
 - **FR-011**: System MUST support command abortion/cancellation for long-running operations
 - **FR-012**: System MUST log command execution status and errors for debugging purposes
 - **FR-013**: System MUST automatically append user arguments to command content if the command markdown contains no parameter placeholders ($ARGUMENTS or $1, $2, etc.)
+- **FR-014**: System MUST parse the `allowed-tools` metadata from the slash command header.
+- **FR-015**: System MUST temporarily grant permissions for tools listed in `allowed-tools` for the duration of the command's AI response cycle.
+- **FR-016**: System MUST revoke temporary permissions once the AI response cycle completes.
+- **FR-017**: System MUST NOT persist `allowed-tools` from a slash command to persistent settings.
 
 ### Key Entities
 
@@ -120,6 +144,8 @@ Users can define commands at both project level (`.wave/commands/`) and user lev
 - **CustomSlashCommandConfig**: Configuration options including AI model preference and custom description
 - **SlashCommandManager**: Central orchestrator for command registration, discovery, execution, and lifecycle management
 - **CommandSelector**: User interface component for command discovery and selection with search functionality
+- **Allowed Tool Pattern**: A string representing a permitted tool and its allowed argument patterns (e.g., `Bash(git status:*)`).
+- **Privileged Session**: The stateful context that tracks whether auto-approval is currently active and which tools are allowed.
 
 ## Success Criteria *(mandatory)*
 
