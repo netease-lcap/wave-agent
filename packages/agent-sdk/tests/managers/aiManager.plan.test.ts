@@ -71,6 +71,9 @@ describe("AIManager Plan Mode Prompt", () => {
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
     expect(callOptions.systemPrompt).toContain("Plan File Info");
+    expect(callOptions.systemPrompt).toContain(
+      "Plan mode is active. The user indicated that they do not want you to execute yet",
+    );
     expect(callOptions.systemPrompt).toContain("No plan file exists yet");
     expect(callOptions.systemPrompt).toContain("using the Write tool");
   });
@@ -83,6 +86,9 @@ describe("AIManager Plan Mode Prompt", () => {
 
     const callOptions = vi.mocked(callAgent).mock.calls[0][0];
     expect(callOptions.systemPrompt).toContain("Plan File Info");
+    expect(callOptions.systemPrompt).toContain(
+      "Plan mode is active. The user indicated that they do not want you to execute yet",
+    );
     expect(callOptions.systemPrompt).toContain("A plan file already exists");
     expect(callOptions.systemPrompt).toContain("using the Edit tool");
   });
