@@ -21,7 +21,7 @@ describe("PermissionManager Plan Mode", () => {
     expect(decision.message).toContain("Bash commands are not allowed");
   });
 
-  it("should block Delete operations in plan mode", async () => {
+  it("should block Delete operations on non-plan files in plan mode", async () => {
     const context = permissionManager.createContext(
       "Delete",
       "plan",
@@ -32,7 +32,22 @@ describe("PermissionManager Plan Mode", () => {
     );
     const decision = await permissionManager.checkPermission(context);
     expect(decision.behavior).toBe("deny");
-    expect(decision.message).toContain("Delete operations are not allowed");
+    expect(decision.message).toContain(
+      "only allowed to edit or delete the designated plan file",
+    );
+  });
+
+  it("should allow Delete to the plan file in plan mode", async () => {
+    const context = permissionManager.createContext(
+      "Delete",
+      "plan",
+      undefined,
+      {
+        target_file: planFilePath,
+      },
+    );
+    const decision = await permissionManager.checkPermission(context);
+    expect(decision.behavior).toBe("allow");
   });
 
   it("should allow Edit to the plan file in plan mode", async () => {
@@ -50,7 +65,7 @@ describe("PermissionManager Plan Mode", () => {
     const decision = await permissionManager.checkPermission(context);
     expect(decision.behavior).toBe("deny");
     expect(decision.message).toContain(
-      "only allowed to edit the designated plan file",
+      "only allowed to edit or delete the designated plan file",
     );
   });
 
