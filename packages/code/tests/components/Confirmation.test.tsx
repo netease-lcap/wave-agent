@@ -544,7 +544,7 @@ describe("Confirmation", () => {
       const trimmedMessage = "use different method";
 
       stdin.write(messageWithSpaces);
-      await waitForText(lastFrame, messageWithSpaces);
+      await waitForText(lastFrame, trimmedMessage);
 
       stdin.write("\r");
       await new Promise((resolve) => setTimeout(resolve, 50));
