@@ -23,6 +23,12 @@ export type MarketplaceSource =
   | {
       source: "github";
       repo: string;
+      ref?: string;
+    }
+  | {
+      source: "git";
+      url: string;
+      ref?: string;
     };
 
 export interface KnownMarketplace {

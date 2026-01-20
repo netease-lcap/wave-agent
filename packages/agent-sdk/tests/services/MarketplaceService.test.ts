@@ -153,10 +153,11 @@ describe("MarketplaceService", () => {
       const result = await service.addMarketplace(repo);
 
       expect(result.name).toBe("github-market");
-      expect(result.source).toEqual({ source: "github", repo });
+      expect(result.source).toEqual({ source: "github", repo, ref: undefined });
       expect(mockGitService.clone).toHaveBeenCalledWith(
         repo,
         expect.stringContaining(repo),
+        undefined,
       );
       expect(mockWriteFile).toHaveBeenCalled();
     });
@@ -179,7 +180,7 @@ describe("MarketplaceService", () => {
       mockGitService.clone.mockRejectedValue(new Error("Repository not found"));
 
       await expect(service.addMarketplace(repo)).rejects.toThrow(
-        "Failed to add marketplace from GitHub: Repository not found",
+        "Failed to add marketplace from Git: Repository not found",
       );
     });
   });
@@ -297,7 +298,9 @@ describe("MarketplaceService", () => {
 
       expect(mockGitService.pull).not.toHaveBeenCalled();
       expect(console.warn).toHaveBeenCalledWith(
-        expect.stringContaining('Skipping update for GitHub marketplace "m1"'),
+        expect.stringContaining(
+          'Skipping update for Git/GitHub marketplace "m1"',
+        ),
       );
       // Should still update the directory one (by re-validating manifest)
       expect(mockReadFile).toHaveBeenCalledWith(

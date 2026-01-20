@@ -17,19 +17,35 @@ export class GitService {
   }
 
   /**
-   * Clones a GitHub repository to a local path
+   * Clones a Git repository to a local path
    */
-  async clone(repo: string, targetPath: string): Promise<void> {
+  async clone(
+    urlOrRepo: string,
+    targetPath: string,
+    ref?: string,
+  ): Promise<void> {
     if (!(await this.isGitAvailable())) {
       throw new Error(
-        "Git is not installed or not found in PATH. Please install Git to use GitHub marketplaces.",
+        "Git is not installed or not found in PATH. Please install Git to use Git/GitHub marketplaces.",
       );
     }
-    const url = `https://github.com/${repo}.git`;
+
+    let url = urlOrRepo;
+    if (
+      !urlOrRepo.startsWith("http://") &&
+      !urlOrRepo.startsWith("https://") &&
+      !urlOrRepo.startsWith("git@") &&
+      !urlOrRepo.startsWith("ssh://")
+    ) {
+      // Assume GitHub repo format: owner/repo
+      url = `https://github.com/${urlOrRepo}.git`;
+    }
+
     try {
-      await execAsync(`LC_ALL=C git clone --depth 1 ${url} "${targetPath}"`);
+      const refArgs = ref ? `-b "${ref}"` : "--depth 1";
+      await execAsync(`LC_ALL=C git clone ${refArgs} "${url}" "${targetPath}"`);
     } catch (error) {
-      throw this.handleGitError(repo, error);
+      throw this.handleGitError(urlOrRepo, error);
     }
   }
 
@@ -39,7 +55,7 @@ export class GitService {
   async pull(targetPath: string): Promise<void> {
     if (!(await this.isGitAvailable())) {
       throw new Error(
-        "Git is not installed or not found in PATH. Please install Git to use GitHub marketplaces.",
+        "Git is not installed or not found in PATH. Please install Git to use Git/GitHub marketplaces.",
       );
     }
     try {
