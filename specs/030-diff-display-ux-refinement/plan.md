@@ -1,7 +1,7 @@
-# Implementation Plan: Consolidate Diff Display
+# Implementation Plan: Diff Display UX Refinement
 
-**Branch**: `030-consolidate-diff-display` | **Date**: 2025-12-11 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/030-consolidate-diff-display/spec.md`
+**Branch**: `030-diff-display-ux-refinement` | **Date**: 2025-12-11 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/030-diff-display-ux-refinement/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 

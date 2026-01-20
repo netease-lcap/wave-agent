@@ -1,6 +1,6 @@
-# Component Interfaces: Consolidate Diff Display
+# Component Interfaces: Diff Display UX Refinement
 
-**Feature**: 030-consolidate-diff-display  
+**Feature**: 030-diff-display-ux-refinement  
 **Date**: 2025-12-11
 
 ## Core Interfaces

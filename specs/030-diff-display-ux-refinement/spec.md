@@ -1,6 +1,6 @@
-# Feature Specification: Consolidate Diff Display
+# Feature Specification: Diff Display UX Refinement
 
-**Feature Branch**: `030-consolidate-diff-display`  
+**Feature Branch**: `030-diff-display-ux-refinement`  
 **Created**: 2025-12-11  
 **Status**: Draft  
 **Input**: User description: "remove diffblock and packages/code/src/components/DiffViewer.tsx and all related code, show diff in packages/code/src/components/Confirmation.tsx and ToolResultDisplay.tsx when stage is end. diff should based on parameters"

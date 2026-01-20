@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Consolidate Diff Display
+# Specification Quality Checklist: Diff Display UX Refinement
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2025-12-11
