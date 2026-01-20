@@ -76,6 +76,7 @@ describe("AIManager Plan Mode Prompt", () => {
     );
     expect(callOptions.systemPrompt).toContain("No plan file exists yet");
     expect(callOptions.systemPrompt).toContain("using the Write tool");
+    expect(callOptions.systemPrompt).toContain("allowed to edit or delete");
   });
 
   it("should add plan reminder in plan mode when file exists", async () => {
@@ -91,5 +92,6 @@ describe("AIManager Plan Mode Prompt", () => {
     );
     expect(callOptions.systemPrompt).toContain("A plan file already exists");
     expect(callOptions.systemPrompt).toContain("using the Edit tool");
+    expect(callOptions.systemPrompt).toContain("allowed to edit or delete");
   });
 });

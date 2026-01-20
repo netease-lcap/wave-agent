@@ -70,6 +70,7 @@
 
 - [X] T012 [US2] Implement tool-specific authorization logic for `plan` mode in `packages/agent-sdk/src/managers/permissionManager.ts`
 - [X] T013 [US2] Integrate permission checks in `Agent.ts` or relevant tool handlers to ensure `Bash` is blocked in `plan` mode.
+- [X] T020 [US2] Allow `Delete` tool on plan file in `packages/agent-sdk/src/managers/permissionManager.ts` and add tests in `packages/agent-sdk/tests/managers/permissionManager.plan.test.ts`
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently.
 

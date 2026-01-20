@@ -15,7 +15,7 @@ Implement a "Plan Mode" permission state that allows the LLM to analyze the code
 **Target Platform**: Linux/macOS/Windows (Node.js)
 **Project Type**: Monorepo (agent-sdk, code)
 **Performance Goals**: Instant mode switching, minimal overhead for permission checks.
-**Constraints**: Read-only enforcement for all files except the plan file; no bash command execution in Plan Mode. The plan file is managed by the LLM using `Write` and `Edit` tools.
+**Constraints**: Read-only enforcement for all files except the plan file; no bash command execution in Plan Mode. The plan file is managed by the LLM using `Write`, `Edit`, and `Delete` tools.
 **Scale/Scope**: Core permission system enhancement.
 
 ## Constitution Check
