@@ -157,10 +157,14 @@ echo "Current directory: $(pwd)"
 
 **Processing Order**:
 1. Parse command arguments into array
-2. Replace `$ARGUMENTS` with raw input
-3. Replace positional parameters `$N` in descending order (prevents `$10` → `$1` + "0")
-4. Execute any embedded bash commands
-5. Send processed content to AI manager
+2. Check if content contains any parameter placeholders ($ARGUMENTS, $1, etc.)
+3. If placeholders exist:
+   a. Replace `$ARGUMENTS` with raw input
+   b. Replace positional parameters `$N` in descending order
+4. If NO placeholders exist and arguments are provided:
+   a. Append arguments to the end of command content
+5. Execute any embedded bash commands
+6. Send processed content to AI manager
 
 ## Error States and Recovery
 

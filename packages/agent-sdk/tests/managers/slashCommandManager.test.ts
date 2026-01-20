@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
-import { CustomSlashCommand } from "../../src/types/index.js";
+import { CustomSlashCommand, TextBlock } from "../../src/types/index.js";
 
 describe("SlashCommandManager", () => {
   let slashCommandManager: SlashCommandManager;
@@ -164,6 +164,32 @@ describe("SlashCommandManager", () => {
       expect(slashCommandManager.hasCommand("test-plugin:cmd1")).toBe(true);
       const cmd = slashCommandManager.getCommand("test-plugin:cmd1");
       expect(cmd?.name).toBe("test-plugin:cmd1");
+    });
+
+    it("should append arguments to content if no placeholders are present", async () => {
+      const pluginName = "test-plugin";
+      const commands = [
+        {
+          id: "append-test",
+          name: "append-test",
+          content: "Base content",
+        },
+      ];
+
+      slashCommandManager.registerPluginCommands(
+        pluginName,
+        commands as unknown as CustomSlashCommand[],
+      );
+
+      const cmd = slashCommandManager.getCommand("test-plugin:append-test");
+      await cmd?.handler("extra arguments");
+
+      const messages = messageManager.getMessages();
+      const lastMessage = messages[messages.length - 1];
+      const textBlock = lastMessage.blocks[0] as TextBlock;
+      expect(textBlock.customCommandContent).toBe(
+        "Base content extra arguments",
+      );
     });
   });
 });

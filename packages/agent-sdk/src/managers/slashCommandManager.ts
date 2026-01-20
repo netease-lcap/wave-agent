@@ -84,10 +84,18 @@ export class SlashCommandManager {
           description,
           handler: async (args?: string) => {
             // Substitute parameters in the command content
-            const processedContent =
-              hasParameterPlaceholders(command.content) && args
-                ? substituteCommandParameters(command.content, args)
-                : command.content;
+            let processedContent = command.content;
+            if (args) {
+              if (hasParameterPlaceholders(command.content)) {
+                processedContent = substituteCommandParameters(
+                  command.content,
+                  args,
+                );
+              } else {
+                // If no placeholders, append arguments to the content
+                processedContent = `${command.content.trim()} ${args}`;
+              }
+            }
 
             await this.executeCustomCommandInMainAgent(
               command.name,
@@ -130,10 +138,18 @@ export class SlashCommandManager {
         description,
         handler: async (args?: string) => {
           // Substitute parameters in the command content
-          const processedContent =
-            hasParameterPlaceholders(command.content) && args
-              ? substituteCommandParameters(command.content, args)
-              : command.content;
+          let processedContent = command.content;
+          if (args) {
+            if (hasParameterPlaceholders(command.content)) {
+              processedContent = substituteCommandParameters(
+                command.content,
+                args,
+              );
+            } else {
+              // If no placeholders, append arguments to the content
+              processedContent = `${command.content.trim()} ${args}`;
+            }
+          }
 
           await this.executeCustomCommandInMainAgent(
             namespacedName,

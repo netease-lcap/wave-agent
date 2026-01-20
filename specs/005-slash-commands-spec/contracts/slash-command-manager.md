@@ -110,8 +110,9 @@ interface ParameterSubstitution {
   // Processing order
   order: [
     "parse-arguments",
-    "substitute-$ARGUMENTS", 
-    "substitute-positional-descending",
+    "check-for-placeholders",
+    "if-placeholders-exist:substitute-$ARGUMENTS-and-positional",
+    "if-no-placeholders:append-arguments-to-content",
     "execute-bash-commands",
     "send-to-ai-manager"
   ]
