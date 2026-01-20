@@ -22,7 +22,10 @@ import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
-import { DEFAULT_SYSTEM_PROMPT } from "../constants/prompts.js";
+import {
+  DEFAULT_SYSTEM_PROMPT,
+  buildSystemPrompt,
+} from "../constants/prompts.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -324,7 +327,11 @@ export class AIManager {
       const currentMode = this.permissionManager?.getCurrentEffectiveMode(
         this.getModelConfig().permissionMode,
       );
-      let effectiveSystemPrompt = this.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+      const toolsConfig = this.getFilteredToolsConfig(allowedTools);
+      let effectiveSystemPrompt = buildSystemPrompt(
+        this.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+        toolsConfig,
+      );
 
       if (currentMode === "plan") {
         const planFilePath = this.permissionManager?.getPlanFilePath();
@@ -352,7 +359,7 @@ export class AIManager {
         abortSignal: abortController.signal,
         memory: combinedMemory, // Pass combined memory content
         workdir: this.workdir, // Pass working directory
-        tools: this.getFilteredToolsConfig(allowedTools), // Pass filtered tool configuration
+        tools: toolsConfig, // Pass filtered tool configuration
         model: model, // Use passed model
         systemPrompt: effectiveSystemPrompt, // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override
