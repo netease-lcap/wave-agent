@@ -207,7 +207,7 @@ src/utils.ts:1:export const logger = {};
     // Verify that the -i flag was passed
     expect(mockSpawn).toHaveBeenCalledWith(
       "/mock/rg",
-      expect.arrayContaining(["-i"]),
+      expect.arrayContaining(["-i", "--max-columns=500"]),
       expect.any(Object),
     );
   });
