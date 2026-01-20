@@ -131,6 +131,10 @@ describe("LiveConfigManager - Validation", () => {
       await testValidation("acceptEdits", true);
     });
 
+    it('should accept "plan" as a valid defaultMode', async () => {
+      await testValidation("plan", true);
+    });
+
     it("should reject invalid defaultMode values", async () => {
       await testValidation("invalidMode", false);
     });

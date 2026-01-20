@@ -9,6 +9,7 @@
 
 import { existsSync } from "fs";
 import type { Logger } from "../types/index.js";
+import type { PermissionMode } from "../types/permissions.js";
 import {
   FileWatcherService,
   type FileWatchEvent,
@@ -514,13 +515,15 @@ export class LiveConfigManager {
       } else {
         // Validate defaultMode if present
         if (config.permissions.defaultMode !== undefined) {
-          if (
-            config.permissions.defaultMode !== "default" &&
-            config.permissions.defaultMode !== "bypassPermissions" &&
-            config.permissions.defaultMode !== "acceptEdits"
-          ) {
+          const validModes: PermissionMode[] = [
+            "default",
+            "bypassPermissions",
+            "acceptEdits",
+            "plan",
+          ];
+          if (!validModes.includes(config.permissions.defaultMode)) {
             errors.push(
-              `Invalid defaultMode: "${config.permissions.defaultMode}". Must be "default", "bypassPermissions" or "acceptEdits"`,
+              `Invalid defaultMode: "${config.permissions.defaultMode}". Must be one of: ${validModes.join(", ")}`,
             );
           }
         }
