@@ -63,7 +63,7 @@ describe("GitService", () => {
     });
 
     await expect(service.clone("owner/repo", "/path")).rejects.toThrow(
-      "Git is not installed or not found in PATH. Please install Git to use GitHub marketplaces.",
+      "Git is not installed or not found in PATH. Please install Git to use Git/GitHub marketplaces.",
     );
   });
 
