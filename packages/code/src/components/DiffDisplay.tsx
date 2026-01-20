@@ -2,34 +2,35 @@ import React, { useMemo } from "react";
 import { Box, Text, useStdout } from "ink";
 import { transformToolBlockToChanges } from "../utils/toolParameterTransforms.js";
 import { diffLines, diffWords } from "diff";
-import type { ToolBlock } from "wave-agent-sdk";
 
 interface DiffDisplayProps {
-  toolBlock: ToolBlock;
+  toolName?: string;
+  parameters?: string;
 }
 
-export const DiffDisplay: React.FC<DiffDisplayProps> = ({ toolBlock }) => {
+export const DiffDisplay: React.FC<DiffDisplayProps> = ({
+  toolName,
+  parameters,
+}) => {
   const { stdout } = useStdout();
   const maxHeight = useMemo(() => {
     return Math.max(5, (stdout?.rows || 24) - 20);
   }, [stdout?.rows]);
 
   const showDiff =
-    ["running", "end"].includes(toolBlock.stage) &&
-    toolBlock.name &&
-    ["Write", "Edit", "MultiEdit"].includes(toolBlock.name);
+    toolName && ["Write", "Edit", "MultiEdit"].includes(toolName);
 
   // Diff detection and transformation using typed parameters
   const changes = useMemo(() => {
-    if (!showDiff || !toolBlock.name || !toolBlock.parameters) return [];
+    if (!showDiff || !toolName || !parameters) return [];
     try {
       // Use local transformation with JSON parsing and type guards
-      return transformToolBlockToChanges(toolBlock.name, toolBlock.parameters);
+      return transformToolBlockToChanges(toolName, parameters);
     } catch (error) {
       console.warn("Error transforming tool block to changes:", error);
       return [];
     }
-  }, [toolBlock.name, toolBlock.parameters, showDiff]);
+  }, [toolName, parameters, showDiff]);
 
   // Render word-level diff between two lines of text
   const renderWordLevelDiff = (

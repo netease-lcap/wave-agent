@@ -4,14 +4,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ToolResultDisplay } from "../../src/components/ToolResultDisplay.js";
 import type { ToolBlock } from "wave-agent-sdk";
 
-// Mock the transformToolBlockToChanges function to return empty array
-vi.mock("wave-agent-sdk", async () => {
-  const actual = await vi.importActual("wave-agent-sdk");
-  return {
-    ...actual,
-    transformToolBlockToChanges: vi.fn(() => []),
-  };
-});
+// Mock the transformToolBlockToChanges function
+vi.mock("../../src/utils/toolParameterTransforms.js", () => ({
+  transformToolBlockToChanges: vi.fn(() => []),
+}));
+
+import { transformToolBlockToChanges } from "../../src/utils/toolParameterTransforms.js";
 
 describe("ToolResultDisplay Component", () => {
   beforeEach(() => {
@@ -257,6 +255,49 @@ describe("ToolResultDisplay Component", () => {
       expect(output).toContain("🔧 screenshot_tool");
       expect(output).toContain("🔄"); // Running status
       expect(output).toContain("🖼️"); // Image indicator
+    });
+  });
+
+  describe("Diff display", () => {
+    it("should NOT show diff display when stage is running", () => {
+      const toolBlock: ToolBlock = {
+        type: "tool",
+        name: "Edit",
+        stage: "running",
+        parameters: JSON.stringify({
+          file_path: "test.txt",
+          old_string: "old",
+          new_string: "new",
+        }),
+      };
+
+      const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
+      const output = lastFrame();
+
+      expect(output).not.toContain("Diff:");
+    });
+
+    it("should show diff display when stage is end", () => {
+      const toolBlock: ToolBlock = {
+        type: "tool",
+        name: "Edit",
+        stage: "end",
+        parameters: JSON.stringify({
+          file_path: "test.txt",
+          old_string: "old",
+          new_string: "new",
+        }),
+      };
+
+      // We need to mock transformToolBlockToChanges to return something for this test
+      vi.mocked(transformToolBlockToChanges).mockReturnValue([
+        { oldContent: "old", newContent: "new" },
+      ]);
+
+      const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
+      const output = lastFrame();
+
+      expect(output).toContain("Diff:");
     });
   });
 });
