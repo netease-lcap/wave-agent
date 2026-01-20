@@ -106,6 +106,8 @@
 - [x] T027 Run full test suite with pnpm test to validate all functionality
 - [x] T028 [P] Validate quickstart.md examples against implemented functionality
 - [x] T029 Move defaultMode to permissions.defaultMode in WaveConfiguration and update all references
+- [x] T030 [P] Ensure `defaultMode` in configuration and `PermissionMode` share the same type definition in `packages/agent-sdk/src/types/configuration.ts`
+- [x] T031 [P] Update validation logic in `LiveConfigManager` and `ConfigurationService` to use `PermissionMode` values consistently
 
 
 ---

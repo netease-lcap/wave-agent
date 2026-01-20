@@ -294,6 +294,18 @@ describe("ConfigurationService", () => {
       expect(result.errors).toHaveLength(0);
     });
 
+    it('should validate "plan" as a valid defaultMode', () => {
+      const config = {
+        permissions: {
+          defaultMode: "plan" as const,
+        },
+      };
+
+      const result = configService.validateConfiguration(config);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
     it("should catch invalid hook event", () => {
       const config = {
         hooks: {

@@ -7,6 +7,7 @@
  */
 
 import type { HookEvent, HookEventConfig } from "./hooks.js";
+import type { PermissionMode } from "./permissions.js";
 
 /**
  * Root configuration structure for all Wave Agent settings including hooks and environment variables
@@ -18,7 +19,7 @@ export interface WaveConfiguration {
   permissions?: {
     allow?: string[];
     deny?: string[];
-    defaultMode?: "default" | "bypassPermissions" | "acceptEdits"; // Default permission mode for restricted tools
+    defaultMode?: PermissionMode; // Default permission mode for restricted tools
     /**
      * List of directories that are considered part of the Safe Zone.
      * File operations within these directories can be auto-accepted.
