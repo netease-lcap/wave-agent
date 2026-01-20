@@ -37,11 +37,11 @@ interface Change {
 ## Transformation Architecture
 
 ### Agent-SDK Exported Function
-The agent-sdk exports a transformation function to convert tool parameters into standardized Change[] arrays:
+The agent-sdk exports a transformation function to convert tool parameters into standardized Change[] arrays. The UI layer uses this via the `DiffDisplay` component.
 
 ```typescript
-// In agent-sdk/src/utils/diff-transform.ts
-export function transformToolBlockToChanges(toolResult: ToolResult): Change[]
+// In packages/code/src/utils/toolParameterTransforms.ts
+export function transformToolBlockToChanges(toolName: string, parameters: string): Change[]
 ```
 
 **Function Responsibilities**:
@@ -110,14 +110,15 @@ interface DiffDisplayLine {
 - **No Interface Changes**: Existing ToolResult interface unchanged
 
 ### Component-Level Usage
-ToolResultDisplay component usage:
+`DiffDisplay` component usage:
 ```typescript
-import { transformToolBlockToChanges } from '@/wave-agent-sdk';
+import { DiffDisplay } from './DiffDisplay.js';
 
-function ToolResultDisplay({ toolResult }: Props) {
-  const changes = transformToolBlockToChanges(toolResult);
-  // Render changes as diff display
-}
+// In ToolResultDisplay.tsx (only for stage === "end")
+<DiffDisplay toolName={name} parameters={parameters} />
+
+// In Confirmation.tsx
+<DiffDisplay toolName={toolName} parameters={JSON.stringify(toolInput)} />
 ```
 
 ### Relationships
@@ -136,22 +137,15 @@ agent-sdk function              UI component logic      Visual output
 
 ## Usage Patterns
 
-### Transform and Render (Within ToolResultDisplay)
+### Transform and Render (Within DiffDisplay)
 ```typescript
-function ToolResultDisplay({ toolResult }: Props) {
+function DiffDisplay({ toolName, parameters }: Props) {
   const changes = useMemo(() => 
-    transformToolBlockToChanges(toolResult), 
-    [toolResult]
+    transformToolBlockToChanges(toolName, parameters), 
+    [toolName, parameters]
   );
   
-  const summary = useMemo(() => 
-    generateSummaryFromChanges(changes),
-    [changes]
-  );
-  
-  return isExpanded ? 
-    renderExpandedDiff(changes) : 
-    renderCollapsedSummary(summary);
+  return renderExpandedDiff(changes);
 }
 ```
 
