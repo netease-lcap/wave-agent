@@ -32,7 +32,7 @@ export const ChatInterface: React.FC = () => {
   if (!sessionId) return null;
 
   return (
-    <Box flexDirection="column" height="100%" paddingY={1}>
+    <Box flexDirection="column" height="100%" paddingY={1} paddingRight={1}>
       <MessageList
         messages={messages}
         isLoading={isLoading}
