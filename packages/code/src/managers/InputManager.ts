@@ -1,6 +1,7 @@
 import { FileItem } from "../components/FileSelector.js";
 import {
   searchFiles as searchFilesUtil,
+  deleteBashCommandFromHistory,
   PermissionMode,
   Logger,
 } from "wave-agent-sdk";
@@ -509,6 +510,16 @@ export class InputManager {
       : `!${commandToExecute}`;
     this.clearInput();
     this.callbacks.onSendMessage?.(bashCommand);
+  }
+
+  handleBashHistoryDelete(command: string, workdir?: string): void {
+    deleteBashCommandFromHistory(command, workdir);
+    // Trigger a refresh of the selector state to force re-render of BashHistorySelector
+    this.callbacks.onBashHistorySelectorStateChange?.(
+      this.showBashHistorySelector,
+      this.bashHistorySearchQuery,
+      this.exclamationPosition,
+    );
   }
 
   checkForExclamationDeletion(cursorPosition: number): boolean {

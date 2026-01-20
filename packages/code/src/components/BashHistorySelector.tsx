@@ -8,6 +8,7 @@ export interface BashHistorySelectorProps {
   workdir: string;
   onSelect: (command: string) => void;
   onExecute: (command: string) => void;
+  onDelete: (command: string, workdir?: string) => void;
   onCancel: () => void;
 }
 
@@ -16,10 +17,12 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
   workdir,
   onSelect,
   onExecute,
+  onDelete,
   onCancel,
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [commands, setCommands] = useState<BashHistoryEntry[]>([]);
+  const [refreshCounter, setRefreshCounter] = useState(0);
 
   // Search bash history
   useEffect(() => {
@@ -30,8 +33,9 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
       searchQuery,
       workdir,
       resultCount: results.length,
+      refreshCounter,
     });
-  }, [searchQuery, workdir]);
+  }, [searchQuery, workdir, refreshCounter]);
 
   useInput((input, key) => {
     logger.debug("BashHistorySelector useInput:", {
@@ -65,6 +69,15 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
 
     if (key.escape) {
       onCancel();
+      return;
+    }
+
+    if (key.ctrl && input === "d") {
+      if (commands.length > 0 && selectedIndex < commands.length) {
+        const selectedCommand = commands[selectedIndex];
+        onDelete(selectedCommand.command, selectedCommand.workdir);
+        setRefreshCounter((prev) => prev + 1);
+      }
       return;
     }
 
@@ -155,7 +168,8 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
 
       <Box>
         <Text dimColor>
-          Use ↑↓ to navigate, Enter to execute, Tab to insert, Escape to cancel
+          Use ↑↓ to navigate, Enter to execute, Tab to insert, Ctrl+d to remove,
+          Escape to cancel
         </Text>
       </Box>
     </Box>
