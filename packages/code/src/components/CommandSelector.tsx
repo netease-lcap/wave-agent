@@ -91,8 +91,10 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor="yellow"
-        padding={1}
-        marginBottom={1}
+        borderBottom={false}
+        borderLeft={false}
+        borderRight={false}
+        paddingTop={1}
       >
         <Text color="yellow">No commands found for "{searchQuery}"</Text>
         <Text dimColor>Press Escape to cancel</Text>
@@ -105,9 +107,11 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       flexDirection="column"
       borderStyle="single"
       borderColor="magenta"
-      padding={1}
+      borderBottom={false}
+      borderLeft={false}
+      borderRight={false}
+      paddingTop={1}
       gap={1}
-      marginBottom={1}
     >
       <Box>
         <Text color="magenta" bold>

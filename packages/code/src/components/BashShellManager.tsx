@@ -133,9 +133,11 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor="cyan"
-        padding={1}
+        borderBottom={false}
+        borderLeft={false}
+        borderRight={false}
+        paddingTop={1}
         gap={1}
-        marginBottom={1}
       >
         <Box>
           <Text color="cyan" bold>
@@ -211,8 +213,10 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor="cyan"
-        padding={1}
-        marginBottom={1}
+        borderBottom={false}
+        borderLeft={false}
+        borderRight={false}
+        paddingTop={1}
       >
         <Text color="cyan" bold>
           Background Bash Shells
@@ -229,8 +233,10 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor="cyan"
-        padding={1}
-        marginBottom={1}
+        borderBottom={false}
+        borderLeft={false}
+        borderRight={false}
+        paddingTop={1}
       >
         <Text color="cyan" bold>
           Background Bash Shells
@@ -246,9 +252,11 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
       flexDirection="column"
       borderStyle="single"
       borderColor="cyan"
-      padding={1}
+      borderBottom={false}
+      borderLeft={false}
+      borderRight={false}
+      paddingTop={1}
       gap={1}
-      marginBottom={1}
     >
       <Box>
         <Text color="cyan" bold>

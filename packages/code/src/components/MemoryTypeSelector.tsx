@@ -55,9 +55,11 @@ export const MemoryTypeSelector: React.FC<MemoryTypeSelectorProps> = ({
       flexDirection="column"
       borderStyle="single"
       borderColor="green"
-      padding={1}
+      borderBottom={false}
+      borderLeft={false}
+      borderRight={false}
+      paddingTop={1}
       gap={1}
-      marginBottom={1}
     >
       <Box>
         <Text color="green" bold>
