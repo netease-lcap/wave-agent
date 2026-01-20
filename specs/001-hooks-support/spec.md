@@ -161,12 +161,16 @@ A developer creates a Stop hook to perform cleanup actions when a session ends. 
 - **FR-017**: System MUST ensure JSON data is properly formatted and valid before sending to hook processes
 - **FR-018**: System MUST handle cases where hook processes don't read from stdin without blocking or causing errors
 - **FR-019**: System MUST maintain backward compatibility with existing hooks that don't expect JSON input
+- **FR-020**: System MUST organize hook components according to Constitution VII: HookManager in managers/, executor and settings as functions in services/hook.ts, matcher in utils/hookMatcher.ts, and types in types/hooks.ts.
+- **FR-021**: System MUST ensure test file structure mirrors the source code structure.
 
 ### Key Entities
 
 - **Hook Configuration**: Settings structure containing event mappings, matchers, and command definitions
 - **Hook Event**: Specific trigger points in Wave's execution cycle (PreToolUse, PostToolUse, UserPromptSubmit, Stop)
-- **Hook Matcher**: Pattern matching system for determining which hooks apply to specific tool operations
+- **Hook Matcher**: Pattern matching system for determining which hooks apply to specific tool operations (located in utils/hookMatcher.ts)
+- **Hook Executor**: Function-based service for executing hook commands (located in services/hook.ts)
+- **Hook Settings**: Service for loading and merging hook configurations (located in services/hook.ts)
 - **Hook Command**: Executable bash commands with access to Wave environment variables
 - **Hook Input JSON**: Contains session context (session_id, transcript_path, cwd), event information (hook_event_name), and event-specific data (tool details, prompts, responses)
 - **Session Data**: Complete conversation history and metadata accessible via transcript_path

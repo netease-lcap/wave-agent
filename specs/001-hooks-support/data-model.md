@@ -9,6 +9,7 @@
 ### HookConfiguration
 **Purpose**: Root configuration structure for all hook definitions  
 **Location**: ~/.wave/settings.json and .wave/settings.json
+**Service**: `src/services/hook.ts` (Settings functions)
 
 **Fields**:
 - `hooks`: Record<HookEvent, HookEventConfig[]> - Maps hook events to their configurations
@@ -70,6 +71,7 @@
 
 ### HookExecutionContext
 **Purpose**: Runtime context provided to hook during execution
+**Location**: `src/types/hooks.ts`
 
 **Fields**:
 - `event: HookEvent` - The triggering event
@@ -108,6 +110,7 @@
 
 ### HookJsonInput
 **Purpose**: Structured data provided to hook via stdin
+**Location**: `src/types/hooks.ts`
 
 **Fields**:
 - `session_id: string` - Unique session identifier
@@ -211,7 +214,7 @@ interface HookJsonInput {
 ### Core Type Definitions
 
 ```typescript
-// hooks/types.ts - New JSON input types
+// types/hooks.ts - New JSON input types
 export interface HookJsonInput {
   session_id: string;
   transcript_path: string;
@@ -246,7 +249,7 @@ graph TD
     A[Agent/AIManager] --> B[Collect Context Data]
     B --> C[Build Extended Context]
     C --> D[HookManager.executeHooks]
-    D --> E[HookExecutor.executeCommand]
+    D --> E[executeCommand (services/hook.ts)]
     E --> F[Build JSON Input]
     F --> G[Write to Process Stdin]
     G --> H[Hook Process Receives JSON]
