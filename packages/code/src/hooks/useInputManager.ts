@@ -324,6 +324,13 @@ export const useInputManager = (
     managerRef.current?.handleBashHistoryExecuteAndSend(command);
   }, []);
 
+  const handleBashHistoryDelete = useCallback(
+    (command: string, workdir?: string) => {
+      managerRef.current?.handleBashHistoryDelete(command, workdir);
+    },
+    [],
+  );
+
   return {
     // State
     inputText,
@@ -445,6 +452,7 @@ export const useInputManager = (
 
     // Complex handlers combining multiple operations
     handleBashHistoryExecuteAndSend,
+    handleBashHistoryDelete,
 
     // Main input handler
     handleInput: useCallback(

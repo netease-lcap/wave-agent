@@ -103,6 +103,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setUserInputHistory,
     // Complex handlers combining multiple operations
     handleBashHistoryExecuteAndSend,
+    handleBashHistoryDelete,
     // Main handler
     handleInput,
     // Manager ready state
@@ -188,6 +189,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           workdir={currentWorkdir}
           onSelect={handleBashHistorySelect}
           onExecute={handleBashHistoryExecuteAndSend}
+          onDelete={handleBashHistoryDelete}
           onCancel={handleCancelBashHistorySelect}
         />
       )}
