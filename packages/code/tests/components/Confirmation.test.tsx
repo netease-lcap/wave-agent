@@ -740,9 +740,11 @@ describe("Confirmation", () => {
       // Wait for text and selection to update
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Verify we're on alternative option and see the spaces
+      // Verify we're on alternative option and placeholder is gone
       const frameAfterSpaces = lastFrame();
-      expect(frameAfterSpaces).toContain("   ");
+      expect(frameAfterSpaces).not.toContain(
+        "Type here to tell Wave what to do differently",
+      );
       expect(frameAfterSpaces).toContain("> 3.");
 
       // Try to confirm - should not call onDecision because trimmed text is empty

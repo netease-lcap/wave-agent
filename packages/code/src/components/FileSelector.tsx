@@ -49,8 +49,10 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor="yellow"
-        padding={1}
-        marginBottom={1}
+        borderBottom={false}
+        borderLeft={false}
+        borderRight={false}
+        paddingTop={1}
       >
         <Text color="yellow">📁 No files found for "{searchQuery}"</Text>
         <Text dimColor>Press Escape to cancel</Text>
@@ -86,8 +88,10 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
       flexDirection="column"
       borderStyle="single"
       borderColor="cyan"
-      padding={1}
-      marginBottom={1}
+      borderBottom={false}
+      borderLeft={false}
+      borderRight={false}
+      paddingTop={1}
     >
       <Text color="cyan" bold>
         📁 Select File/Directory{" "}

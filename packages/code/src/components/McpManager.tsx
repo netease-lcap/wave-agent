@@ -144,9 +144,11 @@ export const McpManager: React.FC<McpManagerProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor="cyan"
-        padding={1}
+        borderBottom={false}
+        borderLeft={false}
+        borderRight={false}
+        paddingTop={1}
         gap={1}
-        marginBottom={1}
       >
         <Box>
           <Text color="cyan" bold>
@@ -247,8 +249,10 @@ export const McpManager: React.FC<McpManagerProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor="cyan"
-        padding={1}
-        marginBottom={1}
+        borderBottom={false}
+        borderLeft={false}
+        borderRight={false}
+        paddingTop={1}
       >
         <Text color="cyan" bold>
           Manage MCP servers
@@ -267,9 +271,11 @@ export const McpManager: React.FC<McpManagerProps> = ({
       flexDirection="column"
       borderStyle="single"
       borderColor="cyan"
-      padding={1}
+      borderBottom={false}
+      borderLeft={false}
+      borderRight={false}
+      paddingTop={1}
       gap={1}
-      marginBottom={1}
     >
       <Box>
         <Text color="cyan" bold>

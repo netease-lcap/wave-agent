@@ -359,8 +359,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       borderBottom={false}
       borderLeft={false}
       borderRight={false}
-      padding={1}
-      marginBottom={1}
+      paddingTop={1}
     >
       <Text color="yellow" bold>
         Tool: {toolName}

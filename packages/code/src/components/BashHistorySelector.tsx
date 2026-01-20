@@ -98,8 +98,10 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor="yellow"
-        padding={1}
-        marginBottom={1}
+        borderBottom={false}
+        borderLeft={false}
+        borderRight={false}
+        paddingTop={1}
       >
         <Text color="yellow">
           No bash history found {searchQuery && `for "${searchQuery}"`}
@@ -137,9 +139,11 @@ export const BashHistorySelector: React.FC<BashHistorySelectorProps> = ({
       flexDirection="column"
       borderStyle="single"
       borderColor="blue"
-      padding={1}
+      borderBottom={false}
+      borderLeft={false}
+      borderRight={false}
+      paddingTop={1}
       gap={1}
-      marginBottom={1}
     >
       <Box>
         <Text color="blue" bold>
