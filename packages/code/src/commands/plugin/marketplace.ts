@@ -4,10 +4,15 @@ export async function addMarketplaceCommand(argv: { input: string }) {
   const service = new MarketplaceService();
   try {
     const marketplace = await service.addMarketplace(argv.input);
-    const sourceInfo =
-      marketplace.source.source === "directory"
-        ? marketplace.source.path
-        : marketplace.source.repo;
+    const source = marketplace.source;
+    let sourceInfo = "";
+    if (source.source === "directory") {
+      sourceInfo = source.path;
+    } else if (source.source === "github") {
+      sourceInfo = source.repo + (source.ref ? `#${source.ref}` : "");
+    } else {
+      sourceInfo = source.url + (source.ref ? `#${source.ref}` : "");
+    }
     console.log(
       `Successfully added marketplace: ${marketplace.name} (${sourceInfo})`,
     );
@@ -28,8 +33,15 @@ export async function listMarketplacesCommand() {
     } else {
       console.log("Registered Marketplaces:");
       marketplaces.forEach((m) => {
-        const sourceInfo =
-          m.source.source === "directory" ? m.source.path : m.source.repo;
+        const source = m.source;
+        let sourceInfo = "";
+        if (source.source === "directory") {
+          sourceInfo = source.path;
+        } else if (source.source === "github") {
+          sourceInfo = source.repo + (source.ref ? `#${source.ref}` : "");
+        } else {
+          sourceInfo = source.url + (source.ref ? `#${source.ref}` : "");
+        }
         console.log(`- ${m.name}: ${sourceInfo} (${m.source.source})`);
       });
     }

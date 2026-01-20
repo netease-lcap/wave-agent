@@ -51,18 +51,14 @@
 - [x] T019 Run `pnpm run type-check` and `pnpm lint` across the monorepo
 - [x] T021 Ensure compatibility with non-git systems by skipping GitHub operations when git is missing
 
-## Dependencies
+## Phase 7: General Git Support (GitLab, Bitbucket, etc.)
 
-- US1 (Add) must be completed before US2 (Install) and US3 (Update) can be fully tested with GitHub sources.
-- Foundational tasks (T003-T005) are prerequisites for all User Stories.
+**Goal**: Support any Git repository as a marketplace or plugin source.
+**Independent Test**: Run `wave plugin marketplace add https://gitlab.com/company/plugins.git#v1.0.0` and verify it's registered.
 
-## Parallel Execution Examples
-
-- T006 (URL resolution) can be done in parallel with T003-T004 (Type updates).
-- T018 (Error handling) can be worked on alongside User Story implementations.
-
-## Implementation Strategy
-
-- **MVP**: Focus on User Story 1 (Add GitHub Marketplace) first to establish the cloning and registry logic.
-- **Incremental**: Follow with User Story 2 (Install) to enable the core value of the marketplace.
-- **Polish**: Add User Story 3 (Update) and robust error handling last.
+- [x] T022 [US1] Update `MarketplaceService.ts` to support full Git URLs (HTTPS/SSH) and fragments for refs
+- [x] T023 [US1] Update `GitService.ts` to handle cloning with specific refs (branch/tag/commit) from fragments
+- [x] T024 [US2] Update `installPlugin` to support `git` source type in `MarketplaceService.ts`
+- [x] T025 [US1] Add unit tests for general Git marketplace URLs and fragments in `MarketplaceService.test.ts`
+- [x] T026 [US2] Add unit tests for `git` source type in `MarketplaceService.test.ts`
+- [x] T027 Run `pnpm run type-check` and `pnpm lint` to ensure everything is still correct

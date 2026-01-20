@@ -1,5 +1,6 @@
 import { promises as fs, existsSync, mkdirSync } from "fs";
 import * as path from "path";
+import * as crypto from "crypto";
 import { getPluginsDir } from "../utils/configPaths.js";
 import {
   KnownMarketplace,
@@ -147,32 +148,54 @@ export class MarketplaceService {
   public getMarketplacePath(marketplace: KnownMarketplace): string {
     if (marketplace.source.source === "directory") {
       return marketplace.source.path;
-    } else {
+    } else if (marketplace.source.source === "github") {
       return path.join(this.marketplacesDir, marketplace.source.repo);
+    } else {
+      // For general git, use a hash of the URL to avoid path issues
+      const hash = crypto
+        .createHash("md5")
+        .update(marketplace.source.url)
+        .digest("hex");
+      return path.join(this.marketplacesDir, hash);
     }
   }
 
   /**
-   * Adds a new marketplace (local directory or GitHub repo)
+   * Adds a new marketplace (local directory, GitHub repo, or Git URL)
    */
   async addMarketplace(input: string): Promise<KnownMarketplace> {
     let marketplace: KnownMarketplace;
 
+    const isFullUrl =
+      input.startsWith("http://") ||
+      input.startsWith("https://") ||
+      input.startsWith("git@") ||
+      input.startsWith("ssh://");
+
     if (
-      input.includes("/") &&
-      !path.isAbsolute(input) &&
-      !input.startsWith(".")
+      isFullUrl ||
+      (input.includes("/") && !path.isAbsolute(input) && !input.startsWith("."))
     ) {
-      // GitHub repo format: owner/repo
-      const repo = input;
-      const targetPath = path.join(this.marketplacesDir, repo);
+      // Git or GitHub repo
+      let urlOrRepo = input;
+      let ref: string | undefined;
+
+      if (input.includes("#")) {
+        [urlOrRepo, ref] = input.split("#");
+      }
+
+      const tempMarketplace: KnownMarketplace = isFullUrl
+        ? { name: "", source: { source: "git", url: urlOrRepo, ref } }
+        : { name: "", source: { source: "github", repo: urlOrRepo, ref } };
+
+      const targetPath = this.getMarketplacePath(tempMarketplace);
 
       if (!existsSync(targetPath)) {
         try {
-          await this.gitService.clone(repo, targetPath);
+          await this.gitService.clone(urlOrRepo, targetPath, ref);
         } catch (error) {
           throw new Error(
-            `Failed to add marketplace from GitHub: ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to add marketplace from Git: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }
@@ -188,7 +211,9 @@ export class MarketplaceService {
 
       marketplace = {
         name: manifest.name,
-        source: { source: "github", repo },
+        source: isFullUrl
+          ? { source: "git", url: urlOrRepo, ref }
+          : { source: "github", repo: urlOrRepo, ref },
       };
     } else {
       // Local directory format
@@ -249,10 +274,13 @@ export class MarketplaceService {
     const errors: string[] = [];
     for (const marketplace of toUpdate) {
       try {
-        if (marketplace.source.source === "github") {
+        if (
+          marketplace.source.source === "github" ||
+          marketplace.source.source === "git"
+        ) {
           if (!isGitAvailable) {
             console.warn(
-              `Skipping update for GitHub marketplace "${marketplace.name}" because Git is not installed.`,
+              `Skipping update for Git/GitHub marketplace "${marketplace.name}" because Git is not installed.`,
             );
             continue;
           }
@@ -301,13 +329,37 @@ export class MarketplaceService {
       );
     }
 
-    const pluginSrcPath = path.resolve(marketplacePath, pluginEntry.source);
+    const isGitSource =
+      pluginEntry.source.startsWith("http://") ||
+      pluginEntry.source.startsWith("https://") ||
+      pluginEntry.source.startsWith("git@") ||
+      pluginEntry.source.startsWith("ssh://");
+
+    let pluginSrcPath: string;
+    let tempCloneDir: string | undefined;
+
+    if (isGitSource) {
+      tempCloneDir = path.join(this.tmpDir, `clone-${Date.now()}`);
+      let url = pluginEntry.source;
+      let ref: string | undefined;
+      if (url.includes("#")) {
+        [url, ref] = url.split("#");
+      }
+      await this.gitService.clone(url, tempCloneDir, ref);
+      pluginSrcPath = tempCloneDir;
+    } else {
+      pluginSrcPath = path.resolve(marketplacePath, pluginEntry.source);
+    }
+
     const pluginManifestPath = path.join(
       pluginSrcPath,
       ".wave-plugin",
       "plugin.json",
     );
     if (!existsSync(pluginManifestPath)) {
+      if (tempCloneDir) {
+        await fs.rm(tempCloneDir, { recursive: true, force: true });
+      }
       throw new Error(`Plugin manifest not found at ${pluginManifestPath}`);
     }
 
@@ -321,7 +373,12 @@ export class MarketplaceService {
     // Atomic installation
     const tmpPluginDir = path.join(this.tmpDir, `${pluginName}-${Date.now()}`);
     try {
-      await fs.cp(pluginSrcPath, tmpPluginDir, { recursive: true });
+      if (isGitSource) {
+        await fs.rename(pluginSrcPath, tmpPluginDir);
+        tempCloneDir = undefined; // Already moved
+      } else {
+        await fs.cp(pluginSrcPath, tmpPluginDir, { recursive: true });
+      }
 
       const cachePath = path.join(
         this.cacheDir,
@@ -356,9 +413,12 @@ export class MarketplaceService {
       await this.saveInstalledPlugins(installedRegistry);
       return installedPlugin;
     } catch (error) {
-      // Cleanup tmp dir if it exists
+      // Cleanup tmp dirs if they exist
       if (existsSync(tmpPluginDir)) {
         await fs.rm(tmpPluginDir, { recursive: true, force: true });
+      }
+      if (tempCloneDir && existsSync(tempCloneDir)) {
+        await fs.rm(tempCloneDir, { recursive: true, force: true });
       }
       throw new Error(
         `Failed to install plugin ${pluginName}: ${error instanceof Error ? error.message : String(error)}`,

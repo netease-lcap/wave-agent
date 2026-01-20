@@ -64,11 +64,11 @@ export async function main() {
                 .help()
                 .command(
                   "add <input>",
-                  "Add a plugin marketplace (local path or owner/repo)",
+                  "Add a plugin marketplace (local path, owner/repo, or Git URL)",
                   (yargs) => {
                     return yargs.positional("input", {
                       describe:
-                        "Path to local marketplace or GitHub owner/repo",
+                        "Path to local marketplace, GitHub owner/repo, or full Git URL (with optional #ref)",
                       type: "string",
                     });
                   },
