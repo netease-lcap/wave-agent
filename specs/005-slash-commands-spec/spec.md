@@ -52,6 +52,7 @@ Users can create commands that accept arguments and use parameter substitution t
 1. **Given** a command contains `$ARGUMENTS` in its content, **When** user executes `/command-name some arguments`, **Then** `$ARGUMENTS` is replaced with "some arguments"
 2. **Given** a command contains `$1 $2` placeholders, **When** user executes `/command-name first second`, **Then** `$1` becomes "first" and `$2` becomes "second"
 3. **Given** a command expects parameters, **When** user provides quoted arguments with spaces, **Then** the quoted content is treated as a single parameter
+4. **Given** a command contains NO parameter placeholders, **When** user executes `/command-name some arguments`, **Then** "some arguments" is automatically appended to the command content
 
 ---
 
@@ -110,6 +111,7 @@ Users can define commands at both project level (`.wave/commands/`) and user lev
 - **FR-010**: System MUST validate slash command syntax and provide appropriate error handling for malformed commands
 - **FR-011**: System MUST support command abortion/cancellation for long-running operations
 - **FR-012**: System MUST log command execution status and errors for debugging purposes
+- **FR-013**: System MUST automatically append user arguments to command content if the command markdown contains no parameter placeholders ($ARGUMENTS or $1, $2, etc.)
 
 ### Key Entities
 
