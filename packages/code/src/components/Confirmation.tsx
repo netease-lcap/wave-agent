@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
+import { Markdown } from "./Markdown.js";
 
 // Helper function to generate descriptive action text
 const getActionDescription = (
@@ -354,6 +355,9 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       flexDirection="column"
       borderStyle="single"
       borderColor="yellow"
+      borderBottom={false}
+      borderLeft={false}
+      borderRight={false}
       padding={1}
       marginBottom={1}
     >
@@ -437,17 +441,11 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       {toolName !== "AskUserQuestion" &&
         toolName === "ExitPlanMode" &&
         !!toolInput?.plan_content && (
-          <Box
-            flexDirection="column"
-            marginTop={1}
-            paddingX={1}
-            borderStyle="round"
-            borderColor="gray"
-          >
+          <Box flexDirection="column" marginTop={1}>
             <Text color="cyan" bold>
               Plan Content:
             </Text>
-            <Text>{toolInput.plan_content as string}</Text>
+            <Markdown>{toolInput.plan_content as string}</Markdown>
           </Box>
         )}
 
