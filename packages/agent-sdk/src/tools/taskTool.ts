@@ -1,5 +1,6 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import type { SubagentManager } from "../managers/subagentManager.js";
+import { TASK_TOOL_NAME } from "../constants/tools.js";
 
 /**
  * Create a task tool plugin that uses the provided SubagentManager
@@ -10,7 +11,7 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
   subagentManager.getConfigurations();
 
   return {
-    name: "Task",
+    name: TASK_TOOL_NAME,
     get config() {
       // Get available subagents from the initialized subagent manager
       const availableSubagents = subagentManager.getConfigurations();
@@ -19,14 +20,14 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
         .join("\n");
 
       const description = `Delegate a task to a specialized subagent. Use this when you need specialized expertise or want to break down complex work into focused subtasks.
-
-Available subagents:
-${subagentList || "No subagents configured"}`;
+    
+    Available subagents:
+    ${subagentList || "No subagents configured"}`;
 
       return {
         type: "function" as const,
         function: {
-          name: "Task",
+          name: TASK_TOOL_NAME,
           description,
           parameters: {
             type: "object",

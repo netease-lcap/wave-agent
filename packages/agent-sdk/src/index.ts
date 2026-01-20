@@ -7,6 +7,9 @@ export * from "./services/jsonlHandler.js";
 export * from "./services/configurationService.js"; // New configuration management service
 export * from "./services/MarketplaceService.js";
 
+// Export constants
+export * from "./constants/tools.js";
+
 // Export managers
 export * from "./managers/pluginManager.js";
 export * from "./managers/pluginScopeManager.js";

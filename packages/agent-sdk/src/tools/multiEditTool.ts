@@ -6,6 +6,11 @@ import {
   findIndentationInsensitiveMatch,
   escapeRegExp,
 } from "../utils/editUtils.js";
+import {
+  MULTI_EDIT_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  READ_TOOL_NAME,
+} from "../constants/tools.js";
 
 interface EditOperation {
   old_string: string;
@@ -31,14 +36,13 @@ function formatCompactParams(
  * Multi-edit tool plugin
  */
 export const multiEditTool: ToolPlugin = {
-  name: "MultiEdit",
+  name: MULTI_EDIT_TOOL_NAME,
   formatCompactParams,
   config: {
     type: "function",
     function: {
-      name: "MultiEdit",
-      description:
-        "This is a tool for making multiple edits to a single file in one operation. It is built on top of the Edit tool and allows you to perform multiple find-and-replace operations efficiently. Prefer this tool over the Edit tool when you need to make multiple edits to the same file.\n\nBefore using this tool:\n\n1. Use the Read tool to understand the file's contents and context\n2. Verify the directory path is correct\n\nTo make multiple file edits, provide the following:\n1. file_path: The absolute path to the file to modify (must be absolute, not relative)\n2. edits: An array of edit operations to perform, where each edit contains:\n   - old_string: The text to replace (must match the file contents exactly, including all whitespace and indentation)\n   - new_string: The edited text to replace the old_string\n   - replace_all: Replace all occurences of old_string. This parameter is optional and defaults to false.\n\nIMPORTANT:\n- All edits are applied in sequence, in the order they are provided\n- Each edit operates on the result of the previous edit\n- All edits must be valid for the operation to succeed - if any edit fails, none will be applied\n- This tool is ideal when you need to make several changes to different parts of the same file\n- For Jupyter notebooks (.ipynb files), use the NotebookEdit instead\n\nCRITICAL REQUIREMENTS:\n1. All edits follow the same requirements as the single Edit tool\n2. The edits are atomic - either all succeed or none are applied\n3. Plan your edits carefully to avoid conflicts between sequential operations\n\nWARNING:\n- The tool will fail if edits.old_string doesn't match the file contents exactly (including whitespace)\n- The tool will fail if edits.old_string and edits.new_string are the same\n- Since edits are applied in sequence, ensure that earlier edits don't affect the text that later edits are trying to find\n\nWhen making edits:\n- Ensure all edits result in idiomatic, correct code\n- Do not leave the code in a broken state\n- Always use absolute file paths (starting with /)\n- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.\n- Use replace_all for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.",
+      name: MULTI_EDIT_TOOL_NAME,
+      description: `This is a tool for making multiple edits to a single file in one operation. It is built on top of the ${EDIT_TOOL_NAME} tool and allows you to perform multiple find-and-replace operations efficiently. Prefer this tool over the ${EDIT_TOOL_NAME} tool when you need to make multiple edits to the same file.\n\nBefore using this tool:\n\n1. Use the ${READ_TOOL_NAME} tool to understand the file's contents and context\n2. Verify the directory path is correct\n\nTo make multiple file edits, provide the following:\n1. file_path: The absolute path to the file to modify (must be absolute, not relative)\n2. edits: An array of edit operations to perform, where each edit contains:\n   - old_string: The text to replace (must match the file contents exactly, including all whitespace and indentation)\n   - new_string: The edited text to replace the old_string\n   - replace_all: Replace all occurences of old_string. This parameter is optional and defaults to false.\n\nIMPORTANT:\n- All edits are applied in sequence, in the order they are provided\n- Each edit operates on the result of the previous edit\n- All edits must be valid for the operation to succeed - if any edit fails, none will be applied\n- This tool is ideal when you need to make several changes to different parts of the same file\n- For Jupyter notebooks (.ipynb files), use the NotebookEdit instead\n\nCRITICAL REQUIREMENTS:\n1. All edits follow the same requirements as the single ${EDIT_TOOL_NAME} tool\n2. The edits are atomic - either all succeed or none are applied\n3. Plan your edits carefully to avoid conflicts between sequential operations\n\nWARNING:\n- The tool will fail if edits.old_string doesn't match the file contents exactly (including whitespace)\n- The tool will fail if edits.old_string and edits.new_string are the same\n- Since edits are applied in sequence, ensure that earlier edits don't affect the text that later edits are trying to find\n\nWhen making edits:\n- Ensure all edits result in idiomatic, correct code\n- Do not leave the code in a broken state\n- Always use absolute file paths (starting with /)\n- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.\n- Use replace_all for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`,
       parameters: {
         type: "object",
         properties: {
@@ -229,7 +233,7 @@ export const multiEditTool: ToolPlugin = {
       if (context.permissionManager) {
         try {
           const permissionContext = context.permissionManager.createContext(
-            "MultiEdit",
+            MULTI_EDIT_TOOL_NAME,
             context.permissionMode || "default",
             context.canUseToolCallback,
             { file_path: filePath, edits },
@@ -241,7 +245,7 @@ export const multiEditTool: ToolPlugin = {
             return {
               success: false,
               content: "",
-              error: `MultiEdit operation denied, reason: ${permissionResult.message || "No reason provided"}`,
+              error: `${MULTI_EDIT_TOOL_NAME} operation denied, reason: ${permissionResult.message || "No reason provided"}`,
             };
           }
         } catch {

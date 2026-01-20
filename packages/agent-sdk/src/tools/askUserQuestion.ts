@@ -1,12 +1,16 @@
 import { ToolPlugin } from "./types.js";
 import { AskUserQuestionInput } from "../types/tools.js";
+import {
+  ASK_USER_QUESTION_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
+} from "../constants/tools.js";
 
 export const askUserQuestionTool: ToolPlugin = {
-  name: "AskUserQuestion",
+  name: ASK_USER_QUESTION_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: "AskUserQuestion",
+      name: ASK_USER_QUESTION_TOOL_NAME,
       description: `Asks the user multiple choice questions to gather information, clarify ambiguity, understand preferences, make decisions or offer them choices.
 Use this tool when you need to ask the user questions during execution. This allows you to:
 1. Gather user preferences or requirements
@@ -19,7 +23,7 @@ Usage notes:
 - Use multiSelect: true to allow multiple answers to be selected for a question
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
 
-Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval.`,
+Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ${EXIT_PLAN_MODE_TOOL_NAME} for plan approval.`,
       parameters: {
         type: "object",
         properties: {
@@ -82,12 +86,12 @@ Plan mode note: In plan mode, use this tool to clarify requirements or choose be
 
     if (!context.permissionManager) {
       throw new Error(
-        "Permission manager is required for AskUserQuestion tool",
+        `Permission manager is required for ${ASK_USER_QUESTION_TOOL_NAME} tool`,
       );
     }
 
     const permissionContext = context.permissionManager.createContext(
-      "AskUserQuestion",
+      ASK_USER_QUESTION_TOOL_NAME,
       context.permissionMode || "default",
       context.canUseToolCallback,
       { questions },

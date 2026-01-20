@@ -1,6 +1,15 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
+import {
+  BASH_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+  DELETE_FILE_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
+  ASK_USER_QUESTION_TOOL_NAME,
+} from "wave-agent-sdk";
 import { Markdown } from "./Markdown.js";
 import { DiffDisplay } from "./DiffDisplay.js";
 
@@ -14,19 +23,19 @@ const getActionDescription = (
   }
 
   switch (toolName) {
-    case "Bash":
+    case BASH_TOOL_NAME:
       return `Execute command: ${toolInput.command || "unknown command"}`;
-    case "Edit":
+    case EDIT_TOOL_NAME:
       return `Edit file: ${toolInput.file_path || "unknown file"}`;
-    case "MultiEdit":
+    case MULTI_EDIT_TOOL_NAME:
       return `Edit multiple sections in: ${toolInput.file_path || "unknown file"}`;
-    case "Delete":
+    case DELETE_FILE_TOOL_NAME:
       return `Delete file: ${toolInput.target_file || "unknown file"}`;
-    case "Write":
+    case WRITE_TOOL_NAME:
       return `Write to file: ${toolInput.file_path || "unknown file"}`;
-    case "ExitPlanMode":
+    case EXIT_PLAN_MODE_TOOL_NAME:
       return "Review and approve the plan";
-    case "AskUserQuestion":
+    case ASK_USER_QUESTION_TOOL_NAME:
       return "Answer questions to clarify intent";
     default:
       return "Execute operation";
@@ -87,10 +96,10 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
   const currentQuestion = questions[currentQuestionIndex];
 
   const getAutoOptionText = () => {
-    if (toolName === "ExitPlanMode") {
+    if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
       return "Yes, and auto-accept edits";
     }
-    if (toolName === "Bash") {
+    if (toolName === BASH_TOOL_NAME) {
       if (suggestedPrefix) {
         return `Yes, and don't ask again for: ${suggestedPrefix}`;
       }
@@ -107,7 +116,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       return;
     }
 
-    if (toolName === "AskUserQuestion") {
+    if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
       if (!currentQuestion) return;
 
       const options = [...currentQuestion.options, { label: "Other" }];
@@ -219,13 +228,13 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     // Handle Enter to confirm selection
     if (key.return) {
       if (state.selectedOption === "allow") {
-        if (toolName === "ExitPlanMode") {
+        if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
           onDecision({ behavior: "allow", newPermissionMode: "default" });
         } else {
           onDecision({ behavior: "allow" });
         }
       } else if (state.selectedOption === "auto") {
-        if (toolName === "Bash") {
+        if (toolName === BASH_TOOL_NAME) {
           const rule = suggestedPrefix
             ? `Bash(${suggestedPrefix}:*)`
             : `Bash(${toolInput?.command})`;
@@ -254,7 +263,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     // Handle numeric keys for quick selection (only if not typing in alternative)
     if (state.selectedOption !== "alternative" || !state.hasUserInput) {
       if (input === "1") {
-        if (toolName === "ExitPlanMode") {
+        if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
           onDecision({ behavior: "allow", newPermissionMode: "default" });
         } else {
           onDecision({ behavior: "allow" });
@@ -263,7 +272,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       }
       if (input === "2") {
         if (!hidePersistentOption) {
-          if (toolName === "Bash") {
+          if (toolName === BASH_TOOL_NAME) {
             const rule = suggestedPrefix
               ? `Bash(${suggestedPrefix}:*)`
               : `Bash(${toolInput?.command})`;
@@ -368,7 +377,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
 
       <DiffDisplay toolName={toolName} parameters={JSON.stringify(toolInput)} />
 
-      {toolName === "AskUserQuestion" && currentQuestion && (
+      {toolName === ASK_USER_QUESTION_TOOL_NAME && currentQuestion && (
         <Box flexDirection="column" marginTop={1}>
           <Box marginBottom={1}>
             <Box
@@ -440,8 +449,8 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
         </Box>
       )}
 
-      {toolName !== "AskUserQuestion" &&
-        toolName === "ExitPlanMode" &&
+      {toolName !== ASK_USER_QUESTION_TOOL_NAME &&
+        toolName === EXIT_PLAN_MODE_TOOL_NAME &&
         !!toolInput?.plan_content && (
           <Box flexDirection="column" marginTop={1}>
             <Text color="cyan" bold>
@@ -451,7 +460,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
           </Box>
         )}
 
-      {toolName !== "AskUserQuestion" && (
+      {toolName !== ASK_USER_QUESTION_TOOL_NAME && (
         <>
           <Box marginTop={1}>
             <Text>Do you want to proceed?</Text>
@@ -468,7 +477,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                 bold={state.selectedOption === "allow"}
               >
                 {state.selectedOption === "allow" ? "> " : "  "}1.{" "}
-                {toolName === "ExitPlanMode"
+                {toolName === EXIT_PLAN_MODE_TOOL_NAME
                   ? "Yes, proceed with default mode"
                   : "Yes"}
               </Text>

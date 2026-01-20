@@ -1,5 +1,6 @@
 import type { ToolPlugin, ToolResult } from "./types.js";
 import type { SkillManager } from "../managers/skillManager.js";
+import { SKILL_TOOL_NAME } from "../constants/tools.js";
 
 /**
  * Create a skill tool plugin that uses the provided SkillManager
@@ -10,7 +11,7 @@ export function createSkillTool(skillManager: SkillManager): ToolPlugin {
   skillManager.getAvailableSkills();
 
   return {
-    name: "Skill",
+    name: SKILL_TOOL_NAME,
     get config() {
       const availableSkills = skillManager.getAvailableSkills();
 
@@ -32,7 +33,7 @@ export function createSkillTool(skillManager: SkillManager): ToolPlugin {
       return {
         type: "function" as const,
         function: {
-          name: "Skill",
+          name: SKILL_TOOL_NAME,
           description: getToolDescription(),
           parameters: {
             type: "object",

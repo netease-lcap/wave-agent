@@ -8,6 +8,15 @@ import {
   AskUserQuestionInput,
   AskUserQuestionOption,
 } from "./tools.js";
+import {
+  EDIT_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+  DELETE_FILE_TOOL_NAME,
+  BASH_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
+  ASK_USER_QUESTION_TOOL_NAME,
+} from "../constants/tools.js";
 
 /** Permission mode configuration */
 export type PermissionMode =
@@ -51,13 +60,13 @@ export interface ToolPermissionContext {
 
 /** List of tools that require permission checks in default mode */
 export const RESTRICTED_TOOLS = [
-  "Edit",
-  "MultiEdit",
-  "Delete",
-  "Bash",
-  "Write",
-  "ExitPlanMode",
-  "AskUserQuestion",
+  EDIT_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+  DELETE_FILE_TOOL_NAME,
+  BASH_TOOL_NAME,
+  WRITE_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
+  ASK_USER_QUESTION_TOOL_NAME,
 ] as const;
 
 /** Type for restricted tool names */

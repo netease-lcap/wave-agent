@@ -3,18 +3,22 @@ import * as path from "path";
 import { minimatch } from "minimatch";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { isBinary, getDisplayPath } from "@/utils/path.js";
+import {
+  LS_TOOL_NAME,
+  GLOB_TOOL_NAME,
+  GREP_TOOL_NAME,
+} from "../constants/tools.js";
 
 /**
  * LS Tool Plugin - List files and directories
  */
 export const lsTool: ToolPlugin = {
-  name: "LS",
+  name: LS_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: "LS",
-      description:
-        "Lists files and directories in a given path. The path parameter must be an absolute path, not a relative path. You can optionally provide an array of glob patterns to ignore with the ignore parameter. You should generally prefer the Glob and Grep tools, if you know which directories to search.",
+      name: LS_TOOL_NAME,
+      description: `Lists files and directories in a given path. The path parameter must be an absolute path, not a relative path. You can optionally provide an array of glob patterns to ignore with the ignore parameter. You should generally prefer the ${GLOB_TOOL_NAME} and ${GREP_TOOL_NAME} tools, if you know which directories to search.`,
       parameters: {
         type: "object",
         properties: {
@@ -65,7 +69,7 @@ export const lsTool: ToolPlugin = {
     // Check permissions
     if (context.permissionManager) {
       const permissionContext = context.permissionManager.createContext(
-        "LS",
+        LS_TOOL_NAME,
         context.permissionMode || "default",
         context.canUseToolCallback,
         args,

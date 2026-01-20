@@ -1,3 +1,17 @@
+import {
+  ASK_USER_QUESTION_TOOL_NAME,
+  BASH_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  GLOB_TOOL_NAME,
+  GREP_TOOL_NAME,
+  LS_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+  READ_TOOL_NAME,
+  TASK_TOOL_NAME,
+  TODO_WRITE_TOOL_NAME,
+  WRITE_TOOL_NAME,
+} from "./tools.js";
+
 export const BASE_SYSTEM_PROMPT = `You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
 # Doing tasks
@@ -17,21 +31,21 @@ The user will primarily request you perform software engineering tasks. This inc
 
 export const TASK_MANAGEMENT_POLICY = `
 # Task Management
-You have access to the TodoWrite tools to help you manage and plan tasks. Use these tools VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress.
+You have access to the ${TODO_WRITE_TOOL_NAME} tools to help you manage and plan tasks. Use these tools VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress.
 These tools are also EXTREMELY helpful for planning tasks, and for breaking down larger complex tasks into smaller steps. If you do not use this tool when planning, you may forget to do important tasks - and that is unacceptable.
 It is critical that you mark todos as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.`;
 
 export const ASK_USER_POLICY = `
 # Asking questions as you work
-You have access to the AskUserQuestion tool to ask the user questions when you need clarification, want to validate assumptions, or need to make a decision you're unsure about. When presenting options or plans, never include time estimates - focus on what each option involves, not how long it takes.`;
+You have access to the ${ASK_USER_QUESTION_TOOL_NAME} tool to ask the user questions when you need clarification, want to validate assumptions, or need to make a decision you're unsure about. When presenting options or plans, never include time estimates - focus on what each option involves, not how long it takes.`;
 
 export const SUBAGENT_POLICY = `
-- When doing file search, prefer to use the Task tool in order to reduce context usage.
-- You should proactively use the Task tool with specialized agents when the task at hand matches the agent's description.
-- VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the Task tool with subagent_type=Explore instead of running search commands directly.`;
+- When doing file search, prefer to use the ${TASK_TOOL_NAME} tool in order to reduce context usage.
+- You should proactively use the ${TASK_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description.
+- VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the ${TASK_TOOL_NAME} tool with subagent_type=Explore instead of running search commands directly.`;
 
 export const FILE_TOOL_POLICY = `
-- Use specialized tools instead of bash commands when possible, as this provides a better user experience. For file operations, use dedicated tools: Read for reading files instead of cat/head/tail, Edit/MultiEdit for editing instead of sed/awk, Write for creating files instead of cat with heredoc or echo redirection, and LS/Glob/Grep for searching and listing files instead of find/ls/grep.`;
+- Use specialized tools instead of bash commands when possible, as this provides a better user experience. For file operations, use dedicated tools: ${READ_TOOL_NAME} for reading files instead of cat/head/tail, ${EDIT_TOOL_NAME}/${MULTI_EDIT_TOOL_NAME} for editing instead of sed/awk, ${WRITE_TOOL_NAME} for creating files instead of cat with heredoc or echo redirection, and ${LS_TOOL_NAME}/${GLOB_TOOL_NAME}/${GREP_TOOL_NAME} for searching and listing files instead of find/ls/grep.`;
 
 export const BASH_POLICY = `
 - Reserve bash tools exclusively for actual system commands and terminal operations that require shell execution. NEVER use bash echo or other command-line tools to communicate thoughts, explanations, or instructions to the user. Output all communication directly in your response text instead.
@@ -48,30 +62,30 @@ export function buildSystemPrompt(
     tools.map((t) => t.function?.name || t.name).filter(Boolean),
   );
 
-  if (toolNames.has("TodoWrite")) {
+  if (toolNames.has(TODO_WRITE_TOOL_NAME)) {
     prompt += TASK_MANAGEMENT_POLICY;
   }
-  if (toolNames.has("AskUserQuestion")) {
+  if (toolNames.has(ASK_USER_QUESTION_TOOL_NAME)) {
     prompt += ASK_USER_POLICY;
   }
 
-  if (toolNames.has("Task")) {
+  if (toolNames.has(TASK_TOOL_NAME)) {
     prompt += SUBAGENT_POLICY;
   }
 
   if (
-    toolNames.has("Read") ||
-    toolNames.has("Edit") ||
-    toolNames.has("MultiEdit") ||
-    toolNames.has("Write") ||
-    toolNames.has("LS") ||
-    toolNames.has("Glob") ||
-    toolNames.has("Grep")
+    toolNames.has(READ_TOOL_NAME) ||
+    toolNames.has(EDIT_TOOL_NAME) ||
+    toolNames.has(MULTI_EDIT_TOOL_NAME) ||
+    toolNames.has(WRITE_TOOL_NAME) ||
+    toolNames.has(LS_TOOL_NAME) ||
+    toolNames.has(GLOB_TOOL_NAME) ||
+    toolNames.has(GREP_TOOL_NAME)
   ) {
     prompt += FILE_TOOL_POLICY;
   }
 
-  if (toolNames.has("Bash")) {
+  if (toolNames.has(BASH_TOOL_NAME)) {
     prompt += BASH_POLICY;
   }
 
