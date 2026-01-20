@@ -70,17 +70,25 @@ specs/[###-feature]/
 packages/
 ├── agent-sdk/                 # Core hooks system
 │   ├── src/
-│   │   ├── hooks/            # Hook system implementation
-│   │   │   ├── manager.ts    # HookManager class (Pass additional context)
-│   │   │   ├── executor.ts   # Hook execution logic (Add JSON stdin support)
-│   │   │   ├── matcher.ts    # Pattern matching
-│   │   │   └── types.ts      # Hook type definitions (Add JSON input types)
-│   │   ├── services/         # Existing services (Session path logic)
 │   │   ├── managers/
-│   │   │   └── aiManager.ts  # Integration (Pass tool input/response)
-│   │   └── agent.ts          # Integration (Pass user prompt data)
+│   │   │   ├── hookManager.ts    # HookManager class (State management)
+│   │   │   └── aiManager.ts      # Integration (Pass tool input/response)
+│   │   ├── services/
+│   │   │   └── hook.ts           # Consolidated hook services (Execution & Settings)
+│   │   ├── utils/
+│   │   │   └── hookMatcher.ts    # Pattern matching utility
+│   │   ├── types/
+│   │   │   └── hooks.ts          # Hook type definitions
+│   │   └── agent.ts              # Integration (Pass user prompt data)
 │   ├── tests/
-│   │   └── hooks/            # Unit tests for hooks
+│   │   ├── managers/
+│   │   │   └── hookManager.test.ts
+│   │   ├── services/
+│   │   │   └── hook.test.ts
+│   │   ├── utils/
+│   │   │   └── hookMatcher.test.ts
+│   │   └── types/
+│   │       └── hooks.test.ts
 │   └── examples/
 │       └── hooks/            # Integration tests
 └── code/                     # CLI interface

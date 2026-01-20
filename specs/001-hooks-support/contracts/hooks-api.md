@@ -9,6 +9,7 @@
 ### Core Configuration Types
 
 ```typescript
+// types/hooks.ts
 // Hook event types
 type HookEvent = 'PreToolUse' | 'PostToolUse' | 'UserPromptSubmit' | 'Stop';
 
@@ -84,7 +85,7 @@ interface HookExecutionOptions {
 }
 ```
 
-## Hook Manager API
+## Hook Manager API (managers/hookManager.ts)
 
 ### Core Interface
 
@@ -132,10 +133,10 @@ async executeEventHooks(
 ): Promise<HookExecutionResult[]>;
 ```
 
-## Pattern Matching API
+## Pattern Matching API (utils/hookMatcher.ts)
 
 ```typescript
-class HookMatcher {
+export class HookMatcher {
   // Test if pattern matches tool name
   matches(pattern: string, toolName: string): boolean;
   
@@ -145,6 +146,29 @@ class HookMatcher {
   // Get pattern type for optimization
   getPatternType(pattern: string): 'exact' | 'glob' | 'regex';
 }
+```
+
+## Hook Services (services/hook.ts)
+
+### Execution Functions
+```typescript
+export function executeCommand(
+  command: string,
+  context: HookExecutionContext | ExtendedHookExecutionContext,
+  options?: HookExecutionOptions
+): Promise<HookExecutionResult>;
+
+export function executeCommands(
+  commands: string[],
+  context: HookExecutionContext | ExtendedHookExecutionContext,
+  options?: HookExecutionOptions
+): Promise<HookExecutionResult[]>;
+```
+
+### Settings Functions
+```typescript
+export function loadHooksConfigFromFile(filePath: string): PartialHookConfiguration | null;
+export function loadMergedHooksConfig(workdir: string): PartialHookConfiguration | null;
 ```
 
 ## Integration Points

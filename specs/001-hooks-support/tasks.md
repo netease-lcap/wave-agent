@@ -14,8 +14,8 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [x] T001 Create hooks directory structure in packages/agent-sdk/src/hooks/
-- [x] T002 [P] Create hooks tests directory structure in packages/agent-sdk/tests/hooks/
+- [x] T001 Create directory structure in packages/agent-sdk/src/ (managers, services, utils, types)
+- [x] T002 [P] Create tests directory structure in packages/agent-sdk/tests/ (managers, services, utils, types)
 - [x] T003 [P] Create hooks examples directory structure in packages/agent-sdk/examples/hooks/
 
 ---
@@ -26,17 +26,16 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [x] T004 [P] Create hook type definitions in packages/agent-sdk/src/hooks/types.ts
-- [x] T005 [P] Create hook matcher for pattern matching in packages/agent-sdk/src/hooks/matcher.ts
-- [x] T006 [P] Create hook executor for command execution in packages/agent-sdk/src/hooks/executor.ts
-- [x] T007 Create hook manager with configuration loading in packages/agent-sdk/src/hooks/manager.ts
+- [x] T004 [P] Create hook type definitions in packages/agent-sdk/src/types/hooks.ts
+- [x] T005 [P] Create hook matcher for pattern matching in packages/agent-sdk/src/utils/hookMatcher.ts
+- [x] T006 [P] Create hook executor for command execution in packages/agent-sdk/src/services/hook.ts
+- [x] T007 Create hook manager with configuration loading in packages/agent-sdk/src/managers/hookManager.ts
 - [x] T008 Export hooks module in packages/agent-sdk/src/hooks/index.ts
 - [x] T009 Update main agent-sdk index.ts to export hooks functionality
-- [x] T010 Create unit tests for hook types validation in packages/agent-sdk/tests/hooks/types.test.ts
-- [x] T011 [P] Create unit tests for hook matcher patterns in packages/agent-sdk/tests/hooks/matcher.test.ts
-- [x] T012 [P] Create unit tests for hook executor with mocked child processes in packages/agent-sdk/tests/hooks/executor.test.ts
-  - ⚠️ Note: 17/18 tests pass - one test for environment variable resolution has mocking issue with args indexing
-- [x] T013 Create unit tests for hook manager configuration loading in packages/agent-sdk/tests/hooks/manager.test.ts
+- [x] T010 Create unit tests for hook types validation in packages/agent-sdk/tests/types/hooks.test.ts
+- [x] T011 [P] Create unit tests for hook matcher patterns in packages/agent-sdk/tests/utils/hookMatcher.test.ts
+- [x] T012 [P] Create unit tests for hook executor in packages/agent-sdk/tests/services/hook.test.ts
+- [x] T013 Create unit tests for hook manager configuration loading in packages/agent-sdk/tests/managers/hookManager.test.ts
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -52,8 +51,8 @@
 
 - [x] T014 [US1] Integrate HookManager into Agent class in packages/agent-sdk/src/agent.ts ✅
 - [x] T015 [US1] Add PostToolUse hook execution point after tool completion in packages/agent-sdk/src/agent.ts ✅
-- [x] T016 [US1] Implement settings loading and merging for hook configuration in packages/agent-sdk/src/hooks/manager.ts ✅
-- [x] T017 [US1] Add hook execution logging with non-blocking error handling in packages/agent-sdk/src/hooks/executor.ts ✅
+- [x] T016 [US1] Implement settings loading and merging for hook configuration in packages/agent-sdk/src/services/hook.ts ✅
+- [x] T017 [US1] Add hook execution logging with non-blocking error handling in packages/agent-sdk/src/services/hook.ts ✅
 - [x] T018 [US1] Create integration test with temporary directory for PostToolUse Edit hooks in packages/agent-sdk/examples/hooks/post-tool-edit.example.ts ✅
 - [x] T019 [US1] Add hook execution validation and error reporting in packages/agent-sdk/src/hooks/manager.ts ✅
 
@@ -71,7 +70,7 @@
 
 - [x] T020 [US2] Add UserPromptSubmit hook execution point before prompt processing in packages/agent-sdk/src/agent.ts
 - [x] T021 [US2] Implement UserPromptSubmit hook execution without matcher in packages/agent-sdk/src/hooks/manager.ts
-- [x] T022 [US2] Add WAVE_PROJECT_DIR environment variable injection in packages/agent-sdk/src/hooks/executor.ts
+- [x] T022 [US2] Add WAVE_PROJECT_DIR environment variable injection in packages/agent-sdk/src/services/hook.ts
 - [x] T023 [US2] Create integration test for UserPromptSubmit hooks with temporary project structure in packages/agent-sdk/examples/hooks/user-prompt-submit.example.ts
 - [x] T024 [US2] Add configuration validation for UserPromptSubmit hooks in packages/agent-sdk/src/hooks/manager.ts
 
@@ -101,8 +100,8 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [x] T030 [P] Add comprehensive timeout handling and process cleanup in packages/agent-sdk/src/hooks/executor.ts
-- [x] T031 [P] Add cross-platform command execution support in packages/agent-sdk/src/hooks/executor.ts
+- [x] T030 [P] Add comprehensive timeout handling and process cleanup in packages/agent-sdk/src/services/hook.ts
+- [x] T031 [P] Add cross-platform command execution support in packages/agent-sdk/src/services/hook.ts
 - [x] T033 Add multiple hooks execution and ordering validation in packages/agent-sdk/tests/hooks/manager.test.ts
 - [x] T035 Run pnpm build and test hooks integration with code package
 
@@ -114,7 +113,7 @@
 
 **Purpose**: Project initialization and basic structure for JSON input
 
-- [x] T036 Create JSON input type definitions in packages/agent-sdk/src/hooks/types.ts
+- [x] T036 Create JSON input type definitions in packages/agent-sdk/src/types/hooks.ts
 - [x] T037 [P] Add session path utility import from session.ts to types.ts
 
 ---
@@ -123,10 +122,10 @@
 
 **Purpose**: Core infrastructure for JSON input
 
-- [x] T038 Extend HookExecutionContext interface in packages/agent-sdk/src/hooks/types.ts
-- [x] T039 Implement JSON input builder function in packages/agent-sdk/src/hooks/executor.ts
-- [x] T040 Add stdin JSON write functionality to HookExecutor in packages/agent-sdk/src/hooks/executor.ts
-- [x] T041 [P] Update HookManager to pass extended context in packages/agent-sdk/src/hooks/manager.ts
+- [x] T038 Extend HookExecutionContext interface in packages/agent-sdk/src/types/hooks.ts
+- [x] T039 Implement JSON input builder function in packages/agent-sdk/src/services/hook.ts
+- [x] T040 Add stdin JSON write functionality to HookExecutor in packages/agent-sdk/src/services/hook.ts
+- [x] T041 [P] Update HookManager to pass extended context in packages/agent-sdk/src/managers/hookManager.ts
 - [x] T042 [P] Build and validate agent-sdk package with pnpm build
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
@@ -177,7 +176,7 @@
 
 - [x] T051 [US6] Implement session ID collection in Agent class in packages/agent-sdk/src/agent.ts
 - [x] T052 [US6] Pass sessionId to all hook manager calls in packages/agent-sdk/src/agent.ts
-- [x] T053 [US6] Add transcript path generation using getSessionFilePath in packages/agent-sdk/src/hooks/executor.ts
+- [x] T053 [US6] Add transcript path generation using getSessionFilePath in packages/agent-sdk/src/services/hook.ts
 - [x] T054 [US6] Add session access example in packages/agent-sdk/examples/hook-json-input.ts
 - [x] T055 [US6] Run type-check and lint validation: pnpm run type-check && pnpm run lint
 
@@ -224,8 +223,8 @@
 
 - [ ] T063 [P] Complete hook-json-input.ts example with all event types in packages/agent-sdk/examples/hook-json-input.ts
 - [ ] T064 [P] Test example execution with pnpm tsx examples/hook-json-input.ts
-- [ ] T065 Add error handling for JSON construction failures in packages/agent-sdk/src/hooks/executor.ts
-- [ ] T066 Add error handling for stdin write failures in packages/agent-sdk/src/hooks/executor.ts
+- [ ] T065 Add error handling for JSON construction failures in packages/agent-sdk/src/services/hook.ts
+- [ ] T066 Add error handling for stdin write failures in packages/agent-sdk/src/services/hook.ts
 - [ ] T067 Final type-check and lint validation: pnpm run type-check && pnpm run lint
 
 ---
