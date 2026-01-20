@@ -29,7 +29,7 @@
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
 - [X] T004 Update `PermissionManager` to support `planFilePath` and `plan` mode logic in `packages/agent-sdk/src/managers/permissionManager.ts`
-- [X] T005 Update `Agent` class to integrate `PlanManager` and handle mode transitions in `packages/agent-sdk/src/agent.ts`
+- [X] T005 Update `Agent` class to integrate `PlanManager` and handle mode transitions in `packages/agent-sdk/src/agent.ts` (Fixed: ensure plan file path is generated when default mode is plan in configuration)
 - [X] T006 Update `AIManager` to append the Plan Mode reminder (including plan file existence check) to the system prompt in `packages/agent-sdk/src/managers/aiManager.ts`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
