@@ -40,7 +40,6 @@ export interface UpdateToolBlockParams {
   images?: Array<{ data: string; mediaType?: string }>;
   compactParams?: string;
   parametersChunk?: string; // Incremental parameter updates for streaming
-  planContent?: string;
 }
 
 // Agent specific interfaces (without messages parameter)
@@ -229,7 +228,6 @@ export const updateToolBlockInMessage = ({
   images,
   compactParams,
   parametersChunk,
-  planContent,
 }: UpdateToolBlockParams): Message[] => {
   const newMessages = [...messages];
   // Find the last assistant message
@@ -253,7 +251,6 @@ export const updateToolBlockInMessage = ({
             toolBlock.compactParams = compactParams;
           if (parametersChunk !== undefined)
             toolBlock.parametersChunk = parametersChunk;
-          if (planContent !== undefined) toolBlock.planContent = planContent;
         }
       } else {
         // If existing block not found, create new one
@@ -271,7 +268,6 @@ export const updateToolBlockInMessage = ({
           stage: stage ?? "start",
           compactParams: compactParams,
           parametersChunk: parametersChunk,
-          planContent: planContent,
         });
       }
       break;

@@ -187,34 +187,18 @@ describe("AIManager", () => {
     });
 
     it("should save session during each recursion regardless of tool execution results", async () => {
-      // Mock callAgent to return tool calls for the first call, then no tool calls
+      // Mock callAgent to return tool calls
       const { callAgent } = await import("../../src/services/aiService.js");
-      let callCount = 0;
-      vi.mocked(callAgent).mockImplementation(async () => {
-        callCount++;
-        if (callCount === 1) {
-          return {
-            content: "Test response",
-            usage: {
-              prompt_tokens: 10,
-              completion_tokens: 20,
-              total_tokens: 30,
-            },
-            tool_calls: [
-              {
-                type: "function" as const,
-                id: "test-tool-call",
-                function: { name: "test-tool", arguments: "{}" },
-              },
-            ],
-          };
-        } else {
-          return {
-            content: "Final response",
-            usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
-            tool_calls: [],
-          };
-        }
+      vi.mocked(callAgent).mockResolvedValue({
+        content: "Test response",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [
+          {
+            type: "function" as const,
+            id: "test-tool-call",
+            function: { name: "test-tool", arguments: "{}" },
+          },
+        ],
       });
 
       // Mock tool execution to fail
@@ -328,52 +312,6 @@ describe("AIManager", () => {
 
       expect(mockPermissionManager.addTemporaryRules).toHaveBeenCalled();
       expect(mockPermissionManager.clearTemporaryRules).toHaveBeenCalled();
-    });
-  });
-
-  describe("Tool Execution Context", () => {
-    it("should pass toolCallId and messageManager to tool execution context", async () => {
-      const { callAgent } = await import("../../src/services/aiService.js");
-      const toolId = "test-tool-call-id";
-
-      let callCount = 0;
-      vi.mocked(callAgent).mockImplementation(async () => {
-        callCount++;
-        if (callCount === 1) {
-          return {
-            content: "Test response",
-            usage: {
-              prompt_tokens: 10,
-              completion_tokens: 20,
-              total_tokens: 30,
-            },
-            tool_calls: [
-              {
-                type: "function" as const,
-                id: toolId,
-                function: { name: "test-tool", arguments: "{}" },
-              },
-            ],
-          };
-        } else {
-          return {
-            content: "Final response",
-            usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
-            tool_calls: [],
-          };
-        }
-      });
-
-      await aiManager.sendAIMessage();
-
-      expect(mockToolManager.execute).toHaveBeenCalledWith(
-        "test-tool",
-        {},
-        expect.objectContaining({
-          toolCallId: toolId,
-          messageManager: mockMessageManager,
-        }),
-      );
     });
   });
 });

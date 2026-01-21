@@ -136,7 +136,7 @@ describe("ExitPlanMode Integration", () => {
     expect(mockCallback).toHaveBeenCalledWith(
       expect.objectContaining({
         toolName: "ExitPlanMode",
-        toolInput: {},
+        toolInput: { plan_content: planContent },
       }),
     );
   });
