@@ -10,8 +10,8 @@ import {
   EXIT_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
-import { Markdown } from "./Markdown.js";
 import { DiffDisplay } from "./DiffDisplay.js";
+import { PlanDisplay } from "./PlanDisplay.js";
 
 // Helper function to generate descriptive action text
 const getActionDescription = (
@@ -56,6 +56,7 @@ export interface ConfirmationProps {
   toolInput?: Record<string, unknown>;
   suggestedPrefix?: string;
   hidePersistentOption?: boolean;
+  isExpanded?: boolean;
   onDecision: (decision: PermissionDecision) => void;
   onCancel: () => void;
   onAbort: () => void;
@@ -72,6 +73,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
   toolInput,
   suggestedPrefix,
   hidePersistentOption,
+  isExpanded = false,
   onDecision,
   onCancel,
   onAbort,
@@ -383,92 +385,96 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       </Text>
       <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
 
-      <DiffDisplay toolName={toolName} parameters={JSON.stringify(toolInput)} />
+      <DiffDisplay
+        toolName={toolName}
+        parameters={JSON.stringify(toolInput)}
+        isExpanded={isExpanded}
+      />
 
-      {toolName === ASK_USER_QUESTION_TOOL_NAME && currentQuestion && (
-        <Box flexDirection="column" marginTop={1}>
-          <Box marginBottom={1}>
-            <Box
-              backgroundColor={getHeaderColor(currentQuestion.header)}
-              paddingX={1}
-              marginRight={1}
-            >
-              <Text color="black" bold>
-                {currentQuestion.header.slice(0, 12).toUpperCase()}
+      {toolName === ASK_USER_QUESTION_TOOL_NAME &&
+        currentQuestion &&
+        !isExpanded && (
+          <Box flexDirection="column" marginTop={1}>
+            <Box marginBottom={1}>
+              <Box
+                backgroundColor={getHeaderColor(currentQuestion.header)}
+                paddingX={1}
+                marginRight={1}
+              >
+                <Text color="black" bold>
+                  {currentQuestion.header.slice(0, 12).toUpperCase()}
+                </Text>
+              </Box>
+              <Text bold>{currentQuestion.question}</Text>
+            </Box>
+
+            <Box flexDirection="column">
+              {(() => {
+                const isMultiSelect = !!currentQuestion.multiSelect;
+                return [...currentQuestion.options, { label: "Other" }].map(
+                  (option, index) => {
+                    const isSelected = selectedOptionIndex === index;
+                    const isChecked = isMultiSelect
+                      ? selectedOptionIndices.has(index)
+                      : isSelected;
+                    const isOther = index === currentQuestion.options.length;
+                    const isRecommended = !isOther && option.isRecommended;
+
+                    return (
+                      <Box key={index}>
+                        <Text
+                          color={isSelected ? "black" : "white"}
+                          backgroundColor={isSelected ? "yellow" : undefined}
+                        >
+                          {isSelected ? "> " : "  "}
+                          {isMultiSelect ? (isChecked ? "[x] " : "[ ] ") : ""}
+                          {index + 1}. {option.label}
+                          {isRecommended && (
+                            <Text color="green" bold>
+                              {" "}
+                              (Recommended)
+                            </Text>
+                          )}
+                          {option.description ? ` - ${option.description}` : ""}
+                          {isOther && isSelected && (
+                            <Text>
+                              :{" "}
+                              {otherText || (
+                                <Text color="gray" dimColor>
+                                  [Type your answer...]
+                                </Text>
+                              )}
+                            </Text>
+                          )}
+                        </Text>
+                      </Box>
+                    );
+                  },
+                );
+              })()}
+            </Box>
+
+            <Box marginTop={1}>
+              <Text dimColor>
+                Question {currentQuestionIndex + 1} of {questions.length} •
+                {currentQuestion.multiSelect ? " Space to toggle •" : ""} Use ↑↓
+                or 1-{currentQuestion.options.length + 1} to navigate • Enter to
+                confirm
               </Text>
             </Box>
-            <Text bold>{currentQuestion.question}</Text>
           </Box>
-
-          <Box flexDirection="column">
-            {(() => {
-              const isMultiSelect = !!currentQuestion.multiSelect;
-              return [...currentQuestion.options, { label: "Other" }].map(
-                (option, index) => {
-                  const isSelected = selectedOptionIndex === index;
-                  const isChecked = isMultiSelect
-                    ? selectedOptionIndices.has(index)
-                    : isSelected;
-                  const isOther = index === currentQuestion.options.length;
-                  const isRecommended = !isOther && option.isRecommended;
-
-                  return (
-                    <Box key={index}>
-                      <Text
-                        color={isSelected ? "black" : "white"}
-                        backgroundColor={isSelected ? "yellow" : undefined}
-                      >
-                        {isSelected ? "> " : "  "}
-                        {isMultiSelect ? (isChecked ? "[x] " : "[ ] ") : ""}
-                        {index + 1}. {option.label}
-                        {isRecommended && (
-                          <Text color="green" bold>
-                            {" "}
-                            (Recommended)
-                          </Text>
-                        )}
-                        {option.description ? ` - ${option.description}` : ""}
-                        {isOther && isSelected && (
-                          <Text>
-                            :{" "}
-                            {otherText || (
-                              <Text color="gray" dimColor>
-                                [Type your answer...]
-                              </Text>
-                            )}
-                          </Text>
-                        )}
-                      </Text>
-                    </Box>
-                  );
-                },
-              );
-            })()}
-          </Box>
-
-          <Box marginTop={1}>
-            <Text dimColor>
-              Question {currentQuestionIndex + 1} of {questions.length} •
-              {currentQuestion.multiSelect ? " Space to toggle •" : ""} Use ↑↓
-              or 1-{currentQuestion.options.length + 1} to navigate • Enter to
-              confirm
-            </Text>
-          </Box>
-        </Box>
-      )}
+        )}
 
       {toolName !== ASK_USER_QUESTION_TOOL_NAME &&
         toolName === EXIT_PLAN_MODE_TOOL_NAME &&
         !!toolInput?.plan_content && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text color="cyan" bold>
-              Plan Content:
-            </Text>
-            <Markdown>{toolInput.plan_content as string}</Markdown>
-          </Box>
+          <PlanDisplay
+            plan={toolInput.plan_content as string}
+            isExpanded={isExpanded}
+          />
         )}
 
-      {toolName !== ASK_USER_QUESTION_TOOL_NAME && (
+      {toolName !== ASK_USER_QUESTION_TOOL_NAME && !isExpanded && (
         <>
           <Box marginTop={1}>
             <Text>Do you want to proceed?</Text>
