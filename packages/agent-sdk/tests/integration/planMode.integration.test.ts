@@ -152,7 +152,7 @@ describe("Plan Mode Integration", () => {
     if (toolBlock && toolBlock.type === "tool") {
       // In integration test, the tool output is what we expect
       expect(String(toolBlock.result)).toContain(
-        "only allowed to edit or delete the designated plan file",
+        "only allowed to edit the designated plan file",
       );
     }
   });
