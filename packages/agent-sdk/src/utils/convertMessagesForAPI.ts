@@ -9,27 +9,6 @@ import {
 import { logger } from "./globalLogger.js";
 
 /**
- * Safely handle tool call parameters, ensuring a legal JSON string is returned
- * @param args Tool call parameters
- * @returns Legal JSON string
- */
-function safeToolArguments(args: string): string {
-  if (!args) {
-    return "{}";
-  }
-
-  try {
-    // Try to parse as JSON to validate format
-    JSON.parse(args);
-    return args;
-  } catch (error) {
-    logger.error(`Invalid tool arguments: ${args}`, error);
-    // If not valid JSON, return a fallback empty object
-    return "{}";
-  }
-}
-
-/**
  * Convert message format to API call format, stopping when a compressed message is encountered.
  * Messages with no meaningful content or tool calls are filtered out.
  * @param messages Message list
@@ -153,9 +132,7 @@ export function convertMessagesForAPI(
             type: "function",
             function: {
               name: toolBlock.name || "",
-              arguments: safeToolArguments(
-                String(toolBlock.parameters || "{}"),
-              ),
+              arguments: toolBlock.parameters || "{}",
             },
           }));
 
