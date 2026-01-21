@@ -136,6 +136,11 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **FR-015**: System MUST temporarily grant permissions for tools listed in `allowed-tools` for the duration of the command's AI response cycle.
 - **FR-016**: System MUST revoke temporary permissions once the AI response cycle completes.
 - **FR-017**: System MUST NOT persist `allowed-tools` from a slash command to persistent settings.
+- **FR-018**: System MUST recursively scan the `.wave/commands/` directory to discover all markdown files from root level (level 0) and first level nesting (level 1) only.
+- **FR-019**: System MUST register each discovered markdown file as an available slash command using simple syntax for root-level commands (e.g., `/help`) and colon-separated syntax for nested commands (e.g., `/openspec:apply`).
+- **FR-020**: System MUST support command discovery up to a maximum of 1 level of nesting and ignore any markdown files beyond this depth.
+- **FR-021**: System MUST ignore non-markdown files during the discovery process.
+- **FR-022**: System MUST integrate discovered nested commands with the existing CommandSelector component without requiring changes to the current navigation UI.
 
 ### Key Entities
 
@@ -146,6 +151,7 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **CommandSelector**: User interface component for command discovery and selection with search functionality
 - **Allowed Tool Pattern**: A string representing a permitted tool and its allowed argument patterns (e.g., `Bash(git status:*)`).
 - **Privileged Session**: The stateful context that tracks whether auto-approval is currently active and which tools are allowed.
+- **Command Path**: The hierarchical path from `.wave/commands/` to the markdown file, converted to colon-separated syntax for command invocation (e.g., `openspec:apply`).
 
 ## Success Criteria *(mandatory)*
 
@@ -159,3 +165,19 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **SC-006**: Users can find desired commands within 3 keystrokes using the search functionality
 - **SC-005**: Command reloading completes within 200ms after file system changes are detected
 - **SC-008**: Zero data loss occurs during command execution, with all conversation context preserved
+
+---
+
+### User Story 7 - Nested Command Discovery (Priority: P2)
+
+Users can organize their custom slash commands in nested directory structures within the `.wave/commands/` directory, and the system automatically discovers and makes available all markdown files at any depth level up to 1 level deep.
+
+**Why this priority**: This ensures comprehensive command discovery across all organizational structures users might employ, from simple flat commands to categorized nested commands.
+
+**Independent Test**: Can be tested by creating commands at different directory levels and verifying that all are discovered and accessible through their appropriate syntax.
+
+**Acceptance Scenarios**:
+
+1. **Given** a `.wave/commands/` directory with nested subdirectories containing markdown files, **When** the system scans for available commands, **Then** all markdown files from root and first level nesting are discovered
+2. **Given** a nested command structure like `.wave/commands/openspec/apply.md`, **When** a user types `/openspec:apply`, **Then** the system executes the command defined in the apply.md file
+3. **Given** commands exist at root level (`.wave/commands/help.md`), **When** the system scans for commands, **Then** these commands are discovered and accessible as `/help`
