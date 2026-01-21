@@ -43,6 +43,7 @@ onAssistantContentUpdated: (chunk: string, accumulated: string) => {
 // 2. Tool parameter streaming - updates existing tool block  
 onToolBlockUpdated: (params: ToolBlockParams) => {
   // Agent SDK updates toolBlock.parameters = params.parameters
+  // Agent SDK updates toolBlock.stage = params.stage
   // Then triggers existing onMessagesChange(updatedMessages)
 },
 
