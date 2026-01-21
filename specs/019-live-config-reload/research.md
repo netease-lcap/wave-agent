@@ -22,23 +22,7 @@
 
 **Implementation approach**: Use Chokidar's simple API with built-in debouncing and cross-platform compatibility.
 
-### 2. Memory Storage Strategy
-
-**Decision**: Keep AGENTS.md content in memory with file watcher updates  
-**Rationale**: 
-- Current system reads AGENTS.md on every agent call via `getCombinedMemoryContent()`
-- Simple in-memory storage eliminates I/O overhead completely after initial load
-- File watcher updates memory content when file changes, ensuring freshness
-- No complex caching logic needed - just store current file content
-
-**Alternatives considered**:
-- LRU cache with invalidation: Unnecessary complexity for single file storage
-- Time-based expiration: Less responsive to actual file changes
-- No memory storage: Inefficient for frequent agent calls
-
-**Implementation approach**: Single variable holding AGENTS.md content, updated by file watcher on changes.
-
-### 3. Error Handling and Recovery
+### 2. Error Handling and Recovery
 
 **Decision**: Hierarchical fallback system with graceful degradation  
 **Rationale**:
@@ -51,9 +35,9 @@
 - Polling-only fallback: Reliable but higher resource usage
 - No fallback: Unacceptable for production use
 
-**Implementation approach**: Primary file watcher → polling fallback → memory content → empty content with comprehensive error logging.
+**Implementation approach**: Primary file watcher → polling fallback → previous valid configuration with comprehensive error logging.
 
-### 4. Environment Variable Merging
+### 3. Environment Variable Merging
 
 **Decision**: Project-level precedence over user-level with shallow merging  
 **Rationale**:
@@ -68,7 +52,7 @@
 
 **Implementation approach**: Extend existing `loadMergedHooksConfig()` pattern to include env field merging with runtime validation using the new `WaveConfiguration` interface.
 
-### 5. Debouncing Strategy
+### 4. Debouncing Strategy
 
 **Decision**: 300ms debouncing with burst handling for rapid file changes  
 **Rationale**:
@@ -91,12 +75,11 @@
 **Decision**: Modify existing agent-sdk services rather than create new packages  
 **Rationale**:
 - Follows Wave Agent constitution principle of package-first architecture
-- Leverages existing patterns in `hook.ts` and `memory.ts` services
+- Leverages existing patterns in `hook.ts` services
 - Maintains backward compatibility with current hook system
 
 **Implementation files**:
 - `packages/agent-sdk/src/services/hook.ts`: Add env field loading and watching
-- `packages/agent-sdk/src/services/memory.ts`: Add in-memory storage and watcher integration  
 - `packages/agent-sdk/src/managers/hookManager.ts`: Add live reload coordination
 - `packages/agent-sdk/src/types/hooks.ts`: Rename HookConfiguration to WaveConfiguration and add env field
 
@@ -135,10 +118,8 @@ interface WaveConfiguration {
 Based on research findings:
 
 - **File change detection**: <50ms typical response time
-- **Memory usage**: <1MB for typical configurations including stored content
-- **I/O reduction**: 100% elimination of file reads after initial load
+- **Memory usage**: <1MB for typical configurations
 - **CPU overhead**: <1% during idle periods
-- **Memory cache hit rate**: 100% after initial load (content always in memory)
 
 ## Risk Mitigation
 
