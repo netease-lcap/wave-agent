@@ -476,19 +476,17 @@ export class AIManager {
         };
       }
 
-      // Set usage and finish_reason on the assistant message if available
-      if (usage || result.finish_reason) {
+      // Set usage on the assistant message if available
+      if (usage) {
         const messages = this.messageManager.getMessages();
         const lastMessage = messages[messages.length - 1];
         if (lastMessage && lastMessage.role === "assistant") {
-          if (usage) lastMessage.usage = usage;
-          if (result.finish_reason)
-            lastMessage.finish_reason = result.finish_reason;
+          lastMessage.usage = usage;
           this.messageManager.setMessages(messages);
         }
 
         // Notify Agent to add to usage tracking
-        if (usage && this.callbacks?.onUsageAdded) {
+        if (this.callbacks?.onUsageAdded) {
           this.callbacks.onUsageAdded(usage);
         }
       }
@@ -647,8 +645,8 @@ export class AIManager {
         model,
       );
 
-      // Check if there are tool operations or it stopped due to length, if so automatically initiate next AI service call
-      if (toolCalls.length > 0 || result.finish_reason === "length") {
+      // Check if there are tool operations, if so automatically initiate next AI service call
+      if (toolCalls.length > 0) {
         // Check interruption status
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;

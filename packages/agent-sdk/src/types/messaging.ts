@@ -16,7 +16,6 @@ export interface Message {
   blocks: MessageBlock[];
   usage?: Usage; // Usage data for this message's AI operation (assistant messages only)
   additionalFields?: Record<string, unknown>; // Additional metadata from AI responses
-  finish_reason?: string; // Reason why the AI stopped generating content
 }
 
 export type MessageBlock =
