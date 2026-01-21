@@ -4,8 +4,14 @@ import type {
   SubagentBlock as SubagentBlockType,
   ToolBlock,
 } from "wave-agent-sdk";
+import {
+  WRITE_TOOL_NAME,
+  EDIT_TOOL_NAME,
+  MULTI_EDIT_TOOL_NAME,
+} from "wave-agent-sdk";
 import { useChat } from "../contexts/useChat.js";
 import { PlanDisplay } from "./PlanDisplay.js";
+import { DiffDisplay } from "./DiffDisplay.js";
 
 interface SubagentBlockProps {
   block: SubagentBlockType;
@@ -86,6 +92,31 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
 
   const planContent = getLatestPlanContent();
 
+  // Find the latest tool block that has a diff
+  const getLatestDiffToolBlock = (): ToolBlock | undefined => {
+    const diffToolNames = [
+      WRITE_TOOL_NAME,
+      EDIT_TOOL_NAME,
+      MULTI_EDIT_TOOL_NAME,
+    ];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      for (let j = message.blocks.length - 1; j >= 0; j--) {
+        const messageBlock = message.blocks[j];
+        if (
+          messageBlock.type === "tool" &&
+          messageBlock.name &&
+          diffToolNames.includes(messageBlock.name)
+        ) {
+          return messageBlock as ToolBlock;
+        }
+      }
+    }
+    return undefined;
+  };
+
+  const diffToolBlock = getLatestDiffToolBlock();
+
   return (
     <Box
       borderRight={false}
@@ -135,6 +166,9 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({
 
       {/* Plan content display - handled by PlanDisplay component */}
       <PlanDisplay planContent={planContent} isExpanded={isExpanded} />
+
+      {/* Diff display - handled by DiffDisplay component */}
+      {diffToolBlock && <DiffDisplay toolBlock={diffToolBlock} />}
     </Box>
   );
 };

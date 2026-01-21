@@ -33,6 +33,7 @@
 - [X] T012 Run `pnpm run type-check` and `pnpm lint` across the monorepo
 - [X] T013 [US1] Add max height and expansion (Ctrl+O) support for plan rendering in `packages/code/src/components/ToolResultDisplay.tsx`
 - [X] T014 Render plan content in `SubagentBlock` by reusing logic from `ToolResultDisplay` in `packages/code/src/components/SubagentBlock.tsx`
+- [X] T015 Render diff in `SubagentBlock` by reusing `DiffDisplay` in `packages/code/src/components/SubagentBlock.tsx`
 
 ## Dependencies
 
