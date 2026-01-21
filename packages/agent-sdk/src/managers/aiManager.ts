@@ -20,6 +20,7 @@ import type { MessageManager } from "./messageManager.js";
 import type { BackgroundBashManager } from "./backgroundBashManager.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
+import type { ToolBlock } from "../types/messaging.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
 import {
@@ -269,9 +270,16 @@ export class AIManager {
       model?: string;
       allowedTools?: string[];
       maxTokens?: number;
+      parentMessageManager?: MessageManager;
     } = {},
   ): Promise<void> {
-    const { recursionDepth = 0, model, allowedTools, maxTokens } = options;
+    const {
+      recursionDepth = 0,
+      model,
+      allowedTools,
+      maxTokens,
+      parentMessageManager,
+    } = options;
 
     // Only check isLoading for the initial call (recursionDepth === 0)
     if (recursionDepth === 0 && this.isLoading) {
@@ -307,10 +315,26 @@ export class AIManager {
       }
     }
 
+    const messagesSource = this.messageManager.getMessages();
+    const parentMessagesSource = parentMessageManager?.getMessages?.() || [];
+    const recentParentMessagesSource = parentMessagesSource.filter((item) => {
+      const { role, blocks = [] } = item;
+
+      const notUser = role !== "user";
+      const notSubagent = blocks.every(
+        (current) => current.type !== "subagent",
+      );
+      const notTodo = blocks.every(
+        (current) => (current as ToolBlock).name !== "TodoWrite",
+      );
+
+      return notUser && notSubagent && notTodo;
+    });
+
+    messagesSource.splice(1, 0, ...recentParentMessagesSource);
+
     // Get recent message history
-    const recentMessages = convertMessagesForAPI(
-      this.messageManager.getMessages(),
-    );
+    const recentMessages = convertMessagesForAPI(messagesSource);
 
     try {
       // Get combined memory content
@@ -664,6 +688,7 @@ export class AIManager {
             model,
             allowedTools,
             maxTokens,
+            parentMessageManager,
           });
         }
       }
@@ -707,6 +732,7 @@ export class AIManager {
               model,
               allowedTools,
               maxTokens,
+              parentMessageManager,
             });
           }
         }
