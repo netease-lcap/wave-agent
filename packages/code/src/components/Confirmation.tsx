@@ -120,8 +120,9 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       const options = [...currentQuestion.options, { label: "Other" }];
       const isMultiSelect = !!currentQuestion.multiSelect;
 
+      const isOtherFocused = selectedOptionIndex === options.length - 1;
+
       if (key.return) {
-        const isOtherFocused = selectedOptionIndex === options.length - 1;
         let answer = "";
         if (isMultiSelect) {
           const selectedLabels = Array.from(selectedOptionIndices)
@@ -165,7 +166,10 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       }
 
       if (input === " ") {
-        if (isMultiSelect) {
+        if (
+          isMultiSelect &&
+          (!isOtherFocused || !selectedOptionIndices.has(selectedOptionIndex))
+        ) {
           setSelectedOptionIndices((prev) => {
             const next = new Set(prev);
             if (next.has(selectedOptionIndex)) {
@@ -175,8 +179,13 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
             }
             return next;
           });
+          return;
         }
-        return;
+
+        if (!isOtherFocused) {
+          return;
+        }
+        // If isOtherFocused is true, fall through to handle space as text input
       }
 
       if (key.upArrow) {
@@ -210,7 +219,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
         return;
       }
 
-      const isOtherFocused = selectedOptionIndex === options.length - 1;
       if (isOtherFocused) {
         if (key.backspace || key.delete) {
           setOtherText((prev) => prev.slice(0, -1));
