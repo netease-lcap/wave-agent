@@ -85,7 +85,9 @@ export const MessageItem = ({
               <CompressDisplay block={block} isExpanded={isExpanded} />
             )}
 
-            {block.type === "subagent" && <SubagentBlock block={block} />}
+            {block.type === "subagent" && (
+              <SubagentBlock block={block} isExpanded={isExpanded} />
+            )}
 
             {block.type === "reasoning" && <ReasoningDisplay block={block} />}
           </Box>

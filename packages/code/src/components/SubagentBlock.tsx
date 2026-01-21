@@ -1,13 +1,21 @@
 import React from "react";
 import { Box, Text } from "ink";
-import type { SubagentBlock as SubagentBlockType } from "wave-agent-sdk";
+import type {
+  SubagentBlock as SubagentBlockType,
+  ToolBlock,
+} from "wave-agent-sdk";
 import { useChat } from "../contexts/useChat.js";
+import { PlanDisplay } from "./PlanDisplay.js";
 
 interface SubagentBlockProps {
   block: SubagentBlockType;
+  isExpanded?: boolean;
 }
 
-export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
+export const SubagentBlock: React.FC<SubagentBlockProps> = ({
+  block,
+  isExpanded = false,
+}) => {
   const { subagentMessages } = useChat();
 
   // Get messages for this subagent from context
@@ -59,6 +67,25 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
 
   const { tools: lastTwoTools, totalToolCount } = getLastTwoTools();
 
+  // Find the latest planContent in subagent messages
+  const getLatestPlanContent = (): string | undefined => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      for (let j = message.blocks.length - 1; j >= 0; j--) {
+        const messageBlock = message.blocks[j];
+        if (
+          messageBlock.type === "tool" &&
+          (messageBlock as ToolBlock).planContent
+        ) {
+          return (messageBlock as ToolBlock).planContent;
+        }
+      }
+    }
+    return undefined;
+  };
+
+  const planContent = getLatestPlanContent();
+
   return (
     <Box
       borderRight={false}
@@ -105,6 +132,9 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
           ))}
         </Box>
       )}
+
+      {/* Plan content display - handled by PlanDisplay component */}
+      <PlanDisplay planContent={planContent} isExpanded={isExpanded} />
     </Box>
   );
 };

@@ -1,8 +1,8 @@
-import React, { useMemo } from "react";
-import { Box, Text, useStdout } from "ink";
+import React from "react";
+import { Box, Text } from "ink";
 import type { ToolBlock } from "wave-agent-sdk";
 import { DiffDisplay } from "./DiffDisplay.js";
-import { Markdown } from "./Markdown.js";
+import { PlanDisplay } from "./PlanDisplay.js";
 
 interface ToolResultDisplayProps {
   block: ToolBlock;
@@ -50,11 +50,6 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
     const imageCount = block.images!.length;
     return imageCount === 1 ? "🖼️" : `🖼️×${imageCount}`;
   };
-
-  const { stdout } = useStdout();
-  const maxHeight = useMemo(() => {
-    return Math.max(5, (stdout?.rows || 24) - 20);
-  }, [stdout?.rows]);
 
   const toolName = name ? String(name) : "Tool";
 
@@ -152,37 +147,8 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
       {/* Diff display - handled by DiffDisplay component */}
       <DiffDisplay toolBlock={block} />
 
-      {/* Plan content display for ExitPlanMode tool */}
-      {planContent && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color="cyan" bold>
-            Plan Content:
-          </Text>
-          <Box
-            paddingLeft={2}
-            borderLeft
-            borderColor="gray"
-            flexDirection="column"
-            overflow="hidden"
-            height={
-              isExpanded
-                ? undefined
-                : planContent.split("\n").length > maxHeight
-                  ? maxHeight
-                  : undefined
-            }
-          >
-            <Markdown>{planContent}</Markdown>
-          </Box>
-          {!isExpanded && planContent.split("\n").length > maxHeight && (
-            <Box marginTop={1}>
-              <Text color="yellow" dimColor>
-                Plan truncated. Press Ctrl+O to expand.
-              </Text>
-            </Box>
-          )}
-        </Box>
-      )}
+      {/* Plan content display - handled by PlanDisplay component */}
+      <PlanDisplay planContent={planContent} isExpanded={isExpanded} />
     </Box>
   );
 };
