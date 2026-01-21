@@ -1,7 +1,7 @@
 # Implementation Plan: Hooks Support
 
-**Branch**: `001-hooks-support` | **Date**: 2024-12-19 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/001-hooks-support/spec.md`
+**Branch**: `005-hooks-support` | **Date**: 2024-12-19 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/005-hooks-support/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 

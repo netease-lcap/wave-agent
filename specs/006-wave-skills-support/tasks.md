@@ -1,6 +1,6 @@
 # Tasks: Wave Skills Support
 
-**Input**: Design documents from `/specs/003-wave-skills-support/`
+**Input**: Design documents from `/specs/006-wave-skills-support/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
 **Tests**: Integration tests are included as specified in quickstart.md for end-to-end validation using temporary directories.
@@ -16,7 +16,7 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [x] T001 Create feature branch 003-wave-skills-support from main
+- [x] T001 Create feature branch 006-wave-skills-support from main
 - [x] T002 [P] Verify agent-sdk package structure and dependencies
 - [x] T003 [P] Run existing tests to ensure baseline functionality
 

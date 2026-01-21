@@ -1,6 +1,6 @@
 # Feature Specification: Custom Slash Commands
 
-**Feature Branch**: `005-slash-commands-spec`  
+**Feature Branch**: `008-slash-commands-spec`  
 **Created**: December 19, 2024  
 **Status**: Draft  
 **Input**: User description: "custom slash commands are already implemented without specs, can you generate spec based on current implement?"

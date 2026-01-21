@@ -1,7 +1,7 @@
 # Implementation Plan: Subagent Support
 
-**Branch**: `006-subagent-support` | **Date**: 2024-12-19 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/006-subagent-support/spec.md`
+**Branch**: `009-subagent-support` | **Date**: 2024-12-19 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/009-subagent-support/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 

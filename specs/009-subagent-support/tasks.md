@@ -1,6 +1,6 @@
 # Tasks: Subagent Support
 
-**Input**: Design documents from `/specs/006-subagent-support/`
+**Input**: Design documents from `/specs/009-subagent-support/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
 **Tests**: Tests are NOT included as they were not requested in the feature specification

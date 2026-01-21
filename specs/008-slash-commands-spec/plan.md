@@ -1,7 +1,7 @@
 # Implementation Plan: Custom Slash Commands
 
-**Branch**: `005-slash-commands-spec` | **Date**: December 19, 2024 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/005-slash-commands-spec/spec.md`
+**Branch**: `008-slash-commands-spec` | **Date**: December 19, 2024 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/008-slash-commands-spec/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 

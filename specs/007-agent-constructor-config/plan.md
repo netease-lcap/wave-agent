@@ -1,7 +1,7 @@
 # Implementation Plan: Agent Constructor Configuration
 
-**Branch**: `004-agent-constructor-config` | **Date**: 2025-01-27 | **Spec**: [spec.md](spec.md)
-**Input**: Feature specification from `/specs/004-agent-constructor-config/spec.md`
+**Branch**: `007-agent-constructor-config` | **Date**: 2025-01-27 | **Spec**: [spec.md](spec.md)
+**Input**: Feature specification from `/specs/007-agent-constructor-config/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 

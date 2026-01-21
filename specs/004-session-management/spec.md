@@ -1,6 +1,6 @@
 # Feature Specification: Session Management
 
-**Feature ID**: `002-session-management`
+**Feature ID**: `004-session-management`
 **Status**: Implemented
 **Created**: 2026-01-21
 
