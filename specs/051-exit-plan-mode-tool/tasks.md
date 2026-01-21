@@ -6,7 +6,7 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Initialize feature branch and verify environment
+- [X] T001 Initialize feature branch and verify environment
 
 ## Phase 2: Foundational
 
@@ -22,7 +22,7 @@
 
 - [X] T006 [US1] Implement `ExitPlanMode` tool logic to read plan file and call `checkPermission` in `packages/agent-sdk/src/tools/exitPlanMode.ts`
 - [X] T007 [US1] Update `Confirmation` component to support 3-option UI for `ExitPlanMode` in `packages/code/src/components/Confirmation.tsx`
-- [X] T008 [US1] Update `Confirmation` component to display plan file content for `ExitPlanMode` in `packages/code/src/components/Confirmation.tsx`
+- [X] T008 [US1] Update `ToolResultDisplay` component to display `planContent` for `ExitPlanMode` in `packages/code/src/components/ToolResultDisplay.tsx`
 - [X] T009 [US1] Add unit tests for `ExitPlanMode` tool in `packages/agent-sdk/tests/tools/exitPlanMode.test.ts`
 - [X] T010 [US1] Add integration tests for the full `ExitPlanMode` flow in `packages/agent-sdk/tests/agent/exitPlanMode.integration.test.ts`
 

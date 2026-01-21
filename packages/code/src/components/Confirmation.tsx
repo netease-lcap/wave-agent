@@ -10,7 +10,6 @@ import {
   EXIT_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
-import { Markdown } from "./Markdown.js";
 
 // Helper function to generate descriptive action text
 const getActionDescription = (
@@ -445,17 +444,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
           </Box>
         </Box>
       )}
-
-      {toolName !== ASK_USER_QUESTION_TOOL_NAME &&
-        toolName === EXIT_PLAN_MODE_TOOL_NAME &&
-        !!toolInput?.plan_content && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text color="cyan" bold>
-              Plan Content:
-            </Text>
-            <Markdown>{toolInput.plan_content as string}</Markdown>
-          </Box>
-        )}
 
       {toolName !== ASK_USER_QUESTION_TOOL_NAME && (
         <>

@@ -358,6 +358,7 @@ export class MessageManager {
       images: params.images,
       compactParams: params.compactParams,
       parametersChunk: params.parametersChunk,
+      planContent: params.planContent,
     });
     this.setMessages(newMessages);
     this.callbacks.onToolBlockUpdated?.(params);
