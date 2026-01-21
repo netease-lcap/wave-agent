@@ -135,10 +135,8 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
         </Box>
       )}
 
-      {/* Diff display - only show after tool execution completes */}
-      {stage === "end" && (
-        <DiffDisplay toolName={name} parameters={parameters} />
-      )}
+      {/* Diff display - handled by DiffDisplay component */}
+      <DiffDisplay toolBlock={block} />
     </Box>
   );
 };

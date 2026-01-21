@@ -11,7 +11,6 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
 import { Markdown } from "./Markdown.js";
-import { DiffDisplay } from "./DiffDisplay.js";
 
 // Helper function to generate descriptive action text
 const getActionDescription = (
@@ -374,8 +373,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
         Tool: {toolName}
       </Text>
       <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
-
-      <DiffDisplay toolName={toolName} parameters={JSON.stringify(toolInput)} />
 
       {toolName === ASK_USER_QUESTION_TOOL_NAME && currentQuestion && (
         <Box flexDirection="column" marginTop={1}>
