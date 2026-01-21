@@ -1,4 +1,4 @@
-# Specification Quality Checklist: OpenAI Provider Cache Control for Claude Models
+# Specification Quality Checklist: Prompt Cache Control for Claude Models
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2025-12-02

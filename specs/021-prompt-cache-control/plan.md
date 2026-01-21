@@ -1,7 +1,7 @@
-# Implementation Plan: OpenAI Provider Cache Control for Claude Models
+# Implementation Plan: Prompt Cache Control for Claude Models
 
-**Branch**: `021-openai-cache-control` | **Date**: 2025-12-02 | **Spec**: [spec.md](spec.md)
-**Input**: Feature specification from `/specs/021-openai-cache-control/spec.md`
+**Branch**: `021-prompt-cache-control` | **Date**: 2025-12-02 | **Spec**: [spec.md](spec.md)
+**Input**: Feature specification from `/specs/021-prompt-cache-control/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 

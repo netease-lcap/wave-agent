@@ -1,7 +1,7 @@
-# Research: OpenAI Provider Cache Control for Claude Models
+# Research: Prompt Cache Control for Claude Models
 
 **Date**: 2025-12-02  
-**Feature**: 021-openai-cache-control  
+**Feature**: 021-prompt-cache-control  
 **Purpose**: Resolve technical clarifications for implementing Claude cache_control functionality
 
 ## Performance Goals Research

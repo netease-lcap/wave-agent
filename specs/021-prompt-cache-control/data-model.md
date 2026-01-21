@@ -1,7 +1,7 @@
-# Data Model: OpenAI Provider Cache Control for Claude Models
+# Data Model: Prompt Cache Control for Claude Models
 
 **Date**: 2025-12-02  
-**Feature**: 021-openai-cache-control  
+**Feature**: 021-prompt-cache-control  
 **Purpose**: Define data structures and relationships for cache control functionality
 
 ## Core Entities
