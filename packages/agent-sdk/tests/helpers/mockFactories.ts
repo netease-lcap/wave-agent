@@ -11,6 +11,7 @@ export const createMockToolManager = () => {
   const getPermissionMode = vi.fn(() => "default");
   const setPermissionMode = vi.fn();
   const initializeBuiltInTools = vi.fn();
+  const getPermissionManager = vi.fn();
 
   return {
     // Individual mocks for control and assertions
@@ -20,6 +21,7 @@ export const createMockToolManager = () => {
     getPermissionMode,
     setPermissionMode,
     initializeBuiltInTools,
+    getPermissionManager,
 
     // The object that behaves like a ToolManager instance
     instance: {
@@ -29,6 +31,7 @@ export const createMockToolManager = () => {
       getPermissionMode,
       setPermissionMode,
       initializeBuiltInTools,
+      getPermissionManager,
     },
   };
 };
