@@ -53,7 +53,7 @@
 
 - [X] T011 [US1] Implement AskUserQuestion tool logic in packages/agent-sdk/src/tools/askUserQuestion.ts
 - [X] T012 [US1] Implement basic multiple-choice UI in packages/code/src/components/Confirmation.tsx
-- [X] T013 [US1] Implement keyboard navigation (arrows/numbers) for option selection in packages/code/src/components/Confirmation.tsx
+- [X] T013 [US1] Implement keyboard navigation (arrows) for option selection in packages/code/src/components/Confirmation.tsx
 - [X] T014 [US1] Implement "Other" option with text input in packages/code/src/components/Confirmation.tsx
 - [X] T015 [US1] Update system prompt to encourage AskUserQuestion usage in packages/agent-sdk/src/managers/aiManager.ts
 

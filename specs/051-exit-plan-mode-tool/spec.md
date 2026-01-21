@@ -17,7 +17,7 @@ As an agent in plan mode, I want to use the `ExitPlanMode` tool after I have fin
 
 **Acceptance Scenarios**:
 
-1. **Given** the agent is in plan mode and has written a plan to the designated file, **When** the agent calls `ExitPlanMode`, **Then** the user is shown the contents of the plan file and prompted to confirm via the standard `canUseTool` mechanism with three options.
+1. **Given** the agent is in plan mode and has written a plan to the designated file, **When** the agent calls `ExitPlanMode`, **Then** the user is shown the contents of the plan file and prompted to confirm via the standard `canUseTool` mechanism with three options (navigable via arrow keys).
 2. **Given** the user is reviewing the plan from the file, **When** the user selects "Default", **Then** the tool succeeds and the agent exits plan mode into the default execution state.
 3. **Given** the user is reviewing the plan from the file, **When** the user selects "Accept Edits", **Then** the tool succeeds and the agent exits plan mode into a state where subsequent edits are automatically accepted.
 4. **Given** the user is reviewing the plan from the file, **When** the user chooses to "Tell agent what to do", **Then** the user provides feedback, the tool returns this feedback to the agent, and the agent remains in plan mode to refine the plan.

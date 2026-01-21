@@ -206,23 +206,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
         return;
       }
 
-      if (input >= "1" && input <= String(options.length)) {
-        const index = parseInt(input) - 1;
-        setSelectedOptionIndex(index);
-        if (isMultiSelect) {
-          setSelectedOptionIndices((prev) => {
-            const next = new Set(prev);
-            if (next.has(index)) {
-              next.delete(index);
-            } else {
-              next.add(index);
-            }
-            return next;
-          });
-        }
-        return;
-      }
-
       if (isOtherFocused) {
         if (key.backspace || key.delete) {
           setOtherText((prev) => prev.slice(0, -1));
@@ -268,45 +251,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
         }
       }
       return;
-    }
-
-    // Handle numeric keys for quick selection (only if not typing in alternative)
-    if (state.selectedOption !== "alternative" || !state.hasUserInput) {
-      if (input === "1") {
-        if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
-          onDecision({ behavior: "allow", newPermissionMode: "default" });
-        } else {
-          onDecision({ behavior: "allow" });
-        }
-        return;
-      }
-      if (input === "2") {
-        if (!hidePersistentOption) {
-          if (toolName === BASH_TOOL_NAME) {
-            const rule = suggestedPrefix
-              ? `Bash(${suggestedPrefix}:*)`
-              : `Bash(${toolInput?.command})`;
-            onDecision({
-              behavior: "allow",
-              newPermissionRule: rule,
-            });
-          } else {
-            onDecision({
-              behavior: "allow",
-              newPermissionMode: "acceptEdits",
-            });
-          }
-          return;
-        } else {
-          // If auto option is hidden, '2' selects alternative
-          setState((prev) => ({ ...prev, selectedOption: "alternative" }));
-          return;
-        }
-      }
-      if (input === "3" && !hidePersistentOption) {
-        setState((prev) => ({ ...prev, selectedOption: "alternative" }));
-        return;
-      }
     }
 
     // Handle arrow keys for navigation
@@ -428,7 +372,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                         >
                           {isSelected ? "> " : "  "}
                           {isMultiSelect ? (isChecked ? "[x] " : "[ ] ") : ""}
-                          {index + 1}. {option.label}
+                          {option.label}
                           {isRecommended && (
                             <Text color="green" bold>
                               {" "}
@@ -458,8 +402,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
               <Text dimColor>
                 Question {currentQuestionIndex + 1} of {questions.length} •
                 {currentQuestion.multiSelect ? " Space to toggle •" : ""} Use ↑↓
-                or 1-{currentQuestion.options.length + 1} to navigate • Enter to
-                confirm
+                to navigate • Enter to confirm
               </Text>
             </Box>
           </Box>
@@ -490,7 +433,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                 }
                 bold={state.selectedOption === "allow"}
               >
-                {state.selectedOption === "allow" ? "> " : "  "}1.{" "}
+                {state.selectedOption === "allow" ? "> " : "  "}
                 {toolName === EXIT_PLAN_MODE_TOOL_NAME
                   ? "Yes, proceed with default mode"
                   : "Yes"}
@@ -507,7 +450,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                   }
                   bold={state.selectedOption === "auto"}
                 >
-                  {state.selectedOption === "auto" ? "> " : "  "}2.{" "}
+                  {state.selectedOption === "auto" ? "> " : "  "}
                   {getAutoOptionText()}
                 </Text>
               </Box>
@@ -525,7 +468,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                 bold={state.selectedOption === "alternative"}
               >
                 {state.selectedOption === "alternative" ? "> " : "  "}
-                {hidePersistentOption ? "2. " : "3. "}
                 {showPlaceholder ? (
                   <Text color="gray" dimColor>
                     {placeholderText}
@@ -541,10 +483,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
           </Box>
 
           <Box marginTop={1}>
-            <Text dimColor>
-              Use ↑↓ or 1-{hidePersistentOption ? "2" : "3"} to navigate • ESC
-              to cancel
-            </Text>
+            <Text dimColor>Use ↑↓ to navigate • ESC to cancel</Text>
           </Box>
         </>
       )}
