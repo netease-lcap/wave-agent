@@ -40,7 +40,6 @@ As a user, I want the LLM to be restricted to only editing the plan file while i
 2. **Given** the system is in "plan" mode, **When** the LLM attempts to edit a file other than the designated plan file, **Then** the action is blocked.
 3. **Given** the system is in "plan" mode, **When** the LLM attempts to execute a bash command, **Then** the action is blocked.
 4. **Given** the system is in "plan" mode, **When** the LLM edits the plan file, **Then** the action is permitted.
-5. **Given** the system is in "plan" mode, **When** the LLM attempts to delete the designated plan file, **Then** the action is permitted.
 
 ---
 
@@ -86,7 +85,6 @@ As a user, I want the LLM to be explicitly told how to behave in plan mode, so t
   ```
 - **FR-007**: The system MUST ensure the `~/.wave/plans/` directory exists before creating a plan file.
 - **FR-008**: The system MUST provide visual feedback to the user indicating the current permission mode.
-- **FR-009**: When in plan mode, the system MUST allow the LLM to delete the designated plan file using the `Delete` tool.
 
 ### Key Entities
 

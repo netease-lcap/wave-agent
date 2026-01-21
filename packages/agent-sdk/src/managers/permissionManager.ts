@@ -369,6 +369,13 @@ export class PermissionManager {
         WRITE_TOOL_NAME,
         DELETE_FILE_TOOL_NAME,
       ];
+      if (context.toolName === DELETE_FILE_TOOL_NAME) {
+        return {
+          behavior: "deny",
+          message: "Delete operations are not allowed in plan mode.",
+        };
+      }
+
       if (writeTools.includes(context.toolName)) {
         const targetPath = (context.toolInput?.file_path ||
           context.toolInput?.target_file) as string | undefined;
@@ -378,20 +385,17 @@ export class PermissionManager {
           const absolutePlanPath = path.resolve(this.planFilePath);
 
           if (absoluteTargetPath === absolutePlanPath) {
-            this.logger?.debug(
-              "Allowing write/delete to plan file in plan mode",
-              {
-                toolName: context.toolName,
-                targetPath,
-              },
-            );
+            this.logger?.debug("Allowing write to plan file in plan mode", {
+              toolName: context.toolName,
+              targetPath,
+            });
             return { behavior: "allow" };
           }
         }
 
         return {
           behavior: "deny",
-          message: `In plan mode, you are only allowed to edit or delete the designated plan file: ${this.planFilePath || "not set"}.`,
+          message: `In plan mode, you are only allowed to edit the designated plan file: ${this.planFilePath || "not set"}.`,
         };
       }
     }
