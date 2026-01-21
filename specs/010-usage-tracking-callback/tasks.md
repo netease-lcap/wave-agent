@@ -1,6 +1,6 @@
 # Tasks: SDK Usage Tracking and Callback System
 
-**Input**: Design documents from `/specs/007-usage-tracking-callback/`
+**Input**: Design documents from `/specs/010-usage-tracking-callback/`
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/
 
 **Tests**: Tests are NOT explicitly requested in the feature specification, but may be included for critical functionality.

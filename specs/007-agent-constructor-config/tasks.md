@@ -2,7 +2,7 @@
 
 **Status**: All tasks completed successfully - Feature ready for production
 
-**Input**: Design documents from `/specs/004-agent-constructor-config/`
+**Input**: Design documents from `/specs/007-agent-constructor-config/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
 **Tests**: Tests are OPTIONAL - only include them if explicitly requested in the feature specification.

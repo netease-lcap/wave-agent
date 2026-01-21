@@ -1,6 +1,6 @@
 # Feature Specification: Hooks Support
 
-**Feature Branch**: `001-hooks-support`  
+**Feature Branch**: `005-hooks-support`  
 **Created**: 2024-12-19  
 **Status**: Draft  
 **Input**: User description: "Support hooks, refer to hooks.md"

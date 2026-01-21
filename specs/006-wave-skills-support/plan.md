@@ -1,7 +1,7 @@
 # Implementation Plan: Wave Skills Support
 
-**Branch**: `003-wave-skills-support` | **Date**: 2024-12-19 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/003-wave-skills-support/spec.md`
+**Branch**: `006-wave-skills-support` | **Date**: 2024-12-19 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/006-wave-skills-support/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 

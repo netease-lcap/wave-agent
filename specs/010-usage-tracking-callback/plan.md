@@ -1,7 +1,7 @@
 # Implementation Plan: SDK Usage Tracking and Callback System
 
-**Branch**: `007-usage-tracking-callback` | **Date**: 2025-11-11 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/007-usage-tracking-callback/spec.md`
+**Branch**: `010-usage-tracking-callback` | **Date**: 2025-11-11 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/010-usage-tracking-callback/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 

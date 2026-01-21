@@ -1,6 +1,6 @@
 # Tasks: Hooks Support
 
-**Input**: Design documents from `/specs/001-hooks-support/`
+**Input**: Design documents from `/specs/005-hooks-support/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
