@@ -218,6 +218,11 @@ class ToolManager {
     const effectivePermissionMode = this.getPermissionMode();
     const builtInToolsConfig = Array.from(this.tools.values())
       .filter((tool) => {
+        if (effectivePermissionMode === "bypassPermissions") {
+          if (tool.name === "ExitPlanMode" || tool.name === "AskUserQuestion") {
+            return false;
+          }
+        }
         if (tool.name === "ExitPlanMode") {
           return effectivePermissionMode === "plan";
         }

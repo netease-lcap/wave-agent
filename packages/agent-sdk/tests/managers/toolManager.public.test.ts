@@ -7,6 +7,7 @@ import { ToolManager } from "@/managers/toolManager.js";
 import { McpManager } from "@/managers/mcpManager.js";
 import { SubagentManager } from "@/managers/subagentManager.js";
 import { SkillManager } from "@/managers/skillManager.js";
+import { PermissionManager } from "@/managers/permissionManager.js";
 
 describe("ToolManager.initializeBuiltInTools", () => {
   it("should be callable as a public method", async () => {
@@ -79,5 +80,78 @@ describe("ToolManager.initializeBuiltInTools", () => {
     // Should still have all tools (no duplicates due to Map usage)
     expect(toolNames).toContain("TodoWrite");
     expect(toolNames.filter((name) => name === "TodoWrite")).toHaveLength(1);
+  });
+});
+
+describe("ToolManager bypassPermissions mode", () => {
+  it("should exclude ExitPlanMode and AskUserQuestion in bypassPermissions mode", async () => {
+    const mockMcpManager = {
+      getMcpToolsConfig: vi.fn().mockReturnValue([]),
+    } as unknown as McpManager;
+
+    const mockPermissionManager = {
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("bypassPermissions"),
+    } as unknown as PermissionManager;
+
+    const toolManager = new ToolManager({
+      mcpManager: mockMcpManager,
+      permissionManager: mockPermissionManager,
+    });
+
+    toolManager.initializeBuiltInTools();
+
+    const toolsConfig = toolManager.getToolsConfig();
+    const toolNames = toolsConfig.map((t) => t.function.name);
+
+    expect(toolNames).not.toContain("ExitPlanMode");
+    expect(toolNames).not.toContain("AskUserQuestion");
+    expect(toolNames).toContain("Bash");
+    expect(toolNames).toContain("Read");
+  });
+
+  it("should include AskUserQuestion in default mode", async () => {
+    const mockMcpManager = {
+      getMcpToolsConfig: vi.fn().mockReturnValue([]),
+    } as unknown as McpManager;
+
+    const mockPermissionManager = {
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+    } as unknown as PermissionManager;
+
+    const toolManager = new ToolManager({
+      mcpManager: mockMcpManager,
+      permissionManager: mockPermissionManager,
+    });
+
+    toolManager.initializeBuiltInTools();
+
+    const toolsConfig = toolManager.getToolsConfig();
+    const toolNames = toolsConfig.map((t) => t.function.name);
+
+    expect(toolNames).toContain("AskUserQuestion");
+    expect(toolNames).not.toContain("ExitPlanMode"); // ExitPlanMode only in plan mode
+  });
+
+  it("should include ExitPlanMode and AskUserQuestion in plan mode", async () => {
+    const mockMcpManager = {
+      getMcpToolsConfig: vi.fn().mockReturnValue([]),
+    } as unknown as McpManager;
+
+    const mockPermissionManager = {
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("plan"),
+    } as unknown as PermissionManager;
+
+    const toolManager = new ToolManager({
+      mcpManager: mockMcpManager,
+      permissionManager: mockPermissionManager,
+    });
+
+    toolManager.initializeBuiltInTools();
+
+    const toolsConfig = toolManager.getToolsConfig();
+    const toolNames = toolsConfig.map((t) => t.function.name);
+
+    expect(toolNames).toContain("ExitPlanMode");
+    expect(toolNames).toContain("AskUserQuestion");
   });
 });
