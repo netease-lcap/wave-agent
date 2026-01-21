@@ -58,6 +58,7 @@ describe("SubagentManager Consistency", () => {
         { name: "Read" },
         { name: "Write" },
       ]),
+      getPermissionManager: vi.fn(),
     } as unknown as ToolManager;
 
     // Create SubagentManager with mocks

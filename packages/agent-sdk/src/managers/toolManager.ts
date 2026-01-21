@@ -252,6 +252,13 @@ class ToolManager {
   public setPermissionMode(mode: PermissionMode): void {
     this.permissionMode = mode;
   }
+
+  /**
+   * Get the permission manager
+   */
+  public getPermissionManager(): PermissionManager | undefined {
+    return this.permissionManager;
+  }
 }
 
 // Export tool registry class and types

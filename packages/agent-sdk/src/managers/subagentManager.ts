@@ -187,6 +187,7 @@ export class SubagentManager {
       systemPrompt: configuration.systemPrompt,
       subagentType: parameters.subagent_type, // Pass subagent type for hook context
       hookManager: this.hookManager,
+      permissionManager: this.parentToolManager.getPermissionManager(),
       getGatewayConfig: this.getGatewayConfig,
       getModelConfig: () => {
         // Determine model dynamically each time
@@ -483,6 +484,7 @@ export class SubagentManager {
           systemPrompt: configuration.systemPrompt,
           subagentType: configuration.name, // Use configuration name as subagent type for restored instances
           hookManager: this.hookManager,
+          permissionManager: this.parentToolManager.getPermissionManager(),
           getGatewayConfig: this.getGatewayConfig,
           getModelConfig: () => ({
             ...parentModelConfig,
