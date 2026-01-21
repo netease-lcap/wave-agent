@@ -9,7 +9,6 @@ This guide shows how to integrate live configuration reload functionality into t
 
 1. **Environment variables** in settings.json files
 2. **Live reload** of configuration changes without restart
-3. **In-memory storage** of AGENTS.md content with automatic updates
 
 ## Prerequisites & Installation
 
@@ -77,7 +76,6 @@ import type { Logger } from '../types/index.js';
 
 class LiveConfigurationService {
   private logger?: Logger;
-  private memoryStoreService: any;
   private fileWatcherService: any;
 
   constructor(logger?: Logger) {
@@ -87,9 +85,6 @@ class LiveConfigurationService {
 
   // Runtime monitoring
   private logPerformanceMetrics(): void {
-    const stats = this.memoryStoreService.getStats();
-    this.logger?.debug(`Live Config: Memory store - Size: ${stats.contentSize / 1024}KB, Updates: ${stats.updateCount}`);
-
     const watcherStatuses = this.fileWatcherService.getAllWatcherStatuses();
     const activeWatchers = watcherStatuses.filter(w => w.isActive).length;
     this.logger?.debug(`Live Config: File watchers - Active: ${activeWatchers}/${watcherStatuses.length}`);
@@ -213,24 +208,6 @@ export function loadWaveConfigFromFile(filePath: string): WaveConfiguration | nu
 }
 ```
 
-**Memory Service Extension**:
-```typescript
-export const readMemoryFile = async (workdir: string): Promise<string> => {
-  const memoryFilePath = path.join(workdir, "AGENTS.md");
-  
-  // Check memory store first
-  const stored = memoryStore.get(memoryFilePath);
-  if (stored && stored.isLoaded) {
-    return stored.content; // Memory read (~1ms)
-  }
-  
-  // Read from file and store in memory
-  const content = await fs.readFile(memoryFilePath, "utf-8");
-  memoryStore.set(memoryFilePath, { content, isLoaded: true });
-  return content;
-};
-```
-
 ## Testing Examples
 
 ### Live Configuration Reload Test
@@ -255,23 +232,6 @@ async function testLiveReload() {
   
   // Agent should now use the updated model for next operations
   return true;
-}
-```
-
-### Memory Storage Test
-```typescript
-async function testMemoryStorage() {
-  // Initial memory content
-  await writeFile('AGENTS.md', '# Initial Memory\n- Use TypeScript');
-  const agent = await Agent.create({ workdir: process.cwd() });
-  
-  // Update memory content while agent is running
-  await writeFile('AGENTS.md', '# Updated Memory\n- Use TypeScript\n- Write tests first');
-  
-  // Wait for file watcher
-  await new Promise(resolve => setTimeout(resolve, 400));
-  
-  // Next agent call gets updated memory content from memory store
 }
 ```
 
@@ -302,14 +262,11 @@ describe('Environment Variable Merging', () => {
 
 ### Before Implementation
 - Configuration changes require process restart
-- AGENTS.md read on every agent call (~50ms per read)
 - High I/O overhead
 
 ### After Implementation
 - Configuration changes apply within 300ms
-- AGENTS.md kept in memory (~1ms access time)
-- 100% elimination of file I/O after initial load
-- Memory usage increase: <2MB typical
+- Memory usage increase: <1MB typical
 
 ## Next Steps
 

@@ -53,34 +53,10 @@ interface EnvironmentContext {
 2. Existing process environment variables are not overridden
 3. Empty string values are treated as unset
 
-### Memory Store
-**Purpose**: In-memory storage for AGENTS.md content with automatic updates  
-**Scope**: Project-level memory content  
-**Relationships**: Updated by File Watcher events
-
-```typescript
-interface MemoryStore {
-  content: string;           // Current file content in memory
-  lastModified: number;      // File modification timestamp
-  path: string;              // Absolute file path
-  isLoaded: boolean;         // Whether content has been loaded
-}
-```
-
-**Validation Rules**:
-- Content must be valid UTF-8 text
-- File size limit of 5MB for performance
-- Empty content is valid (represents empty or missing file)
-
-**State Transitions**:
-1. Empty → Loading → Loaded
-2. Loaded → Updating (on file change) → Loaded
-3. Loaded → Empty (on file deletion)
-
 ### File Watcher
 **Purpose**: Monitor configuration files for changes and trigger reload events using Chokidar  
 **Scope**: Single Chokidar instance watching multiple files efficiently  
-**Relationships**: Triggers updates to Wave Configuration and Memory Store
+**Relationships**: Triggers updates to Wave Configuration
 
 ```typescript
 interface FileWatcherEntry {
@@ -144,18 +120,9 @@ Chokidar Watcher
   ↓ (triggers after stability check)
 Configuration Reload
   ↓ (updates)
-Memory Store + Wave Configuration Store
+Wave Configuration Store
   ↓ (notifies)
 Agent Processes
-```
-
-### Memory Storage Flow
-```
-Agent Request for AGENTS.md
-  ↓ (reads from)
-Memory Store
-  ↓ (returns immediately)
-In-Memory Content
 ```
 
 ## Data Storage
@@ -163,11 +130,9 @@ In-Memory Content
 ### File System
 - `~/.wave/settings.json`: User-level configuration with optional env field
 - `./.wave/settings.json`: Project-level configuration with optional env field  
-- `./AGENTS.md`: Project memory content (cached in memory)
 
 ### Memory Storage
 - Wave configuration store: Configuration objects in memory for fast access
-- Memory content store: AGENTS.md content kept in memory to avoid I/O
 - File watcher registry: Active watcher instances and their state
 - Environment variable store: Merged environment variables ready for injection
 
@@ -180,12 +145,10 @@ In-Memory Content
 
 ### Existing Systems
 - **Hook Manager**: Extends existing hook configuration loading with env field support in WaveConfiguration
-- **Memory Service**: Enhances `getCombinedMemoryContent()` with in-memory storage
 - **Agent Execution**: Inherits environment variables from merged configuration
 
 ### New Components
 - **FileWatcherService**: New service for coordinating file watching across the system
-- **MemoryStoreManager**: New manager for handling AGENTS.md content in memory
 - **ConfigurationReloader**: New service coordinating live reload events
 
 ## Performance Characteristics
@@ -193,17 +156,13 @@ In-Memory Content
 ### Memory Usage
 - Base overhead: ~100KB for watcher infrastructure
 - Per-file overhead: ~1KB for each watched file
-- Content memory: Variable based on AGENTS.md size (typically <1MB)
-- Total expected usage: <2MB for typical development setup
+- Total expected usage: <1MB for typical development setup
 
 ### Response Times
 - File change detection: <50ms average
 - Configuration reload: <10ms for settings.json
-- Memory content update: <5ms for in-memory store
-- Memory content serving: <1ms from memory vs ~50ms from disk
 
 ### Scalability Limits
 - Maximum watched files: 100 (well below OS limits)
-- Maximum content size: 5MB per AGENTS.md file
 - Maximum env variables: 1000 per configuration file
 - Supported file sizes: Up to 5MB for individual files

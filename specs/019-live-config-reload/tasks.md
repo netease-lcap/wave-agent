@@ -35,7 +35,6 @@
 - [x] T004 Rename HookConfiguration to WaveConfiguration in packages/agent-sdk/src/types/hooks.ts
 - [x] T005 [P] Add env field to WaveConfiguration interface in packages/agent-sdk/src/types/hooks.ts
 - [x] T006 [P] Create FileWatcherService class structure in packages/agent-sdk/src/services/fileWatcher.ts
-- [x] T007 [P] Create MemoryStoreService class structure in packages/agent-sdk/src/services/memoryStore.ts
 - [x] T008 Update hook service imports to use WaveConfiguration in packages/agent-sdk/src/services/hook.ts
 - [x] T009 Update all existing references from HookConfiguration to WaveConfiguration across the codebase
 
@@ -89,28 +88,7 @@
 
 ---
 
-## Phase 5: User Story 3 - Live Memory File Reload (Priority: P2)
-
-**Goal**: Keep AGENTS.md content in memory and update it automatically when file changes
-
-**Independent Test**: Can modify AGENTS.md and verify agents use updated content without file system reads after initial load
-
-### Implementation for User Story 3
-
-- [x] T030 [P] [US3] Implement MemoryStore interface in packages/agent-sdk/src/types/memoryStore.ts
-- [x] T031 [P] [US3] Implement MemoryStoreService class in packages/agent-sdk/src/services/memoryStore.ts
-- [x] T032 [US3] Update readMemoryFile function to use memory store in packages/agent-sdk/src/services/memory.ts
-- [x] T033 [US3] Add AGENTS.md file watching to LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [x] T034 [US3] Implement memory content update on file change events in LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [x] T035 [US3] Add memory store initialization in Agent constructor in packages/agent-sdk/src/agent.ts
-- [x] T036 [US3] Handle AGENTS.md file deletion gracefully in LiveConfigManager in packages/agent-sdk/src/managers/liveConfigManager.ts
-- [x] T037 [US3] Add memory store cleanup on agent disposal in packages/agent-sdk/src/agent.ts
-
-**Checkpoint**: All user stories should now be independently functional
-
----
-
-## Phase 6: Polish & Cross-Cutting Concerns
+## Phase 5: Polish & Cross-Cutting Concerns
 
 **Purpose**: Improvements that affect multiple user stories
 
@@ -132,14 +110,13 @@
 - **Foundational (Phase 2)**: Depends on Setup completion - BLOCKS all user stories
 - **User Stories (Phase 3+)**: All depend on Foundational phase completion
   - User stories can then proceed in parallel (if staffed)
-  - Or sequentially in priority order (P1 → P2 → P3)
+  - Or sequentially in priority order (P1 → P2)
 - **Polish (Final Phase)**: Depends on all desired user stories being complete
 
 ### User Story Dependencies
 
 - **User Story 1 (P1)**: Can start after Foundational (Phase 2) - No dependencies on other stories
 - **User Story 2 (P2)**: Can start after Foundational (Phase 2) - Uses WaveConfiguration from US1 but should be independently testable
-- **User Story 3 (P2)**: Can start after Foundational (Phase 2) - Independent of US1/US2, should be independently testable
 
 ### Within Each User Story
 
@@ -187,8 +164,7 @@ Task: "Implement mergeEnvironmentConfig function"
 1. Complete Setup + Foundational → Foundation ready
 2. Add User Story 1 → Test independently → Deploy/Demo (MVP!)
 3. Add User Story 2 → Test independently → Deploy/Demo
-4. Add User Story 3 → Test independently → Deploy/Demo
-5. Each story adds value without breaking previous stories
+4. Each story adds value without breaking previous stories
 
 ### Parallel Team Strategy
 
@@ -198,7 +174,6 @@ With multiple developers:
 2. Once Foundational is done:
    - Developer A: User Story 1 (environment variables)
    - Developer B: User Story 2 (live settings reload)
-   - Developer C: User Story 3 (memory file reload)
 3. Stories complete and integrate independently
 
 ---

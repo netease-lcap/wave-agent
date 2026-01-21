@@ -7,19 +7,13 @@
 
 ## Summary
 
-Implement live configuration reload for Wave Agent SDK using Chokidar library for robust cross-platform file watching. Add support for environment variables in settings.json and optimize AGENTS.md memory caching to reduce I/O overhead. The Wave Code CLI will automatically inherit these capabilities since it uses the SDK.
+Implement live configuration reload for Wave Agent SDK using Chokidar library for robust cross-platform file watching. Add support for environment variables in settings.json. The Wave Code CLI will automatically inherit these capabilities since it uses the SDK.
 
 ## Technical Context
 
-<!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
--->
-
 **Language/Version**: TypeScript with Node.js 18+ (existing project standard)  
 **Primary Dependencies**: Chokidar library for file watching, existing agent-sdk modules  
-**Storage**: JSON files (settings.json) and Markdown files (AGENTS.md) on filesystem  
+**Storage**: JSON files (settings.json) on filesystem  
 **Testing**: Vitest (existing project standard)  
 **Target Platform**: Node.js cross-platform (Linux, macOS, Windows)
 **Project Type**: Monorepo package (agent-sdk modification)  
@@ -67,17 +61,15 @@ specs/[###-feature]/
 packages/agent-sdk/
 ├── src/
 │   ├── services/
-│   │   ├── hook.ts           # Extend for settings watching
-│   │   └── memory.ts         # Extend for AGENTS.md caching
+│   │   └── hook.ts           # Extend for settings watching
 │   ├── managers/
 │   │   └── hookManager.ts    # Extend for live reload
 │   ├── types/
 │   │   └── hooks.ts          # Extend for env field
-│   └── agent.ts              # Update to use cached memory
+│   └── agent.ts              # Update to use live configuration
 └── tests/
     ├── services/
-    │   ├── hook.test.ts      # Add env field tests
-    │   └── memory.test.ts    # Add caching tests
+    │   └── hook.test.ts      # Add env field tests
     └── managers/
         └── hookManager.test.ts # Add live reload tests
 
@@ -85,6 +77,3 @@ packages/code/                 # CLI inherits SDK functionality automatically
 ```
 
 **Structure Decision**: Modify existing agent-sdk package structure following established patterns. Services handle file I/O and watching, managers handle state coordination, types define new interfaces. No new packages needed as this extends existing functionality.
-
-
-

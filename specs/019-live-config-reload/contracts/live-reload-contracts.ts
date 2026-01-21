@@ -51,7 +51,7 @@ export interface MergedEnvironmentContext {
 
 /**
  * File Watch Event
- * Maps to FR-004, FR-005: System MUST watch files for changes
+ * Maps to FR-004, FR-007: System MUST watch files for changes
  */
 export interface FileWatchEvent {
   type: 'change' | 'create' | 'delete' | 'rename';
@@ -62,7 +62,7 @@ export interface FileWatchEvent {
 
 /**
  * File Watcher Configuration
- * Maps to FR-010: File watchers MUST handle file events
+ * Maps to FR-007: File watchers MUST handle file events
  * Uses Chokidar for robust cross-platform file watching
  */
 export interface FileWatcherConfig {
@@ -75,7 +75,7 @@ export interface FileWatcherConfig {
 
 /**
  * File Watcher Status
- * Maps to FR-012: System MUST handle watcher initialization failures
+ * Maps to FR-009: System MUST handle watcher initialization failures
  */
 export interface FileWatcherStatus {
   isActive: boolean;
@@ -87,50 +87,12 @@ export interface FileWatcherStatus {
 }
 
 // =============================================================================
-// Memory Caching Contracts
-// =============================================================================
-
-/**
- * Memory Store Entry
- * Maps to FR-006: System MUST keep AGENTS.md content in memory
- */
-export interface MemoryStoreEntry {
-  content: string;
-  path: string;
-  lastModified: number;
-  isLoaded: boolean;
-}
-
-/**
- * Memory Store Statistics
- * For monitoring and debugging
- */
-export interface MemoryStoreStats {
-  contentSize: number;
-  lastUpdated: number;
-  updateCount: number;
-  isLoaded: boolean;
-}
-
-/**
- * Memory Update Event
- * Maps to FR-007: System MUST update memory content when file changes
- */
-export interface MemoryUpdateEvent {
-  path: string;
-  reason: 'file_change' | 'initial_load' | 'manual_reload';
-  timestamp: number;
-  previousSize?: number;
-  newSize: number;
-}
-
-// =============================================================================
 // Service Contracts
 // =============================================================================
 
 /**
  * Configuration Reload Service Interface
- * Maps to FR-004, FR-008: Configuration reload and error handling
+ * Maps to FR-004, FR-005: Configuration reload and error handling
  */
 export interface ConfigurationReloadService {
   /**
@@ -141,7 +103,7 @@ export interface ConfigurationReloadService {
 
   /**
    * Reload configuration from files
-   * Maps to FR-008: Continue with previous valid configuration on errors
+   * Maps to FR-005: Continue with previous valid configuration on errors
    */
   reloadConfiguration(): Promise<WaveConfiguration>;
 
@@ -159,43 +121,13 @@ export interface ConfigurationReloadService {
 }
 
 /**
- * Memory Store Service Interface
- * Maps to FR-006, FR-007: Memory storage and updates
- */
-export interface MemoryStoreService {
-  /**
-   * Get content from memory store (loads from file if not loaded)
-   * Maps to FR-006: Keep AGENTS.md content in memory to avoid repeated reads
-   */
-  getContent(path: string): Promise<string>;
-
-  /**
-   * Update memory content from file
-   * Maps to FR-007: Update memory content when file changes
-   */
-  updateContent(path: string): Promise<void>;
-
-  /**
-   * Get memory store statistics
-   * For monitoring and debugging
-   */
-  getStats(): MemoryStoreStats;
-
-  /**
-   * Check if content is loaded in memory
-   * For status checking
-   */
-  isLoaded(path: string): boolean;
-}
-
-/**
  * File Watcher Service Interface
- * Maps to FR-010, FR-012: File watching and error handling
+ * Maps to FR-007, FR-009: File watching and error handling
  */
 export interface FileWatcherService {
   /**
    * Start watching a file
-   * Maps to FR-010: Handle file deletion, creation, and modification
+   * Maps to FR-007: Handle file deletion, creation, and modification
    */
   watchFile(path: string, callback: (event: FileWatchEvent) => void): Promise<void>;
 
@@ -207,7 +139,7 @@ export interface FileWatcherService {
 
   /**
    * Get watcher status
-   * Maps to FR-012: Handle watcher initialization failures
+   * Maps to FR-009: Handle watcher initialization failures
    */
   getWatcherStatus(path: string): FileWatcherStatus | null;
 
@@ -230,10 +162,10 @@ export interface FileWatcherService {
 
 /**
  * Configuration Change Event
- * Maps to FR-009: Log configuration reload events
+ * Maps to FR-006: Log configuration reload events
  */
 export interface ConfigurationChangeEvent {
-  type: 'settings_changed' | 'memory_changed' | 'env_changed';
+  type: 'settings_changed' | 'env_changed';
   path: string;
   timestamp: number;
   changes: {
@@ -261,12 +193,6 @@ export interface LiveReloadEventEmitter {
    * Allow components to react to configuration changes
    */
   onConfigurationChange(callback: (event: ConfigurationChangeEvent) => void): () => void;
-
-  /**
-   * Subscribe to memory update events
-   * Allow components to react to memory changes
-   */
-  onMemoryUpdate(callback: (event: MemoryUpdateEvent) => void): () => void;
 }
 
 // =============================================================================
@@ -275,7 +201,7 @@ export interface LiveReloadEventEmitter {
 
 /**
  * Configuration Error Types
- * Maps to FR-003, FR-008, FR-009: Error handling and logging
+ * Maps to FR-003, FR-005, FR-006: Error handling and logging
  */
 export type ConfigurationErrorType = 
   | 'invalid_json'
@@ -300,7 +226,7 @@ export interface ConfigurationError {
 
 /**
  * Error Recovery Result
- * Maps to FR-008: Continue operating with previous valid configuration
+ * Maps to FR-005: Continue operating with previous valid configuration
  */
 export interface ErrorRecoveryResult {
   success: boolean;
@@ -316,21 +242,10 @@ export interface ErrorRecoveryResult {
 
 /**
  * Enhanced Hook Execution Context
- * Maps to FR-011: Environment variables available to hook processes
+ * Maps to FR-008: Environment variables available to hook processes
  */
 export interface EnhancedHookExecutionContext extends HookExecutionContext {
   environmentVariables: Record<string, string>;
   configurationVersion: number;
   reloadTimestamp?: number;
-}
-
-/**
- * Agent Memory Context
- * Enhanced memory context with storage information
- */
-export interface EnhancedMemoryContext {
-  content: string;
-  isFromMemory: boolean;
-  lastUpdated: number;
-  source: 'memory' | 'file' | 'empty';
 }

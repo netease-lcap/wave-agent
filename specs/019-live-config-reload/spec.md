@@ -3,7 +3,7 @@
 **Feature Branch**: `019-live-config-reload`  
 **Created**: 2024-12-01  
 **Status**: Draft  
-**Input**: User description: "1, settings.json should support env field, so that we can pass env vars to wave code and wave agent sdk. 2, settings.json and AGENTS.md should support living reload, when user modify them, they should take effect immediately without restarting cli or sdk. 3, currently, the AGENTS.md are read on each calling agent, when support living reload, it should not read this file on each calling agent to reduce io cost."
+**Input**: User description: "1, settings.json should support env field, so that we can pass env vars to wave code and wave agent sdk. 2, settings.json should support living reload, when user modify them, they should take effect immediately without restarting cli or sdk."
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -39,27 +39,10 @@ A developer is actively working and needs to modify their settings.json configur
 
 ---
 
-### User Story 3 - Live Memory File Reload (Priority: P2)
-
-A developer frequently updates their AGENTS.md file to provide context and memory to their agents. They want these changes to be immediately available to agents while eliminating the file system read on each agent call by keeping the content in memory and updating it when the file changes.
-
-**Why this priority**: Eliminates I/O overhead by keeping file content in memory while ensuring fresh content when the file changes.
-
-**Independent Test**: Can be tested by modifying AGENTS.md and verifying agents use updated content without file system reads after the initial load.
-
-**Acceptance Scenarios**:
-
-1. **Given** an AGENTS.md file exists, **When** user modifies it, **Then** agents use the updated content on next execution without reading from disk
-2. **Given** AGENTS.md content is kept in memory, **When** file watcher detects changes, **Then** memory content is updated with new file content
-3. **Given** AGENTS.md file is deleted, **When** next agent runs, **Then** agents continue with empty memory content and system logs the missing file
-
----
-
 ### Edge Cases
 
 - What happens when settings.json contains malformed JSON during live reload?
 - How does system handle file system permission errors during file watching?
-- What happens when AGENTS.md file becomes very large (>1MB)?
 - How does system handle rapid consecutive file modifications?
 - What happens when file watchers fail to initialize on system startup?
 
@@ -71,18 +54,14 @@ A developer frequently updates their AGENTS.md file to provide context and memor
 - **FR-002**: System MUST merge user-level and project-level env configurations, with project-level taking precedence
 - **FR-003**: System MUST validate env field format and show clear errors for invalid configurations
 - **FR-004**: System MUST watch settings.json files for changes and reload configuration automatically
-- **FR-005**: System MUST watch AGENTS.md file for changes and refresh cached content
-- **FR-006**: System MUST keep AGENTS.md content in memory to avoid repeated file reads
-- **FR-007**: System MUST update memory content when file changes are detected
-- **FR-008**: System MUST continue operating with previous valid configuration when invalid changes are detected
-- **FR-009**: System MUST log configuration reload events and errors appropriately
-- **FR-010**: File watchers MUST handle file deletion, creation, and modification events
-- **FR-011**: Environment variables from env field MUST be available to hook processes and agent execution context
-- **FR-012**: System MUST handle file watcher initialization failures by throwing descriptive error and preventing SDK startup
+- **FR-005**: System MUST continue operating with previous valid configuration when invalid changes are detected
+- **FR-006**: System MUST log configuration reload events and errors appropriately
+- **FR-007**: File watchers MUST handle file deletion, creation, and modification events
+- **FR-008**: Environment variables from env field MUST be available to hook processes and agent execution context
+- **FR-009**: System MUST handle file watcher initialization failures by throwing descriptive error and preventing SDK startup
 
 ### Key Entities
 
 - **Settings Configuration**: Contains hooks, env variables, and other configuration options, watched for changes
-- **Memory Store**: In-memory storage for AGENTS.md content, updated on file changes  
 - **File Watcher**: Monitors configuration files and triggers reload events
 - **Environment Context**: Merged environment variables from user and project settings, passed to agent processes
