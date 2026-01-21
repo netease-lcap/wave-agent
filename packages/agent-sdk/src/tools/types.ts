@@ -50,4 +50,8 @@ export interface ToolContext {
   mcpManager?: import("../managers/mcpManager.js").McpManager;
   /** LSP manager instance for code intelligence */
   lspManager?: import("../types/lsp.js").ILspManager;
+  /** Message manager instance for UI updates */
+  messageManager?: import("../managers/messageManager.js").MessageManager;
+  /** The ID of the tool call from the AI service */
+  toolCallId?: string;
 }

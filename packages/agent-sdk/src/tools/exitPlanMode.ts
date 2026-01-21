@@ -60,8 +60,19 @@ export const exitPlanModeTool: ToolPlugin = {
         EXIT_PLAN_MODE_TOOL_NAME,
         context.permissionMode || "plan",
         context.canUseToolCallback,
-        { plan_content: planContent },
+        {},
       );
+
+      // Inject planContent via updateToolBlock to display it in the message list
+      if (context.messageManager) {
+        context.messageManager.updateToolBlock({
+          id: context.toolCallId || EXIT_PLAN_MODE_TOOL_NAME,
+          name: EXIT_PLAN_MODE_TOOL_NAME,
+          planContent,
+          stage: "running",
+          parameters: "{}",
+        });
+      }
 
       const permissionResult =
         await context.permissionManager.checkPermission(permissionContext);

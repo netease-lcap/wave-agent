@@ -65,6 +65,7 @@ export interface ToolBlock {
   error?: string | Error;
   compactParams?: string; // Compact parameter display
   parametersChunk?: string; // Incremental parameter updates for streaming
+  planContent?: string; // Plan content for ExitPlanMode tool
 }
 
 export interface ImageBlock {

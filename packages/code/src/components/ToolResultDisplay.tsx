@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { ToolBlock } from "wave-agent-sdk";
 import { DiffDisplay } from "./DiffDisplay.js";
+import { Markdown } from "./Markdown.js";
 
 interface ToolResultDisplayProps {
   block: ToolBlock;
@@ -12,8 +13,16 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   block,
   isExpanded = false,
 }) => {
-  const { parameters, result, compactParams, stage, success, error, name } =
-    block;
+  const {
+    parameters,
+    result,
+    compactParams,
+    stage,
+    success,
+    error,
+    name,
+    planContent,
+  } = block;
 
   // Directly use compactParams
   // (no change needed as we destructured it above)
@@ -137,6 +146,16 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
 
       {/* Diff display - handled by DiffDisplay component */}
       <DiffDisplay toolBlock={block} />
+
+      {/* Plan content display for ExitPlanMode tool */}
+      {planContent && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color="cyan" bold>
+            Plan Content:
+          </Text>
+          <Markdown>{planContent}</Markdown>
+        </Box>
+      )}
     </Box>
   );
 };
