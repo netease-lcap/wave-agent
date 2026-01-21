@@ -49,7 +49,12 @@ describe("DiffDisplay Component", () => {
     ];
     vi.mocked(transformToolBlockToChanges).mockReturnValue(mockChanges);
 
-    const { lastFrame } = render(<DiffDisplay toolBlock={toolBlock} />);
+    const { lastFrame } = render(
+      <DiffDisplay
+        toolName={toolBlock.name}
+        parameters={toolBlock.parameters}
+      />,
+    );
     const output = lastFrame();
 
     // It should show truncation message
@@ -82,7 +87,12 @@ describe("DiffDisplay Component", () => {
     ];
     vi.mocked(transformToolBlockToChanges).mockReturnValue(mockChanges);
 
-    const { lastFrame } = render(<DiffDisplay toolBlock={toolBlock} />);
+    const { lastFrame } = render(
+      <DiffDisplay
+        toolName={toolBlock.name}
+        parameters={toolBlock.parameters}
+      />,
+    );
     const output = lastFrame();
 
     expect(output).toContain("truncated");
