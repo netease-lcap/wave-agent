@@ -1,12 +1,12 @@
 # Quickstart: Claude Cache Control Implementation
 
-**Feature**: OpenAI Provider Cache Control for Claude Models  
+**Feature**: Prompt Cache Control for Claude Models  
 **Date**: 2025-12-02  
 **Estimated Implementation Time**: 4-6 hours  
 
 ## Overview
 
-This feature adds automatic cache control to Claude models in the OpenAI provider, reducing token costs by 30-60% for repeated content. The implementation applies cache markers to system messages, recent user messages, and tool definitions when using Claude models.
+This feature adds automatic prompt cache control to Claude models in the OpenAI provider, reducing token costs by 30-60% for repeated content. The implementation applies cache markers to system messages, recent user messages, and tool definitions when using Claude models.
 
 ## Implementation Steps
 

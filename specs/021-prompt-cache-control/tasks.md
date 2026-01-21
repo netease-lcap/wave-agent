@@ -1,7 +1,7 @@
-# Implementation Tasks: OpenAI Provider Cache Optimization for Claude Models
+# Implementation Tasks: Prompt Cache Optimization for Claude Models
 
-**Feature**: OpenAI Provider Cache Control for Claude Models  
-**Branch**: `021-openai-cache-control`  
+**Feature**: Prompt Cache Control for Claude Models  
+**Branch**: `021-prompt-cache-control`  
 **Total Estimated Time**: 6-8 hours  
 **Generated**: 2025-12-02
 
