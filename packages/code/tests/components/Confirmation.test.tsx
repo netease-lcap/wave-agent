@@ -58,13 +58,15 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "1. Yes");
+      await waitForText(lastFrame, "Yes");
 
       const frame = lastFrame();
       // First option should be selected by default
-      expect(frame).toContain("> 1. Yes");
-      expect(frame).toContain("  2.");
-      expect(frame).toContain("  3.");
+      expect(frame).toContain("> Yes");
+      expect(frame).toContain("  Yes, and auto-accept edits");
+      expect(frame).toContain(
+        "  Type here to tell Wave what to do differently",
+      );
     });
 
     it("should display placeholder text correctly", async () => {
@@ -96,10 +98,10 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "Use ↑↓ or 1-3 to navigate • ESC to cancel");
+      await waitForText(lastFrame, "Use ↑↓ to navigate • ESC to cancel");
 
       const frame = lastFrame();
-      expect(frame).toContain("Use ↑↓ or 1-3 to navigate • ESC to cancel");
+      expect(frame).toContain("Use ↑↓ to navigate • ESC to cancel");
     });
 
     it("should show correct auto-accept text for Bash without repeating command", async () => {
@@ -115,15 +117,15 @@ describe("Confirmation", () => {
 
       await waitForText(
         lastFrame,
-        "2. Yes, and don't ask again for this command in this workdir",
+        "Yes, and don't ask again for this command in this workdir",
       );
 
       const frame = lastFrame();
       expect(frame).toContain(
-        "2. Yes, and don't ask again for this command in this workdir",
+        "Yes, and don't ask again for this command in this workdir",
       );
       expect(frame).not.toContain(
-        "2. Yes, and don't ask again for ls -la commands in this workdir",
+        "Yes, and don't ask again for ls -la commands in this workdir",
       );
     });
 
@@ -139,14 +141,12 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "1. Yes");
+      await waitForText(lastFrame, "Yes");
 
       const frame = lastFrame();
-      expect(frame).toContain("1. Yes");
-      expect(frame).not.toContain("2. Yes, and don't ask again");
-      expect(frame).toContain(
-        "2. Type here to tell Wave what to do differently",
-      );
+      expect(frame).toContain("Yes");
+      expect(frame).not.toContain("Yes, and don't ask again");
+      expect(frame).toContain("Type here to tell Wave what to do differently");
     });
   });
 
@@ -161,17 +161,22 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Press down arrow twice to select alternative option
       stdin.write("\u001b[B"); // Down arrow key
       stdin.write("\u001b[B"); // Down arrow key
 
-      await waitForText(lastFrame, "> 3.");
+      await waitForText(
+        lastFrame,
+        "> Type here to tell Wave what to do differently",
+      );
 
       const frame = lastFrame();
-      expect(frame).toContain("  1. Yes"); // First option not selected
-      expect(frame).toContain("> 3."); // Third option selected
+      expect(frame).toContain("  Yes"); // First option not selected
+      expect(frame).toContain(
+        "> Type here to tell Wave what to do differently",
+      ); // Third option selected
     });
 
     it("should handle up arrow key navigation", async () => {
@@ -184,20 +189,25 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Go down then up
       stdin.write("\u001b[B"); // Down arrow
       stdin.write("\u001b[B"); // Down arrow
-      await waitForText(lastFrame, "> 3.");
+      await waitForText(
+        lastFrame,
+        "> Type here to tell Wave what to do differently",
+      );
 
       stdin.write("\u001b[A"); // Up arrow
       stdin.write("\u001b[A"); // Up arrow
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       const frame = lastFrame();
-      expect(frame).toContain("> 1. Yes"); // Back to first option
-      expect(frame).toContain("  3."); // Third option not selected
+      expect(frame).toContain("> Yes"); // Back to first option
+      expect(frame).not.toContain(
+        "> Type here to tell Wave what to do differently",
+      ); // Third option not selected
     });
 
     it("should handle Enter key confirmation for allow option", async () => {
@@ -210,7 +220,7 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Press Enter to confirm allow
       stdin.write("\r");
@@ -232,7 +242,7 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Press ESC to cancel
       stdin.write("\u001b");
@@ -267,7 +277,7 @@ describe("Confirmation", () => {
 
       const frame = lastFrame();
       expect(frame).toContain(alternativeText);
-      expect(frame).toContain("> 3."); // Should auto-select alternative option
+      expect(frame).toContain(`> ${alternativeText}`); // Should auto-select alternative option
       expect(frame).not.toContain(
         "Type here to tell Wave what to do differently",
       ); // Placeholder should be hidden
@@ -315,12 +325,15 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Navigate to alternative option and press Enter without typing
       stdin.write("\u001b[B"); // Down arrow
       stdin.write("\u001b[B"); // Down arrow
-      await waitForText(lastFrame, "> 3.");
+      await waitForText(
+        lastFrame,
+        "> Type here to tell Wave what to do differently",
+      );
 
       stdin.write("\r"); // Enter
 
@@ -344,20 +357,25 @@ describe("Confirmation", () => {
       );
 
       // Verify initial state
-      await waitForText(lastFrame, "> 1. Yes");
-      expect(lastFrame()).toContain("> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
+      expect(lastFrame()).toContain("> Yes");
 
       // Change to alternative
       stdin.write("\u001b[B");
       stdin.write("\u001b[B");
-      await waitForText(lastFrame, "> 3.");
-      expect(lastFrame()).toContain("> 3.");
+      await waitForText(
+        lastFrame,
+        "> Type here to tell Wave what to do differently",
+      );
+      expect(lastFrame()).toContain(
+        "> Type here to tell Wave what to do differently",
+      );
 
       // Back to allow
       stdin.write("\u001b[A");
       stdin.write("\u001b[A");
-      await waitForText(lastFrame, "> 1. Yes");
-      expect(lastFrame()).toContain("> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
+      expect(lastFrame()).toContain("> Yes");
     });
 
     it("should update alternativeText state on text input", async () => {
@@ -434,7 +452,10 @@ describe("Confirmation", () => {
 
       stdin.write("\u001b[B"); // Go to alternative option
       stdin.write("\u001b[B"); // Go to alternative option
-      await waitForText(lastFrame, "> 3.");
+      await waitForText(
+        lastFrame,
+        "> Type here to tell Wave what to do differently",
+      );
 
       // Placeholder should still be visible
       expect(lastFrame()).toContain(
@@ -444,11 +465,11 @@ describe("Confirmation", () => {
       // Switch back to allow option
       stdin.write("\u001b[A");
       stdin.write("\u001b[A");
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Placeholder should not be visible for allow option
       const allowFrame = lastFrame();
-      expect(allowFrame).toContain("> 1. Yes");
+      expect(allowFrame).toContain("> Yes");
       // The placeholder text might still be in the DOM but not visible on allow option
     });
   });
@@ -464,7 +485,7 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       stdin.write("\r");
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -514,7 +535,7 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       stdin.write("\u001b"); // ESC key
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -575,7 +596,10 @@ describe("Confirmation", () => {
       // Navigate to alternative option without typing
       stdin.write("\u001b[B");
       stdin.write("\u001b[B");
-      await waitForText(lastFrame, "> 3.");
+      await waitForText(
+        lastFrame,
+        "> Type here to tell Wave what to do differently",
+      );
 
       // Try to confirm with empty text
       stdin.write("\r");
@@ -606,13 +630,13 @@ describe("Confirmation", () => {
       await waitForText(lastFrame, "test");
 
       // Verify we're on alternative option after typing
-      expect(lastFrame()).toContain("> 3.");
+      expect(lastFrame()).toContain("> test");
 
       // The backspace functionality is tested indirectly through other successful tests
       // This test verifies that typing works and switches to alternative option
       const frame = lastFrame();
       expect(frame).toContain("test");
-      expect(frame).toContain("> 3.");
+      expect(frame).toContain("> test");
     });
 
     it("should handle backspace and delete keys consistently for single character removal", async () => {
@@ -643,8 +667,8 @@ describe("Confirmation", () => {
       const frame = lastFrame();
       // Should contain "tes" and not contain the full "test"
       expect(frame).toContain("tes");
-      expect(frame).not.toContain("> 3. test"); // More specific to avoid false positives
-      expect(frame).toContain("> 3."); // Should remain on alternative option
+      expect(frame).not.toContain("> test"); // More specific to avoid false positives
+      expect(frame).toContain("> tes"); // Should remain on alternative option
     });
 
     it("should process text input correctly", async () => {
@@ -658,7 +682,7 @@ describe("Confirmation", () => {
       );
 
       // Start with allow selected
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Type a regular character - this should work based on other passing tests
       stdin.write("test");
@@ -680,15 +704,15 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Rapidly switch between options
       stdin.write("\u001b[B\u001b[A\u001b[B\u001b[A"); // down, up, down, up
 
       // Should end up on allow option
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
-      expect(lastFrame()).toContain("> 1. Yes");
+      expect(lastFrame()).toContain("> Yes");
     });
 
     it("should handle backspace on empty text correctly", async () => {
@@ -709,7 +733,10 @@ describe("Confirmation", () => {
       // Navigate to alternative and try backspace on empty text
       stdin.write("\u001b[B"); // Go to alternative
       stdin.write("\u001b[B"); // Go to alternative
-      await waitForText(lastFrame, "> 3.");
+      await waitForText(
+        lastFrame,
+        "> Type here to tell Wave what to do differently",
+      );
 
       stdin.write("\u007f"); // Backspace on empty text
 
@@ -717,7 +744,9 @@ describe("Confirmation", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const frame = lastFrame();
-      expect(frame).toContain("> 3.");
+      expect(frame).toContain(
+        "> Type here to tell Wave what to do differently",
+      );
       expect(frame).toContain("Type here to tell Wave what to do differently");
     });
 
@@ -732,7 +761,7 @@ describe("Confirmation", () => {
       );
 
       // Start with allow selected
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Type only spaces to switch to alternative option
       stdin.write("   ");
@@ -745,7 +774,7 @@ describe("Confirmation", () => {
       expect(frameAfterSpaces).not.toContain(
         "Type here to tell Wave what to do differently",
       );
-      expect(frameAfterSpaces).toContain("> 3.");
+      expect(frameAfterSpaces).toContain(">");
 
       // Try to confirm - should not call onDecision because trimmed text is empty
       stdin.write("\r");
@@ -767,13 +796,15 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "Use ↑↓ or 1-3 to navigate • ESC to cancel");
+      await waitForText(lastFrame, "Use ↑↓ to navigate • ESC to cancel");
 
       const frame = lastFrame();
-      expect(frame).toContain("Use ↑↓ or 1-3 to navigate • ESC to cancel");
-      expect(frame).toContain("> 1. Yes"); // Visual indicator of selection
-      expect(frame).toContain("  2."); // Visual indicator of non-selection
-      expect(frame).toContain("  3."); // Visual indicator of non-selection
+      expect(frame).toContain("Use ↑↓ to navigate • ESC to cancel");
+      expect(frame).toContain("> Yes"); // Visual indicator of selection
+      expect(frame).toContain("  Yes, and auto-accept edits"); // Visual indicator of non-selection
+      expect(frame).toContain(
+        "  Type here to tell Wave what to do differently",
+      ); // Visual indicator of non-selection
     });
 
     it("should provide clear visual feedback for option selection", async () => {
@@ -786,22 +817,29 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Check initial selection visual feedback
       let frame = lastFrame();
-      expect(frame).toContain("> 1. Yes"); // Selected indicator
-      expect(frame).toContain("  2."); // Non-selected indicator
-      expect(frame).toContain("  3."); // Non-selected indicator
+      expect(frame).toContain("> Yes"); // Selected indicator
+      expect(frame).toContain("  Yes, and auto-accept edits"); // Non-selected indicator
+      expect(frame).toContain(
+        "  Type here to tell Wave what to do differently",
+      ); // Non-selected indicator
 
       // Change selection and check visual feedback
       stdin.write("\u001b[B");
       stdin.write("\u001b[B");
-      await waitForText(lastFrame, "> 3.");
+      await waitForText(
+        lastFrame,
+        "> Type here to tell Wave what to do differently",
+      );
 
       frame = lastFrame();
-      expect(frame).toContain("  1. Yes"); // Non-selected indicator
-      expect(frame).toContain("> 3."); // Selected indicator
+      expect(frame).toContain("  Yes"); // Non-selected indicator
+      expect(frame).toContain(
+        "> Type here to tell Wave what to do differently",
+      ); // Selected indicator
     });
 
     it("should automatically focus alternative option when user starts typing", async () => {
@@ -815,16 +853,16 @@ describe("Confirmation", () => {
       );
 
       // Start on allow option
-      await waitForText(lastFrame, "> 1. Yes");
+      await waitForText(lastFrame, "> Yes");
 
       // Type a character - should auto-focus alternative
       stdin.write("x");
-      await waitForText(lastFrame, "> 3.");
+      await waitForText(lastFrame, "> x");
 
       const frame = lastFrame();
-      expect(frame).toContain("> 3."); // Should auto-select alternative
+      expect(frame).toContain("> x"); // Should auto-select alternative
       expect(frame).toContain("x"); // Should contain the typed character
-      expect(frame).toContain("  1. Yes"); // Allow should no longer be selected
+      expect(frame).toContain("  Yes"); // Allow should no longer be selected
     });
   });
 
@@ -859,9 +897,9 @@ describe("Confirmation", () => {
       await waitForText(lastFrame, "COLOR");
       const frame = lastFrame();
       expect(frame).toContain("What is your favorite color?");
-      expect(frame).toContain("1. Red");
-      expect(frame).toContain("2. Blue");
-      expect(frame).toContain("3. Other");
+      expect(frame).toContain("Red");
+      expect(frame).toContain("Blue");
+      expect(frame).toContain("Other");
       expect(frame).toContain("Question 1 of 2");
     });
 
@@ -879,8 +917,8 @@ describe("Confirmation", () => {
       await waitForText(lastFrame, "What is your favorite color?");
 
       // Select "Blue" (Option 2)
-      stdin.write("2");
-      await waitForText(lastFrame, "2. Blue");
+      stdin.write("\u001b[B"); // Down arrow
+      await waitForText(lastFrame, "> Blue");
 
       // Press Enter
       stdin.write("\r");
@@ -904,22 +942,20 @@ describe("Confirmation", () => {
       );
 
       await waitForText(lastFrame, "What is your favorite color?");
-      stdin.write("1");
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      stdin.write("\r");
+      stdin.write("\r"); // Select Red (default) and move to next
 
       await waitForText(lastFrame, "Select your skills");
 
-      // Toggle TypeScript (Option 1) using numeric key
-      stdin.write("1");
-      await waitForText(lastFrame, "[x] 1. TypeScript");
+      // Toggle TypeScript (Option 1) using Space key (it's focused by default)
+      stdin.write(" ");
+      await waitForText(lastFrame, "[x] TypeScript");
 
       // Toggle React (Option 2) using Space key
       // First navigate to it
       stdin.write("\u001b[B"); // Down arrow
       await new Promise((resolve) => setTimeout(resolve, 50));
       stdin.write(" ");
-      await waitForText(lastFrame, "[x] 2. React");
+      await waitForText(lastFrame, "[x] React");
 
       // Confirm
       stdin.write("\r");
@@ -949,9 +985,9 @@ describe("Confirmation", () => {
 
       // Select "Other" (Option 3) using arrow keys
       stdin.write("\u001b[B"); // Down to Blue
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await waitForText(lastFrame, "> Blue");
       stdin.write("\u001b[B"); // Down to Other
-      await waitForText(lastFrame, "[Type your answer...]");
+      await waitForText(lastFrame, "Other:");
 
       // Type "Green"
       stdin.write("Green");
@@ -961,9 +997,10 @@ describe("Confirmation", () => {
       stdin.write("\r");
 
       await waitForText(lastFrame, "Select your skills");
-      // (Just finish the second question to trigger onDecision)
-      stdin.write("1");
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Select TypeScript (Option 1) using Space
+      stdin.write(" ");
+      await waitForText(lastFrame, "[x] TypeScript");
+      // Confirm
       stdin.write("\r");
 
       await waitFor(() => mockOnDecision.mock.calls.length > 0);

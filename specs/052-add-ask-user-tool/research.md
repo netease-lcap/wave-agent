@@ -31,9 +31,9 @@
 - **Visual Style**:
   - Display a header chip for each question (e.g., "Auth method" in a cyan/blue box).
   - Show the question text clearly.
-  - List options with numeric shortcuts (1, 2, 3, etc.).
+  - List options clearly.
   - Highlight the currently selected option with a cursor (e.g., `>`).
-  - Support keyboard navigation (arrows/numbers) for selection.
+  - Support keyboard navigation (arrows) for selection.
   - Automatically append an "Other" option to every question.
   - If `multiSelect` is true, use checkboxes; otherwise, use radio-style selection.
   - Show a "Confirm" button or instruction (e.g., "Press Enter to confirm") when all questions are answered.
