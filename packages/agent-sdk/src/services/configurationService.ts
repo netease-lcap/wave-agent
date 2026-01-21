@@ -83,8 +83,12 @@ export class ConfigurationService {
             ? `No valid configuration found despite attempting to load: ${loadingContext.join(", ")}`
             : "No configuration files found in user or project directories";
 
+        // Still set system environment variables even if no config is found
+        const env = { WAVE_PROJECT_DIR: workdir };
+        this.setEnvironmentVars(env);
+
         return {
-          configuration: null,
+          configuration: { env },
           success: true, // No config is valid
           warnings: [message],
         };
@@ -106,10 +110,13 @@ export class ConfigurationService {
       // Success case
       this.currentConfiguration = mergedConfig;
 
-      // Set environment variables if present in the merged config
-      if (mergedConfig.env) {
-        this.setEnvironmentVars(mergedConfig.env);
-      }
+      // Set environment variables from merged config and inject system variables
+      const env = {
+        ...(mergedConfig.env || {}),
+        WAVE_PROJECT_DIR: workdir,
+      };
+      this.setEnvironmentVars(env);
+      mergedConfig.env = env;
 
       const sourcePaths = loadingContext.join(" and ");
 

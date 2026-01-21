@@ -144,7 +144,7 @@ export async function executeCommand(
         ...("env" in context ? context.env || {} : {}), // Additional environment variables from configuration (if ExtendedHookExecutionContext)
         HOOK_EVENT: context.event,
         HOOK_TOOL_NAME: context.toolName || "",
-        HOOK_PROJECT_DIR: context.projectDir,
+        WAVE_PROJECT_DIR: context.projectDir,
       },
     });
 

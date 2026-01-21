@@ -92,6 +92,7 @@ describe("ConfigurationService", () => {
       expect(result.configuration?.env).toEqual({
         USER_VAR: "user",
         PROJECT_VAR: "project",
+        WAVE_PROJECT_DIR: tempDir,
       });
       expect(result.configuration?.permissions?.allow).toContain("rule1");
       expect(result.configuration?.permissions?.allow).toContain("rule2");
@@ -136,7 +137,9 @@ describe("ConfigurationService", () => {
       const result = await configService.loadMergedConfiguration(tempDir);
 
       expect(result.success).toBe(true);
-      expect(result.configuration).toBeNull();
+      expect(result.configuration).toEqual({
+        env: { WAVE_PROJECT_DIR: tempDir },
+      });
       expect(result.warnings).toContain(
         "No configuration files found in user or project directories",
       );
