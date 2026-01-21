@@ -43,32 +43,34 @@ export const ChatInterface: React.FC = () => {
         key={String(isExpanded) + sessionId}
       />
 
-      {!isExpanded &&
-        (isConfirmationVisible ? (
-          <Confirmation
-            toolName={confirmingTool!.name}
-            toolInput={confirmingTool!.input}
-            suggestedPrefix={confirmingTool!.suggestedPrefix}
-            hidePersistentOption={confirmingTool!.hidePersistentOption}
-            onDecision={handleConfirmationDecision}
-            onCancel={handleConfirmationCancel}
-            onAbort={abortMessage}
-          />
-        ) : (
-          <InputBox
-            isLoading={isLoading}
-            isCommandRunning={isCommandRunning}
-            userInputHistory={userInputHistory}
-            sendMessage={sendMessage}
-            abortMessage={abortMessage}
-            saveMemory={saveMemory}
-            mcpServers={mcpServers}
-            connectMcpServer={connectMcpServer}
-            disconnectMcpServer={disconnectMcpServer}
-            slashCommands={slashCommands}
-            hasSlashCommand={hasSlashCommand}
-          />
-        ))}
+      {isConfirmationVisible && (
+        <Confirmation
+          toolName={confirmingTool!.name}
+          toolInput={confirmingTool!.input}
+          suggestedPrefix={confirmingTool!.suggestedPrefix}
+          hidePersistentOption={confirmingTool!.hidePersistentOption}
+          isExpanded={isExpanded}
+          onDecision={handleConfirmationDecision}
+          onCancel={handleConfirmationCancel}
+          onAbort={abortMessage}
+        />
+      )}
+
+      {!isConfirmationVisible && !isExpanded && (
+        <InputBox
+          isLoading={isLoading}
+          isCommandRunning={isCommandRunning}
+          userInputHistory={userInputHistory}
+          sendMessage={sendMessage}
+          abortMessage={abortMessage}
+          saveMemory={saveMemory}
+          mcpServers={mcpServers}
+          connectMcpServer={connectMcpServer}
+          disconnectMcpServer={disconnectMcpServer}
+          slashCommands={slashCommands}
+          hasSlashCommand={hasSlashCommand}
+        />
+      )}
     </Box>
   );
 };

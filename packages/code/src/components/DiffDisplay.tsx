@@ -11,11 +11,13 @@ import { diffLines, diffWords } from "diff";
 interface DiffDisplayProps {
   toolName?: string;
   parameters?: string;
+  isExpanded?: boolean;
 }
 
 export const DiffDisplay: React.FC<DiffDisplayProps> = ({
   toolName,
   parameters,
+  isExpanded = false,
 }) => {
   const { stdout } = useStdout();
   const maxHeight = useMemo(() => {
@@ -253,7 +255,7 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
         }
       });
 
-      const isTruncated = allElements.length > maxHeight;
+      const isTruncated = !isExpanded && allElements.length > maxHeight;
       const displayElements = isTruncated
         ? allElements.slice(0, maxHeight - 1)
         : allElements;
