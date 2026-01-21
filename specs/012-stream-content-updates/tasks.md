@@ -80,11 +80,12 @@
 
 ### Implementation for User Story 2
 
-- [X] T021 [US2] Add parametersChunk field to AgentToolBlockUpdateParams interface in packages/agent-sdk/src/utils/messageOperations.ts
-- [X] T022 [US2] Implement tool call parameter streaming in callAgent function in packages/agent-sdk/src/services/aiService.ts
-- [X] T023 [US2] Use updateToolBlock method for streaming parameters in MessageManager in packages/agent-sdk/src/managers/messageManager.ts
-- [X] T024 [US2] Enhance onToolBlockUpdated callback for streaming parameters in packages/agent-sdk/src/managers/messageManager.ts
-- [X] T025 [US2] Integrate tool parameter streaming in AIManager.sendAIMessage using existing generateCompactParams to compute compactParams for streaming updates and include in onToolBlockUpdated callback data for both view modes in packages/agent-sdk/src/managers/aiManager.ts
+- [X] T021 [US2] Add parametersChunk and stage fields to AgentToolBlockUpdateParams interface in packages/agent-sdk/src/utils/messageOperations.ts
+- [X] T022 [US2] Implement tool call parameter streaming and stage transitions in callAgent function in packages/agent-sdk/src/services/aiService.ts
+- [X] T023 [US2] Use updateToolBlock method for streaming parameters and stages in MessageManager in packages/agent-sdk/src/managers/messageManager.ts
+- [X] T024 [US2] Enhance onToolBlockUpdated callback for streaming parameters and stages in packages/agent-sdk/src/managers/messageManager.ts
+- [X] T025 [US2] Integrate tool parameter streaming and stage updates in AIManager.sendAIMessage using existing generateCompactParams to compute compactParams for streaming updates and include in onToolBlockUpdated callback data for both view modes in packages/agent-sdk/src/managers/aiManager.ts
+- [ ] T025a [US2] Remove deprecated isRunning field from AgentToolBlockUpdateParams and all call sites in packages/agent-sdk/
 - [X] T026 [US2] Build agent-sdk and verify tool streaming exports
 - [X] T027 [US2] Add onToolBlockUpdated callback usage with parametersChunk field in packages/code/src/print-cli.ts for logging tool parameters (example implementation only)
 
@@ -107,7 +108,8 @@
 
 - [ ] T030 [US3] Add view mode control logic to useChat context in packages/code/src/contexts/useChat.tsx
 - [ ] T031 [US3] Implement conditional message updates based on isExpandedRef in packages/code/src/contexts/useChat.tsx
-- [ ] T032 [US3] Update MessageList component to handle streaming in different view modes in packages/code/src/components/MessageList.tsx
+- [ ] T032 [US3] Update MessageList component to handle streaming and tool stages in different view modes in packages/code/src/components/MessageList.tsx
+- [ ] T032a [US3] Update CLI UI to display tool execution stages (e.g., "running" status) in packages/code/src/components/
 - [ ] T033 [P] [US3] Add streaming utilities for CLI interface in packages/code/src/utils/streamingUtils.ts
 - [ ] T034 [US3] Integrate view mode transitions with streaming callbacks in packages/code/src/contexts/useChat.tsx
 

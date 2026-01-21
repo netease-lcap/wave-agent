@@ -55,6 +55,24 @@ Users can switch between collapsed and expanded view modes, where collapsed mode
 
 ---
 
+### User Story 4 - Tool Block Stage Updates (Priority: P2)
+
+An SDK integrator wants to track the lifecycle of a tool execution through deterministic stages (start, streaming, running, end) to provide accurate UI feedback.
+
+**Why this priority**: Clear differentiation between "starting", "streaming output", "still running", and "finished" states lets integrators show accurate status messages and final results.
+
+**Independent Test**: Subscribe to `onToolBlockUpdated`, trigger a tool execution, and verify that events arrive with the expected `stage` values in the correct order.
+
+**Acceptance Scenarios**:
+
+1. **Given** a tool execution begins, **When** `onToolBlockUpdated` fires, **Then** the first event received includes `stage="start"` and the tool's display name.
+2. **Given** a tool that emits streaming output, **When** `onToolBlockUpdated` fires with `stage="streaming"`, **Then** each event includes the latest `parametersChunk`.
+3. **Given** a long-running tool, **When** progress updates occur without new chunks, **Then** `onToolBlockUpdated` emits `stage="running"`.
+4. **Given** a tool reaches completion, **When** `onToolBlockUpdated` emits the final update, **Then** the event uses `stage="end"` and carries the final output or error summary.
+5. **Given** any `onToolBlockUpdated` event, **Then** the payload does not contain the deprecated `isRunning` flag.
+
+---
+
 ### Edge Cases
 
 - What happens when network connectivity is poor and stream chunks arrive out of order or with delays?
@@ -68,8 +86,13 @@ Users can switch between collapsed and expanded view modes, where collapsed mode
 ### Functional Requirements
 
 - **FR-001**: Agent-SDK MUST add an `onAssistantContentUpdated` callback to the `MessageManagerCallbacks` interface that receives both chunk (incremental content) and accumulated (full message content built up so far) as two separate arguments for third-party integrations, extensions, and examples
-- **FR-002**: Agent-SDK MUST enhance the existing `onToolBlockUpdated` callback to support streaming parameter updates by adding a new `parametersChunk` field alongside existing accumulated parameter data (full parameters built up so far) for third-party integrations, extensions, and examples
+- **FR-002**: Agent-SDK MUST enhance the existing `onToolBlockUpdated` callback to support streaming parameter updates and lifecycle tracking by adding:
+    - A new `stage` field with allowed values: `start`, `streaming`, `running`, `end`.
+    - A new `parametersChunk` field (used during `streaming` stage) alongside existing accumulated parameter data.
 - **FR-002a**: Agent-SDK MUST modify `onAssistantMessageAdded` callback to receive no arguments, as content and tool updates are handled by dedicated streaming callbacks
+- **FR-002b**: Agent-SDK MUST remove the deprecated `isRunning` field from all `onToolBlockUpdated` payloads.
+- **FR-002c**: On the `start` stage, the payload MUST include the tool's identifier and human-readable name.
+- **FR-002d**: The `end` stage MUST occur exactly once per tool execution and include the final result data or error summary.
 - **FR-003**: CLI package MUST use only `onMessagesChange` for all content updates, with Agent SDK managing internal state updates during streaming and triggering `onMessagesChange` appropriately. Third-party integrations and examples (such as `packages/code/src/print-cli.ts`) MAY use streaming callbacks for direct logging or external integration purposes.
 - **FR-003a**: Agent SDK MUST trigger `onMessagesChange` callback after each streaming content update (every chunk processed) and after each streaming parameter update (every parameter chunk processed) to ensure UI synchronization
 - **FR-004**: CLI package MUST display incremental content and tool parameter updates through `onMessagesChange` triggered by Agent SDK during streaming without causing visual flicker or layout shifts in collapsed view mode

@@ -34,7 +34,7 @@ onAssistantContentUpdated?: (chunk: string, accumulated: string) => void;
 ---
 
 #### onToolBlockUpdated (Enhanced)
-Enhanced existing callback to support streaming parameter updates.
+Enhanced existing callback to support streaming parameter updates and lifecycle tracking.
 
 ```typescript
 onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
@@ -46,22 +46,23 @@ interface AgentToolBlockUpdateParams {
   id: string;
   name: string;
   parameters: string;            // Now supports partial JSON during streaming
+  parametersChunk?: string;      // New field for incremental parameter updates
   compactParams?: string;        // Updated in real-time during streaming
   result?: string;
   success?: boolean;
   error?: string;
-  isRunning?: boolean;
+  stage: 'start' | 'streaming' | 'running' | 'end';
   shortResult?: string;
   images?: string[];
 }
 ```
 
 **Enhanced Behavior**:
-- Called for each parameter chunk received during streaming
-- `parameters` contains accumulated partial JSON string
+- **start**: Called when tool execution begins. Includes `id` and `name`.
+- **streaming**: Called for each parameter chunk received. Includes `parametersChunk` and accumulated `parameters`.
+- **running**: Called for long operations when no new chunks exist.
+- **end**: Called exactly once when tool execution finishes. Includes final `result` or `error`.
 - `compactParams` computed by: `this.generateCompactParams(extractStreamingParams(parameters))`
-  - `extractStreamingParams()` extracts complete key-value pairs from partial JSON
-  - `generateCompactParams()` formats them using existing compact display logic
 - Agent SDK manages streaming state internally
 
 ---
