@@ -189,17 +189,23 @@ describe("AIManager", () => {
     it("should save session during each recursion regardless of tool execution results", async () => {
       // Mock callAgent to return tool calls
       const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockResolvedValue({
-        content: "Test response",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        tool_calls: [
-          {
-            type: "function" as const,
-            id: "test-tool-call",
-            function: { name: "test-tool", arguments: "{}" },
-          },
-        ],
-      });
+      vi.mocked(callAgent)
+        .mockResolvedValueOnce({
+          content: "Test response",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          tool_calls: [
+            {
+              type: "function" as const,
+              id: "test-tool-call",
+              function: { name: "test-tool", arguments: "{}" },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          content: "Final response",
+          usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+          tool_calls: [],
+        });
 
       // Mock tool execution to fail
       vi.mocked(mockToolManager.execute).mockRejectedValue(
