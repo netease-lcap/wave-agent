@@ -501,6 +501,12 @@ export class AIManager {
         }
       }
 
+      if (result.finish_reason === "length" && toolCalls.length === 0) {
+        this.messageManager.addErrorBlock(
+          "AI response was truncated due to length limit. Please try to reduce the complexity of your request or split it into smaller parts.",
+        );
+      }
+
       if (toolCalls.length > 0) {
         // Execute all tools in parallel using Promise.all
         const toolExecutionPromises = toolCalls.map(
