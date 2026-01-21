@@ -30,6 +30,7 @@
 
 - [X] T011 Run `pnpm build` and verify cross-package compatibility
 - [X] T012 Run `pnpm run type-check` and `pnpm lint` across the monorepo
+- [X] T013 [US1] Add max height and expansion (Ctrl+O) support for plan rendering in `packages/code/src/components/ToolResultDisplay.tsx`
 
 ## Dependencies
 

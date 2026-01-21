@@ -43,6 +43,8 @@ As an agent in plan mode, I want to use the `ExitPlanMode` tool after I have fin
 - **FR-003**: The confirmation request MUST reuse the existing `canUseTool` mechanism, extending it if necessary to support these three specific response types.
 - **FR-003.1**: The system MUST display the contents of the plan file to the user by injecting it into the `ToolBlock` via the `planContent` field, ensuring it is rendered in the message list and not passed as a tool parameter to save tokens.
 - **FR-003.2**: The `ToolContext` MUST include the `toolCallId` to allow tools to update their specific UI blocks accurately.
+- **FR-003.3**: The plan rendering in the message list MUST have a dynamic maximum height (calculated as `Math.max(5, terminalRows - 20)`) when collapsed and MUST be expandable via the standard `Ctrl+O` hotkey.
+- **FR-003.4**: When the plan content is truncated, a hint MUST be displayed: "Plan truncated. Press Ctrl+O to expand."
 - **FR-004**: Upon user selection of "Default" or "Accept Edits", the system MUST transition the agent out of "plan mode" into the respective target mode.
 - **FR-005**: Upon user selection of "Feedback", the agent MUST remain in "plan mode" and receive the user's input as the tool's output.
 - **FR-006**: `ExitPlanMode` MUST ONLY be included in the available tools list when the agent is in "plan mode".
