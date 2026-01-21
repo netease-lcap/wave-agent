@@ -1,126 +1,131 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { exitPlanModeTool } from "../../src/tools/exitPlanMode.js";
-import type { ToolContext } from "../../src/tools/types.js";
-import type { PermissionManager } from "../../src/managers/permissionManager.js";
-import type { MessageManager } from "../../src/managers/messageManager.js";
-import * as fs from "node:fs/promises";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { exitPlanModeTool } from "@/tools/exitPlanMode.js";
+import { readFile } from "fs/promises";
+import type { ToolContext } from "@/tools/types.js";
+import { PermissionManager } from "@/managers/permissionManager.js";
 
-vi.mock("node:fs/promises");
+// Mock fs/promises
+vi.mock("fs/promises");
 
-describe("ExitPlanMode Tool", () => {
+describe("exitPlanModeTool", () => {
   let mockContext: ToolContext;
-  let mockPermissionManager: PermissionManager;
-  let mockMessageManager: MessageManager;
+  let mockPermissionManager: {
+    getPlanFilePath: ReturnType<typeof vi.fn>;
+    createContext: ReturnType<typeof vi.fn>;
+    checkPermission: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
-    vi.clearAllMocks();
-
-    mockMessageManager = {
-      updateToolBlock: vi.fn(),
-    } as unknown as MessageManager;
-
     mockPermissionManager = {
-      getPlanFilePath: vi.fn().mockReturnValue("/test/plan.md"),
-      checkPermission: vi.fn().mockResolvedValue({ behavior: "allow" }),
-      createContext: vi
-        .fn()
-        .mockImplementation(
-          (toolName, permissionMode, callback, toolInput) => ({
-            toolName,
-            permissionMode,
-            canUseToolCallback: callback,
-            toolInput,
-          }),
-        ),
-    } as unknown as PermissionManager;
+      getPlanFilePath: vi.fn(),
+      createContext: vi.fn(),
+      checkPermission: vi.fn(),
+    };
 
     mockContext = {
       workdir: "/test/workdir",
-      permissionManager: mockPermissionManager,
-      messageManager: mockMessageManager,
-      toolCallId: "test-call-id",
-    } as unknown as ToolContext;
+      permissionManager: mockPermissionManager as unknown as PermissionManager,
+      permissionMode: "plan",
+      canUseToolCallback: vi.fn(),
+    };
   });
 
-  it("should read plan content and update tool block before permission check", async () => {
-    const planContent = "Test plan content";
-    vi.mocked(fs.readFile).mockResolvedValue(planContent);
-
-    await exitPlanModeTool.execute({}, mockContext);
-
-    // Verify plan was read
-    expect(fs.readFile).toHaveBeenCalledWith("/test/plan.md", "utf-8");
-
-    // Verify tool block was updated with plan content
-    expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "test-call-id",
-        planContent: planContent,
-        stage: "running",
-      }),
-    );
-
-    // Verify permission check was called
-    expect(mockPermissionManager.checkPermission).toHaveBeenCalledWith(
-      expect.objectContaining({
-        toolName: "ExitPlanMode",
-      }),
-    );
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it("should use tool name as fallback ID if toolCallId is missing", async () => {
-    const contextWithoutId = {
-      ...mockContext,
-      toolCallId: undefined,
-    } as ToolContext;
-
-    vi.mocked(fs.readFile).mockResolvedValue("content");
-
-    await exitPlanModeTool.execute({}, contextWithoutId);
-
-    expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "ExitPlanMode",
-      }),
-    );
+  afterEach(() => {
+    vi.resetAllMocks();
   });
 
-  it("should return error when plan file is missing", async () => {
-    vi.mocked(fs.readFile).mockRejectedValue(new Error("File not found"));
+  it("should have correct tool configuration", () => {
+    expect(exitPlanModeTool.name).toBe("ExitPlanMode");
+    expect(exitPlanModeTool.config.function.name).toBe("ExitPlanMode");
+    expect(exitPlanModeTool.config.function.description).toContain(
+      "Use this tool when you are in plan mode",
+    );
+    expect(exitPlanModeTool.config.type).toBe("function");
+  });
+
+  it("should fail if permission manager is not available", async () => {
+    const result = await exitPlanModeTool.execute({}, { workdir: "/test" });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Permission manager is not available");
+  });
+
+  it("should fail if plan file path is not set", async () => {
+    mockPermissionManager.getPlanFilePath.mockReturnValue(undefined);
+    const result = await exitPlanModeTool.execute({}, mockContext);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Plan file path is not set");
+  });
+
+  it("should fail if plan file cannot be read", async () => {
+    mockPermissionManager.getPlanFilePath.mockReturnValue("/test/plan.md");
+    vi.mocked(readFile).mockRejectedValue(new Error("File not found"));
 
     const result = await exitPlanModeTool.execute({}, mockContext);
-
     expect(result.success).toBe(false);
-    expect(result.error).toContain("Failed to read plan file");
+    expect(result.error).toContain("Failed to read plan file: File not found");
   });
 
-  it("should return success result when permission is allowed", async () => {
-    vi.mocked(fs.readFile).mockResolvedValue("content");
-    vi.mocked(mockPermissionManager.checkPermission).mockResolvedValue({
+  it("should succeed if plan is approved", async () => {
+    const planContent = "My awesome plan";
+    mockPermissionManager.getPlanFilePath.mockReturnValue("/test/plan.md");
+    vi.mocked(readFile).mockResolvedValue(planContent);
+    mockPermissionManager.createContext.mockReturnValue({
+      toolName: "ExitPlanMode",
+    });
+    mockPermissionManager.checkPermission.mockResolvedValue({
       behavior: "allow",
     });
 
     const result = await exitPlanModeTool.execute({}, mockContext);
 
-    expect(result).toEqual({
-      success: true,
-      content: "Plan approved. Exiting plan mode.",
-      shortResult: "Plan approved",
-    });
+    expect(result.success).toBe(true);
+    expect(result.content).toBe("Plan approved. Exiting plan mode.");
+    expect(mockPermissionManager.createContext).toHaveBeenCalledWith(
+      "ExitPlanMode",
+      "plan",
+      mockContext.canUseToolCallback,
+      { plan_content: planContent },
+    );
   });
 
-  it("should return error result when permission is denied", async () => {
-    vi.mocked(fs.readFile).mockResolvedValue("content");
-    vi.mocked(mockPermissionManager.checkPermission).mockResolvedValue({
+  it("should return feedback if plan is rejected", async () => {
+    const planContent = "My awesome plan";
+    const feedback = "Please add more details";
+    mockPermissionManager.getPlanFilePath.mockReturnValue("/test/plan.md");
+    vi.mocked(readFile).mockResolvedValue(planContent);
+    mockPermissionManager.createContext.mockReturnValue({
+      toolName: "ExitPlanMode",
+    });
+    mockPermissionManager.checkPermission.mockResolvedValue({
       behavior: "deny",
-      message: "User denied",
+      message: feedback,
     });
 
     const result = await exitPlanModeTool.execute({}, mockContext);
 
-    expect(result).toEqual({
-      success: false,
-      content: "User denied",
+    expect(result.success).toBe(false);
+    expect(result.content).toBe(feedback);
+    expect(result.error).toBeUndefined();
+  });
+
+  it("should return default error if plan is rejected without message", async () => {
+    mockPermissionManager.getPlanFilePath.mockReturnValue("/test/plan.md");
+    vi.mocked(readFile).mockResolvedValue("plan");
+    mockPermissionManager.createContext.mockReturnValue({
+      toolName: "ExitPlanMode",
     });
+    mockPermissionManager.checkPermission.mockResolvedValue({
+      behavior: "deny",
+    });
+
+    const result = await exitPlanModeTool.execute({}, mockContext);
+
+    expect(result.success).toBe(false);
+    expect(result.content).toBe("Plan rejected by user");
+    expect(result.error).toBe("Plan rejected by user");
   });
 });

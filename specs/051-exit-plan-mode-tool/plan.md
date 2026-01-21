@@ -11,8 +11,7 @@ Add an `ExitPlanMode` tool that allows the agent to signal completion of the pla
 - Implement `ExitPlanMode` tool in `agent-sdk` that reads the plan file and calls `permissionManager.canUseTool`.
 - Update `ToolManager` in `agent-sdk` to filter `ExitPlanMode` based on `permissionMode`.
 - Update `Agent` in `agent-sdk` to register the new tool.
-- Update `ToolResultDisplay` component in `code` to render `planContent` from `ToolBlock` using the `Markdown` component.
-- Update `ExitPlanMode` tool to inject `planContent` via `updateToolBlock` before calling `checkPermission`.
+- Update `Confirmation` component in `code` to render the 3-option UI and display plan content for `ExitPlanMode`.
 
 ## Technical Context
 
