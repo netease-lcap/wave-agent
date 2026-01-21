@@ -26,3 +26,15 @@
 - [X] T016 Implement logic in `sendAIMessage` to call `permissionManager.addTemporaryRules` when `recursionDepth === 0` in `packages/agent-sdk/src/managers/aiManager.ts`
 - [X] T017 Update `executeCustomCommandInMainAgent` in `SlashCommandManager` to pass `config.allowedTools` to `aiManager.sendAIMessage` in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 - [X] T018 Implement `finally` block logic in `sendAIMessage` to call `permissionManager.clearTemporaryRules` when `recursionDepth === 0` in `packages/agent-sdk/src/managers/aiManager.ts`
+
+## Phase 3: Nested Command Discovery (Merged from 018)
+
+- [X] T019 Create enhanced type definitions in `packages/agent-sdk/src/types/commands.ts` (add nested command fields)
+- [X] T020 Create utility functions for path-to-command-ID conversion in `packages/agent-sdk/src/utils/commandPathResolver.ts`
+- [X] T021 Add command ID validation utilities in `packages/agent-sdk/src/utils/commandPathResolver.ts`
+- [X] T022 Implement recursive directory scanning with depth control in `packages/agent-sdk/src/utils/customCommands.ts`
+- [X] T023 Implement command ID generation from file paths in `packages/agent-sdk/src/utils/commandPathResolver.ts`
+- [X] T024 Update `scanCommandsDirectory` function to use recursive scanning in `packages/agent-sdk/src/utils/customCommands.ts`
+- [X] T025 Add nested command metadata to returned `CustomSlashCommand` objects in `packages/agent-sdk/src/utils/customCommands.ts`
+- [X] T026 Add error handling for deep nesting and invalid file names in `packages/agent-sdk/src/utils/customCommands.ts`
+- [X] T027 Update command input parsing to handle colon syntax in `packages/agent-sdk/src/managers/slashCommandManager.ts`

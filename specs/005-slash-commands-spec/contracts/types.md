@@ -35,6 +35,10 @@ export interface CustomSlashCommand {
   filePath: string                       // Absolute path to source file
   content: string                        // Markdown content after frontmatter
   config?: CustomSlashCommandConfig      // Parsed YAML configuration
+  namespace?: string                     // Parent directory for nested commands
+  isNested: boolean                      // Whether command is in subdirectory
+  depth: number                          // 0 = root, 1 = nested
+  segments: string[]                     // Path components ["openspec", "apply"]
 }
 ```
 
@@ -180,7 +184,8 @@ export interface CommandDiscoveryConfig {
   projectDir: string  // Project-level commands directory
   userDir: string    // User-level commands directory
   pattern: string    // File pattern for command files (*.md)
-  recursive: boolean // Whether to scan recursively (false)
+  recursive: boolean // Whether to scan recursively (true for nested support)
+  maxDepth: number   // Maximum nesting depth (default 1)
 }
 ```
 
