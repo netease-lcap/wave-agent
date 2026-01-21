@@ -256,7 +256,7 @@ describe("Hook Services", () => {
       });
 
       const resultPromise = executeCommand(
-        "echo $HOOK_PROJECT_DIR",
+        "echo $WAVE_PROJECT_DIR",
         mockContext,
       );
 
@@ -269,7 +269,7 @@ describe("Hook Services", () => {
       expect(spawnEnv).toBeDefined();
       expect(spawnEnv!.HOOK_EVENT).toBe("PostToolUse");
       expect(spawnEnv!.HOOK_TOOL_NAME).toBe("Edit");
-      expect(spawnEnv!.HOOK_PROJECT_DIR).toBe("/test/project");
+      expect(spawnEnv!.WAVE_PROJECT_DIR).toBe("/test/project");
     });
 
     it("should handle context without tool name", async () => {
