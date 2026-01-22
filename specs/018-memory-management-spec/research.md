@@ -1,20 +1,33 @@
-# Memory Management Research
+# Research: Memory Management
 
-## Current Implementation Analysis
+**Decision**: Implement a dual-layer memory system (Project and User) triggered by the `#` character.
 
-- **File-Based**: The system is entirely file-based, using `fs.readFile` and `fs.writeFile`. This is simple and transparent but may not scale well to thousands of entries.
-- **No Deduplication**: Currently, the system appends every `#` message. If a user saves the same fact twice, it will appear twice in the memory file.
-- **Full Read**: The entire memory content is read and sent to the AI for every request. This consumes tokens and may eventually hit context limits if the memory files grow very large.
+**Rationale**: 
+- Agents need persistent context to be effective over long-term projects.
+- Distinguishing between project-specific and user-global memory provides better control over context sharing.
+- Using Markdown files for storage ensures transparency and allows users to edit memory manually.
 
-## Observations
+**Alternatives Considered**:
+- **Database Storage**: Rejected in favor of simple Markdown files for better portability and user visibility.
+- **Automatic Memory**: Automatically saving everything the agent learns was rejected to avoid cluttering the context with irrelevant information; explicit saving via `#` is preferred.
 
-- **Transparency**: Users can easily edit `AGENTS.md` or the user memory file manually to add, remove, or correct information.
-- **Simplicity**: The `#` trigger is easy to remember and use.
-- **Separation of Concerns**: The distinction between project and user memory is well-implemented and provides the right level of context.
+## Findings
 
-## Potential Improvements
+### Trigger Logic
+- The `#` character is commonly used for tagging or notes.
+- Submitting a message starting with `#` should trigger the storage type selection.
 
-- **Vector Search (RAG)**: Instead of sending the *entire* memory, use vector embeddings to retrieve only the most relevant memory entries for the current conversation.
-- **Memory Editing UI**: Provide a way to view and delete memory entries directly within the terminal UI.
-- **Automatic Memory**: Allow the agent to suggest saving information to memory when it detects a recurring pattern or an explicit instruction in a normal message.
-- **Categorization**: Support tags or categories (e.g., `#style: use tabs`) to better organize memory.
+### Storage Strategy
+- **Project Memory**: `AGENTS.md` in the project root. This file can be committed to version control.
+- **User Memory**: A global file in `~/.wave/memory.md` for cross-project preferences.
+- **Format**: Simple Markdown bullet points for easy parsing and human readability.
+
+### Retrieval Strategy
+- Combine both memory files into a single context block.
+- Inject this block into the system prompt of every AI request.
+- For very large memory files, consider future RAG (Retrieval-Augmented Generation) implementations.
+
+### Integration Points
+- **InputManager**: Detect the `#` trigger and show the `MemoryTypeSelector`.
+- **Memory Service**: Handle reading from and writing to the Markdown files.
+- **AIManager**: Orchestrate the inclusion of memory in the AI's context.

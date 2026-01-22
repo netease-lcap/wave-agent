@@ -1,88 +1,42 @@
 # Data Model: LSP Integration Support
 
-## Configuration Types
+## Entities
 
 ### LspServerConfig
-Configuration for a single LSP server.
-```typescript
-interface LspServerConfig {
-  command: string;
-  args?: string[];
-  extensionToLanguage: Record<string, string>;
-  transport?: "stdio" | "socket";
-  env?: Record<string, string>;
-  initializationOptions?: unknown;
-  settings?: unknown;
-  workspaceFolder?: string;
-  startupTimeout?: number;
-  shutdownTimeout?: number;
-  restartOnCrash?: boolean;
-  maxRestarts?: number;
-}
-```
+Configuration for a single LSP server (usually from `.lsp.json`).
 
-### LspConfig
-The root configuration object, usually loaded from `.lsp.json`.
-```typescript
-interface LspConfig {
-  [language: string]: LspServerConfig;
-}
-```
-
-## Internal State
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | The executable to run (e.g., `typescript-language-server`). |
+| `args` | string[] | Arguments for the executable (e.g., `["--stdio"]`). |
+| `extensionToLanguage` | Record<string, string> | Mapping of file extensions to language IDs. |
 
 ### LspProcess
-Represents a running LSP server process and its associated state.
-```typescript
-interface LspProcess {
-  process: ChildProcess;
-  config: LspServerConfig;
-  language: string;
-  initialized: boolean;
-  requestId: number;
-  pendingRequests: Map<number, {
-    resolve: (value: any) => void;
-    reject: (reason?: any) => void;
-  }>;
-  openedFiles: Set<string>;
-}
-```
+Internal state of a running LSP server.
 
-## Tool Interface
+| Field | Type | Description |
+|-------|------|-------------|
+| `process` | ChildProcess | The underlying Node.js child process. |
+| `language` | string | The language ID this server handles. |
+| `initialized` | boolean | Whether the `initialize` request has completed. |
+| `openedFiles` | Set<string> | Files for which `didOpen` has been sent. |
 
-### LspToolArguments
-Arguments passed to the `lspTool`.
-```typescript
-interface LspToolArguments {
-  operation: "goToDefinition" | "findReferences" | "hover" | "documentSymbol" | "workspaceSymbol" | "goToImplementation" | "prepareCallHierarchy" | "incomingCalls" | "outgoingCalls";
-  filePath: string;
-  line: number;
-  character: number;
-}
-```
+### LspOperation
+The arguments passed to the `lsp` tool.
 
-## LSP Protocol Types (Subset)
+| Field | Type | Description |
+|-------|------|-------------|
+| `operation` | string | The LSP operation (e.g., `hover`, `goToDefinition`). |
+| `filePath` | string | The path to the file. |
+| `line` | number | 1-based line number. |
+| `character` | number | 1-based character offset. |
 
-### Position
-```typescript
-interface Position {
-  line: number; // 0-based
-  character: number; // 0-based
-}
-```
+## State Transitions
 
-### Range
-```typescript
-interface Range {
-  start: Position;
-  end: Position;
-}
-```
-
-### Location
-```typescript
-interface Location {
-  uri: string;
-  range: Range;
-}
-```
+1. **Uninitialized**: No server is running for the requested language.
+2. **Starting**: `LspManager` spawns the child process.
+3. **Initializing**: `initialize` request sent to the server.
+4. **Ready**: Server is initialized and ready for requests.
+5. **Synchronizing**: `didOpen` sent for a specific file.
+6. **Executing**: Request (e.g., `hover`) sent to the server.
+7. **Shutting Down**: `shutdown` and `exit` sent to the server.

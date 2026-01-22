@@ -1,19 +1,30 @@
-# Message Compression Research
+# Research: Message Compression
 
-## Current Implementation Analysis
+**Decision**: Implement history compression via AI summarization and input compression via placeholders.
+
+**Rationale**: 
+- Token limits are a hard constraint for AI models; history compression is necessary for long conversations.
+- Pasting large blocks of text (e.g., logs or code) makes the terminal input unusable; placeholders solve this.
+- Summarization preserves the "essence" of the conversation better than simply truncating old messages.
+
+**Alternatives Considered**:
+- **Truncation**: Simply deleting old messages. Rejected because it leads to complete loss of context.
+- **Vector Search (RAG)**: Storing old messages in a vector DB. Rejected as too complex for the initial implementation, though it could be a future enhancement.
+
+## Findings
 
 ### History Compression
-- **Location**: `packages/agent-sdk/src/managers/aiManager.ts`, `packages/agent-sdk/src/utils/messageOperations.ts`.
-- **Algorithm**: It uses a "sliding window" approach where it keeps the most recent $N$ blocks and compresses everything before them.
-- **Recursive Compression**: If a compression block already exists, the new compression cycle includes the old compression block in the messages to be summarized, effectively creating a rolling summary.
+- **Trigger**: Based on `usage.total_tokens` from the AI response.
+- **Retention**: Keeping the last 20 blocks ensures the agent remembers the most recent context perfectly.
+- **Summarization**: The agent is asked to "Summarize the following conversation history concisely, preserving key facts, decisions, and file paths."
 
 ### Input Compression
-- **Location**: `packages/code/src/managers/InputManager.ts`.
-- **Threshold**: 200 characters. This is currently a hardcoded value.
-- **Debounce**: Paste operations are debounced by `PASTE_DEBOUNCE_MS` (default 30ms) to handle rapid input events.
+- **Trigger**: 200-character threshold for paste events.
+- **Placeholder**: `[LongText#ID]` is used as it's unlikely to occur naturally in user input.
+- **Expansion**: Must happen just before the message is sent to ensure the agent receives the full content.
 
-## Potential Improvements
-- **Configurable Input Threshold**: Make the 200-character threshold for input compression configurable.
-- **Token-based Input Compression**: Instead of character count, use token count for input compression to be more accurate with AI limits.
-- **Visual Feedback**: Provide a way for users to "peek" at the content of a `[LongText#ID]` placeholder without expanding it in the input field.
-- **Selective Compression**: Allow users to mark certain messages as "important" so they are never compressed.
+### Integration Points
+- **AIManager**: Monitors tokens and calls the summarization service.
+- **MessageManager**: Updates the session with the new `compress` block.
+- **InputManager**: Manages the `longTextMap` and placeholder replacement.
+- **API Utilities**: Convert `compress` blocks into system messages for the AI.

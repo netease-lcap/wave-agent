@@ -1,19 +1,36 @@
-# File Selector Research
+# Research: File Selector
 
-## Current Implementation Analysis
+**Decision**: Implement an interactive File Selector triggered by `@` in the terminal input.
 
-- **Trigger Logic**: The `@` trigger is detected in `handleSpecialCharInput`. It works at any position in the input string.
-- **Search Utility**: It relies on `searchFiles` from `wave-agent-sdk`, which likely uses `glob` or `fs.readdir` under the hood.
-- **Debouncing**: A 300ms debounce is implemented in `InputManager` to avoid rapid-fire file system queries while typing.
-- **UI Rendering**: The `FileSelector` component uses a "sliding window" to display a maximum of 10 items, which is efficient for large directories.
+**Rationale**: 
+- Manually typing file paths is error-prone and slow.
+- Real-time filtering provides immediate feedback and helps users find files quickly.
+- Keyboard-based navigation maintains the CLI-first workflow.
 
-## Observations
+**Alternatives Considered**:
+- **Tab Completion**: Standard shell tab completion is useful but doesn't provide the same visual list and filtering capabilities as a dedicated selector.
+- **Command-line Arguments**: Requiring users to pass files as arguments is less flexible than allowing them to insert paths anywhere in their message.
 
-- **Path Completion**: The selector handles both files and directories. Selecting a directory inserts its path, allowing the user to continue typing to search within that directory.
-- **Conflict Prevention**: `InputManager` uses a `selectorJustUsed` flag to prevent the `Enter` key that selects a file from also submitting the entire message.
+## Findings
 
-## Potential Improvements
+### Trigger Logic
+- The `@` character is a natural trigger for "mentioning" or "referencing" files.
+- Detection should happen in `InputManager` to allow for real-time UI updates.
 
-- **Fuzzy Search**: Currently, the search seems to be a simple prefix or substring match. Implementing fuzzy search would improve the user experience.
-- **Icon Customization**: Use more specific icons for different file types (e.g., 📦 for `package.json`, 📜 for `.md`).
-- **Performance**: For very large projects, the initial `searchFiles("")` might be slow. Consider caching or indexing.
+### Search Utility
+- Use `searchFiles` from `wave-agent-sdk`.
+- Implement debouncing (300ms) to prevent excessive I/O during rapid typing.
+- Support both absolute and relative paths, as well as `~` expansion.
+
+### UI Implementation
+- Use `ink` to render a floating list near the cursor or at the bottom of the input.
+- **Visual Style**:
+  - Use icons (📁/📄) to distinguish between directories and files.
+  - Highlight the selected item with a distinct color (e.g., cyan).
+  - Show a "sliding window" of 10 items for large directories.
+  - Indicate if there are more items above or below the current view.
+
+### Integration Points
+- **InputManager**: Manage the `@` trigger, query state, and selection logic.
+- **FileSelector Component**: Handle the rendering and keyboard events for navigation.
+- **wave-agent-sdk**: Provide the underlying filesystem search capabilities.

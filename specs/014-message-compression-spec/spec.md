@@ -1,40 +1,74 @@
-# Message Compression Specification
+# Feature Specification: Message Compression
 
-The message compression system is designed to manage the size of the conversation history and user inputs. This ensures that the agent stays within the token limits of the AI models and maintains a responsive and clean user interface.
+**Feature Branch**: `014-message-compression-spec`  
+**Created**: 2026-01-22  
+**Status**: Implemented  
+**Input**: User description: "Manage conversation history and user input size"
 
-## Overview
+## User Scenarios & Testing *(mandatory)*
 
-The system implements two distinct compression strategies:
+### User Story 1 - Automatic History Compression (Priority: P1)
 
-1.  **Message History Compression**: A server-side (agent-sdk) mechanism that summarizes older parts of the conversation when the total token count exceeds a predefined limit.
-2.  **Long User Input Compression**: A client-side (code) mechanism that replaces large pasted text in the input field with placeholders to keep the UI manageable.
+As an AI agent, when the conversation history becomes too long, I want to automatically summarize older messages so that I stay within the model's token limits while maintaining context.
 
-## Message History Compression
+**Why this priority**: Essential for long-running sessions to prevent "context window exceeded" errors and reduce costs.
 
-### Triggering Mechanism
-The `AIManager` monitors token usage after each AI response. If the total tokens (including prompt, completion, and cache tokens) exceed the `getMaxInputTokens()` threshold, a compression cycle is initiated.
+**Independent Test**: Mock token usage to exceed the threshold and verify that `AIManager` triggers a compression cycle and replaces old messages with a summary block.
 
-### Compression Logic
-1.  **Identification**: The `getMessagesToCompress` function identifies which messages should be compressed.
-2.  **Retention**: It ensures that the last `DEFAULT_KEEP_LAST_MESSAGES_COUNT` (default: 20) valid blocks (text, image, or tool) are kept uncompressed to maintain immediate context.
-3.  **Summarization**: The identified messages are sent to the AI with a request to summarize the conversation history.
-4.  **Replacement**: The original messages are removed from the active session and replaced with a single assistant message containing a `compress` block. This block holds the summary.
-5.  **API Conversion**: When preparing messages for subsequent API calls, `convertMessagesForAPI` detects the `compress` block and prepends it as a `system` message: `[Compressed Message Summary] <summary_content>`.
+**Acceptance Scenarios**:
 
-## Long User Input Compression
+1. **Given** the total token count exceeds `getMaxInputTokens()`, **When** the next message is processed, **Then** the agent MUST identify messages to compress.
+2. **Given** messages are identified for compression, **When** the summarization is complete, **Then** the original messages MUST be replaced by a `compress` block in the session.
+3. **Given** a `compress` block exists, **When** sending messages to the API, **Then** it MUST be converted to a system message with the prefix `[Compressed Message Summary]`.
 
-### Triggering Mechanism
-In the `InputManager`, when a user pastes text longer than 200 characters, the system automatically compresses it.
+---
 
-### Compression Logic
-1.  **Placeholder Generation**: The long text is stored in a `longTextMap` and replaced in the input field with a placeholder like `[LongText#1]`.
-2.  **UI Representation**: The user sees the placeholder instead of the massive block of text, keeping the input area clean.
-3.  **Expansion**: Before the message is sent to the agent (in `handleSubmit`), the `expandLongTextPlaceholders` method replaces all placeholders with their original content from the map.
-4.  **Cleanup**: The `longTextMap` is cleared after the message is successfully submitted.
+### User Story 2 - Long Input Placeholder (Priority: P2)
 
-## Configuration
+As a user, when I paste a large block of text into the input field, I want it to be replaced by a placeholder so that the UI remains clean and manageable.
 
-- `DEFAULT_WAVE_MAX_INPUT_TOKENS`: The threshold for triggering history compression.
-- `DEFAULT_KEEP_LAST_MESSAGES_COUNT`: The number of recent blocks to preserve (default: 20).
-- `PASTE_DEBOUNCE_MS`: Debounce time for processing paste operations (default: 30ms).
-- Long text threshold: Hardcoded at 200 characters in `InputManager.ts`.
+**Why this priority**: Improves the user experience by preventing the input field from being overwhelmed by massive amounts of text.
+
+**Independent Test**: Paste a string longer than 200 characters into the input field and verify it is replaced by a `[LongText#ID]` placeholder.
+
+**Acceptance Scenarios**:
+
+1. **Given** the user pastes text > 200 characters, **When** the paste event is processed, **Then** the text MUST be replaced by a `[LongText#ID]` placeholder.
+2. **Given** a placeholder exists in the input, **When** the user submits the message, **Then** the placeholder MUST be expanded back to the original text before being sent to the agent.
+
+---
+
+### Edge Cases
+
+- **Recursive Compression**: When compressing history that already contains a summary, the new summary should incorporate the old one.
+- **Image Handling**: Ensure that image blocks are accounted for during compression, even if their content isn't directly summarized.
+- **Token Limit Edge**: If the summary itself is too long (unlikely but possible), the system should handle it gracefully.
+- **Multiple Placeholders**: Users should be able to paste multiple long blocks, each getting its own unique ID.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: System MUST monitor token usage after each AI response.
+- **FR-002**: System MUST keep the last 20 valid blocks uncompressed.
+- **FR-003**: System MUST use the AI to generate a summary of messages identified for compression.
+- **FR-004**: System MUST replace compressed messages with a `compress` block in the session history.
+- **FR-005**: System MUST convert `compress` blocks to system messages for API calls.
+- **FR-006**: System MUST detect pasted text longer than 200 characters in the input field.
+- **FR-007**: System MUST replace long pasted text with a `[LongText#ID]` placeholder.
+- **FR-008**: System MUST expand placeholders back to original text upon submission.
+
+### Key Entities *(include if feature involves data)*
+
+- **CompressBlock**: A message block containing a summary.
+    - `type`: "compress"
+    - `content`: The summary text.
+- **LongTextMap**: A mapping in `InputManager` for placeholders.
+    - `key`: `[LongText#ID]`
+    - `value`: Original text.
+
+## Assumptions
+
+- The AI model used for summarization is capable of producing concise and accurate summaries.
+- The token counting utility is reasonably accurate.
+- Users prefer a clean UI over seeing massive blocks of pasted text.

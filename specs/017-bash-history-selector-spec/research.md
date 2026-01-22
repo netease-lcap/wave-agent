@@ -1,19 +1,36 @@
-# Bash History Selector Research
+# Research: Bash History Selector
 
-## Current Implementation Analysis
+**Decision**: Implement an interactive Bash History Selector triggered by `!` at the start of the input.
 
-- **Trigger**: Strictly limited to `!` at the very beginning of the input (`cursorPosition === 1`).
-- **Search**: Uses `searchBashHistory` from `wave-agent-sdk`. It currently returns a limited number of results (default 10).
-- **Deletion**: Supports removing entries from history via `deleteBashCommandFromHistory`. This is useful for cleaning up sensitive or incorrect commands.
-- **Context**: The selector shows the working directory for each command, helping users distinguish between similar commands run in different projects.
+**Rationale**: 
+- Users frequently repeat or slightly modify previous commands.
+- Searching history is faster than re-typing or using `Ctrl+r` in a standard shell.
+- Integrating history into the agent's input field allows for seamless command re-execution.
 
-## Observations
+**Alternatives Considered**:
+- **Standard `Ctrl+r`**: While powerful, it's less discoverable and doesn't provide a visual list of multiple matches.
+- **Agent-only History**: Storing history only within the agent session would miss out on the user's existing shell history.
 
-- **Execution vs. Insertion**: The distinction between `Enter` (run) and `Tab` (edit) is a powerful feature for power users.
-- **Empty State**: If no history matches, the selector allows the user to execute the current search query as a new command.
+## Findings
 
-## Potential Improvements
+### Trigger Logic
+- The `!` character is the traditional shell trigger for history expansion.
+- Restricting it to the first character of the input prevents accidental triggers during normal typing.
 
-- **Global vs. Local History**: Option to toggle between history for the current project and global history.
-- **Frequency Ranking**: Rank results by how often they are used, not just by recency.
-- **Multi-line Commands**: Better handling and display of multi-line bash commands.
+### Search Utility
+- Use `searchBashHistory` from `wave-agent-sdk`.
+- Search should be performed on the command string and optionally filtered by the current directory.
+
+### UI Implementation
+- Use `ink` to render a list of history entries.
+- **Visual Style**:
+  - Show the command string clearly.
+  - Display metadata like timestamp and execution directory for the selected item.
+  - Use a blue border to distinguish the history selector.
+  - Support `Enter` for execution and `Tab` for insertion/editing.
+  - Support `Ctrl+d` for deleting entries.
+
+### Integration Points
+- **InputManager**: Manage the `!` trigger and history selection state.
+- **BashHistorySelector Component**: Handle rendering and keyboard navigation.
+- **wave-agent-sdk**: Provide access to and searching of the `.bash_history` file.

@@ -1,37 +1,30 @@
-# File Selector Data Model
+# Data Model: File Selector
 
-## InputManager State
+## Entities
 
-The `InputManager` maintains the following state for the File Selector:
+### FileItem
+Represents a file or directory in the selector list.
 
-```typescript
-private showFileSelector: boolean; // Visibility of the selector
-private atPosition: number;        // Cursor position where '@' was typed
-private fileSearchQuery: string;   // Current search string after '@'
-private filteredFiles: FileItem[]; // List of files matching the query
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | The name of the file or directory. |
+| `path` | string | The full or relative path to the item. |
+| `type` | 'file' \| 'directory' | Whether the item is a file or a directory. |
 
-## File Item
+### SelectorState
+The internal state of the file selector in `InputManager`.
 
-The `FileItem` interface (from `wave-agent-sdk`) represents a single entry in the file list:
+| Field | Type | Description |
+|-------|------|-------------|
+| `isActive` | boolean | Whether the selector is currently visible. |
+| `query` | string | The current search string typed after `@`. |
+| `selectedIndex` | number | The index of the currently highlighted item. |
+| `results` | FileItem[] | The list of matching items found. |
 
-```typescript
-export interface FileItem {
-  name: string;
-  path: string;
-  type: "file" | "directory";
-}
-```
+## State Transitions
 
-## Callbacks
-
-The `InputManager` uses the `onFileSelectorStateChange` callback to notify the UI:
-
-```typescript
-onFileSelectorStateChange?: (
-  show: boolean,
-  files: FileItem[],
-  query: string,
-  position: number,
-) => void;
-```
+1. **Inactive**: The default state where the selector is hidden.
+2. **Active**: Triggered by typing `@`. The selector is visible and performing searches.
+3. **Filtering**: As the user types, the `query` is updated and `results` are refreshed.
+4. **Selected**: User presses `Enter` or `Tab`. The selected path is inserted and the selector returns to **Inactive**.
+5. **Cancelled**: User presses `Escape` or deletes the `@`. The selector returns to **Inactive**.

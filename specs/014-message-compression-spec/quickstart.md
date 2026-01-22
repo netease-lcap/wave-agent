@@ -1,23 +1,37 @@
-# Message Compression Quickstart
+# Quickstart: Message Compression
 
-## How History Compression Works
+## Overview
+This feature manages conversation history and user input size through automatic summarization and placeholders.
 
-1.  **Monitor**: `AIManager` checks `usage.total_tokens` against `getMaxInputTokens()`.
-2.  **Select**: `getMessagesToCompress(messages)` finds the slice of history to compress.
-3.  **Summarize**: `compressMessages` service calls the AI to summarize the selected messages.
-4.  **Update**: `messageManager.compressMessagesAndUpdateSession` replaces the old messages with the summary block.
+## Development Setup
+1. Build the `agent-sdk` to include compression utilities:
+   ```bash
+   pnpm -F agent-sdk build
+   ```
+2. Run the CLI to test input compression:
+   ```bash
+   pnpm -F code start
+   ```
 
-## How Input Compression Works
+## Verification Steps
 
-1.  **Paste**: User pastes > 200 chars.
-2.  **Compress**: `InputManager.generateCompressedText` creates `[LongText#ID]`.
-3.  **Submit**: User hits Enter.
-4.  **Expand**: `InputManager.expandLongTextPlaceholders` restores the original text before `onSendMessage` is called.
+### Unit Tests
+Run tests for history compression and input placeholders:
+```bash
+pnpm -F agent-sdk test tests/utils/messageOperations.test.ts
+pnpm -F code test tests/managers/InputManager.test.ts
+```
 
-## Testing Compression
+### Manual Verification
 
-### History Compression
-You can test history compression by mocking the token usage in `AIManager` or by providing a very low `maxInputTokens` value in the agent configuration.
+#### History Compression
+1. Set a low `maxInputTokens` in the agent config or mock token usage.
+2. Engage in a long conversation.
+3. Verify that older messages are replaced by a summary block.
+4. Verify the agent still remembers the general context of the summarized messages.
 
-### Input Compression
-Paste a long block of text (e.g., a large code file) into the terminal input. You should see it replaced by a `[LongText#1]` placeholder. When you send it, the agent should receive the full text.
+#### Input Compression
+1. Paste a long block of text (> 200 chars) into the input field.
+2. Verify it is replaced by a `[LongText#1]` placeholder.
+3. Send the message.
+4. Verify the agent receives and responds to the full content of the pasted text.
