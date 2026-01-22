@@ -2,7 +2,7 @@
 
 **Feature Branch**: `011-hooks-exitcode-output`  
 **Created**: 2025-11-15  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "support hooks exitCode output. refer this: ## Hook Output
 
 There are two ways for hooks to return output back to Wave Agent. The output

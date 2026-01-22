@@ -2,7 +2,7 @@
 
 **Feature Branch**: `036-split-bash-commands`  
 **Created**: 2025-12-27  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "when confirm bash tool with \"cmd1 && cmd2\" or other chain cmd, and user select don't ask, system shall split into multi simple cmds and save to permissions.allow array. if the sample cmd is builtin safe cmd(already implemented) like cd, do not save to permissions.allow array."
 
 ## User Scenarios & Testing *(mandatory)*

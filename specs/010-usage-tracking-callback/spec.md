@@ -2,7 +2,7 @@
 
 **Feature Branch**: `010-usage-tracking-callback`  
 **Created**: 2025-11-11  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "sdk support new callback named onUsagesChange, also, agent sdk support new method to get usages. the usages come from packages/agent-sdk/src/services/aiService.ts , including call agent and compress. onUsagesChange is triggered evertytime the usages change. lastly, save usage in session as well."
 
 ## Clarifications

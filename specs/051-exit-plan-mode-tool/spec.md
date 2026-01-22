@@ -2,7 +2,7 @@
 
 **Feature Branch**: `051-exit-plan-mode-tool`  
 **Created**: 2026-01-19  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "add a tool named ExitPlanMode for plan approval. must reuse `canUseTool` for confirmation"
 
 ## User Scenarios & Testing *(mandatory)*

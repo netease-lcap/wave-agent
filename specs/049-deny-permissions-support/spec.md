@@ -2,7 +2,7 @@
 
 **Feature Branch**: `049-deny-permissions-support`  
 **Created**: 2026-01-15  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "support permissions.deny in settings.json, having same permission rule like permissions.allow, but deny them."
 
 ## User Scenarios & Testing *(mandatory)*

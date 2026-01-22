@@ -2,7 +2,7 @@
 
 **Feature Branch**: `005-hooks-support`  
 **Created**: 2024-12-19  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "Support hooks, refer to hooks.md"
 
 ## User Scenarios & Testing *(mandatory)*

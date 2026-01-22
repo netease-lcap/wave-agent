@@ -2,7 +2,7 @@
 
 **Feature Branch**: `044-local-plugin-marketplace`  
 **Created**: 2026-01-13  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "support local marketplace: Create the directory structure... wave plugin marketplace add ./my-marketplace... wave plugin install review-plugin@my-plugins"
 
 ## User Scenarios & Testing *(mandatory)*

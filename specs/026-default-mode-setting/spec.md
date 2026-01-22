@@ -2,7 +2,7 @@
 
 **Feature Branch**: `026-default-mode-setting`  
 **Created**: 2025-12-09  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "if some users do not like write --dangerously-skip-permissions, they can modify settings.json(local proj user level) to set "defaultMode", it's value can be "default" or "bypassPermissions" too."
 
 ## User Scenarios & Testing *(mandatory)*

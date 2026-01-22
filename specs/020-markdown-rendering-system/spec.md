@@ -2,7 +2,7 @@
 
 **Feature Branch**: `020-markdown-rendering-system`  
 **Created**: 2024-12-01  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "The Wave Agent CLI needs a robust way to render Markdown content in the terminal using Ink components. This includes support for common Markdown elements like headings, lists, code blocks, and tables, with special handling for terminal width constraints."
 
 ## User Scenarios & Testing *(mandatory)*

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `032-auto-accept-permissions`  
 **Created**: 2025-12-26  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "currently, Confirm for tool only have 2 options, I would like to add a option in 2nd position. 1, for Write Edit or other fs tools, new option would be \"Yes, and auto-accept edits\". when user select this option, system should set permission mode to \"acceptEdits\" 2, for Bash, new option would be \"Yes, and don't ask again for xxx_cmd commands in this workdir\". when user select this option, saves the permission rule to .wave/settings.local.json in your project directory. The rule is saved in the permissions.allow array using the format \"Bash(command)\". 3, system should read permissions.allow array in all settings.json such as local project and user level when starting."
 
 ## User Scenarios & Testing *(mandatory)*

@@ -2,7 +2,7 @@
 
 **Feature Branch**: `047-secure-file-access`  
 **Created**: 2026-01-14  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "when writing or editing files out of workdir, system should popup confirm, even in acceptEdits mode. but if user set permissions.additionalDirectories, system should treat them like workdir"
 
 ## User Scenarios & Testing *(mandatory)*

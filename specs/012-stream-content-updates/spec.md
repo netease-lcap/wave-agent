@@ -2,7 +2,7 @@
 
 **Feature Branch**: `012-stream-content-updates`  
 **Created**: 2025-11-19  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "support stream for both agent-sdk and code package. the agent-sdk should add a onAssistantContentUpdated in MessageManagerCallbacks. and current onToolBlockUpdated should support stream tool parameters updating. the code should use onAssistantContentUpdated to update assistant message content, user will see the stream content update in CLI messsage list. the code should use onToolBlockUpdated to update assistant message tool call parameters, user will see compactParams update in collapse state and see parameters update in expand state."
 
 ## User Scenarios & Testing *(mandatory)*

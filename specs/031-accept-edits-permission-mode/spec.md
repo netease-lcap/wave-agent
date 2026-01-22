@@ -2,7 +2,7 @@
 
 **Feature Branch**: `031-accept-edits-permission-mode`  
 **Created**: 2025-12-26  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "1, permission mode should support `acceptEdits` Automatically accepts file edit permissions for the session. 2, sdk should support set permission mode. 3, code cli should support During a session: Use Shift+Tab to cycle through modes. 4, settings.json `defaultMode` should support acceptEdits too."
 
 ## User Scenarios & Testing *(mandatory)*

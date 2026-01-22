@@ -2,7 +2,7 @@
 
 **Feature Branch**: `038-bash-confirm-safety`  
 **Created**: 2025-12-27  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "for some bash confirm which will never save to permissions.allow array, like cd outside of workdir or other danger cmd, should not display \"Don't ask again\" option"
 
 ## User Scenarios & Testing *(mandatory)*

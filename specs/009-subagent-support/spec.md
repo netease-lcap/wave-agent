@@ -2,7 +2,7 @@
 
 **Feature Branch**: `009-subagent-support`  
 **Created**: 2024-12-19  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "Support Subagents. Subagents are pre-configured AI personalities that Wave Agent can delegate tasks to. Each subagent has a specific purpose and expertise area, uses its own context window separate from the main conversation, can be configured with specific tools it's allowed to use, and includes a custom system prompt that guides its behavior.
 
 Subagent configuration files are stored as Markdown files with YAML frontmatter in `.wave/agents/` (project-level) and `~/.wave/agents/` (user-level) directories. Example format:

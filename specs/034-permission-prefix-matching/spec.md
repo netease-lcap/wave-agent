@@ -2,7 +2,7 @@
 
 **Feature Branch**: `034-permission-prefix-matching`  
 **Created**: 2025-12-26  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "permissions.allow array should support prefix matching, like Bash(git commit:*), not regex, not wildcard, :* only works at the end of a pattern to match any continuation"
 
 - [x] US1: Prefix Matching for Commands

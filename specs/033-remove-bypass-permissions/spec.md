@@ -2,7 +2,7 @@
 
 **Feature Branch**: `033-remove-bypass-permissions`  
 **Created**: 2025-12-26  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "remove bypass permissions from shift tab"
 
 ## User Scenarios & Testing *(mandatory)*

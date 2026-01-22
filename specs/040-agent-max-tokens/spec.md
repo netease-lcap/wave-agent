@@ -2,7 +2,7 @@
 
 **Feature Branch**: `040-agent-max-tokens`  
 **Created**: 2026-01-08  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "packages/agent-sdk/src/services/aiService.ts callAgent should take max tokens from arg like baseUrl and apiKey, default is 4096, support env var WAVE_MAX_OUTPUT_TOKENS and agent.create options"
 
 ## User Scenarios & Testing *(mandatory)*
