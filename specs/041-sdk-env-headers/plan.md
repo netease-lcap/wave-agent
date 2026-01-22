@@ -2,7 +2,7 @@
 
 **Feature Branch**: `041-sdk-env-headers`  
 **Created**: 2026-01-09  
-**Status**: Draft  
+**Status**: Implemented  
 **Feature Spec**: [spec.md](spec.md)
 
 ## Technical Context

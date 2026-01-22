@@ -2,7 +2,7 @@
 
 **Feature Branch**: `041-sdk-env-headers`  
 **Created**: 2026-01-09  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "sdk should support setting headers from env"
 
 ## Clarifications

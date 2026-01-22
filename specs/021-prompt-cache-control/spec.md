@@ -2,7 +2,7 @@
 
 **Feature Branch**: `021-prompt-cache-control`  
 **Created**: 2025-12-02  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "Add cache_control functionality to the OpenAI provider when the model name contains "claude": Add cache_control markers to system messages Add cache_control markers to the last two user messages Add cache_control markers to the last tool definition cache control : { "cache_control": { "type": "ephemeral" } }, the usage is like :{ "usage": { "prompt_tokens": 10, // 普通 prompt_tokens 数量（原价） "completion_tokens": 336, "total_tokens": 346, // 等于 prompt_tokens + completion_tokens "cache_read_input_tokens": 0, // 缓存命中 token 数 "cache_creation_input_tokens": 2843, // 缓存创建 token 数，等于 ephemeral_5m_input_tokens + ephemeral_1h_input_tokens "cache_creation": { "ephemeral_5m_input_tokens": 2843, "ephemeral_1h_input_tokens": 0 } } }, more examples: { "role": "system", "content": [ { "type": "text", "text": "xxx", "cache_control": { "type": "ephemeral" } } ] }, { "role": "user", "content": [ { "type": "text", "text": "xxx", "cache_control": { "type": "ephemeral" } } ] } , in tools: { "type": "function", "function": { "name": "Bash", "description": "xxx", "parameters": { "type": "object", "properties": { "command": { "type": "string", "description": "xxx" }, }, "required": [ "command" ] } }, "cache_control": { "type": "ephemeral" } }"
 
 ## User Scenarios & Testing *(mandatory)*

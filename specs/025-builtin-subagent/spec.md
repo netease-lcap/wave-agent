@@ -2,7 +2,7 @@
 
 **Feature Branch**: `025-builtin-subagent`  
 **Created**: 2025-12-08  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "Add build-in subagent, refer to explore-agent.js"
 
 ## User Scenarios & Testing *(mandatory)*

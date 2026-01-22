@@ -2,7 +2,7 @@
 
 **Feature Branch**: `043-expand-plugin-capabilities`  
 **Created**: 2026-01-13  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "You’ve created a plugin with a slash command, but plugins can include much more: custom agents, Skills, hooks, MCP servers, and LSP servers.
 Common mistake: Don’t put commands/, agents/, skills/, or hooks/ inside the .claude-plugin/ directory. Only plugin.json goes inside .claude-plugin/. All other directories must be at the plugin root level.
 Directory	Location	Purpose

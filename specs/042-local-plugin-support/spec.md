@@ -2,7 +2,7 @@
 
 **Feature Branch**: `042-local-plugin-support`  
 **Created**: 2026-01-13  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "1, sdk support plugins: [ { type: \"local\", path: \"./my-plugin\" }, { type: \"local\", path: \"/absolute/path/to/another-plugin\" } ]. 2, code support Create your first plugin ... but .claude-plugin dir should be renamed to .wave-plugin"
 
 ## User Scenarios & Testing *(mandatory)*

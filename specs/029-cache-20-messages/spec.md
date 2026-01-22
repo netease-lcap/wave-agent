@@ -2,7 +2,7 @@
 
 **Feature Branch**: `029-cache-20-messages`  
 **Created**: 2025-12-10  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "current cache  strategy is to add cache maker to system prompt and tools and last 2 user messages. last 2 user messages is not good, as for long task, there are very small number of user messages. I want to cache the last 20 times messages, for example, if I have 19 messsages, no cache, if 20 messages, cache 20th, if 39, still cache 20th, if 40, cache 40th." **Breaking Change**: Complete replacement with hardcoded strategy - no backward compatibility.
 
 ## User Scenarios & Testing *(mandatory)*

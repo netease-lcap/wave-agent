@@ -2,7 +2,7 @@
 
 **Feature Branch**: `024-tool-permission-system`  
 **Created**: 2025-12-08  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "1, currently, all edit and bash tools are executed without restriction, which is not safe, we should add `permissionMode` to agent's constructor, can be "default" or "bypassPermissions". 2, code CLI can pass --dangerously-skip-permissions to set permissionMode. 3, when permissionMode is default, all write edit multiedit delete bash should ask user to allow or deny. you can add `canUseTool` callback to agent sdk to do that. canUseTool take toolName return promise of {behavior: 'allow'} or {behavior: 'deny', message: '' }. canUseTool should be inserted in tool's execute function, after validation and diff, before real operation. 4, code CLI should add a comfirm component. keep simple. only has Do you want to proceed? 1.Yes, 2, Type here to tell Wave what to to differrently, can be switched by arrow up or down. 5, when permissionMode is bypassPermissions, same as current, all tools are executed without restriction."
 
 ## Clarifications

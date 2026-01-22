@@ -2,7 +2,7 @@
 
 **Feature Branch**: `050-support-plan-mode`  
 **Created**: 2026-01-19  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "support plan mode, system can analyze but not modify files or execute commands. switch into Plan Mode during a session using Shift+Tab to cycle through permission modes. when plan mode is active, system prompt should have a reminder to llm: \"You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.\" the plan file must in ~/.wave/plans dir and have a random english name."
 
 ## User Scenarios & Testing *(mandatory)*

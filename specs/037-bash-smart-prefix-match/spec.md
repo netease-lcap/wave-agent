@@ -2,7 +2,7 @@
 
 **Feature Branch**: `037-bash-smart-prefix-match`  
 **Created**: 2025-12-27  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "when user select \"Yes, and don't ask again\" for bash, system currently save exact commands to settings.local.json which is not smart, for example some bash contain string args which is dynamic, can you come up with a smart prefix match for \"\"Yes, and don't ask again\" bash?"
 
 ## User Scenarios & Testing *(mandatory)*

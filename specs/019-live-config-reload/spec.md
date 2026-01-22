@@ -2,7 +2,7 @@
 
 **Feature Branch**: `019-live-config-reload`  
 **Created**: 2024-12-01  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "1, settings.json should support env field, so that we can pass env vars to wave code and wave agent sdk. 2, settings.json should support living reload, when user modify them, they should take effect immediately without restarting cli or sdk."
 
 ## User Scenarios & Testing *(mandatory)*

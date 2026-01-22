@@ -2,7 +2,7 @@
 
 **Feature Branch**: `046-github-marketplace-support`  
 **Created**: 2026-01-14  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "marketplace support GitHub repositories: owner/repo format , `wave plugin marketplace add netease-lcap/wave-plugins-official`, plugin sources support GitHub repositories.
 Known marketplaces source should be like:
 ```json

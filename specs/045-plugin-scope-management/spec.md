@@ -2,7 +2,7 @@
 
 **Feature Branch**: `045-plugin-scope-management`  
 **Created**: 2026-01-13  
-**Status**: Draft  
+**Status**: Implemented  
 **Input**: User description: "wave plugin should support disable enable, and each should support  -s, --scope <scope>  Installation scope: user, project, or local (default: \"user\"). plus, plugin install should support -s --scope too. after install, related settings.json should be added like :   \"enabledPlugins\": { \"review-plugin@my-plugins\": true }. refer to specs/044-local-plugin-marketplace to learn current spec"
 
 ## User Scenarios & Testing *(mandatory)*
