@@ -110,18 +110,18 @@ export class AIManager {
   private callbacks: AIManagerCallbacks;
 
   /**
-   * Get filtered tool configuration
+   * Get filtered tool configuration based on tools list
    */
-  private getFilteredToolsConfig(allowedTools?: string[]) {
+  private getFilteredToolsConfig(tools?: string[]) {
     const allTools = this.toolManager.getToolsConfig();
 
-    // If no allowedTools specified, return all tools
-    if (!allowedTools || allowedTools.length === 0) {
+    // If no tools specified, return all tools
+    if (!tools || tools.length === 0) {
       return allTools;
     }
 
-    // Filter allowed tools
-    return allTools.filter((tool) => allowedTools.includes(tool.function.name));
+    // Filter tools
+    return allTools.filter((tool) => tools.includes(tool.function.name));
   }
 
   public setIsLoading(isLoading: boolean): void {
@@ -267,11 +267,20 @@ export class AIManager {
     options: {
       recursionDepth?: number;
       model?: string;
-      allowedTools?: string[];
+      /** Rules for automatic tool approval (e.g., "Bash(git status:*)") */
+      allowedRules?: string[];
+      /** List of tools available to the AI (e.g., ["Bash", "Read"]) */
+      tools?: string[];
       maxTokens?: number;
     } = {},
   ): Promise<void> {
-    const { recursionDepth = 0, model, allowedTools, maxTokens } = options;
+    const {
+      recursionDepth = 0,
+      model,
+      allowedRules,
+      tools,
+      maxTokens,
+    } = options;
 
     // Only check isLoading for the initial call (recursionDepth === 0)
     if (recursionDepth === 0 && this.isLoading) {
@@ -302,8 +311,8 @@ export class AIManager {
     // Only set loading state for the initial call
     if (recursionDepth === 0) {
       this.setIsLoading(true);
-      if (allowedTools && allowedTools.length > 0) {
-        this.permissionManager?.addTemporaryRules(allowedTools);
+      if (allowedRules && allowedRules.length > 0) {
+        this.permissionManager?.addTemporaryRules(allowedRules);
       }
     }
 
@@ -327,7 +336,7 @@ export class AIManager {
       const currentMode = this.permissionManager?.getCurrentEffectiveMode(
         this.getModelConfig().permissionMode,
       );
-      const toolsConfig = this.getFilteredToolsConfig(allowedTools);
+      const toolsConfig = this.getFilteredToolsConfig(tools);
       let effectiveSystemPrompt = buildSystemPrompt(
         this.systemPrompt || DEFAULT_SYSTEM_PROMPT,
         toolsConfig,
@@ -662,7 +671,8 @@ export class AIManager {
           await this.sendAIMessage({
             recursionDepth: recursionDepth + 1,
             model,
-            allowedTools,
+            allowedRules,
+            tools,
             maxTokens,
           });
         }
@@ -705,7 +715,8 @@ export class AIManager {
             await this.sendAIMessage({
               recursionDepth: 0,
               model,
-              allowedTools,
+              allowedRules,
+              tools,
               maxTokens,
             });
           }

@@ -605,78 +605,89 @@ export class PermissionManager {
   }
 
   /**
-   * Check if a tool call is allowed by persistent rules
+   * Check if a tool call is allowed by persistent or temporary rules
    */
   private isAllowedByRule(context: ToolPermissionContext): boolean {
-    // Check temporary rules first (simple tool name match)
-    if (this.temporaryRules.includes(context.toolName)) {
-      return true;
-    }
+    const isAllowedByRuleList = (
+      ctx: ToolPermissionContext,
+      rules: string[],
+    ) => {
+      if (ctx.toolName === BASH_TOOL_NAME && ctx.toolInput?.command) {
+        const command = String(ctx.toolInput.command);
+        const parts = splitBashCommand(command);
+        if (parts.length === 0) return false;
 
-    if (context.toolName === BASH_TOOL_NAME && context.toolInput?.command) {
-      const command = String(context.toolInput.command);
-      const parts = splitBashCommand(command);
-      if (parts.length === 0) return false;
+        const workdir = ctx.toolInput?.workdir as string | undefined;
 
-      const workdir = context.toolInput?.workdir as string | undefined;
+        return parts.every((part) => {
+          const processedPart = stripRedirections(stripEnvVars(part));
 
-      return parts.every((part) => {
-        const processedPart = stripRedirections(stripEnvVars(part));
+          // Check for safe commands
+          const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
+          if (commandMatch) {
+            const cmd = commandMatch[1];
+            const args = commandMatch[2]?.trim() || "";
 
-        // Check for safe commands
-        const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
-        if (commandMatch) {
-          const cmd = commandMatch[1];
-          const args = commandMatch[2]?.trim() || "";
-
-          if (SAFE_COMMANDS.includes(cmd)) {
-            if (cmd === "pwd" || cmd === "true" || cmd === "false") {
-              return true;
-            }
-
-            if (workdir) {
-              // For cd and ls, check paths
-              const pathArgs =
-                (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
-                  (arg) => !arg.startsWith("-"),
-                ) || [];
-
-              if (pathArgs.length === 0) {
-                // cd or ls without arguments operates on current dir (workdir)
+            if (SAFE_COMMANDS.includes(cmd)) {
+              if (cmd === "pwd" || cmd === "true" || cmd === "false") {
                 return true;
               }
 
-              const allPathsSafe = pathArgs.every((pathArg) => {
-                // Remove quotes if present
-                const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
-                const { isInside } = this.isInsideSafeZone(cleanPath, workdir);
-                return isInside;
-              });
+              if (workdir) {
+                // For cd and ls, check paths
+                const pathArgs =
+                  (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
+                    (arg) => !arg.startsWith("-"),
+                  ) || [];
 
-              if (allPathsSafe) {
-                return true;
+                if (pathArgs.length === 0) {
+                  // cd or ls without arguments operates on current dir (workdir)
+                  return true;
+                }
+
+                const allPathsSafe = pathArgs.every((pathArg) => {
+                  // Remove quotes if present
+                  const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
+                  const { isInside } = this.isInsideSafeZone(
+                    cleanPath,
+                    workdir,
+                  );
+                  return isInside;
+                });
+
+                if (allPathsSafe) {
+                  return true;
+                }
               }
             }
           }
-        }
 
-        // Check if this specific part is allowed by any rule
-        // We create a temporary context with just this part of the command
-        const partContext = {
-          ...context,
-          toolInput: { ...context.toolInput, command: processedPart },
-        };
-        const allowedByRule = this.allowedRules.some((rule) =>
-          this.matchesRule(partContext, rule),
-        );
+          // Check if this specific part is allowed by any rule
+          // We create a temporary context with just this part of the command
+          const partContext = {
+            ...ctx,
+            toolInput: { ...ctx.toolInput, command: processedPart },
+          };
+          const allowedByRule = rules.some((rule) =>
+            this.matchesRule(partContext, rule),
+          );
 
-        if (allowedByRule) return true;
-        return !this.isRestrictedTool(context.toolName);
-      });
+          if (allowedByRule) return true;
+          return !this.isRestrictedTool(ctx.toolName);
+        });
+      }
+
+      // For other tools, check if any rule matches
+      return rules.some((rule) => this.matchesRule(ctx, rule));
+    };
+
+    // Check temporary rules first
+    if (isAllowedByRuleList(context, this.temporaryRules)) {
+      return true;
     }
 
-    // For other tools, check if any rule matches
-    return this.allowedRules.some((rule) => this.matchesRule(context, rule));
+    // Check persistent allowed rules
+    return isAllowedByRuleList(context, this.allowedRules);
   }
 
   /**

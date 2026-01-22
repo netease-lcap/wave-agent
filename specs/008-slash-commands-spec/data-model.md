@@ -186,7 +186,7 @@ echo "Current directory: $(pwd)"
 5. Execute any embedded bash commands
 6. Send processed content to AI manager
 7. **AI Cycle Start**: `PermissionManager.addTemporaryRules()` is called with the extracted `allowedTools`.
-8. **Tool Execution**: `PermissionManager.checkPermission()` matches against both `allowedRules` and `temporaryRules`.
+8. **Tool Execution**: `PermissionManager.checkPermission()` matches against both `allowedRules` and `temporaryRules`. For `Bash` commands, it ensures every part of a command chain is allowed.
 9. **AI Cycle End**: `PermissionManager.clearTemporaryRules()` is called in the `finally` block of `sendAIMessage`.
 
 ## Error States and Recovery

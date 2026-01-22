@@ -97,9 +97,10 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 
 **Acceptance Scenarios**:
 
-1. **Given** a slash command defined with `allowed-tools: Bash(git status:*)`, **When** the user triggers this command and the AI calls `Bash(git status)`, **Then** the tool should execute immediately without a confirmation prompt.
-2. **Given** a slash command with `allowed-tools`, **When** the AI calls a tool NOT in the list (e.g., `Write`), **Then** the system MUST prompt the user for confirmation as usual (unless it's already allowed in `settings.json`).
-3. **Given** an active slash command session with `allowed-tools`, **When** the AI finishes its task and the response cycle ends, **Then** all subsequent tool executions MUST require manual confirmation.
+1. **Given** a slash command defined with `allowed-tools: Bash(git commit:*)`, **When** the user triggers this command and the AI calls `Bash(git commit -m "test")`, **Then** the tool should execute immediately without a confirmation prompt because it matches the prefix.
+2. **Given** a slash command defined with `allowed-tools: Bash(git commit:*)`, **When** the user triggers this command and the AI calls `Bash(git commit -m "test" && rm -rf /)`, **Then** the tool MUST be blocked or require confirmation because the second part of the command chain is not allowed.
+3. **Given** a slash command with `allowed-tools`, **When** the AI calls a tool NOT in the list (e.g., `Write`), **Then** the system MUST prompt the user for confirmation as usual (unless it's already allowed in `settings.json`).
+4. **Given** an active slash command session with `allowed-tools`, **When** the AI finishes its task and the response cycle ends, **Then** all subsequent tool executions MUST require manual confirmation.
 
 ---
 

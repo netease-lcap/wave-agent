@@ -318,7 +318,7 @@ export class SubagentManager {
       // For "inherit" or undefined, resolvedModel remains undefined (uses AIManager default)
 
       const executeAI = instance.aiManager.sendAIMessage({
-        allowedTools,
+        tools: allowedTools,
         model: resolvedModel,
       });
 

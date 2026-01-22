@@ -17,12 +17,16 @@ The permission checking logic is centralized in `PermissionManager.isAllowedByRu
 ## Implementation Details
 
 ### Matching Logic
-For each rule in `allowedRules`:
-1. If the rule ends with `:*`:
-   - Extract the prefix (everything before the `:*`).
-   - Check if the current action string starts with that prefix.
-2. Otherwise:
-   - Perform an exact string match.
+For each rule in `allowedRules` or `temporaryRules`:
+1. If the tool is `Bash`:
+   - Split the command into individual parts (e.g., `cmd1 && cmd2`).
+   - For each part:
+     - Strip environment variables and redirections.
+     - Check if it's a "safe" command (e.g., `ls`, `cd`, `pwd`).
+     - If not safe, check if it matches any rule (exact or prefix).
+   - The entire command chain is allowed only if *every* part is allowed.
+2. For other tools:
+   - Perform an exact match or prefix match against the rule.
 
 ### Example
 Rule: `Bash(git commit:*)`
