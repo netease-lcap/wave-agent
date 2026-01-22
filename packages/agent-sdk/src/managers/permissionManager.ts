@@ -572,14 +572,11 @@ export class PermissionManager {
     // Handle Bash command rules
     if (toolName === BASH_TOOL_NAME) {
       const command = String(context.toolInput?.command || "");
-      const parts = splitBashCommand(command);
-      return parts.some((part) => {
-        const processedPart = stripRedirections(stripEnvVars(part));
-        if (pattern.endsWith(":*")) {
-          return processedPart.startsWith(pattern.slice(0, -2));
-        }
-        return processedPart === pattern;
-      });
+      const processedPart = stripRedirections(stripEnvVars(command));
+      if (pattern.endsWith(":*")) {
+        return processedPart.startsWith(pattern.slice(0, -2));
+      }
+      return processedPart === pattern;
     }
 
     // Handle path-based rules (e.g., "Read(**/*.env)")
@@ -673,6 +670,7 @@ export class PermissionManager {
           );
 
           if (allowedByRule) return true;
+
           return !this.isRestrictedTool(ctx.toolName);
         });
       }

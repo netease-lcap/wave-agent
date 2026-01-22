@@ -87,13 +87,17 @@ export function parseMarkdownFile(filePath: string): ParsedMarkdownFile {
         config.description = frontmatter.description;
       }
 
-      if (
-        frontmatter["allowed-tools"] &&
-        Array.isArray(frontmatter["allowed-tools"])
-      ) {
-        config.allowedTools = frontmatter["allowed-tools"].filter(
-          (item): item is string => typeof item === "string",
-        );
+      if (frontmatter["allowed-tools"]) {
+        if (Array.isArray(frontmatter["allowed-tools"])) {
+          config.allowedTools = frontmatter["allowed-tools"].filter(
+            (item): item is string => typeof item === "string",
+          );
+        } else if (typeof frontmatter["allowed-tools"] === "string") {
+          config.allowedTools = frontmatter["allowed-tools"]
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0);
+        }
       }
     }
 

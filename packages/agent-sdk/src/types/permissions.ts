@@ -72,4 +72,4 @@ export const RESTRICTED_TOOLS = [
 /** Type for restricted tool names */
 export type RestrictedTool = (typeof RESTRICTED_TOOLS)[number];
 
-export { AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption };
+export type { AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption };
