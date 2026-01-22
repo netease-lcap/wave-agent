@@ -1,81 +1,35 @@
 # Research: LSP Integration Support
 
-**Date**: 2025-12-24
-**Feature**: LSP Integration Support
-**Purpose**: Resolve technical implementation decisions and patterns for integrating Language Server Protocol support into Wave.
+**Decision**: Implement a custom `LspManager` for server lifecycle and a dedicated `lsp` tool for agent interaction.
 
-## LSP Server Management
-
-### Decision: LspManager for Lifecycle Control
-**Rationale**: Create a dedicated `LspManager` to handle the lifecycle of LSP servers, including starting, stopping, and communicating with them via JSON-RPC over stdio.
-
-**Key Responsibilities**:
-- Manage child processes for different LSP servers based on language.
-- Handle JSON-RPC message framing (Content-Length headers).
-- Maintain state of opened files (`textDocument/didOpen`).
-- Route requests and notifications to the appropriate server.
-- Implement graceful shutdown (`shutdown` request followed by `exit` notification).
-- Support for `goToImplementation`.
-- Automatic `prepareCallHierarchy` for call hierarchy operations.
+**Rationale**: 
+- LSP provides standardized code intelligence that is far superior to simple regex-based searching.
+- Managing servers within the agent's lifecycle ensures they are cleaned up properly.
+- A tool-based approach allows the agent to use code intelligence intentionally when needed.
 
 **Alternatives Considered**:
-- Using an existing LSP client library: Rejected to keep dependencies minimal and have full control over the communication layer, which is relatively simple for the required subset of LSP.
-- Running LSP servers as persistent background processes: Rejected in favor of managing them within the Agent's lifecycle to ensure they are cleaned up properly.
+- **Existing LSP Client Libraries**: Rejected to keep dependencies minimal and maintain full control over the communication layer.
+- **Persistent Background Servers**: Rejected to avoid orphaned processes; lifecycle management within the agent is safer.
+- **Automatic LSP Requests**: Rejected due to performance overhead; tool-based is more efficient.
 
-## Communication Protocol
+## Findings
 
-### Decision: JSON-RPC over Stdio
-**Rationale**: Most LSP servers support stdio-based communication. It is simple to implement using Node.js `child_process.spawn` and provides a reliable transport layer.
+### Server Management
+- Servers are spawned as child processes using `stdio` for communication.
+- `LspManager` tracks running processes by language ID.
+- Lazy loading: Servers start only when a file of that language is first accessed.
 
-**Implementation Details**:
-- Use `Content-Length` headers for message framing.
-- Implement a simple request/response mapping using unique IDs.
-- Support notifications (requests without IDs).
+### Communication
+- JSON-RPC 2.0 over stdio with `Content-Length` framing.
+- `textDocument/didOpen` must be sent before any requests for a specific file.
+- URI to file path conversion is necessary as LSP uses URIs (e.g., `file:///path/to/file`).
 
-## Agent Integration
+### Supported Operations
+- **Navigation**: `goToDefinition`, `findReferences`, `goToImplementation`.
+- **Inspection**: `hover`, `documentSymbol`, `workspaceSymbol`.
+- **Hierarchy**: `prepareCallHierarchy`, `incomingCalls`, `outgoingCalls`.
 
-### Decision: Dedicated `lspTool`
-**Rationale**: Expose LSP capabilities to the agent through a specialized tool. This allows the agent to proactively seek code intelligence when needed.
-
-**Supported Operations**:
-- `goToDefinition`: Find where a symbol is defined.
-- `hover`: Get documentation and type information.
-- `findReferences`: Find all usages of a symbol.
-- `documentSymbol`: List all symbols in a file.
-- `workspaceSymbol`: Search for symbols across the project.
-- `prepareCallHierarchy`, `incomingCalls`, `outgoingCalls`: Explore function call relationships.
-- `goToImplementation`: Find implementations of an interface or abstract method.
-
-**Alternatives Considered**:
-- Automatically triggering LSP requests on every agent action: Rejected due to potential performance overhead and noise. A tool-based approach is more intentional.
-
-## Configuration
-
-### Decision: `.lsp.json` and `plugin.json`
-**Rationale**: Allow users to configure LSP servers per project using `.lsp.json` and support plugin-provided LSP configurations.
-
-**Configuration Structure**:
-```json
-{
-  "typescript": {
-    "command": "typescript-language-server",
-    "args": ["--stdio"],
-    "extensionToLanguage": {
-      ".ts": "typescript",
-      ".tsx": "typescript",
-      ".js": "javascript",
-      ".jsx": "javascript"
-    }
-  }
-}
-```
-
-## Performance and Reliability
-
-### Decision: Lazy Loading and Cleanup
-**Rationale**: Start LSP servers only when requested for a specific file type. Ensure all processes are killed when the agent shuts down.
-
-**Strategies**:
-- `getProcessForFile` triggers server start if not already running.
-- `cleanup` method in `LspManager` to kill all managed processes.
-- Error handling for server crashes or communication failures.
+### Integration Points
+- **Agent**: Owns the `LspManager` instance and handles initialization/cleanup.
+- **ToolManager**: Injects `LspManager` into the `lsp` tool.
+- **Configuration**: Loaded from `.lsp.json` in the workspace root.

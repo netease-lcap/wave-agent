@@ -1,22 +1,30 @@
-# Memory Management Quickstart
+# Quickstart: Memory Management
 
-## How to Save Memory
+## Overview
+This feature adds a Memory Management system triggered by `#` to persist information across conversations.
 
-1.  **Type**: Start your message with `#`.
-    - Example: `# Always use functional components in React`
-2.  **Submit**: Press `Enter`.
-3.  **Choose**: A selector will appear. Choose **Project** to save it to the local `AGENTS.md`, or **User** to save it globally.
-4.  **Verify**: You can open `AGENTS.md` in your project or the global memory file to see the new entry.
+## Development Setup
+1. Build the `agent-sdk` to include the memory service:
+   ```bash
+   pnpm -F agent-sdk build
+   ```
+2. Run the CLI to test memory saving:
+   ```bash
+   pnpm -F code start
+   ```
 
-## How the Agent Uses Memory
+## Verification Steps
 
-You don't need to do anything for the agent to use the memory. Every time you send a message:
-1.  The agent reads your project's `AGENTS.md`.
-2.  The agent reads your global user memory.
-3.  It combines them and reminds itself of these rules before answering.
+### Unit Tests
+Run tests for the memory service and selector component:
+```bash
+pnpm -F agent-sdk test tests/services/memory.test.ts
+pnpm -F code test tests/components/MemoryTypeSelector.test.tsx
+```
 
-## Example Scenario
-
-- **User**: `# My name is Alice` (Saves to **User** memory)
-- **User**: `# This project uses Tailwind CSS` (Saves to **Project** memory)
-- **Later**: When you ask the agent to build a UI, it will know your name is Alice and that it should use Tailwind CSS for this specific project.
+### Manual Verification
+1. Start the agent.
+2. Type `# Use pnpm instead of npm` and press `Enter`.
+3. Select "Project" memory in the UI.
+4. Verify `AGENTS.md` is created/updated in the current directory.
+5. Ask the agent "What package manager should I use?" and verify it mentions pnpm.

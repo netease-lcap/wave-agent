@@ -1,49 +1,92 @@
 # Feature Specification: Session Management
 
-**Feature ID**: `004-session-management`
-**Status**: Implemented
+**Feature Branch**: `004-session-management`
 **Created**: 2026-01-21
+**Status**: Implemented
+**Input**: User description: "robust session management system designed for performance, scalability, and project-based organization"
 
-## Overview
+## User Scenarios & Testing *(mandatory)*
 
-Wave Agent uses a robust session management system designed for performance, scalability, and project-based organization. Sessions are stored as JSONL files, grouped by project directories, and optimized for fast listing and retrieval.
+### User Story 1 - Project-Based Organization (Priority: P1)
 
-## User Scenarios
-
-### Project-Based Organization
 As a developer working on multiple projects, I want my agent sessions to be organized by the project's working directory so that I can easily find and manage sessions relevant to my current work.
 
-### High-Performance Session Listing
+**Why this priority**: Core organizational requirement for a developer-focused agent.
+
+**Independent Test**: Create sessions in different directories and verify they are stored in separate subdirectories under `~/.wave/projects`.
+
+**Acceptance Scenarios**:
+
+1. **Given** a working directory, **When** a session is created, **Then** it MUST be stored in a subdirectory named after the encoded path.
+2. **Given** a long or complex path, **When** encoded, **Then** it MUST be filesystem-safe and limited to 200 characters.
+
+---
+
+### User Story 2 - High-Performance Session Listing (Priority: P1)
+
 As a user with hundreds of historical sessions, I want the session list to load quickly so that I don't experience lag when starting or switching sessions.
 
-### Subagent Session Separation
+**Why this priority**: Essential for a good user experience as the number of sessions grows.
+
+**Independent Test**: Generate 100 large session files and measure the time to list them; it should be near-instant because only the last line is read.
+
+**Acceptance Scenarios**:
+
+1. **Given** multiple session files, **When** listing sessions, **Then** the system MUST only read the last line of each file to extract metadata.
+
+---
+
+### User Story 3 - Subagent Session Separation (Priority: P2)
+
 As a developer using subagents, I want subagent sessions to be clearly identified and separated from main agent sessions to avoid cluttering the primary session history.
 
-## Requirements
+**Why this priority**: Improves clarity when working with complex multi-agent workflows.
 
-### Storage & Organization
-- **FR-001**: All session data MUST be stored in `~/.wave/projects`.
-- **FR-002**: Sessions MUST be grouped into subdirectories based on an encoded version of the project's working directory path.
-- **FR-003**: Working directory paths MUST be encoded to be filesystem-safe, resolving symbolic links and handling special characters.
-- **FR-004**: Encoded directory names MUST be limited to 200 characters, using a hash suffix for longer paths to ensure uniqueness and compatibility.
+**Independent Test**: Start a subagent and verify its session file is prefixed with `subagent-`.
 
-### File Format & Naming
-- **FR-005**: Sessions MUST be stored in JSONL (JSON Lines) format, with one JSON object per line representing a message.
-- **FR-006**: Main session files MUST be named using a UUID (e.g., `f47ac10b-58cc-4372-a567-0e02b2c3d479.jsonl`).
-- **FR-007**: Subagent session files MUST be prefixed with `subagent-` (e.g., `subagent-f47ac10b-58cc-4372-a567-0e02b2c3d479.jsonl`).
-- **FR-008**: Each message line MUST include a `timestamp` field in ISO 8601 format.
+**Acceptance Scenarios**:
 
-### Metadata & Performance
-- **FR-009**: Session files MUST NOT contain a separate metadata header line.
-- **FR-010**: Session metadata (ID, type, workdir) MUST be derived from the filename and directory structure.
-- **FR-011**: Dynamic metadata (last active time, total tokens) MUST be extracted from the last message in the JSONL file.
-- **FR-012**: Session listing MUST be optimized to only read the last line of each session file to minimize I/O.
+1. **Given** a subagent is created, **When** its session is saved, **Then** the filename MUST start with `subagent-`.
 
-### Lifecycle Management
-- **FR-013**: Sessions older than 14 days MUST be automatically cleaned up.
-- **FR-014**: Empty project directories MUST be removed during cleanup.
+---
 
-## Edge Cases
+### Edge Cases
+
 - **Permission Issues**: If the session directory cannot be created or written to, the system should fail gracefully with a clear error.
 - **Corrupted Files**: If a JSONL file contains invalid JSON, it should be skipped during listing and treated as non-existent during loading.
 - **Empty Sessions**: Files with no messages should use the file's modification time as the `lastActiveAt` timestamp.
+- **Path Encoding Collisions**: Use a hash suffix for long paths to ensure uniqueness even when truncated.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: All session data MUST be stored in `~/.wave/projects`.
+- **FR-002**: Sessions MUST be grouped into subdirectories based on an encoded version of the project's working directory path.
+- **FR-003**: Working directory paths MUST be encoded to be filesystem-safe, resolving symbolic links and handling special characters.
+- **FR-004**: Encoded directory names MUST be limited to 200 characters, using a hash suffix for longer paths.
+- **FR-005**: Sessions MUST be stored in JSONL (JSON Lines) format, with one JSON object per line representing a message.
+- **FR-006**: Main session files MUST be named using a UUID.
+- **FR-007**: Subagent session files MUST be prefixed with `subagent-`.
+- **FR-008**: Each message line MUST include a `timestamp` field in ISO 8601 format.
+- **FR-009**: Session metadata MUST be derived from the filename, directory structure, and the last message line.
+- **FR-010**: Session listing MUST be optimized to only read the last line of each session file to minimize I/O.
+- **FR-011**: Sessions older than 14 days MUST be automatically cleaned up.
+- **FR-012**: Empty project directories MUST be removed during cleanup.
+
+### Key Entities *(include if feature involves data)*
+
+- **Session**: A record of a conversation between a user and an agent.
+    - `id`: UUID of the session.
+    - `type`: 'main' or 'subagent'.
+    - `workdir`: The project directory associated with the session.
+    - `lastActiveAt`: Timestamp of the last message.
+    - `messages`: List of message objects.
+- **Project Directory**: A container for sessions belonging to a specific path.
+    - `path`: Original filesystem path.
+    - `encodedPath`: Filesystem-safe name used for the directory.
+
+## Assumptions
+
+- The user's home directory is accessible and writable.
+- JSONL is an efficient format for appending messages without rewriting the entire file.

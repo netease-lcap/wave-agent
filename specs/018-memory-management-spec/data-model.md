@@ -1,49 +1,30 @@
-# Memory Management Data Model
+# Data Model: Memory Management
 
-## Storage Format
+## Entities
 
-Both Project and User memory files use a simple Markdown format:
+### MemoryEntry
+A single piece of persisted information.
 
-```markdown
-# Memory (or # User Memory)
+| Field | Type | Description |
+|-------|------|-------------|
+| `content` | string | The text of the memory (e.g., "Use pnpm"). |
+| `type` | 'project' \| 'user' | Whether it's stored in `AGENTS.md` or global memory. |
+| `source` | string | The absolute path to the storage file. |
 
-This is the memory file...
+### MemorySelectorState
+The state of the memory type selection UI.
 
-- Entry 1
-- Entry 2
-- Entry 3
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `isActive` | boolean | Whether the selection UI is visible. |
+| `message` | string | The memory content to be saved (typed after `#`). |
+| `selectedIndex` | number | The currently highlighted option (Project/User). |
 
-## Memory Types
+## State Transitions
 
-```typescript
-type MemoryType = "project" | "user";
-```
-
-## Service Interfaces
-
-### `addMemory` (Project)
-```typescript
-export const addMemory = async (
-  message: string,
-  workdir: string,
-): Promise<void>;
-```
-
-### `addUserMemory` (Global)
-```typescript
-export const addUserMemory = async (message: string): Promise<void>;
-```
-
-### `getCombinedMemoryContent`
-```typescript
-export const getCombinedMemoryContent = async (
-  workdir: string,
-): Promise<string>;
-```
-
-## Constants
-
-- `USER_MEMORY_FILE`: Path to the global user memory file.
-- `DATA_DIRECTORY`: Path to the global configuration directory.
-- `AGENTS.md`: Hardcoded filename for project-level memory.
+1. **Idle**: Normal input mode.
+2. **Triggered**: User submits a message starting with `#`.
+3. **Selecting**: `MemoryTypeSelector` is shown, user chooses storage type.
+4. **Saving**: The entry is written to the selected file.
+5. **Persisted**: The entry is now available for future AI requests.
+6. **Cancelled**: User cancels the selection, memory is not saved.

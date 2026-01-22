@@ -1,66 +1,84 @@
-# Spec: LSP Integration Support
+# Feature Specification: LSP Integration Support
 
-## Overview
-LSP (Language Server Protocol) integration allows Wave to provide advanced code intelligence features to the agent, such as finding definitions, references, and hover information. This is achieved by managing LSP server processes and exposing their capabilities through a dedicated tool.
+**Feature Branch**: `039-lsp-integration-support`  
+**Created**: 2025-12-24  
+**Status**: Implemented  
+**Input**: User description: "LSP (Language Server Protocol) integration allows Wave to provide advanced code intelligence features to the agent, such as finding definitions, references, and hover information."
 
-## Architecture
+## User Scenarios & Testing *(mandatory)*
 
-### LspManager
-The `LspManager` is responsible for:
-- Loading LSP configurations from `.lsp.json`.
-- Spawning and managing LSP server child processes.
-- Implementing the JSON-RPC protocol over stdio.
-- Tracking opened files and sending `textDocument/didOpen` notifications.
-- Providing an `execute` method to perform LSP operations.
+### User Story 1 - Code Navigation (Priority: P1)
 
-### LspTool
-The `lspTool` is a built-in tool that the agent can use to interact with the `LspManager`. It translates agent requests into LSP operations and formats the results for the agent.
+As an AI agent, I want to find the definition of a symbol so that I can understand how it is implemented without manually searching through files.
 
-## Configuration
-LSP servers are configured in a `.lsp.json` file at the root of the workspace.
+**Why this priority**: Fundamental for code understanding and navigation, especially in large codebases.
 
-```json
-{
-  "languageId": {
-    "command": "executable-name",
-    "args": ["--arg1", "--arg2"],
-    "env": { "VAR": "VALUE" },
-    "extensionToLanguage": {
-      ".ext": "languageId"
-    },
-    "initializationOptions": {}
-  }
-}
-```
+**Independent Test**: Call the `lsp` tool with the `goToDefinition` operation on a known symbol and verify it returns the correct file path and line number.
 
-## Supported Operations
+**Acceptance Scenarios**:
 
-| Operation | LSP Method | Description |
-|-----------|------------|-------------|
-| `goToDefinition` | `textDocument/definition` | Finds the definition of the symbol at the given position. |
-| `hover` | `textDocument/hover` | Gets hover information (types, docs) for the symbol at the given position. |
-| `findReferences` | `textDocument/references` | Finds all references to the symbol at the given position. |
-| `documentSymbol` | `textDocument/documentSymbol` | Lists all symbols (classes, functions, etc.) in a document. |
-| `workspaceSymbol` | `workspace/symbol` | Searches for symbols across the entire workspace. |
-| `goToImplementation` | `textDocument/implementation` | Finds implementations of an interface or abstract method. |
-| `prepareCallHierarchy` | `textDocument/prepareCallHierarchy` | Prepares a call hierarchy for the symbol at the given position. |
-| `incomingCalls` | `callHierarchy/incomingCalls` | Finds all functions that call the current function. |
-| `outgoingCalls` | `callHierarchy/outgoingCalls` | Finds all functions called by the current function. |
+1. **Given** a valid symbol in a supported language, **When** the agent calls `goToDefinition`, **Then** the system MUST return the location (file and range) of the definition.
+2. **Given** a symbol with multiple definitions (e.g., overloaded methods), **When** the agent calls `goToDefinition`, **Then** the system SHOULD return all relevant locations.
 
-## Implementation Details
+---
 
-### JSON-RPC Framing
-Messages are sent and received with a `Content-Length` header:
-```
-Content-Length: ...\r\n
-\r\n
-{ "jsonrpc": "2.0", ... }
-```
+### User Story 2 - Type and Documentation Inspection (Priority: P1)
 
-### File Synchronization
-Before sending a request for a file, the `LspManager` ensures the file is "open" in the LSP server by sending a `textDocument/didOpen` notification if it hasn't been sent yet for that session.
+As an AI agent, I want to get hover information for a symbol so that I can see its type signature and documentation.
 
-### Error Handling
-- If no LSP server is configured for a file extension, the tool returns an error message.
-- If an LSP server fails to start or crashes, the error is logged and reported to the agent.
-- Timeouts are implemented for requests to prevent the agent from hanging.
+**Why this priority**: Helps the agent use APIs correctly and understand the purpose of variables and functions.
+
+**Independent Test**: Call the `lsp` tool with the `hover` operation on a function and verify it returns the documentation string and type info.
+
+**Acceptance Scenarios**:
+
+1. **Given** a symbol with documentation, **When** the agent calls `hover`, **Then** the system MUST return the documentation and type information.
+
+---
+
+### User Story 3 - Call Hierarchy Exploration (Priority: P2)
+
+As an AI agent, I want to see what functions call a specific method so that I can understand the impact of changing it.
+
+**Why this priority**: Essential for refactoring and understanding the flow of execution.
+
+**Independent Test**: Call `prepareCallHierarchy` followed by `incomingCalls` and verify it returns a list of caller functions.
+
+**Acceptance Scenarios**:
+
+1. **Given** a function that is called by other functions, **When** the agent calls `incomingCalls`, **Then** the system MUST return a list of all call sites.
+
+---
+
+### Edge Cases
+
+- **No Server Configured**: If a file extension has no mapped LSP server, the tool should return a clear error.
+- **Server Crash**: If the LSP server process dies, the `LspManager` should handle it gracefully and potentially restart it.
+- **Large Responses**: Some LSP responses (like `findReferences`) can be very large; the tool should truncate or format them to fit within the agent's context.
+- **Slow Servers**: Implement timeouts to prevent the agent from waiting indefinitely for a slow language server.
+
+## Requirements *(mandatory)*
+
+### Functional Requirements
+
+- **FR-001**: System MUST load LSP configurations from `.lsp.json`.
+- **FR-002**: System MUST manage the lifecycle of LSP server child processes.
+- **FR-003**: System MUST implement JSON-RPC over stdio for communication with servers.
+- **FR-004**: System MUST synchronize file state using `textDocument/didOpen`.
+- **FR-005**: System MUST provide a built-in `lsp` tool for the agent.
+- **FR-006**: System MUST support `goToDefinition`, `hover`, `findReferences`, `documentSymbol`, `workspaceSymbol`, `goToImplementation`, and call hierarchy operations.
+- **FR-007**: System MUST convert LSP URIs to local file paths.
+- **FR-008**: System MUST ensure all LSP processes are killed on agent shutdown.
+
+### Key Entities *(include if feature involves data)*
+
+- **LspManager**: Manages server processes and communication.
+- **LspTool**: The agent-facing tool interface.
+- **LspServerConfig**: Configuration for a specific language server.
+- **LspProcess**: Internal state of a running server.
+
+## Assumptions
+
+- The user has the necessary language server executables installed on their system.
+- The project contains a `.lsp.json` file if custom LSP servers are needed.
+- The terminal environment allows spawning child processes.

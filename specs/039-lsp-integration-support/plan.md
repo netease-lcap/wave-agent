@@ -1,31 +1,67 @@
-# Plan: LSP Integration Support
+# Implementation Plan: LSP Integration Support
 
-## Phase 1: Core Infrastructure
-1.  **Define Types**: Add LSP-related types to `packages/agent-sdk/src/types/index.ts`.
-2.  **Implement LspManager**:
-    *   Create `packages/agent-sdk/src/managers/lspManager.ts`.
-    *   Implement process spawning and management.
-    *   Implement JSON-RPC message framing and parsing.
-    *   Implement basic lifecycle methods (`initialize`, `cleanup`).
-3.  **Configuration Loading**: Implement logic to read `.lsp.json` from the workspace root.
+**Branch**: `039-lsp-integration-support` | **Date**: 2025-12-24 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/039-lsp-integration-support/spec.md`
 
-## Phase 2: Tool Implementation
-1.  **Create LspTool**:
-    *   Create `packages/agent-sdk/src/tools/lspTool.ts`.
-    *   Implement formatting logic for various LSP responses (Definition, Hover, References, etc.).
-    *   Handle URI to file path conversion.
-2.  **Register Tool**: Add `lspTool` to the `ToolManager`.
+## Summary
 
-## Phase 3: Agent Integration
-1.  **Integrate into Agent**:
-    *   Add `LspManager` instance to `Agent` class.
-    *   Initialize `LspManager` during agent startup.
-    *   Ensure proper cleanup of LSP processes on agent shutdown.
-2.  **Pass LspManager to ToolManager**: Update `ToolManager` to accept and provide `LspManager` to tools.
+Implement LSP (Language Server Protocol) support to provide the agent with advanced code intelligence. This involves creating an `LspManager` to handle server processes and an `lsp` tool to expose operations like `goToDefinition`, `hover`, and `findReferences`.
 
-## Phase 4: Testing and Refinement
-1.  **Unit Tests**:
-    *   Test `LspManager` with mocked child processes.
-    *   Test `lspTool` formatting logic.
-2.  **Integration Testing**: Verify end-to-end functionality with a real LSP server (e.g., `typescript-language-server`).
-3.  **Documentation**: Add usage instructions to `quickstart.md`.
+## Technical Context
+
+**Language/Version**: TypeScript 5.x
+**Primary Dependencies**: Node.js `child_process`, JSON-RPC
+**Storage**: `.lsp.json` configuration file
+**Testing**: Vitest
+**Target Platform**: CLI (Node.js)
+**Project Type**: Monorepo (agent-sdk)
+**Performance Goals**: Low-latency communication with LSP servers
+**Constraints**: Stdio-based communication; manual message framing
+**Scale/Scope**: Core code intelligence capability for the agent
+
+## Constitution Check
+
+- [x] **Package-First Architecture**: `LspManager` and `lsp` tool in `agent-sdk`.
+- [x] **TypeScript Excellence**: Strict typing for LSP protocol and configurations.
+- [x] **Test Alignment**: Unit tests for manager and tool logic.
+- [x] **Build Dependencies**: Minimal dependencies; manual JSON-RPC implementation.
+- [x] **Quality Gates**: Passes linting and type-checking.
+- [x] **Test-Driven Development**: Tests written for core LSP operations.
+- [x] **Type System Evolution**: New types for LSP configurations and processes.
+- [x] **Data Model Minimalism**: Focused on necessary LSP subset.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```
+specs/039-lsp-integration-support/
+├── plan.md              # This file
+├── research.md          # Phase 0 output
+├── data-model.md        # Phase 1 output
+├── quickstart.md        # Phase 1 output
+├── spec.md              # Feature specification
+└── tasks.md             # Phase 2 output
+```
+
+### Source Code (repository root)
+
+```
+packages/agent-sdk/
+├── src/
+│   ├── managers/
+│   │   └── lspManager.ts       # Server lifecycle and RPC
+│   ├── tools/
+│   │   └── lspTool.ts          # Agent-facing tool
+│   └── types/
+│       └── lsp.ts              # LSP-related types
+└── tests/
+    ├── managers/
+    │   └── lspManager.test.ts
+    └── tools/
+        └── lspTool.test.ts
+```
+
+## Complexity Tracking
+
+*No violations*

@@ -1,18 +1,31 @@
-# Bash History Selector Quickstart
+# Quickstart: Bash History Selector
 
-## How to use the Bash History Selector
+## Overview
+This feature adds an interactive Bash History Selector triggered by `!` for searching and re-executing commands.
 
-1.  **Trigger**: At the start of the input line, type `!`.
-2.  **Search**: Type to search through your previous commands.
-3.  **Navigate**: Use `Up` and `Down` arrows to browse the results.
-4.  **Execute**: Press `Enter` to run the highlighted command immediately.
-5.  **Edit**: Press `Tab` to bring the command into the input field for editing.
-6.  **Delete**: Press `Ctrl+d` to remove a command from your history.
-7.  **Cancel**: Press `Escape` to close the selector.
+## Development Setup
+1. Build the `agent-sdk` to include history utilities:
+   ```bash
+   pnpm -F agent-sdk build
+   ```
+2. Run the CLI to test the selector:
+   ```bash
+   pnpm -F code start
+   ```
 
-## Example
+## Verification Steps
 
-- Type: `!ls`
-- The selector shows recent `ls` commands.
-- Highlight `ls -la src/`.
-- Press `Enter` to run it, or `Tab` to change it to `ls -la tests/`.
+### Unit Tests
+Run tests for history search and the selector component:
+```bash
+pnpm -F agent-sdk test tests/utils/history.test.ts
+pnpm -F code test tests/components/BashHistorySelector.test.tsx
+```
+
+### Manual Verification
+1. Start the agent.
+2. Type `!` at the beginning of the input field.
+3. Verify the history selector appears with recent commands.
+4. Type a query to filter the history.
+5. Press `Enter` to execute a command immediately.
+6. Press `Tab` to insert a command for editing.

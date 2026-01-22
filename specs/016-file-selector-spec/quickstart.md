@@ -1,19 +1,31 @@
-# File Selector Quickstart
+# Quickstart: File Selector
 
-## How to use the File Selector
+## Overview
+This feature adds an interactive File Selector triggered by `@` for quick file and directory selection.
 
-1.  **Trigger**: In the terminal input, type `@`.
-2.  **Search**: Continue typing to filter the file list. For example, `@src/` will show files in the `src` directory.
-3.  **Navigate**: Use the `Up` and `Down` arrow keys to highlight the desired file or directory.
-4.  **Select**: Press `Enter` or `Tab` to insert the highlighted path into your input.
-5.  **Cancel**: Press `Escape` or backspace over the `@` to close the selector.
+## Development Setup
+1. Build the `agent-sdk` (if changes were made there):
+   ```bash
+   pnpm -F agent-sdk build
+   ```
+2. Run the CLI to test the selector:
+   ```bash
+   pnpm -F code start
+   ```
 
-## Example
+## Verification Steps
 
-If you want to mention a file in your message to the agent:
-- Type: `Please look at @`
-- The file selector opens.
-- Type: `pack`
-- Highlight `package.json`.
-- Press `Enter`.
-- The input becomes: `Please look at package.json `
+### Unit Tests
+Run tests for the `InputManager` and `FileSelector`:
+```bash
+pnpm -F code test tests/managers/InputManager.test.ts
+pnpm -F code test tests/components/FileSelector.test.tsx
+```
+
+### Manual Verification
+1. Start the agent.
+2. Type `@` in the input field.
+3. Verify the file selector appears with a list of files in the current directory.
+4. Type a query to filter the list.
+5. Use arrow keys to navigate and `Enter` to select a file.
+6. Verify the file path is inserted into the input field.
