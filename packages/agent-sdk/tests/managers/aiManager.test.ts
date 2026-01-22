@@ -221,7 +221,7 @@ describe("AIManager", () => {
   });
 
   describe("Temporary Permissions", () => {
-    it("should add temporary rules when allowedTools is provided", async () => {
+    it("should add temporary rules when allowedRules is provided", async () => {
       const mockPermissionManager = {
         addTemporaryRules: vi.fn(),
         clearTemporaryRules: vi.fn(),
@@ -247,7 +247,7 @@ describe("AIManager", () => {
       });
 
       await aiManagerWithPermissions.sendAIMessage({
-        allowedTools: ["Edit", "Bash"],
+        allowedRules: ["Edit", "Bash"],
       });
 
       expect(mockPermissionManager.addTemporaryRules).toHaveBeenCalledWith([
@@ -283,7 +283,7 @@ describe("AIManager", () => {
       });
 
       await aiManagerWithPermissions.sendAIMessage({
-        allowedTools: ["Edit"],
+        allowedRules: ["Edit"],
         recursionDepth: 1,
       });
 
@@ -313,7 +313,7 @@ describe("AIManager", () => {
       vi.mocked(callAgent).mockRejectedValue(new Error("AI service error"));
 
       await aiManagerWithPermissions.sendAIMessage({
-        allowedTools: ["Edit"],
+        allowedRules: ["Edit"],
       });
 
       expect(mockPermissionManager.addTemporaryRules).toHaveBeenCalled();

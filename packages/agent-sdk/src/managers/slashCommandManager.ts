@@ -333,7 +333,7 @@ export class SlashCommandManager {
       // Execute the AI conversation with custom configuration
       await this.aiManager.sendAIMessage({
         model: config?.model,
-        allowedTools: config?.allowedTools,
+        allowedRules: config?.allowedTools,
       });
     } catch (error) {
       this.logger?.error(

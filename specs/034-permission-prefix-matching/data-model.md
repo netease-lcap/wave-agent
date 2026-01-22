@@ -23,5 +23,6 @@ The context provided to the `PermissionManager` when checking permissions.
 
 ## Relationships
 
-- `PermissionManager` holds a list of `Permission Rule` strings (`allowedRules`).
-- `PermissionManager` receives a `Tool Permission Context` and matches it against the `allowedRules`.
+- `PermissionManager` holds a list of persistent `Permission Rule` strings (`allowedRules`) and temporary rules (`temporaryRules`).
+- `PermissionManager` receives a `Tool Permission Context` and matches it against both `allowedRules` and `temporaryRules`.
+- For `Bash` commands, the system ensures that *every* part of a command chain (e.g., `cmd1 && cmd2`) is allowed by at least one rule.
