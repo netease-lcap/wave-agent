@@ -430,9 +430,13 @@ export class AIManager {
 
       // Log finish reason and response headers if available
       if (result.finish_reason) {
-        this.logger?.debug(
-          `AI response finished with reason: ${result.finish_reason}`,
-        );
+        // Log warning headers when finish reason is length
+        if (result.finish_reason === "length") {
+          this.logger?.warn(
+            "AI response truncated due to length limit. Response headers:",
+            result.response_headers,
+          );
+        }
       }
       if (
         result.response_headers &&
