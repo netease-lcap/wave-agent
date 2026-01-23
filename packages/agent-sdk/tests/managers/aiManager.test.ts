@@ -186,6 +186,25 @@ describe("AIManager", () => {
       );
     });
 
+    it("should log warning when finish reason is length", async () => {
+      const { callAgent } = await import("../../src/services/aiService.js");
+      const mockHeaders = { "x-test-header": "test-value" };
+      vi.mocked(callAgent).mockResolvedValue({
+        content: "Truncated response",
+        finish_reason: "length",
+        response_headers: mockHeaders,
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [],
+      });
+
+      await aiManager.sendAIMessage();
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        "AI response truncated due to length limit. Response headers:",
+        mockHeaders,
+      );
+    });
+
     it("should save session during each recursion regardless of tool execution results", async () => {
       // Mock callAgent to return tool calls
       const { callAgent } = await import("../../src/services/aiService.js");
