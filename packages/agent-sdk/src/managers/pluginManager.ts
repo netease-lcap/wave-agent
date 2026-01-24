@@ -7,6 +7,7 @@ import { LspManager } from "./lspManager.js";
 import { McpManager } from "./mcpManager.js";
 import { SlashCommandManager } from "./slashCommandManager.js";
 import { MarketplaceService } from "../services/MarketplaceService.js";
+import { ConfigurationService } from "../services/configurationService.js";
 
 export interface PluginManagerOptions {
   workdir: string;
@@ -17,6 +18,7 @@ export interface PluginManagerOptions {
   mcpManager?: McpManager;
   slashCommandManager?: SlashCommandManager;
   enabledPlugins?: Record<string, boolean>;
+  configurationService?: ConfigurationService;
 }
 
 export class PluginManager {
@@ -29,6 +31,7 @@ export class PluginManager {
   private mcpManager?: McpManager;
   private slashCommandManager?: SlashCommandManager;
   private enabledPlugins: Record<string, boolean>;
+  private configurationService?: ConfigurationService;
 
   constructor(options: PluginManagerOptions) {
     this.workdir = options.workdir;
@@ -39,6 +42,7 @@ export class PluginManager {
     this.mcpManager = options.mcpManager;
     this.slashCommandManager = options.slashCommandManager;
     this.enabledPlugins = options.enabledPlugins || {};
+    this.configurationService = options.configurationService;
   }
 
   /**
@@ -53,6 +57,13 @@ export class PluginManager {
    */
   private async loadInstalledPlugins(): Promise<void> {
     try {
+      // If configurationService is provided, use it to get the latest merged enabled plugins
+      if (this.configurationService) {
+        this.enabledPlugins = this.configurationService.getMergedEnabledPlugins(
+          this.workdir,
+        );
+      }
+
       const marketplaceService = new MarketplaceService();
       const installedRegistry = await marketplaceService.getInstalledPlugins();
 
