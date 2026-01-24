@@ -604,6 +604,9 @@ export class Agent {
       });
 
       // Initialize plugins
+      const mergedEnabledPlugins =
+        this.configurationService.getMergedEnabledPlugins(this.workdir);
+      this.pluginManager.updateEnabledPlugins(mergedEnabledPlugins);
       await this.pluginManager.loadPlugins(this.options.plugins || []);
     } catch (error) {
       this.logger?.error("Failed to initialize managers and tools:", error);
