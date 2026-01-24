@@ -5,6 +5,7 @@ import {
   ChatCompletion,
 } from "openai/resources.js";
 import { GatewayConfig } from "../types/config.js";
+import { logger } from "./globalLogger.js";
 
 type CreateParams =
   | ChatCompletionCreateParamsNonStreaming
@@ -117,6 +118,17 @@ export class OpenAIClient {
       ) as Error & { status?: number; body?: unknown };
       error.status = response.status;
       error.body = errorBody;
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+      logger.error("OpenAI API Error:", {
+        status: response.status,
+        statusText: response.statusText,
+        requestHeaders: headers,
+        responseHeaders,
+        errorBody,
+      });
       throw error;
     }
 
