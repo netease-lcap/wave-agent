@@ -203,10 +203,11 @@ describe("PluginManager", () => {
       );
     });
 
-    it("should filter out disabled plugins from marketplace", async () => {
+    it("should only load explicitly enabled plugins from marketplace", async () => {
       const installedPlugins = [
         { name: "plugin1", marketplace: "m1", cachePath: "/path/1" },
         { name: "plugin2", marketplace: "m1", cachePath: "/path/2" },
+        { name: "plugin3", marketplace: "m1", cachePath: "/path/3" },
       ];
 
       vi.mocked(MarketplaceService).mockImplementation(() => {
@@ -218,14 +219,20 @@ describe("PluginManager", () => {
       });
 
       pluginManager.updateEnabledPlugins({
-        "plugin1@m1": false,
-        "plugin2@m1": true,
+        "plugin1@m1": true,
+        "plugin2@m1": false,
+        // plugin3@m1 is not mentioned
       });
 
       vi.mocked(PluginLoader.loadManifest).mockImplementation(
         async (p) =>
           ({
-            name: p === "/path/1" ? "plugin1" : "plugin2",
+            name:
+              p === "/path/1"
+                ? "plugin1"
+                : p === "/path/2"
+                  ? "plugin2"
+                  : "plugin3",
             version: "1.0.0",
             description: "desc",
           }) as PluginManifest,
@@ -236,11 +243,17 @@ describe("PluginManager", () => {
       await pluginManager.loadPlugins([]);
 
       expect(pluginManager.getPlugins()).toHaveLength(1);
-      expect(pluginManager.getPlugin("plugin2")).toBeDefined();
-      expect(pluginManager.getPlugin("plugin1")).toBeUndefined();
+      expect(pluginManager.getPlugin("plugin1")).toBeDefined();
+      expect(pluginManager.getPlugin("plugin2")).toBeUndefined();
+      expect(pluginManager.getPlugin("plugin3")).toBeUndefined();
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining(
-          "Plugin plugin1@m1 is disabled via configuration",
+          "Plugin plugin2@m1 is not enabled via configuration",
+        ),
+      );
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Plugin plugin3@m1 is not enabled via configuration",
         ),
       );
     });

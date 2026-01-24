@@ -58,8 +58,10 @@ export class PluginManager {
 
       for (const p of installedRegistry.plugins) {
         const pluginId = `${p.name}@${p.marketplace}`;
-        if (this.enabledPlugins[pluginId] === false) {
-          this.logger?.info(`Plugin ${pluginId} is disabled via configuration`);
+        if (this.enabledPlugins[pluginId] !== true) {
+          this.logger?.info(
+            `Plugin ${pluginId} is not enabled via configuration`,
+          );
           continue;
         }
         await this.loadSinglePlugin(p.cachePath);
