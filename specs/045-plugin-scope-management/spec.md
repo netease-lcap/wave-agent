@@ -18,7 +18,7 @@ As a developer working on multiple projects, I want to enable certain plugins gl
 **Acceptance Scenarios**:
 
 1. **Given** a plugin is installed globally, **When** I run `wave plugin disable <plugin> -s project` in a project directory, **Then** the plugin is disabled for that project and its commands are no longer available there.
-2. **Given** a plugin is disabled globally, **When** I run `wave plugin enable <plugin> -s local` in the current directory, **Then** the plugin is enabled only for the current directory.
+2. **Given** a plugin is installed but not enabled, **When** I run `wave plugin enable <plugin> -s local` in the current directory, **Then** the plugin is enabled only for the current directory.
 3. **Given** multiple scopes have conflicting settings for a plugin, **When** the system loads plugins, **Then** it MUST respect the priority: `local` > `project` > `user`.
 
 ---
@@ -47,7 +47,7 @@ As a user, I want to install a plugin and have it automatically enabled at a spe
 
 ## Assumptions
 
-- Installed plugins are **ENABLED** by default if they are not explicitly mentioned in any `enabledPlugins` configuration.
+- Installed plugins are **DISABLED** by default if they are not explicitly mentioned in any `enabledPlugins` configuration.
 - The `enabledPlugins` setting in `settings.json` takes precedence over the mere presence of the plugin in the cache.
 - `settings.json` is the primary location for these settings, following the pattern of other Wave configurations.
 
