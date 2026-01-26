@@ -24,8 +24,10 @@ function safeToolArguments(args: string): string {
     return args;
   } catch (error) {
     logger.error(`Invalid tool arguments: ${args}`, error);
-    // If not valid JSON, return a fallback empty object
-    return "{}";
+    // If not valid JSON, return a fallback empty object with the original string as a comment or property
+    return JSON.stringify({
+      invalid_arguments: args,
+    });
   }
 }
 
