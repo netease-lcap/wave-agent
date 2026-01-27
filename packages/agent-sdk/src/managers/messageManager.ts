@@ -92,6 +92,7 @@ export class MessageManager {
   private callbacks: MessageManagerCallbacks;
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
+  private filesInContext: Set<string> = new Set(); // Track files mentioned in the conversation
   private sessionType: "main" | "subagent";
   private subagentType?: string;
 
@@ -131,6 +132,13 @@ export class MessageManager {
 
   public getWorkdir(): string {
     return this.workdir;
+  }
+
+  /**
+   * Returns all files mentioned in the current conversation context.
+   */
+  public getFilesInContext(): string[] {
+    return Array.from(this.filesInContext);
   }
 
   public getSessionDir(): string {
@@ -179,6 +187,7 @@ export class MessageManager {
 
   public setMessages(messages: Message[]): void {
     this.messages = [...messages];
+    this.updateFilesInContext(messages);
     this.callbacks.onMessagesChange?.([...messages]);
   }
 
@@ -244,6 +253,7 @@ export class MessageManager {
   public initializeFromSession(sessionData: SessionData): void {
     this.setSessionId(sessionData.id);
     this.setMessages([...sessionData.messages]);
+    this.updateFilesInContext(sessionData.messages);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
 
     // Extract user input history from session messages
@@ -631,5 +641,62 @@ export class MessageManager {
   public removeLastUserMessage(): void {
     const newMessages = removeLastUserMessage(this.messages);
     this.setMessages(newMessages);
+  }
+
+  /**
+   * Updates the set of files mentioned in the conversation.
+   */
+  private updateFilesInContext(messages: Message[]): void {
+    this.filesInContext.clear();
+    for (const message of messages) {
+      for (const block of message.blocks) {
+        if (block.type === "tool") {
+          // Extract file paths from common tool parameters
+          if (block.parameters) {
+            try {
+              const params = JSON.parse(block.parameters) as Record<
+                string,
+                unknown
+              >;
+              const paths = this.extractPathsFromParams(params);
+              for (const p of paths) {
+                this.filesInContext.add(p);
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private extractPathsFromParams(params: Record<string, unknown>): string[] {
+    const paths: string[] = [];
+    if (typeof params !== "object" || params === null) return paths;
+
+    // Common parameter names for file paths
+    const pathKeys = [
+      "path",
+      "filePath",
+      "file_path",
+      "target_file",
+      "targetFile",
+    ];
+    for (const key of pathKeys) {
+      if (typeof params[key] === "string") {
+        paths.push(params[key]);
+      }
+    }
+
+    // Handle arrays of paths (e.g. in Glob or Grep results if we ever track those,
+    // but here we track inputs to tools)
+    if (Array.isArray(params.files)) {
+      for (const f of params.files) {
+        if (typeof f === "string") paths.push(f);
+      }
+    }
+
+    return paths;
   }
 }
