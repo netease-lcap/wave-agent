@@ -1,7 +1,12 @@
 {
   "name": "wave-code",
-  "version": "0.0.17",
+  "version": "0.0.18-alpha.0",
   "description": "CLI-based code assistant powered by AI, built with React and Ink",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/netease-lcap/wave-agent.git",
+    "directory": "packages/code"
+  },
   "keywords": [
     "ai",
     "cli",
