@@ -1,6 +1,6 @@
 {
   "env": {
-    "AIGW_MODEL": "gemini-3-flash"
+    "WAVE_MODEL": "gemini-3-flash"
   },
   "permissions": {
     "defaultMode": "acceptEdits",
