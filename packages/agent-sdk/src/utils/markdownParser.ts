@@ -9,7 +9,7 @@ interface ParsedMarkdownFile {
 /**
  * Parse YAML frontmatter from markdown content
  */
-function parseFrontmatter(content: string): {
+export function parseFrontmatter(content: string): {
   frontmatter?: Record<string, unknown>;
   content: string;
 } {
@@ -34,8 +34,15 @@ function parseFrontmatter(content: string): {
 
       // Check if it's a list item
       if (trimmedLine.startsWith("-") && currentKey) {
-        const value = trimmedLine.slice(1).trim();
+        let value = trimmedLine.slice(1).trim();
         if (value) {
+          // Remove surrounding quotes if present
+          if (
+            (value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))
+          ) {
+            value = value.slice(1, -1);
+          }
           if (!Array.isArray(frontmatter[currentKey])) {
             frontmatter[currentKey] = [];
           }
@@ -52,7 +59,13 @@ function parseFrontmatter(content: string): {
 
       currentKey = key;
       if (value) {
-        frontmatter[key] = value;
+        // Remove surrounding quotes if present
+        const unquotedValue =
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+            ? value.slice(1, -1)
+            : value;
+        frontmatter[key] = unquotedValue;
       }
     }
 

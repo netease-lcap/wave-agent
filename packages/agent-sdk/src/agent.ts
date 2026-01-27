@@ -18,6 +18,7 @@ import {
 } from "./managers/backgroundBashManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
+import { HookManager } from "./managers/hookManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
 import { PlanManager } from "./managers/planManager.js";
 import type {
@@ -36,7 +37,7 @@ import type {
   PermissionMode,
   PermissionCallback,
 } from "./types/index.js";
-import { HookManager } from "./managers/hookManager.js";
+import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
@@ -118,6 +119,7 @@ export class Agent {
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
   private hookManager: HookManager; // Add hooks manager instance
+  private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private configurationService: ConfigurationService; // Add configuration service
   private workdir: string; // Working directory
@@ -264,6 +266,11 @@ export class Agent {
       callbacks,
       workdir: this.workdir,
       logger: this.logger,
+    });
+
+    // Initialize memory rule manager
+    this.memoryRuleManager = new MemoryRuleManager({
+      workdir: this.workdir,
     });
 
     // Create a wrapper for canUseTool that triggers notification hooks
@@ -470,7 +477,7 @@ export class Agent {
     return this._userMemoryContent;
   }
 
-  /** Get combined memory content (project + user) */
+  /** Get combined memory content (project + user + modular rules) */
   public get combinedMemory(): string {
     let combined = "";
     if (this._projectMemoryContent.trim()) {
@@ -482,6 +489,17 @@ export class Agent {
       }
       combined += this._userMemoryContent;
     }
+
+    // Add modular memory rules
+    const filesInContext = this.messageManager.getFilesInContext();
+    const activeRules = this.memoryRuleManager.getActiveRules(filesInContext);
+    if (activeRules.length > 0) {
+      if (combined) {
+        combined += "\n\n";
+      }
+      combined += activeRules.map((r) => r.content).join("\n\n");
+    }
+
     return combined;
   }
 
@@ -648,6 +666,13 @@ export class Agent {
 
     // Resolve and validate configuration after loading settings.json
     this.resolveAndValidateConfig();
+
+    // Discover modular memory rules
+    try {
+      await this.memoryRuleManager.discoverRules();
+    } catch (error) {
+      this.logger?.error("Failed to discover memory rules:", error);
+    }
 
     // Set global logger for SDK-wide access after validation
     setGlobalLogger(this.logger || null);
