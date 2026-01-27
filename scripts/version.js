@@ -37,6 +37,10 @@ try {
   execSync('git rev-parse --is-inside-work-tree', { stdio: 'ignore' });
   execSync(`git add ${pkgPath}`, { stdio: 'inherit' });
   execSync(`git commit -m "chore: bump ${pkg.name} to v${newVersion}"`, { stdio: 'inherit' });
+  const tagName = `v${newVersion}-${pkg.name}`;
+  execSync(`git tag ${tagName}`, { stdio: 'inherit' });
+  console.log(`Created tag: ${tagName}`);
+  console.log(`\nTo publish this version, run:\n  git push origin ${tagName}\n`);
 } catch (error) {
   // Ignore errors if git is not available or nothing to commit
 }
