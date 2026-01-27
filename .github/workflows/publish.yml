@@ -29,6 +29,6 @@ jobs:
           cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run build --if-present
+      - run: pnpm build
       - run: pnpm test
       - run: pnpm -r publish --no-git-checks --provenance --access public
