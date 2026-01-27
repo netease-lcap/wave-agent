@@ -19,6 +19,7 @@ import {
 } from "../utils/markdownParser.js";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { INIT_PROMPT } from "../constants/prompts.js";
 
 const execAsync = promisify(exec);
 
@@ -58,6 +59,24 @@ export class SlashCommandManager {
         this.messageManager.clearMessages();
         // Clear terminal screen
         process.stdout.write("\x1Bc");
+      },
+    });
+
+    // Register built-in init command
+    this.registerCommand({
+      id: "init",
+      name: "init",
+      description:
+        "Initialize repository for AI agents by generating AGENTS.md",
+      handler: async () => {
+        // Add custom command message to show the command being executed
+        this.messageManager.addUserMessage({
+          content: "/init",
+          customCommandContent: INIT_PROMPT,
+        });
+
+        // Execute the AI conversation with the init prompt
+        await this.aiManager.sendAIMessage();
       },
     });
   }

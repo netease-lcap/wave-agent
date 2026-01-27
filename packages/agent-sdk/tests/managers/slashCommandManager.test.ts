@@ -64,6 +64,17 @@ describe("SlashCommandManager", () => {
       const nonExistentCommand = slashCommandManager.getCommand("nonexistent");
       expect(nonExistentCommand).toBeUndefined();
     });
+
+    it("should have a built-in init command", () => {
+      const commands = slashCommandManager.getCommands();
+
+      const initCommand = commands.find((cmd) => cmd.id === "init");
+      expect(initCommand).toBeDefined();
+      expect(initCommand?.name).toBe("init");
+      expect(initCommand?.description).toBe(
+        "Initialize repository for AI agents by generating AGENTS.md",
+      );
+    });
   });
 
   describe("parseAndValidateSlashCommand", () => {
