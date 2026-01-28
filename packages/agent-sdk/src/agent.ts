@@ -343,7 +343,7 @@ export class Agent {
         onSubagentMessagesChange: callbacks.onSubagentMessagesChange,
       }, // Pass subagent callbacks for forwarding
       logger: this.logger,
-      getGatewayConfig: () => this.getGatewayConfig(),
+      getGatewayConfig: this.getGatewayConfig,
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),
       hookManager: this.hookManager,
@@ -367,7 +367,7 @@ export class Agent {
       workdir: this.workdir,
       systemPrompt: this.systemPrompt,
       stream: this.stream, // Pass streaming mode flag
-      getGatewayConfig: () => this.getGatewayConfig(),
+      getGatewayConfig: this.getGatewayConfig,
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),
       getEnvironmentVars: () => this.configurationService.getEnvironmentVars(), // Provide access to configuration environment variables
