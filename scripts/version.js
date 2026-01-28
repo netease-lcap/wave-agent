@@ -6,12 +6,19 @@ const type = process.argv[2] || 'patch';
 const pkgPath = path.resolve(process.cwd(), 'package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 const oldVersion = pkg.version;
-const parts = oldVersion.split('.').map(n => parseInt(n, 10));
+const versionMatch = oldVersion.match(/^(\d+)\.(\d+)\.(\d+)(.*)$/);
 
-if (parts.length !== 3 || parts.some(isNaN)) {
+if (!versionMatch) {
   console.error(`Invalid version format: ${oldVersion}`);
   process.exit(1);
 }
+
+const parts = [
+  parseInt(versionMatch[1], 10),
+  parseInt(versionMatch[2], 10),
+  parseInt(versionMatch[3], 10)
+];
+const suffix = versionMatch[4];
 
 if (type === 'major') {
   parts[0]++;
@@ -27,7 +34,7 @@ if (type === 'major') {
   process.exit(1);
 }
 
-const newVersion = parts.join('.');
+const newVersion = parts.join('.') + (type === 'patch' ? suffix : '');
 pkg.version = newVersion;
 
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
