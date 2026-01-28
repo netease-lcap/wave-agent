@@ -16,9 +16,9 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "format": "prettier --write .",
-    "version:patch": "pnpm -r version:patch",
-    "version:minor": "pnpm -r version:minor",
-    "version:major": "pnpm -r version:major",
+    "version:patch": "node scripts/version.js patch all",
+    "version:minor": "node scripts/version.js minor all",
+    "version:major": "node scripts/version.js major all",
     "prepare": "husky"
   },
   "devDependencies": {
