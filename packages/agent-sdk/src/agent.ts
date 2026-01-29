@@ -226,11 +226,14 @@ export class Agent {
     // Initialize configuration service
     this.configurationService = new ConfigurationService();
 
+    // eslint-disable-next-line no-warning-comments
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
     const getDefaultGatewayConfig = this.getGatewayConfig.bind(this);
     function getGatewayConfigProxy(this: AIManager) {
       return options.customGatewayConfig
-        ? options.customGatewayConfig(getDefaultGatewayConfig, this)
-        : getDefaultGatewayConfig.call(this);
+        ? options.customGatewayConfig.call(self, getDefaultGatewayConfig, this)
+        : getDefaultGatewayConfig();
     }
 
     this.logger = logger; // Save the passed logger
