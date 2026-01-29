@@ -37,3 +37,4 @@ This is the AI assistant's memory file, recording important information and cont
 - Before make any spec or plan, research the codebase to ensure you have a comprehensive understanding of user requirements
 - Focus on core functionality that's actually being used - remove unused options, methods, and interfaces to keep code lean and maintainable
 - Always ensure code changes pass all tests, type checks, and linting before considering implementation complete by running `pnpm test`, `pnpm run type-check`, and `pnpm lint`
+- `../wave-plugins-official` is the path of official wave plugins
