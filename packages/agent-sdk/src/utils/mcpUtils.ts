@@ -27,6 +27,20 @@ function cleanSchema(schema: unknown): unknown {
     ) {
       continue;
     }
+
+    // Handle type as an array (e.g. ["string", "null"])
+    if (key === "type" && Array.isArray(obj[key])) {
+      const types = obj[key] as string[];
+      const nonNullTypes = types.filter((t) => t !== "null");
+      if (nonNullTypes.length > 0) {
+        newSchema["type"] = nonNullTypes[0];
+      }
+      if (types.includes("null")) {
+        newSchema["nullable"] = true;
+      }
+      continue;
+    }
+
     newSchema[key] = cleanSchema(obj[key]);
   }
   return newSchema;
