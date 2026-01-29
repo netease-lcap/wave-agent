@@ -222,6 +222,11 @@ export class Agent {
     // Initialize configuration service
     this.configurationService = new ConfigurationService();
 
+    const methodGetGatewayConfig = this.getGatewayConfig.bind(this);
+    this.getGatewayConfig = function getGatewayConfig() {
+      return methodGetGatewayConfig();
+    };
+
     this.logger = logger; // Save the passed logger
     this.systemPrompt = systemPrompt; // Save custom system prompt
     this.stream = stream; // Save streaming mode flag
