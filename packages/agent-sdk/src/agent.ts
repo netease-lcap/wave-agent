@@ -65,6 +65,10 @@ export interface AgentOptions {
   defaultHeaders?: Record<string, string>;
   fetchOptions?: ClientOptions["fetchOptions"];
   fetch?: ClientOptions["fetch"];
+  customGatewayConfig?: (
+    getDefaultGatewayConfig: () => GatewayConfig,
+    aiManager: AIManager,
+  ) => GatewayConfig;
   agentModel?: string;
   fastModel?: string;
   maxInputTokens?: number;
@@ -222,10 +226,12 @@ export class Agent {
     // Initialize configuration service
     this.configurationService = new ConfigurationService();
 
-    const methodGetGatewayConfig = this.getGatewayConfig.bind(this);
-    this.getGatewayConfig = function getGatewayConfig() {
-      return methodGetGatewayConfig();
-    };
+    const getDefaultGatewayConfig = this.getGatewayConfig.bind(this);
+    function getGatewayConfigProxy(this: AIManager) {
+      return options.customGatewayConfig
+        ? options.customGatewayConfig(getDefaultGatewayConfig, this)
+        : getDefaultGatewayConfig.call(this);
+    }
 
     this.logger = logger; // Save the passed logger
     this.systemPrompt = systemPrompt; // Save custom system prompt
@@ -348,7 +354,7 @@ export class Agent {
         onSubagentMessagesChange: callbacks.onSubagentMessagesChange,
       }, // Pass subagent callbacks for forwarding
       logger: this.logger,
-      getGatewayConfig: this.getGatewayConfig,
+      getGatewayConfig: getGatewayConfigProxy,
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),
       hookManager: this.hookManager,
@@ -372,7 +378,7 @@ export class Agent {
       workdir: this.workdir,
       systemPrompt: this.systemPrompt,
       stream: this.stream, // Pass streaming mode flag
-      getGatewayConfig: this.getGatewayConfig,
+      getGatewayConfig: getGatewayConfigProxy,
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),
       getEnvironmentVars: () => this.configurationService.getEnvironmentVars(), // Provide access to configuration environment variables
