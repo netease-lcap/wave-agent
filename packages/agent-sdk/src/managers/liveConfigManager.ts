@@ -10,6 +10,7 @@
 import { existsSync } from "fs";
 import type { Logger } from "../types/index.js";
 import type { PermissionMode } from "../types/permissions.js";
+import type { Scope } from "../types/configuration.js";
 import {
   FileWatcherService,
   type FileWatchEvent,
@@ -452,7 +453,7 @@ export class LiveConfigManager {
 
   private async handleFileChange(
     event: FileWatchEvent,
-    source: "user" | "project",
+    source: Scope,
   ): Promise<void> {
     this.logger?.debug(
       `Live Config: File ${event.type} detected for ${source} config: ${event.path}`,

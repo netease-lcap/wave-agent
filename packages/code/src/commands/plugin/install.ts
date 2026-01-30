@@ -3,11 +3,12 @@ import {
   ConfigurationService,
   PluginManager,
   PluginScopeManager,
+  Scope,
 } from "wave-agent-sdk";
 
 export async function installPluginCommand(argv: {
   plugin: string;
-  scope?: "user" | "project" | "local";
+  scope?: Scope;
 }) {
   const marketplaceService = new MarketplaceService();
   const workdir = process.cwd();

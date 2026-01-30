@@ -5,6 +5,7 @@ import {
   listSessions,
   getSessionFilePath,
   getFirstMessageContent,
+  Scope,
 } from "wave-agent-sdk";
 
 // Export main function for external use
@@ -134,7 +135,7 @@ export async function main() {
               await installPluginCommand(
                 argv as {
                   plugin: string;
-                  scope?: "user" | "project" | "local";
+                  scope?: Scope;
                 },
               );
             },
@@ -174,7 +175,7 @@ export async function main() {
               await enablePluginCommand(
                 argv as {
                   plugin: string;
-                  scope: "user" | "project" | "local";
+                  scope: Scope;
                 },
               );
             },
@@ -203,7 +204,7 @@ export async function main() {
               await disablePluginCommand(
                 argv as {
                   plugin: string;
-                  scope: "user" | "project" | "local";
+                  scope: Scope;
                 },
               );
             },

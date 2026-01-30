@@ -1,6 +1,7 @@
 import { ConfigurationService } from "../services/configurationService.js";
 import { PluginManager } from "./pluginManager.js";
 import { Logger } from "../types/index.js";
+import { Scope } from "../types/configuration.js";
 
 export interface PluginScopeManagerOptions {
   workdir: string;
@@ -25,10 +26,7 @@ export class PluginScopeManager {
   /**
    * Enable a plugin in the specified scope
    */
-  async enablePlugin(
-    scope: "user" | "project" | "local",
-    pluginId: string,
-  ): Promise<void> {
+  async enablePlugin(scope: Scope, pluginId: string): Promise<void> {
     await this.configurationService.updateEnabledPlugin(
       this.workdir,
       scope,
@@ -42,10 +40,7 @@ export class PluginScopeManager {
   /**
    * Disable a plugin in the specified scope
    */
-  async disablePlugin(
-    scope: "user" | "project" | "local",
-    pluginId: string,
-  ): Promise<void> {
+  async disablePlugin(scope: Scope, pluginId: string): Promise<void> {
     await this.configurationService.updateEnabledPlugin(
       this.workdir,
       scope,
