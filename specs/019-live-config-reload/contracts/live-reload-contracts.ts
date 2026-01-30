@@ -148,12 +148,6 @@ export interface FileWatcherService {
    * For monitoring and debugging
    */
   getAllWatcherStatuses(): FileWatcherStatus[];
-
-  /**
-   * Configure watcher behavior
-   * Runtime configuration updates
-   */
-  updateConfig(config: Partial<FileWatcherConfig>): void;
 }
 
 // =============================================================================
