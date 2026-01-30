@@ -70,6 +70,8 @@ export interface AgentOptions {
   fastModel?: string;
   maxInputTokens?: number;
   maxTokens?: number;
+  /** Preferred language for agent communication */
+  language?: string;
 
   // Existing options (preserved)
   callbacks?: AgentCallbacks;
@@ -158,6 +160,10 @@ export class Agent {
     return this.configurationService.resolveMaxInputTokens(
       this.options.maxInputTokens,
     );
+  }
+
+  public getLanguage(): string | undefined {
+    return this.configurationService.resolveLanguage(this.options.language);
   }
 
   /**
@@ -353,6 +359,7 @@ export class Agent {
       getGatewayConfig: () => this.getGatewayConfig(),
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),
+      getLanguage: () => this.getLanguage(),
       hookManager: this.hookManager,
       onUsageAdded: (usage) => this.addUsage(usage),
     });
@@ -377,6 +384,7 @@ export class Agent {
       getGatewayConfig: () => this.getGatewayConfig(),
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),
+      getLanguage: () => this.getLanguage(),
       getEnvironmentVars: () => this.configurationService.getEnvironmentVars(), // Provide access to configuration environment variables
     });
 

@@ -468,6 +468,34 @@ describe("ConfigurationService", () => {
     });
   });
 
+  describe("resolveLanguage", () => {
+    it("should return undefined by default", () => {
+      expect(configService.resolveLanguage()).toBeUndefined();
+    });
+
+    it("should resolve from constructor", () => {
+      expect(configService.resolveLanguage("Spanish")).toBe("Spanish");
+    });
+
+    it("should resolve from current configuration", async () => {
+      const config = { language: "French" };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      expect(configService.resolveLanguage()).toBe("French");
+    });
+
+    it("should prioritize constructor over configuration", async () => {
+      const config = { language: "French" };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      expect(configService.resolveLanguage("Spanish")).toBe("Spanish");
+    });
+  });
+
   describe("validateEnvironmentConfig", () => {
     it("should validate correct env", () => {
       const result = validateEnvironmentConfig({ KEY: "VAL" });

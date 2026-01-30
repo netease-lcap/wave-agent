@@ -81,6 +81,7 @@ describe("Dynamic Tool Definitions", () => {
         getModelConfig: () => ({}) as unknown as ModelConfig,
         getMaxInputTokens: () => 1000,
         onUsageAdded: () => {},
+        getLanguage: () => undefined,
       });
 
       // Mock initialization

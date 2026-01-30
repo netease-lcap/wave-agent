@@ -91,6 +91,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 96000,
+      getLanguage: () => undefined,
     });
   });
 

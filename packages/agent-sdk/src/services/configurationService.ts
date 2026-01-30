@@ -493,6 +493,26 @@ export class ConfigurationService {
   }
 
   /**
+   * Resolves preferred language with fallbacks
+   * Resolution priority: options > settings.json > undefined
+   * @param constructorLanguage - Language from constructor (optional)
+   * @returns Resolved language or undefined
+   */
+  resolveLanguage(constructorLanguage?: string): string | undefined {
+    // 1. Constructor options (highest priority)
+    if (constructorLanguage !== undefined) {
+      return constructorLanguage;
+    }
+
+    // 2. settings.json (merged)
+    if (this.currentConfiguration?.language) {
+      return this.currentConfiguration.language;
+    }
+
+    return undefined;
+  }
+
+  /**
    * Resolves max output tokens with fallbacks
    * Resolution priority: options > env (from settings.json) > process.env > default
    * @param constructorLimit - Max output tokens from constructor (optional)
@@ -781,6 +801,7 @@ export function loadWaveConfigFromFile(
       env: config.env || undefined,
       permissions: config.permissions || undefined,
       enabledPlugins: config.enabledPlugins || undefined,
+      language: config.language || undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -932,6 +953,11 @@ export function loadMergedWaveConfig(
       if (!mergedConfig.enabledPlugins) mergedConfig.enabledPlugins = {};
       Object.assign(mergedConfig.enabledPlugins, config.enabledPlugins);
     }
+
+    // Merge language (last one wins)
+    if (config.language !== undefined) {
+      mergedConfig.language = config.language;
+    }
   }
 
   return {
@@ -953,5 +979,6 @@ export function loadMergedWaveConfig(
       Object.keys(mergedConfig.enabledPlugins).length > 0
         ? mergedConfig.enabledPlugins
         : undefined,
+    language: mergedConfig.language,
   };
 }

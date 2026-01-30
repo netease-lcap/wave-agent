@@ -89,6 +89,7 @@ describe("AIManager finish reason", () => {
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 96000,
+      getLanguage: () => undefined,
     });
   });
 

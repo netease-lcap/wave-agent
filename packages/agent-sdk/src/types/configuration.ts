@@ -28,6 +28,8 @@ export interface WaveConfiguration {
   };
   /** New field for scoped plugin management */
   enabledPlugins?: Record<string, boolean>;
+  /** Preferred language for agent communication */
+  language?: string;
 }
 
 /**
