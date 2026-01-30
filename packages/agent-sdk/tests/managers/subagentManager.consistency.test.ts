@@ -72,6 +72,7 @@ describe("SubagentManager Consistency", () => {
         fastModel: "claude-3-haiku",
       }),
       getMaxInputTokens: () => 200000,
+      getLanguage: () => undefined,
     });
 
     // Mock configurations

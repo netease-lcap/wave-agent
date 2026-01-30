@@ -71,6 +71,7 @@ export interface SubagentManagerOptions {
   getGatewayConfig: () => GatewayConfig;
   getModelConfig: () => ModelConfig;
   getMaxInputTokens: () => number;
+  getLanguage: () => string | undefined;
   hookManager?: HookManager;
   onUsageAdded?: (usage: Usage) => void;
 }
@@ -87,6 +88,7 @@ export class SubagentManager {
   private getGatewayConfig: () => GatewayConfig;
   private getModelConfig: () => ModelConfig;
   private getMaxInputTokens: () => number;
+  private getLanguage: () => string | undefined;
   private hookManager?: HookManager;
   private onUsageAdded?: (usage: Usage) => void;
 
@@ -99,6 +101,7 @@ export class SubagentManager {
     this.getGatewayConfig = options.getGatewayConfig;
     this.getModelConfig = options.getModelConfig;
     this.getMaxInputTokens = options.getMaxInputTokens;
+    this.getLanguage = options.getLanguage;
     this.hookManager = options.hookManager;
     this.onUsageAdded = options.onUsageAdded;
   }
@@ -211,6 +214,7 @@ export class SubagentManager {
         };
       },
       getMaxInputTokens: this.getMaxInputTokens,
+      getLanguage: this.getLanguage,
       callbacks: {
         onUsageAdded: this.onUsageAdded,
       },
@@ -491,6 +495,7 @@ export class SubagentManager {
             agentModel: modelToUse,
           }),
           getMaxInputTokens: this.getMaxInputTokens,
+          getLanguage: this.getLanguage,
           callbacks: {
             onUsageAdded: this.onUsageAdded,
           },

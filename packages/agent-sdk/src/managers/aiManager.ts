@@ -49,6 +49,7 @@ export interface AIManagerOptions {
   getGatewayConfig: () => GatewayConfig;
   getModelConfig: () => ModelConfig;
   getMaxInputTokens: () => number;
+  getLanguage: () => string | undefined;
   getEnvironmentVars?: () => Record<string, string>; // Get configuration environment variables for hooks
 }
 
@@ -71,6 +72,7 @@ export class AIManager {
   private getGatewayConfigFn: () => GatewayConfig;
   private getModelConfigFn: () => ModelConfig;
   private getMaxInputTokensFn: () => number;
+  private getLanguageFn: () => string | undefined;
   private getEnvironmentVarsFn?: () => Record<string, string>;
 
   constructor(options: AIManagerOptions) {
@@ -90,6 +92,7 @@ export class AIManager {
     this.getGatewayConfigFn = options.getGatewayConfig;
     this.getModelConfigFn = options.getModelConfig;
     this.getMaxInputTokensFn = options.getMaxInputTokens;
+    this.getLanguageFn = options.getLanguage;
     this.getEnvironmentVarsFn = options.getEnvironmentVars;
   }
 
@@ -104,6 +107,10 @@ export class AIManager {
 
   public getMaxInputTokens(): number {
     return this.getMaxInputTokensFn();
+  }
+
+  public getLanguage(): string | undefined {
+    return this.getLanguageFn();
   }
 
   private isCompressing: boolean = false;
@@ -341,6 +348,13 @@ export class AIManager {
         this.systemPrompt || DEFAULT_SYSTEM_PROMPT,
         toolsConfig,
       );
+
+      // Inject language prompt if configured
+      const language = this.getLanguage();
+      if (language) {
+        const languagePrompt = `\n\n# Language\nAlways respond in ${language}. Technical terms (e.g., code, tool names, file paths) should remain in their original language or English where appropriate.`;
+        effectiveSystemPrompt = (effectiveSystemPrompt || "") + languagePrompt;
+      }
 
       if (currentMode === "plan") {
         const planFilePath = this.permissionManager?.getPlanFilePath();

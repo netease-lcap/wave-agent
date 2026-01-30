@@ -45,6 +45,7 @@ describe("AIManager Plan Mode Prompt", () => {
       getGatewayConfig: () => ({}) as GatewayConfig,
       getModelConfig: () => ({ agentModel: "gpt-4" }) as ModelConfig,
       getMaxInputTokens: () => 1000,
+      getLanguage: () => undefined,
     });
 
     vi.mocked(callAgent).mockResolvedValue({

@@ -90,6 +90,89 @@ describe("AIManager", () => {
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 96000,
+      getLanguage: () => undefined,
+    });
+  });
+
+  describe("Language Prompt Injection", () => {
+    it("should inject language prompt when language is set", async () => {
+      const { callAgent } = await import("../../src/services/aiService.js");
+      vi.mocked(callAgent).mockResolvedValue({
+        content: "Test response",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [],
+      });
+
+      const aiManagerWithLanguage = new AIManager({
+        messageManager: mockMessageManager,
+        toolManager: mockToolManager,
+        logger: mockLogger,
+        workdir: "/test/workdir",
+        getGatewayConfig: () => mockGatewayConfig,
+        getModelConfig: () => mockModelConfig,
+        getMaxInputTokens: () => 96000,
+        getLanguage: () => "Chinese",
+      });
+
+      await aiManagerWithLanguage.sendAIMessage();
+
+      expect(callAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.stringContaining("# Language"),
+        }),
+      );
+      expect(callAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.stringContaining("Always respond in Chinese"),
+        }),
+      );
+    });
+
+    it("should NOT inject language prompt when language is undefined", async () => {
+      const { callAgent } = await import("../../src/services/aiService.js");
+      vi.mocked(callAgent).mockResolvedValue({
+        content: "Test response",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [],
+      });
+
+      await aiManager.sendAIMessage();
+
+      expect(callAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.not.stringContaining("# Language"),
+        }),
+      );
+    });
+
+    it("should preserve technical terms instruction in language prompt", async () => {
+      const { callAgent } = await import("../../src/services/aiService.js");
+      vi.mocked(callAgent).mockResolvedValue({
+        content: "Test response",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        tool_calls: [],
+      });
+
+      const aiManagerWithLanguage = new AIManager({
+        messageManager: mockMessageManager,
+        toolManager: mockToolManager,
+        logger: mockLogger,
+        workdir: "/test/workdir",
+        getGatewayConfig: () => mockGatewayConfig,
+        getModelConfig: () => mockModelConfig,
+        getMaxInputTokens: () => 96000,
+        getLanguage: () => "Spanish",
+      });
+
+      await aiManagerWithLanguage.sendAIMessage();
+
+      expect(callAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.stringContaining(
+            "Technical terms (e.g., code, tool names, file paths) should remain in their original language or English where appropriate.",
+          ),
+        }),
+      );
     });
   });
 
@@ -256,6 +339,7 @@ describe("AIManager", () => {
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
+        getLanguage: () => undefined,
       });
 
       const { callAgent } = await import("../../src/services/aiService.js");
@@ -292,6 +376,7 @@ describe("AIManager", () => {
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
+        getLanguage: () => undefined,
       });
 
       const { callAgent } = await import("../../src/services/aiService.js");
@@ -326,6 +411,7 @@ describe("AIManager", () => {
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
+        getLanguage: () => undefined,
       });
 
       const { callAgent } = await import("../../src/services/aiService.js");

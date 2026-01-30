@@ -108,6 +108,7 @@ describe("SubagentManager - Session Functionality", () => {
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 1000,
+      getLanguage: () => undefined,
     });
 
     await subagentManager.initialize();
