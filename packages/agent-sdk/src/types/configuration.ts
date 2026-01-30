@@ -9,6 +9,8 @@
 import type { HookEvent, HookEventConfig } from "./hooks.js";
 import type { PermissionMode } from "./permissions.js";
 
+export type Scope = "user" | "project" | "local";
+
 /**
  * Root configuration structure for all Wave Agent settings including hooks and environment variables
  */

@@ -1,3 +1,5 @@
+import type { Scope } from "./configuration.js";
+
 /**
  * Environment Variable System Types
  *
@@ -100,5 +102,5 @@ export interface EnvironmentConflict {
   /** Final resolved value (which source won) */
   resolvedValue: string;
   /** Which source provided the final value */
-  source: "user" | "project";
+  source: Scope;
 }

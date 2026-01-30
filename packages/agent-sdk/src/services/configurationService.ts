@@ -13,6 +13,7 @@ import type {
   ValidationResult,
   ConfigurationPaths,
   WaveConfiguration,
+  Scope,
 } from "../types/configuration.js";
 import {
   getAllConfigPaths,
@@ -597,7 +598,7 @@ export class ConfigurationService {
    */
   async updateEnabledPlugin(
     workdir: string,
-    scope: "user" | "project" | "local",
+    scope: Scope,
     pluginId: string,
     enabled: boolean,
   ): Promise<void> {

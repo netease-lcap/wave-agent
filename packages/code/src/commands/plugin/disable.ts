@@ -2,11 +2,12 @@ import {
   ConfigurationService,
   PluginManager,
   PluginScopeManager,
+  Scope,
 } from "wave-agent-sdk";
 
 export async function disablePluginCommand(argv: {
   plugin: string;
-  scope: "user" | "project" | "local";
+  scope: Scope;
 }) {
   const workdir = process.cwd();
   const configurationService = new ConfigurationService();
