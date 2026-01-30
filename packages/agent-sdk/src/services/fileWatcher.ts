@@ -164,19 +164,6 @@ export class FileWatcherService extends EventEmitter {
   }
 
   /**
-   * Configure watcher behavior
-   * Runtime configuration updates
-   */
-  updateConfig(config: Partial<FileWatcherConfig>): void {
-    this.defaultConfig = { ...this.defaultConfig, ...config };
-
-    // Update existing watchers with new config
-    for (const entry of this.watchers.values()) {
-      entry.config = { ...entry.config, ...config };
-    }
-  }
-
-  /**
    * Cleanup all watchers
    */
   async cleanup(): Promise<void> {

@@ -167,46 +167,6 @@ export class Agent {
   }
 
   /**
-   * Update agent configuration dynamically
-   *
-   * @param config - Configuration updates for gateway, model, and token limit
-   */
-  public updateConfig(config: {
-    gateway?: Partial<GatewayConfig>;
-    model?: Partial<ModelConfig>;
-    maxInputTokens?: number;
-    maxTokens?: number;
-  }): void {
-    if (config.gateway) {
-      this.options.apiKey = config.gateway.apiKey ?? this.options.apiKey;
-      this.options.baseURL = config.gateway.baseURL ?? this.options.baseURL;
-      this.options.defaultHeaders =
-        config.gateway.defaultHeaders ?? this.options.defaultHeaders;
-      this.options.fetchOptions =
-        config.gateway.fetchOptions ?? this.options.fetchOptions;
-      this.options.fetch = config.gateway.fetch ?? this.options.fetch;
-    }
-
-    if (config.model) {
-      this.options.agentModel =
-        config.model.agentModel ?? this.options.agentModel;
-      this.options.fastModel = config.model.fastModel ?? this.options.fastModel;
-      this.options.maxTokens = config.model.maxTokens ?? this.options.maxTokens;
-    }
-
-    if (config.maxInputTokens !== undefined) {
-      this.options.maxInputTokens = config.maxInputTokens;
-    }
-
-    if (config.maxTokens !== undefined) {
-      this.options.maxTokens = config.maxTokens;
-    }
-
-    // Re-validate configuration after update
-    this.resolveAndValidateConfig();
-  }
-
-  /**
    * Agent constructor - handles configuration resolution and validation
    *
    * IMPORTANT: This constructor is private. Use Agent.create() instead for proper
