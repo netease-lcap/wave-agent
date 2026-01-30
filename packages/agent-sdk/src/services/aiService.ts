@@ -94,13 +94,7 @@ function isGitRepository(dirPath: string): string {
 type OpenAIModelConfig = Omit<
   ChatCompletionCreateParamsNonStreaming,
   "messages"
-> & {
-  vertexai?: {
-    thinking_config: {
-      thinking_level: string;
-    };
-  };
-};
+>;
 
 /**
  * Get specific configuration parameters based on model name
@@ -122,14 +116,6 @@ function getModelConfig(
   if (modelName.includes("gpt-5-codex")) {
     // gpt-5-codex model sets temperature to undefined
     config.temperature = undefined;
-  }
-
-  if (modelName.startsWith("gemini-3")) {
-    config.vertexai = {
-      thinking_config: {
-        thinking_level: "minimal",
-      },
-    };
   }
 
   return config;
