@@ -40,6 +40,18 @@ export class ReversionManager {
   }
 
   /**
+   * Records the current state of a file into a temporary buffer.
+   * Returns a snapshotId.
+   */
+  async recordSnapshotWithId(
+    messageId: string,
+    filePath: string,
+    operation: "create" | "modify" | "delete",
+  ): Promise<string> {
+    return this.recordSnapshot(messageId, filePath, operation);
+  }
+
+  /**
    * Moves the buffered snapshot to the permanent session log.
    * Called only if the tool succeeds.
    */

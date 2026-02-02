@@ -661,7 +661,10 @@ export class MessageManager {
     // Identify messages to be removed
     const messagesToRemove = this.messages.slice(index);
     const messageIdsToRemove = messagesToRemove
-      .map((m) => m.additionalFields?.id as string)
+      .map(
+        (m) =>
+          (m.additionalFields?.id || m.additionalFields?.messageId) as string,
+      )
       .filter((id) => !!id);
 
     // Revert file changes if manager is provided

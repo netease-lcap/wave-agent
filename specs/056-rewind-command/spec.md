@@ -2,7 +2,7 @@
 
 **Feature Branch**: `056-rewind-command`  
 **Created**: 2026-02-02  
-**Status**: Draft  
+**Status**: Completed  
 **Input**: User description: "support /rewind builtin command to revert messages. the checkpoints should be only user message, when select user message, this user message and all messages after this message should be deleted. and all file operation in these messages should be reverted too, you can save prev file content to revert."
 
 ## User Scenarios & Testing *(mandatory)*

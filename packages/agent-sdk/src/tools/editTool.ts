@@ -185,8 +185,9 @@ export const editTool: ToolPlugin = {
       }
 
       // Record snapshot for reversion
+      let snapshotId: string | undefined;
       if (context.reversionManager && context.messageId) {
-        await context.reversionManager.recordSnapshot(
+        snapshotId = await context.reversionManager.recordSnapshot(
           context.messageId,
           resolvedPath,
           "modify",
@@ -197,8 +198,8 @@ export const editTool: ToolPlugin = {
       try {
         await writeFile(resolvedPath, newContent, "utf-8");
         // Commit snapshot on success
-        if (context.reversionManager && context.messageId) {
-          await context.reversionManager.commitSnapshot(context.messageId);
+        if (context.reversionManager && snapshotId) {
+          await context.reversionManager.commitSnapshot(snapshotId);
         }
       } catch (writeError) {
         return {

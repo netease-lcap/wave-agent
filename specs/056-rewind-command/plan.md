@@ -1,6 +1,6 @@
 # Implementation Plan: Rewind Command
 
-**Branch**: `056-rewind-command` | **Date**: 2026-02-02 | **Spec**: [spec.md](./spec.md)
+**Branch**: `056-rewind-command` | **Status**: Completed | **Date**: 2026-02-02 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/056-rewind-command/spec.md`
 
 ## Summary

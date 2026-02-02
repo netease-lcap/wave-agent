@@ -48,7 +48,7 @@
 ### Tests for User Story 1 (REQUIRED) ⚠️
 
 - [X] T010 [P] [US1] Integration test for history truncation in `packages/agent-sdk/tests/integration/rewind_history.test.ts`
-- [ ] T011 [P] [US1] Unit test for `RewindCommand` UI component in `packages/code/tests/components/RewindCommand.test.ts`
+- [X] T011 [P] [US1] Unit test for `RewindCommand` UI component in `packages/code/tests/components/RewindCommand.test.ts`
 
 ### Implementation for User Story 1
 
@@ -68,8 +68,8 @@
 
 ### Tests for User Story 2 (REQUIRED) ⚠️
 
-- [ ] T015 [P] [US2] Integration test for file reversion (create/modify/delete) in `packages/agent-sdk/tests/integration/rewind_files.test.ts`
-- [ ] T016 [P] [US2] Unit tests for tool snapshotting in `packages/agent-sdk/tests/tools/reversion_hooks.test.ts`
+- [X] T015 [P] [US2] Integration test for file reversion (create/modify/delete) in `packages/agent-sdk/tests/integration/rewind_files.test.ts`
+- [X] T016 [P] [US2] Unit tests for tool snapshotting in `packages/agent-sdk/tests/tools/reversion_hooks.test.ts`
 
 ### Implementation for User Story 2
 
@@ -88,10 +88,10 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T023 [P] Add progress indicators for file reversion in `RewindCommand.tsx`
-- [ ] T024 [P] Ensure `agent-sdk` is built and all packages are linked
-- [ ] T025 Run `pnpm run type-check` and `pnpm lint` across the monorepo
-- [ ] T026 Run `quickstart.md` validation scenarios manually
+- [X] T023 [P] Add progress indicators for file reversion in `RewindCommand.tsx`
+- [X] T024 [P] Ensure `agent-sdk` is built and all packages are linked
+- [X] T025 Run `pnpm run type-check` and `pnpm lint` across the monorepo
+- [X] T026 Run `quickstart.md` validation scenarios manually
 
 ---
 

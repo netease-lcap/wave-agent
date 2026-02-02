@@ -19,6 +19,8 @@ import {
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { HookManager } from "./managers/hookManager.js";
+import { ReversionManager } from "./managers/reversionManager.js";
+import { ReversionService } from "./services/reversionService.js";
 import { PermissionManager } from "./managers/permissionManager.js";
 import { PlanManager } from "./managers/planManager.js";
 import type {
@@ -121,6 +123,7 @@ export class Agent {
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
   private hookManager: HookManager; // Add hooks manager instance
+  private reversionManager: ReversionManager;
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private configurationService: ConfigurationService; // Add configuration service
@@ -234,6 +237,11 @@ export class Agent {
       logger: this.logger,
     });
 
+    // Initialize ReversionManager
+    this.reversionManager = new ReversionManager(
+      new ReversionService(this.messageManager.getTranscriptPath()),
+    );
+
     // Initialize memory rule manager
     this.memoryRuleManager = new MemoryRuleManager({
       workdir: this.workdir,
@@ -287,6 +295,7 @@ export class Agent {
       lspManager: this.lspManager,
       logger: this.logger,
       permissionManager: this.permissionManager,
+      reversionManager: this.reversionManager,
       permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
       canUseToolCallback: canUseToolWithNotification,
     }); // Initialize tool registry with permission support
@@ -341,6 +350,7 @@ export class Agent {
       workdir: this.workdir,
       systemPrompt: this.systemPrompt,
       stream: this.stream, // Pass streaming mode flag
+      reversionManager: this.reversionManager,
       getGatewayConfig: () => this.getGatewayConfig(),
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),

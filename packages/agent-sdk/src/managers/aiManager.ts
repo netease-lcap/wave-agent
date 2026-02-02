@@ -43,6 +43,7 @@ export interface AIManagerOptions {
   workdir: string;
   systemPrompt?: string;
   subagentType?: string; // Optional subagent type for hook context
+  reversionManager?: import("./reversionManager.js").ReversionManager;
   /**Whether to use streaming mode for AI responses - defaults to true */
   stream?: boolean;
   // Dynamic configuration getters
@@ -62,6 +63,7 @@ export class AIManager {
   private messageManager: MessageManager;
   private backgroundBashManager?: BackgroundBashManager;
   private hookManager?: HookManager;
+  private reversionManager?: import("./reversionManager.js").ReversionManager;
   private permissionManager?: PermissionManager;
   private workdir: string;
   private systemPrompt?: string;
@@ -80,6 +82,7 @@ export class AIManager {
     this.toolManager = options.toolManager;
     this.backgroundBashManager = options.backgroundBashManager;
     this.hookManager = options.hookManager;
+    this.reversionManager = options.reversionManager;
     this.permissionManager = options.permissionManager;
     this.logger = options.logger;
     this.workdir = options.workdir;
@@ -336,6 +339,7 @@ export class AIManager {
 
       // Track if assistant message has been created
       let assistantMessageCreated = false;
+      const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
       this.logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
@@ -393,7 +397,12 @@ export class AIManager {
         callAgentOptions.onContentUpdate = (content: string) => {
           // Create assistant message on first chunk if not already created
           if (!assistantMessageCreated) {
-            this.messageManager.addAssistantMessage();
+            this.messageManager.addAssistantMessage(
+              undefined,
+              undefined,
+              undefined,
+              { id: messageId },
+            );
             assistantMessageCreated = true;
           }
           this.messageManager.updateCurrentMessageContent(content);
@@ -401,7 +410,12 @@ export class AIManager {
         callAgentOptions.onToolUpdate = (toolCall) => {
           // Create assistant message on first tool update if not already created
           if (!assistantMessageCreated) {
-            this.messageManager.addAssistantMessage();
+            this.messageManager.addAssistantMessage(
+              undefined,
+              undefined,
+              undefined,
+              { id: messageId },
+            );
             assistantMessageCreated = true;
           }
 
@@ -421,7 +435,12 @@ export class AIManager {
         callAgentOptions.onReasoningUpdate = (reasoning: string) => {
           // Create assistant message on first reasoning update if not already created
           if (!assistantMessageCreated) {
-            this.messageManager.addAssistantMessage();
+            this.messageManager.addAssistantMessage(
+              undefined,
+              undefined,
+              undefined,
+              { id: messageId },
+            );
             assistantMessageCreated = true;
           }
           this.messageManager.updateCurrentMessageReasoning(reasoning);
@@ -438,7 +457,12 @@ export class AIManager {
         (!assistantMessageCreated &&
           (result.content || result.tool_calls || result.reasoning_content))
       ) {
-        this.messageManager.addAssistantMessage();
+        this.messageManager.addAssistantMessage(
+          undefined,
+          undefined,
+          undefined,
+          { id: messageId },
+        );
         assistantMessageCreated = true;
       }
 
@@ -617,6 +641,7 @@ export class AIManager {
                 abortSignal: toolAbortController.signal,
                 backgroundBashManager: this.backgroundBashManager,
                 workdir: this.workdir,
+                messageId: messageId,
               };
 
               // Execute tool

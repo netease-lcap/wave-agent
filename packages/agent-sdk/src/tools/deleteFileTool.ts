@@ -77,8 +77,9 @@ export const deleteFileTool: ToolPlugin = {
       }
 
       // Record snapshot for reversion
+      let snapshotId: string | undefined;
       if (context.reversionManager && context.messageId) {
-        await context.reversionManager.recordSnapshot(
+        snapshotId = await context.reversionManager.recordSnapshot(
           context.messageId,
           filePath,
           "delete",
@@ -89,8 +90,8 @@ export const deleteFileTool: ToolPlugin = {
       await unlink(filePath);
 
       // Commit snapshot on success
-      if (context.reversionManager && context.messageId) {
-        await context.reversionManager.commitSnapshot(context.messageId);
+      if (context.reversionManager && snapshotId) {
+        await context.reversionManager.commitSnapshot(snapshotId);
       }
 
       logger.debug(`Successfully deleted file: ${filePath}`);
