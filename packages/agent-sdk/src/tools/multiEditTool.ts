@@ -257,9 +257,22 @@ export const multiEditTool: ToolPlugin = {
         }
       }
 
+      // Record snapshot for reversion
+      if (context.reversionManager && context.messageId) {
+        await context.reversionManager.recordSnapshot(
+          context.messageId,
+          resolvedPath,
+          isNewFile ? "create" : "modify",
+        );
+      }
+
       // Write file
       try {
         await writeFile(resolvedPath, currentContent, "utf-8");
+        // Commit snapshot on success
+        if (context.reversionManager && context.messageId) {
+          await context.reversionManager.commitSnapshot(context.messageId);
+        }
       } catch (writeError) {
         return {
           success: false,

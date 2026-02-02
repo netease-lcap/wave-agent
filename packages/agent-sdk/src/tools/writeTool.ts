@@ -126,9 +126,22 @@ export const writeTool: ToolPlugin = {
         }
       }
 
+      // Record snapshot for reversion
+      if (context.reversionManager && context.messageId) {
+        await context.reversionManager.recordSnapshot(
+          context.messageId,
+          resolvedPath,
+          isExistingFile ? "modify" : "create",
+        );
+      }
+
       // Write file
       try {
         await writeFile(resolvedPath, content, "utf-8");
+        // Commit snapshot on success
+        if (context.reversionManager && context.messageId) {
+          await context.reversionManager.commitSnapshot(context.messageId);
+        }
       } catch (writeError) {
         return {
           success: false,

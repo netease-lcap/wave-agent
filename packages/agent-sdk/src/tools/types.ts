@@ -50,4 +50,8 @@ export interface ToolContext {
   mcpManager?: import("../managers/mcpManager.js").McpManager;
   /** LSP manager instance for code intelligence */
   lspManager?: import("../types/lsp.js").ILspManager;
+  /** Reversion manager instance for file snapshots */
+  reversionManager?: import("../managers/reversionManager.js").ReversionManager;
+  /** Current message ID for associating snapshots */
+  messageId?: string;
 }
