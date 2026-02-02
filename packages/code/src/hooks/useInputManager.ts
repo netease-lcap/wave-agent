@@ -29,10 +29,9 @@ export const useInputManager = (
     query: "",
     position: -1,
   });
-  const [bashHistorySelectorState, setBashHistorySelectorState] = useState({
+  const [historySearchState, setHistorySearchState] = useState({
     show: false,
     query: "",
-    position: -1,
   });
   const [memoryTypeSelectorState, setMemoryTypeSelectorState] = useState({
     show: false,
@@ -58,8 +57,8 @@ export const useInputManager = (
         onCommandSelectorStateChange: (show, query, position) => {
           setCommandSelectorState({ show, query, position });
         },
-        onBashHistorySelectorStateChange: (show, query, position) => {
-          setBashHistorySelectorState({ show, query, position });
+        onHistorySearchStateChange: (show, query) => {
+          setHistorySearchState({ show, query });
         },
         onMemoryTypeSelectorStateChange: (show, message) => {
           setMemoryTypeSelectorState({ show, message });
@@ -94,8 +93,8 @@ export const useInputManager = (
         onCommandSelectorStateChange: (show, query, position) => {
           setCommandSelectorState({ show, query, position });
         },
-        onBashHistorySelectorStateChange: (show, query, position) => {
-          setBashHistorySelectorState({ show, query, position });
+        onHistorySearchStateChange: (show, query) => {
+          setHistorySearchState({ show, query });
         },
         onMemoryTypeSelectorStateChange: (show, message) => {
           setMemoryTypeSelectorState({ show, message });
@@ -235,37 +234,13 @@ export const useInputManager = (
     return managerRef.current?.checkForSlashDeletion(cursorPos) || false;
   }, []);
 
-  // Bash history selector methods
-  const activateBashHistorySelector = useCallback((position: number) => {
-    managerRef.current?.activateBashHistorySelector(position);
+  // History search methods
+  const handleHistorySearchSelect = useCallback((prompt: string) => {
+    managerRef.current?.handleHistorySearchSelect(prompt);
   }, []);
 
-  const handleBashHistorySelect = useCallback(
-    (command: string) => {
-      return (
-        managerRef.current?.handleBashHistorySelect(command) || {
-          newInput: inputText,
-          newCursorPosition: cursorPosition,
-        }
-      );
-    },
-    [inputText, cursorPosition],
-  );
-
-  const handleCancelBashHistorySelect = useCallback(() => {
-    managerRef.current?.handleCancelBashHistorySelect();
-  }, []);
-
-  const updateBashHistorySearchQuery = useCallback((query: string) => {
-    managerRef.current?.updateBashHistorySearchQuery(query);
-  }, []);
-
-  const handleBashHistoryExecute = useCallback((command: string) => {
-    return managerRef.current?.handleBashHistoryExecute(command) || command;
-  }, []);
-
-  const checkForExclamationDeletion = useCallback((cursorPos: number) => {
-    return managerRef.current?.checkForExclamationDeletion(cursorPos) || false;
+  const handleCancelHistorySearch = useCallback(() => {
+    managerRef.current?.handleCancelHistorySearch();
   }, []);
 
   // Memory type selector methods
@@ -320,17 +295,6 @@ export const useInputManager = (
   }, []);
 
   // Complex handlers that combine multiple operations
-  const handleBashHistoryExecuteAndSend = useCallback((command: string) => {
-    managerRef.current?.handleBashHistoryExecuteAndSend(command);
-  }, []);
-
-  const handleBashHistoryDelete = useCallback(
-    (command: string, workdir?: string) => {
-      managerRef.current?.handleBashHistoryDelete(command, workdir);
-    },
-    [],
-  );
-
   return {
     // State
     inputText,
@@ -342,9 +306,8 @@ export const useInputManager = (
     showCommandSelector: commandSelectorState.show,
     commandSearchQuery: commandSelectorState.query,
     slashPosition: commandSelectorState.position,
-    showBashHistorySelector: bashHistorySelectorState.show,
-    bashHistorySearchQuery: bashHistorySelectorState.query,
-    exclamationPosition: bashHistorySelectorState.position,
+    showHistorySearch: historySearchState.show,
+    historySearchQuery: historySearchState.query,
     showMemoryTypeSelector: memoryTypeSelectorState.show,
     memoryMessage: memoryTypeSelectorState.message,
     showBashManager,
@@ -377,14 +340,9 @@ export const useInputManager = (
     updateCommandSearchQuery,
     checkForSlashDeletion,
 
-    // Bash history selector
-    activateBashHistorySelector,
-    handleBashHistorySelect,
-    handleCancelBashHistorySelect,
-    updateBashHistorySearchQuery,
-
-    handleBashHistoryExecute,
-    checkForExclamationDeletion,
+    // History search
+    handleHistorySearchSelect,
+    handleCancelHistorySearch,
 
     // Memory type selector
     activateMemoryTypeSelector,
@@ -449,10 +407,6 @@ export const useInputManager = (
     clearLongTextMap: useCallback(() => {
       managerRef.current?.clearLongTextMap();
     }, []),
-
-    // Complex handlers combining multiple operations
-    handleBashHistoryExecuteAndSend,
-    handleBashHistoryDelete,
 
     // Main input handler
     handleInput: useCallback(

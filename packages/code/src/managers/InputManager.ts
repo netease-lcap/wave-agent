@@ -1,9 +1,9 @@
 import { FileItem } from "../components/FileSelector.js";
 import {
   searchFiles as searchFilesUtil,
-  deleteBashCommandFromHistory,
   PermissionMode,
   Logger,
+  PromptHistoryManager,
 } from "wave-agent-sdk";
 import { readClipboardImage } from "../utils/clipboard.js";
 import type { Key } from "ink";
@@ -28,11 +28,7 @@ export interface InputManagerCallbacks {
     query: string,
     position: number,
   ) => void;
-  onBashHistorySelectorStateChange?: (
-    show: boolean,
-    query: string,
-    position: number,
-  ) => void;
+  onHistorySearchStateChange?: (show: boolean, query: string) => void;
   onMemoryTypeSelectorStateChange?: (show: boolean, message: string) => void;
   onShowBashManager?: () => void;
   onShowMcpManager?: () => void;
@@ -68,10 +64,9 @@ export class InputManager {
   private slashPosition: number = -1;
   private commandSearchQuery: string = "";
 
-  // Bash history selector state
-  private showBashHistorySelector: boolean = false;
-  private exclamationPosition: number = -1;
-  private bashHistorySearchQuery: string = "";
+  // History search state
+  private showHistorySearch: boolean = false;
+  private historySearchQuery: string = "";
 
   // Memory type selector state
   private showMemoryTypeSelector: boolean = false;
@@ -434,105 +429,6 @@ export class InputManager {
     return false;
   }
 
-  // Bash history selector methods
-  activateBashHistorySelector(position: number): void {
-    this.showBashHistorySelector = true;
-    this.exclamationPosition = position;
-    this.bashHistorySearchQuery = "";
-
-    this.callbacks.onBashHistorySelectorStateChange?.(true, "", position);
-  }
-
-  updateBashHistorySearchQuery(query: string): void {
-    this.bashHistorySearchQuery = query;
-    this.callbacks.onBashHistorySelectorStateChange?.(
-      this.showBashHistorySelector,
-      query,
-      this.exclamationPosition,
-    );
-  }
-
-  handleBashHistorySelect(command: string): {
-    newInput: string;
-    newCursorPosition: number;
-  } {
-    if (this.exclamationPosition >= 0) {
-      const beforeExclamation = this.inputText.substring(
-        0,
-        this.exclamationPosition,
-      );
-      const afterQuery = this.inputText.substring(this.cursorPosition);
-      const newInput = beforeExclamation + `!${command}` + afterQuery;
-      const newCursorPosition = beforeExclamation.length + command.length + 1;
-
-      this.inputText = newInput;
-      this.cursorPosition = newCursorPosition;
-
-      this.handleCancelBashHistorySelect();
-
-      // Set flag to prevent handleInput from processing the same Enter key
-      this.selectorJustUsed = true;
-      setTimeout(() => {
-        this.selectorJustUsed = false;
-      }, 0);
-
-      this.callbacks.onInputTextChange?.(newInput);
-      this.callbacks.onCursorPositionChange?.(newCursorPosition);
-
-      return { newInput, newCursorPosition };
-    }
-    return { newInput: this.inputText, newCursorPosition: this.cursorPosition };
-  }
-
-  handleCancelBashHistorySelect(): void {
-    this.showBashHistorySelector = false;
-    this.exclamationPosition = -1;
-    this.bashHistorySearchQuery = "";
-
-    this.callbacks.onBashHistorySelectorStateChange?.(false, "", -1);
-  }
-
-  handleBashHistoryExecute(command: string): string {
-    this.showBashHistorySelector = false;
-    this.exclamationPosition = -1;
-    this.bashHistorySearchQuery = "";
-
-    this.callbacks.onBashHistorySelectorStateChange?.(false, "", -1);
-
-    return command; // Return command to execute
-  }
-
-  handleBashHistoryExecuteAndSend(command: string): void {
-    const commandToExecute = this.handleBashHistoryExecute(command);
-    // Clear input box and execute command, ensure command starts with !
-    const bashCommand = commandToExecute.startsWith("!")
-      ? commandToExecute
-      : `!${commandToExecute}`;
-    this.clearInput();
-    this.callbacks.onSendMessage?.(bashCommand);
-  }
-
-  handleBashHistoryDelete(command: string, workdir?: string): void {
-    deleteBashCommandFromHistory(command, workdir);
-    // Trigger a refresh of the selector state to force re-render of BashHistorySelector
-    this.callbacks.onBashHistorySelectorStateChange?.(
-      this.showBashHistorySelector,
-      this.bashHistorySearchQuery,
-      this.exclamationPosition,
-    );
-  }
-
-  checkForExclamationDeletion(cursorPosition: number): boolean {
-    if (
-      this.showBashHistorySelector &&
-      cursorPosition <= this.exclamationPosition
-    ) {
-      this.handleCancelBashHistorySelect();
-      return true;
-    }
-    return false;
-  }
-
   // Memory type selector methods
   activateMemoryTypeSelector(message: string): void {
     this.showMemoryTypeSelector = true;
@@ -631,10 +527,6 @@ export class InputManager {
     return this.showCommandSelector;
   }
 
-  isBashHistorySelectorActive(): boolean {
-    return this.showBashHistorySelector;
-  }
-
   isMemoryTypeSelectorActive(): boolean {
     return this.showMemoryTypeSelector;
   }
@@ -653,14 +545,6 @@ export class InputManager {
       show: this.showCommandSelector,
       query: this.commandSearchQuery,
       position: this.slashPosition,
-    };
-  }
-
-  getBashHistorySelectorState() {
-    return {
-      show: this.showBashHistorySelector,
-      query: this.bashHistorySearchQuery,
-      position: this.exclamationPosition,
     };
   }
 
@@ -686,11 +570,6 @@ export class InputManager {
       const queryEnd = cursorPosition;
       const newQuery = inputText.substring(queryStart, queryEnd);
       this.updateCommandSearchQuery(newQuery);
-    } else if (this.showBashHistorySelector && this.exclamationPosition >= 0) {
-      const queryStart = this.exclamationPosition + 1;
-      const queryEnd = cursorPosition;
-      const newQuery = inputText.substring(queryStart, queryEnd);
-      this.updateBashHistorySearchQuery(newQuery);
     }
   }
 
@@ -701,8 +580,6 @@ export class InputManager {
     } else if (char === "/" && !this.showFileSelector) {
       // Don't activate command selector when file selector is active
       this.activateCommandSelector(this.cursorPosition - 1);
-    } else if (char === "!" && this.cursorPosition === 1) {
-      this.activateBashHistorySelector(0);
     } else if (char === "#" && this.cursorPosition === 1) {
       // Memory message detection will be handled in submit
     } else {
@@ -941,6 +818,11 @@ export class InputManager {
       let cleanContent = this.inputText.replace(imageRegex, "").trim();
       cleanContent = this.expandLongTextPlaceholders(cleanContent);
 
+      // Save to prompt history
+      PromptHistoryManager.addEntry(cleanContent).catch((err: unknown) => {
+        this.logger?.error("Failed to save prompt history", err);
+      });
+
       this.callbacks.onSendMessage?.(
         cleanContent,
         referencedImages.length > 0 ? referencedImages : undefined,
@@ -961,7 +843,6 @@ export class InputManager {
           // Check for special character deletion
           this.checkForAtDeletion(newCursorPosition);
           this.checkForSlashDeletion(newCursorPosition);
-          this.checkForExclamationDeletion(newCursorPosition);
 
           // Update search queries using the same logic as character input
           this.updateSearchQueriesForActiveSelectors(
@@ -1004,6 +885,32 @@ export class InputManager {
     return false;
   }
 
+  // History search methods
+  activateHistorySearch(): void {
+    this.showHistorySearch = true;
+    this.historySearchQuery = "";
+    this.callbacks.onHistorySearchStateChange?.(true, "");
+  }
+
+  updateHistorySearchQuery(query: string): void {
+    this.historySearchQuery = query;
+    this.callbacks.onHistorySearchStateChange?.(true, query);
+  }
+
+  handleHistorySearchSelect(prompt: string): void {
+    this.inputText = prompt;
+    this.cursorPosition = prompt.length;
+    this.callbacks.onInputTextChange?.(prompt);
+    this.callbacks.onCursorPositionChange?.(prompt.length);
+    this.handleCancelHistorySearch();
+  }
+
+  handleCancelHistorySearch(): void {
+    this.showHistorySearch = false;
+    this.historySearchQuery = "";
+    this.callbacks.onHistorySearchStateChange?.(false, "");
+  }
+
   // Handle normal input (when no selector is active)
   async handleNormalInput(
     input: string,
@@ -1024,8 +931,6 @@ export class InputManager {
         this.handleCancelFileSelect();
       } else if (this.showCommandSelector) {
         this.handleCancelCommandSelect();
-      } else if (this.showBashHistorySelector) {
-        this.handleCancelBashHistorySelect();
       }
       return true;
     }
@@ -1039,7 +944,6 @@ export class InputManager {
         const newCursorPosition = this.cursorPosition - 1;
         this.checkForAtDeletion(newCursorPosition);
         this.checkForSlashDeletion(newCursorPosition);
-        this.checkForExclamationDeletion(newCursorPosition);
       }
       return true;
     }
@@ -1072,23 +976,19 @@ export class InputManager {
       return true;
     }
 
+    // Handle Ctrl+R for history search
+    if (key.ctrl && input === "r") {
+      this.activateHistorySearch();
+      return true;
+    }
+
     // Handle up/down keys for history navigation (only when no selector is active)
-    if (
-      key.upArrow &&
-      !this.showFileSelector &&
-      !this.showCommandSelector &&
-      !this.showBashHistorySelector
-    ) {
+    if (key.upArrow && !this.showFileSelector && !this.showCommandSelector) {
       this.navigateHistory("up", this.inputText);
       return true;
     }
 
-    if (
-      key.downArrow &&
-      !this.showFileSelector &&
-      !this.showCommandSelector &&
-      !this.showBashHistorySelector
-    ) {
+    if (key.downArrow && !this.showFileSelector && !this.showCommandSelector) {
       this.navigateHistory("down", this.inputText);
       return true;
     }
@@ -1147,7 +1047,7 @@ export class InputManager {
     if (
       this.showFileSelector ||
       this.showCommandSelector ||
-      this.showBashHistorySelector ||
+      this.showHistorySearch ||
       this.showMemoryTypeSelector ||
       this.showBashManager ||
       this.showMcpManager
@@ -1160,6 +1060,25 @@ export class InputManager {
         // Memory type selector, bash manager and MCP manager don't need to handle input, handled by component itself
         return false;
       }
+
+      if (this.showHistorySearch) {
+        if (key.escape) {
+          this.handleCancelHistorySearch();
+          return true;
+        }
+        if (key.backspace || key.delete) {
+          if (this.historySearchQuery.length > 0) {
+            this.updateHistorySearchQuery(this.historySearchQuery.slice(0, -1));
+          }
+          return true;
+        }
+        if (input && !key.ctrl && !key.meta && !key.return && !key.tab) {
+          this.updateHistorySearchQuery(this.historySearchQuery + input);
+          return true;
+        }
+        return true; // Let HistorySearch component handle arrows and Enter
+      }
+
       return this.handleSelectorInput(input, key);
     } else {
       return await this.handleNormalInput(
