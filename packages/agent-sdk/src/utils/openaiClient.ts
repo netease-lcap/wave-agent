@@ -83,15 +83,47 @@ export class OpenAIClient {
     };
 
     const fetchFn = (customFetch as typeof fetch) || fetch;
-    const response = await fetchFn(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(params),
-      signal: options?.signal,
-      ...(fetchOptions as RequestInit),
-    });
+    let lastError: (Error & { status?: number; body?: unknown }) | undefined;
+    const maxRetries = 3;
+    const initialDelay = 1000;
 
-    if (!response.ok) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        const delay = initialDelay * Math.pow(2, attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+
+      const response = await fetchFn(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(params),
+        signal: options?.signal,
+        ...(fetchOptions as RequestInit),
+      });
+
+      if (response.ok) {
+        if (params.stream) {
+          return {
+            data: this.streamChatCompletion(response),
+            response,
+          } as unknown as APIResponse<
+            P extends ChatCompletionCreateParamsStreaming
+              ? AsyncIterable<ChatCompletionChunk>
+              : ChatCompletion
+          >;
+        } else {
+          const data = await response.json();
+          return {
+            data,
+            response,
+          } as unknown as APIResponse<
+            P extends ChatCompletionCreateParamsStreaming
+              ? AsyncIterable<ChatCompletionChunk>
+              : ChatCompletion
+          >;
+        }
+      }
+
       let errorBody: unknown;
       try {
         const text = await response.text();
@@ -118,6 +150,21 @@ export class OpenAIClient {
       ) as Error & { status?: number; body?: unknown };
       error.status = response.status;
       error.body = errorBody;
+
+      if (response.status === 429 && attempt < maxRetries) {
+        const responseHeaders: Record<string, string> = {};
+        response.headers.forEach((value, key) => {
+          responseHeaders[key] = value;
+        });
+        logger.warn("OpenAI API 429 Too Many Requests, retrying...", {
+          attempt: attempt + 1,
+          status: response.status,
+          responseHeaders,
+        });
+        lastError = error;
+        continue;
+      }
+
       const responseHeaders: Record<string, string> = {};
       response.headers.forEach((value, key) => {
         responseHeaders[key] = value;
@@ -131,27 +178,7 @@ export class OpenAIClient {
       });
       throw error;
     }
-
-    if (params.stream) {
-      return {
-        data: this.streamChatCompletion(response),
-        response,
-      } as unknown as APIResponse<
-        P extends ChatCompletionCreateParamsStreaming
-          ? AsyncIterable<ChatCompletionChunk>
-          : ChatCompletion
-      >;
-    } else {
-      const data = await response.json();
-      return {
-        data,
-        response,
-      } as unknown as APIResponse<
-        P extends ChatCompletionCreateParamsStreaming
-          ? AsyncIterable<ChatCompletionChunk>
-          : ChatCompletion
-      >;
-    }
+    throw lastError;
   }
 
   private async *streamChatCompletion(
