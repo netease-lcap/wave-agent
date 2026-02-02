@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect } from "react";
 import { Box, Text } from "ink";
 import { useInput } from "ink";
 import { FileSelector } from "./FileSelector.js";
 import { CommandSelector } from "./CommandSelector.js";
-import { BashHistorySelector } from "./BashHistorySelector.js";
+import { HistorySearch } from "./HistorySearch.js";
 import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
 import { BashShellManager } from "./BashShellManager.js";
 import { McpManager } from "./McpManager.js";
@@ -13,7 +13,7 @@ import { useChat } from "../contexts/useChat.js";
 import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
 
 export const INPUT_PLACEHOLDER_TEXT =
-  "Type your message (use @ to reference files, / for commands, ! for bash history, # to add memory)...";
+  "Type your message (use @ to reference files, / for commands, # to add memory, Ctrl+R to search history)...";
 
 export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
   0,
@@ -43,7 +43,6 @@ export interface InputBoxProps {
 export const InputBox: React.FC<InputBoxProps> = ({
   isLoading = false,
   isCommandRunning = false,
-  workdir,
   userInputHistory = [],
   sendMessage = () => {},
   abortMessage = () => {},
@@ -54,9 +53,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   slashCommands = [],
   hasSlashCommand = () => false,
 }) => {
-  // Get current working directory - memoized to avoid repeated process.cwd() calls
-  const currentWorkdir = useMemo(() => workdir || process.cwd(), [workdir]);
-
   const {
     permissionMode: chatPermissionMode,
     setPermissionMode: setChatPermissionMode,
@@ -81,16 +77,16 @@ export const InputBox: React.FC<InputBoxProps> = ({
     handleCommandSelect,
     handleCommandInsert,
     handleCancelCommandSelect,
-    // Bash history selector
-    showBashHistorySelector,
-    bashHistorySearchQuery,
-    handleBashHistorySelect,
-    handleCancelBashHistorySelect,
+    handleHistorySearchSelect,
+    handleCancelHistorySearch,
     // Memory type selector
     showMemoryTypeSelector,
     memoryMessage,
     handleMemoryTypeSelect,
     handleCancelMemoryTypeSelect,
+    // History search
+    showHistorySearch,
+    historySearchQuery,
     // Bash/MCP Manager
     showBashManager,
     showMcpManager,
@@ -101,9 +97,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setPermissionMode,
     // Input history
     setUserInputHistory,
-    // Complex handlers combining multiple operations
-    handleBashHistoryExecuteAndSend,
-    handleBashHistoryDelete,
     // Main handler
     handleInput,
     // Manager ready state
@@ -183,14 +176,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {showBashHistorySelector && (
-        <BashHistorySelector
-          searchQuery={bashHistorySearchQuery}
-          workdir={currentWorkdir}
-          onSelect={handleBashHistorySelect}
-          onExecute={handleBashHistoryExecuteAndSend}
-          onDelete={handleBashHistoryDelete}
-          onCancel={handleCancelBashHistorySelect}
+      {showHistorySearch && (
+        <HistorySearch
+          searchQuery={historySearchQuery}
+          onSelect={handleHistorySearchSelect}
+          onCancel={handleCancelHistorySearch}
         />
       )}
 

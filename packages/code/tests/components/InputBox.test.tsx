@@ -1,12 +1,20 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
-import {
-  InputBox,
-  INPUT_PLACEHOLDER_TEXT,
-} from "../../src/components/InputBox.js";
+import { InputBox } from "../../src/components/InputBox.js";
 import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers.js";
 import type { SlashCommand } from "wave-agent-sdk";
+
+vi.mock("wave-agent-sdk", async (importOriginal) => {
+  const actual = (await importOriginal()) as object;
+  return {
+    ...actual,
+    PromptHistoryManager: {
+      addEntry: vi.fn().mockResolvedValue(undefined),
+      searchHistory: vi.fn().mockResolvedValue([]),
+    },
+  };
+});
 
 vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: () => ({
@@ -40,7 +48,9 @@ describe("InputBox Smoke Tests", () => {
       expect(lastFrame()).toContain("hello world");
 
       // Verify placeholder text is no longer displayed
-      expect(lastFrame()).not.toContain(INPUT_PLACEHOLDER_TEXT);
+      expect(lastFrame()).not.toContain(
+        "Type your message (use @ to reference files",
+      );
     });
 
     it("should handle paste input with newlines", async () => {
@@ -57,7 +67,9 @@ describe("InputBox Smoke Tests", () => {
       const output = lastFrame();
       expect(output).toContain("This is line 1");
       expect(output).toContain("This is line 2");
-      expect(output).not.toContain(INPUT_PLACEHOLDER_TEXT);
+      expect(output).not.toContain(
+        "Type your message (use @ to reference files",
+      );
     });
 
     it("should compress long text (>200 chars) into compressed format", async () => {

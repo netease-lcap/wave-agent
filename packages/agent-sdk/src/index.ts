@@ -27,6 +27,7 @@ export * from "./utils/globalLogger.js";
 export * from "./utils/mcpUtils.js";
 export * from "./utils/messageOperations.js";
 export * from "./utils/path.js";
+export * from "./utils/promptHistory.js";
 export * from "./utils/stringUtils.js";
 export * from "./utils/customCommands.js";
 export * from "./utils/hookMatcher.js";

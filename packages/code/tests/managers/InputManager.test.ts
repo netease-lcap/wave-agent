@@ -12,10 +12,22 @@ vi.mock("../../src/utils/clipboard.js", () => ({
 }));
 
 // Mock file search utils
-const mockSearchFiles = vi.hoisted(() => vi.fn());
-vi.mock("wave-agent-sdk", () => ({
-  searchFiles: mockSearchFiles,
+const { mockSearchFiles, mockPromptHistoryManager } = vi.hoisted(() => ({
+  mockSearchFiles: vi.fn(),
+  mockPromptHistoryManager: {
+    addEntry: vi.fn().mockResolvedValue(undefined),
+    searchHistory: vi.fn().mockResolvedValue([]),
+  },
 }));
+
+vi.mock("wave-agent-sdk", async (importOriginal) => {
+  const actual = (await importOriginal()) as object;
+  return {
+    ...actual,
+    searchFiles: mockSearchFiles,
+    PromptHistoryManager: mockPromptHistoryManager,
+  };
+});
 
 describe("InputManager", () => {
   let manager: InputManager;
@@ -31,7 +43,7 @@ describe("InputManager", () => {
       onCursorPositionChange: vi.fn(),
       onFileSelectorStateChange: vi.fn(),
       onCommandSelectorStateChange: vi.fn(),
-      onBashHistorySelectorStateChange: vi.fn(),
+      onHistorySearchStateChange: vi.fn(),
       onMemoryTypeSelectorStateChange: vi.fn(),
       onBashManagerStateChange: vi.fn(),
       onMcpManagerStateChange: vi.fn(),
@@ -245,40 +257,36 @@ describe("InputManager", () => {
     });
   });
 
-  describe("Bash History Selector", () => {
-    it("should activate bash history selector", () => {
-      manager.insertTextAtCursor("!");
-      manager.activateBashHistorySelector(0);
+  describe("History Search", () => {
+    it("should activate history search", () => {
+      manager.activateHistorySearch();
 
-      expect(
-        mockCallbacks.onBashHistorySelectorStateChange,
-      ).toHaveBeenCalledWith(true, "", 0);
+      expect(mockCallbacks.onHistorySearchStateChange).toHaveBeenCalledWith(
+        true,
+        "",
+      );
     });
 
-    it("should handle bash history selection", () => {
-      manager.insertTextAtCursor("!test");
-      manager.activateBashHistorySelector(0);
+    it("should handle history search selection", () => {
+      manager.activateHistorySearch();
+      manager.handleHistorySearchSelect("selected prompt");
 
-      const result = manager.handleBashHistorySelect("ls -la");
-
-      expect(result.newInput).toBe("!ls -la");
-      expect(result.newCursorPosition).toBe(7);
+      expect(manager.getInputText()).toBe("selected prompt");
+      expect(manager.getCursorPosition()).toBe(15);
+      expect(mockCallbacks.onHistorySearchStateChange).toHaveBeenLastCalledWith(
+        false,
+        "",
+      );
     });
 
-    it("should handle bash history execute", () => {
-      const command = manager.handleBashHistoryExecute("ls -la");
-      expect(command).toBe("ls -la");
-    });
+    it("should cancel history search", () => {
+      manager.activateHistorySearch();
+      manager.handleCancelHistorySearch();
 
-    it("should detect exclamation deletion", () => {
-      manager.insertTextAtCursor("!test");
-      manager.activateBashHistorySelector(0);
-
-      // Delete the !
-      manager.setCursorPosition(1);
-      const shouldDeactivate = manager.checkForExclamationDeletion(0);
-
-      expect(shouldDeactivate).toBe(true);
+      expect(mockCallbacks.onHistorySearchStateChange).toHaveBeenLastCalledWith(
+        false,
+        "",
+      );
     });
   });
 
@@ -532,6 +540,32 @@ describe("InputManager", () => {
       expect(manager.getInputText()).toBe("[Image #1]");
     });
 
+    it("should handle Ctrl+R for history search", async () => {
+      const mockKey: Key = {
+        ctrl: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        escape: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      };
+
+      await manager.handleInput("r", mockKey, [], false, false);
+
+      expect(mockCallbacks.onHistorySearchStateChange).toHaveBeenCalledWith(
+        true,
+        "",
+      );
+    });
+
     it("should handle escape to abort during loading", async () => {
       const mockKey: Key = {
         escape: true,
@@ -604,47 +638,6 @@ describe("InputManager", () => {
         "",
         0,
       );
-    });
-
-    it("should activate bash history selector on !", () => {
-      // Bash history selector activates when ! is input at position 1
-      // After inserting, cursor is at 1, which is the correct condition
-      manager.insertTextAtCursor("!");
-      manager.handleSpecialCharInput("!");
-
-      expect(
-        mockCallbacks.onBashHistorySelectorStateChange,
-      ).toHaveBeenCalledWith(true, "", 0);
-    });
-
-    it("should convert Chinese exclamation mark at start", () => {
-      // Chinese exclamation mark converts to ! when cursor is at 0 (start of input)
-      // So we need to test this through handleInput since handleSpecialCharInput
-      // expects the character after insertion
-      const mockKey: Key = {
-        upArrow: false,
-        downArrow: false,
-        leftArrow: false,
-        rightArrow: false,
-        return: false,
-        escape: false,
-        ctrl: false,
-        backspace: false,
-        delete: false,
-        pageDown: false,
-        pageUp: false,
-        shift: false,
-        tab: false,
-        meta: false,
-      };
-
-      // This should convert ！ to ! and then activate bash history selector
-      manager.handleInput("！", mockKey, [], false, false);
-
-      expect(manager.getInputText()).toBe("!");
-      expect(
-        mockCallbacks.onBashHistorySelectorStateChange,
-      ).toHaveBeenCalledWith(true, "", 0);
     });
   });
 
