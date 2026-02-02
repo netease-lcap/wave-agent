@@ -52,10 +52,10 @@ describe("MessageManager History Truncation Integration", () => {
 
     expect(messageManager.getMessages()).toHaveLength(1);
     expect(messageManager.getMessages()[0].id).toBe("msg1");
-    expect(mockReversionManager.revertTo).toHaveBeenCalledWith([
-      "msg2",
-      "msg3",
-    ]);
+    expect(mockReversionManager.revertTo).toHaveBeenCalledWith(
+      ["msg2", "msg3"],
+      expect.any(Array),
+    );
     expect(fs.writeFile).toHaveBeenCalled();
   });
 

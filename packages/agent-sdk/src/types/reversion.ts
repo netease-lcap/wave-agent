@@ -6,8 +6,8 @@ export interface FileSnapshot {
   messageId: string;
   /** Absolute path to the file. */
   filePath: string;
-  /** The content of the file before the operation. null if the file did not exist. */
-  content: string | null;
+  /** Path to the stored snapshot file. */
+  snapshotPath?: string;
   /** When the snapshot was taken. */
   timestamp: number;
   /** The operation that triggered this snapshot. */

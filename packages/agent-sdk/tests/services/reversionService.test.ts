@@ -1,68 +1,64 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "fs/promises";
 import { ReversionService } from "../../src/services/reversionService.js";
-import { FileSnapshot } from "../../src/types/reversion.js";
+import { join } from "path";
+import { homedir } from "os";
 
 vi.mock("fs/promises");
 
 describe("ReversionService", () => {
-  const sessionPath = "/tmp/session.jsonl";
-  const reversionPath = "/tmp/.reversion-session.jsonl";
+  const sessionId = "test-session";
+  const historyBaseDir = join(homedir(), ".wave", "file-history", sessionId);
   let service: ReversionService;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new ReversionService(sessionPath);
+    service = new ReversionService(sessionId);
   });
 
-  it("should append a snapshot to the file", async () => {
+  it("should save a snapshot to the file history directory", async () => {
     const snapshot = {
       messageId: "m1",
-      filePath: "f1",
+      filePath: "/path/to/f1",
       content: "c1",
       timestamp: 1,
       operation: "modify",
     };
 
-    await service.saveSnapshot(snapshot as FileSnapshot);
+    vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT")); // No versions file
 
-    expect(fs.appendFile).toHaveBeenCalledWith(
-      reversionPath,
-      JSON.stringify(snapshot) + "\n",
-      "utf-8",
-    );
-  });
-
-  it("should read snapshots for specific messages", async () => {
-    const snapshots = [
-      { messageId: "m1", filePath: "f1" },
-      { messageId: "m2", filePath: "f2" },
-    ];
-    vi.mocked(fs.readFile).mockResolvedValue(
-      snapshots.map((s) => JSON.stringify(s)).join("\n"),
+    const snapshotPath = await service.saveSnapshot(
+      snapshot as unknown as import("../../src/types/reversion.js").FileSnapshot,
     );
 
-    const result = await service.getSnapshotsForMessages(["m1"]);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].messageId).toBe("m1");
-  });
-
-  it("should delete snapshots for specific messages", async () => {
-    const snapshots = [
-      { messageId: "m1", filePath: "f1" },
-      { messageId: "m2", filePath: "f2" },
-    ];
-    vi.mocked(fs.readFile).mockResolvedValue(
-      snapshots.map((s) => JSON.stringify(s)).join("\n"),
-    );
-
-    await service.deleteSnapshotsForMessages(["m1"]);
-
+    expect(snapshotPath).toContain("v1");
     expect(fs.writeFile).toHaveBeenCalledWith(
-      reversionPath,
-      JSON.stringify(snapshots[1]) + "\n",
+      expect.stringContaining("v1"),
+      "c1",
       "utf-8",
     );
+    expect(fs.appendFile).toHaveBeenCalledWith(
+      expect.stringContaining("versions"),
+      "1\n",
+      "utf-8",
+    );
+  });
+
+  it("should read snapshot content", async () => {
+    vi.mocked(fs.readFile).mockResolvedValue("snapshot content");
+
+    const result = await service.readSnapshotContent("/some/path/v1");
+
+    expect(result).toBe("snapshot content");
+    expect(fs.readFile).toHaveBeenCalledWith("/some/path/v1", "utf-8");
+  });
+
+  it("should delete session history", async () => {
+    await service.deleteSessionHistory();
+
+    expect(fs.rm).toHaveBeenCalledWith(historyBaseDir, {
+      recursive: true,
+      force: true,
+    });
   });
 });

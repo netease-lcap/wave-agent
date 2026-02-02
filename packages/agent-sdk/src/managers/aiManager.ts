@@ -684,6 +684,15 @@ export class AIManager {
 
       // Check if there are tool operations, if so automatically initiate next AI service call
       if (toolCalls.length > 0) {
+        // Record committed snapshots to message history
+        if (this.reversionManager) {
+          const snapshots =
+            this.reversionManager.getAndClearCommittedSnapshots();
+          if (snapshots.length > 0) {
+            this.messageManager.addFileHistoryBlock(snapshots);
+          }
+        }
+
         // Check interruption status
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
@@ -723,6 +732,15 @@ export class AIManager {
           abortController.signal.aborted || toolAbortController.signal.aborted;
 
         if (!isCurrentlyAborted) {
+          // Record committed snapshots to message history for the final turn
+          if (this.reversionManager) {
+            const snapshots =
+              this.reversionManager.getAndClearCommittedSnapshots();
+            if (snapshots.length > 0) {
+              this.messageManager.addFileHistoryBlock(snapshots);
+            }
+          }
+
           const shouldContinue = await this.executeStopHooks();
 
           // If Stop/SubagentStop hooks indicate we should continue (due to blocking errors),

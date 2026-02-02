@@ -1107,12 +1107,18 @@ export class Agent {
       const typeLabel = type === "project" ? "Project Memory" : "User Memory";
       const storagePath = "AGENTS.md";
 
-      this.messageManager.addMemoryBlock(
-        `${typeLabel}: ${memoryText}`,
-        true,
-        type,
-        storagePath,
-      );
+      const messages = this.messageManager.getMessages();
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && lastMessage.role === "assistant") {
+        lastMessage.blocks.push({
+          type: "memory",
+          content: `${typeLabel}: ${memoryText}`,
+          isSuccess: true,
+          memoryType: type,
+          storagePath,
+        });
+        this.messageManager.setMessages(messages);
+      }
     } catch (error) {
       // Add failed MemoryBlock to the last assistant message
       const memoryText = message.substring(1).trim();
@@ -1121,12 +1127,18 @@ export class Agent {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 
-      this.messageManager.addMemoryBlock(
-        `${typeLabel}: ${memoryText} - Error: ${errorMessage}`,
-        false,
-        type,
-        storagePath,
-      );
+      const messages = this.messageManager.getMessages();
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && lastMessage.role === "assistant") {
+        lastMessage.blocks.push({
+          type: "memory",
+          content: `${typeLabel}: ${memoryText} - Error: ${errorMessage}`,
+          isSuccess: false,
+          memoryType: type,
+          storagePath,
+        });
+        this.messageManager.setMessages(messages);
+      }
     }
   }
 

@@ -29,13 +29,15 @@ export class ReversionManager {
     const snapshot: FileSnapshot = {
       messageId,
       filePath,
-      content,
       timestamp: Date.now(),
       operation,
     };
 
+    // We temporarily store the content in the buffer, it will be saved to disk on commit
     const snapshotId = `${messageId}-${filePath}-${snapshot.timestamp}`;
-    this.buffer.set(snapshotId, snapshot);
+    this.buffer.set(snapshotId, { ...snapshot, content } as FileSnapshot & {
+      content: string | null;
+    });
     return snapshotId;
   }
 
@@ -56,11 +58,34 @@ export class ReversionManager {
    * Called only if the tool succeeds.
    */
   async commitSnapshot(snapshotId: string): Promise<void> {
-    const snapshot = this.buffer.get(snapshotId);
-    if (snapshot) {
-      await this.reversionService.saveSnapshot(snapshot);
+    const snapshotWithContent = this.buffer.get(snapshotId) as FileSnapshot & {
+      content: string | null;
+    };
+    if (snapshotWithContent) {
+      const { content, ...snapshot } = snapshotWithContent;
+      const snapshotPath = await this.reversionService.saveSnapshot({
+        ...snapshot,
+        content,
+      } as FileSnapshot);
+      snapshot.snapshotPath = snapshotPath;
       this.buffer.delete(snapshotId);
+
+      // We need to return the snapshot so it can be added to the message block
+      // But the current API doesn't support it.
+      // Let's store committed snapshots in another buffer for the current turn.
+      this.committedSnapshots.push(snapshot);
     }
+  }
+
+  private committedSnapshots: FileSnapshot[] = [];
+
+  /**
+   * Gets and clears committed snapshots for the current turn.
+   */
+  getAndClearCommittedSnapshots(): FileSnapshot[] {
+    const snapshots = [...this.committedSnapshots];
+    this.committedSnapshots = [];
+    return snapshots;
   }
 
   /**
@@ -76,30 +101,51 @@ export class ReversionManager {
    * down to (and including) the specified message index.
    * This should be called by MessageManager.
    */
-  async revertTo(messageIds: string[]): Promise<number> {
-    const snapshots =
-      await this.reversionService.getSnapshotsForMessages(messageIds);
+  async revertTo(
+    messageIds: string[],
+    allMessages: import("../types/index.js").Message[],
+  ): Promise<number> {
+    const messageIdSet = new Set(messageIds);
+    const snapshots: FileSnapshot[] = [];
+
+    for (const message of allMessages) {
+      if (message.id && messageIdSet.has(message.id)) {
+        const historyBlock = message.blocks.find(
+          (b) => b.type === "file_history",
+        ) as { type: "file_history"; snapshots: FileSnapshot[] } | undefined;
+        if (historyBlock && historyBlock.snapshots) {
+          snapshots.push(...historyBlock.snapshots);
+        }
+      }
+    }
+
     // Revert in reverse chronological order (LIFO)
     const sortedSnapshots = snapshots.sort((a, b) => b.timestamp - a.timestamp);
 
     let revertedCount = 0;
     for (const snapshot of sortedSnapshots) {
       try {
-        if (snapshot.content === null) {
+        if (!snapshot.snapshotPath) {
           // File didn't exist before, so delete it
           await fs.rm(snapshot.filePath, { force: true });
         } else {
           // Restore previous content
-          await fs.writeFile(snapshot.filePath, snapshot.content, "utf-8");
+          const content = await this.reversionService.readSnapshotContent(
+            snapshot.snapshotPath,
+          );
+          if (content !== null) {
+            await fs.writeFile(snapshot.filePath, content, "utf-8");
+          } else {
+            // If snapshotPath exists but content is null, it means the file should be deleted
+            // (This handles the case where snapshotPath was set but content was null in saveSnapshot)
+            await fs.rm(snapshot.filePath, { force: true });
+          }
         }
         revertedCount++;
       } catch (error) {
         console.error(`Failed to revert file ${snapshot.filePath}:`, error);
       }
     }
-
-    // After reversion, remove these snapshots from the log
-    await this.reversionService.deleteSnapshotsForMessages(messageIds);
 
     return revertedCount;
   }

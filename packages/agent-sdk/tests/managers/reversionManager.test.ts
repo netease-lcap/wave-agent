@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "fs/promises";
 import { ReversionManager } from "../../src/managers/reversionManager.js";
 import { ReversionService } from "../../src/services/reversionService.js";
-import { FileSnapshot } from "../../src/types/reversion.js";
 
 vi.mock("fs/promises");
 vi.mock("../../src/services/reversionService.js");
@@ -14,9 +13,11 @@ describe("ReversionManager", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReversionService = new ReversionService(
-      "test.jsonl",
-    ) as Mocked<ReversionService>;
+    mockReversionService = {
+      saveSnapshot: vi.fn(),
+      readSnapshotContent: vi.fn(),
+      deleteSessionHistory: vi.fn(),
+    } as unknown as Mocked<ReversionService>;
     reversionManager = new ReversionManager(mockReversionService);
   });
 
@@ -41,6 +42,9 @@ describe("ReversionManager", () => {
       "modify",
     );
 
+    vi.mocked(mockReversionService.saveSnapshot).mockResolvedValue(
+      "/snapshot/path",
+    );
     await reversionManager.commitSnapshot(snapshotId);
 
     expect(mockReversionService.saveSnapshot).toHaveBeenCalledWith(
@@ -50,6 +54,8 @@ describe("ReversionManager", () => {
         content: "old content",
       }),
     );
+    const committed = reversionManager.getAndClearCommittedSnapshots();
+    expect(committed[0].snapshotPath).toBe("/snapshot/path");
   });
 
   it("should discard a snapshot from the buffer", async () => {
@@ -71,24 +77,42 @@ describe("ReversionManager", () => {
       {
         messageId: "msg1",
         filePath: "/file1",
-        content: "v1",
+        snapshotPath: "/snap1",
         timestamp: 100,
         operation: "modify",
       },
       {
         messageId: "msg2",
         filePath: "/file1",
-        content: "v2",
+        snapshotPath: "/snap2",
         timestamp: 200,
         operation: "modify",
       },
     ];
 
-    mockReversionService.getSnapshotsForMessages.mockResolvedValue(
-      snapshots as FileSnapshot[],
+    const messages = [
+      {
+        id: "msg1",
+        blocks: [{ type: "file_history", snapshots: [snapshots[0]] }],
+      },
+      {
+        id: "msg2",
+        blocks: [{ type: "file_history", snapshots: [snapshots[1]] }],
+      },
+    ];
+
+    vi.mocked(mockReversionService.readSnapshotContent).mockImplementation(
+      async (path) => {
+        if (path === "/snap1") return "v1";
+        if (path === "/snap2") return "v2";
+        return null;
+      },
     );
 
-    const count = await reversionManager.revertTo(["msg1", "msg2"]);
+    const count = await reversionManager.revertTo(
+      ["msg1", "msg2"],
+      messages as unknown as import("../../src/types/index.js").Message[],
+    );
 
     expect(count).toBe(2);
     // Should write v2 (latest) then v1 (earliest)
@@ -102,9 +126,6 @@ describe("ReversionManager", () => {
       "v1",
       "utf-8",
     ]);
-    expect(
-      mockReversionService.deleteSnapshotsForMessages,
-    ).toHaveBeenCalledWith(["msg1", "msg2"]);
   });
 
   it("should delete files that did not exist before", async () => {
@@ -112,17 +133,23 @@ describe("ReversionManager", () => {
       {
         messageId: "msg1",
         filePath: "/newfile",
-        content: null,
+        snapshotPath: undefined,
         timestamp: 100,
         operation: "create",
       },
     ];
 
-    mockReversionService.getSnapshotsForMessages.mockResolvedValue(
-      snapshots as FileSnapshot[],
-    );
+    const messages = [
+      {
+        id: "msg1",
+        blocks: [{ type: "file_history", snapshots: [snapshots[0]] }],
+      },
+    ];
 
-    await reversionManager.revertTo(["msg1"]);
+    await reversionManager.revertTo(
+      ["msg1"],
+      messages as unknown as import("../../src/types/index.js").Message[],
+    );
 
     expect(fs.rm).toHaveBeenCalledWith("/newfile", { force: true });
   });
