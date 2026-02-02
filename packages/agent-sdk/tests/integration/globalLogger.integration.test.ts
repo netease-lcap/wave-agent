@@ -615,16 +615,16 @@ describe("Agent - Global Logger Integration", () => {
         setGlobalLogger(mockLogger1);
         resetMockLogger(mockLogger1);
 
-        // Test logging with context objects like bashHistory would do
+        // Test logging with context objects
         const commandContext = {
           command: "git status",
           workdir: "/home/test/project",
         };
-        globalLogger.debug("Added bash command to history:", commandContext);
+        globalLogger.debug("Added command to history:", commandContext);
 
         // Verify context was logged
         expect(mockLogger1.debug).toHaveBeenCalledWith(
-          "Added bash command to history:",
+          "Added command to history:",
           commandContext,
         );
       });
@@ -634,18 +634,18 @@ describe("Agent - Global Logger Integration", () => {
         setGlobalLogger(mockLogger1);
         resetMockLogger(mockLogger1);
 
-        // Test logging with search context like searchBashHistory would do
+        // Test logging with search context
         const searchContext = {
           query: "git",
           workdir: "/home/test",
           originalCount: 5,
           dedupedCount: 3,
         };
-        globalLogger.debug("Bash history search results:", searchContext);
+        globalLogger.debug("History search results:", searchContext);
 
         // Verify search context was logged
         expect(mockLogger1.debug).toHaveBeenCalledWith(
-          "Bash history search results:",
+          "History search results:",
           searchContext,
         );
       });

@@ -12,11 +12,6 @@ import os from "os";
 export const DATA_DIRECTORY = path.join(os.homedir(), ".wave");
 
 /**
- * Bash command history file path
- */
-export const BASH_HISTORY_FILE = path.join(DATA_DIRECTORY, "bash-history.json");
-
-/**
  * Prompt history file path
  */
 export const PROMPT_HISTORY_FILE = path.join(DATA_DIRECTORY, "history.jsonl");

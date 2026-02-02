@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from "child_process";
-import { addBashCommandToHistory } from "../utils/bashHistory.js";
 import type { MessageManager } from "./messageManager.js";
 
 export interface BashManagerOptions {
@@ -65,9 +64,6 @@ export class BashManager {
 
       child.on("exit", (code, signal) => {
         const exitCode = code === null && signal ? 130 : (code ?? 0);
-
-        // Add command to bash history
-        addBashCommandToHistory(command, this.workdir);
 
         this.messageManager.completeCommandMessage(command, exitCode);
 
