@@ -30,19 +30,19 @@ describe("MessageManager History Truncation Integration", () => {
   it("should truncate history and call reversion manager", async () => {
     const messages = [
       {
+        id: "msg1",
         role: "user",
         blocks: [{ type: "text", content: "u1" }],
-        additionalFields: { id: "msg1" },
       },
       {
+        id: "msg2",
         role: "assistant",
         blocks: [{ type: "text", content: "a1" }],
-        additionalFields: { id: "msg2" },
       },
       {
+        id: "msg3",
         role: "user",
         blocks: [{ type: "text", content: "u2" }],
-        additionalFields: { id: "msg3" },
       },
     ];
     messageManager.setMessages(messages as Message[]);
@@ -51,7 +51,7 @@ describe("MessageManager History Truncation Integration", () => {
     await messageManager.truncateHistory(1, mockReversionManager);
 
     expect(messageManager.getMessages()).toHaveLength(1);
-    expect(messageManager.getMessages()[0].additionalFields?.id).toBe("msg1");
+    expect(messageManager.getMessages()[0].id).toBe("msg1");
     expect(mockReversionManager.revertTo).toHaveBeenCalledWith([
       "msg2",
       "msg3",
