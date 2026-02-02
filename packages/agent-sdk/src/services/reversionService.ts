@@ -1,77 +1,94 @@
-import { readFile, writeFile, appendFile, mkdir } from "fs/promises";
-import { dirname } from "path";
+import { readFile, writeFile, mkdir, rm } from "fs/promises";
+import { join } from "path";
+import { homedir } from "os";
+import { createHash } from "crypto";
 import { FileSnapshot } from "../types/reversion.js";
 
 export class ReversionService {
-  private reversionFilePath: string;
+  private historyBaseDir: string;
+  private sessionId: string;
 
-  constructor(sessionFilePath: string) {
-    // Store snapshots in a sidecar file: .reversion-[sessionId].jsonl
-    const dir = dirname(sessionFilePath);
-    const filename = sessionFilePath.split("/").pop() || "";
-    this.reversionFilePath = `${dir}/.reversion-${filename}`;
+  constructor(sessionId: string) {
+    this.sessionId = sessionId;
+    this.historyBaseDir = join(homedir(), ".wave", "file-history", sessionId);
   }
 
-  /**
-   * Saves a single snapshot to the JSONL file.
-   */
-  async saveSnapshot(snapshot: FileSnapshot): Promise<void> {
-    await this.ensureDirectory(dirname(this.reversionFilePath));
-    const line = JSON.stringify(snapshot) + "\n";
-    await appendFile(this.reversionFilePath, line, "utf-8");
+  private getFilePathHash(filePath: string): string {
+    return createHash("md5").update(filePath).digest("hex");
   }
 
-  /**
-   * Retrieves all snapshots associated with the given message IDs.
-   */
-  async getSnapshotsForMessages(messageIds: string[]): Promise<FileSnapshot[]> {
-    const allSnapshots = await this.readAllSnapshots();
-    const messageIdSet = new Set(messageIds);
-    return allSnapshots.filter((s) => messageIdSet.has(s.messageId));
-  }
-
-  /**
-   * Deletes snapshots associated with the given message IDs.
-   */
-  async deleteSnapshotsForMessages(messageIds: string[]): Promise<void> {
-    const allSnapshots = await this.readAllSnapshots();
-    const messageIdSet = new Set(messageIds);
-    const remainingSnapshots = allSnapshots.filter(
-      (s) => !messageIdSet.has(s.messageId),
-    );
-
-    const content =
-      remainingSnapshots.map((s) => JSON.stringify(s)).join("\n") +
-      (remainingSnapshots.length > 0 ? "\n" : "");
-    await writeFile(this.reversionFilePath, content, "utf-8");
-  }
-
-  /**
-   * Reads all snapshots from the JSONL file.
-   */
-  private async readAllSnapshots(): Promise<FileSnapshot[]> {
+  private async getNextVersion(fileHashDir: string): Promise<number> {
     try {
-      const content = await readFile(this.reversionFilePath, "utf-8");
-      return content
-        .split(/\r?\n/)
-        .filter((line) => line.trim().length > 0)
-        .map((line) => JSON.parse(line) as FileSnapshot);
+      const files = await readFile(join(fileHashDir, "versions"), "utf-8");
+      const versions = files
+        .split("\n")
+        .map((v) => parseInt(v, 10))
+        .filter((v) => !isNaN(v));
+      return versions.length > 0 ? Math.max(...versions) + 1 : 1;
+    } catch {
+      return 1;
+    }
+  }
+
+  private async updateVersionsFile(
+    fileHashDir: string,
+    version: number,
+  ): Promise<void> {
+    await appendFile(join(fileHashDir, "versions"), `${version}\n`, "utf-8");
+  }
+
+  /**
+   * Saves a single snapshot to the file history directory.
+   * Returns the snapshot path.
+   */
+  async saveSnapshot(snapshot: FileSnapshot): Promise<string> {
+    const fileHash = this.getFilePathHash(snapshot.filePath);
+    const fileHashDir = join(this.historyBaseDir, fileHash);
+    await this.ensureDirectory(fileHashDir);
+
+    const version = await this.getNextVersion(fileHashDir);
+    const snapshotPath = join(fileHashDir, `v${version}`);
+
+    const snapshotWithContent = snapshot as FileSnapshot & {
+      content: string | null;
+    };
+    if (snapshotWithContent.content !== null) {
+      await writeFile(snapshotPath, snapshotWithContent.content, "utf-8");
+    } else {
+      // For 'create' operation, the file didn't exist, so we don't write a content file.
+      // The absence of the file at snapshotPath will indicate it should be deleted on reversion.
+      return ""; // Return empty string to indicate no snapshot file
+    }
+
+    await this.updateVersionsFile(fileHashDir, version);
+    return snapshotPath;
+  }
+
+  /**
+   * Reads snapshot content from the given path.
+   */
+  async readSnapshotContent(snapshotPath: string): Promise<string | null> {
+    try {
+      return await readFile(snapshotPath, "utf-8");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return [];
+        return null;
       }
       throw error;
     }
   }
 
+  /**
+   * Deletes all snapshots for this session.
+   */
+  async deleteSessionHistory(): Promise<void> {
+    await rm(this.historyBaseDir, { recursive: true, force: true });
+  }
+
   private async ensureDirectory(dirPath: string): Promise<void> {
-    try {
-      await mkdir(dirPath, { recursive: true });
-    } catch (error) {
-      const err = error as NodeJS.ErrnoException;
-      if (err.code !== "EEXIST") {
-        throw error;
-      }
-    }
+    await mkdir(dirPath, { recursive: true });
   }
 }
+
+// Helper to avoid appendFile import error if not imported
+import { appendFile } from "fs/promises";

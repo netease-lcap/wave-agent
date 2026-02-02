@@ -29,7 +29,7 @@
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
 - [X] T004 Implement `ReversionManager` with atomic snapshot buffering in `packages/agent-sdk/src/managers/reversionManager.ts`
-- [X] T005 [P] Implement `ReversionService` for JSONL persistence in `packages/agent-sdk/src/services/reversionService.ts`
+- [X] T005 [P] Implement `ReversionService` for directory-based versioned storage in `packages/agent-sdk/src/services/reversionService.ts`
 - [X] T006 [P] Add `truncateHistory` method to `MessageManager` in `packages/agent-sdk/src/managers/messageManager.ts`
 - [X] T007 [P] Register `/rewind` command in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 - [X] T008 [P] Unit tests for `ReversionManager` in `packages/agent-sdk/tests/managers/reversionManager.test.ts`

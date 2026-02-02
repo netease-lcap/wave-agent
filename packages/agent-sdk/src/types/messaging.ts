@@ -28,7 +28,8 @@ export type MessageBlock =
   | CompressBlock
   | MemoryBlock
   | SubagentBlock
-  | ReasoningBlock;
+  | ReasoningBlock
+  | FileHistoryBlock;
 
 export interface TextBlock {
   type: "text";
@@ -107,4 +108,9 @@ export interface SubagentBlock {
 export interface ReasoningBlock {
   type: "reasoning";
   content: string;
+}
+
+export interface FileHistoryBlock {
+  type: "file_history";
+  snapshots: import("./reversion.js").FileSnapshot[];
 }

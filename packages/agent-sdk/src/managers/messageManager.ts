@@ -4,7 +4,6 @@ import {
   addErrorBlockToMessage,
   addUserMessageToMessages,
   extractUserInputHistory,
-  addMemoryBlockToMessage,
   addCommandOutputMessage,
   updateCommandOutputInMessage,
   completeCommandInMessage,
@@ -436,21 +435,19 @@ export class MessageManager {
     this.callbacks.onCompressBlockAdded?.(insertIndex, compressedContent);
   }
 
-  public addMemoryBlock(
-    content: string,
-    success: boolean,
-    type: "project" | "user",
-    storagePath: string,
+  public addFileHistoryBlock(
+    snapshots: import("../types/reversion.js").FileSnapshot[],
   ): void {
-    const newMessages = addMemoryBlockToMessage({
-      messages: this.messages,
-      content,
-      isSuccess: success,
-      memoryType: type,
-      storagePath,
-    });
-    this.setMessages(newMessages);
-    this.callbacks.onMemoryBlockAdded?.(content, success, type, storagePath);
+    if (snapshots.length === 0) return;
+
+    const lastMessage = this.messages[this.messages.length - 1];
+    if (lastMessage && lastMessage.role === "assistant") {
+      lastMessage.blocks.push({
+        type: "file_history",
+        snapshots,
+      } as unknown as import("../types/index.js").MessageBlock);
+      this.setMessages([...this.messages]);
+    }
   }
 
   // Bash command related message operations
@@ -673,7 +670,7 @@ export class MessageManager {
 
     // Revert file changes if manager is provided
     if (reversionManager && messageIdsToRemove.length > 0) {
-      await reversionManager.revertTo(messageIdsToRemove);
+      await reversionManager.revertTo(messageIdsToRemove, this.messages);
     }
 
     // Truncate messages in memory

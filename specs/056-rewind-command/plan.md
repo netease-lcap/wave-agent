@@ -5,13 +5,13 @@
 
 ## Summary
 
-Implement a `/rewind` builtin command that allows users to revert the conversation to a specific user message checkpoint. This involves deleting the selected message and all subsequent messages, and sequentially reverting all file operations (create, modify, delete) performed by the agent during those turns. The technical approach involves a new `ReversionManager` in `agent-sdk` to track file snapshots and a UI component in `code` for message selection.
+Implement a `/rewind` builtin command that allows users to revert the conversation to a specific user message checkpoint. This involves deleting the selected message and all subsequent messages, and sequentially reverting all file operations (create, modify, delete) performed by the agent during those turns. The technical approach involves a new `ReversionManager` in `agent-sdk` to track file snapshots. Snapshots are stored in `~/.wave/file-history/(sessionid)/(filepathhash)/v(num)` and recorded in the session JSONL as `file_history` blocks (not displayed in UI).
 
 ## Technical Context
 
 **Language/Version**: TypeScript (Node.js)
 **Primary Dependencies**: Ink (for CLI UI), fs/promises (for file I/O)
-**Storage**: JSONL for session messages, `.reversion.jsonl` for file snapshots
+**Storage**: JSONL for session messages, `~/.wave/file-history/` for file snapshots
 **Testing**: Vitest (Unit and Integration tests)
 **Target Platform**: Linux/macOS/Windows (Node.js environment)
 **Project Type**: Monorepo (agent-sdk + code)
