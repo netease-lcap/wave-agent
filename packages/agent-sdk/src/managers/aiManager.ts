@@ -339,7 +339,6 @@ export class AIManager {
 
       // Track if assistant message has been created
       let assistantMessageCreated = false;
-      const messageId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
       this.logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
@@ -397,12 +396,7 @@ export class AIManager {
         callAgentOptions.onContentUpdate = (content: string) => {
           // Create assistant message on first chunk if not already created
           if (!assistantMessageCreated) {
-            this.messageManager.addAssistantMessage(
-              undefined,
-              undefined,
-              undefined,
-              { id: messageId },
-            );
+            this.messageManager.addAssistantMessage();
             assistantMessageCreated = true;
           }
           this.messageManager.updateCurrentMessageContent(content);
@@ -410,12 +404,7 @@ export class AIManager {
         callAgentOptions.onToolUpdate = (toolCall) => {
           // Create assistant message on first tool update if not already created
           if (!assistantMessageCreated) {
-            this.messageManager.addAssistantMessage(
-              undefined,
-              undefined,
-              undefined,
-              { id: messageId },
-            );
+            this.messageManager.addAssistantMessage();
             assistantMessageCreated = true;
           }
 
@@ -435,12 +424,7 @@ export class AIManager {
         callAgentOptions.onReasoningUpdate = (reasoning: string) => {
           // Create assistant message on first reasoning update if not already created
           if (!assistantMessageCreated) {
-            this.messageManager.addAssistantMessage(
-              undefined,
-              undefined,
-              undefined,
-              { id: messageId },
-            );
+            this.messageManager.addAssistantMessage();
             assistantMessageCreated = true;
           }
           this.messageManager.updateCurrentMessageReasoning(reasoning);
@@ -457,12 +441,7 @@ export class AIManager {
         (!assistantMessageCreated &&
           (result.content || result.tool_calls || result.reasoning_content))
       ) {
-        this.messageManager.addAssistantMessage(
-          undefined,
-          undefined,
-          undefined,
-          { id: messageId },
-        );
+        this.messageManager.addAssistantMessage();
         assistantMessageCreated = true;
       }
 
@@ -641,7 +620,7 @@ export class AIManager {
                 abortSignal: toolAbortController.signal,
                 backgroundBashManager: this.backgroundBashManager,
                 workdir: this.workdir,
-                messageId: messageId,
+                messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
               };
 
               // Execute tool

@@ -169,6 +169,7 @@ export const addUserMessageToMessages = ({
   }
 
   const userMessage: Message = {
+    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     role: "user",
     blocks,
   };
@@ -205,6 +206,7 @@ export const addAssistantMessageToMessages = (
   }
 
   const initialAssistantMessage: Message = {
+    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
     role: "assistant",
     blocks,
     usage, // Include usage data if provided
@@ -527,6 +529,7 @@ export const addSubagentBlockToMessage = ({
   if (!lastAssistantMessage || lastAssistantMessage.role !== "assistant") {
     // Create new assistant message if the last message is not from assistant
     lastAssistantMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       role: "assistant",
       blocks: [],
     };
