@@ -237,6 +237,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
         },
+        onShowRewind: () => {
+          setIsRewindVisible(true);
+        },
       };
 
       try {
@@ -274,15 +277,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         });
 
         agentRef.current = agent;
-
-        // Register rewind callback
-        // @ts-expect-error - accessing internal messageManager for rewind
-        const messageManager = agent.messageManager;
-        if (messageManager) {
-          messageManager.callbacks.onShowRewind = () => {
-            setIsRewindVisible(true);
-          };
-        }
 
         // Get initial state
         setSessionId(agent.sessionId);
@@ -503,11 +497,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       if (agentRef.current) {
         try {
           setIsLoading(true);
-          // @ts-expect-error - accessing internal messageManager for rewind
-          const messageManager = agentRef.current.messageManager;
-          // @ts-expect-error - accessing internal reversionManager for rewind
-          const reversionManager = agentRef.current.aiManager.reversionManager;
-          await messageManager.truncateHistory(index, reversionManager);
+          await agentRef.current.truncateHistory(index);
           hideRewind();
         } catch (error) {
           logger.error("Failed to rewind:", error);

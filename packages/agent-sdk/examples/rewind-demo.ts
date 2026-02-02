@@ -47,17 +47,8 @@ async function main() {
           );
 
           // Trigger the actual rewind
-          // Note: In the SDK, the UI would call agent.truncateHistory(checkpoint.index, agent.reversionManager)
-          // But since reversionManager is private, we'll use the internal messageManager for this demo
-          // @ts-expect-error - accessing internal for demo purposes
-          const messageManager = agent.messageManager;
-          // @ts-expect-error - accessing internal for demo purposes
-          const reversionManager = agent.reversionManager;
-
-          await messageManager.truncateHistory(
-            checkpoint.index,
-            reversionManager,
-          );
+          // Note: In the SDK, the UI would call agent.truncateHistory(checkpoint.index)
+          await agent.truncateHistory(checkpoint.index);
           console.log("\n✅ Rewind completed!");
           console.log(`📊 Current messages: ${agent.messages.length}`);
         }

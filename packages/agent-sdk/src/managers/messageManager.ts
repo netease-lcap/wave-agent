@@ -251,6 +251,13 @@ export class MessageManager {
     this.savedMessageCount = 0; // Reset saved message count
   }
 
+  /**
+   * Trigger the rewind UI callback
+   */
+  public triggerShowRewind(): void {
+    this.callbacks.onShowRewind?.();
+  }
+
   // Initialize state from session data
   public initializeFromSession(sessionData: SessionData): void {
     this.setSessionId(sessionData.id);

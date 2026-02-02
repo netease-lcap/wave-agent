@@ -88,8 +88,7 @@ export class SlashCommandManager {
         "Revert conversation and file changes to a previous checkpoint",
       handler: async () => {
         // Trigger the UI to show the rewind selector
-        // @ts-expect-error - accessing internal callbacks for rewind
-        this.messageManager.callbacks.onShowRewind?.();
+        this.messageManager.triggerShowRewind();
       },
     });
   }
@@ -215,7 +214,7 @@ export class SlashCommandManager {
   /**
    * Register new command
    */
-  private registerCommand(command: SlashCommand): void {
+  public registerCommand(command: SlashCommand): void {
     this.commands.set(command.id, command);
   }
 
