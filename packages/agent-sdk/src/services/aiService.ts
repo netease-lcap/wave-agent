@@ -124,7 +124,7 @@ function getModelConfig(
     config.temperature = undefined;
   }
 
-  if (modelName.startsWith("gemini-3")) {
+  if (modelName.startsWith("gemini-3-flash")) {
     config.vertexai = {
       thinking_config: {
         thinking_level: "minimal",
