@@ -27,12 +27,16 @@ import type {
 import type { SubagentManager } from "./subagentManager.js";
 import type { SkillManager } from "./skillManager.js";
 
+import { ReversionManager } from "./reversionManager.js";
+
 export interface ToolManagerOptions {
   mcpManager: McpManager;
   lspManager?: ILspManager;
   logger?: Logger;
   /** Optional permission manager for handling tool permission checks */
   permissionManager?: PermissionManager;
+  /** Reversion manager for file snapshots */
+  reversionManager?: ReversionManager;
   /** Permission mode for tool execution (defaults to "default") */
   permissionMode?: PermissionMode;
   /** Custom permission callback for tool usage */
@@ -51,6 +55,7 @@ class ToolManager {
   private lspManager?: ILspManager;
   private logger?: Logger;
   private permissionManager?: PermissionManager;
+  private reversionManager?: ReversionManager;
   private permissionMode?: PermissionMode;
   private canUseToolCallback?: PermissionCallback;
 
@@ -59,6 +64,7 @@ class ToolManager {
     this.lspManager = options.lspManager;
     this.logger = options.logger;
     this.permissionManager = options.permissionManager;
+    this.reversionManager = options.reversionManager;
     // Store CLI permission mode, let PermissionManager resolve effective mode
     this.permissionMode = options.permissionMode;
     this.canUseToolCallback = options.canUseToolCallback;
@@ -161,6 +167,7 @@ class ToolManager {
       permissionMode: effectivePermissionMode,
       canUseToolCallback: this.canUseToolCallback,
       permissionManager: this.permissionManager,
+      reversionManager: this.reversionManager,
       mcpManager: this.mcpManager,
       lspManager: this.lspManager,
     };

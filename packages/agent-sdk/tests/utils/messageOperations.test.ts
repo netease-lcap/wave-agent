@@ -28,7 +28,7 @@ describe("addUserMessageToMessages", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
+    expect(result[0]).toMatchObject({
       role: "user",
       blocks: [{ type: "text", content: "Hello world" }],
     });
@@ -45,7 +45,7 @@ describe("addUserMessageToMessages", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
+    expect(result[0]).toMatchObject({
       role: "user",
       blocks: [
         { type: "text", content: "Check this out" },
@@ -71,7 +71,7 @@ describe("addUserMessageToMessages", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
+    expect(result[0]).toMatchObject({
       role: "user",
       blocks: [
         { type: "text", content: "Look at these" },
@@ -94,7 +94,7 @@ describe("addUserMessageToMessages", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
+    expect(result[0]).toMatchObject({
       role: "user",
       blocks: [
         { type: "text", content: "" },
@@ -123,7 +123,7 @@ describe("addUserMessageToMessages", () => {
 
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual(initialMessages[0]);
-    expect(result[1]).toEqual({
+    expect(result[1]).toMatchObject({
       role: "user",
       blocks: [
         { type: "text", content: "New message" },
@@ -254,7 +254,7 @@ describe("addMemoryBlockToMessage", () => {
     });
 
     expect(result).toHaveLength(2);
-    expect(result[1]).toEqual({
+    expect(result[1]).toMatchObject({
       role: "assistant",
       blocks: [
         {
@@ -281,7 +281,7 @@ describe("addMemoryBlockToMessage", () => {
     });
 
     expect(result).toHaveLength(2);
-    expect(result[1]).toEqual({
+    expect(result[1]).toMatchObject({
       role: "assistant",
       blocks: [
         {
@@ -303,7 +303,7 @@ describe("addMemoryBlockToMessage", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
+    expect(result[0]).toMatchObject({
       role: "assistant",
       blocks: [
         {
@@ -351,7 +351,7 @@ describe("Command Output Message Operations", () => {
       });
 
       expect(result).toHaveLength(2);
-      expect(result[1]).toEqual({
+      expect(result[1]).toMatchObject({
         role: "user",
         blocks: [
           {
@@ -374,7 +374,7 @@ describe("Command Output Message Operations", () => {
       });
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({
+      expect(result[0]).toMatchObject({
         role: "user",
         blocks: [
           {
@@ -704,7 +704,7 @@ describe("addErrorBlockToMessage", () => {
     });
 
     expect(result).toHaveLength(2);
-    expect(result[1]).toEqual({
+    expect(result[1]).toMatchObject({
       role: "assistant",
       blocks: [
         { type: "text", content: "Hi there!" },
@@ -731,7 +731,7 @@ describe("addErrorBlockToMessage", () => {
     });
 
     expect(result).toHaveLength(3);
-    expect(result[2]).toEqual({
+    expect(result[2]).toMatchObject({
       role: "assistant",
       blocks: [{ type: "error", content: "Error occurred" }],
     });
@@ -749,7 +749,7 @@ describe("addErrorBlockToMessage", () => {
     });
 
     expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
+    expect(result[0]).toMatchObject({
       role: "assistant",
       blocks: [{ type: "error", content: "Initial error" }],
     });
@@ -780,7 +780,7 @@ describe("addErrorBlockToMessage", () => {
     });
 
     expect(result).toHaveLength(3);
-    expect(result[2]).toEqual({
+    expect(result[2]).toMatchObject({
       role: "assistant",
       blocks: [
         { type: "text", content: "Second response" },

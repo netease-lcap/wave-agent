@@ -23,17 +23,14 @@ describe("Agent Prefix Matching Integration", () => {
 
     // 1. Simulate trusting a command that has a smart prefix
     // In a real scenario, this comes from the Confirmation component decision
-    // @ts-expect-error - accessing private method for testing
     await agent.addPermissionRule("Bash(npm install lodash)");
 
     // 2. Verify it was saved as a prefix rule
-    // @ts-expect-error - accessing private property for testing
-    const rules = agent.permissionManager.getAllowedRules();
+    const rules = agent.getAllowedRules();
     expect(rules).toContain("Bash(npm install:*)");
 
     // 3. Verify a similar command is allowed
-    // @ts-expect-error - accessing private property for testing
-    const decision = await agent.permissionManager.checkPermission({
+    const decision = await agent.checkPermission({
       toolName: "Bash",
       permissionMode: "default",
       toolInput: { command: "npm install express", workdir },
@@ -49,12 +46,10 @@ describe("Agent Prefix Matching Integration", () => {
     });
 
     // 1. Simulate trusting a blacklisted command
-    // @ts-expect-error - accessing private method for testing
     await agent.addPermissionRule("Bash(rm file.txt)");
 
     // 2. Verify it was NOT saved at all
-    // @ts-expect-error - accessing private property for testing
-    const rules = agent.permissionManager.getAllowedRules();
+    const rules = agent.getAllowedRules();
     expect(rules).not.toContain("Bash(rm file.txt)");
     expect(rules).not.toContain("Bash(rm:*)");
   });

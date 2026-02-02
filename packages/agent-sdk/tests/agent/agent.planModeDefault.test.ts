@@ -62,8 +62,7 @@ describe("Agent Plan Mode Default", () => {
     let planFilePath: string | undefined;
     for (let i = 0; i < 20; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      // @ts-expect-error - accessing private for testing
-      planFilePath = agent.permissionManager.getPlanFilePath();
+      planFilePath = agent.getPlanFilePath();
       if (planFilePath) break;
     }
 
@@ -107,8 +106,7 @@ describe("Agent Plan Mode Default", () => {
     const agent = await Agent.create({ workdir });
 
     expect(agent.getPermissionMode()).toBe("default");
-    // @ts-expect-error - accessing private for testing
-    expect(agent.permissionManager.getPlanFilePath()).toBeUndefined();
+    expect(agent.getPlanFilePath()).toBeUndefined();
     expect(fs.mkdir).not.toHaveBeenCalled();
   });
 });

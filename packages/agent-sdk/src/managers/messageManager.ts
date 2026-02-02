@@ -57,6 +57,8 @@ export interface MessageManagerCallbacks {
   onAddCommandOutputMessage?: (command: string) => void;
   onUpdateCommandOutputMessage?: (command: string, output: string) => void;
   onCompleteCommandMessage?: (command: string, exitCode: number) => void;
+  // Rewind callbacks
+  onShowRewind?: () => void;
   // Subagent callbacks
   onSubAgentBlockAdded?: (
     subagentId: string,
@@ -247,6 +249,13 @@ export class MessageManager {
     this.setSessionId(generateSessionId());
     this.setlatestTotalTokens(0);
     this.savedMessageCount = 0; // Reset saved message count
+  }
+
+  /**
+   * Trigger the rewind UI callback
+   */
+  public triggerShowRewind(): void {
+    this.callbacks.onShowRewind?.();
   }
 
   // Initialize state from session data
@@ -641,6 +650,64 @@ export class MessageManager {
   public removeLastUserMessage(): void {
     const newMessages = removeLastUserMessage(this.messages);
     this.setMessages(newMessages);
+  }
+
+  /**
+   * Truncate history to a specific index and revert file changes.
+   * @param index - The index of the user message to truncate to.
+   * @param reversionManager - Optional ReversionManager to handle file rollbacks.
+   */
+  public async truncateHistory(
+    index: number,
+    reversionManager?: import("./reversionManager.js").ReversionManager,
+  ): Promise<void> {
+    if (index < 0 || index >= this.messages.length) {
+      throw new Error(`Invalid message index: ${index}`);
+    }
+
+    // Identify messages to be removed
+    const messagesToRemove = this.messages.slice(index);
+    const messageIdsToRemove = messagesToRemove
+      .map((m) => m.id as string)
+      .filter((id) => !!id);
+
+    // Revert file changes if manager is provided
+    if (reversionManager && messageIdsToRemove.length > 0) {
+      await reversionManager.revertTo(messageIdsToRemove);
+    }
+
+    // Truncate messages in memory
+    const newMessages = this.messages.slice(0, index);
+    this.setMessages(newMessages);
+
+    // Update persistence: rewrite the session file
+    await this.rewriteSessionFile(newMessages);
+
+    // Update saved message count
+    this.savedMessageCount = newMessages.length;
+  }
+
+  /**
+   * Rewrite the session file with the current messages.
+   */
+  private async rewriteSessionFile(messages: Message[]): Promise<void> {
+    try {
+      const { writeFile } = await import("fs/promises");
+
+      const sessionMessages: import("../types/session.js").SessionMessage[] =
+        messages.map((message) => ({
+          ...message,
+          timestamp: new Date().toISOString(),
+        }));
+
+      const content =
+        sessionMessages.map((m) => JSON.stringify(m)).join("\n") +
+        (sessionMessages.length > 0 ? "\n" : "");
+
+      await writeFile(this.transcriptPath, content, "utf8");
+    } catch (error) {
+      this.logger?.error("Failed to rewrite session file:", error);
+    }
   }
 
   /**

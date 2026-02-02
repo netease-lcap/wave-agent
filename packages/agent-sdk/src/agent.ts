@@ -19,6 +19,8 @@ import {
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { HookManager } from "./managers/hookManager.js";
+import { ReversionManager } from "./managers/reversionManager.js";
+import { ReversionService } from "./services/reversionService.js";
 import { PermissionManager } from "./managers/permissionManager.js";
 import { PlanManager } from "./managers/planManager.js";
 import type {
@@ -121,6 +123,7 @@ export class Agent {
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
   private hookManager: HookManager; // Add hooks manager instance
+  private reversionManager: ReversionManager;
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private configurationService: ConfigurationService; // Add configuration service
@@ -234,6 +237,11 @@ export class Agent {
       logger: this.logger,
     });
 
+    // Initialize ReversionManager
+    this.reversionManager = new ReversionManager(
+      new ReversionService(this.messageManager.getTranscriptPath()),
+    );
+
     // Initialize memory rule manager
     this.memoryRuleManager = new MemoryRuleManager({
       workdir: this.workdir,
@@ -287,6 +295,7 @@ export class Agent {
       lspManager: this.lspManager,
       logger: this.logger,
       permissionManager: this.permissionManager,
+      reversionManager: this.reversionManager,
       permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
       canUseToolCallback: canUseToolWithNotification,
     }); // Initialize tool registry with permission support
@@ -341,6 +350,7 @@ export class Agent {
       workdir: this.workdir,
       systemPrompt: this.systemPrompt,
       stream: this.stream, // Pass streaming mode flag
+      reversionManager: this.reversionManager,
       getGatewayConfig: () => this.getGatewayConfig(),
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),
@@ -952,6 +962,13 @@ export class Agent {
   }
 
   /**
+   * Trigger the rewind UI callback
+   */
+  public triggerShowRewind(): void {
+    this.messageManager.triggerShowRewind();
+  }
+
+  /**
    * Send a message to the AI agent with optional images
    *
    * @param content - The text content of the message to send
@@ -1158,6 +1175,13 @@ export class Agent {
   }
 
   /**
+   * Register a custom slash command
+   */
+  public registerSlashCommand(command: SlashCommand): void {
+    this.slashCommandManager.registerCommand(command);
+  }
+
+  /**
    * Get the current permission mode
    */
   public getPermissionMode(): PermissionMode {
@@ -1178,30 +1202,41 @@ export class Agent {
   }
 
   /**
-   * Handle plan mode transition, generating or clearing plan file path
-   * @param mode - The current effective permission mode
+   * Truncate history to a specific index and revert file changes.
+   * @param index - The index of the user message to truncate to.
    */
-  private handlePlanModeTransition(mode: PermissionMode): void {
-    if (mode === "plan") {
-      this.planManager
-        .getOrGeneratePlanFilePath()
-        .then(({ path }) => {
-          this.logger?.debug("Plan file path generated", { path });
-          this.permissionManager.setPlanFilePath(path);
-        })
-        .catch((error) => {
-          this.logger?.error("Failed to generate plan file path", error);
-        });
-    } else {
-      this.permissionManager.setPlanFilePath(undefined);
-    }
+  public async truncateHistory(index: number): Promise<void> {
+    await this.messageManager.truncateHistory(index, this.reversionManager);
+  }
+
+  /**
+   * Get the current plan file path (for testing and UI)
+   */
+  public getPlanFilePath(): string | undefined {
+    return this.permissionManager.getPlanFilePath();
+  }
+
+  /**
+   * Get all currently allowed rules (for testing and UI)
+   */
+  public getAllowedRules(): string[] {
+    return this.permissionManager.getAllowedRules();
+  }
+
+  /**
+   * Check permission for a tool call (for testing)
+   */
+  public async checkPermission(
+    context: import("./types/permissions.js").ToolPermissionContext,
+  ): Promise<import("./types/permissions.js").PermissionDecision> {
+    return this.permissionManager.checkPermission(context);
   }
 
   /**
    * Add a persistent permission rule
    * @param rule - The rule to add (e.g., "Bash(ls)")
    */
-  private async addPermissionRule(rule: string): Promise<void> {
+  public async addPermissionRule(rule: string): Promise<void> {
     // 1. Expand rule if it's a Bash command
     let rulesToAdd = [rule];
     const bashMatch = rule.match(/^Bash\((.*)\)$/);
@@ -1232,6 +1267,26 @@ export class Agent {
           });
         }
       }
+    }
+  }
+
+  /**
+   * Handle plan mode transition, generating or clearing plan file path
+   * @param mode - The current effective permission mode
+   */
+  private handlePlanModeTransition(mode: PermissionMode): void {
+    if (mode === "plan") {
+      this.planManager
+        .getOrGeneratePlanFilePath()
+        .then(({ path }) => {
+          this.logger?.debug("Plan file path generated", { path });
+          this.permissionManager.setPlanFilePath(path);
+        })
+        .catch((error) => {
+          this.logger?.error("Failed to generate plan file path", error);
+        });
+    } else {
+      this.permissionManager.setPlanFilePath(undefined);
     }
   }
 }

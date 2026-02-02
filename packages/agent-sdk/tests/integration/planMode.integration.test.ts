@@ -62,8 +62,7 @@ describe("Plan Mode Integration", () => {
     let planFilePath: string | undefined;
     for (let i = 0; i < 20; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      // @ts-expect-error - accessing private for testing
-      planFilePath = agent.permissionManager.getPlanFilePath();
+      planFilePath = agent.getPlanFilePath();
       if (planFilePath) break;
     }
     expect(planFilePath).toBeDefined();
@@ -106,8 +105,7 @@ describe("Plan Mode Integration", () => {
     let planFilePath: string | undefined;
     for (let i = 0; i < 20; i++) {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      // @ts-expect-error - accessing private for testing
-      planFilePath = agent.permissionManager.getPlanFilePath();
+      planFilePath = agent.getPlanFilePath();
       if (planFilePath) break;
     }
     expect(planFilePath).toBeDefined();

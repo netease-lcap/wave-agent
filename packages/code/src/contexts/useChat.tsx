@@ -78,6 +78,11 @@ export interface ChatContextType {
   hideConfirmation: () => void;
   handleConfirmationDecision: (decision: PermissionDecision) => void;
   handleConfirmationCancel: () => void;
+  // Rewind functionality
+  isRewindVisible: boolean;
+  showRewind: () => void;
+  hideRewind: () => void;
+  handleRewindSelect: (index: number) => Promise<void>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -165,6 +170,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     reject: () => void;
   } | null>(null);
 
+  // Rewind state
+  const [isRewindVisible, setIsRewindVisible] = useState(false);
+
   const agentRef = useRef<Agent | null>(null);
 
   // Permission confirmation methods with queue support
@@ -228,6 +236,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
+        },
+        onShowRewind: () => {
+          setIsRewindVisible(true);
         },
       };
 
@@ -473,6 +484,31 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     hideConfirmation();
   }, [currentConfirmation, hideConfirmation]);
 
+  const showRewind = useCallback(() => {
+    setIsRewindVisible(true);
+  }, []);
+
+  const hideRewind = useCallback(() => {
+    setIsRewindVisible(false);
+  }, []);
+
+  const handleRewindSelect = useCallback(
+    async (index: number) => {
+      if (agentRef.current) {
+        try {
+          setIsLoading(true);
+          await agentRef.current.truncateHistory(index);
+          hideRewind();
+        } catch (error) {
+          logger.error("Failed to rewind:", error);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    },
+    [hideRewind],
+  );
+
   // Listen for Ctrl+O hotkey to toggle collapse/expand state and ESC to cancel confirmation
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
@@ -520,6 +556,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     hideConfirmation,
     handleConfirmationDecision,
     handleConfirmationCancel,
+    isRewindVisible,
+    showRewind,
+    hideRewind,
+    handleRewindSelect,
   };
 
   return (

@@ -79,6 +79,18 @@ export class SlashCommandManager {
         await this.aiManager.sendAIMessage();
       },
     });
+
+    // Register built-in rewind command
+    this.registerCommand({
+      id: "rewind",
+      name: "rewind",
+      description:
+        "Revert conversation and file changes to a previous checkpoint",
+      handler: async () => {
+        // Trigger the UI to show the rewind selector
+        this.messageManager.triggerShowRewind();
+      },
+    });
   }
 
   /**
@@ -202,7 +214,7 @@ export class SlashCommandManager {
   /**
    * Register new command
    */
-  private registerCommand(command: SlashCommand): void {
+  public registerCommand(command: SlashCommand): void {
     this.commands.set(command.id, command);
   }
 

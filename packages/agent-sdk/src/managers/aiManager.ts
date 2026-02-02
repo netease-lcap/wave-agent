@@ -43,6 +43,7 @@ export interface AIManagerOptions {
   workdir: string;
   systemPrompt?: string;
   subagentType?: string; // Optional subagent type for hook context
+  reversionManager?: import("./reversionManager.js").ReversionManager;
   /**Whether to use streaming mode for AI responses - defaults to true */
   stream?: boolean;
   // Dynamic configuration getters
@@ -62,6 +63,7 @@ export class AIManager {
   private messageManager: MessageManager;
   private backgroundBashManager?: BackgroundBashManager;
   private hookManager?: HookManager;
+  private reversionManager?: import("./reversionManager.js").ReversionManager;
   private permissionManager?: PermissionManager;
   private workdir: string;
   private systemPrompt?: string;
@@ -80,6 +82,7 @@ export class AIManager {
     this.toolManager = options.toolManager;
     this.backgroundBashManager = options.backgroundBashManager;
     this.hookManager = options.hookManager;
+    this.reversionManager = options.reversionManager;
     this.permissionManager = options.permissionManager;
     this.logger = options.logger;
     this.workdir = options.workdir;
@@ -617,6 +620,7 @@ export class AIManager {
                 abortSignal: toolAbortController.signal,
                 backgroundBashManager: this.backgroundBashManager,
                 workdir: this.workdir,
+                messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
               };
 
               // Execute tool
