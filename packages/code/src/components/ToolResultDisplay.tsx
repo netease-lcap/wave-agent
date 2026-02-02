@@ -135,8 +135,8 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
         </Box>
       )}
 
-      {/* Diff display - only show after tool execution completes */}
-      {stage === "end" && (
+      {/* Diff display - only show after tool execution completes and was successful */}
+      {stage === "end" && success && (
         <DiffDisplay toolName={name} parameters={parameters} />
       )}
     </Box>

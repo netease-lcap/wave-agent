@@ -282,6 +282,7 @@ describe("ToolResultDisplay Component", () => {
         type: "tool",
         name: "Edit",
         stage: "end",
+        success: true,
         parameters: JSON.stringify({
           file_path: "test.txt",
           old_string: "old",
@@ -298,6 +299,30 @@ describe("ToolResultDisplay Component", () => {
       const output = lastFrame();
 
       expect(output).toContain("Diff:");
+    });
+
+    it("should NOT show diff display when stage is end but success is false", () => {
+      const toolBlock: ToolBlock = {
+        type: "tool",
+        name: "Edit",
+        stage: "end",
+        success: false,
+        parameters: JSON.stringify({
+          file_path: "test.txt",
+          old_string: "old",
+          new_string: "new",
+        }),
+      };
+
+      // We need to mock transformToolBlockToChanges to return something for this test
+      vi.mocked(transformToolBlockToChanges).mockReturnValue([
+        { oldContent: "old", newContent: "new" },
+      ]);
+
+      const { lastFrame } = render(<ToolResultDisplay block={toolBlock} />);
+      const output = lastFrame();
+
+      expect(output).not.toContain("Diff:");
     });
   });
 });
