@@ -58,8 +58,8 @@
 ### API Contracts (`contracts/`)
 - Not applicable for this internal SDK feature, but will document the environment variable format.
 
-### Agent Context Update
-- Run `.specify/scripts/bash/update-agent-context.sh wave`.
+	### Agent Context Update
+	- Update agent context manually or via appropriate tools.
 
 ## Phase 2: Implementation Strategy
 
