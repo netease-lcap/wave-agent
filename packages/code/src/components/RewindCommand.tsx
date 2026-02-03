@@ -59,13 +59,7 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
   }
 
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="single"
-      borderColor="cyan"
-      paddingX={1}
-      gap={1}
-    >
+    <Box flexDirection="column" paddingX={1} gap={1}>
       <Box>
         <Text color="cyan" bold>
           Rewind: Select a message to revert to

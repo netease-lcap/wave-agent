@@ -13,7 +13,7 @@ export async function main() {
   const argv = await yargs(hideBin(process.argv))
     .option("restore", {
       alias: "r",
-      description: "Restore session by ID",
+      description: "Restore session by ID (or list sessions if no ID provided)",
       type: "string",
       global: false,
     })
@@ -31,11 +31,6 @@ export async function main() {
     })
     .option("show-stats", {
       description: "Show timing and usage statistics in print mode",
-      type: "boolean",
-      global: false,
-    })
-    .option("list-sessions", {
-      description: "List all available sessions",
       type: "boolean",
       global: false,
     })
@@ -223,63 +218,86 @@ export async function main() {
       "$0 -p 'Hello' --show-stats",
       "Send message in print mode with statistics",
     )
-    .example("$0 --list-sessions", "List all available sessions")
     .help("h")
     .recommendCommands()
     .strict()
     .parseAsync();
 
-  // Handle list sessions command
-  if (argv.listSessions) {
-    try {
-      const currentWorkdir = process.cwd();
-      const sessions = await listSessions(currentWorkdir);
+  // Handle restore session command
+  if (
+    argv.restore === "" ||
+    (process.argv.includes("-r") && argv.restore === undefined) ||
+    (process.argv.includes("--restore") && argv.restore === undefined)
+  ) {
+    if (argv.print !== undefined) {
+      try {
+        const currentWorkdir = process.cwd();
+        const sessions = await listSessions(currentWorkdir);
 
-      if (sessions.length === 0) {
-        console.log(`No sessions found for workdir: ${currentWorkdir}`);
-        return;
-      }
-
-      console.log(`Available sessions for: ${currentWorkdir}`);
-      console.log("==========================================");
-
-      // Get last 5 sessions
-      const lastSessions = sessions.slice(0, 5);
-
-      for (const session of lastSessions) {
-        const lastActiveAt = new Date(session.lastActiveAt).toLocaleString();
-        const filePath = await getSessionFilePath(session.id, session.workdir);
-
-        // Get first message content
-        const firstMessageContent = await getFirstMessageContent(
-          session.id,
-          session.workdir,
-        );
-
-        // Truncate content if too long
-        let truncatedContent =
-          firstMessageContent || "No first message content";
-        if (truncatedContent.length > 30) {
-          truncatedContent = truncatedContent.substring(0, 30) + "...";
+        if (sessions.length === 0) {
+          console.log(`No sessions found for workdir: ${currentWorkdir}`);
+          return;
         }
 
-        console.log(`ID: ${session.id}`);
-        console.log(`  Workdir: ${session.workdir}`);
-        console.log(`  File Path: ${filePath}`);
-        console.log(`  Last Active: ${lastActiveAt}`);
-        console.log(`  Last Message Tokens: ${session.latestTotalTokens}`);
-        console.log(`  First Message: ${truncatedContent}`);
-        console.log("");
-      }
+        console.log(`Available sessions for: ${currentWorkdir}`);
+        console.log("==========================================");
 
-      if (sessions.length > 5) {
-        console.log(`... and ${sessions.length - 5} more sessions`);
-      }
+        // Get last 5 sessions
+        const lastSessions = sessions.slice(0, 5);
 
-      return;
-    } catch (error) {
-      console.error("Failed to list sessions:", error);
-      process.exit(1);
+        for (const session of lastSessions) {
+          const lastActiveAt = new Date(session.lastActiveAt).toLocaleString();
+          const filePath = await getSessionFilePath(
+            session.id,
+            session.workdir,
+          );
+
+          // Get first message content
+          const firstMessageContent = await getFirstMessageContent(
+            session.id,
+            session.workdir,
+          );
+
+          // Truncate content if too long
+          let truncatedContent =
+            firstMessageContent || "No first message content";
+          if (truncatedContent.length > 30) {
+            truncatedContent = truncatedContent.substring(0, 30) + "...";
+          }
+
+          console.log(`ID: ${session.id}`);
+          console.log(`  Workdir: ${session.workdir}`);
+          console.log(`  File Path: ${filePath}`);
+          console.log(`  Last Active: ${lastActiveAt}`);
+          console.log(`  Last Message Tokens: ${session.latestTotalTokens}`);
+          console.log(`  First Message: ${truncatedContent}`);
+          console.log("");
+        }
+
+        if (sessions.length > 5) {
+          console.log(`... and ${sessions.length - 5} more sessions`);
+        }
+
+        return;
+      } catch (error) {
+        console.error("Failed to list sessions:", error);
+        process.exit(1);
+      }
+    } else {
+      // Interactive session selection
+      const { startSessionSelectorCli } = await import(
+        "./session-selector-cli.js"
+      );
+      const selectedSessionId = await startSessionSelectorCli();
+      if (!selectedSessionId) {
+        return;
+      }
+      // Continue with the selected session
+      return startCli({
+        restoreSessionId: selectedSessionId,
+        bypassPermissions: argv.dangerouslySkipPermissions,
+        pluginDirs: argv.pluginDir as string[],
+      });
     }
   }
 
