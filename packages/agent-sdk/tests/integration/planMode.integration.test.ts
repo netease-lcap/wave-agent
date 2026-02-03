@@ -72,8 +72,7 @@ describe("Plan Mode Integration", () => {
       finish_reason: "stop",
     });
 
-    // @ts-expect-error - accessing private for testing
-    await agent.aiManager.sendAIMessage();
+    await agent.sendMessage("I will write a plan.");
 
     // Check all calls to callAgent
     const calls = vi.mocked(callAgent).mock.calls;
@@ -134,8 +133,7 @@ describe("Plan Mode Integration", () => {
         finish_reason: "stop",
       });
 
-    // @ts-expect-error - accessing private for testing
-    await agent.aiManager.sendAIMessage();
+    await agent.sendMessage("write to file");
 
     // The assistant message should contain the tool result indicating denial
     const messages = agent.messages;

@@ -17,6 +17,15 @@ export default [
   {
     files: ["**/*.{ts,tsx}"],
     rules: {
+      "@typescript-eslint/ban-ts-comment": [
+        "error",
+        {
+          "ts-expect-error": true,
+          "ts-ignore": true,
+          "ts-nocheck": true,
+          "ts-check": false,
+        },
+      ],
       // Prohibit warning comments like TODO, FIXME, eslint-disable
       "no-warning-comments": [
         "error",
