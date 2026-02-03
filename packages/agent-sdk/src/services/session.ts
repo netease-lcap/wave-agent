@@ -43,6 +43,15 @@ export interface SessionMetadata {
   workdir: string;
   lastActiveAt: Date;
   latestTotalTokens: number;
+  firstMessage?: string;
+}
+
+export interface SessionIndex {
+  sessions: Record<
+    string,
+    Omit<SessionMetadata, "id" | "lastActiveAt"> & { lastActiveAt: string }
+  >;
+  lastUpdated: string;
 }
 
 /**
@@ -65,6 +74,38 @@ export function generateSubagentFilename(sessionId: string): string {
 // Constants
 export const SESSION_DIR = join(homedir(), ".wave", "projects");
 const MAX_SESSION_AGE_DAYS = 14;
+const SESSION_INDEX_FILENAME = "sessions-index.json";
+
+/**
+ * Update the session index for a project directory
+ */
+async function updateSessionIndex(
+  projectDirPath: string,
+  metadata: SessionMetadata,
+): Promise<void> {
+  const indexPath = join(projectDirPath, SESSION_INDEX_FILENAME);
+  let index: SessionIndex = {
+    sessions: {},
+    lastUpdated: new Date().toISOString(),
+  };
+
+  try {
+    const content = await fs.readFile(indexPath, "utf8");
+    index = JSON.parse(content);
+  } catch {
+    // Index doesn't exist or is invalid, start fresh
+  }
+
+  const { id, ...rest } = metadata;
+  index.sessions[id] = {
+    ...rest,
+    lastActiveAt: metadata.lastActiveAt.toISOString(),
+    firstMessage: metadata.firstMessage || index.sessions[id]?.firstMessage,
+  };
+  index.lastUpdated = new Date().toISOString();
+
+  await fs.writeFile(indexPath, JSON.stringify(index, null, 2), "utf8");
+}
 
 /**
  * Ensure session directory exists
@@ -186,6 +227,38 @@ export async function appendMessages(
 
   await jsonlHandler.append(filePath, messagesWithTimestamp, {
     atomic: false,
+  });
+
+  // Update index
+  const encoder = new PathEncoder();
+  const projectDir = await encoder.getProjectDirectory(workdir, SESSION_DIR);
+  const lastMessage = messagesWithTimestamp[messagesWithTimestamp.length - 1];
+
+  // Get first message content if it's a new session or we don't have it
+  let firstMessage: string | undefined;
+  try {
+    const indexPath = join(projectDir.encodedPath, SESSION_INDEX_FILENAME);
+    const content = await fs.readFile(indexPath, "utf8");
+    const index = JSON.parse(content) as SessionIndex;
+    if (!index.sessions[sessionId]?.firstMessage) {
+      firstMessage =
+        (await getFirstMessageContent(sessionId, workdir)) || undefined;
+    }
+  } catch {
+    // If index doesn't exist, this might be the first message
+    firstMessage =
+      (await getFirstMessageContent(sessionId, workdir)) || undefined;
+  }
+
+  await updateSessionIndex(projectDir.encodedPath, {
+    id: sessionId,
+    sessionType,
+    workdir,
+    lastActiveAt: new Date(lastMessage.timestamp),
+    latestTotalTokens: lastMessage.usage
+      ? extractLatestTotalTokens([lastMessage])
+      : 0,
+    firstMessage,
   });
 }
 
@@ -318,6 +391,27 @@ export async function listSessionsFromJsonl(
     const baseDir = SESSION_DIR;
 
     const projectDir = await encoder.getProjectDirectory(workdir, baseDir);
+
+    // Try to read from index first
+    const indexPath = join(projectDir.encodedPath, SESSION_INDEX_FILENAME);
+    try {
+      const indexContent = await fs.readFile(indexPath, "utf8");
+      const index = JSON.parse(indexContent) as SessionIndex;
+      const sessions: SessionMetadata[] = Object.entries(index.sessions)
+        .filter(([, meta]) => meta.sessionType === "main")
+        .map(([id, meta]) => ({
+          id,
+          ...meta,
+          lastActiveAt: new Date(meta.lastActiveAt),
+        }));
+
+      return sessions.sort(
+        (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
+      );
+    } catch {
+      // Fallback to manual listing if index fails
+    }
+
     let files: string[];
     try {
       files = await fs.readdir(projectDir.encodedPath);
@@ -370,7 +464,7 @@ export async function listSessionsFromJsonl(
         }
 
         // Return inline object for performance (no interface instantiation overhead)
-        sessions.push({
+        const sessionMeta: SessionMetadata = {
           id: sessionId,
           sessionType: "main",
           subagentType: undefined, // No longer stored in metadata
@@ -379,7 +473,19 @@ export async function listSessionsFromJsonl(
           latestTotalTokens: lastMessage?.usage
             ? extractLatestTotalTokens([lastMessage])
             : 0,
-        });
+        };
+
+        // Try to get first message content for the fallback/rebuild case
+        try {
+          const firstContent = await getFirstMessageContent(sessionId, workdir);
+          if (firstContent) {
+            sessionMeta.firstMessage = firstContent;
+          }
+        } catch {
+          // Ignore errors getting first message
+        }
+
+        sessions.push(sessionMeta);
       } catch {
         // Skip corrupted session files
         continue;
@@ -387,9 +493,29 @@ export async function listSessionsFromJsonl(
     }
 
     // Sort by last active time (most recently active first)
-    return sessions.sort(
+    const sortedSessions = sessions.sort(
       (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
     );
+
+    // Rebuild index if we had to fall back
+    try {
+      const index: SessionIndex = {
+        sessions: {},
+        lastUpdated: new Date().toISOString(),
+      };
+      for (const session of sessions) {
+        const { id, ...rest } = session;
+        index.sessions[id] = {
+          ...rest,
+          lastActiveAt: session.lastActiveAt.toISOString(),
+        };
+      }
+      await fs.writeFile(indexPath, JSON.stringify(index, null, 2), "utf8");
+    } catch (error) {
+      logger.warn(`Failed to rebuild session index for ${workdir}:`, error);
+    }
+
+    return sortedSessions;
   } catch (error) {
     throw new Error(`Failed to list sessions: ${error}`);
   }
@@ -432,6 +558,38 @@ export async function cleanupExpiredSessionsFromJsonl(
         if (fileAge > maxAge) {
           await fs.unlink(filePath);
           deletedCount++;
+
+          // Remove from index if it exists
+          try {
+            const indexPath = join(
+              projectDir.encodedPath,
+              SESSION_INDEX_FILENAME,
+            );
+            const indexContent = await fs.readFile(indexPath, "utf8");
+            const index = JSON.parse(indexContent) as SessionIndex;
+            const uuidMatch = file.match(
+              /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
+            );
+            const subagentMatch = file.match(
+              /^subagent-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/,
+            );
+            const sessionId = uuidMatch
+              ? uuidMatch[1]
+              : subagentMatch
+                ? subagentMatch[1]
+                : null;
+
+            if (sessionId && index.sessions[sessionId]) {
+              delete index.sessions[sessionId];
+              await fs.writeFile(
+                indexPath,
+                JSON.stringify(index, null, 2),
+                "utf8",
+              );
+            }
+          } catch {
+            // Ignore index update errors during cleanup
+          }
         }
       } catch {
         // Skip failed operations and continue processing other files

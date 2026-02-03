@@ -73,6 +73,9 @@ As a developer using subagents, I want subagent sessions to be clearly identifie
 - **FR-010**: Session listing MUST be optimized to only read the last line of each session file to minimize I/O.
 - **FR-011**: Sessions older than 14 days MUST be automatically cleaned up.
 - **FR-012**: Empty project directories MUST be removed during cleanup.
+- **FR-013**: Each project directory MUST maintain a `sessions-index.json` file for O(1) session listing.
+- **FR-014**: The session index MUST cache the `firstMessage` content for instant UI display.
+- **FR-015**: The system MUST be able to rebuild the session index from `.jsonl` files if it is missing or corrupted.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -82,6 +85,10 @@ As a developer using subagents, I want subagent sessions to be clearly identifie
     - `workdir`: The project directory associated with the session.
     - `lastActiveAt`: Timestamp of the last message.
     - `messages`: List of message objects.
+    - `firstMessage`: (Optional) The content of the first message in the session for display purposes.
+- **SessionIndex**:
+    - `sessions`: A map of session IDs to metadata.
+    - `lastUpdated`: Timestamp of the last index update.
 - **Project Directory**: A container for sessions belonging to a specific path.
     - `path`: Original filesystem path.
     - `encodedPath`: Filesystem-safe name used for the directory.

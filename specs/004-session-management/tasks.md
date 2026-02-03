@@ -13,3 +13,5 @@
 - [x] Ensure backward compatibility with existing JSONL sessions during transition
 - [x] Add timestamp to each message line in JSONL
 - [x] Implement `handleSessionRestoration` logic
+- [x] Implement `sessions-index.json` for O(1) session listing performance
+- [x] Cache `firstMessage` content in session index for instant UI display
