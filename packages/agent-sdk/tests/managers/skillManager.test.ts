@@ -61,13 +61,11 @@ describe("SkillManager", () => {
   });
 
   describe("executeSkill", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       // Mock initialization to make other methods available
-      vi.spyOn(skillManager, "initialize").mockResolvedValue(undefined);
       vi.spyOn(skillManager, "getAvailableSkills").mockReturnValue([]);
       vi.spyOn(skillManager, "loadSkill").mockResolvedValue(null);
-      // @ts-expect-error - accessing private property for testing
-      skillManager.initialized = true;
+      await skillManager.initialize();
     });
 
     it("should execute valid skill successfully", async () => {
@@ -187,9 +185,8 @@ describe("SkillManager", () => {
   });
 
   describe("formatAvailableSkills", () => {
-    beforeEach(() => {
-      // @ts-expect-error - accessing private property for testing
-      skillManager.initialized = true;
+    beforeEach(async () => {
+      await skillManager.initialize();
     });
 
     it("should format skills list correctly when skills exist", async () => {
