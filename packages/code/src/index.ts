@@ -1,12 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import {
-  listSessions,
-  getSessionFilePath,
-  getFirstMessageContent,
-  Scope,
-} from "wave-agent-sdk";
+import { Scope } from "wave-agent-sdk";
 
 // Export main function for external use
 export async function main() {
@@ -229,76 +224,20 @@ export async function main() {
     (process.argv.includes("-r") && argv.restore === undefined) ||
     (process.argv.includes("--restore") && argv.restore === undefined)
   ) {
-    if (argv.print !== undefined) {
-      try {
-        const currentWorkdir = process.cwd();
-        const sessions = await listSessions(currentWorkdir);
-
-        if (sessions.length === 0) {
-          console.log(`No sessions found for workdir: ${currentWorkdir}`);
-          return;
-        }
-
-        console.log(`Available sessions for: ${currentWorkdir}`);
-        console.log("==========================================");
-
-        // Get last 5 sessions
-        const lastSessions = sessions.slice(0, 5);
-
-        for (const session of lastSessions) {
-          const lastActiveAt = new Date(session.lastActiveAt).toLocaleString();
-          const filePath = await getSessionFilePath(
-            session.id,
-            session.workdir,
-          );
-
-          // Get first message content
-          const firstMessageContent = await getFirstMessageContent(
-            session.id,
-            session.workdir,
-          );
-
-          // Truncate content if too long
-          let truncatedContent =
-            firstMessageContent || "No first message content";
-          if (truncatedContent.length > 30) {
-            truncatedContent = truncatedContent.substring(0, 30) + "...";
-          }
-
-          console.log(`ID: ${session.id}`);
-          console.log(`  Workdir: ${session.workdir}`);
-          console.log(`  File Path: ${filePath}`);
-          console.log(`  Last Active: ${lastActiveAt}`);
-          console.log(`  Last Message Tokens: ${session.latestTotalTokens}`);
-          console.log(`  First Message: ${truncatedContent}`);
-          console.log("");
-        }
-
-        if (sessions.length > 5) {
-          console.log(`... and ${sessions.length - 5} more sessions`);
-        }
-
-        return;
-      } catch (error) {
-        console.error("Failed to list sessions:", error);
-        process.exit(1);
-      }
-    } else {
-      // Interactive session selection
-      const { startSessionSelectorCli } = await import(
-        "./session-selector-cli.js"
-      );
-      const selectedSessionId = await startSessionSelectorCli();
-      if (!selectedSessionId) {
-        return;
-      }
-      // Continue with the selected session
-      return startCli({
-        restoreSessionId: selectedSessionId,
-        bypassPermissions: argv.dangerouslySkipPermissions,
-        pluginDirs: argv.pluginDir as string[],
-      });
+    // Interactive session selection
+    const { startSessionSelectorCli } = await import(
+      "./session-selector-cli.js"
+    );
+    const selectedSessionId = await startSessionSelectorCli();
+    if (!selectedSessionId) {
+      return;
     }
+    // Continue with the selected session
+    return startCli({
+      restoreSessionId: selectedSessionId,
+      bypassPermissions: argv.dangerouslySkipPermissions,
+      pluginDirs: argv.pluginDir as string[],
+    });
   }
 
   // Handle print mode directly
