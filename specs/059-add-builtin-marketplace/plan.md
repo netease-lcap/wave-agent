@@ -29,7 +29,7 @@ The primary requirement is to provide a builtin marketplace (`wave-plugins-offic
 - **Documentation Minimalism**: Only necessary spec and plan files created.
 - **Data Model Minimalism**: Evolving existing `KnownMarketplace` type.
 
-**REQUIRED**: All planning phases (Research, Design, Task Breakdown) MUST be performed using the **general-purpose agent** to ensure technical accuracy and codebase alignment. Always use general-purpose agent for every phrase during planning.
+**REQUIRED**: All planning phases MUST be performed using the **general-purpose agent** to ensure technical accuracy and codebase alignment. Always use general-purpose agent for every phrase during planning.
 
 ## Project Structure
 
