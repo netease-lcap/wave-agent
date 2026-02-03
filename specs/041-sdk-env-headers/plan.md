@@ -41,7 +41,6 @@
 - [x] All [NEEDS CLARIFICATION] resolved in `research.md`
 - [x] `data-model.md` and `contracts/` generated
 - [x] `quickstart.md` updated
-- [x] Agent context updated
 - [ ] Constitution check passed
 
 ## Phase 0: Outline & Research
@@ -57,9 +56,6 @@
 
 ### API Contracts (`contracts/`)
 - Not applicable for this internal SDK feature, but will document the environment variable format.
-
-	### Agent Context Update
-	- Update agent context manually or via appropriate tools.
 
 ## Phase 2: Implementation Strategy
 
