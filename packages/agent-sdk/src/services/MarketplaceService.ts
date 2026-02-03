@@ -25,6 +25,13 @@ export class MarketplaceService {
   private cacheDir: string;
   private marketplacesDir: string;
   private gitService: GitService;
+  private static readonly BUILTIN_MARKETPLACE: KnownMarketplace = {
+    name: "wave-plugins-official",
+    source: {
+      source: "github",
+      repo: "netease-lcap/wave-plugins-official",
+    },
+  };
 
   constructor() {
     this.pluginsDir = getPluginsDir();
@@ -62,7 +69,14 @@ export class MarketplaceService {
    */
   async getKnownMarketplaces(): Promise<KnownMarketplacesRegistry> {
     if (!existsSync(this.knownMarketplacesPath)) {
-      return { marketplaces: [] };
+      return {
+        marketplaces: [
+          {
+            ...MarketplaceService.BUILTIN_MARKETPLACE,
+            isBuiltin: true,
+          },
+        ],
+      };
     }
     try {
       const content = await fs.readFile(this.knownMarketplacesPath, "utf-8");
@@ -245,6 +259,10 @@ export class MarketplaceService {
       registry.marketplaces.push(marketplace);
     }
 
+    // Ensure builtin is included if we are creating the file for the first time
+    // and it hasn't been explicitly removed yet.
+    // (getKnownMarketplaces already handles the default injection)
+
     await this.saveKnownMarketplaces(registry);
     return marketplace;
   }
@@ -254,7 +272,27 @@ export class MarketplaceService {
    */
   async listMarketplaces(): Promise<KnownMarketplace[]> {
     const registry = await this.getKnownMarketplaces();
-    return registry.marketplaces;
+    return registry.marketplaces.map((m) => ({
+      ...m,
+      isBuiltin: m.name === MarketplaceService.BUILTIN_MARKETPLACE.name,
+    }));
+  }
+
+  /**
+   * Removes a marketplace by name
+   */
+  async removeMarketplace(name: string): Promise<void> {
+    const registry = await this.getKnownMarketplaces();
+    const initialCount = registry.marketplaces.length;
+    registry.marketplaces = registry.marketplaces.filter(
+      (m) => m.name !== name,
+    );
+
+    if (registry.marketplaces.length === initialCount) {
+      throw new Error(`Marketplace ${name} not found`);
+    }
+
+    await this.saveKnownMarketplaces(registry);
   }
 
   /**
