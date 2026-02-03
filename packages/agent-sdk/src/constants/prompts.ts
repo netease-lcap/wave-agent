@@ -70,7 +70,7 @@ Guidelines:
 - In your final response always share relevant file names and code snippets. Any file paths you return in your response MUST be absolute. Do NOT use relative paths.
 - For clear communication, avoid using emojis.`;
 
-export const INIT_PROMPT = `Please analyze this codebase and create a AGENTS.md file, which will be given to future instances of Wave Code to operate in this repository.
+export const INIT_PROMPT = `Please analyze this codebase and create a AGENTS.md file, which will be given to future instances of Agent to operate in this repository.
 
 What to add:
 1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
@@ -89,7 +89,7 @@ Usage notes:
 \`\`\`
 # AGENTS.md
 
-This file provides guidance to Wave Code when working with code in this repository.
+This file provides guidance to Agent when working with code in this repository.
 \`\`\``;
 
 export function buildSystemPrompt(
