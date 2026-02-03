@@ -30,12 +30,22 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     priority: 3,
   };
 
+  const gpConfig: SubagentConfiguration = {
+    name: "general-purpose",
+    description: "General-purpose agent for researching complex questions...",
+    systemPrompt: "You are an agent...",
+    model: "fastModel",
+    filePath: "<builtin:general-purpose>",
+    scope: "builtin",
+    priority: 3,
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
 
     // Create mock subagent manager
     mockSubagentManager = {
-      getConfigurations: vi.fn(() => [exploreConfig]),
+      getConfigurations: vi.fn(() => [exploreConfig, gpConfig]),
       findSubagent: vi.fn(),
       createInstance: vi.fn(),
       executeTask: vi.fn(),
@@ -131,7 +141,37 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       expect(result.error).toContain(
         'No subagent found matching "InvalidAgent"',
       );
-      expect(result.error).toContain("Available subagents: Explore");
+      expect(result.error).toContain(
+        "Available subagents: Explore, general-purpose",
+      );
+    });
+
+    it("should find and execute general-purpose subagent successfully", async () => {
+      const mockInstance = { subagentId: "gp-test-id" };
+
+      vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+      vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
+        mockInstance as SubagentInstance,
+      );
+      vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
+        "Research completed",
+      );
+
+      const result = await taskTool.execute(
+        {
+          description: "Research auth",
+          prompt: "Analyze auth flow",
+          subagent_type: "general-purpose",
+        },
+        mockToolContext,
+      );
+
+      expect(mockSubagentManager.findSubagent).toHaveBeenCalledWith(
+        "general-purpose",
+      );
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("Research completed");
+      expect(result.shortResult).toBe("Task completed by general-purpose");
     });
 
     it("should handle fastModel configuration correctly", async () => {

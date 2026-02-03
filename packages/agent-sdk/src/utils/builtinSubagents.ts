@@ -1,3 +1,4 @@
+import { GENERAL_PURPOSE_SYSTEM_PROMPT } from "../constants/prompts.js";
 import type { SubagentConfiguration } from "./subagentParser.js";
 
 /**
@@ -7,8 +8,25 @@ import type { SubagentConfiguration } from "./subagentParser.js";
 export function getBuiltinSubagents(): SubagentConfiguration[] {
   return [
     createExploreSubagent(),
+    createGeneralPurposeSubagent(),
     // Add more built-in subagents here as needed
   ];
+}
+
+/**
+ * Create the General-Purpose built-in subagent configuration
+ * Specialized for multi-step research and implementation tasks
+ */
+function createGeneralPurposeSubagent(): SubagentConfiguration {
+  return {
+    name: "general-purpose",
+    description:
+      "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you.",
+    systemPrompt: GENERAL_PURPOSE_SYSTEM_PROMPT,
+    filePath: "<builtin:general-purpose>",
+    scope: "builtin",
+    priority: 3,
+  };
 }
 
 /**
