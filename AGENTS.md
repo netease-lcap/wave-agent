@@ -3,6 +3,7 @@
 This is the AI assistant's memory file, recording important information and context.
 
 - Use pnpm instead of npm
+- Note that items under `specs/` are typically directories (e.g., `specs/020-markdown-rendering-system/`)
 - Don't create Markdown documents unless explicitly mentioned by user
 - `packages/*/examples` directories contain real test ts or tsx files that are hard to mock:
   - need to create temporary directories
