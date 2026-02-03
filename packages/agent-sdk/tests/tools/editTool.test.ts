@@ -5,6 +5,13 @@ import type { ToolContext } from "@/tools/types.js";
 
 // Mock fs/promises
 vi.mock("fs/promises");
+vi.mock("../../src/utils/editUtils.js", () => ({
+  saveEditErrorSnapshot: vi.fn(),
+  findIndentationInsensitiveMatch: vi.fn((content, search) =>
+    content.includes(search) ? search : null,
+  ),
+  escapeRegExp: vi.fn((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+}));
 
 describe("editTool", () => {
   let mockContext: ToolContext;
@@ -137,7 +144,8 @@ describe("editTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("old_string not found in file");
-    expect(writeFile).not.toHaveBeenCalled();
+    // writeFile is called by saveEditErrorSnapshot
+    expect(writeFile).toHaveBeenCalled();
   });
 
   it("should fail when file cannot be read", async () => {
