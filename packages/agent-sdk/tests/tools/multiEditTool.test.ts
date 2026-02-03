@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { multiEditTool } from "@/tools/multiEditTool.js";
 import { readFile, writeFile } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
+import { saveEditErrorSnapshot } from "../../src/utils/editUtils.js";
 
 // Mock fs/promises
 vi.mock("fs/promises");
@@ -170,8 +171,7 @@ describe("multiEditTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Edit operation 2: old_string not found");
-    // writeFile is called by saveEditErrorSnapshot
-    expect(writeFile).toHaveBeenCalled();
+    expect(saveEditErrorSnapshot).toHaveBeenCalled();
   });
 
   it("should fail when edit makes old_string non-unique for later edits", async () => {
