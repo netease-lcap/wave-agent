@@ -47,6 +47,7 @@ describe("InputManager", () => {
       onMemoryTypeSelectorStateChange: vi.fn(),
       onBashManagerStateChange: vi.fn(),
       onMcpManagerStateChange: vi.fn(),
+      onPluginManagerStateChange: vi.fn(),
       onImagesStateChange: vi.fn(),
       onSendMessage: vi.fn(),
       onHasSlashCommand: vi.fn(),
@@ -455,6 +456,116 @@ describe("InputManager", () => {
 
       expect(manager.getShowMcpManager()).toBe(true);
       expect(mockCallbacks.onMcpManagerStateChange).toHaveBeenCalledWith(true);
+    });
+
+    it("should set plugin manager state", () => {
+      manager.setShowPluginManager(true);
+
+      expect(manager.getShowPluginManager()).toBe(true);
+      expect(mockCallbacks.onPluginManagerStateChange).toHaveBeenCalledWith(
+        true,
+      );
+    });
+  });
+
+  describe("Plugin Manager Input Interception", () => {
+    it("should not update input text when plugin manager is active", async () => {
+      const mockKey: Key = {
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        return: false,
+        escape: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      };
+
+      // Activate plugin manager
+      manager.setShowPluginManager(true);
+
+      // Try to input text
+      await manager.handleInput("a", mockKey, [], false, false);
+
+      // Input text should remain empty
+      expect(manager.getInputText()).toBe("");
+    });
+
+    it("should not cycle permission mode when plugin manager is active", async () => {
+      const shiftTabKey: Key = {
+        tab: true,
+        shift: true,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        return: false,
+        escape: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        meta: false,
+      };
+
+      // 1. Set initial permission mode
+      manager.setPermissionMode("default");
+
+      // 2. Activate plugin manager
+      manager.setShowPluginManager(true);
+
+      // 3. Press Shift+Tab
+      await manager.handleInput("", shiftTabKey, [], false, false);
+
+      // 4. Verify permission mode did NOT change
+      expect(manager.getPermissionMode()).toBe("default");
+    });
+
+    it("should automatically intercept input after executing /plugin command", async () => {
+      const enterKey: Key = {
+        return: true,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        escape: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      };
+
+      const charKey: Key = { ...enterKey, return: false };
+
+      // 1. Type "/plugin"
+      manager.insertTextAtCursor("/plugin");
+
+      // 2. Activate command selector manually as it would be in real usage
+      manager.activateCommandSelector(0);
+
+      // 3. Select the command (this simulates pressing Enter on the selector)
+      manager.handleCommandSelect("plugin");
+
+      // 4. Verify Plugin Manager is now active in the manager's state
+      expect(manager.getShowPluginManager()).toBe(true);
+
+      // 5. Try to type something else (e.g., "hello")
+      await manager.handleInput("h", charKey, [], false, false);
+      await manager.handleInput("e", charKey, [], false, false);
+
+      // 6. The input text should be empty (it was cleared on command execution and new input was intercepted)
+      expect(manager.getInputText()).toBe("");
     });
   });
 

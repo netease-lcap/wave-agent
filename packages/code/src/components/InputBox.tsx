@@ -124,7 +124,16 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   // Use the InputManager's unified input handler
   useInput(async (input, key) => {
-    await handleInput(
+    const isManagerActive =
+      showBashManager ||
+      showMcpManager ||
+      showPluginManager ||
+      showMemoryTypeSelector ||
+      showFileSelector ||
+      showCommandSelector ||
+      showHistorySearch;
+
+    const handled = await handleInput(
       input,
       key,
       attachedImages,
@@ -132,6 +141,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
       isCommandRunning,
       clearImages,
     );
+
+    if (handled || isManagerActive) {
+      // logger.debug(`[InputBox] Input handled or manager active. handled: ${handled}, isManagerActive: ${isManagerActive}, input: ${input}`);
+      return;
+    }
+
+    // If not handled by manager and no manager is active, we can handle it here if needed
+    // but currently handleInput handles everything or returns false.
   });
 
   // These methods are already memoized in useInputManager, no need to wrap again
