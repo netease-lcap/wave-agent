@@ -78,9 +78,24 @@ if (results.length > 0) {
       ? `chore: bump all versions to v${mainPkg.version}`
       : `chore: bump ${mainPkg.name} to v${mainPkg.version}`;
 
+    // Get commit messages since last tag
+    let changelog = '';
+    try {
+      // Get the most recent tag that is reachable from HEAD
+      const lastTag = execSync('git tag --list "v*" --sort=-v:refname | head -n 1', { encoding: 'utf8' }).trim();
+      if (lastTag) {
+        changelog = execSync(`git log ${lastTag}..HEAD --pretty=format:"- %s (%h)"`, { encoding: 'utf8' }).trim();
+      } else {
+        changelog = execSync('git log --pretty=format:"- %s (%h)"', { encoding: 'utf8' }).trim();
+      }
+    } catch (e) {
+      changelog = execSync('git log --pretty=format:"- %s (%h)"', { encoding: 'utf8' }).trim();
+    }
+
     execSync(`git commit -m "${commitMsg}" --no-verify`, { stdio: 'inherit' });
-    execSync(`git tag ${tagName}`, { stdio: 'inherit' });
+    execSync(`git tag -a ${tagName} -m "${commitMsg}\n\n${changelog}"`, { stdio: 'inherit' });
     console.log(`Created tag: ${tagName}`);
+    console.log(`\nChangelog:\n${changelog}\n`);
     console.log(`\nTo publish this version, run:\n  git push origin ${tagName}\n`);
   } catch (error) {
     console.error('Git operation failed:', error.message);
