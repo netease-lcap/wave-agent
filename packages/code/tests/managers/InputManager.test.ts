@@ -629,7 +629,7 @@ describe("InputManager", () => {
       );
     });
 
-    it("should activate command selector on /", () => {
+    it("should activate command selector on / at start", () => {
       manager.insertTextAtCursor("/");
       manager.handleSpecialCharInput("/");
 
@@ -638,6 +638,13 @@ describe("InputManager", () => {
         "",
         0,
       );
+    });
+
+    it("should NOT activate command selector on / NOT at start", () => {
+      manager.insertTextAtCursor("text /");
+      manager.handleSpecialCharInput("/");
+
+      expect(mockCallbacks.onCommandSelectorStateChange).not.toHaveBeenCalled();
     });
   });
 

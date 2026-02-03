@@ -577,8 +577,13 @@ export class InputManager {
   handleSpecialCharInput(char: string): void {
     if (char === "@") {
       this.activateFileSelector(this.cursorPosition - 1);
-    } else if (char === "/" && !this.showFileSelector) {
+    } else if (
+      char === "/" &&
+      !this.showFileSelector &&
+      this.cursorPosition === 1
+    ) {
       // Don't activate command selector when file selector is active
+      // Only activate command selector if '/' is at the start of input
       this.activateCommandSelector(this.cursorPosition - 1);
     } else if (char === "#" && this.cursorPosition === 1) {
       // Memory message detection will be handled in submit
