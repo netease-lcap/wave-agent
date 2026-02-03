@@ -68,3 +68,14 @@ describe("Markdown Component - Code Blocks", () => {
     expect(output).toContain("const x = 1;");
   });
 });
+
+describe("Markdown Component - Links", () => {
+  it("should render links with both text and URL", () => {
+    const markdown = "[GitHub](https://github.com)";
+    const { lastFrame } = render(<Markdown>{markdown}</Markdown>);
+    const output = lastFrame();
+
+    expect(output).toContain("GitHub");
+    expect(output).toContain("(https://github.com)");
+  });
+});

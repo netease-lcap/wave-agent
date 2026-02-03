@@ -55,7 +55,7 @@ As a user, I want to see data tables rendered correctly in my terminal, even if 
 ### Functional Requirements
 
 - **FR-001**: System MUST parse Markdown strings into tokens using the `marked` library.
-- **FR-002**: System MUST render inline elements: text, strong (bold), em (italic), codespan (inline code), link, br (line break), and del (strikethrough).
+- **FR-002**: System MUST render inline elements: text, strong (bold), em (italic), codespan (inline code), link (displaying both text and URL), br (line break), and del (strikethrough).
 - **FR-003**: System MUST render block elements: headings (H1-H6), paragraphs, fenced code blocks, lists (ordered and unordered), blockquotes, and horizontal rules.
 - **FR-004**: System MUST render tables with borders and headers.
 - **FR-005**: System MUST automatically calculate column widths for tables based on content.
