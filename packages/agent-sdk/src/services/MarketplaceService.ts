@@ -344,6 +344,71 @@ export class MarketplaceService {
   }
 
   /**
+   * Removes an installed plugin
+   */
+  async removePlugin(pluginId: string): Promise<void> {
+    const [pluginName, marketplaceName] = pluginId.split("@");
+    if (!pluginName || !marketplaceName) {
+      throw new Error("Invalid plugin ID format. Use name@marketplace");
+    }
+
+    const registry = await this.getInstalledPlugins();
+    const pluginIndex = registry.plugins.findIndex(
+      (p) => p.name === pluginName && p.marketplace === marketplaceName,
+    );
+
+    if (pluginIndex === -1) {
+      throw new Error(`Plugin ${pluginId} is not installed`);
+    }
+
+    const plugin = registry.plugins[pluginIndex];
+
+    // Remove from cache
+    if (existsSync(plugin.cachePath)) {
+      await fs.rm(plugin.cachePath, { recursive: true, force: true });
+    }
+
+    // Remove from registry
+    registry.plugins.splice(pluginIndex, 1);
+    await this.saveInstalledPlugins(registry);
+  }
+
+  /**
+   * Checks for updates for all installed plugins
+   */
+  async checkUpdates(): Promise<Record<string, string>> {
+    const installed = await this.getInstalledPlugins();
+    const marketplaces = await this.listMarketplaces();
+    const updates: Record<string, string> = {};
+
+    for (const plugin of installed.plugins) {
+      const marketplace = marketplaces.find(
+        (m) => m.name === plugin.marketplace,
+      );
+      if (!marketplace) continue;
+
+      try {
+        const marketplacePath = this.getMarketplacePath(marketplace);
+        const manifest = await this.loadMarketplaceManifest(marketplacePath);
+        const pluginEntry = manifest.plugins.find(
+          (p) => p.name === plugin.name,
+        );
+        if (!pluginEntry) continue;
+
+        // Placeholder: in a real scenario, we'd compare versions
+        // For now, we just return an empty object as a starting point
+      } catch (error) {
+        console.error(
+          `Failed to check updates for plugin ${plugin.name}:`,
+          error,
+        );
+      }
+    }
+
+    return updates;
+  }
+
+  /**
    * Installs a plugin from a marketplace
    */
   async installPlugin(pluginAtMarketplace: string): Promise<InstalledPlugin> {

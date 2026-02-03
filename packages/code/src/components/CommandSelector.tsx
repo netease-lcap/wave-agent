@@ -15,6 +15,12 @@ const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "View and manage MCP servers",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "plugin",
+    name: "plugin",
+    description: "Manage plugins and marketplaces",
+    handler: () => {},
+  },
 ];
 
 export interface CommandSelectorProps {
