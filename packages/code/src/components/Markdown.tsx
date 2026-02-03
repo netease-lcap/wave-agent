@@ -53,16 +53,21 @@ const InlineRenderer = ({ tokens }: { tokens: Token[] }) => {
                 {unescapeHtml((token as Tokens.Codespan).text)}
               </Text>
             );
-          case "link":
+          case "link": {
+            const t = token as Tokens.Link;
             return (
-              <Text key={index} color="blue" underline>
-                {token.tokens ? (
-                  <InlineRenderer tokens={token.tokens} />
-                ) : (
-                  unescapeHtml((token as Tokens.Link).text)
-                )}
+              <Text key={index}>
+                <Text color="blue" underline>
+                  {t.tokens ? (
+                    <InlineRenderer tokens={t.tokens} />
+                  ) : (
+                    unescapeHtml(t.text)
+                  )}
+                </Text>
+                <Text color="gray"> ({t.href})</Text>
               </Text>
             );
+          }
           case "br":
             return <Text key={index}>{"\n"}</Text>;
           case "del":
