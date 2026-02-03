@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "ink-testing-library";
 import { Confirmation } from "../../src/components/Confirmation.js";
-import { waitForText, waitFor } from "../helpers/waitHelpers.js";
+import { stripAnsiColors } from "wave-agent-sdk";
 import type { PermissionDecision } from "wave-agent-sdk";
 
 describe("Confirmation", () => {
@@ -40,7 +40,9 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "Tool: Edit");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("Tool: Edit");
+      });
 
       const frame = lastFrame();
       expect(frame).toContain("Tool: Edit");
@@ -58,7 +60,9 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("Yes");
+      });
 
       const frame = lastFrame();
       // First option should be selected by default
@@ -79,10 +83,11 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       const frame = lastFrame();
       expect(frame).toContain("Type here to tell Wave what to do differently");
@@ -98,7 +103,11 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "Use ↑↓ to navigate • ESC to cancel");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Use ↑↓ to navigate • ESC to cancel",
+        );
+      });
 
       const frame = lastFrame();
       expect(frame).toContain("Use ↑↓ to navigate • ESC to cancel");
@@ -115,10 +124,11 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(
-        lastFrame,
-        "Yes, and don't ask again for this command in this workdir",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Yes, and don't ask again for this command in this workdir",
+        );
+      });
 
       const frame = lastFrame();
       expect(frame).toContain(
@@ -141,7 +151,9 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("Yes");
+      });
 
       const frame = lastFrame();
       expect(frame).toContain("Yes");
@@ -161,16 +173,19 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Press down arrow twice to select alternative option
       stdin.write("\u001b[B"); // Down arrow key
       stdin.write("\u001b[B"); // Down arrow key
 
-      await waitForText(
-        lastFrame,
-        "> Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Type here to tell Wave what to do differently",
+        );
+      });
 
       const frame = lastFrame();
       expect(frame).toContain("  Yes"); // First option not selected
@@ -189,19 +204,24 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Go down then up
       stdin.write("\u001b[B"); // Down arrow
       stdin.write("\u001b[B"); // Down arrow
-      await waitForText(
-        lastFrame,
-        "> Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Type here to tell Wave what to do differently",
+        );
+      });
 
       stdin.write("\u001b[A"); // Up arrow
       stdin.write("\u001b[A"); // Up arrow
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       const frame = lastFrame();
       expect(frame).toContain("> Yes"); // Back to first option
@@ -220,7 +240,9 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Press Enter to confirm allow
       stdin.write("\r");
@@ -242,7 +264,9 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Press ESC to cancel
       stdin.write("\u001b");
@@ -264,16 +288,19 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       // Type some alternative text
       const alternativeText = "Please create a backup first";
       stdin.write(alternativeText);
 
-      await waitForText(lastFrame, alternativeText);
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(alternativeText);
+      });
 
       const frame = lastFrame();
       expect(frame).toContain(alternativeText);
@@ -293,15 +320,18 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       // Type alternative text and press Enter
       const alternativeText = "Use a different approach";
       stdin.write(alternativeText);
-      await waitForText(lastFrame, alternativeText);
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(alternativeText);
+      });
 
       stdin.write("\r");
 
@@ -325,15 +355,18 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Navigate to alternative option and press Enter without typing
       stdin.write("\u001b[B"); // Down arrow
       stdin.write("\u001b[B"); // Down arrow
-      await waitForText(
-        lastFrame,
-        "> Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Type here to tell Wave what to do differently",
+        );
+      });
 
       stdin.write("\r"); // Enter
 
@@ -357,16 +390,19 @@ describe("Confirmation", () => {
       );
 
       // Verify initial state
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
       expect(lastFrame()).toContain("> Yes");
 
       // Change to alternative
       stdin.write("\u001b[B");
       stdin.write("\u001b[B");
-      await waitForText(
-        lastFrame,
-        "> Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Type here to tell Wave what to do differently",
+        );
+      });
       expect(lastFrame()).toContain(
         "> Type here to tell Wave what to do differently",
       );
@@ -374,7 +410,9 @@ describe("Confirmation", () => {
       // Back to allow
       stdin.write("\u001b[A");
       stdin.write("\u001b[A");
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
       expect(lastFrame()).toContain("> Yes");
     });
 
@@ -388,20 +426,27 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       // Type text character by character and verify state updates
       stdin.write("h");
-      await waitForText(lastFrame, "h");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("h");
+      });
 
       stdin.write("e");
-      await waitForText(lastFrame, "he");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("he");
+      });
 
       stdin.write("llo");
-      await waitForText(lastFrame, "hello");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("hello");
+      });
 
       expect(lastFrame()).toContain("hello");
     });
@@ -417,14 +462,17 @@ describe("Confirmation", () => {
       );
 
       // Initially should show placeholder
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       // Type something - placeholder should disappear
       stdin.write("test");
-      await waitForText(lastFrame, "test");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("test");
+      });
 
       // Verify placeholder is gone
       const frameWithText = lastFrame();
@@ -445,17 +493,19 @@ describe("Confirmation", () => {
       );
 
       // Placeholder should be visible when on alternative option with no input
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       stdin.write("\u001b[B"); // Go to alternative option
       stdin.write("\u001b[B"); // Go to alternative option
-      await waitForText(
-        lastFrame,
-        "> Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Type here to tell Wave what to do differently",
+        );
+      });
 
       // Placeholder should still be visible
       expect(lastFrame()).toContain(
@@ -465,7 +515,9 @@ describe("Confirmation", () => {
       // Switch back to allow option
       stdin.write("\u001b[A");
       stdin.write("\u001b[A");
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Placeholder should not be visible for allow option
       const allowFrame = lastFrame();
@@ -485,7 +537,9 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       stdin.write("\r");
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -506,14 +560,17 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       const message = "Create backup before deletion";
       stdin.write(message);
-      await waitForText(lastFrame, message);
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(message);
+      });
 
       stdin.write("\r");
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -535,7 +592,9 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       stdin.write("\u001b"); // ESC key
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -555,17 +614,20 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       // Type message with leading/trailing spaces
       const messageWithSpaces = "  use different method  ";
       const trimmedMessage = "use different method";
 
       stdin.write(messageWithSpaces);
-      await waitForText(lastFrame, trimmedMessage);
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(trimmedMessage);
+      });
 
       stdin.write("\r");
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -588,18 +650,20 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       // Navigate to alternative option without typing
       stdin.write("\u001b[B");
       stdin.write("\u001b[B");
-      await waitForText(
-        lastFrame,
-        "> Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Type here to tell Wave what to do differently",
+        );
+      });
 
       // Try to confirm with empty text
       stdin.write("\r");
@@ -620,14 +684,17 @@ describe("Confirmation", () => {
       );
 
       // Start with the placeholder visible
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       // Type some text first
       stdin.write("test");
-      await waitForText(lastFrame, "test");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("test");
+      });
 
       // Verify we're on alternative option after typing
       expect(lastFrame()).toContain("> test");
@@ -649,14 +716,17 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       // Type some text
       stdin.write("test");
-      await waitForText(lastFrame, "test");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("test");
+      });
 
       // Use backspace to verify the single-character deletion works
       stdin.write("\x08"); // Backspace key
@@ -682,11 +752,15 @@ describe("Confirmation", () => {
       );
 
       // Start with allow selected
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Type a regular character - this should work based on other passing tests
       stdin.write("test");
-      await waitForText(lastFrame, "test");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("test");
+      });
 
       // Verify the text appears and alternative is selected
       const frame = lastFrame();
@@ -704,13 +778,17 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Rapidly switch between options
       stdin.write("\u001b[B\u001b[A\u001b[B\u001b[A"); // down, up, down, up
 
       // Should end up on allow option
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       expect(lastFrame()).toContain("> Yes");
     });
@@ -725,18 +803,20 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(
-        lastFrame,
-        "Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type here to tell Wave what to do differently",
+        );
+      });
 
       // Navigate to alternative and try backspace on empty text
       stdin.write("\u001b[B"); // Go to alternative
       stdin.write("\u001b[B"); // Go to alternative
-      await waitForText(
-        lastFrame,
-        "> Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Type here to tell Wave what to do differently",
+        );
+      });
 
       stdin.write("\u007f"); // Backspace on empty text
 
@@ -761,7 +841,9 @@ describe("Confirmation", () => {
       );
 
       // Start with allow selected
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Type only spaces to switch to alternative option
       stdin.write("   ");
@@ -796,7 +878,11 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "Use ↑↓ to navigate • ESC to cancel");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Use ↑↓ to navigate • ESC to cancel",
+        );
+      });
 
       const frame = lastFrame();
       expect(frame).toContain("Use ↑↓ to navigate • ESC to cancel");
@@ -817,7 +903,9 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Check initial selection visual feedback
       let frame = lastFrame();
@@ -830,10 +918,11 @@ describe("Confirmation", () => {
       // Change selection and check visual feedback
       stdin.write("\u001b[B");
       stdin.write("\u001b[B");
-      await waitForText(
-        lastFrame,
-        "> Type here to tell Wave what to do differently",
-      );
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Type here to tell Wave what to do differently",
+        );
+      });
 
       frame = lastFrame();
       expect(frame).toContain("  Yes"); // Non-selected indicator
@@ -853,11 +942,15 @@ describe("Confirmation", () => {
       );
 
       // Start on allow option
-      await waitForText(lastFrame, "> Yes");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
+      });
 
       // Type a character - should auto-focus alternative
       stdin.write("x");
-      await waitForText(lastFrame, "> x");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> x");
+      });
 
       const frame = lastFrame();
       expect(frame).toContain("> x"); // Should auto-select alternative
@@ -894,7 +987,9 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "COLOR");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("COLOR");
+      });
       const frame = lastFrame();
       expect(frame).toContain("What is your favorite color?");
       expect(frame).toContain("Red");
@@ -914,17 +1009,27 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "What is your favorite color?");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "What is your favorite color?",
+        );
+      });
 
       // Select "Blue" (Option 2)
       stdin.write("\u001b[B"); // Down arrow
-      await waitForText(lastFrame, "> Blue");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Blue");
+      });
 
       // Press Enter
       stdin.write("\r");
 
       // Should move to next question
-      await waitForText(lastFrame, "Select your skills");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Select your skills",
+        );
+      });
       const frame = lastFrame();
       expect(frame).toContain("SKILLS");
       expect(frame).toContain("Question 2 of 2");
@@ -941,26 +1046,40 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "What is your favorite color?");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "What is your favorite color?",
+        );
+      });
       stdin.write("\r"); // Select Red (default) and move to next
 
-      await waitForText(lastFrame, "Select your skills");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Select your skills",
+        );
+      });
 
       // Toggle TypeScript (Option 1) using Space key (it's focused by default)
       stdin.write(" ");
-      await waitForText(lastFrame, "[x] TypeScript");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("[x] TypeScript");
+      });
 
       // Toggle React (Option 2) using Space key
       // First navigate to it
       stdin.write("\u001b[B"); // Down arrow
       await new Promise((resolve) => setTimeout(resolve, 50));
       stdin.write(" ");
-      await waitForText(lastFrame, "[x] React");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("[x] React");
+      });
 
       // Confirm
       stdin.write("\r");
 
-      await waitFor(() => mockOnDecision.mock.calls.length > 0);
+      await vi.waitFor(() => {
+        expect(mockOnDecision.mock.calls.length).toBeGreaterThan(0);
+      });
       expect(mockOnDecision).toHaveBeenCalled();
       const call = mockOnDecision.mock.calls[0][0];
       expect(call.behavior).toBe("allow");
@@ -981,29 +1100,47 @@ describe("Confirmation", () => {
         />,
       );
 
-      await waitForText(lastFrame, "What is your favorite color?");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "What is your favorite color?",
+        );
+      });
 
       // Select "Other" (Option 3) using arrow keys
       stdin.write("\u001b[B"); // Down to Blue
-      await waitForText(lastFrame, "> Blue");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Blue");
+      });
       stdin.write("\u001b[B"); // Down to Other
-      await waitForText(lastFrame, "Other:");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("Other:");
+      });
 
       // Type "Green"
       stdin.write("Green");
-      await waitForText(lastFrame, "Green");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("Green");
+      });
 
       // Confirm
       stdin.write("\r");
 
-      await waitForText(lastFrame, "Select your skills");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Select your skills",
+        );
+      });
       // Select TypeScript (Option 1) using Space
       stdin.write(" ");
-      await waitForText(lastFrame, "[x] TypeScript");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("[x] TypeScript");
+      });
       // Confirm
       stdin.write("\r");
 
-      await waitFor(() => mockOnDecision.mock.calls.length > 0);
+      await vi.waitFor(() => {
+        expect(mockOnDecision.mock.calls.length).toBeGreaterThan(0);
+      });
       expect(mockOnDecision).toHaveBeenCalled();
       const call = mockOnDecision.mock.calls[0][0];
       expect(call.behavior).toBe("allow");

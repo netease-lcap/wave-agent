@@ -1,30 +1,52 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { App } from "../src/components/App.js";
-import {
-  waitForText,
-  waitForTextToDisappear,
-} from "../tests/helpers/waitHelpers.js";
+import { stripAnsiColors } from "wave-agent-sdk";
 import { INPUT_PLACEHOLDER_TEXT_PREFIX } from "@/components/InputBox.js";
 
 async function testApp() {
   try {
     const { stdin, lastFrame, unmount } = render(<App />);
 
-    await waitForText(lastFrame, INPUT_PLACEHOLDER_TEXT_PREFIX);
+    const waitFor = async (
+      condition: () => boolean,
+      timeout = 5000,
+      interval = 50,
+    ) => {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        if (condition()) return;
+        await new Promise((resolve) => setTimeout(resolve, interval));
+      }
+      throw new Error("Timeout");
+    };
+
+    await waitFor(() =>
+      stripAnsiColors(lastFrame() || "").includes(
+        INPUT_PLACEHOLDER_TEXT_PREFIX,
+      ),
+    );
 
     // await delay(10);
 
     stdin.write("hello");
-    await waitForTextToDisappear(lastFrame, INPUT_PLACEHOLDER_TEXT_PREFIX);
+    await waitFor(
+      () =>
+        !stripAnsiColors(lastFrame() || "").includes(
+          INPUT_PLACEHOLDER_TEXT_PREFIX,
+        ),
+    );
 
     stdin.write("\r"); // Enter key
 
-    await waitForText(lastFrame, "AI is thinking");
+    await waitFor(() =>
+      stripAnsiColors(lastFrame() || "").includes("AI is thinking"),
+    );
 
-    await waitForTextToDisappear(lastFrame, "AI is thinking", {
-      timeout: 20 * 1000,
-    });
+    await waitFor(
+      () => !stripAnsiColors(lastFrame() || "").includes("AI is thinking"),
+      20 * 1000,
+    );
     console.log("📸 Interface state after AI response:");
     console.log(lastFrame());
 

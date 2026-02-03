@@ -2,8 +2,7 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { HistorySearch } from "../../src/components/HistorySearch.js";
-import { PromptHistoryManager } from "wave-agent-sdk";
-import { waitForText } from "../helpers/waitHelpers.js";
+import { PromptHistoryManager, stripAnsiColors } from "wave-agent-sdk";
 
 vi.mock("wave-agent-sdk", async () => {
   const actual = (await vi.importActual("wave-agent-sdk")) as object;
@@ -38,26 +37,30 @@ describe("HistorySearch", () => {
     const { lastFrame } = render(<HistorySearch {...mockProps} />);
 
     // Wait for useEffect to fetch history
-    await waitForText(lastFrame, "Prompt History");
-    await waitForText(lastFrame, "first prompt");
-    await waitForText(lastFrame, "second prompt");
+    await vi.waitFor(() => {
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).toContain("Prompt History");
+      expect(output).toContain("first prompt");
+      expect(output).toContain("second prompt");
+    });
   });
 
   it("should filter entries when searchQuery changes", async () => {
     const { lastFrame, rerender } = render(<HistorySearch {...mockProps} />);
 
-    await waitForText(lastFrame, "first prompt");
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("first prompt");
+    });
 
     vi.mocked(PromptHistoryManager.searchHistory).mockResolvedValue([
       mockEntries[1],
     ]);
     rerender(<HistorySearch {...mockProps} searchQuery="second" />);
 
-    await waitForText(lastFrame, 'filtering: "second"');
-    await waitForText(lastFrame, "second prompt");
-
     await vi.waitFor(() => {
-      const output = lastFrame() || "";
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).toContain('filtering: "second"');
+      expect(output).toContain("second prompt");
       expect(output).not.toContain("first prompt");
     });
   });
@@ -68,7 +71,9 @@ describe("HistorySearch", () => {
       <HistorySearch {...mockProps} onSelect={onSelect} />,
     );
 
-    await waitForText(lastFrame, "first prompt");
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("first prompt");
+    });
 
     stdin.write("\r");
     await vi.waitFor(() => {
@@ -82,7 +87,9 @@ describe("HistorySearch", () => {
       <HistorySearch {...mockProps} onCancel={onCancel} />,
     );
 
-    await waitForText(lastFrame, "first prompt");
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("first prompt");
+    });
 
     stdin.write("\u001B"); // Escape
     await vi.waitFor(() => {
@@ -96,12 +103,16 @@ describe("HistorySearch", () => {
       <HistorySearch {...mockProps} onSelect={onSelect} />,
     );
 
-    await waitForText(lastFrame, "first prompt");
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("first prompt");
+    });
 
     stdin.write("\u001B[B"); // Down arrow
 
     // Wait for selection to change in UI
-    await waitForText(lastFrame, "second prompt");
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("second prompt");
+    });
 
     // Small delay to ensure state is fully propagated
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -118,6 +129,10 @@ describe("HistorySearch", () => {
       <HistorySearch {...mockProps} searchQuery="nothing" />,
     );
 
-    await waitForText(lastFrame, 'No history found for "nothing"');
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain(
+        'No history found for "nothing"',
+      );
+    });
   });
 });
