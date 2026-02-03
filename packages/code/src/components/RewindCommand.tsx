@@ -48,9 +48,11 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
     return (
       <Box
         flexDirection="column"
+        paddingX={1}
         borderStyle="single"
         borderColor="yellow"
-        paddingX={1}
+        borderLeft={false}
+        borderRight={false}
       >
         <Text color="yellow">No user messages found to rewind to.</Text>
         <Text dimColor>Press Escape to cancel</Text>
@@ -59,7 +61,15 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
   }
 
   return (
-    <Box flexDirection="column" paddingX={1} gap={1}>
+    <Box
+      flexDirection="column"
+      paddingX={1}
+      gap={1}
+      borderStyle="single"
+      borderColor="cyan"
+      borderLeft={false}
+      borderRight={false}
+    >
       <Box>
         <Text color="cyan" bold>
           Rewind: Select a message to revert to

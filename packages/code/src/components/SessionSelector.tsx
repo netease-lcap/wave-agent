@@ -45,6 +45,8 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
         flexDirection="column"
         borderStyle="single"
         borderColor="yellow"
+        borderLeft={false}
+        borderRight={false}
         paddingX={1}
       >
         <Text color="yellow">No sessions found.</Text>
@@ -64,7 +66,15 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
   const displaySessions = sessions.slice(startIndex, startIndex + maxDisplay);
 
   return (
-    <Box flexDirection="column" paddingX={1} gap={1}>
+    <Box
+      flexDirection="column"
+      paddingX={1}
+      gap={1}
+      borderStyle="single"
+      borderColor="cyan"
+      borderLeft={false}
+      borderRight={false}
+    >
       <Box>
         <Text color="cyan" bold>
           Select a session to resume
