@@ -5,6 +5,7 @@ import { resolvePath, getDisplayPath } from "../utils/path.js";
 import {
   findIndentationInsensitiveMatch,
   escapeRegExp,
+  saveEditErrorSnapshot,
 } from "../utils/editUtils.js";
 import {
   MULTI_EDIT_TOOL_NAME,
@@ -191,6 +192,12 @@ export const multiEditTool: ToolPlugin = {
         );
 
         if (!matchedOldString) {
+          await saveEditErrorSnapshot(
+            resolvedPath,
+            edit.old_string,
+            currentContent,
+            MULTI_EDIT_TOOL_NAME,
+          );
           return {
             success: false,
             content: "",

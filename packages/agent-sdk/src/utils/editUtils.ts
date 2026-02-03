@@ -1,3 +1,8 @@
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
+import os from "os";
+import { logger } from "./globalLogger.js";
+
 /**
  * Utility functions for file editing tools
  */
@@ -79,4 +84,45 @@ export function findIndentationInsensitiveMatch(
  */
 export function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Save a snapshot of the old string and current file content for debugging
+ */
+export async function saveEditErrorSnapshot(
+  filePath: string,
+  oldString: string,
+  currentContent: string,
+  toolName: string,
+): Promise<string | null> {
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileName = path.basename(filePath);
+    const snapshotDirName = `${timestamp}_${toolName}_${fileName}`;
+    const snapshotDir = path.join(
+      os.tmpdir(),
+      "wave-agent-edit-errors",
+      snapshotDirName,
+    );
+
+    await mkdir(snapshotDir, { recursive: true });
+
+    await Promise.all([
+      writeFile(path.join(snapshotDir, "old_string.txt"), oldString, "utf-8"),
+      writeFile(
+        path.join(snapshotDir, "file_content.txt"),
+        currentContent,
+        "utf-8",
+      ),
+    ]);
+
+    logger.error(
+      `Edit error snapshot saved to: ${snapshotDir}\nFile: ${filePath}\nTool: ${toolName}`,
+    );
+
+    return snapshotDir;
+  } catch (error) {
+    logger.error(`Failed to save edit error snapshot: ${error}`);
+    return null;
+  }
 }

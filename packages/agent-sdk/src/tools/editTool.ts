@@ -5,6 +5,7 @@ import { resolvePath, getDisplayPath } from "../utils/path.js";
 import {
   findIndentationInsensitiveMatch,
   escapeRegExp,
+  saveEditErrorSnapshot,
 } from "../utils/editUtils.js";
 import { EDIT_TOOL_NAME, READ_TOOL_NAME } from "../constants/tools.js";
 
@@ -121,6 +122,12 @@ export const editTool: ToolPlugin = {
       );
 
       if (!matchedOldString) {
+        await saveEditErrorSnapshot(
+          resolvedPath,
+          oldString,
+          originalContent,
+          EDIT_TOOL_NAME,
+        );
         return {
           success: false,
           content: "",
