@@ -7,7 +7,6 @@ import { HistorySearch } from "./HistorySearch.js";
 import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
 import { BashShellManager } from "./BashShellManager.js";
 import { McpManager } from "./McpManager.js";
-import { PluginManagerUI } from "./PluginManagerUI.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
 
@@ -91,10 +90,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // Bash/MCP Manager
     showBashManager,
     showMcpManager,
-    showPluginManager,
     setShowBashManager,
     setShowMcpManager,
-    setShowPluginManager,
     // Permission mode
     permissionMode,
     setPermissionMode,
@@ -207,10 +204,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           onDisconnectServer={disconnectMcpServer}
         />
       )}
-      {showPluginManager && (
-        <PluginManagerUI onClose={() => setShowPluginManager(false)} />
-      )}
-      {showBashManager || showMcpManager || showPluginManager || (
+      {showBashManager || showMcpManager || (
         <Box flexDirection="column">
           <Box
             borderStyle="single"

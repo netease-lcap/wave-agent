@@ -32,10 +32,8 @@ export interface InputManagerCallbacks {
   onMemoryTypeSelectorStateChange?: (show: boolean, message: string) => void;
   onShowBashManager?: () => void;
   onShowMcpManager?: () => void;
-  onShowPluginManager?: () => void;
   onBashManagerStateChange?: (show: boolean) => void;
   onMcpManagerStateChange?: (show: boolean) => void;
-  onPluginManagerStateChange?: (show: boolean) => void;
   onImagesStateChange?: (images: AttachedImage[]) => void;
   onSendMessage?: (
     content: string,
@@ -96,7 +94,6 @@ export class InputManager {
   // Additional UI state
   private showBashManager: boolean = false;
   private showMcpManager: boolean = false;
-  private showPluginManager: boolean = false;
 
   // Permission mode state
   private permissionMode: PermissionMode = "default";
@@ -366,12 +363,6 @@ export class InputManager {
             commandExecuted = true;
           } else if (command === "mcp" && this.callbacks.onShowMcpManager) {
             this.callbacks.onShowMcpManager();
-            commandExecuted = true;
-          } else if (
-            command === "plugin" &&
-            this.callbacks.onShowPluginManager
-          ) {
-            this.callbacks.onShowPluginManager();
             commandExecuted = true;
           }
         }
@@ -770,15 +761,6 @@ export class InputManager {
     this.callbacks.onMcpManagerStateChange?.(show);
   }
 
-  getShowPluginManager(): boolean {
-    return this.showPluginManager;
-  }
-
-  setShowPluginManager(show: boolean): void {
-    this.showPluginManager = show;
-    this.callbacks.onPluginManagerStateChange?.(show);
-  }
-
   // Permission mode methods
   getPermissionMode(): PermissionMode {
     return this.permissionMode;
@@ -1073,16 +1055,14 @@ export class InputManager {
       this.showHistorySearch ||
       this.showMemoryTypeSelector ||
       this.showBashManager ||
-      this.showMcpManager ||
-      this.showPluginManager
+      this.showMcpManager
     ) {
       if (
         this.showMemoryTypeSelector ||
         this.showBashManager ||
-        this.showMcpManager ||
-        this.showPluginManager
+        this.showMcpManager
       ) {
-        // Memory type selector, bash manager, MCP manager and plugin manager don't need to handle input, handled by component itself
+        // Memory type selector, bash manager and MCP manager don't need to handle input, handled by component itself
         return false;
       }
 

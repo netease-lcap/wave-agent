@@ -51,18 +51,3 @@ export interface InstalledPlugin {
 export interface InstalledPluginsRegistry {
   plugins: InstalledPlugin[];
 }
-
-export enum PluginStatus {
-  AVAILABLE = "available",
-  INSTALLED = "installed",
-  ENABLED = "enabled",
-  UPDATE_AVAILABLE = "update_available",
-}
-
-export interface PluginDetail extends MarketplacePluginEntry {
-  id: string;
-  status: PluginStatus;
-  installedVersion?: string;
-  latestVersion?: string;
-  marketplaceName: string;
-}
