@@ -240,6 +240,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onShowRewind: () => {
           setIsRewindVisible(true);
         },
+        onSlashCommandsChange: (commands) => {
+          setSlashCommands([...commands]);
+        },
       };
 
       try {

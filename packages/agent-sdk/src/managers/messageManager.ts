@@ -16,7 +16,7 @@ import {
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
-import type { Logger, Message, Usage } from "../types/index.js";
+import type { Logger, Message, Usage, SlashCommand } from "../types/index.js";
 import { join } from "path";
 import {
   appendMessages,
@@ -56,6 +56,7 @@ export interface MessageManagerCallbacks {
   onAddCommandOutputMessage?: (command: string) => void;
   onUpdateCommandOutputMessage?: (command: string, output: string) => void;
   onCompleteCommandMessage?: (command: string, exitCode: number) => void;
+  onSlashCommandsChange?: (commands: SlashCommand[]) => void;
   // Rewind callbacks
   onShowRewind?: () => void;
   // Subagent callbacks
@@ -255,6 +256,13 @@ export class MessageManager {
    */
   public triggerShowRewind(): void {
     this.callbacks.onShowRewind?.();
+  }
+
+  /**
+   * Trigger slash commands change callback
+   */
+  public triggerSlashCommandsChange(commands: SlashCommand[]): void {
+    this.callbacks.onSlashCommandsChange?.(commands);
   }
 
   // Initialize state from session data
