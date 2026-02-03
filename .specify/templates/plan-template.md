@@ -33,7 +33,7 @@
 
 [Gates determined based on constitution file]
 
-**REQUIRED**: All planning phases (Research, Design, Task Breakdown) MUST be performed using the **general-purpose agent** to ensure technical accuracy and codebase alignment. Always use general-purpose agent for every phrase during planning.
+**REQUIRED**: All planning phases MUST be performed using the **general-purpose agent** to ensure technical accuracy and codebase alignment. Always use general-purpose agent for every phrase during planning.
 
 ## Project Structure
 
