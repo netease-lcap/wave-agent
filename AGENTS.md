@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Wave Code when working with code in this repository.
+This file provides guidance to Agent when working with code in this repository.
 
 ## 🏗 Architecture & Structure
 

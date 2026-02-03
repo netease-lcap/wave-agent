@@ -5,7 +5,7 @@ describe("INIT_PROMPT", () => {
   it("should contain the mandatory AGENTS.md prefix", () => {
     expect(INIT_PROMPT).toContain("# AGENTS.md");
     expect(INIT_PROMPT).toContain(
-      "This file provides guidance to Wave Code when working with code in this repository.",
+      "This file provides guidance to Agent when working with code in this repository.",
     );
   });
 
