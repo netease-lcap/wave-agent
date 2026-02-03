@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { Box, Text, useStdout } from "ink";
 import { marked, type Token, type Tokens } from "marked";
+import { highlight } from "cli-highlight";
 
 export interface MarkdownProps {
   children: string;
@@ -224,6 +225,12 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
               const opening = lines[0];
               const closing = lines[lines.length - 1];
               const content = lines.slice(1, -1).join("\n");
+              const highlighted = content
+                ? highlight(unescapeHtml(content), {
+                    language: t.lang,
+                    ignoreIllegals: true,
+                  })
+                : "";
               return (
                 <Box
                   key={index}
@@ -232,7 +239,7 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
                   marginBottom={1}
                 >
                   <Text color="gray">{opening}</Text>
-                  {content && <Text>{unescapeHtml(content)}</Text>}
+                  {highlighted && <Text>{highlighted}</Text>}
                   <Text color="gray">{closing}</Text>
                 </Box>
               );
