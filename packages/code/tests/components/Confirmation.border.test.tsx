@@ -2,7 +2,6 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { Confirmation } from "../../src/components/Confirmation.js";
-import { waitForText } from "../helpers/waitHelpers.js";
 
 import { stripAnsiColors } from "wave-agent-sdk";
 
@@ -28,7 +27,9 @@ describe("Confirmation Border", () => {
       />,
     );
 
-    await waitForText(lastFrame, "Tool: Edit");
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("Tool: Edit");
+    });
 
     const frame = lastFrame();
     if (!frame) throw new Error("Frame is undefined");
@@ -59,7 +60,9 @@ describe("Confirmation Border", () => {
       />,
     );
 
-    await waitForText(lastFrame, "Plan Content:");
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("Plan Content:");
+    });
 
     const frame = lastFrame();
     if (!frame) throw new Error("Frame is undefined");

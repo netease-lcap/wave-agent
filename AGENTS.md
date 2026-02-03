@@ -29,7 +29,7 @@ Always use `pnpm` as the package manager.
 - **Run tests for a package**: `pnpm -F <package-name> test`
 - **Run a single test file**: `pnpm -F <package-name> test <path/to/test>`
 - **Testing Framework**: Vitest.
-- **UI Testing**: Use `HookTester` for hooks and `waitHelpers` (`waitFor`, `waitForText`) for Ink components.
+- **UI Testing**: Use `HookTester` for hooks and `vi.waitFor` for Ink components.
 
 ### Linting
 - **Lint all**: `pnpm lint`

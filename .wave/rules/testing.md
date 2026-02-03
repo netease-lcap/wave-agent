@@ -6,7 +6,7 @@ paths: ["packages/*/tests/**/*"]
   - Testing framework is vitest
   - Run test use `pnpm -F xxx test test_file`
   - Use HookTester to test hooks
-  - Use waitHelpers (`waitFor`, `waitForText`) to wait for UI changes in Ink components
+  - Use `vi.waitFor` to wait for UI changes in Ink components
   - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify type check, for example: 
     - `vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);`
     - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`

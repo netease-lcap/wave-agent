@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox } from "../../src/components/InputBox.js";
-import { waitForText, waitForTextToDisappear } from "../helpers/waitHelpers.js";
+import { stripAnsiColors } from "wave-agent-sdk";
 import type { SlashCommand } from "wave-agent-sdk";
 
 vi.mock("wave-agent-sdk", async (importOriginal) => {
@@ -29,7 +29,11 @@ describe("InputBox Smoke Tests", () => {
       const { lastFrame } = render(<InputBox />);
 
       // Wait for the component to render after InputManager initializes
-      await waitForText(lastFrame, "Type your message");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type your message",
+        );
+      });
 
       // Verify placeholder text is displayed (may be wrapped)
       expect(lastFrame()).toMatch(/Type your message[\s\S]*use @ to reference/);
@@ -42,7 +46,9 @@ describe("InputBox Smoke Tests", () => {
       stdin.write("hello world");
 
       // Wait for input text to appear
-      await waitForText(lastFrame, "hello world");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("hello world");
+      });
 
       // Verify input text is displayed correctly
       expect(lastFrame()).toContain("hello world");
@@ -61,7 +67,9 @@ describe("InputBox Smoke Tests", () => {
       stdin.write(pastedText);
 
       // Wait for paste processing to complete
-      await waitForText(lastFrame, "This is line 1");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("This is line 1");
+      });
 
       // Verify text is processed correctly
       const output = lastFrame();
@@ -80,7 +88,9 @@ describe("InputBox Smoke Tests", () => {
       stdin.write(longText);
 
       // Wait for compression processing completion
-      await waitForText(lastFrame, "[LongText#1]");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("[LongText#1]");
+      });
 
       // Verify long text is compressed to [LongText#1] format
       const output = lastFrame();
@@ -94,7 +104,11 @@ describe("InputBox Smoke Tests", () => {
       const { lastFrame } = render(<InputBox isLoading={true} />);
 
       // Wait for the component to render after InputManager initializes
-      await waitForText(lastFrame, "Type your message");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type your message",
+        );
+      });
       const output = lastFrame();
 
       // Should show normal placeholder and allow input even when loading
@@ -141,14 +155,20 @@ describe("InputBox Smoke Tests", () => {
 
       // Step 1: Input "/" to activate command selector
       stdin.write("/");
-      await waitForText(lastFrame, "Command Selector");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Command Selector",
+        );
+      });
 
       const afterSlashFrame = lastFrame();
       expect(afterSlashFrame).toContain("docs");
 
       // Step 2: Input "git" to filter commands
       stdin.write("git");
-      await waitForTextToDisappear(lastFrame, "docs");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).not.toContain("docs");
+      });
 
       const filteredFrame = lastFrame();
       expect(filteredFrame).toContain("git-commit");
@@ -156,7 +176,11 @@ describe("InputBox Smoke Tests", () => {
 
       // Step 3: Press Enter to select and execute command
       stdin.write("\r");
-      await waitForTextToDisappear(lastFrame, "Command Selector");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).not.toContain(
+          "Command Selector",
+        );
+      });
 
       // Step 4: Verify command is executed and input is cleared
       expect(mockHasSlashCommand).toHaveBeenCalledWith("git-commit");
@@ -181,11 +205,19 @@ describe("InputBox Smoke Tests", () => {
 
       // Input complete command directly
       stdin.write("/git-commit some arguments");
-      await waitForText(lastFrame, "/git-commit some arguments");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "/git-commit some arguments",
+        );
+      });
 
       // Press Enter to send
       stdin.write("\r");
-      await waitForText(lastFrame, "Type your message");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type your message",
+        );
+      });
 
       // Verify sent as message
       expect(mockSendMessage).toHaveBeenCalledWith(
