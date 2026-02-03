@@ -21,13 +21,13 @@ Always use `pnpm` as the package manager.
 
 ### Build & Type-Check
 - **Build all**: `pnpm build`
-- **Build specific package**: `pnpm -F <package-name> build`
+    - **Build specific package**: `pnpm -F <package-name> build` (e.g., `pnpm -F wave-agent-sdk build` or `pnpm -F wave-code build`)
 - **Type-check all**: `pnpm run type-check`
 
 ### Testing
 - **Run all tests**: `pnpm test`
-- **Run tests for a package**: `pnpm -F <package-name> test`
-- **Run a single test file**: `pnpm -F <package-name> test <path/to/test>`
+    - **Run tests for a package**: `pnpm -F <package-name> test` (e.g., `pnpm -F wave-agent-sdk test`)
+    - **Run a single test file**: `pnpm -F <package-name> test <path/to/test>` (e.g., `pnpm -F wave-agent-sdk test tests/agent.test.ts`)
 - **Testing Framework**: Vitest.
 - **UI Testing**: Use `HookTester` for hooks and `vi.waitFor` for Ink components.
 
@@ -56,5 +56,5 @@ Always use `pnpm` as the package manager.
   - Use `vi.mocked(...)` with `as unknown as Awaited<ReturnType<typeof ...>>` for type-safe mocks.
   - Mock `stdout` and `stderr` to suppress output during tests.
   - Do not use `mkdtemp` in tests; use mocking instead.
-- **Examples**: `packages/*/examples` contain real integration tests. Run them using:
-  `pnpm -F <package-name> exec tsx examples/<file>.ts`
+    - **Examples**: `packages/*/examples` contain real integration tests. Run them using:
+      `pnpm -F <package-name> exec tsx examples/<file>.ts` (e.g., `pnpm -F wave-agent-sdk exec tsx examples/basic-usage.ts`)
