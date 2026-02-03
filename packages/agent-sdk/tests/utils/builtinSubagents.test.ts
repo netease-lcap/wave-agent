@@ -80,5 +80,26 @@ describe("Built-in Subagents", () => {
       expect(explore?.tools).not.toContain("Write");
       expect(explore?.tools).not.toContain("Edit");
     });
+
+    it("should include general-purpose subagent", () => {
+      const builtins = getBuiltinSubagents();
+      const gp = builtins.find((s) => s.name === "general-purpose");
+
+      expect(gp).toBeDefined();
+      expect(gp?.name).toBe("general-purpose");
+      expect(gp?.scope).toBe("builtin");
+      expect(gp?.priority).toBe(3);
+      expect(gp?.tools).toBeUndefined(); // Full tool access
+      expect(gp?.model).toBeUndefined(); // Inherit main agent model
+    });
+
+    it("should have a system prompt for general-purpose agent that includes key guidelines", () => {
+      const builtins = getBuiltinSubagents();
+      const gp = builtins.find((s) => s.name === "general-purpose");
+
+      expect(gp?.systemPrompt).toContain("MUST be absolute");
+      expect(gp?.systemPrompt).toContain("avoid using emojis");
+      expect(gp?.systemPrompt).toContain("proactively create documentation");
+    });
   });
 });

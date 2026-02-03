@@ -962,6 +962,16 @@ export class Agent {
   }
 
   /**
+   * Get a subagent instance by its ID
+   * @param subagentId - The ID of the subagent instance
+   */
+  public getSubagentInstance(
+    subagentId: string,
+  ): import("./managers/subagentManager.js").SubagentInstance | null {
+    return this.subagentManager.getInstance(subagentId);
+  }
+
+  /**
    * Trigger the rewind UI callback
    */
   public triggerShowRewind(): void {
