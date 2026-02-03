@@ -345,28 +345,7 @@ export class InputManager {
       (async () => {
         // First check if it's an agent command
         let commandExecuted = false;
-
-        // Check local commands first to ensure state is updated synchronously if possible
-        // or at least before any other input processing
-        if (command === "bashes" && this.callbacks.onShowBashManager) {
-          this.showBashManager = true;
-          this.callbacks.onBashManagerStateChange?.(true);
-          this.callbacks.onShowBashManager();
-          commandExecuted = true;
-        } else if (command === "mcp" && this.callbacks.onShowMcpManager) {
-          this.showMcpManager = true;
-          this.callbacks.onMcpManagerStateChange?.(true);
-          this.callbacks.onShowMcpManager();
-          commandExecuted = true;
-        } else if (command === "plugin" && this.callbacks.onShowPluginManager) {
-          this.showPluginManager = true;
-          this.callbacks.onPluginManagerStateChange?.(true);
-          this.callbacks.onShowPluginManager();
-          commandExecuted = true;
-        }
-
         if (
-          !commandExecuted &&
           this.callbacks.onSendMessage &&
           this.callbacks.onHasSlashCommand?.(command)
         ) {
@@ -379,22 +358,24 @@ export class InputManager {
             console.error("Failed to execute slash command:", error);
           }
         }
-      })();
 
-      // If it's a local command, we want to update the state immediately
-      // to prevent input leakage in the same tick
-      if (command === "bashes") {
-        this.showBashManager = true;
-        this.callbacks.onBashManagerStateChange?.(true);
-      }
-      if (command === "mcp") {
-        this.showMcpManager = true;
-        this.callbacks.onMcpManagerStateChange?.(true);
-      }
-      if (command === "plugin") {
-        this.showPluginManager = true;
-        this.callbacks.onPluginManagerStateChange?.(true);
-      }
+        // If not an agent command or execution failed, check local commands
+        if (!commandExecuted) {
+          if (command === "bashes" && this.callbacks.onShowBashManager) {
+            this.callbacks.onShowBashManager();
+            commandExecuted = true;
+          } else if (command === "mcp" && this.callbacks.onShowMcpManager) {
+            this.callbacks.onShowMcpManager();
+            commandExecuted = true;
+          } else if (
+            command === "plugin" &&
+            this.callbacks.onShowPluginManager
+          ) {
+            this.callbacks.onShowPluginManager();
+            commandExecuted = true;
+          }
+        }
+      })();
 
       this.handleCancelCommandSelect();
 
@@ -1080,20 +1061,6 @@ export class InputManager {
 
     // Handle Shift+Tab for permission mode cycling
     if (key.tab && key.shift) {
-      // If any manager is active, Shift+Tab should be handled by the manager (e.g. for navigation)
-      // and NOT cycle the permission mode.
-      if (
-        this.showFileSelector ||
-        this.showCommandSelector ||
-        this.showHistorySearch ||
-        this.showMemoryTypeSelector ||
-        this.showBashManager ||
-        this.showMcpManager ||
-        this.showPluginManager
-      ) {
-        return false;
-      }
-
       this.logger?.debug("Shift+Tab detected, cycling permission mode");
       this.cyclePermissionMode();
       return true;
