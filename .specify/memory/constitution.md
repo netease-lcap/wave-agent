@@ -1,9 +1,9 @@
 <!--
 Sync Impact Report:
-- Version change: 1.7.0 → 1.8.0
-- Modified principles: III. Test Alignment (added mandatory unit and integration tests), VIII. Test-Driven Development (made testing mandatory)
-- Modified sections: Quality Standards (updated testing requirements), Development Workflow (updated TDD process)
-- Templates requiring updates: ✅ tasks-template.md (updated test requirement from optional to required)
+- Version change: 1.8.0 → 1.9.0
+- Modified principles: III. Test Alignment (added requirement for real testing examples in `examples/` directory)
+- Modified sections: Quality Standards (added example-based testing requirement), Development Workflow (added example creation step)
+- Templates requiring updates: ✅ tasks-template.md (added example creation task)
 - Follow-up TODOs: None
 -->
 
@@ -22,9 +22,9 @@ All code MUST be written in TypeScript with strict type checking enabled. No `an
 **Rationale**: Type safety prevents runtime errors and improves developer experience in an AI-assisted development environment.
 
 ### III. Test Alignment
-Test file organization MUST follow logical patterns for discoverability. Both unit tests and integration tests are REQUIRED for all new functionality. Unit tests MUST focus on individual components and pure functions. Integration tests MUST verify the interaction between multiple components or packages. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. All tests MUST be in `packages/*/tests` directories. Focus on essential functionality testing rather than comprehensive coverage to enable faster development iterations.
+Test file organization MUST follow logical patterns for discoverability. Both unit tests and integration tests are REQUIRED for all new functionality. Unit tests MUST focus on individual components and pure functions. Integration tests MUST verify the interaction between multiple components or packages. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. All tests MUST be in `packages/*/tests` directories. For features that are hard to mock or require real-world validation, MUST provide functional examples in `packages/*/examples/` directory. Focus on essential functionality testing rather than comprehensive coverage to enable faster development iterations.
 
-**Rationale**: Flexible test organization enables both predictable discovery and manageable test suites. Essential testing provides confidence while maintaining development velocity. Mandatory unit and integration tests ensure both component-level correctness and system-level stability.
+**Rationale**: Flexible test organization enables both predictable discovery and manageable test suites. Essential testing provides confidence while maintaining development velocity. Mandatory unit and integration tests ensure both component-level correctness and system-level stability. Real-world examples ensure functionality works in non-mocked environments.
 
 ### IV. Build Dependencies
 After modifying `agent-sdk`, MUST run `pnpm build` before testing changes in dependent packages. Use `pnpm` exclusively for package management, never `npm`.
@@ -67,6 +67,7 @@ All code MUST pass TypeScript compilation without errors or warnings. All existi
 
 **Testing Requirements**: 
 - Unit tests and integration tests are REQUIRED for all functionality
+- Real-world functional examples in `examples/` are REQUIRED for complex features
 - Test essential functionality and critical edge cases
 - Focus on behavior verification rather than coverage metrics
 - TDD SHOULD be used for complex or critical components
@@ -93,6 +94,7 @@ All code MUST pass TypeScript compilation without errors or warnings. All existi
 3. Run tests to ensure they pass with implementation
 4. Refactor code while keeping tests passing
 5. REQUIRED: Ensure both unit and integration tests are present
+6. REQUIRED: Create functional examples in `examples/` for real-world validation
 
 **Type Evolution Process**:
 1. Identify existing types that could be extended or modified
@@ -129,4 +131,4 @@ This constitution supersedes all other development practices. All pull requests 
 
 **Version Control**: Use semantic versioning for constitution updates. Breaking changes to principles require major version bump.
 
-**Version**: 1.8.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2026-01-19
+**Version**: 1.9.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2026-02-03
