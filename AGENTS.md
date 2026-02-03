@@ -1,41 +1,60 @@
-# Memory
+# AGENTS.md
 
-This is the AI assistant's memory file, recording important information and context.
+This file provides guidance to Wave Code when working with code in this repository.
 
-- Use pnpm instead of npm
-- Note that items under `specs/` are typically directories (e.g., `specs/020-markdown-rendering-system/`)
-- Don't create Markdown documents unless explicitly mentioned by user
-- `packages/*/examples` directories contain real test ts or tsx files that are hard to mock:
-  - need to create temporary directories
-  - test by sending real messages
-  - run example like this: `pnpm -F xxx exec tsx examples/hi.ts`
-  - never access private properties directly with `(agent as any)`
-- `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
-  - Task vitest-expert to write tests
-  - Testing framework is vitest
-  - Run test use `pnpm -F xxx test test_file`
-  - Use HookTester to test hooks
-  - Use waitHelpers (`waitFor`, `waitForText`) to wait for UI changes in Ink components
-  - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify type check, for example: 
-    - `vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);`
-    - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`
-  - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
-  - MUST not write `mkdtemp` in test, use mocking instead
-  - Mock stdout and stderr to suppress output during testing and restore mocks after tests
-  - Avoid unnecessary `setTimeout` or `sleep` in tests to keep them fast; prefer awaiting promises or using `vi.waitFor` if needed
-- `packages/code/src/components` contains Ink components
-- After modifying agent-sdk, need to build before using in code
-- For type and eslint errors:
-  - MUST task typescript-expert to fix type and eslint errors in order to reduce context usage of main agent
-  - Don't write any types
-  - Do not modify tsconfig unless user ask you to do that
-  - Do not prefix unused variables with underscore, just remove them
-- While writing tests about `Agent`, always use `await Agent.create` instead of `new Agent`
-- Do not perform git commit operation unless explicitly mentioned by user
-- While implementing tasks in `specs/*/tasks.md`:
-  - MUST mark the task off as [X] by modifying the tasks.md after you complete a task
-  - Task multi subagents at once to implement in parallel when possible
-- Before make any spec or plan, research the codebase to ensure you have a comprehensive understanding of user requirements
-- Focus on core functionality that's actually being used - remove unused options, methods, and interfaces to keep code lean and maintainable
-- Always ensure code changes pass all tests, type checks, and linting before considering implementation complete by running `pnpm test`, `pnpm run type-check`, and `pnpm lint`
-- `../wave-plugins-official` is the path of official wave plugins
+## 🏗 Architecture & Structure
+
+This is a pnpm monorepo focused on AI-powered development tools.
+
+- **`packages/agent-sdk`**: Core Node.js SDK. Handles AI model integration, tool systems, and memory management.
+- **`packages/code`**: CLI frontend built with React Ink. Provides the interactive terminal interface.
+- **`specs/`**: Contains numbered feature specifications (e.g., `specs/053-modular-rules/`). These are the source of truth for feature design and implementation tasks.
+- **`.wave/rules/`**: Modular memory rules scoped to specific paths or tasks.
+
+### Key Dependencies
+- `packages/code` depends on `packages/agent-sdk`.
+- **Important**: After modifying `agent-sdk`, you MUST rebuild it (`pnpm -F wave-agent-sdk build`) before the changes are available to `packages/code`.
+
+## 🛠 Development Commands
+
+Always use `pnpm` as the package manager.
+
+### Build & Type-Check
+- **Build all**: `pnpm build`
+- **Build specific package**: `pnpm -F <package-name> build`
+- **Type-check all**: `pnpm run type-check`
+
+### Testing
+- **Run all tests**: `pnpm test`
+- **Run tests for a package**: `pnpm -F <package-name> test`
+- **Run a single test file**: `pnpm -F <package-name> test <path/to/test>`
+- **Testing Framework**: Vitest.
+- **UI Testing**: Use `HookTester` for hooks and `waitHelpers` (`waitFor`, `waitForText`) for Ink components.
+
+### Linting
+- **Lint all**: `pnpm lint`
+- **Format**: `pnpm exec prettier --write .`
+
+## 📝 Development Guidelines
+
+- **Memory & Rules**:
+  - Use `AGENTS.md` for general project context.
+  - Check `.wave/rules/` for path-specific instructions.
+- **Feature Implementation**:
+  - Before starting a task, research the codebase and relevant `specs/`.
+  - When implementing tasks from `specs/*/tasks.md`, mark them as completed `[X]` in the file.
+- **Code Style**:
+  - Do not prefix unused variables with underscores; remove them.
+  - Do not modify `tsconfig.json` unless explicitly requested.
+  - Avoid unnecessary `setTimeout` or `sleep` in tests; prefer `vi.waitFor` or awaiting promises.
+- **Git**: Do not perform git commits unless explicitly requested.
+- **External Plugins**: `../wave-plugins-official` is the path for official wave plugins.
+
+## 🧪 Testing Patterns
+- **Agent Creation**: Always use `await Agent.create(...)` instead of `new Agent(...)`.
+- **Mocking**:
+  - Use `vi.mocked(...)` with `as unknown as Awaited<ReturnType<typeof ...>>` for type-safe mocks.
+  - Mock `stdout` and `stderr` to suppress output during tests.
+  - Do not use `mkdtemp` in tests; use mocking instead.
+- **Examples**: `packages/*/examples` contain real integration tests. Run them using:
+  `pnpm -F <package-name> exec tsx examples/<file>.ts`

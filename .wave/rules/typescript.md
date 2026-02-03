@@ -1,0 +1,5 @@
+- For type and eslint errors:
+  - MUST task typescript-expert to fix type and eslint errors in order to reduce context usage of main agent
+  - Don't write any types
+  - Do not modify tsconfig unless user ask you to do that
+  - Do not prefix unused variables with underscore, just remove them

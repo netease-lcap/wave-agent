@@ -1,0 +1,17 @@
+---
+paths: ["packages/*/tests/**/*"]
+---
+- `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
+  - Task vitest-expert to write tests
+  - Testing framework is vitest
+  - Run test use `pnpm -F xxx test test_file`
+  - Use HookTester to test hooks
+  - Use waitHelpers (`waitFor`, `waitForText`) to wait for UI changes in Ink components
+  - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify type check, for example: 
+    - `vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);`
+    - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`
+  - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
+  - MUST not write `mkdtemp` in test, use mocking instead
+  - Mock stdout and stderr to suppress output during testing and restore mocks after tests
+  - Avoid unnecessary `setTimeout` or `sleep` in tests to keep them fast; prefer awaiting promises or using `vi.waitFor` if needed
+- While writing tests about `Agent`, always use `await Agent.create` instead of `new Agent`
