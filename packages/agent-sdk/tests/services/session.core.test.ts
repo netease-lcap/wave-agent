@@ -12,6 +12,8 @@ vi.mock("fs", () => ({
     stat: vi.fn(),
     unlink: vi.fn(),
     rmdir: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
   },
 }));
 
@@ -22,6 +24,8 @@ vi.mock("fs/promises", () => ({
   stat: vi.fn(),
   unlink: vi.fn(),
   rmdir: vi.fn(),
+  readFile: vi.fn(),
+  writeFile: vi.fn(),
 }));
 
 // Mock fileUtils (used by optimized session.ts)
@@ -208,6 +212,12 @@ describe("Session Core Functionality", () => {
     );
     vi.mocked(fs.promises.rmdir).mockImplementation(
       vi.mocked(fsPromises.rmdir),
+    );
+    vi.mocked(fs.promises.readFile).mockImplementation(
+      vi.mocked(fsPromises.readFile),
+    );
+    vi.mocked(fs.promises.writeFile).mockImplementation(
+      vi.mocked(fsPromises.writeFile),
     );
   });
 

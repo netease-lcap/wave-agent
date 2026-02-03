@@ -25,3 +25,8 @@ This plan outlines the historical steps taken to implement the current session m
 - [x] Implement `cleanupExpiredSessions` (14-day limit).
 - [x] Implement `cleanupEmptyProjectDirectories`.
 - [x] Add error handling for corrupted JSONL lines.
+
+## Phase 6: Session Indexing & UI Optimization
+- [x] Implement `sessions-index.json` for O(1) listing performance.
+- [x] Cache `firstMessage` content in the index for instant UI summaries.
+- [x] Implement automatic index rebuilding from source-of-truth `.jsonl` files.
