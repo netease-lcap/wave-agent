@@ -34,6 +34,7 @@ export type MarketplaceSource =
 export interface KnownMarketplace {
   name: string;
   source: MarketplaceSource;
+  isBuiltin?: boolean;
 }
 
 export interface KnownMarketplacesRegistry {

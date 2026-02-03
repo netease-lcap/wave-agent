@@ -42,13 +42,29 @@ export async function listMarketplacesCommand() {
         } else {
           sourceInfo = source.url + (source.ref ? `#${source.ref}` : "");
         }
-        console.log(`- ${m.name}: ${sourceInfo} (${m.source.source})`);
+        const builtinLabel = m.isBuiltin ? " [builtin]" : "";
+        console.log(
+          `- ${m.name}${builtinLabel}: ${sourceInfo} (${m.source.source})`,
+        );
       });
     }
     process.exit(0);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`Failed to list marketplaces: ${message}`);
+    process.exit(1);
+  }
+}
+
+export async function removeMarketplaceCommand(argv: { name: string }) {
+  const service = new MarketplaceService();
+  try {
+    await service.removeMarketplace(argv.name);
+    console.log(`Successfully removed marketplace: ${argv.name}`);
+    process.exit(0);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to remove marketplace: ${message}`);
     process.exit(1);
   }
 }
