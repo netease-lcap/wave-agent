@@ -39,6 +39,7 @@
 - `isNested: boolean` - Whether command is in a subdirectory
 - `depth: number` - Nesting level (0 = root, 1 = nested)
 - `segments: string[]` - Path components for ID generation
+- `pluginPath?: string` - Absolute path to the plugin root directory (only set for plugin commands)
 
 **Validation Rules**:
 - `filePath` must exist and be readable
@@ -183,7 +184,10 @@ echo "Current directory: $(pwd)"
    b. Replace positional parameters `$N` in descending order
 4. If NO placeholders exist and arguments are provided:
    a. Append arguments to the end of command content
-5. Execute any embedded bash commands
+5. Execute any embedded bash commands:
+   a. If command is from a plugin, set `WAVE_PLUGIN_ROOT` environment variable to plugin's absolute path
+   b. If command is NOT from a plugin, do not set `WAVE_PLUGIN_ROOT`
+   c. Execute bash command with configured environment
 6. Send processed content to AI manager
 7. **AI Cycle Start**: `PermissionManager.addTemporaryRules()` is called with the extracted `allowedTools`.
 8. **Tool Execution**: `PermissionManager.checkPermission()` matches against both `allowedRules` and `temporaryRules`. For `Bash` commands, it ensures every part of a command chain is allowed.

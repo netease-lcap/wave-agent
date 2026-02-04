@@ -29,4 +29,7 @@ export interface CustomSlashCommand {
   isNested: boolean; // Whether command is in a subdirectory
   depth: number; // 0 = root, 1 = nested
   segments: string[]; // Path components for ID generation (e.g., ["openspec", "apply"])
+
+  // Plugin support
+  pluginPath?: string; // Absolute path to the plugin root directory (only set for plugin commands)
 }
