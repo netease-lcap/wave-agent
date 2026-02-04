@@ -205,13 +205,10 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
           case "paragraph": {
             const t = token as Tokens.Paragraph;
             return (
-              <Box
-                key={index}
-                marginBottom={1}
-                flexDirection="row"
-                flexWrap="wrap"
-              >
-                <InlineRenderer tokens={t.tokens} />
+              <Box key={index} marginBottom={1} flexDirection="row">
+                <Text>
+                  <InlineRenderer tokens={t.tokens} />
+                </Text>
               </Box>
             );
           }
@@ -276,14 +273,12 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
                           if (itemToken.type === "text") {
                             const it = itemToken as Tokens.Text;
                             return (
-                              <Box
-                                key={itemIndex}
-                                flexDirection="row"
-                                flexWrap="wrap"
-                              >
-                                <InlineRenderer
-                                  tokens={it.tokens || [itemToken]}
-                                />
+                              <Box key={itemIndex} flexDirection="row">
+                                <Text>
+                                  <InlineRenderer
+                                    tokens={it.tokens || [itemToken]}
+                                  />
+                                </Text>
                               </Box>
                             );
                           }
