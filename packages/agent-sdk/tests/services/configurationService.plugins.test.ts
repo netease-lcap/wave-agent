@@ -167,6 +167,107 @@ describe("ConfigurationService - Plugins", () => {
     });
   });
 
+  describe("removeEnabledPlugin", () => {
+    it("should remove plugin from user scope", async () => {
+      const userConfigPath = path.join(userHome, ".wave", "settings.json");
+      vi.mocked(existsSync).mockImplementation(
+        (p) => p === userConfigPath || p === workdir || p === userHome,
+      );
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({
+          enabledPlugins: { "test-plugin": true, "other-plugin": false },
+        }),
+      );
+
+      await configService.removeEnabledPlugin(workdir, "user", "test-plugin");
+
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        userConfigPath,
+        expect.stringContaining('"other-plugin"'),
+        "utf-8",
+      );
+      const writtenConfig = JSON.parse(
+        vi.mocked(fs.writeFile).mock.calls[0][1] as string,
+      );
+      expect(writtenConfig.enabledPlugins).toEqual({
+        "other-plugin": false,
+      });
+      expect(writtenConfig.enabledPlugins["test-plugin"]).toBeUndefined();
+    });
+
+    it("should remove plugin from project scope", async () => {
+      const projectConfigPath = path.join(workdir, ".wave", "settings.json");
+      vi.mocked(existsSync).mockImplementation(
+        (p) => p === projectConfigPath || p === workdir,
+      );
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({
+          enabledPlugins: { "test-plugin": true },
+        }),
+      );
+
+      await configService.removeEnabledPlugin(
+        workdir,
+        "project",
+        "test-plugin",
+      );
+
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        projectConfigPath,
+        expect.stringContaining("enabledPlugins"),
+        "utf-8",
+      );
+      const writtenConfig = JSON.parse(
+        vi.mocked(fs.writeFile).mock.calls[0][1] as string,
+      );
+      expect(writtenConfig.enabledPlugins).toEqual({});
+    });
+
+    it("should not fail if config file doesn't exist", async () => {
+      vi.mocked(existsSync).mockImplementation((p) => p === workdir);
+
+      await configService.removeEnabledPlugin(
+        workdir,
+        "project",
+        "test-plugin",
+      );
+
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it("should not fail if plugin is not in config", async () => {
+      const userConfigPath = path.join(userHome, ".wave", "settings.json");
+      vi.mocked(existsSync).mockImplementation(
+        (p) => p === userConfigPath || p === workdir || p === userHome,
+      );
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({
+          enabledPlugins: { "other-plugin": true },
+        }),
+      );
+
+      await configService.removeEnabledPlugin(
+        workdir,
+        "user",
+        "nonexistent-plugin",
+      );
+
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+
+    it("should handle corrupted config file gracefully", async () => {
+      const userConfigPath = path.join(userHome, ".wave", "settings.json");
+      vi.mocked(existsSync).mockImplementation(
+        (p) => p === userConfigPath || p === workdir || p === userHome,
+      );
+      vi.mocked(fs.readFile).mockResolvedValue("invalid json{");
+
+      await configService.removeEnabledPlugin(workdir, "user", "test-plugin");
+
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+  });
+
   describe("getMergedEnabledPlugins", () => {
     it("should merge enabledPlugins with correct priority (local > project > user)", () => {
       const userJsonPath = path.join(userHome, ".wave", "settings.json");
