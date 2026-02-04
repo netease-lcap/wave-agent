@@ -115,8 +115,8 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **Invalid Pattern Syntax**: If an `allowed-tools` pattern is syntactically invalid, the system SHOULD ignore that specific pattern and default to manual confirmation for matching tools.
 - **Session Persistence**: If the user starts a new task or switches context, any active `allowed-tools` privileges from a previous slash command MUST be revoked.
 - **Overlapping Patterns**: If multiple patterns match a tool execution, the most permissive one (auto-approval) takes precedence.
-- **Plugin Path Resolution**: If a plugin command's `pluginPath` is invalid or inaccessible, bash commands SHOULD still execute but without the `WAVE_PLUGIN_ROOT` environment variable set.
-- **Path Escaping**: The `WAVE_PLUGIN_ROOT` value MUST be properly escaped when passed as an environment variable to prevent shell injection vulnerabilities.
+- **Plugin Path Resolution**: If a plugin command's `pluginPath` is invalid or inaccessible, the `$WAVE_PLUGIN_ROOT` placeholder SHOULD be substituted with an empty string.
+- **Path Escaping**: The `$WAVE_PLUGIN_ROOT` value MUST be properly escaped during substitution to prevent shell injection vulnerabilities.
 - **Nested Plugin Commands**: Commands from plugins that are nested (e.g., `plugin:subcommand`) MUST still have access to the root plugin path, not a subdirectory path.
 
 ## Requirements *(mandatory)*
@@ -145,8 +145,8 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **FR-020**: System MUST support command discovery up to a maximum of 1 level of nesting and ignore any markdown files beyond this depth.
 - **FR-021**: System MUST ignore non-markdown files during the discovery process.
 - **FR-022**: System MUST integrate discovered nested commands with the existing CommandSelector component without requiring changes to the current navigation UI.
-- **FR-023**: System MUST set the `WAVE_PLUGIN_ROOT` environment variable to the plugin's absolute path when executing bash commands within plugin-provided custom commands.
-- **FR-024**: System MUST NOT set the `WAVE_PLUGIN_ROOT` environment variable when executing bash commands within non-plugin custom commands (from `.wave/commands/`).
+- **FR-023**: System MUST substitute the `$WAVE_PLUGIN_ROOT` placeholder with the plugin's absolute path when processing plugin-provided custom commands.
+- **FR-024**: System MUST NOT substitute the `$WAVE_PLUGIN_ROOT` placeholder when processing non-plugin custom commands (from `.wave/commands/`).
 
 ### Key Entities
 
@@ -190,16 +190,16 @@ Users can organize their custom slash commands in nested directory structures wi
 
 ---
 
-### User Story 8 - Plugin Command Environment Variables (Priority: P2)
+### User Story 8 - Plugin Command Placeholder Substitution (Priority: P2)
 
-Users can access the plugin root directory path via the `WAVE_PLUGIN_ROOT` environment variable when executing bash commands within plugin-provided custom commands.
+Users can access the plugin root directory path via the `$WAVE_PLUGIN_ROOT` placeholder when creating plugin-provided custom commands.
 
 **Why this priority**: Enables plugin commands to reference files and scripts within the plugin directory without hardcoding paths, making plugins portable and easier to develop.
 
-**Independent Test**: Can be tested by creating a plugin with a custom command that contains a bash command using `WAVE_PLUGIN_ROOT`, then verifying the environment variable is correctly set to the plugin's root path during execution.
+**Independent Test**: Can be tested by creating a plugin with a custom command that contains `$WAVE_PLUGIN_ROOT` placeholder, then verifying the placeholder is correctly substituted with the plugin's root path before execution.
 
 **Acceptance Scenarios**:
 
-1. **Given** a plugin command contains a bash command with `!`cat $WAVE_PLUGIN_ROOT/data/template.txt``, **When** the command is executed, **Then** the bash command has access to `WAVE_PLUGIN_ROOT` environment variable set to the plugin's absolute path, and the file contents are embedded in the markdown
-2. **Given** a non-plugin command (from `.wave/commands/`) contains a bash command with `$WAVE_PLUGIN_ROOT`, **When** the command is executed, **Then** the `WAVE_PLUGIN_ROOT` environment variable is not set or empty, and the bash command fails or returns empty output
-3. **Given** a plugin command executes multiple bash commands, **When** all commands are executed, **Then** each bash command has access to the same `WAVE_PLUGIN_ROOT` value pointing to the plugin root directory
+1. **Given** a plugin command contains `!`cat $WAVE_PLUGIN_ROOT/data/template.txt``, **When** the command is executed, **Then** the `$WAVE_PLUGIN_ROOT` placeholder is substituted with the plugin's absolute path before the bash command runs, and the file contents are embedded in the markdown
+2. **Given** a non-plugin command (from `.wave/commands/`) contains `$WAVE_PLUGIN_ROOT`, **When** the command is executed, **Then** the `$WAVE_PLUGIN_ROOT` placeholder is not substituted and remains as literal text in the bash command
+3. **Given** a plugin command uses multiple `$WAVE_PLUGIN_ROOT` placeholders, **When** the command is executed, **Then** all occurrences are substituted with the same plugin root directory path

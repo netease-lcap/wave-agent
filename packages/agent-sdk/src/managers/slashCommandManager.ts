@@ -104,15 +104,24 @@ export class SlashCommandManager {
           handler: async (args?: string) => {
             // Substitute parameters in the command content
             let processedContent = command.content;
+
+            // Substitute $WAVE_PLUGIN_ROOT placeholder for plugin commands
+            if (command.pluginPath) {
+              processedContent = processedContent.replace(
+                /\$WAVE_PLUGIN_ROOT/g,
+                command.pluginPath,
+              );
+            }
+
             if (args) {
-              if (hasParameterPlaceholders(command.content)) {
+              if (hasParameterPlaceholders(processedContent)) {
                 processedContent = substituteCommandParameters(
-                  command.content,
+                  processedContent,
                   args,
                 );
               } else {
                 // If no placeholders, append arguments to the content
-                processedContent = `${command.content.trim()} ${args}`;
+                processedContent = `${processedContent.trim()} ${args}`;
               }
             }
 
@@ -121,7 +130,6 @@ export class SlashCommandManager {
               processedContent,
               command.config,
               args,
-              command.pluginPath,
             );
           },
         });
@@ -159,15 +167,24 @@ export class SlashCommandManager {
         handler: async (args?: string) => {
           // Substitute parameters in the command content
           let processedContent = command.content;
+
+          // Substitute $WAVE_PLUGIN_ROOT placeholder for plugin commands
+          if (command.pluginPath) {
+            processedContent = processedContent.replace(
+              /\$WAVE_PLUGIN_ROOT/g,
+              command.pluginPath,
+            );
+          }
+
           if (args) {
-            if (hasParameterPlaceholders(command.content)) {
+            if (hasParameterPlaceholders(processedContent)) {
               processedContent = substituteCommandParameters(
-                command.content,
+                processedContent,
                 args,
               );
             } else {
               // If no placeholders, append arguments to the content
-              processedContent = `${command.content.trim()} ${args}`;
+              processedContent = `${processedContent.trim()} ${args}`;
             }
           }
 
@@ -176,7 +193,6 @@ export class SlashCommandManager {
             processedContent,
             command.config,
             args,
-            command.pluginPath,
           );
         },
       });
@@ -303,7 +319,6 @@ export class SlashCommandManager {
     content: string,
     config?: { model?: string; allowedTools?: string[] },
     args?: string,
-    pluginPath?: string,
   ): Promise<void> {
     try {
       // Parse bash commands from the content
@@ -313,15 +328,9 @@ export class SlashCommandManager {
       const bashResults: BashCommandResult[] = [];
       for (const command of commands) {
         try {
-          // Set WAVE_PLUGIN_ROOT environment variable for plugin commands
-          const env = pluginPath
-            ? { ...process.env, WAVE_PLUGIN_ROOT: pluginPath }
-            : process.env;
-
           const { stdout, stderr } = await execAsync(command, {
             cwd: this.workdir,
             timeout: 30000, // 30 second timeout
-            env,
           });
           bashResults.push({
             command,

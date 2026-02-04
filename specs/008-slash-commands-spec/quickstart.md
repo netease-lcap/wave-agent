@@ -94,7 +94,7 @@ Use this template:
 !`cat $WAVE_PLUGIN_ROOT/templates/default.txt`
 ```
 
-**Note**: Use `$WAVE_PLUGIN_ROOT` (with `$` escaped as `$$` in the markdown file) to reference the plugin directory.
+**How it works**: The `$WAVE_PLUGIN_ROOT` placeholder gets replaced with the plugin's actual directory path before the bash command runs. So if your plugin is at `/home/user/.wave/plugins/my-plugin`, the command becomes `cat /home/user/.wave/plugins/my-plugin/templates/default.txt`.
 
 ### 6. Auto-Approving Tools
 

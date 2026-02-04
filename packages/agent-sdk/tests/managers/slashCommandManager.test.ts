@@ -214,7 +214,7 @@ describe("SlashCommandManager", () => {
       );
     });
 
-    it("should set WAVE_PLUGIN_ROOT environment variable for plugin commands with bash", async () => {
+    it("should substitute $WAVE_PLUGIN_ROOT placeholder for plugin commands with bash", async () => {
       const pluginName = "test-plugin";
       const pluginPath = "/path/to/plugin";
       const commands = [
@@ -248,13 +248,12 @@ describe("SlashCommandManager", () => {
       const lastMessage = messages[messages.length - 1];
       const textBlock = lastMessage.blocks[0] as TextBlock;
 
-      // Verify bash command was called with WAVE_PLUGIN_ROOT env var
+      // Verify bash command was called with $WAVE_PLUGIN_ROOT already substituted
       expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining("echo $WAVE_PLUGIN_ROOT"),
+        expect.stringContaining(`echo ${pluginPath}`),
         expect.objectContaining({
-          env: expect.objectContaining({
-            WAVE_PLUGIN_ROOT: pluginPath,
-          }),
+          cwd: expect.any(String),
+          timeout: 30000,
         }),
       );
 
@@ -262,7 +261,7 @@ describe("SlashCommandManager", () => {
       expect(textBlock.customCommandContent).toContain(pluginPath);
     });
 
-    it("should not set WAVE_PLUGIN_ROOT for non-plugin commands", async () => {
+    it("should not substitute $WAVE_PLUGIN_ROOT for non-plugin commands", async () => {
       const pluginName = "test-plugin";
       const commands = [
         {
@@ -276,9 +275,9 @@ describe("SlashCommandManager", () => {
         },
       ];
 
-      // Mock bash execution to return empty WAVE_PLUGIN_ROOT
+      // Mock bash execution - $WAVE_PLUGIN_ROOT should remain as-is
       mockExec.mockResolvedValueOnce({
-        stdout: "VAR: ",
+        stdout: "VAR: $WAVE_PLUGIN_ROOT",
         stderr: "",
       });
 
@@ -294,19 +293,19 @@ describe("SlashCommandManager", () => {
       const lastMessage = messages[messages.length - 1];
       const textBlock = lastMessage.blocks[0] as TextBlock;
 
-      // Verify bash command was NOT called with WAVE_PLUGIN_ROOT env var
+      // Verify bash command was called with $WAVE_PLUGIN_ROOT NOT substituted
       expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining("echo"),
-        expect.not.objectContaining({
-          env: expect.objectContaining({
-            WAVE_PLUGIN_ROOT: expect.anything(),
-          }),
+        expect.stringContaining('echo "VAR: $WAVE_PLUGIN_ROOT"'),
+        expect.objectContaining({
+          cwd: expect.any(String),
+          timeout: 30000,
         }),
       );
 
-      // Without pluginPath, WAVE_PLUGIN_ROOT should be empty
-      expect(textBlock.customCommandContent).toContain("VAR: ");
-      expect(textBlock.customCommandContent).not.toContain("/path/to/");
+      // Without pluginPath, $WAVE_PLUGIN_ROOT should remain in output
+      expect(textBlock.customCommandContent).toContain(
+        "VAR: $WAVE_PLUGIN_ROOT",
+      );
     });
   });
 });
