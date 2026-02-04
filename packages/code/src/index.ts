@@ -114,7 +114,6 @@ export async function main() {
                   alias: "s",
                   describe: "Scope to enable the plugin in",
                   choices: ["user", "project", "local"],
-                  default: "user",
                   type: "string",
                 });
             },
@@ -154,7 +153,6 @@ export async function main() {
                   alias: "s",
                   describe: "Scope to enable the plugin in",
                   choices: ["user", "project", "local"],
-                  default: "user",
                   type: "string",
                 });
             },
@@ -165,7 +163,7 @@ export async function main() {
               await enablePluginCommand(
                 argv as {
                   plugin: string;
-                  scope: Scope;
+                  scope?: Scope;
                 },
               );
             },
@@ -183,7 +181,6 @@ export async function main() {
                   alias: "s",
                   describe: "Scope to disable the plugin in",
                   choices: ["user", "project", "local"],
-                  default: "user",
                   type: "string",
                 });
             },
@@ -194,7 +191,7 @@ export async function main() {
               await disablePluginCommand(
                 argv as {
                   plugin: string;
-                  scope: Scope;
+                  scope?: Scope;
                 },
               );
             },
