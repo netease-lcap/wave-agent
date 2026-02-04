@@ -5,7 +5,7 @@
 
 ## Summary
 
-Implement a `/rewind` builtin command that allows users to revert the conversation to a specific user message checkpoint. This involves deleting the selected message and all subsequent messages, and sequentially reverting all file operations (create, modify, delete) performed by the agent during those turns. The technical approach involves a new `ReversionManager` in `agent-sdk` to track file snapshots. Snapshots are stored in `~/.wave/file-history/(sessionid)/(filepathhash)/v(num)` and recorded in the session JSONL as `file_history` blocks (not displayed in UI).
+Implement a `/rewind` builtin command that allows users to revert the conversation to a specific user message checkpoint. This involves deleting the selected message and all subsequent messages, and sequentially reverting all file operations (create, modify, delete) performed by the agent during those turns. The technical approach involves a new `ReversionManager` in `agent-sdk` to track file snapshots. Snapshots are stored in `~/.wave/file-history/(sessionid)/(filepathhash)/v(num)` and recorded in the session JSONL as `file_history` blocks (not displayed in UI). The `/rewind` command is integrated into the `InputManager` and `useInputManager` hook to follow the same pattern as `/bashes` and `/mcp` for consistent UI state management.
 
 ## Technical Context
 

@@ -15,6 +15,13 @@ const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "View and manage MCP servers",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "rewind",
+    name: "rewind",
+    description:
+      "Revert conversation and file changes to a previous checkpoint",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];
 
 export interface CommandSelectorProps {

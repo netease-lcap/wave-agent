@@ -91,8 +91,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // Bash/MCP Manager
     showBashManager,
     showMcpManager,
+    showRewindManager,
     setShowBashManager,
     setShowMcpManager,
+    setShowRewindManager,
     // Permission mode
     permissionMode,
     setPermissionMode,
@@ -115,6 +117,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setPermissionMode(chatPermissionMode);
   }, [chatPermissionMode, setPermissionMode]);
 
+  // Sync rewind visibility from useChat to InputManager
+  useEffect(() => {
+    if (setShowRewindManager) {
+      setShowRewindManager(isRewindVisible);
+    }
+  }, [isRewindVisible, setShowRewindManager]);
+
   // Set user input history when it changes
   useEffect(() => {
     setUserInputHistory(userInputHistory);
@@ -122,8 +131,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   // Use the InputManager's unified input handler
   useInput(async (input, key) => {
-    if (isRewindVisible) return;
-
     await handleInput(
       input,
       key,
@@ -207,7 +214,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
           onDisconnectServer={disconnectMcpServer}
         />
       )}
-      {showBashManager || showMcpManager || (
+      {showBashManager || showMcpManager || showRewindManager || (
         <Box flexDirection="column">
           <Box
             borderStyle="single"

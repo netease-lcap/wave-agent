@@ -300,18 +300,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         // Get initial commands
         const agentSlashCommands = agent.getSlashCommands?.() || [];
         setSlashCommands(agentSlashCommands);
-
-        // Register the /rewind command
-        agent.registerSlashCommand({
-          id: "rewind",
-          name: "rewind",
-          description:
-            "Revert conversation and file changes to a previous checkpoint",
-          handler: async () => {
-            // Trigger the UI to show the rewind selector
-            agent.triggerShowRewind();
-          },
-        });
       } catch (error) {
         console.error("Failed to initialize AI manager:", error);
       }

@@ -31,7 +31,7 @@
 - [X] T004 Implement `ReversionManager` with atomic snapshot buffering in `packages/agent-sdk/src/managers/reversionManager.ts`
 - [X] T005 [P] Implement `ReversionService` for directory-based versioned storage in `packages/agent-sdk/src/services/reversionService.ts`
 - [X] T006 [P] Add `truncateHistory` method to `MessageManager` in `packages/agent-sdk/src/managers/messageManager.ts`
-- [X] T007 [P] Register `/rewind` command in `packages/agent-sdk/src/managers/slashCommandManager.ts`
+- [X] T007 [P] Register `/rewind` command in `packages/agent-sdk/src/managers/slashCommandManager.ts` (Note: Later refactored to be handled by `InputManager` in `packages/code`)
 - [X] T008 [P] Unit tests for `ReversionManager` in `packages/agent-sdk/tests/managers/reversionManager.test.ts`
 - [X] T009 [P] Unit tests for `ReversionService` in `packages/agent-sdk/tests/services/reversionService.test.ts`
 
@@ -53,7 +53,8 @@
 ### Implementation for User Story 1
 
 - [X] T012 [US1] Implement `RewindCommand` Ink component for message selection in `packages/code/src/components/RewindCommand.tsx`
-- [X] T013 [US1] Connect `/rewind` slash command to `RewindCommand` UI in `packages/code/src/index.tsx`
+- [X] T013 [US1] Connect `/rewind` slash command to `RewindCommand` UI in `packages/code/src/index.tsx` (Note: Later refactored to use `InputManager` and `useInputManager` pattern)
+- [X] T027 [US1] Refactor `/rewind` to use `InputManager` and `showRewindManager` pattern for consistency with `/bashes` and `/mcp`
 - [X] T014 [US1] Implement history truncation logic in `MessageManager.truncateHistory` and update persistence
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently.
