@@ -48,6 +48,7 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
         borderLeft={false}
         borderRight={false}
         paddingX={1}
+        width="100%"
       >
         <Text color="yellow">No sessions found.</Text>
         <Text dimColor>Press Escape to cancel</Text>
@@ -74,6 +75,7 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
       borderColor="cyan"
       borderLeft={false}
       borderRight={false}
+      width="100%"
     >
       <Box>
         <Text color="cyan" bold>
@@ -88,18 +90,18 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
           const lastActiveAt = new Date(session.lastActiveAt).toLocaleString();
 
           return (
-            <Box key={session.id} flexDirection="column">
-              <Box>
+            <Box key={session.id} flexDirection="column" width="100%">
+              <Box width="100%">
                 <Text
                   color={isSelected ? "black" : "white"}
                   backgroundColor={isSelected ? "cyan" : undefined}
                 >
                   {isSelected ? "▶ " : "  "}
-                  {session.id.substring(0, 8)}... | {lastActiveAt} |{" "}
-                  {session.latestTotalTokens} tokens
+                  {session.id} | {lastActiveAt} | {session.latestTotalTokens}{" "}
+                  tokens
                 </Text>
               </Box>
-              <Box marginLeft={4}>
+              <Box marginLeft={4} width="100%">
                 <Text dimColor italic>
                   {session.firstMessage}
                 </Text>
