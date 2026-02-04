@@ -39,6 +39,7 @@ export const useInputManager = (
   });
   const [showBashManager, setShowBashManager] = useState(false);
   const [showMcpManager, setShowMcpManager] = useState(false);
+  const [showRewindManager, setShowRewindManager] = useState(false);
   const [permissionMode, setPermissionModeState] =
     useState<PermissionMode>("default");
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
@@ -69,6 +70,9 @@ export const useInputManager = (
         onMcpManagerStateChange: (show) => {
           setShowMcpManager(show);
         },
+        onRewindManagerStateChange: (show) => {
+          setShowRewindManager(show);
+        },
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
           callbacks.onPermissionModeChange?.(mode);
@@ -76,6 +80,7 @@ export const useInputManager = (
         onImagesStateChange: setAttachedImages,
         onShowBashManager: () => setShowBashManager(true),
         onShowMcpManager: () => setShowMcpManager(true),
+        onShowRewindManager: () => setShowRewindManager(true),
         ...callbacks,
       });
 
@@ -105,6 +110,9 @@ export const useInputManager = (
         onMcpManagerStateChange: (show) => {
           setShowMcpManager(show);
         },
+        onRewindManagerStateChange: (show) => {
+          setShowRewindManager(show);
+        },
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
           callbacks.onPermissionModeChange?.(mode);
@@ -112,6 +120,7 @@ export const useInputManager = (
         onImagesStateChange: setAttachedImages,
         onShowBashManager: () => setShowBashManager(true),
         onShowMcpManager: () => setShowMcpManager(true),
+        onShowRewindManager: () => setShowRewindManager(true),
         ...callbacks,
       });
     }
@@ -312,6 +321,7 @@ export const useInputManager = (
     memoryMessage: memoryTypeSelectorState.message,
     showBashManager,
     showMcpManager,
+    showRewindManager,
     permissionMode,
     attachedImages,
     isManagerReady,
@@ -363,6 +373,10 @@ export const useInputManager = (
     }, []),
     setShowMcpManager: useCallback((show: boolean) => {
       managerRef.current?.setShowMcpManager(show);
+    }, []),
+    setShowRewindManager: useCallback((show: boolean) => {
+      managerRef.current?.setShowRewindManager(show);
+      setShowRewindManager(show);
     }, []),
     setPermissionMode: useCallback((mode: PermissionMode) => {
       setPermissionModeState(mode);

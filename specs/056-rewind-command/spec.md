@@ -54,6 +54,7 @@ As a user, I want file changes made by the agent in the messages being deleted t
 - **FR-005**: System MUST store the previous state/content of files before they are modified or deleted by the agent.
 - **FR-006**: System MUST revert all file operations associated with the messages being deleted during a rewind.
 - **FR-007**: System MUST perform sequential reversion of file operations in reverse order to ensure the filesystem returns to the exact state corresponding to the selected checkpoint.
+- **FR-008**: System MUST handle `/rewind` as a built-in command within the `InputManager` for consistent UI state management.
 
 ### Key Entities *(include if feature involves data)*
 

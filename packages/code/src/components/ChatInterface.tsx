@@ -3,7 +3,6 @@ import { Box } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
 import { Confirmation } from "./Confirmation.js";
-import { RewindCommand } from "./RewindCommand.js";
 import { useChat } from "../contexts/useChat.js";
 
 export const ChatInterface: React.FC = () => {
@@ -28,10 +27,7 @@ export const ChatInterface: React.FC = () => {
     confirmingTool,
     handleConfirmationDecision,
     handleConfirmationCancel,
-    isRewindVisible,
     rewindId,
-    handleRewindSelect,
-    hideRewind,
   } = useChat();
 
   if (!sessionId) return null;
@@ -58,14 +54,6 @@ export const ChatInterface: React.FC = () => {
           onDecision={handleConfirmationDecision}
           onCancel={handleConfirmationCancel}
           onAbort={abortMessage}
-        />
-      )}
-
-      {isRewindVisible && (
-        <RewindCommand
-          messages={messages}
-          onSelect={handleRewindSelect}
-          onCancel={hideRewind}
         />
       )}
 

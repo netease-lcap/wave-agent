@@ -7,6 +7,7 @@ import { HistorySearch } from "./HistorySearch.js";
 import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
 import { BashShellManager } from "./BashShellManager.js";
 import { McpManager } from "./McpManager.js";
+import { RewindCommand } from "./RewindCommand.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
 
@@ -56,6 +57,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const {
     permissionMode: chatPermissionMode,
     setPermissionMode: setChatPermissionMode,
+    handleRewindSelect,
+    messages,
   } = useChat();
 
   // Input manager with all input state and functionality (including images)
@@ -90,8 +93,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // Bash/MCP Manager
     showBashManager,
     showMcpManager,
+    showRewindManager,
     setShowBashManager,
     setShowMcpManager,
+    setShowRewindManager,
     // Permission mode
     permissionMode,
     setPermissionMode,
@@ -131,9 +136,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
     );
   });
 
-  // These methods are already memoized in useInputManager, no need to wrap again
-
-  // These methods are already memoized in useInputManager and combine multiple operations
+  const handleRewindCancel = () => {
+    if (setShowRewindManager) {
+      setShowRewindManager(false);
+    }
+  };
 
   const isPlaceholder = !inputText;
   const placeholderText = INPUT_PLACEHOLDER_TEXT;
@@ -147,12 +154,29 @@ export const InputBox: React.FC<InputBoxProps> = ({
     cursorPosition < displayText.length ? displayText[cursorPosition] : " ";
   const afterCursor = displayText.substring(cursorPosition + 1);
 
-  // Always show cursor, allow user to continue input during loading
+  // Always show cursor, allow user to continue input during memory mode
   const shouldShowCursor = true;
 
   // Only show the Box after InputManager is created on first mount
   if (!isManagerReady) {
     return null;
+  }
+
+  const handleRewindSelectWithClose = async (index: number) => {
+    if (setShowRewindManager) {
+      setShowRewindManager(false);
+    }
+    await handleRewindSelect(index);
+  };
+
+  if (showRewindManager) {
+    return (
+      <RewindCommand
+        messages={messages}
+        onSelect={handleRewindSelectWithClose}
+        onCancel={handleRewindCancel}
+      />
+    );
   }
 
   return (
@@ -204,7 +228,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
           onDisconnectServer={disconnectMcpServer}
         />
       )}
-      {showBashManager || showMcpManager || (
+
+      {showBashManager || showMcpManager || showRewindManager || (
         <Box flexDirection="column">
           <Box
             borderStyle="single"

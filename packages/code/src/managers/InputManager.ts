@@ -32,8 +32,10 @@ export interface InputManagerCallbacks {
   onMemoryTypeSelectorStateChange?: (show: boolean, message: string) => void;
   onShowBashManager?: () => void;
   onShowMcpManager?: () => void;
+  onShowRewindManager?: () => void;
   onBashManagerStateChange?: (show: boolean) => void;
   onMcpManagerStateChange?: (show: boolean) => void;
+  onRewindManagerStateChange?: (show: boolean) => void;
   onImagesStateChange?: (images: AttachedImage[]) => void;
   onSendMessage?: (
     content: string,
@@ -94,6 +96,7 @@ export class InputManager {
   // Additional UI state
   private showBashManager: boolean = false;
   private showMcpManager: boolean = false;
+  private showRewindManager: boolean = false;
 
   // Permission mode state
   private permissionMode: PermissionMode = "default";
@@ -363,6 +366,12 @@ export class InputManager {
             commandExecuted = true;
           } else if (command === "mcp" && this.callbacks.onShowMcpManager) {
             this.callbacks.onShowMcpManager();
+            commandExecuted = true;
+          } else if (
+            command === "rewind" &&
+            this.callbacks.onShowRewindManager
+          ) {
+            this.callbacks.onShowRewindManager();
             commandExecuted = true;
           }
         }
@@ -761,6 +770,15 @@ export class InputManager {
     this.callbacks.onMcpManagerStateChange?.(show);
   }
 
+  getShowRewindManager(): boolean {
+    return this.showRewindManager;
+  }
+
+  setShowRewindManager(show: boolean): void {
+    this.showRewindManager = show;
+    this.callbacks.onRewindManagerStateChange?.(show);
+  }
+
   // Permission mode methods
   getPermissionMode(): PermissionMode {
     return this.permissionMode;
@@ -1055,14 +1073,16 @@ export class InputManager {
       this.showHistorySearch ||
       this.showMemoryTypeSelector ||
       this.showBashManager ||
-      this.showMcpManager
+      this.showMcpManager ||
+      this.showRewindManager
     ) {
       if (
         this.showMemoryTypeSelector ||
         this.showBashManager ||
-        this.showMcpManager
+        this.showMcpManager ||
+        this.showRewindManager
       ) {
-        // Memory type selector, bash manager and MCP manager don't need to handle input, handled by component itself
+        // Memory type selector, bash manager, MCP manager and Rewind don't need to handle input, handled by component itself
         return false;
       }
 
