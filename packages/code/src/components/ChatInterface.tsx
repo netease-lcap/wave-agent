@@ -69,7 +69,7 @@ export const ChatInterface: React.FC = () => {
         />
       )}
 
-      {!isConfirmationVisible && !isExpanded && (
+      {!isConfirmationVisible && !isExpanded && !isRewindVisible && (
         <InputBox
           isLoading={isLoading}
           isCommandRunning={isCommandRunning}

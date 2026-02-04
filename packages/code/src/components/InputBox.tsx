@@ -56,6 +56,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const {
     permissionMode: chatPermissionMode,
     setPermissionMode: setChatPermissionMode,
+    isRewindVisible,
   } = useChat();
 
   // Input manager with all input state and functionality (including images)
@@ -121,6 +122,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   // Use the InputManager's unified input handler
   useInput(async (input, key) => {
+    if (isRewindVisible) return;
+
     await handleInput(
       input,
       key,
