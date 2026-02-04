@@ -162,11 +162,18 @@ export const InputBox: React.FC<InputBoxProps> = ({
     return null;
   }
 
+  const handleRewindSelectWithClose = async (index: number) => {
+    if (setShowRewindManager) {
+      setShowRewindManager(false);
+    }
+    await handleRewindSelect(index);
+  };
+
   if (showRewindManager) {
     return (
       <RewindCommand
         messages={messages}
-        onSelect={handleRewindSelect}
+        onSelect={handleRewindSelectWithClose}
         onCancel={handleRewindCancel}
       />
     );
