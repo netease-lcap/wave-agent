@@ -1,6 +1,8 @@
 import {
   MarketplaceService,
   ConfigurationService,
+  PluginManager,
+  PluginScopeManager,
   Scope,
 } from "wave-agent-sdk";
 
@@ -20,13 +22,15 @@ export async function installPluginCommand(argv: {
 
     if (argv.scope) {
       const configurationService = new ConfigurationService();
-      const pluginId = `${installed.name}@${installed.marketplace}`;
-      await configurationService.updateEnabledPlugin(
+      const pluginManager = new PluginManager({ workdir });
+      const scopeManager = new PluginScopeManager({
         workdir,
-        argv.scope,
-        pluginId,
-        true,
-      );
+        configurationService,
+        pluginManager,
+      });
+
+      const pluginId = `${installed.name}@${installed.marketplace}`;
+      await scopeManager.enablePlugin(argv.scope, pluginId);
       console.log(`Plugin ${pluginId} enabled in ${argv.scope} scope`);
     }
 
