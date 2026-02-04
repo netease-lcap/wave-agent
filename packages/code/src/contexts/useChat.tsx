@@ -80,6 +80,7 @@ export interface ChatContextType {
   handleConfirmationCancel: () => void;
   // Rewind functionality
   isRewindVisible: boolean;
+  rewindId: number;
   showRewind: () => void;
   hideRewind: () => void;
   handleRewindSelect: (index: number) => Promise<void>;
@@ -172,6 +173,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Rewind state
   const [isRewindVisible, setIsRewindVisible] = useState(false);
+  const [rewindId, setRewindId] = useState(0);
 
   const agentRef = useRef<Agent | null>(null);
 
@@ -511,13 +513,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     async (index: number) => {
       if (agentRef.current) {
         try {
-          setIsLoading(true);
           await agentRef.current.truncateHistory(index);
+
+          // Clear terminal screen after rewind
+          process.stdout.write("\x1Bc", () => {
+            setRewindId((prev) => prev + 1);
+          });
+
           hideRewind();
         } catch (error) {
           logger.error("Failed to rewind:", error);
-        } finally {
-          setIsLoading(false);
         }
       }
     },
@@ -572,6 +577,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     handleConfirmationDecision,
     handleConfirmationCancel,
     isRewindVisible,
+    rewindId,
     showRewind,
     hideRewind,
     handleRewindSelect,

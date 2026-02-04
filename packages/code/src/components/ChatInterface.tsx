@@ -29,6 +29,7 @@ export const ChatInterface: React.FC = () => {
     handleConfirmationDecision,
     handleConfirmationCancel,
     isRewindVisible,
+    rewindId,
     handleRewindSelect,
     hideRewind,
   } = useChat();
@@ -44,7 +45,7 @@ export const ChatInterface: React.FC = () => {
         isCompressing={isCompressing}
         latestTotalTokens={latestTotalTokens}
         isExpanded={isExpanded}
-        key={String(isExpanded) + sessionId}
+        key={String(isExpanded) + sessionId + rewindId}
       />
 
       {isConfirmationVisible && (
