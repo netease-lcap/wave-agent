@@ -4,12 +4,13 @@ import * as path from "path";
 import * as os from "os";
 
 /**
- * Example demonstrating WAVE_PLUGIN_ROOT environment variable support
+ * Example demonstrating $WAVE_PLUGIN_ROOT placeholder support
  *
  * This example shows how plugin commands can access files within the plugin
- * directory using the WAVE_PLUGIN_ROOT environment variable.
+ * directory using the $WAVE_PLUGIN_ROOT placeholder, which gets substituted
+ * with the plugin's absolute path before bash commands are executed.
  *
- * Run with: pnpm -F wave-agent-sdk exec tsx examples/plugin-root-env-example.ts
+ * Run with: WAVE_MODEL=gemini-2.5-flash pnpm -F wave-agent-sdk exec tsx examples/plugin-root-env-example.ts
  */
 async function main() {
   // 1. Create a temporary directory for our plugin
@@ -79,7 +80,7 @@ Here's the content of the plugin template:
 
 !\`cat $WAVE_PLUGIN_ROOT/data/template.txt\`
 
-**Note:** The above content was loaded from the plugin's data directory using the WAVE_PLUGIN_ROOT environment variable.
+**Note:** The above content was loaded from the plugin's data directory using the $WAVE_PLUGIN_ROOT placeholder.
 `;
   await fs.writeFile(
     path.join(commandsDir, "show-template.md"),
@@ -116,7 +117,7 @@ Executing info.sh script from the plugin:
 
 !\`bash $WAVE_PLUGIN_ROOT/scripts/info.sh\`
 
-The script had access to WAVE_PLUGIN_ROOT and could reference plugin files.
+The script was executed using the $WAVE_PLUGIN_ROOT placeholder to locate the plugin's scripts directory.
 `;
   await fs.writeFile(path.join(commandsDir, "run-script.md"), runScriptCommand);
 

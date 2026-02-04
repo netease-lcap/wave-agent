@@ -184,14 +184,13 @@ echo "Current directory: $(pwd)"
    b. Replace positional parameters `$N` in descending order
 4. If NO placeholders exist and arguments are provided:
    a. Append arguments to the end of command content
-5. Execute any embedded bash commands:
-   a. If command is from a plugin, set `WAVE_PLUGIN_ROOT` environment variable to plugin's absolute path
-   b. If command is NOT from a plugin, do not set `WAVE_PLUGIN_ROOT`
-   c. Execute bash command with configured environment
-6. Send processed content to AI manager
-7. **AI Cycle Start**: `PermissionManager.addTemporaryRules()` is called with the extracted `allowedTools`.
-8. **Tool Execution**: `PermissionManager.checkPermission()` matches against both `allowedRules` and `temporaryRules`. For `Bash` commands, it ensures every part of a command chain is allowed.
-9. **AI Cycle End**: `PermissionManager.clearTemporaryRules()` is called in the `finally` block of `sendAIMessage`.
+5. If command is from a plugin (has `pluginPath`):
+   a. Replace all `$WAVE_PLUGIN_ROOT` placeholders with the plugin's absolute path
+6. Execute any embedded bash commands
+7. Send processed content to AI manager
+8. **AI Cycle Start**: `PermissionManager.addTemporaryRules()` is called with the extracted `allowedTools`.
+9. **Tool Execution**: `PermissionManager.checkPermission()` matches against both `allowedRules` and `temporaryRules`. For `Bash` commands, it ensures every part of a command chain is allowed.
+10. **AI Cycle End**: `PermissionManager.clearTemporaryRules()` is called in the `finally` block of `sendAIMessage`.
 
 ## Error States and Recovery
 
