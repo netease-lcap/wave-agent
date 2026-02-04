@@ -57,9 +57,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const {
     permissionMode: chatPermissionMode,
     setPermissionMode: setChatPermissionMode,
-    isRewindVisible,
     handleRewindSelect,
-    hideRewind,
     messages,
   } = useChat();
 
@@ -121,20 +119,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setPermissionMode(chatPermissionMode);
   }, [chatPermissionMode, setPermissionMode]);
 
-  // Sync rewind visibility from useChat to InputManager
-  useEffect(() => {
-    if (setShowRewindManager) {
-      setShowRewindManager(isRewindVisible);
-    }
-  }, [isRewindVisible, setShowRewindManager]);
-
-  const handleRewindCancel = () => {
-    if (setShowRewindManager) {
-      setShowRewindManager(false);
-    }
-    hideRewind();
-  };
-
   // Set user input history when it changes
   useEffect(() => {
     setUserInputHistory(userInputHistory);
@@ -152,9 +136,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
     );
   });
 
-  // These methods are already memoized in useInputManager, no need to wrap again
-
-  // These methods are already memoized in useInputManager and combine multiple operations
+  const handleRewindCancel = () => {
+    if (setShowRewindManager) {
+      setShowRewindManager(false);
+    }
+  };
 
   const isPlaceholder = !inputText;
   const placeholderText = INPUT_PLACEHOLDER_TEXT;
@@ -168,12 +154,22 @@ export const InputBox: React.FC<InputBoxProps> = ({
     cursorPosition < displayText.length ? displayText[cursorPosition] : " ";
   const afterCursor = displayText.substring(cursorPosition + 1);
 
-  // Always show cursor, allow user to continue input during loading
+  // Always show cursor, allow user to continue input during memory mode
   const shouldShowCursor = true;
 
   // Only show the Box after InputManager is created on first mount
   if (!isManagerReady) {
     return null;
+  }
+
+  if (showRewindManager) {
+    return (
+      <RewindCommand
+        messages={messages}
+        onSelect={handleRewindSelect}
+        onCancel={handleRewindCancel}
+      />
+    );
   }
 
   return (
@@ -223,14 +219,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
           servers={mcpServers}
           onConnectServer={connectMcpServer}
           onDisconnectServer={disconnectMcpServer}
-        />
-      )}
-
-      {showRewindManager && (
-        <RewindCommand
-          messages={messages}
-          onSelect={handleRewindSelect}
-          onCancel={handleRewindCancel}
         />
       )}
 

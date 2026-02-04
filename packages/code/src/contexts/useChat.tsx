@@ -79,10 +79,7 @@ export interface ChatContextType {
   handleConfirmationDecision: (decision: PermissionDecision) => void;
   handleConfirmationCancel: () => void;
   // Rewind functionality
-  isRewindVisible: boolean;
   rewindId: number;
-  showRewind: () => void;
-  hideRewind: () => void;
   handleRewindSelect: (index: number) => Promise<void>;
 }
 
@@ -172,7 +169,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   } | null>(null);
 
   // Rewind state
-  const [isRewindVisible, setIsRewindVisible] = useState(false);
   const [rewindId, setRewindId] = useState(0);
 
   const agentRef = useRef<Agent | null>(null);
@@ -238,9 +234,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
-        },
-        onShowRewind: () => {
-          setIsRewindVisible(true);
         },
         onSlashCommandsChange: (commands) => {
           setSlashCommands([...commands]);
@@ -489,33 +482,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     hideConfirmation();
   }, [currentConfirmation, hideConfirmation]);
 
-  const showRewind = useCallback(() => {
-    setIsRewindVisible(true);
-  }, []);
+  const handleRewindSelect = useCallback(async (index: number) => {
+    if (agentRef.current) {
+      try {
+        await agentRef.current.truncateHistory(index);
 
-  const hideRewind = useCallback(() => {
-    setIsRewindVisible(false);
-  }, []);
-
-  const handleRewindSelect = useCallback(
-    async (index: number) => {
-      if (agentRef.current) {
-        try {
-          await agentRef.current.truncateHistory(index);
-
-          // Clear terminal screen after rewind
-          process.stdout.write("\x1Bc", () => {
-            setRewindId((prev) => prev + 1);
-          });
-
-          hideRewind();
-        } catch (error) {
-          logger.error("Failed to rewind:", error);
-        }
+        // Clear terminal screen after rewind
+        process.stdout.write("\x1Bc", () => {
+          setRewindId((prev) => prev + 1);
+        });
+      } catch (error) {
+        logger.error("Failed to rewind:", error);
       }
-    },
-    [hideRewind],
-  );
+    }
+  }, []);
 
   // Listen for Ctrl+O hotkey to toggle collapse/expand state and ESC to cancel confirmation
   useInput((input, key) => {
@@ -564,10 +544,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     hideConfirmation,
     handleConfirmationDecision,
     handleConfirmationCancel,
-    isRewindVisible,
     rewindId,
-    showRewind,
-    hideRewind,
     handleRewindSelect,
   };
 
