@@ -1,7 +1,4 @@
 {
-  "env": {
-    "WAVE_MODEL": "gemini-3-flash"
-  },
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
