@@ -30,3 +30,4 @@ This plan outlines the historical steps taken to implement the current session m
 - [x] Implement `sessions-index.json` for O(1) listing performance.
 - [x] Cache `firstMessage` content in the index for instant UI summaries.
 - [x] Implement automatic index rebuilding from source-of-truth `.jsonl` files.
+- [x] Refactor CLI (`session-selector-cli.tsx`) to use cached index data, eliminating per-session file reads.

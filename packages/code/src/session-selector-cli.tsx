@@ -1,10 +1,6 @@
 import React from "react";
 import { render, Box } from "ink";
-import {
-  listSessions,
-  getFirstMessageContent,
-  truncateContent,
-} from "wave-agent-sdk";
+import { listSessions, truncateContent } from "wave-agent-sdk";
 import { SessionSelector } from "./components/SessionSelector.js";
 
 export async function startSessionSelectorCli(): Promise<string | null> {
@@ -16,15 +12,12 @@ export async function startSessionSelectorCli(): Promise<string | null> {
     return null;
   }
 
-  const sessionsWithContent = await Promise.all(
-    sessions.map(async (s) => {
-      const content = await getFirstMessageContent(s.id, s.workdir);
-      return {
-        ...s,
-        firstMessage: content ? truncateContent(content, 60) : "No content",
-      };
-    }),
-  );
+  const sessionsWithContent = sessions.map((s) => ({
+    ...s,
+    firstMessage: s.firstMessage
+      ? truncateContent(s.firstMessage, 60)
+      : "No content",
+  }));
 
   return new Promise((resolve) => {
     const { unmount } = render(
