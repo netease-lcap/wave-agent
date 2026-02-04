@@ -55,7 +55,7 @@ As a developer using subagents, I want subagent sessions to be clearly identifie
 
 - **Permission Issues**: If the session directory cannot be created or written to, the system should fail gracefully with a clear error.
 - **Corrupted Files**: If a JSONL file contains invalid JSON, it should be skipped during listing and treated as non-existent during loading.
-- **Empty Sessions**: Files with no messages should use the file's modification time as the `lastActiveAt` timestamp.
+- **Empty Sessions**: Files with no messages should be skipped during listing and excluded from the index to prevent restoration errors.
 - **Path Encoding Collisions**: Use a hash suffix for long paths to ensure uniqueness even when truncated.
 
 ## Requirements *(mandatory)*
@@ -77,6 +77,7 @@ As a developer using subagents, I want subagent sessions to be clearly identifie
 - **FR-013**: Each project directory MUST maintain a `sessions-index.json` file for O(1) session listing.
 - **FR-014**: The session index MUST cache the `firstMessage` content for instant UI display.
 - **FR-015**: The system MUST be able to rebuild the session index from `.jsonl` files if it is missing or corrupted.
+- **FR-016**: Empty session files MUST be excluded from the session index and listing.
 
 ### Key Entities *(include if feature involves data)*
 

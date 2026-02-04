@@ -244,7 +244,7 @@ describe("Session Performance Optimization", () => {
         expect(mockJsonlHandler.read).not.toHaveBeenCalled();
       });
 
-      it("should handle empty session files efficiently", async () => {
+      it("should skip empty session files efficiently", async () => {
         const fs = await import("fs/promises");
         const sessionId = generateSessionId();
 
@@ -252,28 +252,13 @@ describe("Session Performance Optimization", () => {
           `${sessionId}.jsonl`,
         ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
 
-        // Note: parseSessionFilename is no longer called due to optimization
-        // Session type identification is now done via filename prefix checking
-
         // Mock empty session (no messages yet)
         mockJsonlHandler.getLastMessage.mockResolvedValueOnce(null);
 
-        // Mock file stats for fallback timing
-        const now = new Date();
-        vi.mocked(fs.stat).mockResolvedValue({
-          birthtime: now,
-          mtime: now,
-          isFile: () => true,
-        } as unknown as Awaited<ReturnType<typeof fs.stat>>);
-
         const sessions = await listSessionsFromJsonl(testWorkdir);
 
-        expect(sessions).toHaveLength(1);
-        expect(sessions[0].id).toBe(sessionId);
-        expect(sessions[0].latestTotalTokens).toBe(0);
-
-        // Should use file stats for timing when no messages exist
-        expect(vi.mocked(fs.stat)).toHaveBeenCalled();
+        // Should skip the empty session
+        expect(sessions).toHaveLength(0);
 
         // Should NOT read full file content
         expect(mockJsonlHandler.read).not.toHaveBeenCalled();

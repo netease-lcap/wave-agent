@@ -452,16 +452,12 @@ export async function listSessionsFromJsonl(
         const jsonlHandler = new JsonlHandler();
         const lastMessage = await jsonlHandler.getLastMessage(filePath);
 
-        // Handle timing information efficiently
-        let lastActiveAt: Date;
-
-        if (lastMessage) {
-          lastActiveAt = new Date(lastMessage.timestamp);
-        } else {
-          // Empty session file - use file modification time
-          const stats = await fs.stat(filePath);
-          lastActiveAt = stats.mtime;
+        // Skip empty session files - they cannot be restored and clutter the list
+        if (!lastMessage) {
+          continue;
         }
+
+        const lastActiveAt = new Date(lastMessage.timestamp);
 
         // Return inline object for performance (no interface instantiation overhead)
         const sessionMeta: SessionMetadata = {
