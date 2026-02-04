@@ -472,10 +472,15 @@ export class Agent {
     const filesInContext = this.messageManager.getFilesInContext();
     const activeRules = this.memoryRuleManager.getActiveRules(filesInContext);
     if (activeRules.length > 0) {
+      this.logger?.debug(
+        `Active modular rules (${activeRules.length}): ${activeRules.map((r) => r.id).join(", ")}`,
+      );
       if (combined) {
         combined += "\n\n";
       }
       combined += activeRules.map((r) => r.content).join("\n\n");
+    } else {
+      this.logger?.debug("No active modular rules for current context");
     }
 
     return combined;
@@ -645,15 +650,15 @@ export class Agent {
     // Resolve and validate configuration after loading settings.json
     this.resolveAndValidateConfig();
 
+    // Set global logger for SDK-wide access before discovering rules
+    setGlobalLogger(this.logger || null);
+
     // Discover modular memory rules
     try {
       await this.memoryRuleManager.discoverRules();
     } catch (error) {
       this.logger?.error("Failed to discover memory rules:", error);
     }
-
-    // Set global logger for SDK-wide access after validation
-    setGlobalLogger(this.logger || null);
 
     // Initialize live configuration reload
     try {

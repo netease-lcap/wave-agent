@@ -37,6 +37,10 @@ export class MemoryRuleManager {
     const projectRulesDir = path.join(this.workdir, ".wave", "rules");
     const userRulesDir = path.join(os.homedir(), ".wave", "rules");
 
+    logger.debug(`Scanning for modular memory rules...`);
+    logger.debug(`  User rules directory: ${userRulesDir}`);
+    logger.debug(`  Project rules directory: ${projectRulesDir}`);
+
     const newRules: Record<string, MemoryRule> = {};
 
     // Discover user rules first, then project rules so project rules can override if needed
@@ -45,7 +49,18 @@ export class MemoryRuleManager {
     await this.scanDirectory(projectRulesDir, "project", newRules);
 
     this.state.rules = newRules;
-    logger.debug(`Discovered ${Object.keys(newRules).length} memory rules`);
+    const ruleCount = Object.keys(newRules).length;
+    logger.debug(`Discovered ${ruleCount} modular memory rules`);
+
+    if (ruleCount > 0) {
+      logger.debug("Loaded memory rules:");
+      for (const [id, rule] of Object.entries(newRules)) {
+        const pathInfo = rule.metadata.paths
+          ? `paths: ${JSON.stringify(rule.metadata.paths)}`
+          : "global (no path restriction)";
+        logger.debug(`  - ${id} (${rule.source}): ${pathInfo}`);
+      }
+    }
   }
 
   private async scanDirectory(
@@ -121,6 +136,7 @@ export class MemoryRuleManager {
       const relativeId = path.relative(rulesRoot, filePath);
       rule.id = relativeId;
       registry[rule.id] = rule;
+      logger.debug(`Loaded memory rule: ${relativeId} from ${filePath}`);
     } catch (error) {
       logger.error(`Failed to parse memory rule at ${filePath}:`, error);
     }

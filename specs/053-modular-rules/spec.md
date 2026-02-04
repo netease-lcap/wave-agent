@@ -38,7 +38,7 @@ As a developer, I want to scope memory rules to specific files using YAML frontm
 
 **Acceptance Scenarios**:
 
-1. **Given a memory rule** with `paths: ["src/api/**/*.ts"]`, **When** Wave edits `src/api/user.ts`, **Then** the memory rule should be active.
+1. **Given a memory rule** with `paths` containing `"src/api/**/*.ts"`, **When** Wave edits `src/api/user.ts`, **Then** the memory rule should be active.
 2. **Given** the same memory rule, **When** Wave edits `src/ui/Button.tsx`, **Then** the memory rule should NOT be active.
 3. **Given a memory rule** without a `paths` field, **When** Wave edits any file, **Then** the memory rule should always be active.
 

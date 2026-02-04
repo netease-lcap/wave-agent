@@ -1,5 +1,6 @@
 ---
-paths: ["packages/*/examples/**/*"]
+paths:
+  - "packages/*/examples/**/*"
 ---
 - `packages/*/examples` directories contain real test ts or tsx files that are hard to mock:
   - need to create temporary directories
