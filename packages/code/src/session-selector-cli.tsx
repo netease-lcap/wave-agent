@@ -1,6 +1,6 @@
 import React from "react";
 import { render, Box } from "ink";
-import { listSessions, truncateContent } from "wave-agent-sdk";
+import { listSessions } from "wave-agent-sdk";
 import { SessionSelector } from "./components/SessionSelector.js";
 
 export async function startSessionSelectorCli(): Promise<string | null> {
@@ -14,9 +14,7 @@ export async function startSessionSelectorCli(): Promise<string | null> {
 
   const sessionsWithContent = sessions.map((s) => ({
     ...s,
-    firstMessage: s.firstMessage
-      ? truncateContent(s.firstMessage, 60)
-      : "No content",
+    firstMessage: s.firstMessage || "No content",
   }));
 
   return new Promise((resolve) => {
