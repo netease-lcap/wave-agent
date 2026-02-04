@@ -121,6 +121,7 @@ export class SlashCommandManager {
               processedContent,
               command.config,
               args,
+              command.pluginPath,
             );
           },
         });
@@ -175,6 +176,7 @@ export class SlashCommandManager {
             processedContent,
             command.config,
             args,
+            command.pluginPath,
           );
         },
       });
@@ -301,6 +303,7 @@ export class SlashCommandManager {
     content: string,
     config?: { model?: string; allowedTools?: string[] },
     args?: string,
+    pluginPath?: string,
   ): Promise<void> {
     try {
       // Parse bash commands from the content
@@ -310,9 +313,15 @@ export class SlashCommandManager {
       const bashResults: BashCommandResult[] = [];
       for (const command of commands) {
         try {
+          // Set WAVE_PLUGIN_ROOT environment variable for plugin commands
+          const env = pluginPath
+            ? { ...process.env, WAVE_PLUGIN_ROOT: pluginPath }
+            : process.env;
+
           const { stdout, stderr } = await execAsync(command, {
             cwd: this.workdir,
             timeout: 30000, // 30 second timeout
+            env,
           });
           bashResults.push({
             command,

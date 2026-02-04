@@ -1,392 +1,172 @@
-# Custom Slash Commands - Developer Quickstart
+# Custom Slash Commands - Quick Start Guide
 
 **Feature**: Custom Slash Commands  
-**Package**: agent-sdk + code  
 **Generated**: December 19, 2024
 
-## Overview
+## What are Slash Commands?
 
-Custom slash commands allow users to create reusable AI workflow templates by placing markdown files in `.wave/commands/` directories. This guide covers implementation details, architecture patterns, and development workflows for the feature.
+Slash commands let you create reusable AI workflow templates by placing simple markdown files in `.wave/commands/` directories. Think of them as custom shortcuts for common tasks.
 
-## Architecture Overview
+## Getting Started
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   User Input    │    │  SlashCommand    │    │   AI Manager    │
-│   "/command"    │───▶│    Manager       │───▶│   Execution     │
-│                 │    │                  │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌──────────────────┐
-                       │  File System     │
-                       │  .wave/commands/ │
-                       │  *.md files      │
-                       └──────────────────┘
-```
+### 1. Create Your First Command
 
-**Key Components**:
-- **SlashCommandManager** (agent-sdk): Core orchestration and command lifecycle
-- **CommandSelector** (code): Interactive UI for command discovery
-- **Parameter Parser**: Handles `$ARGUMENTS`, `$1`, `$2` substitution
-- **File Discovery**: Scans project and user command directories
-
-## Quick Implementation Guide
-
-### 1. Core Manager Integration
-
-```typescript
-// In agent.ts - Initialize command manager
-this.slashCommandManager = new SlashCommandManager({
-  messageManager: this.messageManager,
-  aiManager: this.aiManager,
-  workdir: this.workdir,
-  logger: this.logger
-});
-
-// Expose public API methods
-public getSlashCommands(): SlashCommand[] {
-  return this.slashCommandManager.getCommands();
-}
-
-public hasSlashCommand(commandId: string): boolean {
-  return this.slashCommandManager.hasCommand(commandId);
-}
-```
-
-### 2. Command Discovery Implementation
-
-```typescript
-// customCommands.ts - File system scanning
-export function loadCustomSlashCommands(workdir: string): CustomSlashCommand[] {
-  const projectCommands = scanCommandsDirectory(getProjectCommandsDir(workdir));
-  const userCommands = scanCommandsDirectory(getUserCommandsDir());
-  
-  // Project commands take precedence
-  const commandMap = new Map<string, CustomSlashCommand>();
-  
-  for (const command of userCommands) {
-    commandMap.set(command.id, command);
-  }
-  
-  for (const command of projectCommands) {
-    commandMap.set(command.id, command);  // Overrides user commands
-  }
-  
-  return Array.from(commandMap.values());
-}
-```
-
-### 3. Parameter Substitution Engine
-
-```typescript
-// commandArgumentParser.ts - Template processing
-export function substituteCommandParameters(content: string, argsString: string): string {
-  const args = parseCommandArguments(argsString);
-  let result = content;
-  
-  // Replace $ARGUMENTS with full argument string
-  result = result.replace(/\$ARGUMENTS/g, argsString);
-  
-  // Replace positional parameters $1, $2, etc.
-  const positionalParams = [...result.matchAll(/\$(\d+)/g)]
-    .map(match => parseInt(match[1], 10))
-    .filter((value, index, array) => array.indexOf(value) === index)
-    .sort((a, b) => b - a);  // Descending to avoid $10 -> $1 + "0"
-    
-  for (const paramNum of positionalParams) {
-    const paramValue = args[paramNum - 1] || "";
-    result = result.replace(new RegExp(`\\$${paramNum}`, "g"), paramValue);
-  }
-  
-  return result;
-}
-```
-
-### 4. UI Component Architecture
-
-```typescript
-// CommandSelector.tsx - Interactive command picker
-export const CommandSelector: React.FC<CommandSelectorProps> = ({
-  searchQuery,
-  onSelect,
-  onInsert,
-  onCancel,
-  commands = []
-}) => {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  
-  // Merge agent commands with built-in commands
-  const allCommands = [...commands, ...AVAILABLE_COMMANDS];
-  
-  // Filter based on search query
-  const filteredCommands = allCommands.filter(command =>
-    !searchQuery || 
-    command.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  
-  useInput((input, key) => {
-    if (key.return && filteredCommands[selectedIndex]) {
-      onSelect(filteredCommands[selectedIndex].name);
-    } else if (key.tab && onInsert && filteredCommands[selectedIndex]) {
-      onInsert(filteredCommands[selectedIndex].name);
-    } else if (key.escape) {
-      onCancel();
-    }
-    // ... arrow key navigation
-  });
-};
-```
-
-## Development Patterns
-
-### 1. Command File Format
+Create a file at `.wave/commands/hello.md`:
 
 ```markdown
 ---
-name: project-info
-description: "Display current project information"  
+description: A friendly greeting command
+---
+
+Hello! Please help me with $ARGUMENTS
+```
+
+Now you can use `/hello write a function` and the AI will receive "Hello! Please help me write a function"
+
+### 2. Using Arguments
+
+Commands support two types of arguments:
+
+**Full Arguments** - `$ARGUMENTS` includes everything after the command:
+```markdown
+---
+description: Review code files
+---
+
+Please review the following files: $ARGUMENTS
+```
+
+Usage: `/review src/app.ts src/utils.ts`
+
+**Positional Arguments** - `$1`, `$2`, etc. for specific parameters:
+```markdown
+---
+description: Compare two files
+---
+
+Compare $1 with $2 and show the differences.
+```
+
+Usage: `/compare old.txt new.txt`
+
+### 3. Running Commands Before AI
+
+Use `!`backticks` to run bash commands first:
+
+```markdown
+---
+description: Show project structure
+---
+
+Here's the current project structure:
+
+!`ls -la`
+
+Please help me organize these files.
+```
+
+The command output will be included in the prompt sent to the AI.
+
+### 4. Customizing AI Behavior
+
+Use frontmatter to configure how commands run:
+
+```markdown
+---
+description: Code review with GPT-4
 model: gpt-4
 ---
 
-# Project Information Command
-
-Please read the package.json file and display:
-- Project name: $1 or auto-detect
-- Version information
-- Key dependencies
-
-```bash
-echo "Working directory: $(pwd)"
-find . -name "package.json" -maxdepth 2
+Please review this code for best practices.
 ```
 
-Additional context: $ARGUMENTS
-```
+### 5. Plugin Commands with File Access
 
-### 2. Define a Slash Command with Allowed Tools
-Create a markdown file in `.wave/commands/my-command.md`:
+Plugin commands can access their own files using `$WAVE_PLUGIN_ROOT`:
 
 ```markdown
 ---
-description: A command that checks git status automatically
+description: Load plugin template
+---
+
+Use this template:
+
+!`cat $WAVE_PLUGIN_ROOT/templates/default.txt`
+```
+
+**Note**: Use `$WAVE_PLUGIN_ROOT` (with `$` escaped as `$$` in the markdown file) to reference the plugin directory.
+
+### 6. Auto-Approving Tools
+
+Allow specific tools to run without asking permission:
+
+```markdown
+---
+description: Auto-check git status
 allowed-tools:
   - Bash(git status)
   - Bash(git diff:*)
 ---
 
-Check the git status and diff for me.
+Check git status and show what changed.
 ```
 
-When you trigger `/my-command`, the AI will now be able to run `git status` and `git diff` without prompting you for permission. Other restricted tools (like `Write` or `Delete`) will still require confirmation unless they are also listed in `allowed-tools` or your `settings.json`.
+The AI can now run `git status` and `git diff` automatically. Wildcards like `git:*` work too.
 
-**Security Note**:
-- Permissions are **temporary**. They are revoked as soon as the AI finishes its response cycle for the slash command.
-- Permissions are **scoped**. They only apply to the tools and patterns you explicitly list.
-- Wildcards are supported (e.g., `Bash(git:*)`).
+## Command Locations
 
-### 3. Core Manager Integration
+- **Project commands**: `.wave/commands/` in your project
+- **User commands**: `~/.wave/commands/` for all projects
+- **Priority**: Project commands override user commands with the same name
 
-```typescript
-// Graceful degradation for command loading
-private loadCustomCommands(): void {
-  try {
-    const customCommands = loadCustomSlashCommands(this.workdir);
-    
-    for (const command of customCommands) {
-      try {
-        // Process individual command
-        this.registerCustomCommand(command);
-      } catch (error) {
-        // Skip bad command, continue with others
-        this.logger?.warn(`Failed to load command ${command.id}:`, error);
-      }
-    }
-    
-    this.logger?.debug(`Loaded ${customCommands.length} custom commands`);
-  } catch (error) {
-    // System continues with built-in commands only
-    this.logger?.warn("Failed to load custom commands:", error);
-  }
-}
+## Tips
+
+1. **Keep it simple**: Commands are just templates - let the AI do the complex work
+2. **Use descriptive names**: `/review-code` is better than `/rc`
+3. **Test with echo**: Try `!`echo $WAVE_PLUGIN_ROOT`` to verify environment variables
+4. **Start small**: Begin with simple text templates before adding bash commands
+
+## Examples
+
+**Quick review command:**
+```markdown
+---
+description: Quick code review
+---
+
+Review this code for:
+- Bugs and edge cases
+- Performance issues
+- Best practices
+
+Code: $ARGUMENTS
 ```
 
-### 3. Testing Strategies
+**Project setup:**
+```markdown
+---
+description: Show project info
+---
 
-```typescript
-// Unit testing with mocks
-describe("SlashCommandManager", () => {
-  let manager: SlashCommandManager;
-  let mockMessageManager: MessageManager;
-  let mockAIManager: AIManager;
-  
-  beforeEach(() => {
-    mockMessageManager = createMockMessageManager();
-    mockAIManager = createMockAIManager();
-    
-    manager = new SlashCommandManager({
-      messageManager: mockMessageManager,
-      aiManager: mockAIManager,
-      workdir: "/test/workdir"
-    });
-  });
-  
-  it("should parse slash command input correctly", () => {
-    const result = manager.parseAndValidateSlashCommand("/test-command arg1 arg2");
-    expect(result.isValid).toBe(true);
-    expect(result.commandId).toBe("test-command");
-    expect(result.args).toBe("arg1 arg2");
-  });
-});
+Project information:
 
-// Integration testing with temporary directories
-describe("Custom Command Loading", () => {
-  let tempDir: string;
-  
-  beforeEach(async () => {
-    tempDir = await createTempDirectory();
-    await createTestCommandFile(tempDir, "test-command.md", "Test content");
-  });
-  
-  afterEach(async () => {
-    await cleanupTempDirectory(tempDir);
-  });
-  
-  it("should load commands from project directory", () => {
-    const commands = loadCustomSlashCommands(tempDir);
-    expect(commands).toHaveLength(1);
-    expect(commands[0].id).toBe("test-command");
-  });
-});
+!`cat package.json`
+
+Please explain what this project does.
 ```
 
-## Performance Considerations
+**Template generator:**
+```markdown
+---
+description: Create component template
+---
 
-### 1. Command Registry Optimization
-
-```typescript
-// Use Map for O(1) command lookup
-private commands = new Map<string, SlashCommand>();
-private customCommands = new Map<string, CustomSlashCommand>();
-
-// Batch command loading to minimize file I/O
-public reloadCustomCommands(): void {
-  // Clear existing
-  for (const commandId of this.customCommands.keys()) {
-    this.commands.delete(commandId);
-  }
-  this.customCommands.clear();
-  
-  // Reload in batch
-  this.loadCustomCommands();
-}
+Create a React component named $1 with:
+- TypeScript types
+- Props interface
+- Basic styling
 ```
 
-### 2. Parameter Substitution Performance
+Usage: `/create-component Button`
 
-```typescript
-// Optimize by processing parameters in descending order
-const positionalParams = [...content.matchAll(/\$(\d+)/g)]
-  .map(match => parseInt(match[1], 10))
-  .filter((value, index, array) => array.indexOf(value) === index)
-  .sort((a, b) => b - a);  // Prevents $10 becoming $1 + "0"
-```
-
-### 3. UI Responsiveness
-
-```typescript
-// Debounce search input to prevent excessive filtering
-const filteredCommands = useMemo(() => 
-  allCommands.filter(command =>
-    !searchQuery || 
-    command.name.toLowerCase().includes(searchQuery.toLowerCase())
-  ), 
-  [allCommands, searchQuery]
-);
-```
-
-## Integration Points
-
-### 1. Agent SDK Integration
-
-- **Initialization**: SlashCommandManager created during Agent constructor
-- **Message Flow**: Commands execute in main agent context, not sub-agents
-- **Error Handling**: Errors displayed in chat interface as error blocks
-
-### 2. CLI UI Integration
-
-- **Trigger**: `/` character in input box activates CommandSelector
-- **Navigation**: Arrow keys, Enter to select, Tab to insert, Escape to cancel
-- **Search**: Real-time filtering as user types after `/`
-- **State Management**: React Context provides command list to UI components
-
-### 3. File System Integration
-
-- **Discovery**: Automatic scanning of `.wave/commands/` in project and user directories
-- **Precedence**: Project-level commands override user-level commands with same name
-- **Reloading**: API available for refreshing commands without restart
-
-## Common Implementation Patterns
-
-### 1. Bash Command Execution
-
-```typescript
-// Execute bash commands with timeout and error handling
-private async executeBashCommands(content: string): Promise<string> {
-  const { commands, processedContent } = parseBashCommands(content);
-  const bashResults: BashCommandResult[] = [];
-  
-  for (const command of commands) {
-    try {
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: this.workdir,
-        timeout: 30000  // 30 second timeout
-      });
-      bashResults.push({
-        command,
-        output: stdout || stderr || "",
-        exitCode: 0
-      });
-    } catch (error) {
-      // Handle timeout and execution errors
-      bashResults.push({
-        command,
-        output: error.message || "",
-        exitCode: 1
-      });
-    }
-  }
-  
-  return replaceBashCommandsWithOutput(processedContent, bashResults);
-}
-```
-
-### 2. Configuration Validation
-
-```typescript
-// Validate YAML frontmatter configuration
-private validateCommandConfig(config: CustomSlashCommandConfig): boolean {
-  if (config.model && !this.isSupportedModel(config.model)) {
-    this.logger?.warn(`Unsupported model: ${config.model}`);
-    return false;
-  }
-  
-  return true;
-}
-```
-
-### 3. State Synchronization
-
-```typescript
-// Keep UI and command registry in sync
-const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
-
-useEffect(() => {
-  if (agentRef.current?.getSlashCommands) {
-    const agentSlashCommands = agentRef.current.getSlashCommands();
-    setSlashCommands(agentSlashCommands);
-  }
-}, [agent, messages]);  // Re-sync when agent changes or messages update
-```
-
-This quickstart provides the essential patterns and implementation details needed to understand, maintain, and extend the custom slash commands feature.
+That's it! Start creating commands that save you time.

@@ -38,3 +38,13 @@
 - [X] T025 Add nested command metadata to returned `CustomSlashCommand` objects in `packages/agent-sdk/src/utils/customCommands.ts`
 - [X] T026 Add error handling for deep nesting and invalid file names in `packages/agent-sdk/src/utils/customCommands.ts`
 - [X] T027 Update command input parsing to handle colon syntax in `packages/agent-sdk/src/managers/slashCommandManager.ts`
+
+## Phase 4: Plugin Environment Variables
+
+- [X] T028 Add `pluginPath?: string` field to `CustomSlashCommand` interface in `packages/agent-sdk/src/types/commands.ts`
+- [X] T029 Update `PluginLoader.loadCommands` to return commands with plugin path metadata in `packages/agent-sdk/src/services/pluginLoader.ts`
+- [X] T030 Update `PluginManager.loadSinglePlugin` to pass plugin path when registering plugin commands in `packages/agent-sdk/src/managers/pluginManager.ts`
+- [X] T031 Update `SlashCommandManager.registerPluginCommands` to accept and store plugin path for each command in `packages/agent-sdk/src/managers/slashCommandManager.ts`
+- [X] T032 Update `SlashCommandManager.executeCustomCommandInMainAgent` to set `WAVE_PLUGIN_ROOT` environment variable when executing bash commands for plugin commands in `packages/agent-sdk/src/managers/slashCommandManager.ts`
+- [X] T033 Add tests for plugin commands with WAVE_PLUGIN_ROOT environment variable in `packages/agent-sdk/tests/managers/slashCommandManager.test.ts`
+

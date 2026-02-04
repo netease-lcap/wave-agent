@@ -4,12 +4,23 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import { CustomSlashCommand, TextBlock } from "../../src/types/index.js";
 
+// Mock child_process for bash command execution tests
+const mockExec = vi.hoisted(() => vi.fn());
+vi.mock("child_process", () => ({
+  exec: mockExec,
+}));
+vi.mock("util", () => ({
+  promisify: vi.fn(() => mockExec),
+}));
+
 describe("SlashCommandManager", () => {
   let slashCommandManager: SlashCommandManager;
   let messageManager: MessageManager;
   let aiManager: AIManager;
 
   beforeEach(() => {
+    // Reset mocks
+    vi.clearAllMocks();
     // Create MessageManager with necessary callbacks
     messageManager = new MessageManager({
       callbacks: {},
@@ -201,6 +212,101 @@ describe("SlashCommandManager", () => {
       expect(textBlock.customCommandContent).toBe(
         "Base content extra arguments",
       );
+    });
+
+    it("should set WAVE_PLUGIN_ROOT environment variable for plugin commands with bash", async () => {
+      const pluginName = "test-plugin";
+      const pluginPath = "/path/to/plugin";
+      const commands = [
+        {
+          id: "env-test",
+          name: "env-test",
+          content: "Test command\n!`echo $WAVE_PLUGIN_ROOT`",
+          pluginPath,
+          filePath: `${pluginPath}/commands/env-test.md`,
+          isNested: false,
+          depth: 0,
+          segments: ["env-test"],
+        },
+      ];
+
+      // Mock bash execution to return the plugin path
+      mockExec.mockResolvedValueOnce({
+        stdout: pluginPath,
+        stderr: "",
+      });
+
+      slashCommandManager.registerPluginCommands(
+        pluginName,
+        commands as unknown as CustomSlashCommand[],
+      );
+
+      const cmd = slashCommandManager.getCommand("test-plugin:env-test");
+      await cmd?.handler();
+
+      const messages = messageManager.getMessages();
+      const lastMessage = messages[messages.length - 1];
+      const textBlock = lastMessage.blocks[0] as TextBlock;
+
+      // Verify bash command was called with WAVE_PLUGIN_ROOT env var
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining("echo $WAVE_PLUGIN_ROOT"),
+        expect.objectContaining({
+          env: expect.objectContaining({
+            WAVE_PLUGIN_ROOT: pluginPath,
+          }),
+        }),
+      );
+
+      // The bash command output should contain the plugin path
+      expect(textBlock.customCommandContent).toContain(pluginPath);
+    });
+
+    it("should not set WAVE_PLUGIN_ROOT for non-plugin commands", async () => {
+      const pluginName = "test-plugin";
+      const commands = [
+        {
+          id: "no-plugin-path",
+          name: "no-plugin-path",
+          content: 'Test command\n!`echo "VAR: $WAVE_PLUGIN_ROOT"`',
+          filePath: "/test/commands/no-plugin-path.md",
+          isNested: false,
+          depth: 0,
+          segments: ["no-plugin-path"],
+        },
+      ];
+
+      // Mock bash execution to return empty WAVE_PLUGIN_ROOT
+      mockExec.mockResolvedValueOnce({
+        stdout: "VAR: ",
+        stderr: "",
+      });
+
+      slashCommandManager.registerPluginCommands(
+        pluginName,
+        commands as unknown as CustomSlashCommand[],
+      );
+
+      const cmd = slashCommandManager.getCommand("test-plugin:no-plugin-path");
+      await cmd?.handler();
+
+      const messages = messageManager.getMessages();
+      const lastMessage = messages[messages.length - 1];
+      const textBlock = lastMessage.blocks[0] as TextBlock;
+
+      // Verify bash command was NOT called with WAVE_PLUGIN_ROOT env var
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining("echo"),
+        expect.not.objectContaining({
+          env: expect.objectContaining({
+            WAVE_PLUGIN_ROOT: expect.anything(),
+          }),
+        }),
+      );
+
+      // Without pluginPath, WAVE_PLUGIN_ROOT should be empty
+      expect(textBlock.customCommandContent).toContain("VAR: ");
+      expect(textBlock.customCommandContent).not.toContain("/path/to/");
     });
   });
 });
