@@ -1,6 +1,7 @@
 import { ConfigurationService } from "../services/configurationService.js";
 import { PluginManager } from "./pluginManager.js";
 import { Logger } from "../types/index.js";
+import { Scope } from "../types/configuration.js";
 
 export interface PluginScopeManagerOptions {
   workdir: string;
@@ -23,38 +24,30 @@ export class PluginScopeManager {
   }
 
   /**
-   * Enable a plugin. It finds the existing scope or defaults to user.
+   * Enable a plugin in the specified scope
    */
-  async enablePlugin(pluginId: string): Promise<void> {
-    const targetScope =
-      this.configurationService.findPluginScope(this.workdir, pluginId) ||
-      "user";
-
+  async enablePlugin(scope: Scope, pluginId: string): Promise<void> {
     await this.configurationService.updateEnabledPlugin(
       this.workdir,
-      targetScope,
+      scope,
       pluginId,
       true,
     );
-    this.logger?.info(`Enabled plugin ${pluginId} in ${targetScope} scope`);
+    this.logger?.info(`Enabled plugin ${pluginId} in ${scope} scope`);
     this.refreshPluginManager();
   }
 
   /**
-   * Disable a plugin. It finds the existing scope or defaults to user.
+   * Disable a plugin in the specified scope
    */
-  async disablePlugin(pluginId: string): Promise<void> {
-    const targetScope =
-      this.configurationService.findPluginScope(this.workdir, pluginId) ||
-      "user";
-
+  async disablePlugin(scope: Scope, pluginId: string): Promise<void> {
     await this.configurationService.updateEnabledPlugin(
       this.workdir,
-      targetScope,
+      scope,
       pluginId,
       false,
     );
-    this.logger?.info(`Disabled plugin ${pluginId} in ${targetScope} scope`);
+    this.logger?.info(`Disabled plugin ${pluginId} in ${scope} scope`);
     this.refreshPluginManager();
   }
 

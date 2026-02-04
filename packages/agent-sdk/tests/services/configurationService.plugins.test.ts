@@ -209,51 +209,6 @@ describe("ConfigurationService - Plugins", () => {
     });
   });
 
-  describe("findPluginScope", () => {
-    it("should find plugin in local scope", () => {
-      const projectLocalPath = path.join(
-        workdir,
-        ".wave",
-        "settings.local.json",
-      );
-      vi.mocked(existsSync).mockImplementation((p) => p === projectLocalPath);
-      vi.mocked(readFileSync).mockReturnValue(
-        JSON.stringify({ enabledPlugins: { "test-plugin": true } }),
-      );
-
-      const scope = configService.findPluginScope(workdir, "test-plugin");
-      expect(scope).toBe("local");
-    });
-
-    it("should find plugin in project scope", () => {
-      const projectJsonPath = path.join(workdir, ".wave", "settings.json");
-      vi.mocked(existsSync).mockImplementation((p) => p === projectJsonPath);
-      vi.mocked(readFileSync).mockReturnValue(
-        JSON.stringify({ enabledPlugins: { "test-plugin": true } }),
-      );
-
-      const scope = configService.findPluginScope(workdir, "test-plugin");
-      expect(scope).toBe("project");
-    });
-
-    it("should find plugin in user scope", () => {
-      const userJsonPath = path.join(userHome, ".wave", "settings.json");
-      vi.mocked(existsSync).mockImplementation((p) => p === userJsonPath);
-      vi.mocked(readFileSync).mockReturnValue(
-        JSON.stringify({ enabledPlugins: { "test-plugin": true } }),
-      );
-
-      const scope = configService.findPluginScope(workdir, "test-plugin");
-      expect(scope).toBe("user");
-    });
-
-    it("should return null if plugin not found in any scope", () => {
-      vi.mocked(existsSync).mockReturnValue(false);
-      const scope = configService.findPluginScope(workdir, "test-plugin");
-      expect(scope).toBeNull();
-    });
-  });
-
   describe("validateConfiguration", () => {
     it("should validate enabledPlugins correctly", () => {
       const validConfig = {
