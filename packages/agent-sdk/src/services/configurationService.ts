@@ -647,6 +647,43 @@ export class ConfigurationService {
     const mergedConfig = loadMergedWaveConfig(workdir);
     return mergedConfig?.enabledPlugins || {};
   }
+
+  /**
+   * Find the scope where a plugin is currently configured
+   * Priority: local > project > user
+   */
+  findPluginScope(workdir: string, pluginId: string): Scope | null {
+    const userPaths = getUserConfigPaths();
+    const projectPaths = getProjectConfigPaths(workdir);
+
+    // Priority order (highest to lowest):
+    // project settings.local.json -> project settings.json -> user settings.local.json -> user settings.json
+    const scopes: { path: string; scope: Scope }[] = [
+      { path: projectPaths[0], scope: "local" },
+      { path: projectPaths[1], scope: "project" },
+      { path: userPaths[0], scope: "user" }, // user local is still user scope for now
+      { path: userPaths[1], scope: "user" },
+    ];
+
+    for (const { path, scope } of scopes) {
+      if (existsSync(path)) {
+        try {
+          const content = readFileSync(path, "utf-8");
+          const config = JSON.parse(content) as WaveConfiguration;
+          if (
+            config.enabledPlugins &&
+            config.enabledPlugins[pluginId] !== undefined
+          ) {
+            return scope;
+          }
+        } catch {
+          // Ignore corrupted files
+        }
+      }
+    }
+
+    return null;
+  }
 }
 // =============================================================================
 // Extracted Configuration Functions

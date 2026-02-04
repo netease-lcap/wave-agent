@@ -78,12 +78,12 @@ describe("Plugin Scope Integration Tests", () => {
     await fs.rm(userHome, { recursive: true, force: true });
   });
 
-  it("should enable a plugin in user scope", async () => {
-    await enablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
+  it("should enable a plugin", async () => {
+    await enablePluginCommand({ plugin: "test-plugin@market" });
 
     expect(mockLog).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Successfully enabled plugin: test-plugin@market in user scope",
+        "Successfully enabled plugin: test-plugin@market",
       ),
     );
 
@@ -93,28 +93,34 @@ describe("Plugin Scope Integration Tests", () => {
   });
 
   it("should enable a plugin in project scope", async () => {
+    // Create project config first so it finds it
+    const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
+    await fs.mkdir(path.dirname(projectConfigPath), { recursive: true });
+    await fs.writeFile(
+      projectConfigPath,
+      JSON.stringify({ enabledPlugins: { "test-plugin@market": false } }),
+    );
+
     await enablePluginCommand({
       plugin: "test-plugin@market",
-      scope: "project",
     });
 
     expect(mockLog).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Successfully enabled plugin: test-plugin@market in project scope",
+        "Successfully enabled plugin: test-plugin@market",
       ),
     );
 
-    const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
     const config = JSON.parse(await fs.readFile(projectConfigPath, "utf-8"));
     expect(config.enabledPlugins["test-plugin@market"]).toBe(true);
   });
 
-  it("should disable a plugin in user scope", async () => {
-    await disablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
+  it("should disable a plugin", async () => {
+    await disablePluginCommand({ plugin: "test-plugin@market" });
 
     expect(mockLog).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Successfully disabled plugin: test-plugin@market in user scope",
+        "Successfully disabled plugin: test-plugin@market",
       ),
     );
 
@@ -124,13 +130,19 @@ describe("Plugin Scope Integration Tests", () => {
   });
 
   it("should test priority: Disable in user scope, enable in project scope -> should be enabled", async () => {
-    // 1. Disable in user scope
-    await disablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
+    // 1. Disable in user scope (defaults to user)
+    await disablePluginCommand({ plugin: "test-plugin@market" });
 
-    // 2. Enable in project scope
+    // 2. Enable in project scope (must exist first to be found)
+    const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
+    await fs.mkdir(path.dirname(projectConfigPath), { recursive: true });
+    await fs.writeFile(
+      projectConfigPath,
+      JSON.stringify({ enabledPlugins: { "test-plugin@market": false } }),
+    );
+
     await enablePluginCommand({
       plugin: "test-plugin@market",
-      scope: "project",
     });
 
     // 3. List plugins
@@ -143,13 +155,19 @@ describe("Plugin Scope Integration Tests", () => {
   });
 
   it("should test priority: Enable in user scope, disable in project scope -> should be disabled", async () => {
-    // 1. Enable in user scope
-    await enablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
+    // 1. Enable in user scope (defaults to user)
+    await enablePluginCommand({ plugin: "test-plugin@market" });
 
-    // 2. Disable in project scope
+    // 2. Disable in project scope (must exist first to be found)
+    const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
+    await fs.mkdir(path.dirname(projectConfigPath), { recursive: true });
+    await fs.writeFile(
+      projectConfigPath,
+      JSON.stringify({ enabledPlugins: { "test-plugin@market": true } }),
+    );
+
     await disablePluginCommand({
       plugin: "test-plugin@market",
-      scope: "project",
     });
 
     // 3. List plugins
