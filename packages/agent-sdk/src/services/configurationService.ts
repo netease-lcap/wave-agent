@@ -641,6 +641,48 @@ export class ConfigurationService {
   }
 
   /**
+   * Remove a plugin from the enabled plugins in the specified scope
+   */
+  async removeEnabledPlugin(
+    workdir: string,
+    scope: Scope,
+    pluginId: string,
+  ): Promise<void> {
+    if (scope !== "user" && !existsSync(workdir)) {
+      throw new Error(`Working directory does not exist: ${workdir}`);
+    }
+
+    let configPath: string;
+    if (scope === "user") {
+      configPath = getUserConfigPaths()[1]; // settings.json
+    } else if (scope === "project") {
+      configPath = getProjectConfigPaths(workdir)[1]; // settings.json
+    } else {
+      configPath = getProjectConfigPaths(workdir)[0]; // settings.local.json
+    }
+
+    if (!existsSync(configPath)) {
+      return; // Nothing to remove
+    }
+
+    try {
+      const content = await fs.readFile(configPath, "utf-8");
+      const config: WaveConfiguration = JSON.parse(content);
+
+      if (config.enabledPlugins && pluginId in config.enabledPlugins) {
+        delete config.enabledPlugins[pluginId];
+        await fs.writeFile(
+          configPath,
+          JSON.stringify(config, null, 2),
+          "utf-8",
+        );
+      }
+    } catch {
+      // Ignore errors for corrupted or non-existent files
+    }
+  }
+
+  /**
    * Get merged enabled plugins from all scopes
    */
   getMergedEnabledPlugins(workdir: string): Record<string, boolean> {

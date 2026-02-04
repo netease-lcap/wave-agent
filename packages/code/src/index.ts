@@ -196,6 +196,22 @@ export async function main() {
               );
             },
           )
+          .command(
+            "uninstall <plugin>",
+            "Uninstall a plugin",
+            (yargs) => {
+              return yargs.positional("plugin", {
+                describe: "Plugin to uninstall (format: name@marketplace)",
+                type: "string",
+              });
+            },
+            async (argv) => {
+              const { uninstallPluginCommand } = await import(
+                "./commands/plugin/uninstall.js"
+              );
+              await uninstallPluginCommand(argv as { plugin: string });
+            },
+          )
           .demandCommand(1, "Please specify a plugin subcommand");
       },
       () => {},

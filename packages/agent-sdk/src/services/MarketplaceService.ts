@@ -463,4 +463,36 @@ export class MarketplaceService {
       );
     }
   }
+
+  /**
+   * Uninstalls a plugin
+   */
+  async uninstallPlugin(pluginAtMarketplace: string): Promise<void> {
+    const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
+    if (!pluginName || !marketplaceName) {
+      throw new Error("Invalid plugin format. Use name@marketplace");
+    }
+
+    const installedRegistry = await this.getInstalledPlugins();
+    const pluginIndex = installedRegistry.plugins.findIndex(
+      (p) => p.name === pluginName && p.marketplace === marketplaceName,
+    );
+
+    if (pluginIndex === -1) {
+      throw new Error(
+        `Plugin ${pluginName}@${marketplaceName} is not installed`,
+      );
+    }
+
+    const plugin = installedRegistry.plugins[pluginIndex];
+
+    // Remove cached files
+    if (existsSync(plugin.cachePath)) {
+      await fs.rm(plugin.cachePath, { recursive: true, force: true });
+    }
+
+    // Remove from registry
+    installedRegistry.plugins.splice(pluginIndex, 1);
+    await this.saveInstalledPlugins(installedRegistry);
+  }
 }

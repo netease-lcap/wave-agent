@@ -88,6 +88,31 @@ export class PluginScopeManager {
   }
 
   /**
+   * Remove a plugin from all scopes (user, project, local)
+   * This is useful when uninstalling a plugin to clean up all configuration
+   */
+  async removePluginFromAllScopes(pluginId: string): Promise<void> {
+    const scopes: Scope[] = ["user", "project", "local"];
+
+    for (const scope of scopes) {
+      try {
+        await this.configurationService.removeEnabledPlugin(
+          this.workdir,
+          scope,
+          pluginId,
+        );
+      } catch (error) {
+        // Continue removing from other scopes even if one fails
+        this.logger?.warn(
+          `Failed to remove plugin ${pluginId} from ${scope} scope: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    this.refreshPluginManager();
+  }
+
+  /**
    * Refresh the plugin manager with the latest configuration
    * Note: This only updates the configuration, it doesn't reload plugins.
    * Reloading plugins might require a more complex logic (unloading/loading).
