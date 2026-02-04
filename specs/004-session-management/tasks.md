@@ -15,3 +15,4 @@
 - [x] Implement `handleSessionRestoration` logic
 - [x] Implement `sessions-index.json` for O(1) session listing performance
 - [x] Cache `firstMessage` content in session index for instant UI display
+- [x] Remove redundant `getFirstMessageContent` calls from CLI to fully leverage index

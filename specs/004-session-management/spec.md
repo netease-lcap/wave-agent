@@ -28,11 +28,12 @@ As a user with hundreds of historical sessions, I want the session list to load 
 
 **Why this priority**: Essential for a good user experience as the number of sessions grows.
 
-**Independent Test**: Generate 100 large session files and measure the time to list them; it should be near-instant because only the last line is read.
+**Independent Test**: Generate 100 large session files and measure the time to list them; it should be near-instant because the system reads from a single `sessions-index.json` file.
 
 **Acceptance Scenarios**:
 
-1. **Given** multiple session files, **When** listing sessions, **Then** the system MUST only read the last line of each file to extract metadata.
+1. **Given** multiple session files, **When** listing sessions, **Then** the system MUST read from `sessions-index.json` to achieve O(1) performance.
+2. **Given** a missing or corrupted index, **When** listing sessions, **Then** the system MUST fallback to reading the last line of each file and rebuild the index.
 
 ---
 
@@ -70,7 +71,7 @@ As a developer using subagents, I want subagent sessions to be clearly identifie
 - **FR-007**: Subagent session files MUST be prefixed with `subagent-`.
 - **FR-008**: Each message line MUST include a `timestamp` field in ISO 8601 format.
 - **FR-009**: Session metadata MUST be derived from the filename, directory structure, and the last message line.
-- **FR-010**: Session listing MUST be optimized to only read the last line of each session file to minimize I/O.
+- **FR-010**: Session listing MUST be optimized to use `sessions-index.json` to achieve O(1) performance, minimizing I/O.
 - **FR-011**: Sessions older than 14 days MUST be automatically cleaned up.
 - **FR-012**: Empty project directories MUST be removed during cleanup.
 - **FR-013**: Each project directory MUST maintain a `sessions-index.json` file for O(1) session listing.
