@@ -7,7 +7,7 @@ import {
 
 export async function disablePluginCommand(argv: {
   plugin: string;
-  scope: Scope;
+  scope?: Scope;
 }) {
   const workdir = process.cwd();
   const configurationService = new ConfigurationService();
@@ -18,10 +18,13 @@ export async function disablePluginCommand(argv: {
     pluginManager,
   });
 
+  const scope =
+    argv.scope || scopeManager.findPluginScope(argv.plugin) || "user";
+
   try {
-    await scopeManager.disablePlugin(argv.scope, argv.plugin);
+    await scopeManager.disablePlugin(scope, argv.plugin);
     console.log(
-      `Successfully disabled plugin: ${argv.plugin} in ${argv.scope} scope`,
+      `Successfully disabled plugin: ${argv.plugin} in ${scope} scope`,
     );
     process.exit(0);
   } catch (error) {

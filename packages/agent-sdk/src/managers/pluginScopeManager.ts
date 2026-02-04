@@ -59,6 +59,35 @@ export class PluginScopeManager {
   }
 
   /**
+   * Find the scope where a plugin is currently enabled/disabled.
+   * Priority: local > project > user
+   */
+  findPluginScope(pluginId: string): Scope | null {
+    const projectPaths = this.configurationService.getConfigurationPaths(
+      this.workdir,
+    ).projectPaths; // [local, json]
+    const userPaths = this.configurationService.getConfigurationPaths(
+      this.workdir,
+    ).userPaths; // [local, json]
+
+    const checkPaths: { path: string; scope: Scope }[] = [
+      { path: projectPaths[0], scope: "local" },
+      { path: projectPaths[1], scope: "project" },
+      { path: userPaths[0], scope: "user" }, // user local is still user scope
+      { path: userPaths[1], scope: "user" },
+    ];
+
+    for (const { path, scope } of checkPaths) {
+      const config = this.configurationService.loadWaveConfigFromFile(path);
+      if (config?.enabledPlugins && pluginId in config.enabledPlugins) {
+        return scope;
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Refresh the plugin manager with the latest configuration
    * Note: This only updates the configuration, it doesn't reload plugins.
    * Reloading plugins might require a more complex logic (unloading/loading).

@@ -7,7 +7,7 @@ import {
 
 export async function enablePluginCommand(argv: {
   plugin: string;
-  scope: Scope;
+  scope?: Scope;
 }) {
   const workdir = process.cwd();
   const configurationService = new ConfigurationService();
@@ -18,10 +18,13 @@ export async function enablePluginCommand(argv: {
     pluginManager,
   });
 
+  const scope =
+    argv.scope || scopeManager.findPluginScope(argv.plugin) || "user";
+
   try {
-    await scopeManager.enablePlugin(argv.scope, argv.plugin);
+    await scopeManager.enablePlugin(scope, argv.plugin);
     console.log(
-      `Successfully enabled plugin: ${argv.plugin} in ${argv.scope} scope`,
+      `Successfully enabled plugin: ${argv.plugin} in ${scope} scope`,
     );
     process.exit(0);
   } catch (error) {

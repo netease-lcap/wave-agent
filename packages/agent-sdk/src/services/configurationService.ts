@@ -647,6 +647,14 @@ export class ConfigurationService {
     const mergedConfig = loadMergedWaveConfig(workdir);
     return mergedConfig?.enabledPlugins || {};
   }
+
+  /**
+   * Load Wave configuration from a JSON file
+   * Supports both hooks and environment variables with proper validation
+   */
+  loadWaveConfigFromFile(filePath: string): WaveConfiguration | null {
+    return loadWaveConfigFromFile(filePath);
+  }
 }
 // =============================================================================
 // Extracted Configuration Functions
