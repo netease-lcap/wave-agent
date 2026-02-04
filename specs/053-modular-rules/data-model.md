@@ -38,6 +38,17 @@ interface MemoryRuleMetadata {
 }
 ```
 
+**Example YAML frontmatter:**
+
+```yaml
+---
+paths:
+  - "src/api/**/*.ts"
+  - "src/services/**/*.ts"
+priority: 10
+---
+```
+
 ## MemoryRuleRegistryState
 
 The internal state maintained by the `MemoryRuleManager`.

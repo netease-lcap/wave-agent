@@ -1,5 +1,6 @@
 ---
-paths: ["packages/*/tests/**/*"]
+paths:
+  - "packages/*/tests/**/*"
 ---
 - `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
   - Task vitest-expert to write tests
