@@ -7,6 +7,7 @@ import { HistorySearch } from "./HistorySearch.js";
 import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
 import { BashShellManager } from "./BashShellManager.js";
 import { McpManager } from "./McpManager.js";
+import { RewindCommand } from "./RewindCommand.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
 
@@ -57,6 +58,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
     permissionMode: chatPermissionMode,
     setPermissionMode: setChatPermissionMode,
     isRewindVisible,
+    handleRewindSelect,
+    hideRewind,
+    messages,
   } = useChat();
 
   // Input manager with all input state and functionality (including images)
@@ -123,6 +127,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
       setShowRewindManager(isRewindVisible);
     }
   }, [isRewindVisible, setShowRewindManager]);
+
+  const handleRewindCancel = () => {
+    if (setShowRewindManager) {
+      setShowRewindManager(false);
+    }
+    hideRewind();
+  };
 
   // Set user input history when it changes
   useEffect(() => {
@@ -214,6 +225,15 @@ export const InputBox: React.FC<InputBoxProps> = ({
           onDisconnectServer={disconnectMcpServer}
         />
       )}
+
+      {showRewindManager && (
+        <RewindCommand
+          messages={messages}
+          onSelect={handleRewindSelect}
+          onCancel={handleRewindCancel}
+        />
+      )}
+
       {showBashManager || showMcpManager || showRewindManager || (
         <Box flexDirection="column">
           <Box
