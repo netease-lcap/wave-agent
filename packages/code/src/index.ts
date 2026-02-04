@@ -47,6 +47,15 @@ export async function main() {
       (yargs) => {
         return yargs
           .help()
+          .command("ui", "Open interactive plugin manager UI", {}, async () => {
+            const { startPluginManagerCli } = await import(
+              "./plugin-manager-cli.js"
+            );
+            const shouldExit = await startPluginManagerCli();
+            if (shouldExit) {
+              process.exit(0);
+            }
+          })
           .command(
             "marketplace",
             "Manage plugin marketplaces",
@@ -211,10 +220,20 @@ export async function main() {
               );
               await uninstallPluginCommand(argv as { plugin: string });
             },
-          )
-          .demandCommand(1, "Please specify a plugin subcommand");
+          );
       },
-      () => {},
+      async (argv) => {
+        // If no subcommand is provided, launch the UI
+        if (argv._.length === 1 && argv._[0] === "plugin") {
+          const { startPluginManagerCli } = await import(
+            "./plugin-manager-cli.js"
+          );
+          const shouldExit = await startPluginManagerCli();
+          if (shouldExit) {
+            process.exit(0);
+          }
+        }
+      },
     )
     .version()
     .alias("v", "version")
