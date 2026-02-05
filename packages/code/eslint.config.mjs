@@ -5,7 +5,7 @@ import pluginReact from "eslint-plugin-react";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 
 export default [
-  { ignores: ["dist/", "node_modules/"] },
+  { ignores: ["dist/", "node_modules/", "coverage/"] },
   { files: ["**/*.{js,mjs,cjs,ts,tsx}"] },
   {
     languageOptions: {
