@@ -1,7 +1,5 @@
 # Wave Agent
 
-[![codecov](https://codecov.io/gh/netease-lcap/wave-agent/graph/badge.svg?token=${{ secrets.CODECOV_TOKEN }})](https://codecov.io/gh/netease-lcap/wave-agent)
-
 A monorepo containing AI-powered development tools built with Node.js and TypeScript.
 
 ## Project Structure

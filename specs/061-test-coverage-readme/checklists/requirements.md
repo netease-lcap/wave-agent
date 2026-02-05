@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Test Coverage and README Badge
+# Specification Quality Checklist: Test Coverage
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-02-05

@@ -1,9 +1,9 @@
-# Feature Specification: Test Coverage and README Badge
+# Feature Specification: Test Coverage
 
-**Feature Branch**: `061-test-coverage-readme`  
+**Feature Branch**: `061-test-coverage`  
 **Created**: 2026-02-05  
 **Status**: Draft  
-**Input**: User description: "support test coverage and show in github readme"
+**Input**: User description: "support test coverage"
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -22,26 +22,11 @@ As a developer, I want the system to automatically calculate test coverage whene
 
 ---
 
-### User Story 2 - README Coverage Badge (Priority: P2)
-
-As a project maintainer, I want to display a dynamic coverage badge in the GitHub README, so that contributors and users can immediately see the project's test coverage status.
-
-**Why this priority**: This fulfills the "show in github readme" part of the request, providing visibility and transparency.
-
-**Independent Test**: Can be tested by checking the README file in the GitHub repository and verifying that a badge image is rendered and displays the correct coverage percentage.
-
-**Acceptance Scenarios**:
-
-1. **Given** a generated coverage report, **When** the CI pipeline completes, **Then** the coverage badge in the README is updated to reflect the latest percentage.
-2. **Given** a README file, **When** the coverage badge markdown is added, **Then** it correctly links to a visual representation of the coverage.
-
----
-
-### User Story 3 - Coverage Trend Tracking (Priority: P3)
+### User Story 2 - Coverage Trend Tracking (Priority: P2)
 
 As a lead developer, I want to see how coverage changes over time, so that I can ensure we are not introducing regressions in test quality as the codebase grows.
 
-**Why this priority**: Provides long-term value and quality assurance, though not strictly required for the initial "show in readme" request.
+**Why this priority**: Provides long-term value and quality assurance.
 
 **Independent Test**: Can be tested by viewing a history or dashboard of coverage results from multiple CI runs.
 
@@ -63,10 +48,8 @@ As a lead developer, I want to see how coverage changes over time, so that I can
 
 - **FR-001**: System MUST generate a test coverage report in a standard format (e.g., LCOV) during the CI process.
 - **FR-002**: System MUST extract the total coverage percentage from the generated report.
-- **FR-003**: System MUST provide a way to display this percentage as a badge in the GitHub README.md file.
-- **FR-004**: The coverage badge MUST update automatically after each successful CI run on the main branch.
-- **FR-005**: System MUST support Codecov for hosting coverage data and providing the README badge.
-- **FR-006**: System MUST fail the build if total coverage falls below a specific threshold (e.g., 80%).
+- **FR-003**: System MUST support Codecov for hosting coverage data and providing trend analysis.
+- **FR-004**: System MUST fail the build if total coverage falls below a specific threshold (e.g., 80%).
 
 ### Key Entities *(include if feature involves data)*
 
