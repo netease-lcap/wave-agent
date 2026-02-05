@@ -8,8 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "wave": "pnpm -F wave-code wave",
-    "wave:debug": "LOG_LEVEL=DEBUG pnpm -F wave-code wave",
+    "wave": "tsx packages/code/src/index.ts",
+    "wave:debug": "LOG_LEVEL=DEBUG tsx packages/code/src/index.ts",
     "watch": "pnpm -r --parallel watch",
     "build": "pnpm -r build",
     "type-check": "pnpm -r type-check",

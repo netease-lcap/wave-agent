@@ -164,6 +164,22 @@ export async function main() {
               );
               await uninstallPluginCommand(argv as { plugin: string });
             },
+          )
+          .command(
+            "update <plugin>",
+            "Update a plugin (uninstall followed by install)",
+            (yargs) => {
+              return yargs.positional("plugin", {
+                describe: "Plugin to update (format: name@marketplace)",
+                type: "string",
+              });
+            },
+            async (argv) => {
+              const { updatePluginCommand } = await import(
+                "./commands/plugin/update.js"
+              );
+              await updatePluginCommand(argv as { plugin: string });
+            },
           );
       },
       async (argv) => {

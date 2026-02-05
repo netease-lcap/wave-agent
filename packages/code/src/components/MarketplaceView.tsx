@@ -13,14 +13,14 @@ export const MarketplaceView: React.FC = () => {
       setSelectedIndex(Math.max(0, selectedIndex - 1));
     } else if (key.downArrow) {
       setSelectedIndex(Math.min(marketplaces.length - 1, selectedIndex + 1));
+    } else if (key.return) {
+      const mk = marketplaces[selectedIndex];
+      if (mk) {
+        actions.setSelectedId(mk.name);
+        actions.setView("MARKETPLACE_DETAIL");
+      }
     } else if (input === "a") {
       actions.setView("ADD_MARKETPLACE");
-    } else if (input === "u") {
-      const mk = marketplaces[selectedIndex];
-      if (mk) actions.updateMarketplace(mk.name);
-    } else if (input === "r") {
-      const mk = marketplaces[selectedIndex];
-      if (mk) actions.removeMarketplace(mk.name);
     }
   });
 
@@ -35,7 +35,7 @@ export const MarketplaceView: React.FC = () => {
       />
       {marketplaces.length > 0 && (
         <Box marginLeft={4} marginTop={1}>
-          <Text dimColor>Press 'u' to update, 'r' to remove</Text>
+          <Text dimColor>Press Enter for actions</Text>
         </Box>
       )}
     </Box>

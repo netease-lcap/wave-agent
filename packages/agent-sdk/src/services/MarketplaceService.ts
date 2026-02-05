@@ -495,4 +495,12 @@ export class MarketplaceService {
     installedRegistry.plugins.splice(pluginIndex, 1);
     await this.saveInstalledPlugins(installedRegistry);
   }
+
+  /**
+   * Updates a plugin (uninstall followed by install)
+   */
+  async updatePlugin(pluginAtMarketplace: string): Promise<InstalledPlugin> {
+    await this.uninstallPlugin(pluginAtMarketplace);
+    return this.installPlugin(pluginAtMarketplace);
+  }
 }

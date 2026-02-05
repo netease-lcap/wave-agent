@@ -5,6 +5,7 @@ import { usePluginManager } from "../hooks/usePluginManager.js";
 import { DiscoverView } from "./DiscoverView.js";
 import { InstalledView } from "./InstalledView.js";
 import { MarketplaceView } from "./MarketplaceView.js";
+import { MarketplaceDetail } from "./MarketplaceDetail.js";
 import { PluginDetail } from "./PluginDetail.js";
 import { MarketplaceAddForm } from "./MarketplaceAddForm.js";
 import { PluginManagerContext } from "../contexts/PluginManagerContext.js";
@@ -13,10 +14,14 @@ export const PluginManagerShell: React.FC<{ children?: React.ReactNode }> = ({
   children,
 }) => {
   const pluginManager = usePluginManager();
-  const { state, actions } = pluginManager;
+  const { state, actions, discoverablePlugins } = pluginManager;
 
   const setView = (view: ViewType) => {
-    if (view !== "PLUGIN_DETAIL" && view !== "ADD_MARKETPLACE") {
+    if (
+      view !== "PLUGIN_DETAIL" &&
+      view !== "MARKETPLACE_DETAIL" &&
+      view !== "ADD_MARKETPLACE"
+    ) {
       actions.setSelectedId(null);
     }
     actions.setView(view);
@@ -27,8 +32,13 @@ export const PluginManagerShell: React.FC<{ children?: React.ReactNode }> = ({
       const views: ViewType[] = ["DISCOVER", "INSTALLED", "MARKETPLACES"];
       const currentIndex = views.indexOf(
         state.currentView === "PLUGIN_DETAIL"
-          ? "DISCOVER"
-          : state.currentView === "ADD_MARKETPLACE"
+          ? discoverablePlugins.find(
+              (p) => `${p.name}@${p.marketplace}` === state.selectedId,
+            )
+            ? "DISCOVER"
+            : "INSTALLED"
+          : state.currentView === "MARKETPLACE_DETAIL" ||
+              state.currentView === "ADD_MARKETPLACE"
             ? "MARKETPLACES"
             : state.currentView,
       );
@@ -43,8 +53,14 @@ export const PluginManagerShell: React.FC<{ children?: React.ReactNode }> = ({
     }
     if (key.escape) {
       if (state.currentView === "PLUGIN_DETAIL") {
-        setView("DISCOVER");
-      } else if (state.currentView === "ADD_MARKETPLACE") {
+        const isFromDiscover = discoverablePlugins.find(
+          (p) => `${p.name}@${p.marketplace}` === state.selectedId,
+        );
+        setView(isFromDiscover ? "DISCOVER" : "INSTALLED");
+      } else if (
+        state.currentView === "MARKETPLACE_DETAIL" ||
+        state.currentView === "ADD_MARKETPLACE"
+      ) {
         setView("MARKETPLACES");
       }
     }
@@ -66,6 +82,8 @@ export const PluginManagerShell: React.FC<{ children?: React.ReactNode }> = ({
         return <InstalledView />;
       case "MARKETPLACES":
         return <MarketplaceView />;
+      case "MARKETPLACE_DETAIL":
+        return <MarketplaceDetail />;
       case "PLUGIN_DETAIL":
         return <PluginDetail />;
       case "ADD_MARKETPLACE":
@@ -101,7 +119,10 @@ export const PluginManagerShell: React.FC<{ children?: React.ReactNode }> = ({
             <Text
               color={
                 state.currentView === "DISCOVER" ||
-                state.currentView === "PLUGIN_DETAIL"
+                (state.currentView === "PLUGIN_DETAIL" &&
+                  !!discoverablePlugins.find(
+                    (p) => `${p.name}@${p.marketplace}` === state.selectedId,
+                  ))
                   ? "yellow"
                   : undefined
               }
@@ -110,7 +131,15 @@ export const PluginManagerShell: React.FC<{ children?: React.ReactNode }> = ({
               Discover{" "}
             </Text>
             <Text
-              color={state.currentView === "INSTALLED" ? "yellow" : undefined}
+              color={
+                state.currentView === "INSTALLED" ||
+                (state.currentView === "PLUGIN_DETAIL" &&
+                  !discoverablePlugins.find(
+                    (p) => `${p.name}@${p.marketplace}` === state.selectedId,
+                  ))
+                  ? "yellow"
+                  : undefined
+              }
             >
               {" "}
               Installed{" "}
@@ -118,6 +147,7 @@ export const PluginManagerShell: React.FC<{ children?: React.ReactNode }> = ({
             <Text
               color={
                 state.currentView === "MARKETPLACES" ||
+                state.currentView === "MARKETPLACE_DETAIL" ||
                 state.currentView === "ADD_MARKETPLACE"
                   ? "yellow"
                   : undefined

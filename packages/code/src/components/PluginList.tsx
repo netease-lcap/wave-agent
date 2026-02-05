@@ -38,7 +38,6 @@ export const PluginList: React.FC<PluginListProps> = ({
                 <Text bold>{plugin.name}</Text>
                 <Text dimColor> @{plugin.marketplace}</Text>
                 {plugin.version && <Text color="blue"> v{plugin.version}</Text>}
-                {plugin.installed && <Text color="green"> [Installed]</Text>}
               </Text>
             </Box>
             <Box marginLeft={4}>

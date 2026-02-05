@@ -64,6 +64,10 @@ As a user, I want to install a plugin and have it automatically enabled at a spe
 - **FR-008**: `wave plugin uninstall` MUST remove the plugin from the `enabledPlugins` object in the specified scope.
 - **FR-009**: Plugin loading logic MUST aggregate `enabledPlugins` from all applicable scopes and apply them in priority order: `local` > `project` > `user`.
 - **FR-010**: If a plugin is marked `false` in a higher-priority scope (e.g. via manual config edit), it MUST be disabled even if marked `true` in a lower-priority scope.
+- **FR-011**: `wave plugin update <plugin>` command MUST be supported, performing an uninstallation followed by a fresh installation.
+- **FR-012**: The Plugin Management UI MUST filter the "Installed" view to only show plugins enabled in the current scope.
+- **FR-013**: The Plugin Management UI MUST include installed but disabled plugins in the "Discover" view.
+- **FR-014**: The Plugin Management UI MUST provide a selection-based menu for "Uninstall" and "Update" actions.
 
 ### Key Entities *(include if feature involves data)*
 

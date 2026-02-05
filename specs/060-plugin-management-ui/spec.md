@@ -72,6 +72,10 @@ As a user, I want to add and manage marketplace sources so that I can access plu
 - **FR-006**: System MUST provide visual feedback for plugin status (Installing/Installed).
 - **FR-007**: System MUST allow updating marketplace metadata to discover new or updated plugins.
 - **FR-008**: System MUST allow users to remove a marketplace from their configuration.
+- **FR-009**: System MUST support a "Update" action for installed plugins, which performs a re-installation.
+- **FR-010**: The "Installed" view MUST only show plugins that are enabled in the current scope.
+- **FR-011**: The "Discover" view MUST include plugins that are installed but not enabled in the current scope.
+- **FR-012**: Actions for installed plugins (Uninstall, Update) MUST be presented as a selection menu rather than individual keybindings.
 
 ### Key Entities *(include if feature involves data)*
 

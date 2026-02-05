@@ -69,12 +69,13 @@ export function usePluginManager(): PluginManagerContextType {
       ]);
 
       setMarketplaces(mks);
-      setInstalledPlugins(
-        installed.plugins.map((p) => ({
-          ...p,
-          enabled: !!enabledMap[`${p.name}@${p.marketplace}`],
-        })),
-      );
+      const allInstalledWithEnabled = installed.plugins.map((p) => ({
+        ...p,
+        enabled: !!enabledMap[`${p.name}@${p.marketplace}`],
+      }));
+
+      // Only show enabled plugins in the "Installed" view
+      setInstalledPlugins(allInstalledWithEnabled.filter((p) => p.enabled));
 
       const allDiscoverable: (MarketplacePluginEntry & {
         marketplace: string;
@@ -87,14 +88,18 @@ export function usePluginManager(): PluginManagerContextType {
             marketplaceService.getMarketplacePath(mk),
           );
           manifest.plugins.forEach((p) => {
+            const pluginId = `${p.name}@${mk.name}`;
             const isInstalled = installed.plugins.find(
               (ip) => ip.name === p.name && ip.marketplace === mk.name,
             );
-            if (!isInstalled) {
+            const isEnabled = !!enabledMap[pluginId];
+
+            // Show in Discover if not installed OR if installed but not enabled in current scope
+            if (!isInstalled || !isEnabled) {
               allDiscoverable.push({
                 ...p,
                 marketplace: mk.name,
-                installed: false,
+                installed: !!isInstalled,
               });
             }
           });
@@ -245,6 +250,28 @@ export function usePluginManager(): PluginManagerContextType {
     [configurationService, pluginScopeManager, refresh],
   );
 
+  const updatePlugin = useCallback(
+    async (name: string, marketplace: string) => {
+      setState((prev: PluginManagerState) => ({
+        ...prev,
+        isLoading: true,
+        error: null,
+      }));
+      try {
+        const pluginId = `${name}@${marketplace}`;
+        await marketplaceService.updatePlugin(pluginId);
+        await refresh();
+      } catch (error) {
+        setState((prev: PluginManagerState) => ({
+          ...prev,
+          isLoading: false,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+    },
+    [marketplaceService, refresh],
+  );
+
   return {
     state,
     marketplaces,
@@ -258,6 +285,7 @@ export function usePluginManager(): PluginManagerContextType {
       updateMarketplace,
       installPlugin,
       uninstallPlugin,
+      updatePlugin,
       refresh,
     },
   };
