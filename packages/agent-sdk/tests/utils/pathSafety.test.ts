@@ -70,5 +70,14 @@ describe("pathSafety utils", () => {
       vi.mocked(fs.realpathSync).mockImplementation((p) => p.toString());
       expect(isPathInside("/a/foobar", "/a/foo")).toBe(false);
     });
+
+    it("should return false if an error occurs during resolution", () => {
+      vi.mocked(fs.realpathSync).mockImplementation(() => {
+        throw new Error("Unexpected error");
+      });
+      // Since getSafeRealPath is recursive, we need to be careful.
+      // But if it throws at the root or something unexpected happens, it should return false.
+      expect(isPathInside("/a/b", "/c/d")).toBe(false);
+    });
   });
 });

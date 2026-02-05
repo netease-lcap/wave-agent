@@ -27,7 +27,6 @@ export default defineConfig(() => {
           functions: 80,
           branches: 80,
           statements: 80,
-          autoUpdate: true,
         },
       },
       env: {

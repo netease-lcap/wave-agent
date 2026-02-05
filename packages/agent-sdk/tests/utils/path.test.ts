@@ -1,9 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { resolvePath, getDisplayPath } from "../../src/utils/path.js";
+import { resolvePath, getDisplayPath, isBinary } from "../../src/utils/path.js";
 import { homedir } from "os";
 import { resolve } from "path";
 
 describe("path utils", () => {
+  describe("isBinary", () => {
+    it("should return true for binary extensions", () => {
+      expect(isBinary("test.png")).toBe(true);
+      expect(isBinary("test.JPG")).toBe(true);
+      expect(isBinary("test.pdf")).toBe(true);
+      expect(isBinary("test.exe")).toBe(true);
+    });
+
+    it("should return false for non-binary extensions", () => {
+      expect(isBinary("test.ts")).toBe(false);
+      expect(isBinary("test.txt")).toBe(false);
+      expect(isBinary("test.json")).toBe(false);
+    });
+
+    it("should return false for files without extension", () => {
+      expect(isBinary("LICENSE")).toBe(false);
+      expect(isBinary("README")).toBe(false);
+    });
+  });
+
   describe("resolvePath", () => {
     it("should handle tilde home directory expansion", () => {
       const result = resolvePath("~/.gitconfig", "/test/workdir");
