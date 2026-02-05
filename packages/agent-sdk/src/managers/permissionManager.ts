@@ -573,7 +573,14 @@ export class PermissionManager {
     if (toolName === BASH_TOOL_NAME) {
       const command = String(context.toolInput?.command || "");
       const processedPart = stripRedirections(stripEnvVars(command));
-      return minimatch(processedPart, pattern, { dot: true });
+      // For Bash commands, we want '*' to match everything including slashes and spaces
+      // minimatch's default behavior for '*' is to not match across directory separators
+      // We use a regex to replace '*' with '.*' (match anything)
+      const regexPattern = pattern
+        .replace(/[.+^${}()|[\]\\?]/g, "\\$&") // Escape regex special chars including ?
+        .replace(/\*/g, ".*"); // Replace * with .*
+      const regex = new RegExp(`^${regexPattern}$`);
+      return regex.test(processedPart);
     }
 
     // Handle path-based rules (e.g., "Read(**/*.env)")
