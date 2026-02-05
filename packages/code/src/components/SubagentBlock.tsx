@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { SubagentBlock as SubagentBlockType } from "wave-agent-sdk";
 import { useChat } from "../contexts/useChat.js";
+import { Markdown } from "./Markdown.js";
 
 interface SubagentBlockProps {
   block: SubagentBlockType;
@@ -59,6 +60,26 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
 
   const { tools: lastTwoTools, totalToolCount } = getLastTwoTools();
 
+  // Get the last text message content if completed
+  const getLastTextMessage = () => {
+    if (block.status !== "completed") return null;
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.role === "assistant") {
+        for (let j = message.blocks.length - 1; j >= 0; j--) {
+          const messageBlock = message.blocks[j];
+          if (messageBlock.type === "text" && messageBlock.content) {
+            return messageBlock.content;
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  const lastTextMessage = getLastTextMessage();
+
   return (
     <Box
       borderRight={false}
@@ -86,8 +107,15 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
         </Box>
       </Box>
 
+      {/* Last Text Message Section */}
+      {lastTextMessage && (
+        <Box marginTop={1}>
+          <Markdown>{lastTextMessage}</Markdown>
+        </Box>
+      )}
+
       {/* Tool Names Section - Vertical List */}
-      {lastTwoTools.length > 0 && (
+      {block.status !== "completed" && lastTwoTools.length > 0 && (
         <Box flexDirection="column" marginTop={1} gap={1}>
           {totalToolCount > 2 && (
             <Text color="gray" dimColor>

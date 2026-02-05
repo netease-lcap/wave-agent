@@ -98,10 +98,11 @@ As a user, I want subagent conversations to be displayed as expandable blocks wi
 **Acceptance Scenarios**:
 
 1. **Given** a subagent is triggered, **When** it processes a task, **Then** an expandable message block appears in the vertical message list with distinctive border and subagent name/icon header
-2. **Given** a subagent block is collapsed, **When** I view the message list, **Then** I see up to 2 most recent subagent messages in the preview
-3. **Given** a subagent has only 1 message, **When** the block is collapsed, **Then** I see that single message in the preview
-4. **Given** a subagent block is expanded, **When** I view it, **Then** I see all subagent messages in the conversation
-5. **Given** a subagent block is in the message list, **When** I compare it to regular messages, **Then** it is clearly distinguishable through visual indicators
+2. **Given** a subagent block is collapsed, **When** I view the message list, **Then** I see up to 2 most recent subagent tools being executed
+3. **Given** a subagent has only 1 tool execution, **When** the block is collapsed, **Then** I see that single tool in the preview
+4. **Given** a subagent task is completed, **When** the block is collapsed, **Then** I see the final text result rendered with markdown, and tool executions are hidden
+5. **Given** a subagent block is expanded, **When** I view it, **Then** I see all subagent messages in the conversation
+6. **Given** a subagent block is in the message list, **When** I compare it to regular messages, **Then** it is clearly distinguishable through visual indicators
 
 ---
 
@@ -131,7 +132,8 @@ As a user, I want subagent conversations to be displayed as expandable blocks wi
 - **FR-009**: System MUST support configurable models per subagent, with fallback to system default if not specified
 - **FR-010**: System MUST provide clear feedback about which subagent is handling a task
 - **FR-016**: System MUST display subagent messages as expandable blocks within the vertical message list
-- **FR-017**: System MUST show up to 2 most recent subagent messages when the subagent block is collapsed
+- **FR-017**: System MUST show up to 2 most recent subagent tool executions when the subagent block is collapsed and active
+- **FR-022**: System MUST show the final text result rendered with markdown when the subagent block is completed, and hide tool executions
 - **FR-018**: System MUST show all subagent messages when the subagent block is expanded
 - **FR-020**: System MUST display subagent message blocks with distinctive borders and subagent name/icon headers to differentiate from regular messages
 - **FR-011**: System MUST handle subagent task completion and return results to the main conversation context
