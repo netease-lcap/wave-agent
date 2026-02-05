@@ -51,7 +51,9 @@ export class OpenAIClient {
               >
             >;
           // Prevent unhandled rejection if only withResponse() is used
-          promise.catch(() => {});
+          promise.catch((e) => {
+            logger.error("Unhandled OpenAI promise rejection:", e);
+          });
           return promise;
         },
       },
@@ -129,10 +131,15 @@ export class OpenAIClient {
         const text = await response.text();
         try {
           errorBody = JSON.parse(text);
-        } catch {
+        } catch (e) {
+          logger.error("Failed to parse error response body as JSON", {
+            error: e,
+            text,
+          });
           errorBody = text;
         }
-      } catch {
+      } catch (e) {
+        logger.error("Failed to read error response text", { error: e });
         errorBody = {};
       }
 
@@ -209,8 +216,8 @@ export class OpenAIClient {
           try {
             const json = JSON.parse(data);
             yield json as ChatCompletionChunk;
-          } catch {
-            // Ignore parse errors for non-JSON lines if any
+          } catch (e) {
+            logger.error("Failed to parse stream chunk", { error: e, data });
           }
         }
       }
