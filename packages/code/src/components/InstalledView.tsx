@@ -45,6 +45,7 @@ export const InstalledView: React.FC = () => {
                 {isSelected ? "> " : "  "}
                 <Text bold>{plugin.name}</Text>
                 <Text dimColor> @{plugin.marketplace}</Text>
+                {plugin.scope && <Text color="gray"> ({plugin.scope})</Text>}
               </Text>
             </Box>
             {isSelected && (
