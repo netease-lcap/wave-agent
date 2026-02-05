@@ -3,23 +3,22 @@
 **Feature Branch**: `045-plugin-scope-management`  
 **Created**: 2026-01-13  
 **Status**: Implemented  
-**Input**: User description: "wave plugin should support disable enable, and each should support  -s, --scope <scope>  Installation scope: user, project, or local (default: \"user\"). plus, plugin install should support -s --scope too. after install, related settings.json should be added like :   \"enabledPlugins\": { \"review-plugin@my-plugins\": true }. refer to specs/044-local-plugin-marketplace to learn current spec"
+**Input**: User description: "wave plugin should support disable enable, and each should support  -s, --scope <scope>  Installation scope: user, project, or local (default: \"project\"). plus, plugin install should support -s --scope too. after install, related settings.json should be added like :   \"enabledPlugins\": { \"review-plugin@my-plugins\": true }. refer to specs/044-local-plugin-marketplace to learn current spec"
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Contextual Plugin Control (Priority: P1)
 
-As a developer working on multiple projects, I want to enable certain plugins globally for my user account but disable them or enable different ones for specific projects or directories.
+As a developer working on multiple projects, I want to install plugins for specific projects or directories.
 
 **Why this priority**: This is the core requirement. It allows users to manage their toolset based on the context of their work, preventing command clutter and ensuring project-specific tools are available where needed.
 
-**Independent Test**: Can be tested by installing a plugin, then using `wave plugin disable <plugin> -s project` in a specific directory and verifying that the plugin's commands are not available in that directory but remain available elsewhere.
+**Independent Test**: Can be tested by installing a plugin in a specific directory and verifying that the plugin's commands are available in that directory but not available elsewhere.
 
 **Acceptance Scenarios**:
 
-1. **Given** a plugin is installed globally, **When** I run `wave plugin disable <plugin> -s project` in a project directory, **Then** the plugin is disabled for that project and its commands are no longer available there.
-2. **Given** a plugin is installed but not enabled, **When** I run `wave plugin enable <plugin> -s local` in the current directory, **Then** the plugin is enabled only for the current directory.
-3. **Given** multiple scopes have conflicting settings for a plugin, **When** the system loads plugins, **Then** it MUST respect the priority: `local` > `project` > `user`.
+1. **Given** a plugin is installed in a project directory, **Then** its commands are available there.
+2. **Given** multiple scopes have conflicting settings for a plugin, **When** the system loads plugins, **Then** it MUST respect the priority: `local` > `project` > `user`.
 
 ---
 
@@ -34,7 +33,7 @@ As a user, I want to install a plugin and have it automatically enabled at a spe
 **Acceptance Scenarios**:
 
 1. **Given** a registered marketplace, **When** I run `wave plugin install <plugin>@<marketplace> -s user`, **Then** the plugin is installed and enabled in the user-level `settings.json`.
-2. **Given** a registered marketplace, **When** I run `wave plugin install <plugin>@<marketplace>` (without scope), **Then** it defaults to the `user` scope.
+2. **Given** a registered marketplace, **When** I run `wave plugin install <plugin>@<marketplace>` (without scope), **Then** it defaults to the `project` scope.
 
 ---
 
@@ -55,19 +54,16 @@ As a user, I want to install a plugin and have it automatically enabled at a spe
 
 ### Functional Requirements
 
-- **FR-001**: System MUST support `wave plugin enable <plugin-id>` command.
-- **FR-002**: System MUST support `wave plugin disable <plugin-id>` command.
-- **FR-003**: `enable`, `disable`, and `install` commands MUST support `-s, --scope <scope>` option.
-- **FR-004**: Supported scopes MUST be `user`, `project`, and `local`.
-- **FR-005**: Default scope for all commands MUST be `user`.
-- **FR-006**: `user` scope MUST refer to `~/.wave/settings.json`.
-- **FR-007**: `project` scope MUST refer to `.wave/settings.json` in the current project directory.
-- **FR-008**: `local` scope MUST refer to `.wave/settings.local.json` in the current project directory.
-- **FR-009**: Enabling a plugin MUST set its value to `true` in the `enabledPlugins` object of the target `settings.json`.
-- **FR-010**: Disabling a plugin MUST set its value to `false` in the `enabledPlugins` object of the target `settings.json`.
-- **FR-011**: `wave plugin install` MUST automatically add the plugin to `enabledPlugins` with a value of `true` in the specified scope.
-- **FR-012**: Plugin loading logic MUST aggregate `enabledPlugins` from all applicable scopes and apply them in priority order: `local` > `project` > `user`.
-- **FR-013**: If a plugin is marked `false` in a higher-priority scope, it MUST be disabled even if marked `true` in a lower-priority scope.
+- **FR-001**: `install` and `uninstall` commands MUST support `-s, --scope <scope>` option.
+- **FR-002**: Supported scopes MUST be `user`, `project`, and `local`.
+- **FR-003**: Default scope for all commands MUST be `project`.
+- **FR-004**: `user` scope MUST refer to `~/.wave/settings.json`.
+- **FR-005**: `project` scope MUST refer to `.wave/settings.json` in the current project directory.
+- **FR-006**: `local` scope MUST refer to `.wave/settings.local.json` in the current project directory.
+- **FR-007**: `wave plugin install` MUST automatically add the plugin to `enabledPlugins` with a value of `true` in the specified scope.
+- **FR-008**: `wave plugin uninstall` MUST remove the plugin from the `enabledPlugins` object in the specified scope.
+- **FR-009**: Plugin loading logic MUST aggregate `enabledPlugins` from all applicable scopes and apply them in priority order: `local` > `project` > `user`.
+- **FR-010**: If a plugin is marked `false` in a higher-priority scope (e.g. via manual config edit), it MUST be disabled even if marked `true` in a lower-priority scope.
 
 ### Key Entities *(include if feature involves data)*
 

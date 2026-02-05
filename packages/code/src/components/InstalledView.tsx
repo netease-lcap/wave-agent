@@ -18,11 +18,6 @@ export const InstalledView: React.FC = () => {
       if (plugin) {
         actions.uninstallPlugin(plugin.name, plugin.marketplace);
       }
-    } else if (input === "t") {
-      const plugin = installedPlugins[selectedIndex];
-      if (plugin) {
-        actions.togglePlugin(plugin.name, plugin.marketplace, !plugin.enabled);
-      }
     }
   });
 
@@ -49,14 +44,11 @@ export const InstalledView: React.FC = () => {
                 {isSelected ? "> " : "  "}
                 <Text bold>{plugin.name}</Text>
                 <Text dimColor> @{plugin.marketplace}</Text>
-                <Text color={plugin.enabled ? "green" : "red"}>
-                  {plugin.enabled ? " [Enabled]" : " [Disabled]"}
-                </Text>
               </Text>
             </Box>
             {isSelected && (
               <Box marginLeft={4}>
-                <Text dimColor>Press 't' to toggle, 'u' to uninstall</Text>
+                <Text dimColor>Press 'u' to uninstall</Text>
               </Box>
             )}
           </Box>

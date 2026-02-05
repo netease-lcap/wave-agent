@@ -150,62 +150,6 @@ export async function main() {
             },
           )
           .command(
-            "enable <plugin>",
-            "Enable a plugin in a specific scope",
-            (yargs) => {
-              return yargs
-                .positional("plugin", {
-                  describe: "Plugin ID (format: name@marketplace)",
-                  type: "string",
-                })
-                .option("scope", {
-                  alias: "s",
-                  describe: "Scope to enable the plugin in",
-                  choices: ["user", "project", "local"],
-                  type: "string",
-                });
-            },
-            async (argv) => {
-              const { enablePluginCommand } = await import(
-                "./commands/plugin/enable.js"
-              );
-              await enablePluginCommand(
-                argv as {
-                  plugin: string;
-                  scope?: Scope;
-                },
-              );
-            },
-          )
-          .command(
-            "disable <plugin>",
-            "Disable a plugin in a specific scope",
-            (yargs) => {
-              return yargs
-                .positional("plugin", {
-                  describe: "Plugin ID (format: name@marketplace)",
-                  type: "string",
-                })
-                .option("scope", {
-                  alias: "s",
-                  describe: "Scope to disable the plugin in",
-                  choices: ["user", "project", "local"],
-                  type: "string",
-                });
-            },
-            async (argv) => {
-              const { disablePluginCommand } = await import(
-                "./commands/plugin/disable.js"
-              );
-              await disablePluginCommand(
-                argv as {
-                  plugin: string;
-                  scope?: Scope;
-                },
-              );
-            },
-          )
-          .command(
             "uninstall <plugin>",
             "Uninstall a plugin",
             (yargs) => {

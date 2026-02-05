@@ -17,10 +17,10 @@ As a user, I want to browse available plugins from marketplaces and install them
 
 **Acceptance Scenarios**:
 
-1. **Given** the user is in the "Discover" section, **When** they select a plugin, **Then** they should see details and three installation options: User, Project, and Local. They can navigate these options using Up/Down arrows and press Enter to install.
-2. **Given** a plugin is selected, **When** "Install for you (user scope)" is chosen via arrow keys and Enter, **Then** the plugin is installed globally for the current user.
-3. **Given** a plugin is selected, **When** "Install for all collaborators (project scope)" is chosen via arrow keys and Enter, **Then** the plugin is added to the repository configuration.
-4. **Given** a plugin is selected, **When** "Install for you, in this repo only (local scope)" is chosen via arrow keys and Enter, **Then** the plugin is installed for the user but only active in the current repository.
+1. **Given** the user is in the "Discover" section, **When** they select a plugin, **Then** they should see details and three installation options: Project (default), User, and Local. They can navigate these options using Up/Down arrows and press Enter to install.
+2. **Given** a plugin is selected, **When** "Install for all collaborators (project scope)" is chosen (default), **Then** the plugin is downloaded and automatically enabled in the repository configuration.
+3. **Given** a plugin is selected, **When** "Install for you (user scope)" is chosen, **Then** the plugin is downloaded and automatically enabled globally for the current user.
+4. **Given** a plugin is selected, **When** "Install for you, in this repo only (local scope)" is chosen, **Then** the plugin is downloaded and automatically enabled for the user but only active in the current repository.
 
 ---
 
@@ -34,9 +34,8 @@ As a user, I want to see which plugins I have installed and be able to toggle th
 
 **Acceptance Scenarios**:
 
-1. **Given** the user is in the "Installed" section, **When** they select a plugin, **Then** they should see options to Enable, Disable, or Uninstall.
-2. **Given** an enabled plugin, **When** "Disable" is selected, **Then** the plugin remains installed but its functionality is deactivated.
-3. **Given** a plugin, **When** "Uninstall" is selected, **Then** the plugin is removed from the system/repository.
+1. **Given** the user is in the "Installed" section, **When** they select a plugin, **Then** they should see the option to Uninstall.
+2. **Given** a plugin, **When** "Uninstall" is selected, **Then** the plugin is removed from the current scope's configuration, but the files remain in the global cache to avoid breaking other projects.
 
 ---
 
@@ -70,7 +69,7 @@ As a user, I want to add and manage marketplace sources so that I can access plu
 - **FR-003**: System MUST support three installation scopes: User (global), Project (shared via repo), and Local (user-specific to repo).
 - **FR-004**: System MUST allow adding marketplaces via GitHub shorthand (`owner/repo`), SSH URLs, and local filesystem paths.
 - **FR-005**: System MUST persist marketplace configurations and plugin installation states.
-- **FR-006**: System MUST provide visual feedback for plugin status (Enabled/Disabled/Installing).
+- **FR-006**: System MUST provide visual feedback for plugin status (Installing/Installed).
 - **FR-007**: System MUST allow updating marketplace metadata to discover new or updated plugins.
 - **FR-008**: System MUST allow users to remove a marketplace from their configuration.
 
@@ -84,4 +83,4 @@ As a user, I want to add and manage marketplace sources so that I can access plu
 
 - **A-001**: The underlying plugin installation logic (downloading, file placement) is handled by existing SDK services; this feature focuses on the UI and orchestration.
 - **A-002**: "Project scope" installation involves modifying a file that is typically committed to version control (e.g., `.wave/config.json`).
-- **A-003**: The "Discover" list aggregates plugins from all configured marketplaces.
+- **A-003**: The "Discover" list aggregates plugins from all configured marketplaces that are NOT currently installed.

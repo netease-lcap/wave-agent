@@ -3,8 +3,8 @@ import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
 
 const SCOPES = [
-  { id: "user", label: "Install for you (user scope)" },
   { id: "project", label: "Install for all collaborators (project scope)" },
+  { id: "user", label: "Install for you (user scope)" },
   { id: "local", label: "Install for you, in this repo only (local scope)" },
 ] as const;
 
