@@ -22,7 +22,7 @@ To allow any command starting with a prefix, use `:*` at the end:
 ```json
 "permissions": {
   "allow": [
-    "Bash(git commit:*)"
+    "Bash(git commit *)"
   ]
 }
 ```

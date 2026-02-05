@@ -97,8 +97,8 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 
 **Acceptance Scenarios**:
 
-1. **Given** a slash command defined with `allowed-tools: Bash(git commit:*)`, **When** the user triggers this command and the AI calls `Bash(git commit -m "test")`, **Then** the tool should execute immediately without a confirmation prompt because it matches the prefix.
-2. **Given** a slash command defined with `allowed-tools: Bash(git commit:*)`, **When** the user triggers this command and the AI calls `Bash(git commit -m "test" && rm -rf /)`, **Then** the tool MUST be blocked or require confirmation because the second part of the command chain is not allowed.
+1. **Given** a slash command defined with `allowed-tools: Bash(git commit *)`, **When** the user triggers this command and the AI calls `Bash(git commit -m "test")`, **Then** the tool should execute immediately without a confirmation prompt because it matches the pattern.
+2. **Given** a slash command defined with `allowed-tools: Bash(git commit *)`, **When** the user triggers this command and the AI calls `Bash(git commit -m "test" && rm -rf /)`, **Then** the tool MUST be blocked or require confirmation because the second part of the command chain is not allowed.
 3. **Given** a slash command with `allowed-tools`, **When** the AI calls a tool NOT in the list (e.g., `Write`), **Then** the system MUST prompt the user for confirmation as usual (unless it's already allowed in `settings.json`).
 4. **Given** an active slash command session with `allowed-tools`, **When** the AI finishes its task and the response cycle ends, **Then** all subsequent tool executions MUST require manual confirmation.
 
@@ -155,7 +155,7 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **CustomSlashCommandConfig**: Configuration options including AI model preference and custom description
 - **SlashCommandManager**: Central orchestrator for command registration, discovery, execution, and lifecycle management
 - **CommandSelector**: User interface component for command discovery and selection with search functionality
-- **Allowed Tool Pattern**: A string representing a permitted tool and its allowed argument patterns (e.g., `Bash(git status:*)`).
+- **Allowed Tool Pattern**: A string representing a permitted tool and its allowed argument patterns (e.g., `Bash(git status *)`).
 - **Privileged Session**: The stateful context that tracks whether auto-approval is currently active and which tools are allowed.
 - **Command Path**: The hierarchical path from `.wave/commands/` to the markdown file, converted to colon-separated syntax for command invocation (e.g., `openspec:apply`).
 

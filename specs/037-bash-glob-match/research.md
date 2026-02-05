@@ -25,11 +25,11 @@ A heuristic-based approach is preferred over a full bash parser because it's sim
 ## Decision: Storage Format in `settings.local.json`
 
 ### Rationale
-The existing `PermissionManager` already supports a prefix matching syntax: `Bash(prefix:*)`. Leveraging this minimizes changes to the core permission checking logic.
+The existing `PermissionManager` already supports a glob matching syntax: `Bash(pattern*)`. Leveraging this minimizes changes to the core permission checking logic.
 
 ### Format
 - Exact match: `Bash(npm install lodash)`
-- Prefix match: `Bash(npm install:*)`
+- Glob match: `Bash(npm install*)`
 
 ## Decision: UI Integration in `Confirmation.tsx`
 

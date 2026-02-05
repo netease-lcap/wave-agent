@@ -29,7 +29,7 @@ For each rule in `allowedRules` or `temporaryRules`:
    - Perform an exact match or prefix match against the rule.
 
 ### Example
-Rule: `Bash(git commit:*)`
+Rule: `Bash(git commit *)`
 Action: `Bash(git commit -m "feat: add prefix matching")`
 1. Rule ends with `:*`.
 2. Prefix is `Bash(git commit`.

@@ -70,14 +70,14 @@ description: "Task list for implementing permissions.deny support"
 ### Tests for User Story 2
 
 - [X] T012 [P] [US2] Add unit tests for path-based denial (e.g., `Read(**/*.env)`) in `packages/agent-sdk/tests/managers/permissionManager.test.ts`
-- [X] T013 [P] [US2] Add unit tests for bash command prefix denial (e.g., `Bash(rm:*)`) in `packages/agent-sdk/tests/managers/permissionManager.test.ts`
+- [X] T013 [P] [US2] Add unit tests for bash command glob denial (e.g., `Bash(rm *)`) in `packages/agent-sdk/tests/managers/permissionManager.test.ts`
 
 ### Implementation for User Story 2
 
 - [X] T014 [US2] Update `matchesRule` to handle `ToolName(pattern)` format and extract paths from `toolInput` in `packages/agent-sdk/src/managers/permissionManager.ts`
 - [X] T015 [US2] Update `Read` tool to call `checkPermission` in `packages/agent-sdk/src/tools/readTool.ts`
 - [X] T016 [US2] Update `LS` tool to call `checkPermission` in `packages/agent-sdk/src/tools/lsTool.ts`
-- [X] T017 [US2] Ensure `matchesRule` correctly handles `Bash(prefix:*)` rules in `packages/agent-sdk/src/managers/permissionManager.ts`
+- [X] T017 [US2] Ensure `matchesRule` correctly handles `Bash(pattern*)` rules in `packages/agent-sdk/src/managers/permissionManager.ts`
 
 **Checkpoint**: User Story 2 is functional. Granular path and command denial is supported.
 

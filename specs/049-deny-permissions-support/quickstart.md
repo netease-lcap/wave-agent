@@ -19,7 +19,7 @@ To prevent the agent from using `rm`:
 ```json
 {
   "permissions": {
-    "deny": ["Bash(rm:*)"]
+    "deny": ["Bash(rm *)"]
   }
 }
 ```
@@ -49,7 +49,7 @@ If you have both allow and deny rules, the deny rule wins:
 {
   "permissions": {
     "allow": ["Bash"],
-    "deny": ["Bash(rm:*)"]
+    "deny": ["Bash(rm *)"]
   }
 }
 ```

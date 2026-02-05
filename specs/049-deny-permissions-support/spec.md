@@ -19,7 +19,7 @@ As a security-conscious user, I want to explicitly forbid the agent from using c
 
 1. **Given** `permissions.deny` contains `["Bash"]`, **When** the agent attempts to run a bash command, **Then** the system MUST block the execution and inform the user/agent that the tool is explicitly denied.
 2. **Given** `permissions.deny` is empty or does not contain `Bash`, **When** the agent attempts to run a bash command (and it's allowed by other rules), **Then** the system SHOULD allow the execution.
-3. **Given** `permissions.deny` contains `["Bash(rm:*)"]`, **When** the agent attempts to run `rm -rf /`, **Then** the system MUST block the execution.
+3. **Given** `permissions.deny` contains `["Bash(rm *)"]`, **When** the agent attempts to run `rm -rf /`, **Then** the system MUST block the execution.
 
 ---
 
@@ -36,7 +36,7 @@ As a user with sensitive data, I want to prevent the agent from accessing specif
 1. **Given** `permissions.deny` contains `["Read(**/.env)"]`, **When** the agent attempts to read a file named `.env` in any directory using the `Read` tool, **Then** the system MUST deny the request.
 2. **Given** `permissions.deny` contains `["Write(/etc/**)"]`, **When** the agent attempts to write to a file in `/etc/` using the `Write` tool, **Then** the system MUST deny the request.
 3. **Given** `permissions.deny` contains `["Delete(/etc/**)"]`, **When** the agent attempts to delete a file in `/etc/`, **Then** the system MUST deny the request.
-4. **Given** `permissions.deny` contains `["Bash(ls /etc:*)"]`, **When** the agent attempts to run `ls /etc/passwd`, **Then** the system MUST deny the request.
+4. **Given** `permissions.deny` contains `["Bash(ls /etc*)"]`, **When** the agent attempts to run `ls /etc/passwd`, **Then** the system MUST deny the request.
 
 ---
 
@@ -65,7 +65,7 @@ As a user, I want to be certain that if I explicitly deny a permission, it canno
 ### Functional Requirements
 
 - **FR-001**: System MUST support a `permissions.deny` field in `settings.json`.
-- **FR-002**: `permissions.deny` MUST support the same rule types and formats as `permissions.allow` (e.g., tool names, `Bash(cmd)`, `Bash(prefix:*)`).
+- **FR-002**: `permissions.deny` MUST support the same rule types and formats as `permissions.allow` (e.g., tool names, `Bash(cmd)`, `Bash(pattern*)`).
 - **FR-003**: System MUST support path-based permission rules in the format `ToolName(path_pattern)` for both `allow` and `deny` lists. This MUST apply to tools that take a single file or directory path as a primary input (e.g., `Read`, `Write`, `Edit`, `MultiEdit`, `Delete`, `LS`). Tools like `Glob` and `Grep` are excluded from this path-based rule format as their path parameter is optional and they often operate on patterns.
 - **FR-004**: If a permission request matches any rule in `permissions.deny`, the system MUST deny the request immediately, even if the tool is not in the `RESTRICTED_TOOLS` list and even if it would otherwise be allowed by `permissions.allow` or auto-accept logic.
 - **FR-005**: `permissions.deny` MUST take precedence over `permissions.allow`. If a request matches both an allow rule and a deny rule, it MUST be denied.

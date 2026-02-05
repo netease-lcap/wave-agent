@@ -113,7 +113,7 @@ describe("PermissionManager", () => {
       });
 
       it("should allow tool if it does not match any denied rule", async () => {
-        permissionManager.updateDeniedRules(["Bash(rm:*)"]);
+        permissionManager.updateDeniedRules(["Bash(rm *)"]);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",

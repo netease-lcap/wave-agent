@@ -20,7 +20,7 @@ The next time Wave wants to run a similar command (e.g., `npm install express`):
 To view or remove trusted prefixes:
 1. Open `.wave/settings.local.json` in your project directory.
 2. Look for the `permissions.allow` array.
-3. You can manually remove entries like `Bash(npm install:*)`.
+3. You can manually remove entries like `Bash(npm install*)`.
 
 ## Security Note
 - Commands like `rm`, `sudo`, and `mv` are blacklisted from prefix matching to prevent accidental data loss or security breaches.

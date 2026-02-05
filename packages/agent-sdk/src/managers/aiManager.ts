@@ -277,7 +277,7 @@ export class AIManager {
     options: {
       recursionDepth?: number;
       model?: string;
-      /** Rules for automatic tool approval (e.g., "Bash(git status:*)") */
+      /** Rules for automatic tool approval (e.g., "Bash(git status*)") */
       allowedRules?: string[];
       /** List of tools available to the AI (e.g., ["Bash", "Read"]) */
       tools?: string[];
