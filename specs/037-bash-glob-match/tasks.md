@@ -21,7 +21,7 @@
 **Independent Test**: Run `npm install lodash`, select "Yes, and don't ask again", then run `npm install express` and verify it executes without prompt.
 
 - [x] T006 [US1] Update `Agent` class in `packages/agent-sdk/src/agent.ts` to handle prefix-based permission rules
-- [x] T007 [US1] Verify `PermissionManager.isAllowedByRule` correctly handles `Bash(prefix:*)` patterns
+- [x] T007 [US1] Verify `PermissionManager.isAllowedByRule` correctly handles `Bash(pattern*)` patterns
 - [x] T008 [US1] Add integration test for prefix matching in `packages/agent-sdk/tests/agent.prefix.test.ts`
 
 ## Phase 4: User Story 2 - Reviewing the Smart Prefix (Priority: P2)

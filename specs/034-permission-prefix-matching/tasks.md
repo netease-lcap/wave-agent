@@ -34,7 +34,7 @@
 
 **Goal**: Allow a group of related commands by specifying a common prefix using `:*` suffix.
 
-**Independent Test**: Add `Bash(git commit:*)` to `permissions.allow` and verify `Bash(git commit -m "msg")` is allowed while `Bash(git push)` is denied.
+**Independent Test**: Add `Bash(git commit *)` to `permissions.allow` and verify `Bash(git commit -m "msg")` is allowed while `Bash(git push)` is denied.
 
 ### Implementation for User Story 1
 

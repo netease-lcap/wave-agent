@@ -8,10 +8,10 @@ Represents a command or prefix that the user has authorized for automatic execut
 **Attributes:**
 - `pattern`: The string pattern to match.
   - Format for exact match: `Bash(command)`
-  - Format for prefix match: `Bash(prefix:*)`
+  - Format for glob match: `Bash(pattern*)`
 - `type`: Derived from the pattern.
-  - `EXACT`: If pattern does not end with `:*)`.
-  - `PREFIX`: If pattern ends with `:*)`.
+  - `EXACT`: If pattern does not include `*`.
+  - `GLOB`: If pattern includes `*`.
 
 **Validation Rules:**
 - Must start with `Bash(`.
@@ -27,8 +27,8 @@ Stored in `settings.local.json` under `permissions.allow`.
   "permissions": {
     "allow": [
       "Bash(ls)",
-      "Bash(npm install:*)",
-      "Bash(git commit:*)"
+      "Bash(npm install*)",
+      "Bash(git commit*)"
     ]
   }
 }

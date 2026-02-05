@@ -15,7 +15,7 @@ Extracts a smart prefix from a bash command.
 *Updated* to support prefix rules.
 
 **Returns:**
-- Array of rules, potentially including `Bash(prefix:*)`.
+- Array of rules, potentially including `Bash(pattern*)`.
 
 ## Confirmation Component (code)
 

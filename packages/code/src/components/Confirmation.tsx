@@ -229,7 +229,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       } else if (state.selectedOption === "auto") {
         if (toolName === BASH_TOOL_NAME) {
           const rule = suggestedPrefix
-            ? `Bash(${suggestedPrefix}:*)`
+            ? `Bash(${suggestedPrefix}*)`
             : `Bash(${toolInput?.command})`;
           onDecision({
             behavior: "allow",

@@ -105,7 +105,7 @@ Allow specific tools to run without asking permission:
 description: Auto-check git status
 allowed-tools:
   - Bash(git status)
-  - Bash(git diff:*)
+  - Bash(git diff *)
 ---
 
 Check git status and show what changed.

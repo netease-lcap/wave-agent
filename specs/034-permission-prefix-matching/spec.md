@@ -1,29 +1,29 @@
-# Feature Specification: Permission Prefix Matching
+# Feature Specification: Permission Glob Matching
 
-**Feature Branch**: `034-permission-prefix-matching`  
+**Feature Branch**: `034-permission-glob-matching`  
 **Created**: 2025-12-26  
 **Status**: Implemented  
-**Input**: User description: "permissions.allow array should support prefix matching, like Bash(git commit:*), not regex, not wildcard, :* only works at the end of a pattern to match any continuation"
+**Input**: User description: "permissions.allow array should support glob matching with *, wildcards can appear at any position in the command"
 
-- [x] US1: Prefix Matching for Commands
+- [x] US1: Glob Matching for Commands
 - [x] US2: Exact Matching
-- [x] US3: Strict Prefix Marker
+- [x] US3: Wildcard Support
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Prefix Matching for Commands (Priority: P1)
+### User Story 1 - Glob Matching for Commands (Priority: P1)
 
-As a user, I want to allow a group of related commands by specifying a common prefix, so that I don't have to list every single variation of a command in my permissions.
+As a user, I want to allow a group of related commands by specifying a common pattern with wildcards, so that I don't have to list every single variation of a command in my permissions.
 
 **Why this priority**: This is the core requirement of the feature. It enables more flexible and maintainable permission configurations.
 
-**Independent Test**: Can be tested by adding a pattern like `Bash(git commit:*)` to `permissions.allow` and verifying that `Bash(git commit -m "feat: add something")` is allowed while `Bash(git push)` is denied.
+**Independent Test**: Can be tested by adding a pattern like `Bash(git commit *)` to `permissions.allow` and verifying that `Bash(git commit -m "feat: add something")` is allowed while `Bash(git push)` is denied.
 
 **Acceptance Scenarios**:
 
-1. **Given** `permissions.allow` contains `Bash(git commit:*)`, **When** the agent attempts to run `Bash(git commit -m "initial commit")`, **Then** the action is allowed.
-2. **Given** `permissions.allow` contains `Bash(git commit:*)`, **When** the agent attempts to run `Bash(git commit --amend)`, **Then** the action is allowed.
-3. **Given** `permissions.allow` contains `Bash(git commit:*)`, **When** the agent attempts to run `Bash(git status)`, **Then** the action is denied.
+1. **Given** `permissions.allow` contains `Bash(git commit *)`, **When** the agent attempts to run `Bash(git commit -m "initial commit")`, **Then** the action is allowed.
+2. **Given** `permissions.allow` contains `Bash(git commit *)`, **When** the agent attempts to run `Bash(git commit --amend)`, **Then** the action is allowed.
+3. **Given** `permissions.allow` contains `Bash(git commit *)`, **When** the agent attempts to run `Bash(git status)`, **Then** the action is denied.
 
 ---
 
@@ -42,39 +42,38 @@ As a user, I want to ensure that exact matching still works as expected, so that
 
 ---
 
-### User Story 3 - Strict Prefix Marker (Priority: P3)
+### User Story 3 - Wildcard Support (Priority: P3)
 
-As a user, I want the `:*` marker to only work at the end of a pattern, so that I don't accidentally allow unintended commands through middle-of-string wildcards.
+As a user, I want the `*` wildcard to work at any position in a pattern, so that I can allow commands with variable parts in the middle.
 
-**Why this priority**: Security and predictability. Prevents misinterpretation of the `:*` sequence if it appears elsewhere.
+**Why this priority**: Flexibility and power.
 
-**Independent Test**: Can be tested by adding `Bash(echo :* test)` and verifying it only matches that exact string, not as a wildcard.
+**Independent Test**: Can be tested by adding `Bash(git * main)` and verifying it matches `git push origin main` and `git pull origin main`.
 
 **Acceptance Scenarios**:
 
-1. **Given** `permissions.allow` contains `Bash(echo :* test)`, **When** the agent attempts to run `Bash(echo hello test)`, **Then** the action is denied.
-2. **Given** `permissions.allow` contains `Bash(echo :* test)`, **When** the agent attempts to run `Bash(echo :* test)`, **Then** the action is allowed.
+1. **Given** `permissions.allow` contains `Bash(git * main)`, **When** the agent attempts to run `Bash(git push origin main)`, **Then** the action is allowed.
+2. **Given** `permissions.allow` contains `Bash(git * main)`, **When** the agent attempts to run `Bash(git pull origin main)`, **Then** the action is allowed.
 
 ---
 
 ### Edge Cases
 
-- **Empty Prefix**: What happens if the pattern is just `:*`? (Assumption: It should match everything starting with an empty string, effectively allowing all commands if that's the whole pattern, but usually it would be within a tool call like `Bash(:*)`).
-- **Multiple Colons**: How does `Bash(git::*)` behave? (Assumption: It matches anything starting with `Bash(git::`).
-- **No Colon**: Does `git*` work? (Requirement: No, only `:*` at the end works for prefix matching).
+- **Empty Pattern**: What happens if the pattern is just `*`? (Assumption: It should match everything, effectively allowing all commands if that's the whole pattern, but usually it would be within a tool call like `Bash(*)`).
+- **Multiple Wildcards**: How does `Bash(git * commit * -m *)` behave? (Assumption: It matches any git command that has commit and -m in that order).
+- **No Wildcard**: Does `git commit` work? (Requirement: Yes, it matches exactly).
 
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
 
 - **FR-001**: System MUST support exact string matching for entries in `permissions.allow`.
-- **FR-002**: System MUST support prefix matching if an entry in `permissions.allow` ends with the literal sequence `:*`.
-- **FR-003**: When an entry ends with `:*`, the system MUST allow any command that starts with the string preceding the `:*`.
-- **FR-004**: System MUST NOT support regex or any other wildcard characters (e.g., `*`, `?`, `[]`) unless they are part of the literal string being matched.
-- **FR-005**: The `:*` sequence MUST only be treated as a prefix match indicator when it occurs at the very end of the pattern string.
-- **FR-006**: If `:*` appears anywhere else in the pattern, it MUST be treated as a literal string.
+- **FR-002**: System MUST support glob matching if an entry in `permissions.allow` contains `*`.
+- **FR-003**: When an entry contains `*`, the system MUST allow any command that matches the glob pattern.
+- **FR-004**: System MUST support wildcards at any position in the pattern.
+- **FR-005**: The legacy `:*` suffix syntax is NO LONGER supported as a special marker and will be treated as literal characters unless it matches a glob.
 
 ### Key Entities *(include if feature involves data)*
 
-- **Permission Pattern**: A string defined in the `permissions.allow` configuration. It can be an "Exact Pattern" or a "Prefix Pattern" (if it ends in `:*`).
+- **Permission Pattern**: A string defined in the `permissions.allow` configuration. It can be an "Exact Pattern" or a "Glob Pattern" (if it contains `*`).
 - **Action String**: The string representation of the action being performed (e.g., `Bash(git commit -m "msg")`), which is checked against the Permission Patterns.

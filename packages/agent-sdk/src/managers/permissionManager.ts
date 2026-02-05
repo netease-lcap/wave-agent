@@ -558,7 +558,7 @@ export class PermissionManager {
       return true;
     }
 
-    // 2. Tool with pattern match (e.g., "Bash(rm:*)", "Read(**/*.env)")
+    // 2. Tool with pattern match (e.g., "Bash(rm *)", "Read(**/*.env)")
     const match = rule.match(/^(\w+)\((.*)\)$/);
     if (!match) {
       return false;

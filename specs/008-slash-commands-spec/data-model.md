@@ -66,7 +66,7 @@
 **Fields**:
 - `model?: string` - Preferred AI model for command processing
 - `description?: string` - Custom description overriding auto-generated text
-- `allowedTools?: string[]` - List of tool permission rules (e.g., `Bash(git status:*)`)
+- `allowedTools?: string[]` - List of tool permission rules (e.g., `Bash(git status *)`)
 
 **Validation Rules**:
 - `model` must be supported by AI provider
