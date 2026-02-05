@@ -43,6 +43,13 @@ jobs:
         run: pnpm lint
       
       - name: Test
-        run: pnpm test
+        run: pnpm test --coverage
         env:
           WAVE_BASE_URL: https://mock-api.test.com
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: .
+          fail_ci_if_error: true

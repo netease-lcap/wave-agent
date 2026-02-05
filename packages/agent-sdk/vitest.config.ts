@@ -19,6 +19,17 @@ export default defineConfig(() => {
       // Enable retry in CI environment: failed tests will retry up to 2 times
       retry: isCI ? 2 : 0,
       reporters: ["dot"],
+      coverage: {
+        provider: "v8",
+        reporter: ["text", "lcov"],
+        thresholds: {
+          lines: 80,
+          functions: 80,
+          branches: 80,
+          statements: 80,
+          autoUpdate: true,
+        },
+      },
       env: {
         WAVE_API_KEY: "test-token",
         WAVE_BASE_URL: "http://localhost:8080",
