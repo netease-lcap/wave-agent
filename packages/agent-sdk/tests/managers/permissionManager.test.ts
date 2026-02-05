@@ -729,6 +729,84 @@ describe("PermissionManager", () => {
   });
 
   describe("isRestrictedTool method", () => {
+    describe("Bash Rule Matching (Regex-based)", () => {
+      it("should match commands with slashes using *", async () => {
+        permissionManager.updateAllowedRules(["Bash(npm run test*)"]);
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command: "npm run test:demo -- tests/demo/plugins-ui.demo.ts",
+          },
+        };
+        expect(
+          (await permissionManager.checkPermission(context)).behavior,
+        ).toBe("allow");
+      });
+
+      it("should match commands with multiple wildcards", async () => {
+        permissionManager.updateAllowedRules(["Bash(git * commit * -m *)"]);
+        // The command "git commit -a -m 'feat: something'" matches "git * commit * -m *"
+        // Wait, "git commit" starts with "git ", then "commit" ...
+        // Actually "git * commit" expects something between "git" and "commit".
+        // Let's use a pattern that definitely matches or fix the command.
+        const context2: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command: "git --no-pager commit -a -m 'feat: something'",
+          },
+        };
+        expect(
+          (await permissionManager.checkPermission(context2)).behavior,
+        ).toBe("allow");
+      });
+
+      it("should escape regex special characters in the pattern", async () => {
+        permissionManager.updateAllowedRules(["Bash(node ./script.js +x)"]);
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "node ./script.js +x" },
+        };
+        expect(
+          (await permissionManager.checkPermission(context)).behavior,
+        ).toBe("allow");
+      });
+
+      it("should treat question marks as literal characters", async () => {
+        permissionManager.updateAllowedRules(["Bash(cat file?.txt)"]);
+        const context1: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "cat fileA.txt" },
+        };
+        const context2: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "cat file?.txt" },
+        };
+        expect(
+          (await permissionManager.checkPermission(context1)).behavior,
+        ).toBe("deny");
+        expect(
+          (await permissionManager.checkPermission(context2)).behavior,
+        ).toBe("allow");
+      });
+
+      it("should match exactly from start to end", async () => {
+        permissionManager.updateAllowedRules(["Bash(ls *)"]);
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "sudo ls /" },
+        };
+        expect(
+          (await permissionManager.checkPermission(context)).behavior,
+        ).toBe("deny");
+      });
+    });
+
     it("should return true for restricted tools", () => {
       for (const toolName of RESTRICTED_TOOLS) {
         const result = permissionManager.isRestrictedTool(toolName);
