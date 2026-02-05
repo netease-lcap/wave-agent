@@ -69,10 +69,14 @@ export function usePluginManager(): PluginManagerContextType {
       ]);
 
       setMarketplaces(mks);
-      const allInstalledWithEnabled = installed.plugins.map((p) => ({
-        ...p,
-        enabled: !!enabledMap[`${p.name}@${p.marketplace}`],
-      }));
+      const allInstalledWithEnabled = installed.plugins.map((p) => {
+        const pluginId = `${p.name}@${p.marketplace}`;
+        return {
+          ...p,
+          enabled: !!enabledMap[pluginId],
+          scope: pluginScopeManager.findPluginScope(pluginId) || undefined,
+        };
+      });
 
       // Only show enabled plugins in the "Installed" view
       setInstalledPlugins(allInstalledWithEnabled.filter((p) => p.enabled));

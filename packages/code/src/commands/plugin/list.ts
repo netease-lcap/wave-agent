@@ -1,9 +1,23 @@
-import { MarketplaceService, ConfigurationService } from "wave-agent-sdk";
+import {
+  MarketplaceService,
+  ConfigurationService,
+  PluginScopeManager,
+  PluginManager,
+} from "wave-agent-sdk";
 
 export async function listPluginsCommand() {
-  const marketplaceService = new MarketplaceService();
   const configurationService = new ConfigurationService();
+  const marketplaceService = new MarketplaceService();
   const workdir = process.cwd();
+  const pluginManager = new PluginManager({
+    workdir,
+    configurationService,
+  });
+  const pluginScopeManager = new PluginScopeManager({
+    workdir,
+    configurationService,
+    pluginManager,
+  });
 
   try {
     const installedPlugins = await marketplaceService.getInstalledPlugins();
@@ -16,6 +30,7 @@ export async function listPluginsCommand() {
       marketplace: string;
       installed: boolean;
       version?: string;
+      scope?: string;
     }[] = [];
 
     for (const m of marketplaces) {
@@ -24,6 +39,7 @@ export async function listPluginsCommand() {
           marketplaceService.getMarketplacePath(m),
         );
         manifest.plugins.forEach((p) => {
+          const pluginId = `${p.name}@${m.name}`;
           const installed = installedPlugins.plugins.find(
             (ip) => ip.name === p.name && ip.marketplace === m.name,
           );
@@ -32,6 +48,7 @@ export async function listPluginsCommand() {
             marketplace: m.name,
             installed: !!installed,
             version: installed?.version,
+            scope: pluginScopeManager.findPluginScope(pluginId) || undefined,
           });
         });
       } catch {
@@ -52,7 +69,8 @@ export async function listPluginsCommand() {
             : "disabled"
           : "not installed";
         const versionStr = p.version ? ` v${p.version}` : "";
-        console.log(`- ${pluginId}${versionStr} [${status}]`);
+        const scopeStr = p.scope ? ` (${p.scope})` : "";
+        console.log(`- ${pluginId}${versionStr}${scopeStr} [${status}]`);
       });
     }
     process.exit(0);

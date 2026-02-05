@@ -1,3 +1,5 @@
+import { Scope } from "./configuration.js";
+
 export interface MarketplaceOwner {
   name: string;
   email?: string;
@@ -46,6 +48,7 @@ export interface InstalledPlugin {
   marketplace: string;
   version: string;
   cachePath: string;
+  scope?: Scope;
 }
 
 export interface InstalledPluginsRegistry {
