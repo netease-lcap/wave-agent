@@ -91,12 +91,20 @@ describe("PluginManager Integration", () => {
   });
 
   it("manages installed plugins", async () => {
+    let currentView = "INSTALLED";
+    const setView = vi.fn((view) => {
+      currentView = view;
+    });
+
     (
-      usePluginManager as unknown as { mockReturnValue: (val: unknown) => void }
-    ).mockReturnValue({
+      usePluginManager as unknown as {
+        mockImplementation: (val: unknown) => void;
+      }
+    ).mockImplementation(() => ({
       state: {
-        currentView: "INSTALLED",
-        selectedId: null,
+        currentView,
+        selectedId:
+          currentView === "PLUGIN_DETAIL" ? "installed-plugin@official" : null,
         isLoading: false,
         error: null,
       },
@@ -105,15 +113,24 @@ describe("PluginManager Integration", () => {
         { name: "installed-plugin", marketplace: "official", enabled: true },
       ],
       discoverablePlugins: [],
-      actions: mockActions,
-    });
+      actions: { ...mockActions, setView },
+    }));
 
-    const { stdin, lastFrame } = render(<PluginManagerShell />);
+    const { stdin, lastFrame, rerender } = render(<PluginManagerShell />);
 
     expect(stripAnsiColors(lastFrame() || "")).toContain("installed-plugin");
 
-    // Press 'u' to uninstall
-    stdin.write("u");
+    // Press Enter to go to detail
+    stdin.write("\r");
+    expect(setView).toHaveBeenCalledWith("PLUGIN_DETAIL");
+
+    // Rerender with new state
+    rerender(<PluginManagerShell />);
+
+    expect(stripAnsiColors(lastFrame() || "")).toContain("Plugin Actions:");
+
+    // Press Enter to uninstall (first action)
+    stdin.write("\r");
     expect(mockActions.uninstallPlugin).toHaveBeenCalledWith(
       "installed-plugin",
       "official",
