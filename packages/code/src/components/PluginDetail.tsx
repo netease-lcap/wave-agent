@@ -27,6 +27,8 @@ export const PluginDetail: React.FC = () => {
     { id: "update", label: "Update plugin (reinstall)" },
   ] as const;
 
+  const isInstalledAndEnabled = plugin && "enabled" in plugin && plugin.enabled;
+
   useInput((input, key) => {
     if (key.escape) {
       const isFromDiscover = discoverablePlugins.find(
@@ -34,10 +36,7 @@ export const PluginDetail: React.FC = () => {
       );
       actions.setView(isFromDiscover ? "DISCOVER" : "INSTALLED");
     } else if (key.upArrow) {
-      if (
-        (plugin && "installed" in plugin && plugin.installed) ||
-        (plugin && "enabled" in plugin && plugin.enabled !== undefined)
-      ) {
+      if (isInstalledAndEnabled) {
         setSelectedActionIndex((prev) =>
           prev > 0 ? prev - 1 : INSTALLED_ACTIONS.length - 1,
         );
@@ -47,10 +46,7 @@ export const PluginDetail: React.FC = () => {
         );
       }
     } else if (key.downArrow) {
-      if (
-        (plugin && "installed" in plugin && plugin.installed) ||
-        (plugin && "enabled" in plugin && plugin.enabled !== undefined)
-      ) {
+      if (isInstalledAndEnabled) {
         setSelectedActionIndex((prev) =>
           prev < INSTALLED_ACTIONS.length - 1 ? prev + 1 : 0,
         );
@@ -60,10 +56,7 @@ export const PluginDetail: React.FC = () => {
         );
       }
     } else if (key.return && plugin) {
-      if (
-        ("installed" in plugin && plugin.installed) ||
-        ("enabled" in plugin && plugin.enabled !== undefined)
-      ) {
+      if (isInstalledAndEnabled) {
         const action = INSTALLED_ACTIONS[selectedActionIndex].id;
         if (action === "uninstall") {
           actions.uninstallPlugin(plugin.name, plugin.marketplace);
@@ -112,8 +105,7 @@ export const PluginDetail: React.FC = () => {
       )}
 
       <Box marginTop={1} flexDirection="column">
-        {("installed" in plugin && plugin.installed) ||
-        ("enabled" in plugin && plugin.enabled !== undefined) ? (
+        {isInstalledAndEnabled ? (
           <Box flexDirection="column">
             <Text bold>Plugin Actions:</Text>
             {INSTALLED_ACTIONS.map((action, index) => (
