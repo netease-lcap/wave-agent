@@ -1,12 +1,12 @@
-# Implementation Plan: Smart Prefix Match for Trusted Bash Commands
+# Implementation Plan: Glob Pattern Match for Trusted Bash Commands
 
-**Branch**: `037-bash-smart-prefix-match` | **Date**: 2025-12-27 | **Spec**: [/specs/037-bash-smart-prefix-match/spec.md](/home/liuyiqi/personal-projects/wave-agent/specs/037-bash-smart-prefix-match/spec.md)
+**Branch**: `037-bash-glob-match` | **Date**: 2025-12-27 | **Spec**: [/specs/037-bash-glob-match/spec.md](/home/liuyiqi/personal-projects/wave-agent/specs/037-bash-glob-match/spec.md)
 
-**Input**: Feature specification from `/specs/037-bash-smart-prefix-match/spec.md`
+**Input**: Feature specification from `/specs/037-bash-glob-match/spec.md`
 
 ## Summary
 
-The goal is to improve the "Yes, and don't ask again" functionality for bash commands by implementing a "smart prefix match" instead of exact string matching. This allows users to trust a command once (e.g., `npm install lodash`) and have subsequent similar commands (e.g., `npm install express`) execute without further prompts. The system will use a heuristic to identify static parts of a command (executable + subcommands) and store them as trusted prefixes, while maintaining a blacklist for dangerous commands.
+The goal is to improve the "Yes, and don't ask again" functionality for bash commands by implementing a "smart glob pattern match" instead of exact string matching or simple prefix matching. This allows users to trust a command once (e.g., `npm install lodash`) and have subsequent similar commands (e.g., `npm install express`) execute without further prompts by using wildcards. The system will use a heuristic to identify static parts of a command (executable + subcommands) and store them as trusted glob patterns, while maintaining a blacklist for dangerous commands.
 
 ## Technical Context
 
@@ -16,8 +16,8 @@ The goal is to improve the "Yes, and don't ask again" functionality for bash com
 **Testing**: Vitest
 **Target Platform**: Linux/macOS (CLI environment)
 **Project Type**: CLI / Monorepo
-**Performance Goals**: Prefix matching should be near-instant (<10ms) to avoid delaying command execution.
-**Constraints**: Must not compromise security; dangerous commands must be blacklisted from prefix matching.
+**Performance Goals**: Glob pattern matching should be near-instant (<10ms) to avoid delaying command execution.
+**Constraints**: Must not compromise security; dangerous commands must be blacklisted from pattern matching.
 **Scale/Scope**: Affects all bash command executions initiated by the agent.
 
 ## Constitution Check
@@ -38,7 +38,7 @@ The goal is to improve the "Yes, and don't ask again" functionality for bash com
 ### Documentation (this feature)
 
 ```
-specs/037-bash-smart-prefix-match/
+specs/037-bash-glob-match/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output
 ├── data-model.md        # Phase 1 output
@@ -57,7 +57,7 @@ packages/
 │       └── types.ts     # TrustedCommand definitions
 └── code/
     └── src/
-        ├── components/  # UI for confirming prefixes
+        ├── components/  # UI for confirming patterns
         └── contexts/    # Integration with agent execution flow
 ```
 

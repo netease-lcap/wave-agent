@@ -27,7 +27,7 @@ describe("Agent Prefix Matching Integration", () => {
 
     // 2. Verify it was saved as a prefix rule
     const rules = agent.getAllowedRules();
-    expect(rules).toContain("Bash(npm install:*)");
+    expect(rules).toContain("Bash(npm install*)");
 
     // 3. Verify a similar command is allowed
     const decision = await agent.checkPermission({
@@ -51,6 +51,6 @@ describe("Agent Prefix Matching Integration", () => {
     // 2. Verify it was NOT saved at all
     const rules = agent.getAllowedRules();
     expect(rules).not.toContain("Bash(rm file.txt)");
-    expect(rules).not.toContain("Bash(rm:*)");
+    expect(rules).not.toContain("Bash(rm*)");
   });
 });

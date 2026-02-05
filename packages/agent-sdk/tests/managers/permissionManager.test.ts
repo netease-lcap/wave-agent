@@ -79,7 +79,7 @@ describe("PermissionManager", () => {
       });
 
       it("should deny Bash command if it matches a denied rule", async () => {
-        permissionManager.updateDeniedRules(["Bash(rm:*)"]);
+        permissionManager.updateDeniedRules(["Bash(rm *)"]);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -91,7 +91,7 @@ describe("PermissionManager", () => {
 
         expect(result.behavior).toBe("deny");
         expect(result.message).toContain(
-          "explicitly denied by rule: Bash(rm:*)",
+          "explicitly denied by rule: Bash(rm *)",
         );
       });
 
@@ -333,8 +333,8 @@ describe("PermissionManager", () => {
         ).toBe("allow");
       });
 
-      it("should allow Bash command with prefix match using :*", async () => {
-        permissionManager.updateAllowedRules(["Bash(git commit:*)"]);
+      it("should allow Bash command with glob match", async () => {
+        permissionManager.updateAllowedRules(["Bash(git commit *)"]);
 
         const context1: ToolPermissionContext = {
           toolName: "Bash",
@@ -356,8 +356,36 @@ describe("PermissionManager", () => {
         ).toBe("allow");
       });
 
-      it("should deny Bash command if prefix does not match", async () => {
-        permissionManager.updateAllowedRules(["Bash(git commit:*)"]);
+      it("should allow Bash command with wildcard in the middle", async () => {
+        permissionManager.updateAllowedRules(["Bash(git * main)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "git push origin main" },
+        };
+
+        expect(
+          (await permissionManager.checkPermission(context)).behavior,
+        ).toBe("allow");
+      });
+
+      it("should allow Bash command with wildcard at the beginning", async () => {
+        permissionManager.updateAllowedRules(["Bash(* --version)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: { command: "node --version" },
+        };
+
+        expect(
+          (await permissionManager.checkPermission(context)).behavior,
+        ).toBe("allow");
+      });
+
+      it("should deny Bash command if glob does not match", async () => {
+        permissionManager.updateAllowedRules(["Bash(git commit *)"]);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
@@ -369,40 +397,17 @@ describe("PermissionManager", () => {
         expect(result.behavior).toBe("deny");
       });
 
-      it("should treat :* as literal if not at the end", async () => {
-        permissionManager.updateAllowedRules(["Bash(echo :* test)"]);
-
-        const context1: ToolPermissionContext = {
-          toolName: "Bash",
-          permissionMode: "default",
-          toolInput: { command: "echo hello test" },
-        };
-
-        const context2: ToolPermissionContext = {
-          toolName: "Bash",
-          permissionMode: "default",
-          toolInput: { command: "echo :* test" },
-        };
-
-        expect(
-          (await permissionManager.checkPermission(context1)).behavior,
-        ).toBe("deny");
-        expect(
-          (await permissionManager.checkPermission(context2)).behavior,
-        ).toBe("allow");
-      });
-
-      it("should handle empty prefix with :*", async () => {
-        permissionManager.updateAllowedRules(["Bash(:*)"]);
+      it("should no longer support :* as a special suffix", async () => {
+        permissionManager.updateAllowedRules(["Bash(git commit:*)"]);
 
         const context: ToolPermissionContext = {
           toolName: "Bash",
           permissionMode: "default",
-          toolInput: { command: "any command" },
+          toolInput: { command: "git commit -m 'test'" },
         };
 
         const result = await permissionManager.checkPermission(context);
-        expect(result.behavior).toBe("allow");
+        expect(result.behavior).toBe("deny");
       });
     });
 
@@ -1135,8 +1140,8 @@ describe("PermissionManager", () => {
       expect(result.behavior).toBe("allow");
     });
 
-    it("should deny if a part with prefix match doesn't match", async () => {
-      permissionManager.updateAllowedRules(["Bash(ls)", "Bash(git commit:*)"]);
+    it("should deny if a part with glob match doesn't match", async () => {
+      permissionManager.updateAllowedRules(["Bash(ls)", "Bash(git commit *)"]);
 
       const context: ToolPermissionContext = {
         toolName: "Bash",
@@ -1148,8 +1153,8 @@ describe("PermissionManager", () => {
       expect(result.behavior).toBe("deny");
     });
 
-    it("should allow if all parts match prefix rules", async () => {
-      permissionManager.updateAllowedRules(["Bash(ls:*)", "Bash(git:*)"]);
+    it("should allow if all parts match glob rules", async () => {
+      permissionManager.updateAllowedRules(["Bash(ls *)", "Bash(git *)"]);
 
       const context: ToolPermissionContext = {
         toolName: "Bash",
@@ -1303,7 +1308,7 @@ describe("PermissionManager", () => {
     it("should handle multiple non-safe commands", () => {
       const command = "npm install | grep error";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(npm install:*)", "Bash(grep error)"]);
+      expect(rules).toEqual(["Bash(npm install*)", "Bash(grep error)"]);
     });
 
     it("should return empty array for only safe commands", () => {
@@ -1321,7 +1326,7 @@ describe("PermissionManager", () => {
     it("should strip env vars and redirections from rules", () => {
       const command = "VAR=val npm install > out.txt";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(npm install:*)"]);
+      expect(rules).toEqual(["Bash(npm install*)"]);
     });
 
     it("should identify unsafe paths in cd/ls as non-safe and filter them out", () => {
@@ -1354,17 +1359,17 @@ describe("PermissionManager", () => {
       expect(rules).toEqual([]); // cd /etc is out-of-bounds, ls is safe
     });
 
-    it("should not return broad prefix rules for unknown subcommands", () => {
+    it("should not return broad glob rules for unknown subcommands", () => {
       const command = "npm list";
       const rules = permissionManager.expandBashRule(command, workdir);
       expect(rules).toContain("Bash(npm list)");
-      expect(rules).not.toContain("Bash(npm:*)");
+      expect(rules).not.toContain("Bash(npm*)");
     });
 
-    it("should still return prefix rules for known safe subcommands", () => {
+    it("should still return glob rules for known safe subcommands", () => {
       const command = "npm install lodash";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(npm install:*)"]);
+      expect(rules).toEqual(["Bash(npm install*)"]);
     });
   });
 });
