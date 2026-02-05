@@ -131,7 +131,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
           Use ↑↓ to navigate, Enter/Tab to select, Escape to cancel
         </Text>
         <Text dimColor>
-          File {selectedIndex + 1} of {files.length}
+          , File {selectedIndex + 1} of {files.length}
         </Text>
       </Box>
     </Box>

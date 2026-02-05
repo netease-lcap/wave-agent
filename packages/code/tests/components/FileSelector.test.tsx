@@ -23,7 +23,7 @@ describe("FileSelector", () => {
     expect(output).toContain("Select File/Directory");
     expect(output).toContain("file1.txt");
     expect(output).toContain("file10.txt");
-    expect(output).toContain("File 1 of 20");
+    expect(output).toContain(", File 1 of 20");
     expect(output).toContain("... 10 more files below");
   });
 
@@ -41,7 +41,7 @@ describe("FileSelector", () => {
 
     const output = lastFrame();
     expect(output).toContain("Select File/Directory");
-    expect(output).toContain("File 1 of 25");
+    expect(output).toContain(", File 1 of 25");
     expect(output).toContain("... 15 more files below");
   });
 
