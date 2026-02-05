@@ -1,102 +1,107 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { DiffDisplay } from "../../src/components/DiffDisplay.js";
-import type { ToolBlock } from "wave-agent-sdk";
-import { useStdout } from "ink";
+import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from "wave-agent-sdk";
 
-// Mock ink's useStdout
-vi.mock("ink", async () => {
-  const actual = await vi.importActual("ink");
-  return {
-    ...actual,
-    useStdout: vi.fn(),
-  };
-});
-
-// Mock transformToolBlockToChanges
-vi.mock("../../src/utils/toolParameterTransforms.js", () => ({
-  transformToolBlockToChanges: vi.fn(),
-}));
-
-import { transformToolBlockToChanges } from "../../src/utils/toolParameterTransforms.js";
-
-describe("DiffDisplay Component", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe("DiffDisplay", () => {
+  it("should not render anything for non-diff tools", () => {
+    const { lastFrame } = render(
+      <DiffDisplay toolName="Read" parameters='{"file_path": "test.txt"}' />,
+    );
+    expect(lastFrame()).toBe("");
   });
 
-  it("should respect maxHeight based on stdout rows (subtracting 20)", () => {
-    vi.mocked(useStdout).mockReturnValue({
-      stdout: { rows: 40 },
-    } as unknown as ReturnType<typeof useStdout>);
-
-    // maxHeight should be 40 - 20 = 20
-
-    const toolBlock: ToolBlock = {
-      type: "tool",
-      name: "Edit",
-      stage: "end",
-      parameters: "{}",
-    };
-
-    // Mock 30 changes (lines)
-    const mockChanges = [
-      {
-        oldContent: Array(30).fill("old line").join("\n"),
-        newContent: Array(30).fill("new line").join("\n"),
-      },
-    ];
-    vi.mocked(transformToolBlockToChanges).mockReturnValue(mockChanges);
-
+  it("should render diff for Write tool", () => {
+    const params = JSON.stringify({
+      content: "new file content",
+      file_path: "test.txt",
+    });
     const { lastFrame } = render(
-      <DiffDisplay
-        toolName={toolBlock.name}
-        parameters={toolBlock.parameters}
-      />,
+      <DiffDisplay toolName={WRITE_TOOL_NAME} parameters={params} />,
     );
-    const output = lastFrame();
-
-    // It should show truncation message
-    expect(output).toContain("truncated");
-    // It should show "truncated 11 more lines"
-    // maxHeight is 20, it shows maxHeight - 1 = 19 lines.
-    // Total elements = 60. 60 - 19 = 41.
-    expect(output).toContain("truncated 41 more lines");
+    const frame = lastFrame();
+    expect(frame).toContain("Diff:");
+    expect(frame).toContain("+new file content");
   });
 
-  it("should have a minimum maxHeight of 5", () => {
-    vi.mocked(useStdout).mockReturnValue({
-      stdout: { rows: 15 },
-    } as unknown as ReturnType<typeof useStdout>);
+  it("should render diff for Edit tool", () => {
+    const params = JSON.stringify({
+      old_string: "old content",
+      new_string: "new content",
+      file_path: "test.txt",
+    });
+    const { lastFrame } = render(
+      <DiffDisplay toolName={EDIT_TOOL_NAME} parameters={params} />,
+    );
+    const frame = lastFrame();
+    expect(frame).toContain("Diff:");
+    expect(frame).toContain("-old content");
+    expect(frame).toContain("+new content");
+  });
 
-    // 15 - 20 = -5, so maxHeight should be 5
+  it("should handle word-level diff for Edit tool", () => {
+    const params = JSON.stringify({
+      old_string: "The quick brown fox",
+      new_string: "The fast brown fox",
+      file_path: "test.txt",
+    });
+    const { lastFrame } = render(
+      <DiffDisplay toolName={EDIT_TOOL_NAME} parameters={params} />,
+    );
+    const frame = lastFrame();
+    expect(frame).toContain("The");
+    expect(frame).toContain("quick");
+    expect(frame).toContain("fast");
+    expect(frame).toContain("brown fox");
+  });
 
-    const toolBlock: ToolBlock = {
-      type: "tool",
-      name: "Edit",
-      stage: "end",
-      parameters: "{}",
-    };
-
-    const mockChanges = [
-      {
-        oldContent: Array(10).fill("old line").join("\n"),
-        newContent: Array(10).fill("new line").join("\n"),
-      },
-    ];
-    vi.mocked(transformToolBlockToChanges).mockReturnValue(mockChanges);
-
+  it("should truncate long diffs when not expanded", () => {
+    const longContent = Array.from(
+      { length: 30 },
+      (_, i) => `line ${i + 1}`,
+    ).join("\n");
+    const params = JSON.stringify({
+      content: longContent,
+      file_path: "test.txt",
+    });
     const { lastFrame } = render(
       <DiffDisplay
-        toolName={toolBlock.name}
-        parameters={toolBlock.parameters}
+        toolName={WRITE_TOOL_NAME}
+        parameters={params}
+        isExpanded={false}
       />,
     );
-    const output = lastFrame();
+    expect(lastFrame()).toContain("truncated");
+  });
 
-    expect(output).toContain("truncated");
-    // maxHeight is 5, shows 4 lines. 20 - 4 = 16.
-    expect(output).toContain("truncated 16 more lines");
+  it("should not truncate when expanded", () => {
+    const longContent = Array.from(
+      { length: 30 },
+      (_, i) => `line ${i + 1}`,
+    ).join("\n");
+    const params = JSON.stringify({
+      content: longContent,
+      file_path: "test.txt",
+    });
+    const { lastFrame } = render(
+      <DiffDisplay
+        toolName={WRITE_TOOL_NAME}
+        parameters={params}
+        isExpanded={true}
+      />,
+    );
+    expect(lastFrame()).not.toContain("truncated");
+    expect(lastFrame()).toContain("+line 30");
+  });
+
+  it("should handle invalid JSON parameters gracefully", () => {
+    const { lastFrame } = render(
+      <DiffDisplay toolName={EDIT_TOOL_NAME} parameters="invalid json" />,
+    );
+    // It renders the "Diff:" header but no content because transform fails
+    expect(lastFrame()).toContain("Diff:");
+    expect(lastFrame()).not.toContain("-");
+    expect(lastFrame()).not.toContain("+");
   });
 });

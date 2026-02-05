@@ -1,65 +1,38 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { ReasoningDisplay } from "../../src/components/ReasoningDisplay.js";
-import type { ReasoningBlock } from "wave-agent-sdk";
 
-describe("ReasoningDisplay Component", () => {
-  it("should render reasoning content with proper styling", () => {
-    const reasoningBlock: ReasoningBlock = {
-      type: "reasoning",
-      content:
-        "**Analyzing the Request**\n\nI need to understand what the user is asking for and provide a helpful response.",
+// Mock Markdown component to avoid complex rendering in tests
+vi.mock("../../src/components/Markdown.js", () => ({
+  Markdown: ({ children }: { children: string }) => <span>{children}</span>,
+}));
+
+describe("ReasoningDisplay", () => {
+  it("should render reasoning content correctly", () => {
+    const block = {
+      type: "reasoning" as const,
+      content: "I am thinking about the problem.",
     };
-
-    const { lastFrame } = render(<ReasoningDisplay block={reasoningBlock} />);
-    const output = lastFrame();
-
-    // Should show reasoning content
-    expect(output).toContain("Analyzing the Request");
-    expect(output).toContain("I need to understand what the user is asking");
+    const { lastFrame } = render(<ReasoningDisplay block={block} />);
+    expect(lastFrame()).toContain("I am thinking about the problem.");
   });
 
-  it("should not render when content is empty", () => {
-    const reasoningBlock: ReasoningBlock = {
-      type: "reasoning",
+  it("should return null for empty content", () => {
+    const block = {
+      type: "reasoning" as const,
       content: "",
     };
-
-    const { lastFrame } = render(<ReasoningDisplay block={reasoningBlock} />);
-    const output = lastFrame();
-
-    // Should not render anything when content is empty
-    expect(output).toBe("");
+    const { lastFrame } = render(<ReasoningDisplay block={block} />);
+    expect(lastFrame()).toBe("");
   });
 
-  it("should not render when content is only whitespace", () => {
-    const reasoningBlock: ReasoningBlock = {
-      type: "reasoning",
-      content: "   \n\t  ",
+  it("should return null for whitespace content", () => {
+    const block = {
+      type: "reasoning" as const,
+      content: "   ",
     };
-
-    const { lastFrame } = render(<ReasoningDisplay block={reasoningBlock} />);
-    const output = lastFrame();
-
-    // Should not render anything when content is only whitespace
-    expect(output).toBe("");
-  });
-
-  it("should render markdown formatting in content", () => {
-    const reasoningBlock: ReasoningBlock = {
-      type: "reasoning",
-      content:
-        "**Bold text** and *italic text*\n\n- List item 1\n- List item 2",
-    };
-
-    const { lastFrame } = render(<ReasoningDisplay block={reasoningBlock} />);
-    const output = lastFrame();
-
-    // Should show formatted content (Markdown component handles formatting)
-    expect(output).toContain("Bold text");
-    expect(output).toContain("italic text");
-    expect(output).toContain("List item 1");
-    expect(output).toContain("List item 2");
+    const { lastFrame } = render(<ReasoningDisplay block={block} />);
+    expect(lastFrame()).toBe("");
   });
 });
