@@ -5,7 +5,7 @@
 
 ## Summary
 
-Implement the `AskUserQuestion` tool to allow the agent to ask structured multiple-choice questions for clarification and decision-making. This involves creating a new built-in tool in `agent-sdk` and updating the `Confirmation` component in `code` to render the interactive questioning UI. The tool MUST NOT be available in `bypassPermissions` mode.
+Implement the `AskUserQuestion` tool to allow the agent to ask structured multiple-choice questions for clarification and decision-making. This involves creating a new built-in tool in `agent-sdk` and updating the `Confirmation` component in `code` to render the interactive questioning UI.
 
 ## Technical Context
 
@@ -16,7 +16,7 @@ Implement the `AskUserQuestion` tool to allow the agent to ask structured multip
 **Target Platform**: CLI (Node.js)
 **Project Type**: Monorepo (agent-sdk + code)
 **Performance Goals**: Instant UI response for user input
-**Constraints**: Max 4 questions, 2-4 options per question; MUST NOT be available in `bypassPermissions` mode.
+**Constraints**: Max 4 questions, 2-4 options per question
 **Scale/Scope**: Built-in tool available to all agent sessions
 
 ## Constitution Check

@@ -5,7 +5,7 @@
 
 ## Summary
 
-Add an `ExitPlanMode` tool that allows the agent to signal completion of the planning phase. This tool will trigger a user confirmation (reusing `canUseTool`) with three options: Default execution, Accept Edits mode, or providing Feedback. The tool will only be available when the agent is in "plan mode" and will display the contents of the plan file to the user for review. It MUST NOT be available in `bypassPermissions` mode.
+Add an `ExitPlanMode` tool that allows the agent to signal completion of the planning phase. This tool will trigger a user confirmation (reusing `canUseTool`) with three options: Default execution, Accept Edits mode, or providing Feedback. The tool will only be available when the agent is in "plan mode" and will display the contents of the plan file to the user for review.
 
 **Technical Approach**:
 - Implement `ExitPlanMode` tool in `agent-sdk` that reads the plan file and calls `permissionManager.canUseTool`.
@@ -22,7 +22,7 @@ Add an `ExitPlanMode` tool that allows the agent to signal completion of the pla
 **Target Platform**: Linux/Node.js
 **Project Type**: Monorepo (TypeScript)
 **Performance Goals**: Instant UI response for confirmation prompt.
-**Constraints**: MUST reuse `canUseTool` mechanism; MUST only be visible in plan mode; MUST NOT be available in `bypassPermissions` mode.
+**Constraints**: MUST reuse `canUseTool` mechanism; MUST only be visible in plan mode.
 **Scale/Scope**: Single tool implementation with state transition and UI integration.
 
 ## Constitution Check

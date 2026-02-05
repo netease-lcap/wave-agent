@@ -46,7 +46,6 @@ As an agent in plan mode, I want to use the `ExitPlanMode` tool after I have fin
 - **FR-005**: Upon user selection of "Feedback", the agent MUST remain in "plan mode" and receive the user's input as the tool's output.
 - **FR-006**: `ExitPlanMode` MUST ONLY be included in the available tools list when the agent is in "plan mode".
 - **FR-007**: If the agent is NOT in "plan mode", the `ExitPlanMode` tool MUST NOT be exposed to the LLM.
-- **FR-008**: `ExitPlanMode` MUST NOT be available when `permissionMode` is set to `bypassPermissions`.
 
 ### Key Entities *(include if feature involves data)*
 
