@@ -573,10 +573,7 @@ export class PermissionManager {
     if (toolName === BASH_TOOL_NAME) {
       const command = String(context.toolInput?.command || "");
       const processedPart = stripRedirections(stripEnvVars(command));
-      if (pattern.endsWith(":*")) {
-        return processedPart.startsWith(pattern.slice(0, -2));
-      }
-      return processedPart === pattern;
+      return minimatch(processedPart, pattern, { dot: true });
     }
 
     // Handle path-based rules (e.g., "Read(**/*.env)")
@@ -768,7 +765,7 @@ export class PermissionManager {
 
         const smartPrefix = getSmartPrefix(processedPart);
         if (smartPrefix) {
-          rules.push(`Bash(${smartPrefix}:*)`);
+          rules.push(`Bash(${smartPrefix}*)`);
         } else {
           rules.push(`Bash(${processedPart})`);
         }

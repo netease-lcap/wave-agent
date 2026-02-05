@@ -2,18 +2,17 @@
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
-      "Bash(pnpm:*)",
-      "Bash(.specify/scripts/bash/:*)",
-      "Bash(./.specify/scripts/bash/:*)",
-      "Bash(ls:*)",
-      "Bash(mkdir:*)",
-      "Bash(npx tsx:*)",
-      "Bash(sleep:*)",
-      "Bash(tail:*)",
-      "Bash(grep:*)",
-      "Bash(npm:*)",
-      "Bash(touch:*)",
-      "Bash(node packages/code/dist/index.js :*)"
+      "Bash(pnpm*)",
+      "Bash(*.specify/scripts/bash/*)",
+      "Bash(ls*)",
+      "Bash(mkdir*)",
+      "Bash(npx tsx*)",
+      "Bash(sleep*)",
+      "Bash(tail*)",
+      "Bash(grep*)",
+      "Bash(npm*)",
+      "Bash(touch*)",
+      "Bash(node packages/code/dist/index.js *)"
     ],
     "additionalDirectories": ["../wave-plugins-official"]
   },
