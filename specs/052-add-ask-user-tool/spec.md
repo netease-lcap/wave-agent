@@ -73,6 +73,7 @@ As an AI agent in Plan Mode, I want to ask the user for missing requirements bef
 - **FR-008**: The tool MUST return the user's answers as a mapping from question text to the selected answer(s).
 - **FR-009**: In Plan Mode, the agent MUST be instructed to use `AskUserQuestion` for clarifications but NOT for plan approval.
 - **FR-010**: The agent MUST be discouraged from asking questions via plain text and encouraged to use this tool instead.
+- **FR-011**: `AskUserQuestion` MUST NOT be available when `permissionMode` is set to `bypassPermissions`.
 
 ### Key Entities *(include if feature involves data)*
 

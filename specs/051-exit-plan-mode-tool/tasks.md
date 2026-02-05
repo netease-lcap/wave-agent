@@ -13,6 +13,7 @@
 - [X] T002 Define `ExitPlanMode` tool in `packages/agent-sdk/src/tools/exitPlanMode.ts`
 - [X] T003 Add `ExitPlanMode` to `RESTRICTED_TOOLS` in `packages/agent-sdk/src/types/permissions.ts`
 - [X] T004 Update `ToolManager` to filter `ExitPlanMode` based on `permissionMode` in `packages/agent-sdk/src/managers/toolManager.ts`
+- [X] T013 Ensure `ExitPlanMode` is NOT available when `permissionMode` is `bypassPermissions` in `packages/agent-sdk/src/managers/toolManager.ts`
 - [X] T005 Register `ExitPlanMode` tool in `Agent` class in `packages/agent-sdk/src/agent.ts`
 
 ## Phase 3: User Story 1 - Approve Plan via ExitPlanMode (Priority: P1)

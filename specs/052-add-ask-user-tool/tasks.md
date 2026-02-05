@@ -96,6 +96,7 @@
 
 - [X] T022 [US3] Update Plan Mode instructions to allow AskUserQuestion but forbid it for plan approval in packages/agent-sdk/src/agent.ts
 - [X] T023 [US3] Ensure AskUserQuestion is available and functional when permissionMode is 'plan' in packages/agent-sdk/src/managers/toolManager.ts
+- [X] T028 [US3] Ensure AskUserQuestion is NOT available when permissionMode is 'bypassPermissions' in packages/agent-sdk/src/managers/toolManager.ts
 
 **Checkpoint**: All user stories are independently functional.
 
