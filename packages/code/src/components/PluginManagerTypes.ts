@@ -9,6 +9,7 @@ export type ViewType =
   | "INSTALLED"
   | "MARKETPLACES"
   | "PLUGIN_DETAIL"
+  | "MARKETPLACE_DETAIL"
   | "ADD_MARKETPLACE";
 
 export interface PluginManagerState {
@@ -40,6 +41,7 @@ export interface PluginManagerContextType {
       scope?: "user" | "project" | "local",
     ) => Promise<void>;
     uninstallPlugin: (name: string, marketplace: string) => Promise<void>;
+    updatePlugin: (name: string, marketplace: string) => Promise<void>;
     refresh: () => Promise<void>;
   };
 }

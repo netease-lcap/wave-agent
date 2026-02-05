@@ -13,10 +13,11 @@ export const InstalledView: React.FC = () => {
       setSelectedIndex(
         Math.min(installedPlugins.length - 1, selectedIndex + 1),
       );
-    } else if (input === "u") {
+    } else if (key.return) {
       const plugin = installedPlugins[selectedIndex];
       if (plugin) {
-        actions.uninstallPlugin(plugin.name, plugin.marketplace);
+        actions.setSelectedId(`${plugin.name}@${plugin.marketplace}`);
+        actions.setView("PLUGIN_DETAIL");
       }
     }
   });
@@ -48,7 +49,7 @@ export const InstalledView: React.FC = () => {
             </Box>
             {isSelected && (
               <Box marginLeft={4}>
-                <Text dimColor>Press 'u' to uninstall</Text>
+                <Text dimColor>Press Enter for actions</Text>
               </Box>
             )}
           </Box>
