@@ -85,8 +85,6 @@ describe("Agent Plugin Loading Integration", () => {
 
     const loadedPlugins = agent["pluginManager"].getPlugins();
     const pluginNames = loadedPlugins.map((p) => p.name);
-    console.log("Loaded plugins:", pluginNames);
-
     // Should contain both enabled plugins
     expect(pluginNames).toContain("user");
     expect(pluginNames).toContain("project");

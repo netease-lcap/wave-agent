@@ -19,6 +19,11 @@ export default defineConfig(() => {
       // Enable retry in CI environment: failed tests will retry up to 2 times
       retry: isCI ? 2 : 0,
       reporters: ["dot"],
+      coverage: {
+        provider: "v8",
+        reporter: ["text", "json", "html"],
+        exclude: ["node_modules", "dist", "tests", "examples"],
+      },
       // Test environment variables: disable logger I/O operations by default to improve performance
       env: {
         DISABLE_LOGGER_IO: "true",
