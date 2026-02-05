@@ -23,7 +23,9 @@ interface SubagentBlockProps {
 
 ### Collapsed State (when `isExpanded` is false)
 - Shows header with subagent name and status
-- Displays **up to 2 most recent** subagent messages
+- Displays **up to 2 most recent** subagent tool executions when active
+- Displays the **final text result** rendered with markdown when completed
+- Tool executions are **hidden** when completed
 - Messages shown in compact format (similar to ToolResultDisplay shortResult)
 - Border color: `magenta` to differentiate from regular messages
 
