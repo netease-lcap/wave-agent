@@ -1,11 +1,16 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi } from "vitest";
+import { Box, Text } from "ink";
 import { ReasoningDisplay } from "../../src/components/ReasoningDisplay.js";
 
 // Mock Markdown component to avoid complex rendering in tests
 vi.mock("../../src/components/Markdown.js", () => ({
-  Markdown: ({ children }: { children: string }) => <span>{children}</span>,
+  Markdown: ({ children }: { children: string }) => (
+    <Box>
+      <Text>{children}</Text>
+    </Box>
+  ),
 }));
 
 describe("ReasoningDisplay", () => {
