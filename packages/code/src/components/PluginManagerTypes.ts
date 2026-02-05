@@ -40,11 +40,6 @@ export interface PluginManagerContextType {
       scope?: "user" | "project" | "local",
     ) => Promise<void>;
     uninstallPlugin: (name: string, marketplace: string) => Promise<void>;
-    togglePlugin: (
-      name: string,
-      marketplace: string,
-      enabled: boolean,
-    ) => Promise<void>;
     refresh: () => Promise<void>;
   };
 }

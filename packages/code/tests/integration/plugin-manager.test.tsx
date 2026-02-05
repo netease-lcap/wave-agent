@@ -86,7 +86,7 @@ describe("PluginManager Integration", () => {
     expect(mockActions.installPlugin).toHaveBeenCalledWith(
       "test-plugin",
       "official",
-      "user",
+      "project",
     );
   });
 
@@ -111,15 +111,6 @@ describe("PluginManager Integration", () => {
     const { stdin, lastFrame } = render(<PluginManagerShell />);
 
     expect(stripAnsiColors(lastFrame() || "")).toContain("installed-plugin");
-    expect(stripAnsiColors(lastFrame() || "")).toContain("[Enabled]");
-
-    // Press 't' to toggle
-    stdin.write("t");
-    expect(mockActions.togglePlugin).toHaveBeenCalledWith(
-      "installed-plugin",
-      "official",
-      false,
-    );
 
     // Press 'u' to uninstall
     stdin.write("u");

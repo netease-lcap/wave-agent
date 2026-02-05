@@ -90,12 +90,13 @@ export function usePluginManager(): PluginManagerContextType {
             const isInstalled = installed.plugins.find(
               (ip) => ip.name === p.name && ip.marketplace === mk.name,
             );
-            allDiscoverable.push({
-              ...p,
-              marketplace: mk.name,
-              installed: !!isInstalled,
-              version: isInstalled?.version,
-            });
+            if (!isInstalled) {
+              allDiscoverable.push({
+                ...p,
+                marketplace: mk.name,
+                installed: false,
+              });
+            }
           });
         } catch {
           // Skip marketplaces that fail to load
@@ -223,33 +224,14 @@ export function usePluginManager(): PluginManagerContextType {
       }));
       try {
         const pluginId = `${name}@${marketplace}`;
-        await marketplaceService.uninstallPlugin(pluginId);
-        await pluginScopeManager.removePluginFromAllScopes(pluginId);
-        await refresh();
-      } catch (error) {
-        setState((prev: PluginManagerState) => ({
-          ...prev,
-          isLoading: false,
-          error: error instanceof Error ? error.message : String(error),
-        }));
-      }
-    },
-    [marketplaceService, pluginScopeManager, refresh],
-  );
-
-  const togglePlugin = useCallback(
-    async (name: string, marketplace: string, enabled: boolean) => {
-      setState((prev: PluginManagerState) => ({
-        ...prev,
-        isLoading: true,
-        error: null,
-      }));
-      try {
-        const pluginId = `${name}@${marketplace}`;
-        if (enabled) {
-          await pluginScopeManager.enablePlugin("project", pluginId);
-        } else {
-          await pluginScopeManager.disablePlugin("project", pluginId);
+        // Find the scope where it's currently enabled and remove it from there
+        const scope = pluginScopeManager.findPluginScope(pluginId);
+        if (scope) {
+          await configurationService.removeEnabledPlugin(
+            process.cwd(),
+            scope,
+            pluginId,
+          );
         }
         await refresh();
       } catch (error) {
@@ -260,7 +242,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginScopeManager, refresh],
+    [configurationService, pluginScopeManager, refresh],
   );
 
   return {
@@ -276,7 +258,6 @@ export function usePluginManager(): PluginManagerContextType {
       updateMarketplace,
       installPlugin,
       uninstallPlugin,
-      togglePlugin,
       refresh,
     },
   };
