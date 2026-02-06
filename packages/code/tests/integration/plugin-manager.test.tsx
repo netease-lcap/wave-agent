@@ -17,6 +17,7 @@ describe("PluginManager Integration", () => {
     setSelectedId: vi.fn(),
     installPlugin: vi.fn(),
     uninstallPlugin: vi.fn(),
+    updatePlugin: vi.fn(),
     togglePlugin: vi.fn(),
     refresh: vi.fn(),
   };
@@ -129,11 +130,15 @@ describe("PluginManager Integration", () => {
 
     expect(stripAnsiColors(lastFrame() || "")).toContain("Plugin Actions:");
 
-    // Press Enter to uninstall (first action)
-    stdin.write("\r");
-    expect(mockActions.uninstallPlugin).toHaveBeenCalledWith(
-      "installed-plugin",
-      "official",
-    );
+    // Press Down to select uninstall (second action)
+    stdin.write("\u001B[B");
+    await vi.waitFor(() => {
+      // Press Enter to uninstall
+      stdin.write("\r");
+      expect(mockActions.uninstallPlugin).toHaveBeenCalledWith(
+        "installed-plugin",
+        "official",
+      );
+    });
   });
 });
