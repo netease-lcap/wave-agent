@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Box, Text, useStdout } from "ink";
+import { Box, Text } from "ink";
 import {
   WRITE_TOOL_NAME,
   EDIT_TOOL_NAME,
@@ -11,19 +11,12 @@ import { diffLines, diffWords } from "diff";
 interface DiffDisplayProps {
   toolName?: string;
   parameters?: string;
-  isExpanded?: boolean;
 }
 
 export const DiffDisplay: React.FC<DiffDisplayProps> = ({
   toolName,
   parameters,
-  isExpanded = false,
 }) => {
-  const { stdout } = useStdout();
-  const maxHeight = useMemo(() => {
-    return Math.max(5, (stdout?.rows || 24) - 20);
-  }, [stdout?.rows]);
-
   const showDiff =
     toolName &&
     [WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME].includes(toolName);
@@ -230,21 +223,7 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
         }
       });
 
-      const isTruncated = !isExpanded && allElements.length > maxHeight;
-      const displayElements = isTruncated
-        ? allElements.slice(0, maxHeight - 1)
-        : allElements;
-
-      return (
-        <Box flexDirection="column">
-          {displayElements}
-          {isTruncated && (
-            <Text color="yellow" dimColor>
-              ... (truncated {allElements.length - (maxHeight - 1)} more lines)
-            </Text>
-          )}
-        </Box>
-      );
+      return <Box flexDirection="column">{allElements}</Box>;
     } catch (error) {
       console.warn("Error rendering expanded diff:", error);
       return (

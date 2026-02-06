@@ -399,11 +399,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       </Text>
       <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
 
-      <DiffDisplay
-        toolName={toolName}
-        parameters={JSON.stringify(toolInput)}
-        isExpanded={isExpanded}
-      />
+      <DiffDisplay toolName={toolName} parameters={JSON.stringify(toolInput)} />
 
       {toolName === ASK_USER_QUESTION_TOOL_NAME &&
         currentQuestion &&
