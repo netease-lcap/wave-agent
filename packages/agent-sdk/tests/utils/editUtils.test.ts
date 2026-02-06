@@ -11,7 +11,7 @@ import { logger } from "../../src/utils/globalLogger.js";
 vi.mock("fs/promises");
 vi.mock("os");
 vi.mock("path", async () => {
-  const actual = (await vi.importActual("path")) as typeof import("path");
+  const actual = (await vi.importActual("path")) as Record<string, unknown>;
   return {
     ...actual,
     join: vi.fn((...args: string[]) => args.join("/")),
