@@ -65,6 +65,7 @@ export interface ConfirmationProps {
 interface ConfirmationState {
   selectedOption: "allow" | "auto" | "alternative";
   alternativeText: string;
+  alternativeCursorPosition: number;
   hasUserInput: boolean; // to hide placeholder
 }
 
@@ -81,6 +82,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
   const [state, setState] = useState<ConfirmationState>({
     selectedOption: "allow",
     alternativeText: "",
+    alternativeCursorPosition: 0,
     hasUserInput: false,
   });
 
@@ -92,6 +94,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
   >(new Set());
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
   const [otherText, setOtherText] = useState("");
+  const [otherCursorPosition, setOtherCursorPosition] = useState(0);
 
   const questions =
     (toolInput as unknown as AskUserQuestionInput)?.questions || [];
@@ -159,6 +162,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
           setSelectedOptionIndex(0);
           setSelectedOptionIndices(new Set());
           setOtherText("");
+          setOtherCursorPosition(0);
         } else {
           // All questions answered
           onDecision({
@@ -207,10 +211,38 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       }
 
       if (isOtherFocused) {
+        if (key.leftArrow) {
+          setOtherCursorPosition((prev) => Math.max(0, prev - 1));
+          return;
+        }
+        if (key.rightArrow) {
+          setOtherCursorPosition((prev) =>
+            Math.min(otherText.length, prev + 1),
+          );
+          return;
+        }
         if (key.backspace || key.delete) {
-          setOtherText((prev) => prev.slice(0, -1));
-        } else if (input && !key.ctrl && !key.meta) {
-          setOtherText((prev) => prev + input);
+          if (otherCursorPosition > 0) {
+            setOtherText((prev) => {
+              const next =
+                prev.slice(0, otherCursorPosition - 1) +
+                prev.slice(otherCursorPosition);
+              return next;
+            });
+            setOtherCursorPosition((prev) => prev - 1);
+          }
+          return;
+        }
+        if (input && !key.ctrl && !key.meta) {
+          setOtherText((prev) => {
+            const next =
+              prev.slice(0, otherCursorPosition) +
+              input +
+              prev.slice(otherCursorPosition);
+            return next;
+          });
+          setOtherCursorPosition((prev) => prev + input.length);
+          return;
         }
         return;
       }
@@ -253,6 +285,29 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       return;
     }
 
+    if (state.selectedOption === "alternative") {
+      if (key.leftArrow) {
+        setState((prev) => ({
+          ...prev,
+          alternativeCursorPosition: Math.max(
+            0,
+            prev.alternativeCursorPosition - 1,
+          ),
+        }));
+        return;
+      }
+      if (key.rightArrow) {
+        setState((prev) => ({
+          ...prev,
+          alternativeCursorPosition: Math.min(
+            prev.alternativeText.length,
+            prev.alternativeCursorPosition + 1,
+          ),
+        }));
+        return;
+      }
+    }
+
     // Handle arrow keys for navigation
     if (key.upArrow) {
       setState((prev) => {
@@ -287,24 +342,39 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     // Handle text input for alternative option
     if (input && !key.ctrl && !key.meta && !("alt" in key && key.alt)) {
       // Focus on alternative option when user starts typing
-      setState((prev) => ({
-        selectedOption: "alternative",
-        alternativeText: prev.alternativeText + input,
-        hasUserInput: true,
-      }));
-      return;
-    }
-
-    // Handle backspace and delete (same behavior - delete one character)
-    if (key.backspace || key.delete) {
       setState((prev) => {
-        const newText = prev.alternativeText.slice(0, -1);
+        const nextText =
+          prev.alternativeText.slice(0, prev.alternativeCursorPosition) +
+          input +
+          prev.alternativeText.slice(prev.alternativeCursorPosition);
         return {
           ...prev,
           selectedOption: "alternative",
-          alternativeText: newText,
-          hasUserInput: newText.length > 0,
+          alternativeText: nextText,
+          alternativeCursorPosition:
+            prev.alternativeCursorPosition + input.length,
+          hasUserInput: true,
         };
+      });
+      return;
+    }
+
+    // Handle backspace and delete
+    if (key.backspace || key.delete) {
+      setState((prev) => {
+        if (prev.alternativeCursorPosition > 0) {
+          const nextText =
+            prev.alternativeText.slice(0, prev.alternativeCursorPosition - 1) +
+            prev.alternativeText.slice(prev.alternativeCursorPosition);
+          return {
+            ...prev,
+            selectedOption: "alternative",
+            alternativeText: nextText,
+            alternativeCursorPosition: prev.alternativeCursorPosition - 1,
+            hasUserInput: nextText.length > 0,
+          };
+        }
+        return prev;
       });
       return;
     }
@@ -383,7 +453,15 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                           {isOther && isSelected && (
                             <Text>
                               :{" "}
-                              {otherText || (
+                              {otherText ? (
+                                <>
+                                  {otherText.slice(0, otherCursorPosition)}
+                                  <Text backgroundColor="white" color="black">
+                                    {otherText[otherCursorPosition] || " "}
+                                  </Text>
+                                  {otherText.slice(otherCursorPosition + 1)}
+                                </>
+                              ) : (
                                 <Text color="gray" dimColor>
                                   [Type your answer...]
                                 </Text>
@@ -474,8 +552,24 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                   </Text>
                 ) : (
                   <Text>
-                    {state.alternativeText ||
-                      "Type here to tell Wave what to do differently"}
+                    {state.alternativeText ? (
+                      <>
+                        {state.alternativeText.slice(
+                          0,
+                          state.alternativeCursorPosition,
+                        )}
+                        <Text backgroundColor="white" color="black">
+                          {state.alternativeText[
+                            state.alternativeCursorPosition
+                          ] || " "}
+                        </Text>
+                        {state.alternativeText.slice(
+                          state.alternativeCursorPosition + 1,
+                        )}
+                      </>
+                    ) : (
+                      "Type here to tell Wave what to do differently"
+                    )}
                   </Text>
                 )}
               </Text>
