@@ -12,6 +12,7 @@ import {
 } from "wave-agent-sdk";
 import { DiffDisplay } from "./DiffDisplay.js";
 import { PlanDisplay } from "./PlanDisplay.js";
+import { TextInput } from "./TextInput.js";
 
 // Helper function to generate descriptive action text
 const getActionDescription = (
@@ -207,11 +208,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       }
 
       if (isOtherFocused) {
-        if (key.backspace || key.delete) {
-          setOtherText((prev) => prev.slice(0, -1));
-        } else if (input && !key.ctrl && !key.meta) {
-          setOtherText((prev) => prev + input);
-        }
+        // TextInput handles its own input when focused
         return;
       }
 
@@ -283,36 +280,9 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       });
       return;
     }
-
-    // Handle text input for alternative option
-    if (input && !key.ctrl && !key.meta && !("alt" in key && key.alt)) {
-      // Focus on alternative option when user starts typing
-      setState((prev) => ({
-        selectedOption: "alternative",
-        alternativeText: prev.alternativeText + input,
-        hasUserInput: true,
-      }));
-      return;
-    }
-
-    // Handle backspace and delete (same behavior - delete one character)
-    if (key.backspace || key.delete) {
-      setState((prev) => {
-        const newText = prev.alternativeText.slice(0, -1);
-        return {
-          ...prev,
-          selectedOption: "alternative",
-          alternativeText: newText,
-          hasUserInput: newText.length > 0,
-        };
-      });
-      return;
-    }
   });
 
   const placeholderText = "Type here to tell Wave what to do differently";
-  const showPlaceholder =
-    state.selectedOption === "alternative" && !state.hasUserInput;
 
   return (
     <Box
@@ -380,15 +350,18 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                             </Text>
                           )}
                           {option.description ? ` - ${option.description}` : ""}
-                          {isOther && isSelected && (
-                            <Text>
-                              :{" "}
-                              {otherText || (
-                                <Text color="gray" dimColor>
-                                  [Type your answer...]
-                                </Text>
-                              )}
-                            </Text>
+                          {isOther && (
+                            <>
+                              <Text>: </Text>
+                              <TextInput
+                                value={otherText}
+                                onChange={(val) => {
+                                  setOtherText(val);
+                                }}
+                                placeholder="[Type your answer...]"
+                                isFocused={isSelected}
+                              />
+                            </>
                           )}
                         </Text>
                       </Box>
@@ -468,16 +441,18 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                 bold={state.selectedOption === "alternative"}
               >
                 {state.selectedOption === "alternative" ? "> " : "  "}
-                {showPlaceholder ? (
-                  <Text color="gray" dimColor>
-                    {placeholderText}
-                  </Text>
-                ) : (
-                  <Text>
-                    {state.alternativeText ||
-                      "Type here to tell Wave what to do differently"}
-                  </Text>
-                )}
+                <TextInput
+                  value={state.alternativeText}
+                  onChange={(val) =>
+                    setState((prev) => ({
+                      ...prev,
+                      alternativeText: val,
+                      hasUserInput: val.length > 0,
+                    }))
+                  }
+                  placeholder={placeholderText}
+                  isFocused={state.selectedOption === "alternative"}
+                />
               </Text>
             </Box>
           </Box>
