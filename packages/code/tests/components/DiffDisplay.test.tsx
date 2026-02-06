@@ -76,7 +76,7 @@ describe("DiffDisplay", () => {
     // we just verify the basic structure is correct.
   });
 
-  it("should truncate long diffs when not expanded", () => {
+  it("should not truncate long diffs", () => {
     const longContent = Array.from(
       { length: 30 },
       (_, i) => `line ${i + 1}`,
@@ -86,30 +86,7 @@ describe("DiffDisplay", () => {
       file_path: "test.txt",
     });
     const { lastFrame } = render(
-      <DiffDisplay
-        toolName={WRITE_TOOL_NAME}
-        parameters={params}
-        isExpanded={false}
-      />,
-    );
-    expect(lastFrame()).toContain("truncated");
-  });
-
-  it("should not truncate when expanded", () => {
-    const longContent = Array.from(
-      { length: 30 },
-      (_, i) => `line ${i + 1}`,
-    ).join("\n");
-    const params = JSON.stringify({
-      content: longContent,
-      file_path: "test.txt",
-    });
-    const { lastFrame } = render(
-      <DiffDisplay
-        toolName={WRITE_TOOL_NAME}
-        parameters={params}
-        isExpanded={true}
-      />,
+      <DiffDisplay toolName={WRITE_TOOL_NAME} parameters={params} />,
     );
     expect(lastFrame()).not.toContain("truncated");
     expect(lastFrame()).toContain("+line 30");
