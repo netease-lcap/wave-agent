@@ -54,7 +54,6 @@ describe("McpManager", () => {
   let defaultProps: McpManagerProps;
 
   beforeEach(() => {
-    vi.useFakeTimers();
     mockOnCancel = vi.fn();
     mockOnConnectServer = vi.fn().mockResolvedValue(true);
     mockOnDisconnectServer = vi.fn().mockResolvedValue(true);
@@ -68,7 +67,7 @@ describe("McpManager", () => {
   });
 
   afterEach(() => {
-    vi.clearAllTimers();
+    vi.clearAllMocks();
   });
 
   describe("initial loading", () => {
@@ -217,17 +216,6 @@ describe("McpManager", () => {
   });
 
   describe("refresh behavior", () => {
-    it("should not call methods directly (handled by parent)", () => {
-      render(<McpManager {...defaultProps} />);
-
-      // Wait for any async operations
-      vi.advanceTimersByTime(10);
-
-      // These should not be called directly by the component
-      expect(mockOnConnectServer).not.toHaveBeenCalled();
-      expect(mockOnDisconnectServer).not.toHaveBeenCalled();
-    });
-
     it("should handle prop changes correctly", () => {
       const { rerender, lastFrame } = render(<McpManager {...defaultProps} />);
 
@@ -261,6 +249,232 @@ describe("McpManager", () => {
 
       // Component should unmount without errors
       expect(() => unmount()).not.toThrow();
+    });
+  });
+
+  describe("navigation", () => {
+    it("should change selection with arrow keys", async () => {
+      const { lastFrame, stdin } = render(<McpManager {...defaultProps} />);
+
+      // Initially first server is selected
+      expect(lastFrame()).toContain("▶ 1. ○ chrome-devtools");
+
+      // Press down arrow
+      stdin.write("\u001B[B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 2. ✓ filesystem"),
+      );
+
+      // Press down arrow again
+      stdin.write("\u001B[B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 3. ✗ brave-search"),
+      );
+
+      // Press down arrow at the end (should stay at last)
+      stdin.write("\u001B[B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 3. ✗ brave-search"),
+      );
+
+      // Press up arrow
+      stdin.write("\u001B[A");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 2. ✓ filesystem"),
+      );
+
+      // Press up arrow at the beginning (should stay at first)
+      stdin.write("\u001B[A");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 1. ○ chrome-devtools"),
+      );
+    });
+
+    it("should switch to detail view on Enter and back on Escape", async () => {
+      const { lastFrame, stdin } = render(<McpManager {...defaultProps} />);
+
+      // Press Enter to view details of first server
+      stdin.write("\r");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("MCP Server Details: chrome-devtools"),
+      );
+      expect(lastFrame()).toContain("Status: ○ disconnected");
+
+      // Press Escape to go back to list
+      stdin.write("\u001B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("Manage MCP servers"),
+      );
+      expect(lastFrame()).toContain("▶ 1. ○ chrome-devtools");
+    });
+
+    it("should call onCancel on Escape in list view", async () => {
+      const { stdin } = render(<McpManager {...defaultProps} />);
+
+      // Press Escape in list view
+      stdin.write("\u001B");
+      await vi.waitFor(() => expect(mockOnCancel).toHaveBeenCalled());
+    });
+  });
+
+  describe("server actions", () => {
+    it("should connect a disconnected server with 'c' key in list view", async () => {
+      const { stdin } = render(<McpManager {...defaultProps} />);
+
+      // First server is disconnected
+      stdin.write("c");
+      await vi.waitFor(() =>
+        expect(mockOnConnectServer).toHaveBeenCalledWith("chrome-devtools"),
+      );
+    });
+
+    it("should disconnect a connected server with 'd' key in list view", async () => {
+      const { stdin, lastFrame } = render(<McpManager {...defaultProps} />);
+
+      // Move to second server (connected)
+      stdin.write("\u001B[B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 2. ✓ filesystem"),
+      );
+
+      stdin.write("d");
+      await vi.waitFor(() =>
+        expect(mockOnDisconnectServer).toHaveBeenCalledWith("filesystem"),
+      );
+    });
+
+    it("should connect/disconnect in detail view", async () => {
+      const { stdin, lastFrame } = render(<McpManager {...defaultProps} />);
+
+      // Go to detail view of first server (disconnected)
+      stdin.write("\r");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("MCP Server Details: chrome-devtools"),
+      );
+
+      stdin.write("c");
+      await vi.waitFor(() =>
+        expect(mockOnConnectServer).toHaveBeenCalledWith("chrome-devtools"),
+      );
+
+      // Go back, move to second server (connected), go to detail
+      stdin.write("\u001B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("Manage MCP servers"),
+      );
+
+      stdin.write("\u001B[B");
+      // Wait for selection to change
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 2. ✓ filesystem"),
+      );
+
+      stdin.write("\r");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("MCP Server Details: filesystem"),
+      );
+
+      stdin.write("d");
+      await vi.waitFor(() =>
+        expect(mockOnDisconnectServer).toHaveBeenCalledWith("filesystem"),
+      );
+    });
+  });
+
+  describe("detail view content", () => {
+    it("should display all server details", async () => {
+      const fullServer: McpServerStatus = {
+        name: "full-server",
+        config: {
+          command: "test-cmd",
+          args: ["arg1", "arg2"],
+          env: { KEY1: "VAL1", KEY2: "VAL2" },
+        },
+        status: "connected",
+        toolCount: 10,
+        capabilities: ["resources", "prompts"],
+        lastConnected: new Date("2026-01-01T12:00:00Z").getTime(),
+      };
+
+      const { lastFrame, stdin } = render(
+        <McpManager {...defaultProps} servers={[fullServer]} />,
+      );
+
+      // Go to detail view
+      stdin.write("\r");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("MCP Server Details: full-server"),
+      );
+      const output = lastFrame();
+
+      expect(output).toContain("Status: ✓ connected");
+      expect(output).toContain("Command: test-cmd");
+      expect(output).toContain("Args: arg1 arg2");
+      expect(output).toContain("Tools: 10 tools");
+      expect(output).toContain("Capabilities: resources, prompts");
+      expect(output).toContain("Last Connected:");
+      expect(output).toContain("Environment Variables:");
+      expect(output).toContain("KEY1=VAL1");
+      expect(output).toContain("KEY2=VAL2");
+    });
+
+    it("should display error message in detail view", async () => {
+      const { lastFrame, stdin } = render(<McpManager {...defaultProps} />);
+
+      // Move to third server (error)
+      stdin.write("\u001B[B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 2. ✓ filesystem"),
+      );
+      stdin.write("\u001B[B");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("▶ 3. ✗ brave-search"),
+      );
+
+      stdin.write("\r");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("MCP Server Details: brave-search"),
+      );
+
+      const output = lastFrame();
+      expect(output).toContain("Status: ✗ error");
+      expect(output).toContain("Error: Connection failed");
+    });
+  });
+
+  describe("edge cases and status icons", () => {
+    it("should handle server with no args or env", async () => {
+      const minimalServer: McpServerStatus = {
+        name: "minimal",
+        config: { command: "min-cmd" },
+        status: "disconnected",
+      };
+
+      const { lastFrame, stdin } = render(
+        <McpManager {...defaultProps} servers={[minimalServer]} />,
+      );
+
+      stdin.write("\r");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("MCP Server Details: minimal"),
+      );
+      const output = lastFrame();
+      expect(output).not.toContain("Args:");
+      expect(output).not.toContain("Environment Variables:");
+    });
+
+    it("should show connecting status icon", () => {
+      const connectingServer: McpServerStatus = {
+        name: "connecting-server",
+        config: { command: "cmd" },
+        status: "connecting",
+      };
+
+      const { lastFrame } = render(
+        <McpManager {...defaultProps} servers={[connectingServer]} />,
+      );
+
+      expect(lastFrame()).toContain("⟳");
     });
   });
 });

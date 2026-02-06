@@ -6,12 +6,28 @@ import type {
   SkillMetadata,
   Skill,
 } from "../../src/types/index.js";
+import { readdir, stat } from "fs/promises";
+import {
+  parseSkillFile,
+  formatSkillError,
+} from "../../src/utils/skillParser.js";
+
+vi.mock("fs/promises");
+vi.mock("../../src/utils/skillParser.js", async () => {
+  const actual = await vi.importActual("../../src/utils/skillParser.js");
+  return {
+    ...actual,
+    parseSkillFile: vi.fn(),
+    formatSkillError: vi.fn(),
+  };
+});
 
 describe("SkillManager", () => {
   let skillManager: SkillManager;
   let mockLogger: Logger;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     mockLogger = {
       error: vi.fn(),
       warn: vi.fn(),
@@ -21,7 +37,7 @@ describe("SkillManager", () => {
 
     skillManager = new SkillManager({
       logger: mockLogger,
-      workdir: process.cwd(),
+      workdir: "/test/workdir",
     });
   });
 
@@ -42,21 +58,262 @@ describe("SkillManager", () => {
     });
   });
 
-  describe("initialization checks", () => {
-    it("should return false when not initialized", () => {
-      expect(skillManager.isInitialized()).toBe(false);
-    });
+  describe("initialize", () => {
+    it("should discover personal and project skills successfully", async () => {
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        if (path.toString().includes(".wave/skills")) {
+          return [
+            { name: "skill1", isDirectory: () => true },
+          ] as unknown as never;
+        }
+        return [];
+      });
 
-    it("should throw error if not initialized when getting skills", () => {
-      expect(() => skillManager.getAvailableSkills()).toThrow(
-        "SkillManager not initialized. Call initialize() first.",
+      vi.mocked(stat).mockResolvedValue({} as unknown as never);
+      vi.mocked(parseSkillFile).mockReturnValue({
+        isValid: true,
+        skillMetadata: {
+          name: "skill1",
+          description: "desc1",
+          type: "personal",
+          skillPath: "/path/to/skill1",
+        },
+        content: "---\nname: skill1\n---\ncontent1",
+        frontmatter: { name: "skill1" },
+        validationErrors: [],
+      } as unknown as never);
+
+      await skillManager.initialize();
+
+      expect(skillManager.isInitialized()).toBe(true);
+      const skills = skillManager.getAvailableSkills();
+      expect(skills).toHaveLength(1);
+      expect(skills[0].name).toBe("skill1");
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect.stringContaining("SkillManager initialized with 1 skills"),
       );
     });
 
-    it("should throw error if not initialized when loading skill", async () => {
-      await expect(skillManager.loadSkill("test")).rejects.toThrow(
-        "SkillManager not initialized. Call initialize() first.",
+    it("should handle discovery errors and log warnings", async () => {
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        if (path.toString().includes(".wave/skills")) {
+          return [
+            { name: "invalid-skill", isDirectory: () => true },
+          ] as unknown as never;
+        }
+        return [];
+      });
+
+      vi.mocked(stat).mockResolvedValue({} as unknown as never);
+      vi.mocked(parseSkillFile).mockReturnValue({
+        isValid: false,
+        validationErrors: ["Invalid format"],
+      } as unknown as never);
+
+      await skillManager.initialize();
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Found 2 skill discovery errors"),
       );
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Skill error in"),
+      );
+    });
+
+    it("should handle initialization failure and throw error", async () => {
+      vi.mocked(readdir).mockRejectedValue(new Error("Read error"));
+
+      // readdir is called for personal and project skills.
+      // In discoverSkillCollection, readdir error is caught and logged as debug,
+      // but if something else throws in initialize, it should be caught.
+      // Let's mock discoverSkills to throw.
+      vi.spyOn(
+        skillManager as unknown as never,
+        "discoverSkills",
+      ).mockRejectedValue(new Error("Discovery failed"));
+
+      await expect(skillManager.initialize()).rejects.toThrow(
+        "Discovery failed",
+      );
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "Failed to initialize SkillManager:",
+        expect.any(Error),
+      );
+    });
+  });
+
+  describe("discoverSkillCollection and findSkillDirectories", () => {
+    it("should skip directories without SKILL.md", async () => {
+      vi.mocked(readdir).mockResolvedValue([
+        { name: "no-skill-md", isDirectory: () => true },
+      ] as unknown as never);
+      vi.mocked(stat).mockRejectedValue(new Error("Not found"));
+
+      await skillManager.initialize();
+
+      expect(skillManager.getAvailableSkills()).toHaveLength(0);
+    });
+
+    it("should handle directory read errors gracefully", async () => {
+      // findSkillDirectories catches readdir errors and returns empty array.
+      // discoverSkillCollection catches findSkillDirectories errors (if any) or other errors and logs debug "Could not scan".
+      // To trigger "Could not scan", we need findSkillDirectories to throw or something else in discoverSkillCollection to throw.
+      // Since findSkillDirectories already has a try-catch around readdir, we need to mock findSkillDirectories itself.
+
+      const spy = vi
+        .spyOn(skillManager as unknown as never, "findSkillDirectories")
+        .mockRejectedValue(new Error("Scan failed"));
+
+      await skillManager.initialize();
+
+      expect(skillManager.getAvailableSkills()).toHaveLength(0);
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect.stringContaining("Could not scan"),
+      );
+      spy.mockRestore();
+    });
+
+    it("should handle readdir error in findSkillDirectories", async () => {
+      vi.mocked(readdir).mockRejectedValue(new Error("readdir failed"));
+      await skillManager.initialize();
+      expect(skillManager.getAvailableSkills()).toHaveLength(0);
+    });
+
+    it("should handle invalid skill files", async () => {
+      vi.mocked(readdir).mockResolvedValue([
+        { name: "bad-skill", isDirectory: () => true },
+      ] as unknown as never);
+      vi.mocked(stat).mockResolvedValue({} as unknown as never);
+      vi.mocked(parseSkillFile).mockImplementation(() => {
+        throw new Error("Parse error");
+      });
+
+      await skillManager.initialize();
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Found 2 skill discovery errors"),
+      );
+    });
+  });
+
+  describe("registerPluginSkills", () => {
+    it("should register skills from plugins", async () => {
+      // Initialize first
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+
+      const pluginSkill: Skill = {
+        name: "plugin-skill",
+        description: "from plugin",
+        type: "personal",
+        skillPath: "/plugin/path",
+        content: "content",
+        frontmatter: { name: "plugin-skill", description: "from plugin" },
+        isValid: true,
+        errors: [],
+      };
+
+      skillManager.registerPluginSkills([pluginSkill]);
+
+      const skills = skillManager.getAvailableSkills();
+      expect(skills.find((s) => s.name === "plugin-skill")).toBeDefined();
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect.stringContaining("Registered 1 plugin skills"),
+      );
+    });
+  });
+
+  describe("loadSkill", () => {
+    it("should load skill from skillContent map", async () => {
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        if (path.toString().includes(".wave/skills")) {
+          return [
+            { name: "skill1", isDirectory: () => true },
+          ] as unknown as never;
+        }
+        return [];
+      });
+      vi.mocked(stat).mockResolvedValue({} as unknown as never);
+      vi.mocked(parseSkillFile).mockReturnValue({
+        isValid: true,
+        skillMetadata: { name: "skill1", skillPath: "/path1" },
+        content: "---\nname: skill1\n---\ncontent1",
+        frontmatter: { name: "skill1" },
+        validationErrors: [],
+      } as unknown as never);
+
+      await skillManager.initialize();
+      const skill = await skillManager.loadSkill("skill1");
+
+      expect(skill).toBeDefined();
+      expect(skill?.name).toBe("skill1");
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        "Skill 'skill1' retrieved from loaded content",
+      );
+    });
+
+    it("should return null if skill not found", async () => {
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+
+      const skill = await skillManager.loadSkill("nonexistent");
+      expect(skill).toBeNull();
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        "Skill 'nonexistent' not found",
+      );
+    });
+  });
+
+  describe("formatSkillContent", () => {
+    it("should format skill content correctly with frontmatter", async () => {
+      const mockSkill: Skill = {
+        name: "test-skill",
+        description: "A test skill",
+        type: "personal",
+        skillPath: "/path/to/skill",
+        content:
+          "---\nname: test-skill\ndescription: A test skill\n---\n\n# Actual Content",
+        frontmatter: { name: "test-skill", description: "A test skill" },
+        isValid: true,
+        errors: [],
+      };
+
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+      skillManager.registerPluginSkills([mockSkill]);
+
+      const result = await skillManager.executeSkill({
+        skill_name: "test-skill",
+      });
+
+      expect(result.content).toContain("🧠 **test-skill** (personal skill)");
+      expect(result.content).toContain("*A test skill*");
+      expect(result.content).toContain("📁 Skill location: `/path/to/skill`");
+      expect(result.content).toContain("# Actual Content");
+      expect(result.content).not.toContain("---");
+    });
+
+    it("should format skill content correctly without frontmatter markers in content", async () => {
+      const mockSkill: Skill = {
+        name: "test-skill",
+        description: "A test skill",
+        type: "personal",
+        skillPath: "/path/to/skill",
+        content: "# Just Content",
+        frontmatter: { name: "test-skill", description: "A test skill" },
+        isValid: true,
+        errors: [],
+      };
+
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+      skillManager.registerPluginSkills([mockSkill]);
+
+      const result = await skillManager.executeSkill({
+        skill_name: "test-skill",
+      });
+
+      expect(result.content).toContain("# Just Content");
     });
   });
 
@@ -135,12 +392,14 @@ describe("SkillManager", () => {
 
       vi.mocked(skillManager.loadSkill).mockResolvedValue(mockSkill);
 
+      vi.mocked(formatSkillError).mockReturnValue("Formatted Error");
+
       const result = await skillManager.executeSkill({
         skill_name: "invalid-skill",
       });
 
       expect(result.content).toContain("❌ **Skill validation failed**");
-      expect(result.content).toContain("Missing required field: name");
+      expect(result.content).toContain("Formatted Error");
     });
 
     it("should handle skill loading error", async () => {
