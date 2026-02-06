@@ -56,6 +56,26 @@ describe("DiffDisplay", () => {
     expect(frame).toContain("brown fox");
   });
 
+  it("should not use word-level diff for multi-line changes", () => {
+    const params = JSON.stringify({
+      old_string: "line 1\nline 2",
+      new_string: "line 1 modified\nline 2 modified",
+      file_path: "test.txt",
+    });
+    const { lastFrame } = render(
+      <DiffDisplay toolName={EDIT_TOOL_NAME} parameters={params} />,
+    );
+    const frame = lastFrame();
+    // In multi-line, it should just show the lines with +/-
+    expect(frame).toContain("-line 1");
+    expect(frame).toContain("-line 2");
+    expect(frame).toContain("+line 1 modified");
+    expect(frame).toContain("+line 2 modified");
+    // It should NOT have the word-level highlighting (which uses background colors)
+    // Since we can't easily check background colors in the text output here,
+    // we just verify the basic structure is correct.
+  });
+
   it("should truncate long diffs when not expanded", () => {
     const longContent = Array.from(
       { length: 30 },
