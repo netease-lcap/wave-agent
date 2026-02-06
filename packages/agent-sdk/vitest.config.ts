@@ -24,6 +24,12 @@ export default defineConfig(() => {
         reporter: ["text", "json", "html"],
         include: ["src/**/*"],
         exclude: ["node_modules", "dist", "tests", "examples"],
+        thresholds: {
+          lines: 80,
+          functions: 80,
+          branches: 80,
+          statements: 80,
+        },
       },
       env: {
         WAVE_API_KEY: "test-token",
