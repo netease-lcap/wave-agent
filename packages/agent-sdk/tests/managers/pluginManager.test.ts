@@ -257,6 +257,62 @@ describe("PluginManager", () => {
         ),
       );
     });
+
+    it("should prioritize local plugins over marketplace plugins", async () => {
+      const configs: PluginConfig[] = [
+        { type: "local", path: "plugins/test-plugin" },
+      ];
+      const localManifest = {
+        name: "test-plugin",
+        version: "2.0.0-local",
+        description: "Local version",
+      };
+      const marketplaceManifest = {
+        name: "test-plugin",
+        version: "1.0.0-marketplace",
+        description: "Marketplace version",
+      };
+
+      const installedPlugins = [
+        {
+          name: "test-plugin",
+          marketplace: "m1",
+          cachePath: "/marketplace/path",
+        },
+      ];
+
+      vi.mocked(MarketplaceService).mockImplementation(() => {
+        return {
+          getInstalledPlugins: vi
+            .fn()
+            .mockResolvedValue({ plugins: installedPlugins }),
+        } as unknown as MarketplaceService;
+      });
+
+      pluginManager.updateEnabledPlugins({
+        "test-plugin@m1": true,
+      });
+
+      vi.mocked(PluginLoader.loadManifest).mockImplementation(async (p) => {
+        if (p.includes("plugins/test-plugin")) {
+          return localManifest as PluginManifest;
+        }
+        return marketplaceManifest as PluginManifest;
+      });
+      vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
+      vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+
+      await pluginManager.loadPlugins(configs);
+
+      const plugins = pluginManager.getPlugins();
+      expect(plugins).toHaveLength(1);
+      expect(plugins[0].version).toBe("2.0.0-local");
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Plugin with name 'test-plugin' is already loaded",
+        ),
+      );
+    });
   });
 
   describe("getPlugins and getPlugin", () => {
