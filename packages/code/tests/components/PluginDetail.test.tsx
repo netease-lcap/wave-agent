@@ -244,35 +244,40 @@ describe("PluginDetail", () => {
       );
 
       // Initially first action is selected
-      expect(lastFrame()).toContain("> Uninstall plugin");
+      expect(lastFrame()).toContain("> Update plugin (reinstall)");
 
       // Press Down
-      stdin.write("\u001B[B");
-      await vi.waitFor(() => {
-        expect(lastFrame()).toContain("> Update plugin (reinstall)");
-      });
-
-      // Press Down again (wrap around)
       stdin.write("\u001B[B");
       await vi.waitFor(() => {
         expect(lastFrame()).toContain("> Uninstall plugin");
       });
 
+      // Press Down again (wrap around)
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("> Update plugin (reinstall)");
+      });
+
       // Press Up (wrap around to last)
       stdin.write("\u001B[A");
       await vi.waitFor(() => {
-        expect(lastFrame()).toContain("> Update plugin (reinstall)");
+        expect(lastFrame()).toContain("> Uninstall plugin");
       });
     });
 
     it("should uninstall with Enter", async () => {
-      const { stdin } = render(
+      const { stdin, lastFrame } = render(
         <PluginManagerContext.Provider value={createMockContext("plugin2@mp2")}>
           <PluginDetail />
         </PluginManagerContext.Provider>,
       );
 
-      // Select first action (uninstall) - already selected
+      // Select second action (uninstall)
+      stdin.write("\u001B[B");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("> Uninstall plugin");
+      });
+
       // Press Enter
       stdin.write("\r");
       await vi.waitFor(() => {
@@ -291,11 +296,8 @@ describe("PluginDetail", () => {
         </PluginManagerContext.Provider>,
       );
 
-      // Select second action (update)
-      stdin.write("\u001B[B");
-      await vi.waitFor(() => {
-        expect(lastFrame()).toContain("> Update plugin (reinstall)");
-      });
+      // Select first action (update) - already selected
+      expect(lastFrame()).toContain("> Update plugin (reinstall)");
 
       // Press Enter
       stdin.write("\r");
