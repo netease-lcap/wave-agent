@@ -107,7 +107,7 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
     }
   };
 
-  // Render expanded diff display using word-level diff for all changes
+  // Render expanded diff display
   const renderExpandedDiff = () => {
     try {
       if (changes.length === 0) return null;
@@ -122,9 +122,8 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
             change.newContent || "",
           );
 
+          // Process line diffs
           const diffElements: React.ReactNode[] = [];
-
-          // Process line diffs and apply word-level diff to changed lines
           lineDiffs.forEach((part, partIndex) => {
             if (part.added) {
               const lines = part.value
@@ -175,70 +174,46 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
             }
           });
 
-          // Now look for pairs of removed/added lines that can be word-diffed
-          let i = 0;
+          // If it's a single line change (one removed, one added), use word-level diff
+          if (
+            diffElements.length === 2 &&
+            React.isValidElement(diffElements[0]) &&
+            React.isValidElement(diffElements[1]) &&
+            typeof diffElements[0].key === "string" &&
+            diffElements[0].key.includes("remove-") &&
+            typeof diffElements[1].key === "string" &&
+            diffElements[1].key.includes("add-")
+          ) {
+            const removedText = extractTextFromElement(diffElements[0]);
+            const addedText = extractTextFromElement(diffElements[1]);
 
-          while (i < diffElements.length) {
-            const current = diffElements[i];
-            const next =
-              i + 1 < diffElements.length ? diffElements[i + 1] : null;
+            if (removedText && addedText) {
+              const { removedParts, addedParts } = renderWordLevelDiff(
+                removedText,
+                addedText,
+                `word-${changeIndex}`,
+              );
 
-            // Check if we have a removed line followed by an added line
-            const currentKey = React.isValidElement(current) ? current.key : "";
-            const nextKey = React.isValidElement(next) ? next.key : "";
-
-            const isCurrentRemoved =
-              typeof currentKey === "string" && currentKey.includes("remove-");
-            const isNextAdded =
-              typeof nextKey === "string" && nextKey.includes("add-");
-
-            if (
-              isCurrentRemoved &&
-              isNextAdded &&
-              React.isValidElement(current) &&
-              React.isValidElement(next)
-            ) {
-              // Extract the text content from the removed and added lines
-              const removedText = extractTextFromElement(current);
-              const addedText = extractTextFromElement(next);
-
-              if (removedText && addedText) {
-                // Apply word-level diff
-                const { removedParts, addedParts } = renderWordLevelDiff(
-                  removedText,
-                  addedText,
-                  `word-${changeIndex}-${i}`,
-                );
-
-                allElements.push(
-                  <Box
-                    key={`word-diff-removed-${changeIndex}-${i}`}
-                    flexDirection="row"
-                  >
-                    <Text color="red">-</Text>
-                    {removedParts}
-                  </Box>,
-                );
-                allElements.push(
-                  <Box
-                    key={`word-diff-added-${changeIndex}-${i}`}
-                    flexDirection="row"
-                  >
-                    <Text color="green">+</Text>
-                    {addedParts}
-                  </Box>,
-                );
-
-                i += 2; // Skip the next element since we processed it
-              } else {
-                // Fallback to original elements
-                allElements.push(current);
-                i += 1;
-              }
+              allElements.push(
+                <Box
+                  key={`word-diff-removed-${changeIndex}`}
+                  flexDirection="row"
+                >
+                  <Text color="red">-</Text>
+                  {removedParts}
+                </Box>,
+              );
+              allElements.push(
+                <Box key={`word-diff-added-${changeIndex}`} flexDirection="row">
+                  <Text color="green">+</Text>
+                  {addedParts}
+                </Box>,
+              );
             } else {
-              allElements.push(current);
-              i += 1;
+              allElements.push(...diffElements);
             }
+          } else {
+            allElements.push(...diffElements);
           }
         } catch (error) {
           console.warn(
@@ -280,26 +255,6 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
     }
   };
 
-  // Helper function to extract text content from a React element
-  const extractTextFromElement = (element: React.ReactNode): string | null => {
-    if (!React.isValidElement(element)) return null;
-
-    // Navigate through Box -> Text structure
-    const children = (
-      element.props as unknown as { children?: React.ReactNode[] }
-    ).children;
-    if (Array.isArray(children) && children.length >= 2) {
-      const textElement = children[1]; // Second child should be the Text with content
-      if (
-        React.isValidElement(textElement) &&
-        (textElement.props as unknown as { children?: string }).children
-      ) {
-        return (textElement.props as unknown as { children: string }).children;
-      }
-    }
-    return null;
-  };
-
   // Don't render anything if no diff should be shown
   if (!showDiff) {
     return null;
@@ -315,4 +270,24 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
       </Box>
     </Box>
   );
+};
+
+// Helper function to extract text content from a React element
+const extractTextFromElement = (element: React.ReactNode): string | null => {
+  if (!React.isValidElement(element)) return null;
+
+  // Navigate through Box -> Text structure
+  const children = (
+    element.props as unknown as { children?: React.ReactNode[] }
+  ).children;
+  if (Array.isArray(children) && children.length >= 2) {
+    const textElement = children[1]; // Second child should be the Text with content
+    if (
+      React.isValidElement(textElement) &&
+      (textElement.props as unknown as { children?: string }).children
+    ) {
+      return (textElement.props as unknown as { children: string }).children;
+    }
+  }
+  return null;
 };
