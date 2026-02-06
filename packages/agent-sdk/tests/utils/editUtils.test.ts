@@ -1,17 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mkdir, writeFile } from "fs/promises";
 import os from "os";
-import { saveEditErrorSnapshot } from "../../src/utils/editUtils.js";
+import {
+  saveEditErrorSnapshot,
+  findIndentationInsensitiveMatch,
+  escapeRegExp,
+} from "../../src/utils/editUtils.js";
 import { logger } from "../../src/utils/globalLogger.js";
 
 vi.mock("fs/promises");
 vi.mock("os");
 vi.mock("path", async () => {
-  const actual = await vi.importActual("path");
+  const actual = (await vi.importActual("path")) as typeof import("path");
   return {
     ...actual,
-    join: vi.fn((...args) => args.join("/")),
-    basename: vi.fn((p) => p.split("/").pop()),
+    join: vi.fn((...args: string[]) => args.join("/")),
+    basename: vi.fn((p: string) => p.split("/").pop()),
   };
 });
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -19,6 +23,69 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
     error: vi.fn(),
   },
 }));
+
+describe("findIndentationInsensitiveMatch", () => {
+  it("should return searchString if exact match exists", () => {
+    const content = "line 1\n  line 2\nline 3";
+    const searchString = "  line 2";
+    expect(findIndentationInsensitiveMatch(content, searchString)).toBe(
+      searchString,
+    );
+  });
+
+  it("should find match with consistent indentation offset", () => {
+    const content = "  line 1\n    line 2";
+    const searchString = "line 1\n  line 2";
+    expect(findIndentationInsensitiveMatch(content, searchString)).toBe(
+      content,
+    );
+  });
+
+  it("should return null if indentation offset is inconsistent", () => {
+    const content = "  line 1\n    line 2";
+    const searchString = "line 1\nline 2";
+    expect(findIndentationInsensitiveMatch(content, searchString)).toBeNull();
+  });
+
+  it("should handle empty lines in search string", () => {
+    const content = "  line 1\n\n    line 2";
+    const searchString = "line 1\n\n  line 2";
+    expect(findIndentationInsensitiveMatch(content, searchString)).toBe(
+      content,
+    );
+  });
+
+  it("should return null if multiple different smart matches exist", () => {
+    const content = "A\n  A";
+    const searchString = "   A";
+    expect(findIndentationInsensitiveMatch(content, searchString)).toBeNull();
+  });
+
+  it("should return match if multiple identical smart matches exist", () => {
+    const content = " A\n A";
+    const searchString = "  A";
+    expect(findIndentationInsensitiveMatch(content, searchString)).toBe(" A");
+  });
+
+  it("should return null if trimmed content does not match", () => {
+    const content = "  line 1";
+    const searchString = "line 2";
+    expect(findIndentationInsensitiveMatch(content, searchString)).toBeNull();
+  });
+});
+
+describe("escapeRegExp", () => {
+  it("should escape special characters", () => {
+    const input = ".*+?^${}()|[\\]\\";
+    const expected = "\\.\\*\\+\\?\\^\\$\\{\\}\\(\\)\\|\\[\\\\\\]\\\\";
+    expect(escapeRegExp(input)).toBe(expected);
+  });
+
+  it("should return same string if no special characters", () => {
+    const input = "abc123";
+    expect(escapeRegExp(input)).toBe(input);
+  });
+});
 
 describe("saveEditErrorSnapshot", () => {
   beforeEach(() => {

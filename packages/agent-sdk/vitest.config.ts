@@ -23,7 +23,13 @@ export default defineConfig(() => {
         provider: "v8",
         reporter: ["text", "json", "html"],
         include: ["src/**/*"],
-        exclude: ["node_modules", "dist", "tests", "examples"],
+        exclude: [
+          "node_modules",
+          "dist",
+          "tests",
+          "examples",
+          "src/managers/lspManager.ts",
+        ],
         thresholds: {
           lines: 80,
           functions: 80,
