@@ -93,7 +93,7 @@ if (results.length > 0) {
     }
 
     execSync(`git commit -m "${commitMsg}" --no-verify`, { stdio: 'inherit' });
-    execSync(`git tag -a ${tagName} -m "${commitMsg}\n\n${changelog}"`, { stdio: 'inherit' });
+    execSync(`git tag -a ${tagName} -m "${commitMsg.replace(/"/g, '\\"')}\n\n${changelog.replace(/"/g, '\\"')}"`, { stdio: 'inherit' });
     console.log(`Created tag: ${tagName}`);
     console.log(`\nChangelog:\n${changelog}\n`);
     console.log(`\nTo publish this version, run:\n  git push origin ${tagName}\n`);
