@@ -149,9 +149,7 @@ export class PluginManager {
    * @param configs Array of plugin configurations
    */
   async loadPlugins(configs: PluginConfig[]): Promise<void> {
-    // Load installed plugins from marketplace first
-    await this.loadInstalledPlugins();
-
+    // Load plugins from configuration (e.g. --plugin-dir) first to give them higher priority
     for (const config of configs) {
       if (config.type !== "local") {
         this.logger?.warn(`Unsupported plugin type: ${config.type}`);
@@ -164,6 +162,9 @@ export class PluginManager {
 
       await this.loadSinglePlugin(absolutePath);
     }
+
+    // Load installed plugins from marketplace
+    await this.loadInstalledPlugins();
   }
 
   /**
