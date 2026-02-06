@@ -15,10 +15,11 @@ describe("GitService", () => {
   });
 
   it("should return true if git is available", async () => {
-    vi.mocked(exec).mockImplementation((_cmd, cb) => {
-      if (typeof cb === "function") {
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
         (
-          cb as unknown as (
+          callback as unknown as (
             err: null,
             res: { stdout: string; stderr: string },
           ) => void
@@ -33,10 +34,11 @@ describe("GitService", () => {
   });
 
   it("should return false if git is not available", async () => {
-    vi.mocked(exec).mockImplementation((_cmd, cb) => {
-      if (typeof cb === "function") {
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
         (
-          cb as unknown as (
+          callback as unknown as (
             err: Error,
             res: { stdout: string; stderr: string },
           ) => void
@@ -50,10 +52,11 @@ describe("GitService", () => {
   });
 
   it("should throw clear error if git is missing during clone", async () => {
-    vi.mocked(exec).mockImplementation((_cmd, cb) => {
-      if (typeof cb === "function") {
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
         (
-          cb as unknown as (
+          callback as unknown as (
             err: Error,
             res: { stdout: string; stderr: string },
           ) => void
@@ -69,10 +72,11 @@ describe("GitService", () => {
 
   it("should handle repository not found error", async () => {
     // Mock git --version success first
-    vi.mocked(exec).mockImplementationOnce((_cmd, cb) => {
-      if (typeof cb === "function") {
+    vi.mocked(exec).mockImplementationOnce((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
         (
-          cb as unknown as (
+          callback as unknown as (
             err: null,
             res: { stdout: string; stderr: string },
           ) => void
@@ -84,10 +88,11 @@ describe("GitService", () => {
     const error = new Error("Command failed");
     (error as unknown as { stderr: string }).stderr =
       "fatal: repository 'https://github.com/owner/repo.git/' not found";
-    vi.mocked(exec).mockImplementation((_cmd, cb) => {
-      if (typeof cb === "function") {
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
         (
-          cb as unknown as (
+          callback as unknown as (
             err: Error,
             res: { stdout: string; stderr: string },
           ) => void
@@ -106,10 +111,11 @@ describe("GitService", () => {
 
   it("should handle authentication failure", async () => {
     // Mock git --version success first
-    vi.mocked(exec).mockImplementationOnce((_cmd, cb) => {
-      if (typeof cb === "function") {
+    vi.mocked(exec).mockImplementationOnce((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
         (
-          cb as unknown as (
+          callback as unknown as (
             err: null,
             res: { stdout: string; stderr: string },
           ) => void
@@ -121,10 +127,11 @@ describe("GitService", () => {
     const error = new Error("Command failed");
     (error as unknown as { stderr: string }).stderr =
       "fatal: Authentication failed for 'https://github.com/owner/repo.git/'";
-    vi.mocked(exec).mockImplementation((_cmd, cb) => {
-      if (typeof cb === "function") {
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
         (
-          cb as unknown as (
+          callback as unknown as (
             err: Error,
             res: { stdout: string; stderr: string },
           ) => void
@@ -143,10 +150,11 @@ describe("GitService", () => {
 
   it("should handle not a git repository error in pull", async () => {
     // Mock git --version success first
-    vi.mocked(exec).mockImplementationOnce((_cmd, cb) => {
-      if (typeof cb === "function") {
+    vi.mocked(exec).mockImplementationOnce((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
         (
-          cb as unknown as (
+          callback as unknown as (
             err: null,
             res: { stdout: string; stderr: string },
           ) => void
@@ -158,10 +166,11 @@ describe("GitService", () => {
     const error = new Error("Command failed");
     (error as unknown as { stderr: string }).stderr =
       "fatal: not a git repository (or any of the parent directories): .git";
-    vi.mocked(exec).mockImplementation((_cmd, cb) => {
-      if (typeof cb === "function") {
+    vi.mocked(exec).mockImplementation((cmd, options, cb) => {
+      const callback = typeof options === "function" ? options : cb;
+      if (typeof callback === "function") {
         (
-          cb as unknown as (
+          callback as unknown as (
             err: Error,
             res: { stdout: string; stderr: string },
           ) => void

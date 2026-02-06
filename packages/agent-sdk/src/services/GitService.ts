@@ -43,7 +43,9 @@ export class GitService {
 
     try {
       const refArgs = ref ? `-b "${ref}"` : "--depth 1";
-      await execAsync(`LC_ALL=C git clone ${refArgs} "${url}" "${targetPath}"`);
+      await execAsync(`git clone ${refArgs} "${url}" "${targetPath}"`, {
+        env: { ...process.env, LC_ALL: "C" },
+      });
     } catch (error) {
       throw this.handleGitError(urlOrRepo, error);
     }
@@ -59,7 +61,9 @@ export class GitService {
       );
     }
     try {
-      await execAsync(`LC_ALL=C git -C "${targetPath}" pull`);
+      await execAsync(`git -C "${targetPath}" pull`, {
+        env: { ...process.env, LC_ALL: "C" },
+      });
     } catch (error) {
       throw this.handleGitError(targetPath, error);
     }
