@@ -23,8 +23,8 @@ export const PluginDetail: React.FC = () => {
     );
 
   const INSTALLED_ACTIONS = [
-    { id: "uninstall", label: "Uninstall plugin" },
     { id: "update", label: "Update plugin (reinstall)" },
+    { id: "uninstall", label: "Uninstall plugin" },
   ] as const;
 
   const isInstalledAndEnabled = plugin && "enabled" in plugin && plugin.enabled;
