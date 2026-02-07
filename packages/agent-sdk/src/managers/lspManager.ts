@@ -418,7 +418,9 @@ export class LspManager implements ILspManager {
         await this.sendRequest(lspProc, "shutdown", {}, timeout);
         await this.sendNotification(lspProc, "exit", {});
         // Give it a moment to exit
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        if (timeout > 100) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
       } catch (error) {
         this.logger?.debug(
           `Failed to gracefully shutdown LSP for ${language}: ${error}`,
