@@ -14,6 +14,7 @@ const mockMarketplaceService = {
   removeMarketplace: vi.fn(),
   updateMarketplace: vi.fn(),
   installPlugin: vi.fn(),
+  uninstallPlugin: vi.fn(),
   updatePlugin: vi.fn(),
 };
 
@@ -208,9 +209,48 @@ describe("usePluginManager", () => {
       await vi.waitFor(() => {
         expect(mockMarketplaceService.installPlugin).toHaveBeenCalledWith(
           "my-plugin@my-marketplace",
+          expect.any(String),
         );
         expect(mockPluginScopeManager.enablePlugin).toHaveBeenCalledWith(
           "user",
+          "my-plugin@my-marketplace",
+        );
+        expect(mockMarketplaceService.listMarketplaces).toHaveBeenCalledTimes(
+          2,
+        );
+      });
+    });
+  });
+
+  describe("plugin uninstall", () => {
+    it("should uninstall a plugin and refresh", async () => {
+      let lastValue: PluginManagerContextType | undefined;
+      const onHookValue = (val: PluginManagerContextType) => {
+        lastValue = val;
+      };
+
+      render(<TestComponent onHookValue={onHookValue} />);
+
+      await vi.waitFor(() => {
+        expect(lastValue?.state.isLoading).toBe(false);
+      });
+
+      mockMarketplaceService.uninstallPlugin.mockResolvedValue(undefined);
+      mockPluginScopeManager.findPluginScope.mockReturnValue("project");
+      mockConfigurationService.removeEnabledPlugin.mockResolvedValue(undefined);
+
+      lastValue?.actions.uninstallPlugin("my-plugin", "my-marketplace");
+
+      await vi.waitFor(() => {
+        expect(mockMarketplaceService.uninstallPlugin).toHaveBeenCalledWith(
+          "my-plugin@my-marketplace",
+          expect.any(String),
+        );
+        expect(
+          mockConfigurationService.removeEnabledPlugin,
+        ).toHaveBeenCalledWith(
+          expect.any(String),
+          "project",
           "my-plugin@my-marketplace",
         );
         expect(mockMarketplaceService.listMarketplaces).toHaveBeenCalledTimes(
