@@ -103,6 +103,7 @@ export interface SubagentBlock {
   status: "active" | "completed" | "error" | "aborted";
   sessionId: string;
   configuration: SubagentConfiguration;
+  runInBackground?: boolean;
 }
 
 export interface ReasoningBlock {

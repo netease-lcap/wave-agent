@@ -8,6 +8,7 @@ import { MessageManager } from "../src/managers/messageManager.js";
 import { AIManager } from "../src/managers/aiManager.js";
 import { HookMatcher } from "../src/utils/hookMatcher.js";
 import type { Logger } from "../src/types/index.js";
+import { BackgroundTaskManager } from "../src/managers/backgroundTaskManager.js";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -36,6 +37,9 @@ async function verify() {
       sendAIMessage: async () => {},
       abortAIMessage: () => {},
     } as unknown as AIManager,
+    backgroundTaskManager: {
+      getAllTasks: () => [],
+    } as unknown as BackgroundTaskManager,
     workdir,
     logger,
   });

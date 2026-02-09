@@ -111,11 +111,13 @@ describe("Task Tool Integration with Built-in Subagents", () => {
           prompt: "Search for all .ts files in the src directory",
           subagent_type: "Explore",
         },
+        undefined,
       );
       expect(mockSubagentManager.executeTask).toHaveBeenCalledWith(
         mockInstance,
         "Search for all .ts files in the src directory",
         mockToolContext.abortSignal,
+        undefined,
       );
 
       expect(result).toEqual({

@@ -1,5 +1,7 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "../tools/types.js";
-import { bashTool, bashOutputTool, killBashTool } from "../tools/bashTool.js";
+import { bashTool } from "../tools/bashTool.js";
+import { taskOutputTool } from "../tools/taskOutputTool.js";
+import { taskStopTool } from "../tools/taskStopTool.js";
 import { deleteFileTool } from "../tools/deleteFileTool.js";
 import { editTool } from "../tools/editTool.js";
 import { multiEditTool } from "../tools/multiEditTool.js";
@@ -37,6 +39,8 @@ export interface ToolManagerOptions {
   permissionManager?: PermissionManager;
   /** Reversion manager for file snapshots */
   reversionManager?: ReversionManager;
+  /** Background task manager for background execution */
+  backgroundTaskManager?: import("./backgroundTaskManager.js").BackgroundTaskManager;
   /** Permission mode for tool execution (defaults to "default") */
   permissionMode?: PermissionMode;
   /** Custom permission callback for tool usage */
@@ -56,6 +60,7 @@ class ToolManager {
   private logger?: Logger;
   private permissionManager?: PermissionManager;
   private reversionManager?: ReversionManager;
+  private backgroundTaskManager?: import("./backgroundTaskManager.js").BackgroundTaskManager;
   private permissionMode?: PermissionMode;
   private canUseToolCallback?: PermissionCallback;
 
@@ -65,6 +70,7 @@ class ToolManager {
     this.logger = options.logger;
     this.permissionManager = options.permissionManager;
     this.reversionManager = options.reversionManager;
+    this.backgroundTaskManager = options.backgroundTaskManager;
     // Store CLI permission mode, let PermissionManager resolve effective mode
     this.permissionMode = options.permissionMode;
     this.canUseToolCallback = options.canUseToolCallback;
@@ -106,8 +112,8 @@ class ToolManager {
   }): void {
     const builtInTools = [
       bashTool,
-      bashOutputTool,
-      killBashTool,
+      taskOutputTool,
+      taskStopTool,
       deleteFileTool,
       editTool,
       multiEditTool,
@@ -168,6 +174,7 @@ class ToolManager {
       canUseToolCallback: this.canUseToolCallback,
       permissionManager: this.permissionManager,
       reversionManager: this.reversionManager,
+      backgroundTaskManager: this.backgroundTaskManager,
       mcpManager: this.mcpManager,
       lspManager: this.lspManager,
     };

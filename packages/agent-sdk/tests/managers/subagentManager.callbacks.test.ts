@@ -605,4 +605,54 @@ describe("SubagentManager - Callback Integration", () => {
       expect(calls[1]![1]).toEqual({ content: "Message from second subagent" });
     });
   });
+
+  describe("Background Execution", () => {
+    it("should register subagent in backgroundTaskManager when runInBackground is true", async () => {
+      const { BackgroundTaskManager } = await import(
+        "../../src/managers/backgroundTaskManager.js"
+      );
+      const backgroundTaskManager = new BackgroundTaskManager({
+        workdir: "/tmp/test",
+      });
+      const addTaskSpy = vi.spyOn(backgroundTaskManager, "addTask");
+
+      const bgSubagentManager = new SubagentManager({
+        workdir: "/tmp/test",
+        parentToolManager,
+        parentMessageManager,
+        backgroundTaskManager,
+        getGatewayConfig: () => mockGatewayConfig,
+        getModelConfig: () => mockModelConfig,
+        getMaxInputTokens: () => 1000,
+        getLanguage: () => undefined,
+      });
+
+      const mockConfig: SubagentConfiguration = {
+        name: "bg-subagent",
+        description: "Background subagent",
+        systemPrompt: "You run in background",
+        tools: [],
+        model: "inherit",
+        filePath: "/tmp/bg-subagent.md",
+        scope: "project",
+        priority: 1,
+      };
+
+      const instance = await bgSubagentManager.createInstance(mockConfig, {
+        description: "Test bg",
+        prompt: "Test bg",
+        subagent_type: "bg-subagent",
+      });
+
+      await bgSubagentManager.executeTask(instance, "Do it", undefined, true);
+
+      expect(addTaskSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "subagent",
+          status: "running",
+          description: "Background subagent",
+        }),
+      );
+    });
+  });
 });

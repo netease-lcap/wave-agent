@@ -4,9 +4,9 @@ import type { SlashCommand } from "wave-agent-sdk";
 
 const AVAILABLE_COMMANDS: SlashCommand[] = [
   {
-    id: "bashes",
-    name: "bashes",
-    description: "View and manage background bash shells",
+    id: "tasks",
+    name: "tasks",
+    description: "View and manage background tasks (shells and subagents)",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {

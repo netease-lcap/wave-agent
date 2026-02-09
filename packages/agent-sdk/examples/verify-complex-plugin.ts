@@ -7,6 +7,7 @@ import { SlashCommandManager } from "../src/managers/slashCommandManager.js";
 import { MessageManager } from "../src/managers/messageManager.js";
 import { AIManager } from "../src/managers/aiManager.js";
 import { Logger, LspConfig, McpServerStatus } from "../src/types/index.js";
+import { BackgroundTaskManager } from "../src/managers/backgroundTaskManager.js";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -31,6 +32,9 @@ async function verify() {
   const slashCommandManager = new SlashCommandManager({
     messageManager: {} as unknown as MessageManager,
     aiManager: {} as unknown as AIManager,
+    backgroundTaskManager: {
+      getAllTasks: () => [],
+    } as unknown as BackgroundTaskManager,
     workdir,
     logger,
   });

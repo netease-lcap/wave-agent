@@ -1,7 +1,7 @@
 export const ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
 export const BASH_TOOL_NAME = "Bash";
-export const BASH_OUTPUT_TOOL_NAME = "BashOutput";
-export const KILL_BASH_TOOL_NAME = "KillBash";
+export const TASK_OUTPUT_TOOL_NAME = "TaskOutput";
+export const TASK_STOP_TOOL_NAME = "TaskStop";
 export const DELETE_FILE_TOOL_NAME = "Delete";
 export const EDIT_TOOL_NAME = "Edit";
 export const EXIT_PLAN_MODE_TOOL_NAME = "ExitPlanMode";

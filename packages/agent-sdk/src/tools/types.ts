@@ -39,6 +39,7 @@ export interface ToolResult {
 export interface ToolContext {
   abortSignal?: AbortSignal;
   backgroundBashManager?: import("../managers/backgroundBashManager.js").BackgroundBashManager;
+  backgroundTaskManager?: import("../managers/backgroundTaskManager.js").BackgroundTaskManager;
   workdir: string;
   /** Permission mode for this tool execution */
   permissionMode?: PermissionMode;

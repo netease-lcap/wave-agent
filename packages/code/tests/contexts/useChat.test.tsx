@@ -6,7 +6,7 @@ import {
   useChat,
   ChatContextType,
 } from "../../src/contexts/useChat.js";
-import { Agent, type BackgroundShell } from "wave-agent-sdk";
+import { Agent } from "wave-agent-sdk";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import { useInput } from "ink";
 
@@ -75,8 +75,8 @@ describe("ChatProvider", () => {
     saveMemory: vi.fn(),
     connectMcpServer: vi.fn(),
     disconnectMcpServer: vi.fn(),
-    getBackgroundShellOutput: vi.fn(),
-    killBackgroundShell: vi.fn(),
+    getBackgroundTaskOutput: vi.fn(),
+    stopBackgroundTask: vi.fn(),
     hasSlashCommand: vi.fn(),
     truncateHistory: vi.fn(),
     destroy: vi.fn(),
@@ -194,21 +194,20 @@ describe("ChatProvider", () => {
       expect(lastValue?.isCompressing).toBe(true);
     });
 
-    // Test onShellsChange
-    const newShells = [
+    // Test onTasksChange
+    const newTasks = [
       {
-        id: "shell1",
-        command: "ls",
+        id: "task1",
+        type: "shell" as const,
         status: "running" as const,
         stdout: "",
         stderr: "",
         startTime: 0,
-        process: {} as unknown as BackgroundShell["process"],
       },
     ];
-    callbacks.onShellsChange!(newShells);
+    callbacks.onTasksChange!(newTasks);
     await vi.waitFor(() => {
-      expect(lastValue?.backgroundShells).toEqual(newShells);
+      expect(lastValue?.backgroundTasks).toEqual(newTasks);
     });
 
     // Test onSubagentMessagesChange
@@ -316,7 +315,7 @@ describe("ChatProvider", () => {
     expect(disconnected).toBe(true);
   });
 
-  it("handles background shell management", async () => {
+  it("handles background task management", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -329,15 +328,15 @@ describe("ChatProvider", () => {
     });
 
     const mockOutput = { stdout: "out", stderr: "", status: "running" };
-    mockAgent.getBackgroundShellOutput.mockReturnValue(mockOutput);
-    const output = lastValue?.getBackgroundShellOutput("shell-1");
-    expect(mockAgent.getBackgroundShellOutput).toHaveBeenCalledWith("shell-1");
+    mockAgent.getBackgroundTaskOutput.mockReturnValue(mockOutput);
+    const output = lastValue?.getBackgroundTaskOutput("task-1");
+    expect(mockAgent.getBackgroundTaskOutput).toHaveBeenCalledWith("task-1");
     expect(output).toEqual(mockOutput);
 
-    mockAgent.killBackgroundShell.mockReturnValue(true);
-    const killed = lastValue?.killBackgroundShell("shell-1");
-    expect(mockAgent.killBackgroundShell).toHaveBeenCalledWith("shell-1");
-    expect(killed).toBe(true);
+    mockAgent.stopBackgroundTask.mockReturnValue(true);
+    const stopped = lastValue?.stopBackgroundTask("task-1");
+    expect(mockAgent.stopBackgroundTask).toHaveBeenCalledWith("task-1");
+    expect(stopped).toBe(true);
   });
 
   it("handles rewind functionality", async () => {

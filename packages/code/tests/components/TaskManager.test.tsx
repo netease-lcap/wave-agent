@@ -1,10 +1,10 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { BashShellManager } from "../../src/components/BashShellManager.js";
+import { TaskManager } from "../../src/components/TaskManager.js";
 import { ChatProvider } from "../../src/contexts/useChat.js";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
-import { Agent, type BackgroundShell } from "wave-agent-sdk";
+import { Agent, type BackgroundTask } from "wave-agent-sdk";
 
 // Mock useAppConfig
 vi.mock("../../src/contexts/useAppConfig.js", async () => {
@@ -29,19 +29,23 @@ vi.mock("wave-agent-sdk", async () => {
   };
 });
 
-describe("BashShellManager", () => {
-  const mockShells: Partial<BackgroundShell>[] = [
+describe("TaskManager", () => {
+  const mockTasks: Partial<BackgroundTask>[] = [
     {
-      id: "shell-1",
+      id: "task-1",
+      type: "shell" as const,
       command: "ls -la",
+      description: "ls -la",
       status: "running" as const,
       startTime: Date.now() - 5000,
       stdout: "file1.txt\nfile2.txt",
       stderr: "",
     },
     {
-      id: "shell-2",
+      id: "task-2",
+      type: "shell" as const,
       command: "npm test",
+      description: "npm test",
       status: "completed" as const,
       startTime: Date.now() - 10000,
       exitCode: 0,
@@ -54,18 +58,18 @@ describe("BashShellManager", () => {
   const mockAgent = {
     sessionId: "test-session",
     messages: [],
-    backgroundShells: mockShells,
-    getBackgroundShellOutput: vi.fn((id) => {
-      const shell = mockShells.find((s) => s.id === id);
-      return shell
+    backgroundTasks: mockTasks,
+    getBackgroundTaskOutput: vi.fn((id) => {
+      const task = mockTasks.find((t) => t.id === id);
+      return task
         ? {
-            stdout: shell.stdout || "",
-            stderr: shell.stderr || "",
-            status: shell.status || "running",
+            stdout: task.stdout || "",
+            stderr: task.stderr || "",
+            status: task.status || "running",
           }
         : null;
     }),
-    killBackgroundShell: vi.fn(),
+    stopBackgroundTask: vi.fn(),
     // Add other required agent properties
     getPermissionMode: vi.fn(() => "default"),
     getMcpServers: vi.fn(() => []),
@@ -83,11 +87,11 @@ describe("BashShellManager", () => {
     vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
   });
 
-  it("should render the list of background shells", async () => {
+  it("should render the list of background tasks", async () => {
     const { lastFrame } = render(
       <AppProvider>
         <ChatProvider>
-          <BashShellManager onCancel={vi.fn()} />
+          <TaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -98,13 +102,13 @@ describe("BashShellManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onShellsChange!(mockShells as unknown as BackgroundShell[]);
+    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
 
     await vi.waitFor(() => {
       const output = lastFrame();
-      expect(output).toContain("Background Bash Shells");
-      expect(output).toContain("ls -la");
-      expect(output).toContain("npm test");
+      expect(output).toContain("Background Tasks");
+      expect(output).toContain("[task-1] shell: ls -la");
+      expect(output).toContain("[task-2] shell: npm test");
       expect(output).toContain("(running)");
       expect(output).toContain("(completed)");
     });
@@ -114,7 +118,7 @@ describe("BashShellManager", () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <BashShellManager onCancel={vi.fn()} />
+          <TaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -125,17 +129,17 @@ describe("BashShellManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onShellsChange!(mockShells as unknown as BackgroundShell[]);
+    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("ls -la");
+      expect(lastFrame()).toContain("[task-1] shell: ls -la");
     });
 
-    // Navigate to second shell
+    // Navigate to second task
     stdin.write("\u001B[B"); // Down arrow
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("▶ 2. npm test");
+      expect(lastFrame()).toContain("▶ 2. [task-2] shell: npm test");
     });
 
     // Press Enter to view details
@@ -143,9 +147,9 @@ describe("BashShellManager", () => {
 
     await vi.waitFor(() => {
       const output = lastFrame();
-      expect(output).toContain("Background Shell Details: shell-2");
-      expect(output).toContain("Command: npm test");
-      expect(output).toContain("STDOUT (last 10 lines):");
+      expect(output).toContain("Background Task Details: task-2");
+      expect(output).toContain("Description: npm test");
+      expect(output).toContain("OUTPUT (last 10 lines):");
       expect(output).toContain("All tests passed");
     });
   });
@@ -155,7 +159,7 @@ describe("BashShellManager", () => {
     const { stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <BashShellManager onCancel={onCancel} />
+          <TaskManager onCancel={onCancel} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -166,7 +170,7 @@ describe("BashShellManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onShellsChange!(mockShells as unknown as BackgroundShell[]);
+    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
 
     await vi.waitFor(() => {
       expect(onCancel).not.toHaveBeenCalled();
@@ -183,7 +187,7 @@ describe("BashShellManager", () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <BashShellManager onCancel={vi.fn()} />
+          <TaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -194,31 +198,31 @@ describe("BashShellManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onShellsChange!(mockShells as unknown as BackgroundShell[]);
+    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("ls -la");
+      expect(lastFrame()).toContain("[task-1] shell: ls -la");
     });
 
     stdin.write("\r"); // Enter detail mode
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("Background Shell Details");
+      expect(lastFrame()).toContain("Background Task Details");
     });
 
     stdin.write("\u001B"); // Escape
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("Background Bash Shells");
-      expect(lastFrame()).not.toContain("Background Shell Details");
+      expect(lastFrame()).toContain("Background Tasks");
+      expect(lastFrame()).not.toContain("Background Task Details");
     });
   });
 
-  it("should kill a running shell with 'k' key", async () => {
+  it("should stop a running task with 'k' key", async () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <BashShellManager onCancel={vi.fn()} />
+          <TaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -229,16 +233,16 @@ describe("BashShellManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onShellsChange!(mockShells as unknown as BackgroundShell[]);
+    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
 
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("ls -la");
+      expect(lastFrame()).toContain("[task-1] shell: ls -la");
     });
 
     stdin.write("k");
 
     await vi.waitFor(() => {
-      expect(mockAgent.killBackgroundShell).toHaveBeenCalledWith("shell-1");
+      expect(mockAgent.stopBackgroundTask).toHaveBeenCalledWith("task-1");
     });
   });
 });

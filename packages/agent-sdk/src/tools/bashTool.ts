@@ -4,8 +4,7 @@ import { stripAnsiColors } from "../utils/stringUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import {
   BASH_TOOL_NAME,
-  BASH_OUTPUT_TOOL_NAME,
-  KILL_BASH_TOOL_NAME,
+  TASK_OUTPUT_TOOL_NAME,
   GLOB_TOOL_NAME,
   GREP_TOOL_NAME,
   READ_TOOL_NAME,
@@ -89,7 +88,7 @@ Usage notes:
           },
           run_in_background: {
             type: "boolean",
-            description: `Set to true to run this command in the background. Use ${BASH_OUTPUT_TOOL_NAME} to read the output later.`,
+            description: `Set to true to run this command in the background. Use ${TASK_OUTPUT_TOOL_NAME} to read the output later.`,
           },
         },
         required: ["command"],
@@ -164,20 +163,20 @@ Usage notes:
 
     if (runInBackground) {
       // Background execution
-      const backgroundBashManager = context?.backgroundBashManager;
-      if (!backgroundBashManager) {
+      const backgroundTaskManager = context?.backgroundTaskManager;
+      if (!backgroundTaskManager) {
         return {
           success: false,
           content: "",
-          error: "Background bash manager not available",
+          error: "Background task manager not available",
         };
       }
 
-      const shellId = backgroundBashManager.startShell(command, timeout);
+      const taskId = backgroundTaskManager.startShell(command, timeout);
       return {
         success: true,
-        content: `Command started in background with ID: ${shellId}. Use ${BASH_OUTPUT_TOOL_NAME} tool with bash_id="${shellId}" to monitor output.`,
-        shortResult: `Background process ${shellId} started`,
+        content: `Command started in background with ID: ${taskId}. Use TaskOutput tool with task_id="${taskId}" to monitor output.`,
+        shortResult: `Background process ${taskId} started`,
       };
     }
 
@@ -332,188 +331,5 @@ Usage notes:
     }
 
     return `${command}${runInBackground ? " (background)" : ""}`;
-  },
-};
-
-/**
- * BashOutput tool - retrieves output from background bash shells
- */
-export const bashOutputTool: ToolPlugin = {
-  name: BASH_OUTPUT_TOOL_NAME,
-  config: {
-    type: "function",
-    function: {
-      name: BASH_OUTPUT_TOOL_NAME,
-      description:
-        "Retrieves output from a running or completed background bash shell",
-      parameters: {
-        type: "object",
-        properties: {
-          bash_id: {
-            type: "string",
-            description:
-              "The ID of the background shell to retrieve output from",
-          },
-          filter: {
-            type: "string",
-            description:
-              "Optional regular expression to filter the output lines. Only lines matching this regex will be included in the result. Any lines that do not match will no longer be available to read.",
-          },
-        },
-        required: ["bash_id"],
-      },
-    },
-  },
-  execute: async (
-    args: Record<string, unknown>,
-    context: ToolContext,
-  ): Promise<ToolResult> => {
-    const bashId = args.bash_id as string;
-    const filter = args.filter as string | undefined;
-
-    if (!bashId || typeof bashId !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "bash_id parameter is required and must be a string",
-      };
-    }
-
-    const backgroundBashManager = context?.backgroundBashManager;
-    if (!backgroundBashManager) {
-      return {
-        success: false,
-        content: "",
-        error: "Background bash manager not available",
-      };
-    }
-
-    const output = backgroundBashManager.getOutput(bashId, filter);
-    if (!output) {
-      return {
-        success: false,
-        content: "",
-        error: `Background shell with ID ${bashId} not found`,
-      };
-    }
-
-    const shell = backgroundBashManager.getShell(bashId);
-    if (!shell) {
-      return {
-        success: false,
-        content: "",
-        error: `Background shell with ID ${bashId} not found`,
-      };
-    }
-
-    let content = "";
-    if (output.stdout) {
-      content += stripAnsiColors(output.stdout);
-    }
-    if (output.stderr) {
-      content += (content ? "\n" : "") + stripAnsiColors(output.stderr);
-    }
-
-    const finalContent = content || "No output available";
-    const processedContent =
-      finalContent.length > MAX_OUTPUT_LENGTH
-        ? finalContent.substring(0, MAX_OUTPUT_LENGTH) +
-          "\n\n... (output truncated)"
-        : finalContent;
-
-    return {
-      success: true,
-      content: processedContent,
-      shortResult: `${bashId}: ${output.status}${shell.exitCode !== undefined ? ` (${shell.exitCode})` : ""}`,
-      error: undefined,
-    };
-  },
-  formatCompactParams: (params: Record<string, unknown>) => {
-    const bashId = params.bash_id as string;
-    const filter = params.filter as string | undefined;
-    return filter ? `${bashId} filtered: ${filter}` : bashId;
-  },
-};
-
-/**
- * KillBash tool - kills a running background bash shell
- */
-export const killBashTool: ToolPlugin = {
-  name: KILL_BASH_TOOL_NAME,
-  config: {
-    type: "function",
-    function: {
-      name: KILL_BASH_TOOL_NAME,
-      description: "Kills a running background bash shell by its ID",
-      parameters: {
-        type: "object",
-        properties: {
-          shell_id: {
-            type: "string",
-            description: "The ID of the background shell to kill",
-          },
-        },
-        required: ["shell_id"],
-      },
-    },
-  },
-  execute: async (
-    args: Record<string, unknown>,
-    context: ToolContext,
-  ): Promise<ToolResult> => {
-    const shellId = args.shell_id as string;
-
-    if (!shellId || typeof shellId !== "string") {
-      return {
-        success: false,
-        content: "",
-        error: "shell_id parameter is required and must be a string",
-      };
-    }
-
-    const backgroundBashManager = context?.backgroundBashManager;
-    if (!backgroundBashManager) {
-      return {
-        success: false,
-        content: "",
-        error: "Background bash manager not available",
-      };
-    }
-
-    const shell = backgroundBashManager.getShell(shellId);
-    if (!shell) {
-      return {
-        success: false,
-        content: "",
-        error: `Background shell with ID ${shellId} not found`,
-      };
-    }
-
-    if (shell.status !== "running") {
-      return {
-        success: false,
-        content: "",
-        error: `Background shell ${shellId} is not running (status: ${shell.status})`,
-      };
-    }
-
-    const killed = backgroundBashManager.killShell(shellId);
-    if (killed) {
-      return {
-        success: true,
-        content: `Background shell ${shellId} has been killed`,
-        shortResult: `Killed ${shellId}`,
-      };
-    } else {
-      return {
-        success: false,
-        content: "",
-        error: `Failed to kill background shell ${shellId}`,
-      };
-    }
-  },
-  formatCompactParams: (params: Record<string, unknown>) => {
-    const shellId = params.shell_id as string;
-    return shellId;
   },
 };

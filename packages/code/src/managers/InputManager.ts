@@ -30,11 +30,11 @@ export interface InputManagerCallbacks {
   ) => void;
   onHistorySearchStateChange?: (show: boolean, query: string) => void;
   onMemoryTypeSelectorStateChange?: (show: boolean, message: string) => void;
-  onShowBashManager?: () => void;
+  onShowTaskManager?: () => void;
+  onTaskManagerStateChange?: (show: boolean) => void;
   onShowMcpManager?: () => void;
-  onShowRewindManager?: () => void;
-  onBashManagerStateChange?: (show: boolean) => void;
   onMcpManagerStateChange?: (show: boolean) => void;
+  onShowRewindManager?: () => void;
   onRewindManagerStateChange?: (show: boolean) => void;
   onImagesStateChange?: (images: AttachedImage[]) => void;
   onSendMessage?: (
@@ -94,7 +94,7 @@ export class InputManager {
   private imageIdCounter: number = 1;
 
   // Additional UI state
-  private showBashManager: boolean = false;
+  private showTaskManager: boolean = false;
   private showMcpManager: boolean = false;
   private showRewindManager: boolean = false;
 
@@ -361,8 +361,8 @@ export class InputManager {
 
         // If not an agent command or execution failed, check local commands
         if (!commandExecuted) {
-          if (command === "bashes" && this.callbacks.onShowBashManager) {
-            this.callbacks.onShowBashManager();
+          if (command === "tasks" && this.callbacks.onShowTaskManager) {
+            this.callbacks.onShowTaskManager();
             commandExecuted = true;
           } else if (command === "mcp" && this.callbacks.onShowMcpManager) {
             this.callbacks.onShowMcpManager();
@@ -751,14 +751,14 @@ export class InputManager {
     }
   }
 
-  // Bash/MCP manager state methods
-  getShowBashManager(): boolean {
-    return this.showBashManager;
+  // Task manager state methods
+  getShowTaskManager(): boolean {
+    return this.showTaskManager;
   }
 
-  setShowBashManager(show: boolean): void {
-    this.showBashManager = show;
-    this.callbacks.onBashManagerStateChange?.(show);
+  setShowTaskManager(show: boolean): void {
+    this.showTaskManager = show;
+    this.callbacks.onTaskManagerStateChange?.(show);
   }
 
   getShowMcpManager(): boolean {
@@ -1072,17 +1072,17 @@ export class InputManager {
       this.showCommandSelector ||
       this.showHistorySearch ||
       this.showMemoryTypeSelector ||
-      this.showBashManager ||
+      this.showTaskManager ||
       this.showMcpManager ||
       this.showRewindManager
     ) {
       if (
         this.showMemoryTypeSelector ||
-        this.showBashManager ||
+        this.showTaskManager ||
         this.showMcpManager ||
         this.showRewindManager
       ) {
-        // Memory type selector, bash manager, MCP manager and Rewind don't need to handle input, handled by component itself
+        // Memory type selector, task manager, MCP manager and Rewind don't need to handle input, handled by component itself
         return false;
       }
 

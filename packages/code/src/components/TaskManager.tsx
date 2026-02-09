@@ -2,55 +2,55 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { useChat } from "../contexts/useChat.js";
 
-interface BashShell {
+interface Task {
   id: string;
-  command: string;
-  status: "running" | "completed" | "killed";
+  type: string;
+  description?: string;
+  status: "running" | "completed" | "failed" | "killed";
   startTime: number;
   exitCode?: number;
   runtime?: number;
 }
 
-export interface BashShellManagerProps {
+export interface TaskManagerProps {
   onCancel: () => void;
 }
 
-export const BashShellManager: React.FC<BashShellManagerProps> = ({
-  onCancel,
-}) => {
-  const { backgroundShells, getBackgroundShellOutput, killBackgroundShell } =
+export const TaskManager: React.FC<TaskManagerProps> = ({ onCancel }) => {
+  const { backgroundTasks, getBackgroundTaskOutput, stopBackgroundTask } =
     useChat();
-  const [shells, setShells] = useState<BashShell[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
-  const [detailShellId, setDetailShellId] = useState<string | null>(null);
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [detailOutput, setDetailOutput] = useState<{
     stdout: string;
     stderr: string;
     status: string;
   } | null>(null);
 
-  // Convert backgroundShells to local BashShell format
+  // Convert backgroundTasks to local Task format
   useEffect(() => {
-    setShells(
-      backgroundShells.map((shell) => ({
-        id: shell.id,
-        command: shell.command,
-        status: shell.status,
-        startTime: shell.startTime,
-        exitCode: shell.exitCode,
-        runtime: shell.runtime,
+    setTasks(
+      backgroundTasks.map((task) => ({
+        id: task.id,
+        type: task.type,
+        description: task.description,
+        status: task.status,
+        startTime: task.startTime,
+        exitCode: task.exitCode,
+        runtime: task.runtime,
       })),
     );
-  }, [backgroundShells]);
+  }, [backgroundTasks]);
 
-  // Load detail output for selected shell
+  // Load detail output for selected task
   useEffect(() => {
-    if (viewMode === "detail" && detailShellId) {
-      const output = getBackgroundShellOutput(detailShellId);
+    if (viewMode === "detail" && detailTaskId) {
+      const output = getBackgroundTaskOutput(detailTaskId);
       setDetailOutput(output);
     }
-  }, [viewMode, detailShellId, getBackgroundShellOutput]);
+  }, [viewMode, detailTaskId, getBackgroundTaskOutput]);
 
   const formatDuration = (ms: number): string => {
     if (ms < 1000) return `${ms}ms`;
@@ -64,17 +64,17 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
     return new Date(timestamp).toLocaleTimeString();
   };
 
-  const killShell = (shellId: string) => {
-    killBackgroundShell(shellId);
+  const stopTask = (taskId: string) => {
+    stopBackgroundTask(taskId);
   };
 
   useInput((input, key) => {
     if (viewMode === "list") {
       // List mode navigation
       if (key.return) {
-        if (shells.length > 0 && selectedIndex < shells.length) {
-          const selectedShell = shells[selectedIndex];
-          setDetailShellId(selectedShell.id);
+        if (tasks.length > 0 && selectedIndex < tasks.length) {
+          const selectedTask = tasks[selectedIndex];
+          setDetailTaskId(selectedTask.id);
           setViewMode("detail");
         }
         return;
@@ -91,14 +91,14 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
       }
 
       if (key.downArrow) {
-        setSelectedIndex(Math.min(shells.length - 1, selectedIndex + 1));
+        setSelectedIndex(Math.min(tasks.length - 1, selectedIndex + 1));
         return;
       }
 
-      if (input === "k" && shells.length > 0 && selectedIndex < shells.length) {
-        const selectedShell = shells[selectedIndex];
-        if (selectedShell.status === "running") {
-          killShell(selectedShell.id);
+      if (input === "k" && tasks.length > 0 && selectedIndex < tasks.length) {
+        const selectedTask = tasks[selectedIndex];
+        if (selectedTask.status === "running") {
+          stopTask(selectedTask.id);
         }
         return;
       }
@@ -106,24 +106,24 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
       // Detail mode navigation
       if (key.escape) {
         setViewMode("list");
-        setDetailShellId(null);
+        setDetailTaskId(null);
         setDetailOutput(null);
         return;
       }
 
-      if (input === "k" && detailShellId) {
-        const shell = shells.find((s) => s.id === detailShellId);
-        if (shell && shell.status === "running") {
-          killShell(detailShellId);
+      if (input === "k" && detailTaskId) {
+        const task = tasks.find((t) => t.id === detailTaskId);
+        if (task && task.status === "running") {
+          stopTask(detailTaskId);
         }
         return;
       }
     }
   });
 
-  if (viewMode === "detail" && detailShellId && detailOutput) {
-    const shell = shells.find((s) => s.id === detailShellId);
-    if (!shell) {
+  if (viewMode === "detail" && detailTaskId && detailOutput) {
+    const task = tasks.find((t) => t.id === detailTaskId);
+    if (!task) {
       setViewMode("list");
       return null;
     }
@@ -141,31 +141,37 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
       >
         <Box>
           <Text color="cyan" bold>
-            Background Shell Details: {shell.id}
+            Background Task Details: {task.id}
           </Text>
         </Box>
 
         <Box flexDirection="column" gap={1}>
           <Box>
             <Text>
-              <Text color="blue">Command:</Text> {shell.command}
+              <Text color="blue">Type:</Text> {task.type}
+            </Text>
+          </Box>
+          {task.description && (
+            <Box>
+              <Text>
+                <Text color="blue">Description:</Text> {task.description}
+              </Text>
+            </Box>
+          )}
+          <Box>
+            <Text>
+              <Text color="blue">Status:</Text> {task.status}
+              {task.exitCode !== undefined && ` (exit code: ${task.exitCode})`}
             </Text>
           </Box>
           <Box>
             <Text>
-              <Text color="blue">Status:</Text> {shell.status}
-              {shell.exitCode !== undefined &&
-                ` (exit code: ${shell.exitCode})`}
-            </Text>
-          </Box>
-          <Box>
-            <Text>
-              <Text color="blue">Started:</Text> {formatTime(shell.startTime)}
-              {shell.runtime !== undefined && (
+              <Text color="blue">Started:</Text> {formatTime(task.startTime)}
+              {task.runtime !== undefined && (
                 <Text>
                   {" "}
                   | <Text color="blue">Runtime:</Text>{" "}
-                  {formatDuration(shell.runtime)}
+                  {formatDuration(task.runtime)}
                 </Text>
               )}
             </Text>
@@ -175,7 +181,7 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
         {detailOutput.stdout && (
           <Box flexDirection="column" marginTop={1}>
             <Text color="green" bold>
-              STDOUT (last 10 lines):
+              OUTPUT (last 10 lines):
             </Text>
             <Box borderStyle="single" borderColor="green" padding={1}>
               <Text>
@@ -188,7 +194,7 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
         {detailOutput.stderr && (
           <Box flexDirection="column" marginTop={1}>
             <Text color="red" bold>
-              STDERR:
+              ERRORS:
             </Text>
             <Box borderStyle="single" borderColor="red" padding={1}>
               <Text color="red">
@@ -200,14 +206,14 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
 
         <Box marginTop={1}>
           <Text dimColor>
-            {shell.status === "running" ? "k to kill · " : ""}Esc to go back
+            {task.status === "running" ? "k to stop · " : ""}Esc to go back
           </Text>
         </Box>
       </Box>
     );
   }
 
-  if (!backgroundShells) {
+  if (!backgroundTasks) {
     return (
       <Box
         flexDirection="column"
@@ -219,15 +225,15 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
         paddingTop={1}
       >
         <Text color="cyan" bold>
-          Background Bash Shells
+          Background Tasks
         </Text>
-        <Text>Background bash shells not available</Text>
+        <Text>Background tasks not available</Text>
         <Text dimColor>Press Escape to close</Text>
       </Box>
     );
   }
 
-  if (shells.length === 0) {
+  if (tasks.length === 0) {
     return (
       <Box
         flexDirection="column"
@@ -239,9 +245,9 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
         paddingTop={1}
       >
         <Text color="cyan" bold>
-          Background Bash Shells
+          Background Tasks
         </Text>
-        <Text>No background shells found</Text>
+        <Text>No background tasks found</Text>
         <Text dimColor>Press Escape to close</Text>
       </Box>
     );
@@ -260,42 +266,40 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
     >
       <Box>
         <Text color="cyan" bold>
-          Background Bash Shells
+          Background Tasks
         </Text>
       </Box>
-      <Text dimColor>Select a shell to view details</Text>
+      <Text dimColor>Select a task to view details</Text>
 
-      {shells.map((shell, index) => (
-        <Box key={shell.id} flexDirection="column">
+      {tasks.map((task, index) => (
+        <Box key={task.id} flexDirection="column">
           <Text
             color={index === selectedIndex ? "black" : "white"}
             backgroundColor={index === selectedIndex ? "cyan" : undefined}
           >
             {index === selectedIndex ? "▶ " : "  "}
-            {index + 1}.{" "}
-            {shell.command.length > 50
-              ? shell.command.substring(0, 47) + "..."
-              : shell.command}
+            {index + 1}. [{task.id}] {task.type}
+            {task.description ? `: ${task.description}` : ""}
             <Text
               color={
-                shell.status === "running"
+                task.status === "running"
                   ? "green"
-                  : shell.status === "completed"
+                  : task.status === "completed"
                     ? "blue"
                     : "red"
               }
             >
               {" "}
-              ({shell.status})
+              ({task.status})
             </Text>
           </Text>
           {index === selectedIndex && (
             <Box marginLeft={4} flexDirection="column">
               <Text color="gray" dimColor>
-                ID: {shell.id} | Started: {formatTime(shell.startTime)}
-                {shell.runtime !== undefined &&
-                  ` | Runtime: ${formatDuration(shell.runtime)}`}
-                {shell.exitCode !== undefined && ` | Exit: ${shell.exitCode}`}
+                Started: {formatTime(task.startTime)}
+                {task.runtime !== undefined &&
+                  ` | Runtime: ${formatDuration(task.runtime)}`}
+                {task.exitCode !== undefined && ` | Exit: ${task.exitCode}`}
               </Text>
             </Box>
           )}
@@ -305,7 +309,7 @@ export const BashShellManager: React.FC<BashShellManagerProps> = ({
       <Box marginTop={1}>
         <Text dimColor>
           ↑/↓ to select · Enter to view ·{" "}
-          {shells[selectedIndex]?.status === "running" ? "k to kill · " : ""}Esc
+          {tasks[selectedIndex]?.status === "running" ? "k to stop · " : ""}Esc
           to close
         </Text>
       </Box>

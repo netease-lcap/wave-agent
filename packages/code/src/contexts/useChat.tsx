@@ -11,7 +11,7 @@ import { useAppConfig } from "./useAppConfig.js";
 import type {
   Message,
   McpServerStatus,
-  BackgroundShell,
+  BackgroundTask,
   SlashCommand,
   PermissionDecision,
   PermissionMode,
@@ -47,12 +47,12 @@ export interface ChatContextType {
   mcpServers: McpServerStatus[];
   connectMcpServer: (serverName: string) => Promise<boolean>;
   disconnectMcpServer: (serverName: string) => Promise<boolean>;
-  // Background bash shells
-  backgroundShells: BackgroundShell[];
-  getBackgroundShellOutput: (
-    shellId: string,
+  // Background tasks
+  backgroundTasks: BackgroundTask[];
+  getBackgroundTaskOutput: (
+    taskId: string,
   ) => { stdout: string; stderr: string; status: string } | null;
-  killBackgroundShell: (shellId: string) => boolean;
+  stopBackgroundTask: (taskId: string) => boolean;
   // Slash Command functionality
   slashCommands: SlashCommand[];
   hasSlashCommand: (commandId: string) => boolean;
@@ -121,10 +121,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // MCP State
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
 
-  // Background bash shells state
-  const [backgroundShells, setBackgroundShells] = useState<BackgroundShell[]>(
-    [],
-  );
+  // Background tasks state
+  const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
 
   // Command state
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
@@ -222,8 +220,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onCompressionStateChange: (isCompressingState) => {
           setIsCompressing(isCompressingState);
         },
-        onShellsChange: (shells) => {
-          setBackgroundShells([...shells]);
+        onTasksChange: (tasks) => {
+          setBackgroundTasks([...tasks]);
         },
         onSubagentMessagesChange: (subagentId, messages) => {
           logger.debug("onSubagentMessagesChange", subagentId, messages.length);
@@ -422,15 +420,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return (await agentRef.current?.disconnectMcpServer(serverName)) ?? false;
   }, []);
 
-  // Background bash management methods - delegate to Agent
-  const getBackgroundShellOutput = useCallback((shellId: string) => {
+  // Background task management methods - delegate to Agent
+  const getBackgroundTaskOutput = useCallback((taskId: string) => {
     if (!agentRef.current) return null;
-    return agentRef.current.getBackgroundShellOutput(shellId);
+    return agentRef.current.getBackgroundTaskOutput(taskId);
   }, []);
 
-  const killBackgroundShell = useCallback((shellId: string) => {
+  const stopBackgroundTask = useCallback((taskId: string) => {
     if (!agentRef.current) return false;
-    return agentRef.current.killBackgroundShell(shellId);
+    return agentRef.current.stopBackgroundTask(taskId);
   }, []);
 
   const hasSlashCommand = useCallback((commandId: string) => {
@@ -530,9 +528,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     mcpServers,
     connectMcpServer,
     disconnectMcpServer,
-    backgroundShells,
-    getBackgroundShellOutput,
-    killBackgroundShell,
+    backgroundTasks,
+    getBackgroundTaskOutput,
+    stopBackgroundTask,
     slashCommands,
     hasSlashCommand,
     subagentMessages,

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
+import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { existsSync, readdirSync, statSync } from "fs";
 
 // Mock the fs operations for custom command discovery
@@ -153,9 +154,19 @@ describe("SlashCommandManager Nested Command Integration", () => {
       } as unknown as ReturnType<typeof statSync>;
     });
 
+    // Create mock BackgroundTaskManager
+    const backgroundTaskManager = {
+      getAllTasks: vi.fn(() => []),
+      getTask: vi.fn(),
+      addTask: vi.fn(),
+      generateId: vi.fn(),
+    };
+
     return new SlashCommandManager({
       messageManager,
       aiManager,
+      backgroundTaskManager:
+        backgroundTaskManager as unknown as BackgroundTaskManager,
       workdir: mockWorkdir,
     });
   }
