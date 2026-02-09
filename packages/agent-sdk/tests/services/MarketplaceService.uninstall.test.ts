@@ -45,10 +45,11 @@ describe("MarketplaceService - Uninstall", () => {
     vi.restoreAllMocks();
   });
 
-  it("should uninstall a plugin successfully", async () => {
+  it("should uninstall a plugin successfully and remove cache if no references remain", async () => {
     const pluginName = "test-plugin";
     const marketplaceName = "test-marketplace";
     const pluginId = `${pluginName}@${marketplaceName}`;
+    const projectPath = "/mock/project";
     const cachePath = path.join(
       mockPluginsDir,
       "cache",
@@ -64,6 +65,7 @@ describe("MarketplaceService - Uninstall", () => {
           marketplace: marketplaceName,
           version: "1.0.0",
           cachePath,
+          projectPath,
         },
       ],
     };
@@ -75,7 +77,7 @@ describe("MarketplaceService - Uninstall", () => {
       );
     });
 
-    await service.uninstallPlugin(pluginId);
+    await service.uninstallPlugin(pluginId, projectPath);
 
     expect(mockRm).toHaveBeenCalledWith(cachePath, {
       recursive: true,
@@ -84,6 +86,52 @@ describe("MarketplaceService - Uninstall", () => {
     expect(mockWriteFile).toHaveBeenCalledWith(
       expect.stringContaining("installed_plugins.json"),
       JSON.stringify({ plugins: [] }, null, 2),
+    );
+  });
+
+  it("should NOT remove cache if other projects still reference the plugin", async () => {
+    const pluginName = "test-plugin";
+    const marketplaceName = "test-marketplace";
+    const pluginId = `${pluginName}@${marketplaceName}`;
+    const projectPath1 = "/mock/project1";
+    const projectPath2 = "/mock/project2";
+    const cachePath = "/mock/cache/path";
+
+    const installedPlugins = {
+      plugins: [
+        {
+          name: pluginName,
+          marketplace: marketplaceName,
+          version: "1.0.0",
+          cachePath,
+          projectPath: projectPath1,
+        },
+        {
+          name: pluginName,
+          marketplace: marketplaceName,
+          version: "1.0.0",
+          cachePath,
+          projectPath: projectPath2,
+        },
+      ],
+    };
+
+    mockReadFile.mockResolvedValue(JSON.stringify(installedPlugins));
+    mockExistsSync.mockReturnValue(true);
+
+    await service.uninstallPlugin(pluginId, projectPath1);
+
+    // Should NOT call rm because projectPath2 still references it
+    expect(mockRm).not.toHaveBeenCalled();
+
+    // Should have updated the registry to only contain projectPath2
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining("installed_plugins.json"),
+      expect.stringContaining(projectPath2),
+    );
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      expect.stringContaining("installed_plugins.json"),
+      expect.not.stringContaining(projectPath1),
     );
   });
 

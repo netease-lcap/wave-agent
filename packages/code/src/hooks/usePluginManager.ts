@@ -210,7 +210,8 @@ export function usePluginManager(): PluginManagerContextType {
       }));
       try {
         const pluginId = `${name}@${marketplace}`;
-        await marketplaceService.installPlugin(pluginId);
+        const workdir = process.cwd();
+        await marketplaceService.installPlugin(pluginId, workdir);
         await pluginScopeManager.enablePlugin(scope, pluginId);
         await refresh();
       } catch (error) {
@@ -233,11 +234,16 @@ export function usePluginManager(): PluginManagerContextType {
       }));
       try {
         const pluginId = `${name}@${marketplace}`;
-        // Find the scope where it's currently enabled and remove it from there
+        const workdir = process.cwd();
+
+        // 1. Remove from global registry and potentially clean up cache
+        await marketplaceService.uninstallPlugin(pluginId, workdir);
+
+        // 2. Find the scope where it's currently enabled and remove it from there
         const scope = pluginScopeManager.findPluginScope(pluginId);
         if (scope) {
           await configurationService.removeEnabledPlugin(
-            process.cwd(),
+            workdir,
             scope,
             pluginId,
           );

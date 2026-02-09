@@ -346,7 +346,10 @@ export class MarketplaceService {
   /**
    * Installs a plugin from a marketplace
    */
-  async installPlugin(pluginAtMarketplace: string): Promise<InstalledPlugin> {
+  async installPlugin(
+    pluginAtMarketplace: string,
+    projectPath?: string,
+  ): Promise<InstalledPlugin> {
     const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
     if (!pluginName || !marketplaceName) {
       throw new Error("Invalid plugin format. Use name@marketplace");
@@ -432,7 +435,10 @@ export class MarketplaceService {
 
       const installedRegistry = await this.getInstalledPlugins();
       const existingIndex = installedRegistry.plugins.findIndex(
-        (p) => p.name === pluginName && p.marketplace === marketplaceName,
+        (p) =>
+          p.name === pluginName &&
+          p.marketplace === marketplaceName &&
+          p.projectPath === projectPath,
       );
 
       const installedPlugin: InstalledPlugin = {
@@ -440,6 +446,7 @@ export class MarketplaceService {
         marketplace: marketplaceName,
         version,
         cachePath,
+        projectPath,
       };
 
       if (existingIndex >= 0) {
@@ -467,7 +474,10 @@ export class MarketplaceService {
   /**
    * Uninstalls a plugin
    */
-  async uninstallPlugin(pluginAtMarketplace: string): Promise<void> {
+  async uninstallPlugin(
+    pluginAtMarketplace: string,
+    projectPath?: string,
+  ): Promise<void> {
     const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
     if (!pluginName || !marketplaceName) {
       throw new Error("Invalid plugin format. Use name@marketplace");
@@ -475,25 +485,33 @@ export class MarketplaceService {
 
     const installedRegistry = await this.getInstalledPlugins();
     const pluginIndex = installedRegistry.plugins.findIndex(
-      (p) => p.name === pluginName && p.marketplace === marketplaceName,
+      (p) =>
+        p.name === pluginName &&
+        p.marketplace === marketplaceName &&
+        p.projectPath === projectPath,
     );
 
     if (pluginIndex === -1) {
       throw new Error(
-        `Plugin ${pluginName}@${marketplaceName} is not installed`,
+        `Plugin ${pluginName}@${marketplaceName} is not installed${projectPath ? ` for project ${projectPath}` : ""}`,
       );
     }
 
-    const plugin = installedRegistry.plugins[pluginIndex];
+    const pluginToRemove = installedRegistry.plugins[pluginIndex];
 
-    // Remove cached files
-    if (existsSync(plugin.cachePath)) {
-      await fs.rm(plugin.cachePath, { recursive: true, force: true });
-    }
-
-    // Remove from registry
+    // Remove from registry first
     installedRegistry.plugins.splice(pluginIndex, 1);
     await this.saveInstalledPlugins(installedRegistry);
+
+    // Check if any other project is still using this same cache path
+    const isStillReferenced = installedRegistry.plugins.some(
+      (p) => p.cachePath === pluginToRemove.cachePath,
+    );
+
+    // Only remove cached files if no other references exist
+    if (!isStillReferenced && existsSync(pluginToRemove.cachePath)) {
+      await fs.rm(pluginToRemove.cachePath, { recursive: true, force: true });
+    }
   }
 
   /**

@@ -49,6 +49,7 @@ export interface InstalledPlugin {
   version: string;
   cachePath: string;
   scope?: Scope;
+  projectPath?: string;
 }
 
 export interface InstalledPluginsRegistry {
