@@ -46,6 +46,11 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
                 type: "string",
                 description: `The type or name of subagent to use. Available options: ${availableSubagents.map((c) => c.name).join(", ") || "none"}`,
               },
+              run_in_background: {
+                type: "boolean",
+                description:
+                  "Set to true to run this command in the background. Use TaskOutput to read the output later.",
+              },
             },
             required: ["description", "prompt", "subagent_type"],
           },
@@ -61,6 +66,7 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
       const description = args.description as string;
       const prompt = args.prompt as string;
       const subagent_type = args.subagent_type as string;
+      const run_in_background = args.run_in_background as boolean;
 
       if (!description || typeof description !== "string") {
         return {
@@ -107,16 +113,29 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
         }
 
         // Create subagent instance and execute task
-        const instance = await subagentManager.createInstance(configuration, {
-          description,
-          prompt,
-          subagent_type,
-        });
+        const instance = await subagentManager.createInstance(
+          configuration,
+          {
+            description,
+            prompt,
+            subagent_type,
+          },
+          run_in_background,
+        );
         const response = await subagentManager.executeTask(
           instance,
           prompt,
           context.abortSignal,
+          run_in_background,
         );
+
+        if (run_in_background) {
+          return {
+            success: true,
+            content: `Task started in background with ID: ${response}`,
+            shortResult: `Task started in background: ${response}`,
+          };
+        }
 
         return {
           success: true,

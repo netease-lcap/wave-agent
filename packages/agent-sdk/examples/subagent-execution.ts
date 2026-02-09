@@ -67,6 +67,14 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
   agent = await Agent.create({
     workdir: tempDir,
     callbacks: {
+      onTasksChange: (tasks) => {
+        console.log(`📝 Tasks updated! Total: ${tasks.length}`);
+        tasks.forEach((task) => {
+          console.log(
+            `   - Task ID: ${task.id}, Type: ${task.type}, Status: ${task.status}`,
+          );
+        });
+      },
       onMessagesChange: (messages) => {
         console.log(`📝 Messages updated! Total: ${messages.length}`);
         // Check for subagent blocks in messages

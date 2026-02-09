@@ -20,6 +20,7 @@ import {
   addConsolidatedAbortListener,
   createAbortPromise,
 } from "../utils/abortUtils.js";
+import { BackgroundTaskManager } from "./backgroundTaskManager.js";
 
 export interface SubagentManagerCallbacks {
   // Granular subagent message callbacks (015-subagent-message-callbacks)
@@ -74,6 +75,7 @@ export interface SubagentManagerOptions {
   getLanguage: () => string | undefined;
   hookManager?: HookManager;
   onUsageAdded?: (usage: Usage) => void;
+  backgroundTaskManager?: BackgroundTaskManager;
 }
 
 export class SubagentManager {
@@ -91,6 +93,7 @@ export class SubagentManager {
   private getLanguage: () => string | undefined;
   private hookManager?: HookManager;
   private onUsageAdded?: (usage: Usage) => void;
+  private backgroundTaskManager?: BackgroundTaskManager;
 
   constructor(options: SubagentManagerOptions) {
     this.workdir = options.workdir;
@@ -104,6 +107,7 @@ export class SubagentManager {
     this.getLanguage = options.getLanguage;
     this.hookManager = options.hookManager;
     this.onUsageAdded = options.onUsageAdded;
+    this.backgroundTaskManager = options.backgroundTaskManager;
   }
 
   /**
@@ -158,6 +162,7 @@ export class SubagentManager {
       prompt: string;
       subagent_type: string;
     },
+    runInBackground?: boolean,
   ): Promise<SubagentInstance> {
     if (!this.parentToolManager) {
       throw new Error(
@@ -241,6 +246,7 @@ export class SubagentManager {
       configuration,
       "active",
       parameters,
+      runInBackground,
     );
 
     return instance;
@@ -256,6 +262,7 @@ export class SubagentManager {
     instance: SubagentInstance,
     prompt: string,
     abortSignal?: AbortSignal,
+    runInBackground?: boolean,
   ): Promise<string> {
     try {
       // Check if already aborted before starting
@@ -269,24 +276,84 @@ export class SubagentManager {
         status: "active",
       });
 
-      // Set up consolidated abort handler to prevent listener accumulation
-      let abortCleanup: (() => void) | undefined;
-      if (abortSignal) {
-        abortCleanup = addConsolidatedAbortListener(abortSignal, [
-          () => {
-            // Update status to aborted
-            this.updateInstanceStatus(instance.subagentId, "aborted");
-            this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
-              status: "aborted",
-            });
-          },
-          () => {
-            // Abort the AI execution
-            instance.aiManager.abortAIMessage();
-          },
-        ]);
+      if (runInBackground && this.backgroundTaskManager) {
+        const taskId = this.backgroundTaskManager.generateId();
+        const startTime = Date.now();
+
+        this.backgroundTaskManager.addTask({
+          id: taskId,
+          type: "subagent",
+          status: "running",
+          startTime,
+          description: instance.configuration.description,
+          stdout: "",
+          stderr: "",
+        });
+
+        // Execute in background
+        (async () => {
+          try {
+            const result = await this.internalExecute(
+              instance,
+              prompt,
+              abortSignal,
+            );
+            const task = this.backgroundTaskManager?.getTask(taskId);
+            if (task) {
+              task.status = "completed";
+              task.stdout = result;
+              task.endTime = Date.now();
+              task.runtime = task.endTime - startTime;
+            }
+          } catch (error) {
+            const task = this.backgroundTaskManager?.getTask(taskId);
+            if (task) {
+              task.status = "failed";
+              task.stderr =
+                error instanceof Error ? error.message : String(error);
+              task.endTime = Date.now();
+              task.runtime = task.endTime - startTime;
+            }
+          }
+        })();
+
+        return taskId;
       }
 
+      return await this.internalExecute(instance, prompt, abortSignal);
+    } catch (error) {
+      this.updateInstanceStatus(instance.subagentId, "error");
+      this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
+        status: "error",
+      });
+      throw error;
+    }
+  }
+
+  private async internalExecute(
+    instance: SubagentInstance,
+    prompt: string,
+    abortSignal?: AbortSignal,
+  ): Promise<string> {
+    // Set up consolidated abort handler to prevent listener accumulation
+    let abortCleanup: (() => void) | undefined;
+    if (abortSignal) {
+      abortCleanup = addConsolidatedAbortListener(abortSignal, [
+        () => {
+          // Update status to aborted
+          this.updateInstanceStatus(instance.subagentId, "aborted");
+          this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
+            status: "aborted",
+          });
+        },
+        () => {
+          // Abort the AI execution
+          instance.aiManager.abortAIMessage();
+        },
+      ]);
+    }
+
+    try {
       // Add the user's prompt as a message
       instance.messageManager.addUserMessage({ content: prompt });
 
@@ -326,21 +393,14 @@ export class SubagentManager {
         model: resolvedModel,
       });
 
-      try {
-        // If we have an abort signal, race against it using utilities to prevent listener accumulation
-        if (abortSignal) {
-          await Promise.race([
-            executeAI,
-            createAbortPromise(abortSignal, "Task was aborted"),
-          ]);
-        } else {
-          await executeAI;
-        }
-      } finally {
-        // Clean up abort listeners to prevent memory leaks
-        if (abortCleanup) {
-          abortCleanup();
-        }
+      // If we have an abort signal, race against it using utilities to prevent listener accumulation
+      if (abortSignal) {
+        await Promise.race([
+          executeAI,
+          createAbortPromise(abortSignal, "Task was aborted"),
+        ]);
+      } else {
+        await executeAI;
       }
 
       // Get the latest messages to extract the response
@@ -366,12 +426,11 @@ export class SubagentManager {
       });
 
       return response || "Task completed with no text response";
-    } catch (error) {
-      this.updateInstanceStatus(instance.subagentId, "error");
-      this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
-        status: "error",
-      });
-      throw error;
+    } finally {
+      // Clean up abort listeners to prevent memory leaks
+      if (abortCleanup) {
+        abortCleanup();
+      }
     }
   }
 

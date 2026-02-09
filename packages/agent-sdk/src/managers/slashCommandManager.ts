@@ -1,5 +1,6 @@
 import type { MessageManager } from "./messageManager.js";
 import type { AIManager } from "./aiManager.js";
+import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import type {
   SlashCommand,
   CustomSlashCommand,
@@ -26,6 +27,7 @@ const execAsync = promisify(exec);
 export interface SlashCommandManagerOptions {
   messageManager: MessageManager;
   aiManager: AIManager;
+  backgroundTaskManager: BackgroundTaskManager;
   workdir: string;
   logger?: Logger;
 }
@@ -35,12 +37,14 @@ export class SlashCommandManager {
   private customCommands = new Map<string, CustomSlashCommand>();
   private messageManager: MessageManager;
   private aiManager: AIManager;
+  private backgroundTaskManager: BackgroundTaskManager;
   private workdir: string;
   private logger?: Logger;
 
   constructor(options: SlashCommandManagerOptions) {
     this.messageManager = options.messageManager;
     this.aiManager = options.aiManager;
+    this.backgroundTaskManager = options.backgroundTaskManager;
     this.workdir = options.workdir;
     this.logger = options.logger;
 

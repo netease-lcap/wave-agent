@@ -57,6 +57,7 @@ export interface MessageManagerCallbacks {
   onUpdateCommandOutputMessage?: (command: string, output: string) => void;
   onCompleteCommandMessage?: (command: string, exitCode: number) => void;
   onSlashCommandsChange?: (commands: SlashCommand[]) => void;
+  onInfoBlockAdded?: (content: string) => void;
   // Rewind callbacks
   onShowRewind?: () => void;
   // Subagent callbacks
@@ -400,6 +401,18 @@ export class MessageManager {
     this.callbacks.onErrorBlockAdded?.(error);
   }
 
+  public addInfoBlock(content: string): void {
+    const lastMessage = this.messages[this.messages.length - 1];
+    if (lastMessage && lastMessage.role === "assistant") {
+      lastMessage.blocks.push({
+        type: "info",
+        content,
+      } as unknown as import("../types/index.js").MessageBlock);
+      this.setMessages([...this.messages]);
+      this.callbacks.onInfoBlockAdded?.(content);
+    }
+  }
+
   /**
    * Compress messages and update session, delete compressed messages, only keep compressed messages and subsequent messages
    */
@@ -494,12 +507,13 @@ export class MessageManager {
     subagentName: string,
     sessionId: string,
     configuration: SubagentConfiguration,
-    status: "active" | "completed" | "error" = "active",
+    status: "active" | "completed" | "error" | "aborted" = "active",
     parameters: {
       description: string;
       prompt: string;
       subagent_type: string;
     },
+    runInBackground?: boolean,
   ): void {
     const params: AddSubagentBlockParams = {
       messages: this.messages,
@@ -508,6 +522,7 @@ export class MessageManager {
       sessionId,
       status,
       configuration,
+      runInBackground,
     };
     const updatedMessages = addSubagentBlockToMessage(params);
     this.setMessages(updatedMessages);

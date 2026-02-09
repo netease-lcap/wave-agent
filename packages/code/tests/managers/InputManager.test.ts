@@ -45,7 +45,7 @@ describe("InputManager", () => {
       onCommandSelectorStateChange: vi.fn(),
       onHistorySearchStateChange: vi.fn(),
       onMemoryTypeSelectorStateChange: vi.fn(),
-      onBashManagerStateChange: vi.fn(),
+      onTaskManagerStateChange: vi.fn(),
       onMcpManagerStateChange: vi.fn(),
       onImagesStateChange: vi.fn(),
       onSendMessage: vi.fn(),
@@ -442,12 +442,12 @@ describe("InputManager", () => {
     });
   });
 
-  describe("Bash/MCP Manager State", () => {
-    it("should set bash manager state", () => {
-      manager.setShowBashManager(true);
+  describe("Task/MCP Manager State", () => {
+    it("should set task manager state", () => {
+      manager.setShowTaskManager(true);
 
-      expect(manager.getShowBashManager()).toBe(true);
-      expect(mockCallbacks.onBashManagerStateChange).toHaveBeenCalledWith(true);
+      expect(manager.getShowTaskManager()).toBe(true);
+      expect(mockCallbacks.onTaskManagerStateChange).toHaveBeenCalledWith(true);
     });
 
     it("should set MCP manager state", () => {

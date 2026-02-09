@@ -257,7 +257,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [configurationService, pluginScopeManager, refresh],
+    [configurationService, marketplaceService, pluginScopeManager, refresh],
   );
 
   const updatePlugin = useCallback(

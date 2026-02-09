@@ -17,7 +17,7 @@ import type {
 import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
-import type { BackgroundBashManager } from "./backgroundBashManager.js";
+import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
@@ -36,7 +36,7 @@ export interface AIManagerOptions {
   messageManager: MessageManager;
   toolManager: ToolManager;
   logger?: Logger;
-  backgroundBashManager?: BackgroundBashManager;
+  backgroundTaskManager?: BackgroundTaskManager;
   hookManager?: HookManager;
   permissionManager?: PermissionManager;
   callbacks?: AIManagerCallbacks;
@@ -61,7 +61,7 @@ export class AIManager {
   private logger?: Logger;
   private toolManager: ToolManager;
   private messageManager: MessageManager;
-  private backgroundBashManager?: BackgroundBashManager;
+  private backgroundTaskManager?: BackgroundTaskManager;
   private hookManager?: HookManager;
   private reversionManager?: import("./reversionManager.js").ReversionManager;
   private permissionManager?: PermissionManager;
@@ -80,7 +80,7 @@ export class AIManager {
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
     this.toolManager = options.toolManager;
-    this.backgroundBashManager = options.backgroundBashManager;
+    this.backgroundTaskManager = options.backgroundTaskManager;
     this.hookManager = options.hookManager;
     this.reversionManager = options.reversionManager;
     this.permissionManager = options.permissionManager;
@@ -618,7 +618,7 @@ export class AIManager {
               // Create tool execution context
               const context: ToolContext = {
                 abortSignal: toolAbortController.signal,
-                backgroundBashManager: this.backgroundBashManager,
+                backgroundTaskManager: this.backgroundTaskManager,
                 workdir: this.workdir,
                 messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
               };

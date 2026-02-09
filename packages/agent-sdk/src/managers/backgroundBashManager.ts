@@ -42,6 +42,7 @@ export class BackgroundBashManager {
 
     const shell: BackgroundShell = {
       id,
+      type: "shell",
       process: child,
       command,
       startTime,

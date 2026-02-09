@@ -5,7 +5,7 @@ import { FileSelector } from "./FileSelector.js";
 import { CommandSelector } from "./CommandSelector.js";
 import { HistorySearch } from "./HistorySearch.js";
 import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
-import { BashShellManager } from "./BashShellManager.js";
+import { TaskManager } from "./TaskManager.js";
 import { McpManager } from "./McpManager.js";
 import { RewindCommand } from "./RewindCommand.js";
 import { useInputManager } from "../hooks/useInputManager.js";
@@ -90,11 +90,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // History search
     showHistorySearch,
     historySearchQuery,
-    // Bash/MCP Manager
-    showBashManager,
+    // Task/MCP Manager
+    showTaskManager,
     showMcpManager,
     showRewindManager,
-    setShowBashManager,
+    setShowTaskManager,
     setShowMcpManager,
     setShowRewindManager,
     // Permission mode
@@ -216,8 +216,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {showBashManager && (
-        <BashShellManager onCancel={() => setShowBashManager(false)} />
+      {showTaskManager && (
+        <TaskManager onCancel={() => setShowTaskManager(false)} />
       )}
 
       {showMcpManager && (
@@ -229,7 +229,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {showBashManager || showMcpManager || showRewindManager || (
+      {showTaskManager || showMcpManager || showRewindManager || (
         <Box flexDirection="column">
           <Box
             borderStyle="single"

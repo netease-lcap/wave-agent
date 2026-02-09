@@ -29,32 +29,8 @@ Always use `pnpm` as the package manager.
     - **Run tests for a package**: `pnpm -F <package-name> test` (e.g., `pnpm -F wave-agent-sdk test`)
     - **Run a single test file**: `pnpm -F <package-name> test <path/to/test>` (e.g., `pnpm -F wave-agent-sdk test tests/agent.test.ts`)
 - **Testing Framework**: Vitest.
-- **UI Testing**: Use `HookTester` for hooks and `vi.waitFor` for Ink components.
 
 ### Linting
 - **Lint all**: `pnpm lint`
 - **Format**: `pnpm exec prettier --write .`
 
-## 📝 Development Guidelines
-
-- **Memory & Rules**:
-  - Use `AGENTS.md` for general project context.
-  - Check `.wave/rules/` for path-specific instructions.
-- **Feature Implementation**:
-  - Before starting a task, research the codebase and relevant `specs/`.
-  - When implementing tasks from `specs/*/tasks.md`, mark them as completed `[X]` in the file.
-- **Code Style**:
-  - Do not prefix unused variables with underscores; remove them.
-  - Do not modify `tsconfig.json` unless explicitly requested.
-  - Avoid unnecessary `setTimeout` or `sleep` in tests; prefer `vi.waitFor` or awaiting promises.
-- **Git**: Do not perform git commits unless explicitly requested.
-- **External Plugins**: `../wave-plugins-official` is the path for official wave plugins.
-
-## 🧪 Testing Patterns
-- **Agent Creation**: Always use `await Agent.create(...)` instead of `new Agent(...)`.
-- **Mocking**:
-  - Use `vi.mocked(...)` with `as unknown as Awaited<ReturnType<typeof ...>>` for type-safe mocks.
-  - Mock `stdout` and `stderr` to suppress output during tests.
-  - Do not use `mkdtemp` in tests; use mocking instead.
-    - **Examples**: `packages/*/examples` contain real integration tests. Run them using:
-      `pnpm -F <package-name> exec tsx examples/<file>.ts` (e.g., `pnpm -F wave-agent-sdk exec tsx examples/basic-usage.ts`)

@@ -37,7 +37,7 @@ export const useInputManager = (
     show: false,
     message: "",
   });
-  const [showBashManager, setShowBashManager] = useState(false);
+  const [showTaskManager, setShowTaskManager] = useState(false);
   const [showMcpManager, setShowMcpManager] = useState(false);
   const [showRewindManager, setShowRewindManager] = useState(false);
   const [permissionMode, setPermissionModeState] =
@@ -64,8 +64,8 @@ export const useInputManager = (
         onMemoryTypeSelectorStateChange: (show, message) => {
           setMemoryTypeSelectorState({ show, message });
         },
-        onBashManagerStateChange: (show) => {
-          setShowBashManager(show);
+        onTaskManagerStateChange: (show) => {
+          setShowTaskManager(show);
         },
         onMcpManagerStateChange: (show) => {
           setShowMcpManager(show);
@@ -78,7 +78,7 @@ export const useInputManager = (
           callbacks.onPermissionModeChange?.(mode);
         },
         onImagesStateChange: setAttachedImages,
-        onShowBashManager: () => setShowBashManager(true),
+        onShowTaskManager: () => setShowTaskManager(true),
         onShowMcpManager: () => setShowMcpManager(true),
         onShowRewindManager: () => setShowRewindManager(true),
         ...callbacks,
@@ -104,8 +104,8 @@ export const useInputManager = (
         onMemoryTypeSelectorStateChange: (show, message) => {
           setMemoryTypeSelectorState({ show, message });
         },
-        onBashManagerStateChange: (show) => {
-          setShowBashManager(show);
+        onTaskManagerStateChange: (show) => {
+          setShowTaskManager(show);
         },
         onMcpManagerStateChange: (show) => {
           setShowMcpManager(show);
@@ -118,7 +118,7 @@ export const useInputManager = (
           callbacks.onPermissionModeChange?.(mode);
         },
         onImagesStateChange: setAttachedImages,
-        onShowBashManager: () => setShowBashManager(true),
+        onShowTaskManager: () => setShowTaskManager(true),
         onShowMcpManager: () => setShowMcpManager(true),
         onShowRewindManager: () => setShowRewindManager(true),
         ...callbacks,
@@ -319,7 +319,7 @@ export const useInputManager = (
     historySearchQuery: historySearchState.query,
     showMemoryTypeSelector: memoryTypeSelectorState.show,
     memoryMessage: memoryTypeSelectorState.message,
-    showBashManager,
+    showTaskManager,
     showMcpManager,
     showRewindManager,
     permissionMode,
@@ -368,8 +368,8 @@ export const useInputManager = (
     handleSpecialCharInput,
 
     // Bash/MCP Manager
-    setShowBashManager: useCallback((show: boolean) => {
-      managerRef.current?.setShowBashManager(show);
+    setShowTaskManager: useCallback((show: boolean) => {
+      managerRef.current?.setShowTaskManager(show);
     }, []),
     setShowMcpManager: useCallback((show: boolean) => {
       managerRef.current?.setShowMcpManager(show);

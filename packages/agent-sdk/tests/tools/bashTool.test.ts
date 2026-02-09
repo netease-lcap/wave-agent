@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  bashTool,
-  bashOutputTool,
-  killBashTool,
-} from "../../src/tools/bashTool.js";
-import { BackgroundBashManager } from "../../src/managers/backgroundBashManager.js";
+import { bashTool } from "../../src/tools/bashTool.js";
+import { taskOutputTool } from "../../src/tools/taskOutputTool.js";
+import { taskStopTool } from "../../src/tools/taskStopTool.js";
+import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import type { ChildProcess } from "child_process";
 
@@ -24,23 +22,23 @@ import { spawn } from "child_process";
 const mockSpawn = vi.mocked(spawn);
 
 describe("bashTool", () => {
-  let backgroundBashManager: BackgroundBashManager;
+  let backgroundTaskManager: BackgroundTaskManager;
   let context: ToolContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    backgroundBashManager = new BackgroundBashManager({
+    backgroundTaskManager = new BackgroundTaskManager({
       workdir: "/test/workdir",
     });
     context = {
-      backgroundBashManager,
+      backgroundTaskManager,
       workdir: "/test/workdir",
     };
   });
 
   afterEach(() => {
     // Clean up any background processes
-    backgroundBashManager.cleanup();
+    backgroundTaskManager.cleanup();
   });
 
   describe("Bash tool", () => {
@@ -111,9 +109,9 @@ describe("bashTool", () => {
 
       expect(result.success).toBe(true);
       expect(result.content).toMatch(
-        /Command started in background with ID: bash_\d+/,
+        /Command started in background with ID: task_\d+/,
       );
-      expect(result.content).toContain("bash_id=");
+      expect(result.content).toContain("task_id=");
     });
 
     it("should validate command parameter", async () => {
@@ -195,7 +193,7 @@ describe("bashTool", () => {
       const abortController = new AbortController();
       const testContext: ToolContext = {
         abortSignal: abortController.signal,
-        backgroundBashManager,
+        backgroundTaskManager,
         workdir: "/test/workdir",
       };
 
@@ -227,7 +225,7 @@ describe("bashTool", () => {
     });
   });
 
-  describe("BashOutput tool", () => {
+  describe("TaskOutput tool", () => {
     it("should retrieve output from background shell", async () => {
       const mockProcess = {
         pid: 1234,
@@ -265,16 +263,16 @@ describe("bashTool", () => {
       );
 
       expect(bashResult.success).toBe(true);
-      const bashId = bashResult.content.match(/bash_(\d+)/)?.[0];
-      expect(bashId).toBeDefined();
+      const taskId = bashResult.content.match(/task_(\d+)/)?.[0];
+      expect(taskId).toBeDefined();
 
       // Wait a bit for output to accumulate
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Get output
-      const outputResult = await bashOutputTool.execute(
+      const outputResult = await taskOutputTool.execute(
         {
-          bash_id: bashId!,
+          task_id: taskId!,
         },
         context,
       );
@@ -283,39 +281,39 @@ describe("bashTool", () => {
       expect(outputResult.content).toBe("output from bg process");
     });
 
-    it("should handle non-existent shell ID", async () => {
-      const result = await bashOutputTool.execute(
+    it("should handle non-existent task ID", async () => {
+      const result = await taskOutputTool.execute(
         {
-          bash_id: "bash_999",
+          task_id: "task_999",
         },
         context,
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe("Background shell with ID bash_999 not found");
+      expect(result.error).toBe("Task with ID task_999 not found");
     });
 
-    it("should validate bash_id parameter", async () => {
-      const result = await bashOutputTool.execute({}, context);
+    it("should validate task_id parameter", async () => {
+      const result = await taskOutputTool.execute({}, context);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
-        "bash_id parameter is required and must be a string",
+        "task_id parameter is required and must be a string",
       );
     });
 
     it("should format compact params correctly", () => {
-      const params1 = { bash_id: "bash_1" };
-      const result1 = bashOutputTool.formatCompactParams?.(params1, context);
-      expect(result1).toBe("bash_1");
+      const params1 = { task_id: "task_1" };
+      const result1 = taskOutputTool.formatCompactParams?.(params1, context);
+      expect(result1).toBe("task_1");
 
-      const params2 = { bash_id: "bash_1", filter: "error" };
-      const result2 = bashOutputTool.formatCompactParams?.(params2, context);
-      expect(result2).toBe("bash_1 filtered: error");
+      const params2 = { task_id: "task_1", block: true };
+      const result2 = taskOutputTool.formatCompactParams?.(params2, context);
+      expect(result2).toBe("task_1 (blocking)");
     });
   });
 
-  describe("KillBash tool", () => {
+  describe("TaskStop tool", () => {
     it("should kill running background shell", async () => {
       const mockProcess = {
         pid: 1234,
@@ -341,33 +339,31 @@ describe("bashTool", () => {
         context,
       );
 
-      const bashId = bashResult.content.match(/bash_(\d+)/)?.[0];
-      expect(bashId).toBeDefined();
+      const taskId = bashResult.content.match(/task_(\d+)/)?.[0];
+      expect(taskId).toBeDefined();
 
       // Kill the process
-      const killResult = await killBashTool.execute(
+      const stopResult = await taskStopTool.execute(
         {
-          shell_id: bashId!,
+          task_id: taskId!,
         },
         context,
       );
 
-      expect(killResult.success).toBe(true);
-      expect(killResult.content).toBe(
-        `Background shell ${bashId} has been killed`,
-      );
+      expect(stopResult.success).toBe(true);
+      expect(stopResult.content).toBe(`Task ${taskId} has been stopped`);
     });
 
-    it("should handle non-existent shell ID", async () => {
-      const result = await killBashTool.execute(
+    it("should handle non-existent task ID", async () => {
+      const result = await taskStopTool.execute(
         {
-          shell_id: "bash_999",
+          task_id: "task_999",
         },
         context,
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe("Background shell with ID bash_999 not found");
+      expect(result.error).toBe("Task with ID task_999 not found");
     });
 
     it("should handle already completed shell", async () => {
@@ -399,37 +395,37 @@ describe("bashTool", () => {
         context,
       );
 
-      const bashId = bashResult.content.match(/bash_(\d+)/)?.[0];
-      expect(bashId).toBeDefined();
+      const taskId = bashResult.content.match(/task_(\d+)/)?.[0];
+      expect(taskId).toBeDefined();
 
       // Wait for process to complete
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       // Try to kill completed process
-      const killResult = await killBashTool.execute(
+      const stopResult = await taskStopTool.execute(
         {
-          shell_id: bashId!,
+          task_id: taskId!,
         },
         context,
       );
 
-      expect(killResult.success).toBe(false);
-      expect(killResult.error).toContain("is not running");
+      expect(stopResult.success).toBe(false);
+      expect(stopResult.error).toContain("Failed to stop task");
     });
 
-    it("should validate shell_id parameter", async () => {
-      const result = await killBashTool.execute({}, context);
+    it("should validate task_id parameter", async () => {
+      const result = await taskStopTool.execute({}, context);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(
-        "shell_id parameter is required and must be a string",
+        "task_id parameter is required and must be a string",
       );
     });
 
     it("should format compact params correctly", () => {
-      const params = { shell_id: "bash_1" };
-      const result = killBashTool.formatCompactParams?.(params, context);
-      expect(result).toBe("bash_1");
+      const params = { task_id: "task_1" };
+      const result = taskStopTool.formatCompactParams?.(params, context);
+      expect(result).toBe("task_1");
     });
   });
 });

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
+import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { CustomSlashCommand, TextBlock } from "../../src/types/index.js";
 
 // Mock child_process for bash command execution tests
@@ -33,9 +34,19 @@ describe("SlashCommandManager", () => {
       abortAIMessage: vi.fn(),
     } as unknown as AIManager;
 
+    // Create mock BackgroundTaskManager
+    const backgroundTaskManager = {
+      getAllTasks: vi.fn(() => []),
+      getTask: vi.fn(),
+      addTask: vi.fn(),
+      generateId: vi.fn(),
+    };
+
     slashCommandManager = new SlashCommandManager({
       messageManager,
       aiManager,
+      backgroundTaskManager:
+        backgroundTaskManager as unknown as BackgroundTaskManager,
       workdir: "/test/workdir",
     });
   });

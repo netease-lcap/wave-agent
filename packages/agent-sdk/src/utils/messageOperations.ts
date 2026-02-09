@@ -504,6 +504,7 @@ export interface AddSubagentBlockParams {
   status: "active" | "completed" | "error" | "aborted";
   sessionId: string;
   configuration: SubagentConfiguration;
+  runInBackground?: boolean;
 }
 
 export interface UpdateSubagentBlockParams {
@@ -520,6 +521,7 @@ export const addSubagentBlockToMessage = ({
   status,
   sessionId,
   configuration,
+  runInBackground,
 }: AddSubagentBlockParams): Message[] => {
   const newMessages = [...messages];
 
@@ -544,6 +546,7 @@ export const addSubagentBlockToMessage = ({
     status,
     sessionId,
     configuration,
+    runInBackground,
   });
 
   return newMessages;

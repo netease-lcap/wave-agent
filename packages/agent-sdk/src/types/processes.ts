@@ -5,14 +5,28 @@
 
 import type { ChildProcess } from "child_process";
 
-export interface BackgroundShell {
+export type BackgroundTaskStatus =
+  | "running"
+  | "completed"
+  | "failed"
+  | "killed";
+export type BackgroundTaskType = "shell" | "subagent";
+
+export interface BackgroundTask {
   id: string;
-  process: ChildProcess;
-  command: string;
+  type: BackgroundTaskType;
+  status: BackgroundTaskStatus;
   startTime: number;
-  status: "running" | "completed" | "killed";
+  endTime?: number;
+  command?: string; // for shell
+  description?: string; // for subagent
   stdout: string;
   stderr: string;
   exitCode?: number;
   runtime?: number;
+}
+
+export interface BackgroundShell extends BackgroundTask {
+  type: "shell";
+  process: ChildProcess;
 }

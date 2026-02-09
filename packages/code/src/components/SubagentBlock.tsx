@@ -11,6 +11,11 @@ interface SubagentBlockProps {
 export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
   const { subagentMessages } = useChat();
 
+  // If the subagent is running in the background, don't show the block
+  if (block.runInBackground) {
+    return null;
+  }
+
   // Get messages for this subagent from context
   const messages = subagentMessages[block.subagentId] || [];
 

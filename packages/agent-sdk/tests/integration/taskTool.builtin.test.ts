@@ -116,6 +116,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
         mockInstance,
         "Search for all .ts files in the src directory",
         mockToolContext.abortSignal,
+        undefined,
       );
 
       expect(result).toEqual({

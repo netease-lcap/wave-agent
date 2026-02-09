@@ -13,9 +13,9 @@ import { McpManager, type McpManagerCallbacks } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BashManager } from "./managers/bashManager.js";
 import {
-  BackgroundBashManager,
-  type BackgroundBashManagerCallbacks,
-} from "./managers/backgroundBashManager.js";
+  BackgroundTaskManager,
+  type BackgroundTaskManagerCallbacks,
+} from "./managers/backgroundTaskManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { HookManager } from "./managers/hookManager.js";
@@ -38,6 +38,7 @@ import type {
   Usage,
   PermissionMode,
   PermissionCallback,
+  BackgroundTask,
 } from "./types/index.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
@@ -100,9 +101,10 @@ export interface AgentOptions {
 
 export interface AgentCallbacks
   extends MessageManagerCallbacks,
-    BackgroundBashManagerCallbacks,
+    BackgroundTaskManagerCallbacks,
     McpManagerCallbacks,
     SubagentManagerCallbacks {
+  onTasksChange?: (tasks: BackgroundTask[]) => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
 }
 
@@ -111,7 +113,7 @@ export class Agent {
   private aiManager: AIManager;
 
   private bashManager: BashManager | null = null;
-  private backgroundBashManager: BackgroundBashManager;
+  private backgroundTaskManager: BackgroundTaskManager;
   private logger?: Logger; // Add optional logger property
   private toolManager: ToolManager; // Add tool registry instance
   private mcpManager: McpManager; // Add MCP manager instance
@@ -200,8 +202,13 @@ export class Agent {
     // Store options for dynamic configuration resolution
     this.options = options;
 
-    this.backgroundBashManager = new BackgroundBashManager({
-      callbacks,
+    this.backgroundTaskManager = new BackgroundTaskManager({
+      callbacks: {
+        ...callbacks,
+        onTasksChange: (tasks) => {
+          callbacks.onTasksChange?.(tasks);
+        },
+      },
       workdir: this.workdir,
     });
     this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
@@ -298,6 +305,7 @@ export class Agent {
       reversionManager: this.reversionManager,
       permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
       canUseToolCallback: canUseToolWithNotification,
+      backgroundTaskManager: this.backgroundTaskManager,
     }); // Initialize tool registry with permission support
     this.liveConfigManager = new LiveConfigManager({
       workdir: this.workdir,
@@ -331,6 +339,7 @@ export class Agent {
       getLanguage: () => this.getLanguage(),
       hookManager: this.hookManager,
       onUsageAdded: (usage) => this.addUsage(usage),
+      backgroundTaskManager: this.backgroundTaskManager,
     });
 
     // Initialize AI manager with resolved configuration
@@ -338,7 +347,7 @@ export class Agent {
       messageManager: this.messageManager,
       toolManager: this.toolManager,
       logger: this.logger,
-      backgroundBashManager: this.backgroundBashManager,
+      backgroundTaskManager: this.backgroundTaskManager,
       hookManager: this.hookManager,
       permissionManager: this.permissionManager,
       callbacks: {
@@ -362,6 +371,7 @@ export class Agent {
     this.slashCommandManager = new SlashCommandManager({
       messageManager: this.messageManager,
       aiManager: this.aiManager,
+      backgroundTaskManager: this.backgroundTaskManager,
       workdir: this.workdir,
       logger: this.logger,
     });
@@ -506,12 +516,25 @@ export class Agent {
     id: string,
     filter?: string,
   ): { stdout: string; stderr: string; status: string } | null {
-    return this.backgroundBashManager.getOutput(id, filter);
+    return this.backgroundTaskManager.getOutput(id, filter);
   }
 
   /** Kill background bash shell */
   public killBackgroundShell(id: string): boolean {
-    return this.backgroundBashManager.killShell(id);
+    return this.backgroundTaskManager.stopTask(id);
+  }
+
+  /** Get background task output */
+  public getBackgroundTaskOutput(
+    id: string,
+    filter?: string,
+  ): { stdout: string; stderr: string; status: string } | null {
+    return this.backgroundTaskManager.getOutput(id, filter);
+  }
+
+  /** Stop background task */
+  public stopBackgroundTask(id: string): boolean {
+    return this.backgroundTaskManager.stopTask(id);
   }
 
   /**
@@ -944,8 +967,8 @@ export class Agent {
     this.abortAIMessage(); // This will abort tools including Task tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
-    // Cleanup background bash manager
-    this.backgroundBashManager.cleanup();
+    // Cleanup background task manager
+    this.backgroundTaskManager.cleanup();
     // Cleanup MCP connections
     await this.mcpManager.cleanup();
     // Cleanup LSP connections

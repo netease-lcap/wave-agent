@@ -1,0 +1,79 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createTaskTool } from "../../src/tools/taskTool.js";
+import {
+  SubagentManager,
+  type SubagentInstance,
+} from "../../src/managers/subagentManager.js";
+import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
+import type { ToolContext, ToolPlugin } from "../../src/tools/types.js";
+
+// Mock the subagent manager
+vi.mock("../../src/managers/subagentManager.js");
+
+describe("Task Tool Background Execution", () => {
+  let mockSubagentManager: SubagentManager;
+  let taskTool: ToolPlugin;
+  const mockToolContext: ToolContext = {
+    abortSignal: new AbortController().signal,
+    workdir: "/test/workdir",
+  };
+
+  const gpConfig: SubagentConfiguration = {
+    name: "general-purpose",
+    description: "General-purpose agent",
+    systemPrompt: "You are an agent...",
+    model: "fastModel",
+    filePath: "<builtin:general-purpose>",
+    scope: "builtin",
+    priority: 3,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Create mock subagent manager
+    mockSubagentManager = {
+      getConfigurations: vi.fn(() => [gpConfig]),
+      findSubagent: vi.fn(),
+      createInstance: vi.fn(),
+      executeTask: vi.fn(),
+    } as unknown as SubagentManager;
+
+    // Create task tool with mock manager
+    taskTool = createTaskTool(mockSubagentManager);
+  });
+
+  it("should support run_in_background parameter", async () => {
+    const mockInstance = { subagentId: "gp-test-id" };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
+      mockInstance as SubagentInstance,
+    );
+    vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
+      "task_12345", // Returns task ID when background is true
+    );
+
+    const result = await taskTool.execute(
+      {
+        description: "Background task",
+        prompt: "Do something in background",
+        subagent_type: "general-purpose",
+        run_in_background: true,
+      },
+      mockToolContext,
+    );
+
+    expect(mockSubagentManager.executeTask).toHaveBeenCalledWith(
+      mockInstance,
+      "Do something in background",
+      mockToolContext.abortSignal,
+      true, // background parameter
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("Task started in background");
+    expect(result.content).toContain("task_12345");
+    expect(result.shortResult).toBe("Task started in background: task_12345");
+  });
+});
