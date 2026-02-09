@@ -53,6 +53,34 @@ describe("Task Management Tools", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe("Task with ID task_999 not found");
     });
+
+    it("should handle missing task_id", async () => {
+      const result = await taskOutputTool.execute({}, context);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        "task_id parameter is required and must be a string",
+      );
+    });
+
+    it("should handle block parameter", async () => {
+      const taskId = backgroundTaskManager.startShell("echo hello");
+      const task = backgroundTaskManager.getTask(taskId);
+      if (task) {
+        task.status = "completed";
+        task.stdout = "done";
+      }
+
+      const result = await taskOutputTool.execute(
+        {
+          task_id: taskId,
+          block: true,
+        },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("done");
+    });
   });
 
   describe("TaskStop tool", () => {
@@ -72,6 +100,23 @@ describe("Task Management Tools", () => {
 
       const task = backgroundTaskManager.getTask(taskId);
       expect(task?.status).toBe("killed");
+    });
+
+    it("should handle missing task_id", async () => {
+      const result = await taskStopTool.execute({}, context);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        "task_id parameter is required and must be a string",
+      );
+    });
+
+    it("should handle non-existent task", async () => {
+      const result = await taskStopTool.execute(
+        { task_id: "invalid" },
+        context,
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Task with ID invalid not found");
     });
   });
 });

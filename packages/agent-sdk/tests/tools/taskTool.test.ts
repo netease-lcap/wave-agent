@@ -76,4 +76,33 @@ describe("Task Tool Background Execution", () => {
     expect(result.content).toContain("task_12345");
     expect(result.shortResult).toBe("Task started in background: task_12345");
   });
+
+  it("should handle missing parameters", async () => {
+    const result = await taskTool.execute({}, mockToolContext);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("description parameter is required");
+  });
+
+  it("should handle invalid subagent type", async () => {
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(null);
+    const result = await taskTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "Invalid",
+      },
+      mockToolContext,
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('No subagent found matching "Invalid"');
+  });
+
+  it("should format compact params", () => {
+    const params = {
+      subagent_type: "Explore",
+      description: "Find files",
+    };
+    const formatted = taskTool.formatCompactParams?.(params, mockToolContext);
+    expect(formatted).toBe("Explore: Find files");
+  });
 });

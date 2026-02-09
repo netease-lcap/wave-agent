@@ -417,4 +417,98 @@ describe("SubagentManager - Session Functionality", () => {
       expect(calls[1][2]).toBe("/tmp/test");
     });
   });
+
+  describe("Instance Management", () => {
+    it("should cleanup instances correctly", async () => {
+      const mockConfiguration: SubagentConfiguration = {
+        name: "test-subagent",
+        description: "Test subagent",
+        systemPrompt: "You are a test subagent",
+        tools: [],
+        filePath: "/tmp/test-subagent.json",
+        scope: "project",
+        priority: 1,
+      };
+
+      const instance = await subagentManager.createInstance(mockConfiguration, {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "test-subagent",
+      });
+
+      const subagentId = instance.subagentId;
+      expect(subagentManager.getInstance(subagentId)).toBe(instance);
+
+      subagentManager.updateInstanceStatus(subagentId, "completed");
+      subagentManager.cleanupInstance(subagentId);
+      expect(subagentManager.getInstance(subagentId)).toBeNull();
+    });
+
+    it("should get active instances", async () => {
+      const mockConfiguration: SubagentConfiguration = {
+        name: "test-subagent",
+        description: "Test subagent",
+        systemPrompt: "You are a test subagent",
+        tools: [],
+        filePath: "/tmp/test-subagent.json",
+        scope: "project",
+        priority: 1,
+      };
+
+      await subagentManager.createInstance(mockConfiguration, {
+        description: "Test 1",
+        prompt: "Test 1",
+        subagent_type: "test-subagent",
+      });
+
+      const active = subagentManager.getActiveInstances();
+      expect(active.length).toBeGreaterThan(0);
+    });
+
+    it("should cleanup all instances", async () => {
+      const mockConfiguration: SubagentConfiguration = {
+        name: "test-subagent",
+        description: "Test subagent",
+        systemPrompt: "You are a test subagent",
+        tools: [],
+        filePath: "/tmp/test-subagent.json",
+        scope: "project",
+        priority: 1,
+      };
+
+      await subagentManager.createInstance(mockConfiguration, {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "test-subagent",
+      });
+
+      subagentManager.cleanup();
+      expect(subagentManager.getActiveInstances().length).toBe(0);
+    });
+
+    it("should add message to instance", async () => {
+      const mockConfiguration: SubagentConfiguration = {
+        name: "test-subagent",
+        description: "Test subagent",
+        systemPrompt: "You are a test subagent",
+        tools: [],
+        filePath: "/tmp/test-subagent.json",
+        scope: "project",
+        priority: 1,
+      };
+
+      const instance = await subagentManager.createInstance(mockConfiguration, {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "test-subagent",
+      });
+
+      const message = {
+        role: "user" as const,
+        blocks: [{ type: "text" as const, content: "Hello" }],
+      };
+      subagentManager.addMessageToInstance(instance.subagentId, message);
+      expect(instance.messages).toContain(message);
+    });
+  });
 });
