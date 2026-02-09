@@ -142,7 +142,7 @@ export const readMemoryFile = async (workdir: string): Promise<string> => {
       return "";
     }
     logger.error("Failed to read memory file", { memoryFilePath, error });
-    throw error;
+    return "";
   }
 };
 

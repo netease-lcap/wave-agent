@@ -21,12 +21,14 @@ describe("AIManager Plan Mode Prompt", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMessageManager = {
-      getMessages: vi.fn().mockReturnValue([]),
       getSessionId: vi.fn().mockReturnValue("test-session"),
+      getMessages: vi.fn().mockReturnValue([]),
       saveSession: vi.fn().mockResolvedValue(undefined),
       addAssistantMessage: vi.fn(),
       updateCurrentMessageContent: vi.fn(),
       setlatestTotalTokens: vi.fn(),
+      getCombinedMemory: vi.fn().mockResolvedValue(""),
+      addErrorBlock: vi.fn(),
     } as unknown as Mocked<MessageManager>;
     mockToolManager = {
       getToolsConfig: vi.fn().mockReturnValue([]),
