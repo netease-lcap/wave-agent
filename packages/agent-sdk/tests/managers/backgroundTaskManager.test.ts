@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
-import { BackgroundTask } from "../../src/types/processes.js";
+import { BackgroundTask, BackgroundShell } from "../../src/types/processes.js";
 
 describe("BackgroundTaskManager", () => {
   let manager: BackgroundTaskManager;
@@ -122,5 +122,59 @@ describe("BackgroundTaskManager", () => {
     };
     manager.addTask(task);
     expect(manager.stopTask("task_1")).toBe(false);
+  });
+
+  it("should handle shell process error", async () => {
+    const id = manager.startShell("non-existent-command");
+    const task = manager.getTask(id) as BackgroundShell;
+
+    // Manually trigger error event
+    task.process.emit("error", new Error("Spawn error"));
+
+    expect(task.status).toBe("failed");
+    expect(task.stderr).toContain("Process error: Spawn error");
+  });
+
+  it("should handle shell process exit with non-zero code", async () => {
+    const id = manager.startShell("exit 1");
+    const task = manager.getTask(id) as BackgroundShell;
+
+    // Manually trigger exit event
+    task.process.emit("exit", 1);
+
+    expect(task.status).toBe("failed");
+    expect(task.exitCode).toBe(1);
+  });
+
+  it("should handle shell process timeout", async () => {
+    vi.useFakeTimers();
+    const id = manager.startShell("sleep 10", 100);
+    const task = manager.getTask(id) as BackgroundShell;
+
+    vi.advanceTimersByTime(150);
+
+    expect(task.status).toBe("killed");
+    vi.useRealTimers();
+  });
+
+  it("should handle process kill failure", () => {
+    const id = manager.startShell("sleep 10");
+    const task = manager.getTask(id) as BackgroundShell;
+
+    // Mock process.kill to throw
+    const originalKill = process.kill;
+    process.kill = vi.fn().mockImplementation(() => {
+      throw new Error("Kill failed");
+    });
+
+    // Mock shell.process.kill to throw
+    task.process.kill = vi.fn().mockImplementation(() => {
+      throw new Error("Direct kill failed");
+    });
+
+    const result = manager.stopTask(id);
+    expect(result).toBe(false);
+
+    process.kill = originalKill;
   });
 });
