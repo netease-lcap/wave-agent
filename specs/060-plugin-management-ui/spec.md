@@ -34,8 +34,8 @@ As a user, I want to see which plugins I have installed and be able to toggle th
 
 **Acceptance Scenarios**:
 
-1. **Given** the user is in the "Installed" section, **When** they select a plugin, **Then** they should see the option to Uninstall.
-2. **Given** a plugin, **When** "Uninstall" is selected, **Then** the plugin is removed from the current scope's configuration, but the files remain in the global cache to avoid breaking other projects.
+  1. **Given** the user is in the "Installed" section, **When** they select a plugin, **Then** they should see the option to Uninstall.
+  2. **Given** a plugin, **When** "Uninstall" is selected, **Then** the plugin is removed from the current scope's configuration, and its reference is removed from the global registry. The physical files remain in the global cache if other projects still reference them, but are deleted if no references remain.
 
 ---
 
@@ -76,6 +76,7 @@ As a user, I want to add and manage marketplace sources so that I can access plu
 - **FR-010**: The "Installed" view MUST only show plugins that are enabled in the current scope.
 - **FR-011**: The "Discover" view MUST include plugins that are installed but not enabled in the current scope.
 - **FR-012**: Actions for installed plugins (Uninstall, Update) MUST be presented as a selection menu rather than individual keybindings.
+- **FR-013**: Uninstallation MUST use reference counting via `projectPath` to determine if physical cache files should be deleted.
 
 ### Key Entities *(include if feature involves data)*
 

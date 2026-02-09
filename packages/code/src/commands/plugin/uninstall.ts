@@ -10,7 +10,7 @@ export async function uninstallPluginCommand(argv: { plugin: string }) {
   const workdir = process.cwd();
 
   try {
-    await marketplaceService.uninstallPlugin(argv.plugin);
+    await marketplaceService.uninstallPlugin(argv.plugin, workdir);
     console.log(`Successfully uninstalled plugin: ${argv.plugin}`);
 
     const configurationService = new ConfigurationService();

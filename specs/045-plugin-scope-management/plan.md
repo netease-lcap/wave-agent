@@ -6,10 +6,10 @@
 ## Summary
 
 The primary requirement is to support enabling and disabling plugins at different scopes (`user`, `project`, `local`) and to support scoped installation. This will be achieved by:
-1. Extending `MarketplaceService` to handle `enabledPlugins` in `settings.json`.
-2. Updating `PluginManager` to respect the `enabledPlugins` configuration across all scopes with proper priority (`local` > `project` > `user`).
-3. Adding `enable` and `disable` commands to the `wave plugin` CLI.
-4. Updating the `install` command to support the `--scope` option and automatically enable plugins.
+    1. Extending `MarketplaceService` to handle `enabledPlugins` in `settings.json` and reference-counted uninstallation via `projectPath`.
+    2. Updating `PluginManager` to respect the `enabledPlugins` configuration across all scopes with proper priority (`local` > `project` > `user`).
+    3. Adding `enable` and `disable` commands to the `wave plugin` CLI.
+    4. Updating the `install` and `uninstall` commands to support the `--scope` option and manage project-specific references.
 
 ## Technical Context
 
@@ -58,14 +58,14 @@ specs/045-plugin-scope-management/
 packages/
 ├── agent-sdk/
 │   ├── src/
-│   │   ├── services/
-│   │   │   ├── MarketplaceService.ts  # Update to handle enabledPlugins
-│   │   │   └── configurationService.ts # Update to load enabledPlugins
-│   │   ├── managers/
-│   │   │   └── PluginManager.ts       # Update to filter by enabledPlugins
-│   │   └── types/
-│   │       ├── marketplace.ts         # Update types
-│   │       └── hooks.ts               # Update WaveConfiguration type
+    │   │   ├── services/
+    │   │   │   ├── MarketplaceService.ts  # Update to handle enabledPlugins and reference counting
+    │   │   │   └── configurationService.ts # Update to load enabledPlugins
+    │   │   ├── managers/
+    │   │   │   └── PluginManager.ts       # Update to filter by enabledPlugins
+    │   │   └── types/
+    │   │       ├── marketplace.ts         # Update types (InstalledPlugin with projectPath)
+    │   │       └── hooks.ts               # Update WaveConfiguration type
 │   └── tests/
 │       ├── services/
 │       └── managers/

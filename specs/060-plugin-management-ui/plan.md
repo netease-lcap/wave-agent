@@ -25,6 +25,7 @@ The feature will be implemented as a standalone Ink-based CLI component in the `
 - [x] How to integrate `MarketplaceService` methods with the UI state.
 - [x] How to handle the "Add Marketplace" input flow in Ink.
 - [x] How to handle multi-scope installation (Implemented via arrow key selection in detail view).
+- [x] How to handle reference-counted uninstallation (Implemented via `projectPath` tracking in `MarketplaceService`).
 
 ## Constitution Check
 
@@ -61,9 +62,10 @@ The feature will be implemented as a standalone Ink-based CLI component in the `
 
 ## Phase 2: Implementation Strategy
 
-### Step 1: agent-sdk Enhancements (if needed)
-- Verify `MarketplaceService` has all necessary methods: `getMarketplaces()`, `addMarketplace()`, `removeMarketplace()`, `getPluginsFromMarketplace()`, `installPlugin()`.
-- Verify `PluginScopeManager` has: `getInstalledPlugins()`, `enablePlugin()`, `disablePlugin()`, `uninstallPlugin()`.
+### Step 1: agent-sdk Enhancements
+- [x] Update `InstalledPlugin` interface to include `projectPath`.
+- [x] Update `MarketplaceService.installPlugin` to accept and store `projectPath`.
+- [x] Update `MarketplaceService.uninstallPlugin` to use reference counting based on `projectPath`.
 
 ### Step 2: UI Components
 - `PluginManagerShell`: Main layout with tabs.
@@ -72,8 +74,10 @@ The feature will be implemented as a standalone Ink-based CLI component in the `
 - `MarketplaceAddForm`: Input form for new marketplaces.
 
 ### Step 3: CLI Integration
-- Add `plugin` command to `packages/code/src/index.ts`.
-- Implement `packages/code/src/plugin-manager-cli.tsx`.
+- [x] Add `plugin` command to `packages/code/src/index.ts`.
+- [x] Implement `packages/code/src/plugin-manager-cli.tsx`.
+- [x] Update `packages/code/src/commands/plugin/uninstall.ts` to pass `projectPath`.
+- [x] Update `packages/code/src/hooks/usePluginManager.ts` to pass `projectPath` for install/uninstall.
 
 ## Phase 3: Testing & Validation
 - Unit tests for UI components using `HookTester` and `ink-testing-library`.
