@@ -83,6 +83,43 @@ describe("Task Tool Background Execution", () => {
     expect(result.error).toContain("description parameter is required");
   });
 
+  it("should handle missing prompt", async () => {
+    const result = await taskTool.execute(
+      { description: "Test" },
+      mockToolContext,
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("prompt parameter is required");
+  });
+
+  it("should handle missing subagent_type", async () => {
+    const result = await taskTool.execute(
+      { description: "Test", prompt: "Test" },
+      mockToolContext,
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("subagent_type parameter is required");
+  });
+
+  it("should handle execution error", async () => {
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue({
+      name: "Test",
+    } as unknown as never);
+    vi.mocked(mockSubagentManager.createInstance).mockRejectedValue(
+      new Error("Execution failed"),
+    );
+    const result = await taskTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "Test",
+      },
+      mockToolContext,
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Task delegation failed: Execution failed");
+  });
+
   it("should handle invalid subagent type", async () => {
     vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(null);
     const result = await taskTool.execute(
