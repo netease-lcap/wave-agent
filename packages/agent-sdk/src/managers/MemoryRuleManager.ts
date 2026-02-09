@@ -148,7 +148,7 @@ export class MemoryRuleManager {
   getActiveRules(filesInContext: string[]): MemoryRule[] {
     const activeRules: MemoryRule[] = [];
     for (const rule of Object.values(this.state.rules)) {
-      if (this.service.isRuleActive(rule, filesInContext)) {
+      if (this.service.isRuleActive(rule, filesInContext, this.workdir)) {
         activeRules.push(rule);
       }
     }

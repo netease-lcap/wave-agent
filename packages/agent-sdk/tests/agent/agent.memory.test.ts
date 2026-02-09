@@ -235,7 +235,7 @@ describe("Agent Memory Functionality", () => {
       // Access memory multiple times - should not trigger additional file reads
       expect(agent.projectMemory).toBe(projectMemoryContent);
       expect(agent.userMemory).toBe(userMemoryContent);
-      expect(agent.combinedMemory).toBe(
+      expect(await agent.getCombinedMemory()).toBe(
         projectMemoryContent + "\n\n" + userMemoryContent,
       );
 
@@ -335,7 +335,7 @@ describe("Agent Memory Functionality", () => {
 
       // Should merge project memory and user memory with proper separator
       const expectedCombined = `${projectMemoryContent}\n\n${userMemoryContent}`;
-      expect(agent.combinedMemory).toBe(expectedCombined);
+      expect(await agent.getCombinedMemory()).toBe(expectedCombined);
 
       await agent.destroy();
     });
@@ -364,7 +364,7 @@ describe("Agent Memory Functionality", () => {
       });
 
       // Should return only project memory without extra separators
-      expect(agent.combinedMemory).toBe(projectMemoryContent);
+      expect(await agent.getCombinedMemory()).toBe(projectMemoryContent);
 
       await agent.destroy();
     });
@@ -393,7 +393,7 @@ describe("Agent Memory Functionality", () => {
       });
 
       // Should return only user memory without extra separators
-      expect(agent.combinedMemory).toBe(userMemoryContent);
+      expect(await agent.getCombinedMemory()).toBe(userMemoryContent);
 
       await agent.destroy();
     });
@@ -420,7 +420,7 @@ describe("Agent Memory Functionality", () => {
       // All memory getters should return empty strings
       expect(agent.projectMemory).toBe("");
       expect(agent.userMemory).toBe("");
-      expect(agent.combinedMemory).toBe("");
+      expect(await agent.getCombinedMemory()).toBe("");
 
       await agent.destroy();
     });
@@ -454,7 +454,9 @@ describe("Agent Memory Functionality", () => {
       // Project memory should be empty string, user memory should load normally
       expect(agent.projectMemory).toBe("");
       expect(agent.userMemory).toBe("# User Memory\n\nUser content");
-      expect(agent.combinedMemory).toBe("# User Memory\n\nUser content");
+      expect(await agent.getCombinedMemory()).toBe(
+        "# User Memory\n\nUser content",
+      );
 
       await agent.destroy();
     });
@@ -486,7 +488,9 @@ describe("Agent Memory Functionality", () => {
       // User memory should be empty string, project memory should load normally
       expect(agent.projectMemory).toBe("# Memory\n\nProject content");
       expect(agent.userMemory).toBe("");
-      expect(agent.combinedMemory).toBe("# Memory\n\nProject content");
+      expect(await agent.getCombinedMemory()).toBe(
+        "# Memory\n\nProject content",
+      );
 
       await agent.destroy();
     });
@@ -522,7 +526,7 @@ describe("Agent Memory Functionality", () => {
       // Both memories should fallback to empty strings on read errors
       expect(agent.projectMemory).toBe("");
       expect(agent.userMemory).toBe("");
-      expect(agent.combinedMemory).toBe("");
+      expect(await agent.getCombinedMemory()).toBe("");
 
       await agent.destroy();
     });
@@ -601,7 +605,7 @@ describe("Agent Memory Functionality", () => {
         expect(agent).toBeDefined();
         expect(typeof agent.projectMemory).toBe("string");
         expect(typeof agent.userMemory).toBe("string");
-        expect(typeof agent.combinedMemory).toBe("string");
+        expect(typeof (await agent.getCombinedMemory())).toBe("string");
 
         // Agent should be fully functional despite memory loading failures
         expect(agent.workingDirectory).toBe(`${mockTempDir}-${i}`);
@@ -832,7 +836,7 @@ describe("Agent Memory Functionality", () => {
       });
 
       // Get initial combined memory
-      const initialCombined = agent.combinedMemory;
+      const initialCombined = await agent.getCombinedMemory();
       expect(initialCombined).toContain("Project content");
       expect(initialCombined).toContain("User content");
 
@@ -840,18 +844,18 @@ describe("Agent Memory Functionality", () => {
       await agent.saveMemory("New project info", "project");
 
       // Verify combinedMemory includes new project content
-      expect(agent.combinedMemory).toContain("Project content");
-      expect(agent.combinedMemory).toContain("User content");
-      expect(agent.combinedMemory).toContain("New project info");
+      expect(await agent.getCombinedMemory()).toContain("Project content");
+      expect(await agent.getCombinedMemory()).toContain("User content");
+      expect(await agent.getCombinedMemory()).toContain("New project info");
 
       // Add user memory
       await agent.saveMemory("New user info", "user");
 
       // Verify combinedMemory includes all content
-      expect(agent.combinedMemory).toContain("Project content");
-      expect(agent.combinedMemory).toContain("User content");
-      expect(agent.combinedMemory).toContain("New project info");
-      expect(agent.combinedMemory).toContain("New user info");
+      expect(await agent.getCombinedMemory()).toContain("Project content");
+      expect(await agent.getCombinedMemory()).toContain("User content");
+      expect(await agent.getCombinedMemory()).toContain("New project info");
+      expect(await agent.getCombinedMemory()).toContain("New user info");
 
       await agent.destroy();
     });
@@ -909,7 +913,7 @@ describe("Agent Memory Functionality", () => {
       // Verify all updates are reflected in getters
       const projectMemory = agent.projectMemory;
       const userMemory = agent.userMemory;
-      const combinedMemory = agent.combinedMemory;
+      const combinedMemory = await agent.getCombinedMemory();
 
       // Project memory should contain original + all project updates
       expect(projectMemory).toContain("Initial project content");

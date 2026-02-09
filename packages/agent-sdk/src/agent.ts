@@ -237,22 +237,23 @@ export class Agent {
       workdir: this.workdir,
     });
 
+    // Initialize memory rule manager
+    this.memoryRuleManager = new MemoryRuleManager({
+      workdir: this.workdir,
+    });
+
     // Initialize MessageManager
     this.messageManager = new MessageManager({
       callbacks,
       workdir: this.workdir,
       logger: this.logger,
+      memoryRuleManager: this.memoryRuleManager,
     });
 
     // Initialize ReversionManager
     this.reversionManager = new ReversionManager(
       new ReversionService(this.messageManager.getTranscriptPath()),
     );
-
-    // Initialize memory rule manager
-    this.memoryRuleManager = new MemoryRuleManager({
-      workdir: this.workdir,
-    });
 
     // Create a wrapper for canUseTool that triggers notification hooks
     const canUseToolWithNotification: PermissionCallback | undefined =
@@ -340,6 +341,7 @@ export class Agent {
       hookManager: this.hookManager,
       onUsageAdded: (usage) => this.addUsage(usage),
       backgroundTaskManager: this.backgroundTaskManager,
+      memoryRuleManager: this.memoryRuleManager,
     });
 
     // Initialize AI manager with resolved configuration
@@ -466,34 +468,8 @@ export class Agent {
   }
 
   /** Get combined memory content (project + user + modular rules) */
-  public get combinedMemory(): string {
-    let combined = "";
-    if (this._projectMemoryContent.trim()) {
-      combined += this._projectMemoryContent;
-    }
-    if (this._userMemoryContent.trim()) {
-      if (combined) {
-        combined += "\n\n";
-      }
-      combined += this._userMemoryContent;
-    }
-
-    // Add modular memory rules
-    const filesInContext = this.messageManager.getFilesInContext();
-    const activeRules = this.memoryRuleManager.getActiveRules(filesInContext);
-    if (activeRules.length > 0) {
-      this.logger?.debug(
-        `Active modular rules (${activeRules.length}): ${activeRules.map((r) => r.id).join(", ")}`,
-      );
-      if (combined) {
-        combined += "\n\n";
-      }
-      combined += activeRules.map((r) => r.content).join("\n\n");
-    } else {
-      this.logger?.debug("No active modular rules for current context");
-    }
-
-    return combined;
+  public async getCombinedMemory(): Promise<string> {
+    return this.messageManager.getCombinedMemory();
   }
 
   /** Get AI loading status */

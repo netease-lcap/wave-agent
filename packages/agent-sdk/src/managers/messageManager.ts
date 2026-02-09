@@ -26,6 +26,7 @@ import {
   SESSION_DIR,
 } from "../services/session.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
+import type { MemoryRuleManager } from "./MemoryRuleManager.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
 
 export interface MessageManagerCallbacks {
@@ -81,6 +82,7 @@ export interface MessageManagerOptions {
   logger?: Logger;
   sessionType?: "main" | "subagent";
   subagentType?: string;
+  memoryRuleManager?: MemoryRuleManager;
 }
 
 export class MessageManager {
@@ -96,6 +98,7 @@ export class MessageManager {
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
   private filesInContext: Set<string> = new Set(); // Track files mentioned in the conversation
+  private memoryRuleManager?: MemoryRuleManager;
   private sessionType: "main" | "subagent";
   private subagentType?: string;
 
@@ -111,6 +114,7 @@ export class MessageManager {
     this.savedMessageCount = 0; // Initialize saved message count tracker
     this.sessionType = options.sessionType || "main";
     this.subagentType = options.subagentType;
+    this.memoryRuleManager = options.memoryRuleManager;
 
     // Compute and cache the transcript path
     this.transcriptPath = this.computeTranscriptPath();
@@ -150,6 +154,30 @@ export class MessageManager {
 
   public getTranscriptPath(): string {
     return this.transcriptPath;
+  }
+
+  /**
+   * Get combined memory content (project memory + user memory + modular rules)
+   */
+  public async getCombinedMemory(): Promise<string> {
+    const memory = await import("../services/memory.js");
+    let combined = await memory.getCombinedMemoryContent(this.workdir);
+
+    if (this.memoryRuleManager) {
+      const filesInContext = this.getFilesInContext();
+      const activeRules = this.memoryRuleManager.getActiveRules(filesInContext);
+      if (activeRules.length > 0) {
+        this.logger?.debug(
+          `Active modular rules (${activeRules.length}): ${activeRules.map((r) => r.id).join(", ")}`,
+        );
+        if (combined) {
+          combined += "\n\n";
+        }
+        combined += activeRules.map((r) => r.content).join("\n\n");
+      }
+    }
+
+    return combined;
   }
 
   /**

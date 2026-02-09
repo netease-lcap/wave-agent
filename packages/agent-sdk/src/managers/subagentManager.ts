@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import type { MemoryRuleManager } from "./MemoryRuleManager.js";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type {
   Message,
@@ -76,6 +77,7 @@ export interface SubagentManagerOptions {
   hookManager?: HookManager;
   onUsageAdded?: (usage: Usage) => void;
   backgroundTaskManager?: BackgroundTaskManager;
+  memoryRuleManager?: MemoryRuleManager;
 }
 
 export class SubagentManager {
@@ -94,6 +96,7 @@ export class SubagentManager {
   private hookManager?: HookManager;
   private onUsageAdded?: (usage: Usage) => void;
   private backgroundTaskManager?: BackgroundTaskManager;
+  private memoryRuleManager?: MemoryRuleManager;
 
   constructor(options: SubagentManagerOptions) {
     this.workdir = options.workdir;
@@ -108,6 +111,7 @@ export class SubagentManager {
     this.hookManager = options.hookManager;
     this.onUsageAdded = options.onUsageAdded;
     this.backgroundTaskManager = options.backgroundTaskManager;
+    this.memoryRuleManager = options.memoryRuleManager;
   }
 
   /**
@@ -181,6 +185,7 @@ export class SubagentManager {
       logger: this.logger,
       sessionType: "subagent",
       subagentType: parameters.subagent_type,
+      memoryRuleManager: this.memoryRuleManager,
     });
 
     // Use the parent tool manager directly - tool restrictions will be handled by allowedTools parameter
@@ -521,6 +526,7 @@ export class SubagentManager {
           logger: this.logger,
           sessionType: "subagent",
           subagentType: configuration.name, // Use configuration name for restored sessions
+          memoryRuleManager: this.memoryRuleManager,
         });
 
         // Use the parent tool manager
