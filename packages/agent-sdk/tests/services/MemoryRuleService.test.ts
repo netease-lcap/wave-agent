@@ -98,5 +98,25 @@ invalid yaml
       } as unknown as import("../../src/types/memoryRule.js").MemoryRule;
       expect(service.isRuleActive(dotRule, [".env.local"])).toBe(true);
     });
+
+    it("should normalize absolute paths relative to workdir", () => {
+      const rule = {
+        metadata: { paths: ["src/**/*.ts"] },
+      } as unknown as import("../../src/types/memoryRule.js").MemoryRule;
+      const workdir = "/home/user/project";
+      const absolutePath = "/home/user/project/src/index.ts";
+
+      expect(service.isRuleActive(rule, [absolutePath], workdir)).toBe(true);
+    });
+
+    it("should still match relative paths", () => {
+      const rule = {
+        metadata: { paths: ["src/**/*.ts"] },
+      } as unknown as import("../../src/types/memoryRule.js").MemoryRule;
+      const workdir = "/home/user/project";
+      const relativePath = "src/index.ts";
+
+      expect(service.isRuleActive(rule, [relativePath], workdir)).toBe(true);
+    });
   });
 });

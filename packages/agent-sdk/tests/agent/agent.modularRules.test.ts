@@ -153,8 +153,10 @@ describe("Agent Modular Memory Rules Integration", () => {
     // MemoryRuleService.isRuleActive returns true if metadata.paths is empty.
     // Here paths are NOT empty. So they should NOT be active if filesInContext is empty.
 
-    expect(agent.combinedMemory).not.toContain("Project rule content");
-    expect(agent.combinedMemory).not.toContain("User rule content");
+    expect(await agent.getCombinedMemory()).not.toContain(
+      "Project rule content",
+    );
+    expect(await agent.getCombinedMemory()).not.toContain("User rule content");
 
     await agent.destroy();
   });
@@ -192,7 +194,9 @@ describe("Agent Modular Memory Rules Integration", () => {
     });
 
     // Initially not active
-    expect(agent.combinedMemory).not.toContain("Important rule content");
+    expect(await agent.getCombinedMemory()).not.toContain(
+      "Important rule content",
+    );
 
     // Add a message that mentions the file
     // We need to simulate a tool call that mentions the file
@@ -216,7 +220,7 @@ describe("Agent Modular Memory Rules Integration", () => {
       }
     ).messageManager.setMessages([messageWithToolCall]);
 
-    expect(agent.combinedMemory).toContain("Important rule content");
+    expect(await agent.getCombinedMemory()).toContain("Important rule content");
 
     await agent.destroy();
   });
@@ -270,8 +274,8 @@ describe("Agent Modular Memory Rules Integration", () => {
 
     // Both rules have the same relative path, so project should override user
     // Since they don't have 'paths' metadata, they are always active
-    expect(agent.combinedMemory).toContain("Project rule content");
-    expect(agent.combinedMemory).not.toContain("User rule content");
+    expect(await agent.getCombinedMemory()).toContain("Project rule content");
+    expect(await agent.getCombinedMemory()).not.toContain("User rule content");
 
     await agent.destroy();
   });

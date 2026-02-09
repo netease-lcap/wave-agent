@@ -6,7 +6,6 @@ import {
 import { getMessagesToCompress } from "../utils/messageOperations.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
-import * as memory from "../services/memory.js";
 import * as fs from "node:fs/promises";
 import type {
   Logger,
@@ -333,9 +332,7 @@ export class AIManager {
 
     try {
       // Get combined memory content
-      const combinedMemory = await memory.getCombinedMemoryContent(
-        this.workdir,
-      );
+      const combinedMemory = await this.messageManager.getCombinedMemory();
 
       // Track if assistant message has been created
       let assistantMessageCreated = false;
