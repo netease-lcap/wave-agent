@@ -205,7 +205,7 @@ async function demoModularRules(): Promise<void> {
     // Test 1: Work with API file (should activate api-guidelines.md and global rules)
     console.log("=== Test 1: Working with API file ===");
     await agent.sendMessage(
-      "Please review the file src/api/users.ts and tell me what coding guidelines apply to it based on the memory rules. List the specific rules that are active.",
+      "Review src/api/users.ts. Just list the active memory rule filenames and stop.",
     );
 
     const test1Rules = activeRulesLog[activeRulesLog.length - 1] || [];
@@ -223,7 +223,7 @@ async function demoModularRules(): Promise<void> {
     // Test 2: Work with UI file (should activate ui-guidelines.md and global rules)
     console.log("\n=== Test 2: Working with UI file ===");
     await agent.sendMessage(
-      "Now review the file src/ui/Button.tsx. What guidelines apply to this file? Are they different from the API file?",
+      "Review src/ui/Button.tsx. Just list the active memory rule filenames and stop.",
     );
 
     const test2Rules = activeRulesLog[activeRulesLog.length - 1] || [];
@@ -241,7 +241,7 @@ async function demoModularRules(): Promise<void> {
     // Test 3: Work with test file (should activate react-testing.md and global rules)
     console.log("\n=== Test 3: Working with test file ===");
     await agent.sendMessage(
-      "Finally, review tests/users.test.ts. What testing guidelines should I follow based on the memory rules?",
+      "Review tests/users.test.ts. Just list the active memory rule filenames and stop.",
     );
 
     const test3Rules = activeRulesLog[activeRulesLog.length - 1] || [];
