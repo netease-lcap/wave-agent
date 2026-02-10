@@ -2,11 +2,7 @@ import { readFile, writeFile } from "fs/promises";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
-import {
-  findIndentationInsensitiveMatch,
-  escapeRegExp,
-  saveEditErrorSnapshot,
-} from "../utils/editUtils.js";
+import { escapeRegExp, analyzeEditMismatch } from "../utils/editUtils.js";
 import {
   MULTI_EDIT_TOOL_NAME,
   EDIT_TOOL_NAME,
@@ -185,23 +181,16 @@ export const multiEditTool: ToolPlugin = {
           continue;
         }
 
-        // Check if old_string exists (with smart indentation matching)
-        const matchedOldString = findIndentationInsensitiveMatch(
-          currentContent,
-          edit.old_string,
-        );
+        // Check if old_string exists
+        const matchedOldString = currentContent.includes(edit.old_string)
+          ? edit.old_string
+          : null;
 
         if (!matchedOldString) {
-          await saveEditErrorSnapshot(
-            resolvedPath,
-            edit.old_string,
-            currentContent,
-            MULTI_EDIT_TOOL_NAME,
-          );
           return {
             success: false,
             content: "",
-            error: `Edit operation ${i + 1}: old_string not found in current content`,
+            error: `Edit operation ${i + 1}: ${analyzeEditMismatch(currentContent, edit.old_string)}`,
           };
         }
 
@@ -209,7 +198,7 @@ export const multiEditTool: ToolPlugin = {
 
         if (replaceAll) {
           // Replace all matches
-          const regex = new RegExp(escapeRegExp(matchedOldString), "g");
+          const regex = new RegExp(escapeRegExp(edit.old_string), "g");
           currentContent = currentContent.replace(regex, edit.new_string);
           replacementCount = (currentContent.match(regex) || []).length;
           appliedEdits.push(

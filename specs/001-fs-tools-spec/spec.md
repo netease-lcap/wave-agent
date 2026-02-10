@@ -58,7 +58,7 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 
 - **Large Files**: Reading files that exceed memory limits or token windows. Handled via `offset` and `limit`.
 - **Binary Documents**: Attempting to read PDF, DOCX, or other unsupported binary formats. The tool MUST prevent this and return an error.
-- **Indentation Matching**: `Edit` tool must handle different indentation styles (tabs vs spaces) gracefully when matching `old_string`.
+- **Mismatch Analysis**: `Edit` tool must provide detailed mismatch reports when `old_string` is not found, highlighting exactly which lines differ.
 - **Atomic Failures**: In `MultiEdit`, if one edit fails, none of the previous edits in that call should be persisted.
 - **File Permissions**: Attempting to write to read-only files or directories without proper permissions.
 
@@ -70,7 +70,7 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 - **FR-002**: `Read` tool MUST support pagination via `offset` and `limit` and truncate long lines.
 - **FR-003**: System MUST provide a `Write` tool that automatically creates parent directories.
 - **FR-004**: `Write` tool SHOULD verify that the file was read before being overwritten to prevent accidental data loss.
-- **FR-005**: System MUST provide an `Edit` tool for exact string replacement with indentation awareness.
+- **FR-005**: System MUST provide an `Edit` tool for exact string replacement with detailed mismatch analysis.
 - **FR-006**: System MUST provide a `MultiEdit` tool for atomic sequential edits.
 - **FR-007**: System MUST provide a `Delete` tool for removing files.
 - **FR-008**: System MUST provide an `LS` tool to list directory contents with metadata (size, type).

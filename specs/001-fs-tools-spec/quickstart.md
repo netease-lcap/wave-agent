@@ -23,9 +23,9 @@ const result = await writeTool.execute({
 }, context);
 ```
 
-### Smart Editing
+### Editing
 ```typescript
-// Use the Edit tool for indentation-insensitive replacement
+// Use the Edit tool for exact string replacement
 const result = await editTool.execute({
   file_path: "/path/to/file.ts",
   old_string: "function old() {}",
@@ -44,6 +44,5 @@ const result = await grepTool.execute({
 ```
 
 ## Key Implementation Details
-- **Indentation Matching**: The `Edit` and `MultiEdit` tools use `findIndentationInsensitiveMatch` to handle variations in leading whitespace.
 - **Ripgrep Integration**: The `Grep` tool spawns the `rg` binary from `@vscode/ripgrep` for high-performance searching.
 - **Image Support**: `Read` tool detects image extensions and returns base64 data.
