@@ -22,25 +22,20 @@ export const PlanDisplay: React.FC<PlanDisplayProps> = ({
 
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Box paddingLeft={2} borderLeft borderColor="cyan" flexDirection="column">
-        <Text color="cyan" bold>
-          Plan Content:
-        </Text>
-        <Box
-          flexDirection="column"
-          height={isOverflowing ? maxHeight : undefined}
-          overflow="hidden"
-        >
-          <Markdown>{plan}</Markdown>
-        </Box>
-        {isOverflowing && (
-          <Box marginTop={1}>
-            <Text color="yellow" dimColor>
-              ... (plan truncated, {lines.length} lines total)
-            </Text>
-          </Box>
-        )}
+      <Box
+        flexDirection="column"
+        height={isOverflowing ? maxHeight : undefined}
+        overflow="hidden"
+      >
+        <Markdown>{plan}</Markdown>
       </Box>
+      {isOverflowing && (
+        <Box marginTop={1}>
+          <Text color="yellow" dimColor>
+            ... (plan truncated, {lines.length} lines total)
+          </Text>
+        </Box>
+      )}
     </Box>
   );
 };
