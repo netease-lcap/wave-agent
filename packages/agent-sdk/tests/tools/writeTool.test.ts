@@ -315,4 +315,151 @@ describe("writeTool", () => {
       expect(result).toBe("/test/file.txt");
     });
   });
+
+  describe("Permissions", () => {
+    it("should deny write if permission is denied", async () => {
+      const mockPermissionManager = {
+        createContext: vi.fn(),
+        checkPermission: vi
+          .fn()
+          .mockResolvedValue({ behavior: "deny", message: "Write denied" }),
+      };
+
+      const result = await writeTool.execute(
+        { file_path: "/test/file.txt", content: "test" },
+        {
+          ...mockContext,
+          permissionManager:
+            mockPermissionManager as unknown as ToolContext["permissionManager"],
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain(
+        "Write operation denied, reason: Write denied",
+      );
+    });
+
+    it("should handle permission check failure", async () => {
+      const mockPermissionManager = {
+        createContext: vi.fn().mockImplementation(() => {
+          throw new Error("Check failed");
+        }),
+      };
+
+      const result = await writeTool.execute(
+        { file_path: "/test/file.txt", content: "test" },
+        {
+          ...mockContext,
+          permissionManager:
+            mockPermissionManager as unknown as ToolContext["permissionManager"],
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Permission check failed");
+    });
+  });
+
+  describe("Reversion", () => {
+    it("should record and commit snapshot for new file", async () => {
+      const mockReversionManager = {
+        recordSnapshot: vi.fn().mockResolvedValue("snap-1"),
+        commitSnapshot: vi.fn().mockResolvedValue(undefined),
+      };
+
+      vi.mocked(readFile).mockRejectedValue(new Error("ENOENT"));
+      vi.mocked(writeFile).mockResolvedValue(undefined);
+
+      const result = await writeTool.execute(
+        { file_path: "/test/new.txt", content: "new content" },
+        {
+          ...mockContext,
+          reversionManager:
+            mockReversionManager as unknown as ToolContext["reversionManager"],
+          messageId: "msg-1",
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockReversionManager.recordSnapshot).toHaveBeenCalledWith(
+        "msg-1",
+        "/test/new.txt",
+        "create",
+      );
+      expect(mockReversionManager.commitSnapshot).toHaveBeenCalledWith(
+        "snap-1",
+      );
+    });
+
+    it("should record and commit snapshot for existing file", async () => {
+      const mockReversionManager = {
+        recordSnapshot: vi.fn().mockResolvedValue("snap-2"),
+        commitSnapshot: vi.fn().mockResolvedValue(undefined),
+      };
+
+      vi.mocked(readFile).mockResolvedValue("old content");
+      vi.mocked(writeFile).mockResolvedValue(undefined);
+
+      const result = await writeTool.execute(
+        { file_path: "/test/existing.txt", content: "new content" },
+        {
+          ...mockContext,
+          reversionManager:
+            mockReversionManager as unknown as ToolContext["reversionManager"],
+          messageId: "msg-2",
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockReversionManager.recordSnapshot).toHaveBeenCalledWith(
+        "msg-2",
+        "/test/existing.txt",
+        "modify",
+      );
+      expect(mockReversionManager.commitSnapshot).toHaveBeenCalledWith(
+        "snap-2",
+      );
+    });
+  });
+
+  describe("Edge Cases", () => {
+    it("should handle non-Error objects in catch block", async () => {
+      vi.mocked(readFile).mockImplementation(() => {
+        throw "String error";
+      });
+
+      await writeTool.execute(
+        { file_path: "/test/file.txt", content: "test" },
+        mockContext,
+      );
+
+      // The inner catch for readFile sets isExistingFile = false and continues
+      // Then it tries to mkdir and writeFile.
+      // To trigger the outer catch, we need something else to fail.
+      vi.mocked(writeFile).mockImplementation(() => {
+        throw "Write error";
+      });
+
+      const result2 = await writeTool.execute(
+        { file_path: "/test/file.txt", content: "test" },
+        mockContext,
+      );
+
+      expect(result2.success).toBe(false);
+      expect(result2.error).toBe("Failed to write file: Write error");
+    });
+
+    it("should handle invalid content type", async () => {
+      const result = await writeTool.execute(
+        { file_path: "/test/file.txt", content: 123 },
+        mockContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        "content parameter is required and must be a string",
+      );
+    });
+  });
 });

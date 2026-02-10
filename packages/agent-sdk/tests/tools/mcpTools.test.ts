@@ -14,7 +14,9 @@ const mcpManager = {
 };
 
 vi.mock("../../src/services/mcpManager", () => ({
-  McpManager: vi.fn().mockImplementation(() => mcpManager),
+  McpManager: vi.fn().mockImplementation(function () {
+    return mcpManager;
+  }),
 }));
 
 describe("McpManager - Tools Registry", () => {

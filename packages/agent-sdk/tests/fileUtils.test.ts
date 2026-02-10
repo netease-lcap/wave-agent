@@ -41,7 +41,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         buffer.copy(targetBuffer, offset, position, position + length);
         return Promise.resolve({ bytesRead: length, buffer: targetBuffer });
       },
@@ -58,7 +58,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({
@@ -79,7 +79,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({
@@ -100,7 +100,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({
@@ -121,7 +121,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({
@@ -142,7 +142,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({
@@ -163,7 +163,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({
@@ -189,7 +189,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({
@@ -210,7 +210,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({
@@ -231,7 +231,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({
@@ -252,7 +252,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({
@@ -275,7 +275,7 @@ describe("getLastLine", () => {
       size: buffer.length,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
     mockFileHandle.read.mockImplementation(
-      (targetBuffer, offset, length, position) => {
+      function (targetBuffer, offset, length, position) {
         const bytesToRead = Math.min(length, buffer.length - position);
         buffer.copy(targetBuffer, offset, position, position + bytesToRead);
         return Promise.resolve({

@@ -554,5 +554,120 @@ describe("readTool", () => {
       // It should not contain image data
       expect(result.images).toBeUndefined();
     });
+
+    it("should handle image processing error with non-Error object", async () => {
+      const pngPath = "/test/workdir/test-image.png";
+      vi.mocked(convertImageToBase64).mockImplementation(() => {
+        throw "String error";
+      });
+
+      const result = await readTool.execute(
+        { file_path: pngPath },
+        testContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Failed to process image: String error");
+    });
+
+    it("should handle image file size validation failure", async () => {
+      const pngPath = "/test/workdir/test-image.png";
+      vi.mocked(stat).mockRejectedValue(new Error("Stat failed"));
+
+      const result = await readTool.execute(
+        { file_path: pngPath },
+        testContext,
+      );
+
+      // validateImageFileSize returns false on error, which triggers processImageFile error catch
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Failed to process image");
+    });
+  });
+
+  describe("Binary Documents", () => {
+    it("should return error for binary documents", async () => {
+      const { isBinaryDocument } = await import("@/utils/fileFormat.js");
+      vi.mocked(isBinaryDocument).mockReturnValue(true);
+
+      const result = await readTool.execute(
+        { file_path: "/test/doc.pdf" },
+        testContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Binary document error");
+    });
+  });
+
+  describe("Permissions", () => {
+    it("should deny access if permission is denied", async () => {
+      const mockPermissionManager = {
+        createContext: vi.fn(),
+        checkPermission: vi
+          .fn()
+          .mockResolvedValue({ behavior: "deny", message: "No access" }),
+      };
+
+      const result = await readTool.execute(
+        { file_path: "/test/workdir/small.txt" },
+        {
+          ...testContext,
+          permissionManager:
+            mockPermissionManager as unknown as ToolContext["permissionManager"],
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("No access");
+    });
+
+    it("should allow access if permission is granted", async () => {
+      const mockPermissionManager = {
+        createContext: vi.fn(),
+        checkPermission: vi.fn().mockResolvedValue({ behavior: "allow" }),
+      };
+
+      const result = await readTool.execute(
+        { file_path: "/test/workdir/small.txt" },
+        {
+          ...testContext,
+          permissionManager:
+            mockPermissionManager as unknown as ToolContext["permissionManager"],
+        },
+      );
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("Edge Cases", () => {
+    it("should handle very large files with content truncation", async () => {
+      const largeContent = "a".repeat(150 * 1024); // 150KB
+      mockReadFile.mockResolvedValue(largeContent);
+
+      const result = await readTool.execute(
+        { file_path: "/test/workdir/very-large.txt" },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Content truncated at 102400 bytes");
+      expect(result.content).toContain(
+        "... content truncated due to size limit (102400 bytes)",
+      );
+    });
+
+    it("should handle non-Error objects in catch block", async () => {
+      mockReadFile.mockRejectedValue("String error");
+
+      const result = await readTool.execute(
+        { file_path: "/test/workdir/small.txt" },
+        testContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Failed to read file: String error");
+    });
   });
 });

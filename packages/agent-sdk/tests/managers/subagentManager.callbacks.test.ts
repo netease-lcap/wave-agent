@@ -445,7 +445,7 @@ describe("SubagentManager - Callback Integration", () => {
   describe("error handling and edge cases", () => {
     it("should handle callback errors gracefully without breaking subagent functionality", async () => {
       const errorCallbacks: SubagentManagerCallbacks = {
-        onSubagentUserMessageAdded: vi.fn().mockImplementation(() => {
+        onSubagentUserMessageAdded: vi.fn().mockImplementation(function () {
           throw new Error("Callback error");
         }),
       };

@@ -18,11 +18,11 @@ export default defineConfig(() => {
       exclude: ["node_modules", "dist"],
       // Enable retry in CI environment: failed tests will retry up to 2 times
       retry: isCI ? 2 : 0,
-      reporters: ["dot"],
+      // reporters: ["dot"],
       coverage: {
-        provider: "v8",
+        provider: "v8" as const,
         reporter: ["text", "json", "html"],
-        include: ["src/**/*"],
+        include: ["src/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
         exclude: ["node_modules", "dist", "tests", "examples"],
         thresholds: {
           lines: 80,

@@ -184,7 +184,7 @@ describe("editTool", () => {
       {
         old_string: "old",
         new_string: "new",
-      },
+      } as unknown as Parameters<typeof editTool.execute>[0],
       mockContext,
     );
 
@@ -193,25 +193,61 @@ describe("editTool", () => {
 
     const result2 = await editTool.execute(
       {
-        file_path: "/test/file.js",
+        file_path: 123,
+        old_string: "old",
         new_string: "new",
-      },
+      } as unknown as Parameters<typeof editTool.execute>[0],
       mockContext,
     );
 
     expect(result2.success).toBe(false);
-    expect(result2.error).toContain("old_string parameter is required");
+    expect(result2.error).toContain("file_path parameter is required");
 
     const result3 = await editTool.execute(
       {
         file_path: "/test/file.js",
-        old_string: "old",
-      },
+        new_string: "new",
+      } as unknown as Parameters<typeof editTool.execute>[0],
       mockContext,
     );
 
     expect(result3.success).toBe(false);
-    expect(result3.error).toContain("new_string parameter is required");
+    expect(result3.error).toContain("old_string parameter is required");
+
+    const result4 = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: 123,
+        new_string: "new",
+      } as unknown as Parameters<typeof editTool.execute>[0],
+      mockContext,
+    );
+
+    expect(result4.success).toBe(false);
+    expect(result4.error).toContain("old_string parameter is required");
+
+    const result5 = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "old",
+      } as unknown as Parameters<typeof editTool.execute>[0],
+      mockContext,
+    );
+
+    expect(result5.success).toBe(false);
+    expect(result5.error).toContain("new_string parameter is required");
+
+    const result6 = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "old",
+        new_string: 123,
+      } as unknown as Parameters<typeof editTool.execute>[0],
+      mockContext,
+    );
+
+    expect(result6.success).toBe(false);
+    expect(result6.error).toContain("new_string parameter is required");
   });
 
   it("should fail when old_string and new_string are the same", async () => {
@@ -273,5 +309,131 @@ describe("editTool", () => {
       expectedContent,
       "utf-8",
     );
+  });
+
+  it("should handle permission denial", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+
+    const mockPermissionManager = {
+      createContext: vi.fn().mockReturnValue({}),
+      checkPermission: vi.fn().mockResolvedValue({
+        behavior: "deny",
+        message: "User denied",
+      }),
+    };
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      {
+        ...mockContext,
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain(
+      "Edit operation denied, reason: User denied",
+    );
+  });
+
+  it("should handle permission check failure", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+
+    const mockPermissionManager = {
+      createContext: vi.fn().mockReturnValue({}),
+      checkPermission: vi.fn().mockRejectedValue(new Error("Check failed")),
+    };
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      {
+        ...mockContext,
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Permission check failed");
+  });
+
+  it("should record and commit snapshot when reversionManager is present", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const mockReversionManager = {
+      recordSnapshot: vi.fn().mockResolvedValue("snapshot-123"),
+      commitSnapshot: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      {
+        ...mockContext,
+        reversionManager:
+          mockReversionManager as unknown as ToolContext["reversionManager"],
+        messageId: "msg-123",
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockReversionManager.recordSnapshot).toHaveBeenCalledWith(
+      "msg-123",
+      "/test/file.js",
+      "modify",
+    );
+    expect(mockReversionManager.commitSnapshot).toHaveBeenCalledWith(
+      "snapshot-123",
+    );
+  });
+
+  it("should handle generic errors in execute", async () => {
+    vi.mocked(readFile).mockImplementation(() => {
+      throw new Error("Generic error");
+    });
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "old",
+        new_string: "new",
+      },
+      mockContext,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Generic error");
+  });
+
+  it("should format compact params correctly", () => {
+    const formatCompactParams = (
+      editTool as unknown as {
+        formatCompactParams: (
+          params: { file_path: string },
+          context: { workdir: string },
+        ) => string;
+      }
+    ).formatCompactParams;
+    const result = formatCompactParams(
+      { file_path: "src/index.ts" },
+      { workdir: "/test" },
+    );
+    expect(result).toBe("src/index.ts");
   });
 });

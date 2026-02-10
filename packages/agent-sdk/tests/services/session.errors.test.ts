@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
 import { randomUUID } from "crypto";
 
 // Mock fs/promises (used by session.ts)
@@ -30,23 +30,27 @@ vi.mock("@/utils/fileUtils.js", () => ({
 
 // Mock JsonlHandler (used by session.ts)
 vi.mock("@/services/jsonlHandler.js", () => ({
-  JsonlHandler: vi.fn(() => ({
-    read: vi.fn(),
-    append: vi.fn(),
-    isValidSessionFilename: vi.fn(),
-    generateSessionFilename: vi.fn(),
-    getLastMessage: vi.fn(),
-    createSession: vi.fn(),
-  })),
+  JsonlHandler: vi.fn(function () {
+    return {
+      read: vi.fn(),
+      append: vi.fn(),
+      isValidSessionFilename: vi.fn(),
+      generateSessionFilename: vi.fn(),
+      getLastMessage: vi.fn(),
+      createSession: vi.fn(),
+    };
+  }),
 }));
 
 // Mock PathEncoder
 vi.mock("@/utils/pathEncoder.js", () => ({
-  PathEncoder: vi.fn(() => ({
-    createProjectDirectory: vi.fn(),
-    getProjectDirectory: vi.fn(),
-    decode: vi.fn(),
-  })),
+  PathEncoder: vi.fn(function () {
+    return {
+      createProjectDirectory: vi.fn(),
+      getProjectDirectory: vi.fn(),
+      decode: vi.fn(),
+    };
+  }),
 }));
 
 import {
@@ -54,26 +58,53 @@ import {
   getLatestSessionFromJsonl,
   loadSessionFromJsonl,
 } from "@/services/session.js";
+import type { Message } from "@/types/index.js";
 
 describe("Session Error Handling and Edge Cases", () => {
   let tempDir: string;
   let testWorkdir: string;
   let mockJsonlHandler: {
-    read: ReturnType<typeof vi.fn>;
-    append: ReturnType<typeof vi.fn>;
-    isValidSessionFilename: ReturnType<typeof vi.fn>;
-    generateSessionFilename: ReturnType<typeof vi.fn>;
-    getLastMessage: ReturnType<typeof vi.fn>;
-    createSession: ReturnType<typeof vi.fn>;
+    read: Mock<(filePath: string) => Promise<Message[]>>;
+    append: Mock<(filePath: string, messages: Message[]) => Promise<void>>;
+    isValidSessionFilename: Mock<(filename: string) => boolean>;
+    generateSessionFilename: Mock<
+      (sessionId: string, sessionType?: "main" | "subagent") => string
+    >;
+    getLastMessage: Mock<(filePath: string) => Promise<Message | null>>;
+    createSession: Mock<(filePath: string) => Promise<void>>;
   };
   let mockPathEncoder: {
-    createProjectDirectory: ReturnType<typeof vi.fn>;
-    getProjectDirectory: ReturnType<typeof vi.fn>;
-    decode: ReturnType<typeof vi.fn>;
+    createProjectDirectory: Mock<
+      (
+        workdir: string,
+        baseDir: string,
+      ) => Promise<{
+        originalPath: string;
+        encodedName: string;
+        encodedPath: string;
+        pathHash: string | undefined;
+        isSymbolicLink: boolean;
+      }>
+    >;
+    getProjectDirectory: Mock<
+      (
+        workdir: string,
+        baseDir: string,
+      ) => Promise<{
+        originalPath: string;
+        encodedName: string;
+        encodedPath: string;
+        pathHash: string | undefined;
+        isSymbolicLink: boolean;
+      }>
+    >;
+    decode: Mock<(encoded: string) => string>;
   };
   let mockFileUtils: {
-    readFirstLine: ReturnType<typeof vi.fn>;
-    getLastLine: ReturnType<typeof vi.fn>;
+    readFirstLine: Mock<(filePath: string) => Promise<string>>;
+    getLastLine: Mock<
+      (filePath: string, minLength?: number) => Promise<string>
+    >;
   };
 
   beforeEach(async () => {
@@ -120,12 +151,12 @@ describe("Session Error Handling and Edge Cases", () => {
     const { PathEncoder } = await import("@/utils/pathEncoder.js");
     const fileUtilsModule = await import("@/utils/fileUtils.js");
 
-    vi.mocked(JsonlHandler).mockImplementation(
-      () => mockJsonlHandler as unknown as InstanceType<typeof JsonlHandler>,
-    );
-    vi.mocked(PathEncoder).mockImplementation(
-      () => mockPathEncoder as unknown as InstanceType<typeof PathEncoder>,
-    );
+    vi.mocked(JsonlHandler).mockImplementation(function () {
+      return mockJsonlHandler as unknown as InstanceType<typeof JsonlHandler>;
+    });
+    vi.mocked(PathEncoder).mockImplementation(function () {
+      return mockPathEncoder as unknown as InstanceType<typeof PathEncoder>;
+    });
 
     // Mock fileUtils methods
     vi.mocked(fileUtilsModule.readFirstLine).mockImplementation(
@@ -216,19 +247,18 @@ describe("Session Error Handling and Edge Cases", () => {
       const newerMainSessionId = randomUUID();
 
       // Create different timestamps - older session has more recent activity
-      const olderTimestamp = new Date(Date.now() - 1000).toISOString(); // 1 second ago
-      const newerTimestamp = new Date().toISOString(); // now
+      // Note: timestamps are used to simulate file creation order in this test
+      new Date(Date.now() - 1000).toISOString(); // 1 second ago
+      new Date().toISOString(); // now
 
       const olderSessionMessage = {
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "Hello" }],
-        timestamp: newerTimestamp, // More recent activity
       };
 
       const newerSessionMessage = {
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "Hello" }],
-        timestamp: olderTimestamp, // Less recent activity
       };
 
       // Create files - subagent sessions would be in separate directory
@@ -279,14 +309,11 @@ describe("Session Error Handling and Edge Cases", () => {
         {
           role: "user" as const,
           blocks: [{ type: "text" as const, content: "Hello from subagent" }],
-          timestamp: new Date().toISOString(),
         },
       ];
 
       // Mock readFile for subagent session
-      mockJsonlHandler.read.mockResolvedValueOnce([
-        { ...messages[0], timestamp: new Date().toISOString() },
-      ]);
+      mockJsonlHandler.read.mockResolvedValueOnce([{ ...messages[0] }]);
 
       const sessionData = await loadSessionFromJsonl(
         subagentSessionId,

@@ -29,10 +29,16 @@ const mockPluginScopeManager = {
 };
 
 vi.mock("wave-agent-sdk", () => ({
-  MarketplaceService: vi.fn(() => mockMarketplaceService),
-  ConfigurationService: vi.fn(() => mockConfigurationService),
+  MarketplaceService: vi.fn(function () {
+    return mockMarketplaceService;
+  }),
+  ConfigurationService: vi.fn(function () {
+    return mockConfigurationService;
+  }),
   PluginManager: vi.fn(),
-  PluginScopeManager: vi.fn(() => mockPluginScopeManager),
+  PluginScopeManager: vi.fn(function () {
+    return mockPluginScopeManager;
+  }),
 }));
 
 describe("usePluginManager", () => {

@@ -223,10 +223,12 @@ describe("McpManager", () => {
         onclose: null,
       };
 
-      vi.mocked(Client).mockImplementation(() => mockClient as never);
-      vi.mocked(StdioClientTransport).mockImplementation(
-        () => mockTransport as never,
-      );
+      vi.mocked(Client).mockImplementation(function () {
+        return mockClient as never;
+      });
+      vi.mocked(StdioClientTransport).mockImplementation(function () {
+        return mockTransport as never;
+      });
     });
 
     it("should connect to MCP server successfully", async () => {
@@ -302,10 +304,12 @@ describe("McpManager", () => {
         onclose: null,
       };
 
-      vi.mocked(Client).mockImplementation(() => mockClient as never);
-      vi.mocked(StdioClientTransport).mockImplementation(
-        () => mockTransport as never,
-      );
+      vi.mocked(Client).mockImplementation(function () {
+        return mockClient as never;
+      });
+      vi.mocked(StdioClientTransport).mockImplementation(function () {
+        return mockTransport as never;
+      });
 
       await mcpManager.connectServer("test-server");
     });
@@ -351,10 +355,12 @@ describe("McpManager", () => {
         onclose: null,
       };
 
-      vi.mocked(Client).mockImplementation(() => mockClient as never);
-      vi.mocked(StdioClientTransport).mockImplementation(
-        () => mockTransport as never,
-      );
+      vi.mocked(Client).mockImplementation(function () {
+        return mockClient as never;
+      });
+      vi.mocked(StdioClientTransport).mockImplementation(function () {
+        return mockTransport as never;
+      });
     });
 
     it("should execute MCP tool successfully", async () => {

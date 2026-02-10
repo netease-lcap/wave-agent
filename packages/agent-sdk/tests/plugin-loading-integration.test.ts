@@ -17,7 +17,7 @@ describe("Agent Plugin Loading Integration", () => {
     vi.clearAllMocks();
 
     // Mock Marketplace to return 3 installed plugins
-    vi.mocked(MarketplaceService).mockImplementation(() => {
+    vi.mocked(MarketplaceService).mockImplementation(function () {
       return {
         getInstalledPlugins: vi.fn().mockResolvedValue({
           plugins: [
@@ -34,13 +34,12 @@ describe("Agent Plugin Loading Integration", () => {
     });
 
     // Mock PluginLoader
-    vi.mocked(PluginLoader.loadManifest).mockImplementation(
-      async (p) =>
-        ({
-          name: p.split("/").pop()!,
-          version: "1.0.0",
-        }) as unknown as Awaited<ReturnType<typeof PluginLoader.loadManifest>>,
-    );
+    vi.mocked(PluginLoader.loadManifest).mockImplementation(async function (p) {
+      return {
+        name: p.split("/").pop()!,
+        version: "1.0.0",
+      } as unknown as Awaited<ReturnType<typeof PluginLoader.loadManifest>>;
+    });
     vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
     vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
     vi.mocked(PluginLoader.loadLspConfig).mockResolvedValue(undefined);
@@ -58,14 +57,14 @@ describe("Agent Plugin Loading Integration", () => {
     ]);
 
     // Mock fs.existsSync to simulate config files existence
-    vi.mocked(fs.existsSync).mockImplementation(((p: string) => {
+    vi.mocked(fs.existsSync).mockImplementation(function (p: string) {
       if (p === "/user/settings.json") return true;
       if (p === "/project/settings.json") return true;
       return false;
-    }) as unknown as typeof fs.existsSync);
+    } as unknown as typeof fs.existsSync);
 
     // Mock fs.readFileSync to return different configs
-    vi.mocked(fs.readFileSync).mockImplementation(((p: string) => {
+    vi.mocked(fs.readFileSync).mockImplementation(function (p: string) {
       if (p === "/user/settings.json") {
         return JSON.stringify({
           enabledPlugins: { "plugin-user@m1": true },
@@ -77,7 +76,7 @@ describe("Agent Plugin Loading Integration", () => {
         });
       }
       return "";
-    }) as unknown as typeof fs.readFileSync);
+    } as unknown as typeof fs.readFileSync);
   });
 
   it("should load plugins from both user and project configurations and skip unmentioned ones", async () => {

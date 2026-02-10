@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { Agent } from "@/agent.js";
+import type { AgentCallbacks } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 
@@ -10,12 +11,16 @@ vi.mock("@/services/aiService");
 const { instance: mockToolManagerInstance, execute: mockToolExecute } =
   createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn().mockImplementation(() => mockToolManagerInstance),
+  ToolManager: vi.fn().mockImplementation(function () {
+    return mockToolManagerInstance;
+  }),
 }));
 
 describe("Agent Tool Stage Tests", () => {
   let agent: Agent;
-  let onToolBlockUpdated: ReturnType<typeof vi.fn>;
+  let onToolBlockUpdated: Mock<
+    NonNullable<AgentCallbacks["onToolBlockUpdated"]>
+  >;
   let mockCallAgent: ReturnType<typeof vi.fn>;
 
   // Common usage objects to avoid duplication
@@ -33,11 +38,12 @@ describe("Agent Tool Stage Tests", () => {
 
   beforeEach(async () => {
     // Create mock callbacks
-    onToolBlockUpdated = vi.fn();
+    onToolBlockUpdated =
+      vi.fn<NonNullable<AgentCallbacks["onToolBlockUpdated"]>>();
 
     const mockCallbacks = {
-      onMessagesChange: vi.fn(),
-      onLoadingChange: vi.fn(),
+      onMessagesChange:
+        vi.fn<NonNullable<AgentCallbacks["onMessagesChange"]>>(),
       onToolBlockUpdated,
     };
 

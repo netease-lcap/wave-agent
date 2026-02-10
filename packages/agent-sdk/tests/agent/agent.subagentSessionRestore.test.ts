@@ -11,7 +11,9 @@ vi.mock("@/services/aiService", () => ({
 
 const { instance: mockToolManagerInstance } = createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn(() => mockToolManagerInstance),
+  ToolManager: vi.fn(function () {
+    return mockToolManagerInstance;
+  }),
 }));
 
 // Mock session service functions

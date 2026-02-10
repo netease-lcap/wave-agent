@@ -1,6 +1,14 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  type Mock,
+} from "vitest";
 import {
   McpManager,
   McpManagerProps,
@@ -48,15 +56,19 @@ const mockServers: McpServerStatus[] = [
 ];
 
 describe("McpManager", () => {
-  let mockOnCancel: ReturnType<typeof vi.fn>;
-  let mockOnConnectServer: ReturnType<typeof vi.fn>;
-  let mockOnDisconnectServer: ReturnType<typeof vi.fn>;
+  let mockOnCancel: Mock<() => void>;
+  let mockOnConnectServer: Mock<(serverName: string) => Promise<boolean>>;
+  let mockOnDisconnectServer: Mock<(serverName: string) => Promise<boolean>>;
   let defaultProps: McpManagerProps;
 
   beforeEach(() => {
-    mockOnCancel = vi.fn();
-    mockOnConnectServer = vi.fn().mockResolvedValue(true);
-    mockOnDisconnectServer = vi.fn().mockResolvedValue(true);
+    mockOnCancel = vi.fn<() => void>();
+    mockOnConnectServer = vi
+      .fn<(serverName: string) => Promise<boolean>>()
+      .mockResolvedValue(true);
+    mockOnDisconnectServer = vi
+      .fn<(serverName: string) => Promise<boolean>>()
+      .mockResolvedValue(true);
 
     defaultProps = {
       onCancel: mockOnCancel,

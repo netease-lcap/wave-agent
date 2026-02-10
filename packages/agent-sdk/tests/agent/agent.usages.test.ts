@@ -11,7 +11,9 @@ vi.mock("@/services/aiService");
 // Mock tool registry
 const { instance: mockToolManagerInstance } = createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn().mockImplementation(() => mockToolManagerInstance),
+  ToolManager: vi.fn().mockImplementation(function () {
+    return mockToolManagerInstance;
+  }),
 }));
 
 describe("Agent Usage Tracking", () => {

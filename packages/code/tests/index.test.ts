@@ -9,7 +9,7 @@ import * as sessionSelectorCli from "../src/session-selector-cli.js";
 // Mock external modules
 vi.mock("yargs", async () => {
   const actual = await vi.importActual("yargs");
-  const mockYargs = vi.fn().mockImplementation((...args: unknown[]) => {
+  const mockYargs = vi.fn().mockImplementation(function (...args: unknown[]) {
     const instance = (
       actual as unknown as { default: (...args: unknown[]) => unknown }
     ).default(...args);
@@ -212,7 +212,9 @@ describe("main", () => {
     let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
-      consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      consoleErrorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(function () {});
     });
 
     afterEach(() => {
@@ -231,7 +233,7 @@ describe("main", () => {
     it("should exit process if plugin manager UI returns true", async () => {
       process.argv = ["node", "index.js", "plugin", "ui"];
       vi.mocked(pluginManagerCli.startPluginManagerCli).mockResolvedValue(true);
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(function () {
         throw new Error("process.exit was called");
       });
       await expect(main()).rejects.toThrow("process.exit was called");
@@ -244,7 +246,7 @@ describe("main", () => {
       vi.mocked(pluginManagerCli.startPluginManagerCli).mockResolvedValue(
         false,
       );
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(function () {
         throw new Error("process.exit was called");
       });
       await main();
@@ -399,8 +401,8 @@ describe("main", () => {
   it("should catch and log errors from main function", async () => {
     const consoleErrorSpy = vi
       .spyOn(console, "error")
-      .mockImplementation(() => {});
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      .mockImplementation(function () {});
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(function () {
       throw new Error("process.exit was called");
     });
 

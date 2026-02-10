@@ -245,4 +245,253 @@ describe("TaskManager", () => {
       expect(mockAgent.stopBackgroundTask).toHaveBeenCalledWith("task-1");
     });
   });
+
+  it("should handle empty background tasks", async () => {
+    vi.mocked(Agent.create).mockResolvedValue({
+      ...mockAgent,
+      backgroundTasks: [],
+    } as unknown as Agent);
+
+    const { lastFrame } = render(
+      <AppProvider>
+        <ChatProvider>
+          <TaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("No background tasks found");
+    });
+  });
+
+  it("should handle null background tasks", async () => {
+    const { lastFrame } = render(
+      <AppProvider>
+        <ChatProvider>
+          <TaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+    callbacks.onTasksChange!([] as unknown as BackgroundTask[]);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("No background tasks found");
+    });
+  });
+
+  it("should format duration correctly", async () => {
+    const tasksWithDifferentDurations: Partial<BackgroundTask>[] = [
+      {
+        id: "task-ms",
+        type: "shell" as const,
+        status: "completed" as const,
+        startTime: Date.now(),
+        runtime: 500,
+      },
+      {
+        id: "task-s",
+        type: "shell" as const,
+        status: "completed" as const,
+        startTime: Date.now(),
+        runtime: 5000,
+      },
+      {
+        id: "task-m",
+        type: "shell" as const,
+        status: "completed" as const,
+        startTime: Date.now(),
+        runtime: 65000,
+      },
+    ];
+
+    const { lastFrame, stdin } = render(
+      <AppProvider>
+        <ChatProvider>
+          <TaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+    callbacks.onTasksChange!(
+      tasksWithDifferentDurations as unknown as BackgroundTask[],
+    );
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("task-ms");
+    });
+
+    // Check first task (selected)
+    expect(lastFrame()).toContain("500ms");
+
+    // Select second task
+    stdin.write("\u001B[B");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("5s");
+    });
+
+    // Select third task
+    stdin.write("\u001B[B");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("1m 5s");
+    });
+  });
+
+  it("should handle task not found in detail mode", async () => {
+    const { lastFrame, stdin } = render(
+      <AppProvider>
+        <ChatProvider>
+          <TaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("[task-1] shell: ls -la");
+    });
+
+    // Enter detail mode
+    stdin.write("\r");
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Background Task Details");
+    });
+
+    // Simulate task being removed
+    callbacks.onTasksChange!([]);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("No background tasks found");
+    });
+  });
+
+  it("should handle task with no description", async () => {
+    const taskNoDesc: Partial<BackgroundTask>[] = [
+      {
+        id: "task-no-desc",
+        type: "shell" as const,
+        status: "running" as const,
+        startTime: Date.now(),
+      },
+    ];
+
+    const { lastFrame } = render(
+      <AppProvider>
+        <ChatProvider>
+          <TaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+    callbacks.onTasksChange!(taskNoDesc as unknown as BackgroundTask[]);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("[task-no-desc] shell");
+      expect(lastFrame()).not.toContain(": undefined");
+    });
+  });
+
+  it("should stop task from detail mode", async () => {
+    const { lastFrame, stdin } = render(
+      <AppProvider>
+        <ChatProvider>
+          <TaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("[task-1]");
+    });
+
+    // Wait for state update to settle
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("[task-1]");
+    });
+    // Enter detail mode for task-1 (running)
+    stdin.write("\r");
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Background Task Details: task-1");
+    });
+
+    stdin.write("k");
+
+    await vi.waitFor(() => {
+      expect(mockAgent.stopBackgroundTask).toHaveBeenCalledWith("task-1");
+    });
+  });
+
+  it("should navigate with up/down arrows", async () => {
+    const { lastFrame, stdin } = render(
+      <AppProvider>
+        <ChatProvider>
+          <TaskManager onCancel={vi.fn()} />
+        </ChatProvider>
+      </AppProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("[task-1]");
+    });
+
+    // Wait for state update to settle
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("[task-1]");
+    });
+    // Down arrow
+    stdin.write("\u001B[B");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("▶ 2.");
+    });
+
+    // Up arrow
+    stdin.write("\u001B[A");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("▶ 1.");
+    });
+  });
 });

@@ -11,7 +11,7 @@ vi.mock("../../src/managers/aiManager.js", async () => {
   const actual = await vi.importActual("../../src/managers/aiManager.js");
   return {
     ...actual,
-    AIManager: vi.fn().mockImplementation((options) => {
+    AIManager: vi.fn().mockImplementation(function (options) {
       const ActualAIManager = (actual as { AIManager: typeof AIManager })
         .AIManager;
       const aiManager = new ActualAIManager(options);
