@@ -159,6 +159,15 @@ export class AIManager {
     this.setIsLoading(false);
   }
 
+  /**
+   * Abort the AI recursion loop immediately.
+   * This is used when a tool is backgrounded via Ctrl-B, even if no foreground task was active.
+   */
+  public abortRecursion(): void {
+    this.logger?.info("Aborting AI recursion loop");
+    this.abortAIMessage();
+  }
+
   // Helper method to generate compactParams
   private generateCompactParams(
     toolName: string,
@@ -627,6 +636,23 @@ export class AIManager {
                 context,
               );
 
+              // Check if the tool was backgrounded via Ctrl-B
+              // If it was backgrounded, we should abort the AI recursion
+              if (
+                toolResult.success &&
+                toolResult.content.includes(
+                  "Command was manually backgrounded by user",
+                )
+              ) {
+                this.logger?.info(
+                  `Tool ${toolName} was backgrounded via Ctrl-B, aborting AI recursion`,
+                );
+                // Use abortAIMessage directly instead of abortRecursion to avoid double logging
+                // and ensure we don't trigger the "Request was aborted" error block
+                this.abortAIMessage();
+                return;
+              }
+
               // Update message state - tool execution completed
               this.messageManager.updateToolBlock({
                 id: toolId,
@@ -706,9 +732,17 @@ export class AIManager {
         }
       }
     } catch (error) {
-      this.messageManager.addErrorBlock(
-        error instanceof Error ? error.message : "Unknown error occurred",
-      );
+      // Check if the error is an abort error
+      const isCurrentlyAborted =
+        abortController.signal.aborted || toolAbortController.signal.aborted;
+
+      if (isCurrentlyAborted) {
+        this.logger?.info("AI message processing was aborted");
+      } else {
+        this.messageManager.addErrorBlock(
+          error instanceof Error ? error.message : "Unknown error occurred",
+        );
+      }
     } finally {
       // Only execute cleanup and hooks for the initial call
       if (recursionDepth === 0) {
