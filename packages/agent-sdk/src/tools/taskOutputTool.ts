@@ -89,9 +89,44 @@ export const taskOutputTool: ToolPlugin = {
     if (block) {
       // Polling for completion
       return new Promise((resolve) => {
+        let timeoutHandle: NodeJS.Timeout | null = null;
+        let isAborted = false;
+
+        const cleanup = () => {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+            timeoutHandle = null;
+          }
+        };
+
+        const onAbort = () => {
+          isAborted = true;
+          cleanup();
+          resolve({
+            success: false,
+            content: "",
+            error: "Task output retrieval was aborted",
+          });
+        };
+
+        if (context.abortSignal) {
+          if (context.abortSignal.aborted) {
+            onAbort();
+            return;
+          }
+          context.abortSignal.addEventListener("abort", onAbort, {
+            once: true,
+          });
+        }
+
         const check = () => {
+          if (isAborted) return;
+
           const task = backgroundTaskManager.getTask(taskId);
           if (!task) {
+            if (context.abortSignal) {
+              context.abortSignal.removeEventListener("abort", onAbort);
+            }
             resolve({
               success: false,
               content: "",
@@ -101,6 +136,9 @@ export const taskOutputTool: ToolPlugin = {
           }
 
           if (task.status !== "running") {
+            if (context.abortSignal) {
+              context.abortSignal.removeEventListener("abort", onAbort);
+            }
             const result = getResult();
             resolve(
               result || {
@@ -110,7 +148,7 @@ export const taskOutputTool: ToolPlugin = {
               },
             );
           } else {
-            setTimeout(check, 500);
+            timeoutHandle = setTimeout(check, 500);
           }
         };
         check();
