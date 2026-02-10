@@ -237,13 +237,7 @@ export class PermissionManager {
    * Get the current effective permission mode for tool execution context
    */
   getCurrentEffectiveMode(cliPermissionMode?: PermissionMode): PermissionMode {
-    const mode = this.resolveEffectivePermissionMode(cliPermissionMode);
-    this.logger?.debug("getCurrentEffectiveMode", {
-      cliPermissionMode,
-      configuredDefaultMode: this.configuredDefaultMode,
-      resolvedMode: mode,
-    });
-    return mode;
+    return this.resolveEffectivePermissionMode(cliPermissionMode);
   }
 
   /**
