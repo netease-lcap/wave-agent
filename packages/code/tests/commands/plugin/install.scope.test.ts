@@ -20,7 +20,7 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 
 // Mock console.log/error
 const mockLog = vi.spyOn(console, "log").mockImplementation(() => {});
-const mockError = vi.spyOn(console, "error").mockImplementation(() => {});
+const mockError = vi.spyOn(console, "error").mockImplementation(function () {});
 
 // Mock MarketplaceService
 vi.mock("wave-agent-sdk", async () => {
@@ -29,14 +29,16 @@ vi.mock("wave-agent-sdk", async () => {
   )) as typeof import("wave-agent-sdk");
   return {
     ...actual,
-    MarketplaceService: vi.fn().mockImplementation(() => ({
-      installPlugin: vi.fn().mockResolvedValue({
-        name: "test-plugin",
-        marketplace: "market",
-        version: "1.0.0",
-        cachePath: "/fake/cache/path",
-      }),
-    })),
+    MarketplaceService: vi.fn(function () {
+      return {
+        installPlugin: vi.fn().mockResolvedValue({
+          name: "test-plugin",
+          marketplace: "market",
+          version: "1.0.0",
+          cachePath: "/fake/cache/path",
+        }),
+      };
+    }),
   };
 });
 

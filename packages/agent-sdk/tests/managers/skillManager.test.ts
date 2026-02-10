@@ -64,12 +64,14 @@ describe("SkillManager", () => {
         if (path.toString().includes(".wave/skills")) {
           return [
             { name: "skill1", isDirectory: () => true },
-          ] as unknown as never;
+          ] as unknown as Awaited<ReturnType<typeof readdir>>;
         }
-        return [];
+        return [] as unknown as Awaited<ReturnType<typeof readdir>>;
       });
 
-      vi.mocked(stat).mockResolvedValue({} as unknown as never);
+      vi.mocked(stat).mockResolvedValue(
+        {} as unknown as Awaited<ReturnType<typeof stat>>,
+      );
       vi.mocked(parseSkillFile).mockReturnValue({
         isValid: true,
         skillMetadata: {
@@ -81,7 +83,7 @@ describe("SkillManager", () => {
         content: "---\nname: skill1\n---\ncontent1",
         frontmatter: { name: "skill1" },
         validationErrors: [],
-      } as unknown as never);
+      } as unknown as ReturnType<typeof parseSkillFile>);
 
       await skillManager.initialize();
 
@@ -99,16 +101,18 @@ describe("SkillManager", () => {
         if (path.toString().includes(".wave/skills")) {
           return [
             { name: "invalid-skill", isDirectory: () => true },
-          ] as unknown as never;
+          ] as unknown as Awaited<ReturnType<typeof readdir>>;
         }
-        return [];
+        return [] as unknown as Awaited<ReturnType<typeof readdir>>;
       });
 
-      vi.mocked(stat).mockResolvedValue({} as unknown as never);
+      vi.mocked(stat).mockResolvedValue(
+        {} as unknown as Awaited<ReturnType<typeof stat>>,
+      );
       vi.mocked(parseSkillFile).mockReturnValue({
         isValid: false,
         validationErrors: ["Invalid format"],
-      } as unknown as never);
+      } as unknown as ReturnType<typeof parseSkillFile>);
 
       await skillManager.initialize();
 
@@ -128,7 +132,7 @@ describe("SkillManager", () => {
       // but if something else throws in initialize, it should be caught.
       // Let's mock discoverSkills to throw.
       vi.spyOn(
-        skillManager as unknown as never,
+        skillManager as unknown as { discoverSkills: () => Promise<void> },
         "discoverSkills",
       ).mockRejectedValue(new Error("Discovery failed"));
 
@@ -146,7 +150,7 @@ describe("SkillManager", () => {
     it("should skip directories without SKILL.md", async () => {
       vi.mocked(readdir).mockResolvedValue([
         { name: "no-skill-md", isDirectory: () => true },
-      ] as unknown as never);
+      ] as unknown as Awaited<ReturnType<typeof readdir>>);
       vi.mocked(stat).mockRejectedValue(new Error("Not found"));
 
       await skillManager.initialize();
@@ -161,7 +165,12 @@ describe("SkillManager", () => {
       // Since findSkillDirectories already has a try-catch around readdir, we need to mock findSkillDirectories itself.
 
       const spy = vi
-        .spyOn(skillManager as unknown as never, "findSkillDirectories")
+        .spyOn(
+          skillManager as unknown as {
+            findSkillDirectories: () => Promise<string[]>;
+          },
+          "findSkillDirectories",
+        )
         .mockRejectedValue(new Error("Scan failed"));
 
       await skillManager.initialize();
@@ -182,8 +191,10 @@ describe("SkillManager", () => {
     it("should handle invalid skill files", async () => {
       vi.mocked(readdir).mockResolvedValue([
         { name: "bad-skill", isDirectory: () => true },
-      ] as unknown as never);
-      vi.mocked(stat).mockResolvedValue({} as unknown as never);
+      ] as unknown as Awaited<ReturnType<typeof readdir>>);
+      vi.mocked(stat).mockResolvedValue(
+        {} as unknown as Awaited<ReturnType<typeof stat>>,
+      );
       vi.mocked(parseSkillFile).mockImplementation(() => {
         throw new Error("Parse error");
       });
@@ -229,18 +240,20 @@ describe("SkillManager", () => {
         if (path.toString().includes(".wave/skills")) {
           return [
             { name: "skill1", isDirectory: () => true },
-          ] as unknown as never;
+          ] as unknown as Awaited<ReturnType<typeof readdir>>;
         }
-        return [];
+        return [] as unknown as Awaited<ReturnType<typeof readdir>>;
       });
-      vi.mocked(stat).mockResolvedValue({} as unknown as never);
+      vi.mocked(stat).mockResolvedValue(
+        {} as unknown as Awaited<ReturnType<typeof stat>>,
+      );
       vi.mocked(parseSkillFile).mockReturnValue({
         isValid: true,
         skillMetadata: { name: "skill1", skillPath: "/path1" },
         content: "---\nname: skill1\n---\ncontent1",
         frontmatter: { name: "skill1" },
         validationErrors: [],
-      } as unknown as never);
+      } as unknown as ReturnType<typeof parseSkillFile>);
 
       await skillManager.initialize();
       const skill = await skillManager.loadSkill("skill1");
@@ -404,7 +417,7 @@ describe("SkillManager", () => {
 
     it("should handle skill loading error", async () => {
       vi.mocked(skillManager.loadSkill).mockRejectedValue(
-        new Error("Loading failed"),
+        new Error("Loading failed") as never,
       );
 
       const result = await skillManager.executeSkill({

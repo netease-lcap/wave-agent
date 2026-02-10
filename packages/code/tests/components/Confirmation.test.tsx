@@ -1,25 +1,33 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import { render } from "ink-testing-library";
 import { Confirmation } from "../../src/components/Confirmation.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 import type { PermissionDecision } from "wave-agent-sdk";
 
 describe("Confirmation", () => {
-  let mockOnDecision: ReturnType<typeof vi.fn>;
-  let mockOnCancel: ReturnType<typeof vi.fn>;
-  let mockOnAbort: ReturnType<typeof vi.fn>;
+  let mockOnDecision: Mock<(decision: PermissionDecision) => void>;
+  let mockOnCancel: Mock<() => void>;
+  let mockOnAbort: Mock<() => void>;
   let consoleSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    mockOnDecision = vi.fn();
-    mockOnCancel = vi.fn();
-    mockOnAbort = vi.fn();
+    mockOnDecision = vi.fn<(decision: PermissionDecision) => void>();
+    mockOnCancel = vi.fn<() => void>();
+    mockOnAbort = vi.fn<() => void>();
 
     // Mock console methods to suppress output during testing
-    consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleSpy = vi.spyOn(console, "log").mockImplementation(function () {});
+    vi.spyOn(console, "warn").mockImplementation(function () {});
+    vi.spyOn(console, "error").mockImplementation(function () {});
 
     vi.clearAllMocks();
   });
@@ -1083,7 +1091,7 @@ describe("Confirmation", () => {
       expect(mockOnDecision).toHaveBeenCalled();
       const call = mockOnDecision.mock.calls[0][0];
       expect(call.behavior).toBe("allow");
-      const message = JSON.parse(call.message);
+      const message = JSON.parse(call.message!);
       expect(message["What is your favorite color?"]).toBe("Red");
       expect(message["Select your skills"]).toContain("TypeScript");
       expect(message["Select your skills"]).toContain("React");
@@ -1144,7 +1152,7 @@ describe("Confirmation", () => {
       expect(mockOnDecision).toHaveBeenCalled();
       const call = mockOnDecision.mock.calls[0][0];
       expect(call.behavior).toBe("allow");
-      const message = JSON.parse(call.message);
+      const message = JSON.parse(call.message!);
       expect(message["What is your favorite color?"]).toBe("Green");
     });
   });

@@ -44,7 +44,7 @@ describe("PluginManager Integration", () => {
 
   it("navigates from Discover to Plugin Detail and installs", async () => {
     let currentView = "DISCOVER";
-    const setView = vi.fn((view) => {
+    const setView = vi.fn(function (view) {
       currentView = view;
     });
 
@@ -52,19 +52,21 @@ describe("PluginManager Integration", () => {
       usePluginManager as unknown as {
         mockImplementation: (val: unknown) => void;
       }
-    ).mockImplementation(() => ({
-      state: {
-        currentView,
-        selectedId:
-          currentView === "PLUGIN_DETAIL" ? "test-plugin@official" : null,
-        isLoading: false,
-        error: null,
-      },
-      marketplaces: [],
-      installedPlugins: [],
-      discoverablePlugins: mockPlugins,
-      actions: { ...mockActions, setView, setSelectedId: vi.fn() },
-    }));
+    ).mockImplementation(function () {
+      return {
+        state: {
+          currentView,
+          selectedId:
+            currentView === "PLUGIN_DETAIL" ? "test-plugin@official" : null,
+          isLoading: false,
+          error: null,
+        },
+        marketplaces: [],
+        installedPlugins: [],
+        discoverablePlugins: mockPlugins,
+        actions: { ...mockActions, setView, setSelectedId: vi.fn() },
+      };
+    });
 
     const { stdin, lastFrame, rerender } = render(<PluginManagerShell />);
 
@@ -93,7 +95,7 @@ describe("PluginManager Integration", () => {
 
   it("manages installed plugins", async () => {
     let currentView = "INSTALLED";
-    const setView = vi.fn((view) => {
+    const setView = vi.fn(function (view) {
       currentView = view;
     });
 
@@ -101,21 +103,25 @@ describe("PluginManager Integration", () => {
       usePluginManager as unknown as {
         mockImplementation: (val: unknown) => void;
       }
-    ).mockImplementation(() => ({
-      state: {
-        currentView,
-        selectedId:
-          currentView === "PLUGIN_DETAIL" ? "installed-plugin@official" : null,
-        isLoading: false,
-        error: null,
-      },
-      marketplaces: [],
-      installedPlugins: [
-        { name: "installed-plugin", marketplace: "official", enabled: true },
-      ],
-      discoverablePlugins: [],
-      actions: { ...mockActions, setView },
-    }));
+    ).mockImplementation(function () {
+      return {
+        state: {
+          currentView,
+          selectedId:
+            currentView === "PLUGIN_DETAIL"
+              ? "installed-plugin@official"
+              : null,
+          isLoading: false,
+          error: null,
+        },
+        marketplaces: [],
+        installedPlugins: [
+          { name: "installed-plugin", marketplace: "official", enabled: true },
+        ],
+        discoverablePlugins: [],
+        actions: { ...mockActions, setView },
+      };
+    });
 
     const { stdin, lastFrame, rerender } = render(<PluginManagerShell />);
 

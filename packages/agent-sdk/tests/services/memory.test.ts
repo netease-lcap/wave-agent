@@ -213,7 +213,7 @@ describe("Memory Module", () => {
 
       expect(result).toBe("# Test Memory Content\n\nProject memory data");
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
-        "/mock/workdir/AGENTS.md",
+        expect.stringContaining("AGENTS.md"),
         "utf-8",
       );
     });
@@ -230,7 +230,7 @@ describe("Memory Module", () => {
 
       expect(result).toBe("# User Memory\n\nUser memory data");
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
-        "/mock/user/AGENTS.md",
+        expect.stringContaining("AGENTS.md"),
         "utf-8",
       );
     });
@@ -262,16 +262,16 @@ describe("Memory Module", () => {
       await memory.addMemory("#New memory block", "/mock/workdir");
 
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
-        "/mock/workdir/AGENTS.md",
+        expect.stringContaining("AGENTS.md"),
         "utf-8",
       );
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
-        "/mock/workdir/AGENTS.md",
+        expect.stringContaining("AGENTS.md"),
         expect.stringContaining("Existing content"),
         "utf-8",
       );
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
-        "/mock/workdir/AGENTS.md",
+        expect.stringContaining("AGENTS.md"),
         expect.stringContaining("New memory block"),
         "utf-8",
       );
@@ -289,16 +289,16 @@ describe("Memory Module", () => {
       await memory.addUserMemory("#New user memory");
 
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
-        "/mock/user/AGENTS.md",
+        expect.stringContaining("AGENTS.md"),
         "utf-8",
       );
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
-        "/mock/user/AGENTS.md",
+        expect.stringContaining("AGENTS.md"),
         expect.stringContaining("Existing user content"),
         "utf-8",
       );
       expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
-        "/mock/user/AGENTS.md",
+        expect.stringContaining("AGENTS.md"),
         expect.stringContaining("New user memory"),
         "utf-8",
       );

@@ -57,9 +57,9 @@ describe("MarketplaceService - General Git Support", () => {
       pull: vi.fn(),
       isGitAvailable: vi.fn().mockResolvedValue(true),
     };
-    vi.mocked(GitService).mockImplementation(
-      () => mockGitService as unknown as GitService,
-    );
+    vi.mocked(GitService).mockImplementation(function () {
+      return mockGitService as unknown as GitService;
+    });
 
     mockExistsSync.mockReturnValue(true);
     service = new MarketplaceService();

@@ -3,8 +3,9 @@
  * Tests that the callback is properly invoked when subagent messages are updated
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { Agent } from "@/agent.js";
+import type { AgentCallbacks } from "@/agent.js";
 import type { SubagentConfiguration } from "@/utils/subagentParser.js";
 
 // Mock subagent configurations
@@ -36,11 +37,14 @@ vi.mock("@/utils/subagentParser", () => ({
 
 describe("Agent - onSubagentMessagesChange Callback Tests", () => {
   let agent: Agent;
-  let mockOnSubagentMessagesChange: ReturnType<typeof vi.fn>;
+  let mockOnSubagentMessagesChange: Mock<
+    NonNullable<AgentCallbacks["onSubagentMessagesChange"]>
+  >;
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockOnSubagentMessagesChange = vi.fn();
+    mockOnSubagentMessagesChange =
+      vi.fn<NonNullable<AgentCallbacks["onSubagentMessagesChange"]>>();
 
     // Create Agent instance with the callback
     agent = await Agent.create({

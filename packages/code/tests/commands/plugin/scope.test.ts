@@ -22,7 +22,7 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 
 // Mock console.log/error
 const mockLog = vi.spyOn(console, "log").mockImplementation(() => {});
-const mockError = vi.spyOn(console, "error").mockImplementation(() => {});
+const mockError = vi.spyOn(console, "error").mockImplementation(function () {});
 
 // Mock MarketplaceService
 vi.mock("wave-agent-sdk", async () => {
@@ -31,26 +31,32 @@ vi.mock("wave-agent-sdk", async () => {
   )) as typeof import("wave-agent-sdk");
   return {
     ...actual,
-    MarketplaceService: vi.fn().mockImplementation(() => ({
-      getInstalledPlugins: vi.fn().mockResolvedValue({
-        plugins: [
-          { name: "test-plugin", marketplace: "market", version: "1.0.0" },
-        ],
-      }),
-      listMarketplaces: vi.fn().mockResolvedValue([
-        {
+    MarketplaceService: vi.fn(function () {
+      return {
+        getInstalledPlugins: vi.fn().mockResolvedValue({
+          plugins: [
+            { name: "test-plugin", marketplace: "market", version: "1.0.0" },
+          ],
+        }),
+        listMarketplaces: vi.fn().mockResolvedValue([
+          {
+            name: "market",
+            source: { source: "directory", path: "/mock/market" },
+          },
+        ]),
+        getMarketplacePath: vi.fn().mockReturnValue("/mock/market"),
+        loadMarketplaceManifest: vi.fn().mockResolvedValue({
           name: "market",
-          source: { source: "directory", path: "/mock/market" },
-        },
-      ]),
-      getMarketplacePath: vi.fn().mockReturnValue("/mock/market"),
-      loadMarketplaceManifest: vi.fn().mockResolvedValue({
-        name: "market",
-        plugins: [
-          { name: "test-plugin", source: "./test-plugin", description: "test" },
-        ],
-      }),
-    })),
+          plugins: [
+            {
+              name: "test-plugin",
+              source: "./test-plugin",
+              description: "test",
+            },
+          ],
+        }),
+      };
+    }),
   };
 });
 

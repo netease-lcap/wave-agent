@@ -12,7 +12,9 @@ vi.mock("@/services/aiService");
 const { instance: mockToolManagerInstance, execute: mockToolExecute } =
   createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn().mockImplementation(() => mockToolManagerInstance),
+  ToolManager: vi.fn().mockImplementation(function () {
+    return mockToolManagerInstance;
+  }),
 }));
 
 describe("Agent - Abort Handling", () => {
@@ -242,7 +244,7 @@ describe("Agent - Abort Handling", () => {
     // Mock console.warn to catch the memory leak warning
     const consoleWarnSpy = vi
       .spyOn(console, "warn")
-      .mockImplementation(() => {});
+      .mockImplementation(function () {});
 
     try {
       // Create multiple SubagentManager instances that would use the same signal

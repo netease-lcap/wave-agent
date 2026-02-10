@@ -12,7 +12,9 @@ vi.mock("chokidar", () => {
     on: vi.fn().mockReturnThis(),
   };
   return {
-    watch: vi.fn(() => mockWatcher),
+    watch: vi.fn().mockImplementation(function () {
+      return mockWatcher;
+    }),
   };
 });
 

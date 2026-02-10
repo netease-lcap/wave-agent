@@ -44,6 +44,13 @@ describe("JsonlHandler.append()", () => {
     const fsPromises = await import("fs/promises");
     mockAppendFile = vi.mocked(fsPromises.appendFile);
     mockWriteFile = vi.mocked(fsPromises.writeFile);
+    // Ensure atomic is false by default for tests that expect appendFile
+    mockWriteFile.mockImplementation(function () {
+      return Promise.resolve();
+    });
+    mockAppendFile.mockImplementation(function () {
+      return Promise.resolve();
+    });
 
     // Create fresh handler instance
     handler = new JsonlHandler();
@@ -513,6 +520,19 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
     mockMkdir = vi.mocked(fsPromises.mkdir);
     mockAppendFile = vi.mocked(fsPromises.appendFile);
     mockReadFile = vi.mocked(fsPromises.readFile);
+    // Reset to default successful implementations
+    mockWriteFile.mockImplementation(function () {
+      return Promise.resolve();
+    });
+    mockMkdir.mockImplementation(function () {
+      return Promise.resolve();
+    });
+    mockAppendFile.mockImplementation(function () {
+      return Promise.resolve();
+    });
+    mockReadFile.mockImplementation(function () {
+      return Promise.resolve("");
+    });
 
     // Create fresh handler instance
     handler = new JsonlHandler();

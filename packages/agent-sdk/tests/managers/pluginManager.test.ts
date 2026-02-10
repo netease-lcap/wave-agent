@@ -53,7 +53,7 @@ describe("PluginManager", () => {
       registerPluginCommands: vi.fn(),
     } as unknown as SlashCommandManager;
 
-    vi.mocked(MarketplaceService).mockImplementation(() => {
+    vi.mocked(MarketplaceService).mockImplementation(function () {
       return {
         getInstalledPlugins: vi.fn().mockResolvedValue({ plugins: [] }),
       } as unknown as MarketplaceService;
@@ -210,7 +210,7 @@ describe("PluginManager", () => {
         { name: "plugin3", marketplace: "m1", cachePath: "/path/3" },
       ];
 
-      vi.mocked(MarketplaceService).mockImplementation(() => {
+      vi.mocked(MarketplaceService).mockImplementation(function () {
         return {
           getInstalledPlugins: vi
             .fn()
@@ -225,8 +225,8 @@ describe("PluginManager", () => {
       });
 
       vi.mocked(PluginLoader.loadManifest).mockImplementation(
-        async (p) =>
-          ({
+        async function (p) {
+          return {
             name:
               p === "/path/1"
                 ? "plugin1"
@@ -235,7 +235,8 @@ describe("PluginManager", () => {
                   : "plugin3",
             version: "1.0.0",
             description: "desc",
-          }) as PluginManifest,
+          } as PluginManifest;
+        },
       );
       vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
       vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
@@ -281,7 +282,7 @@ describe("PluginManager", () => {
         },
       ];
 
-      vi.mocked(MarketplaceService).mockImplementation(() => {
+      vi.mocked(MarketplaceService).mockImplementation(function () {
         return {
           getInstalledPlugins: vi
             .fn()
@@ -293,12 +294,14 @@ describe("PluginManager", () => {
         "test-plugin@m1": true,
       });
 
-      vi.mocked(PluginLoader.loadManifest).mockImplementation(async (p) => {
-        if (p.includes("plugins/test-plugin")) {
-          return localManifest as PluginManifest;
-        }
-        return marketplaceManifest as PluginManifest;
-      });
+      vi.mocked(PluginLoader.loadManifest).mockImplementation(
+        async function (p) {
+          if (p.includes("plugins/test-plugin")) {
+            return localManifest as PluginManifest;
+          }
+          return marketplaceManifest as PluginManifest;
+        },
+      );
       vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
       vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
 

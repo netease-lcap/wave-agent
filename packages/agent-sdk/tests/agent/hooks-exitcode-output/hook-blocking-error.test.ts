@@ -19,7 +19,9 @@ vi.mock("@/services/aiService");
 const { instance: mockToolManagerInstance, execute: mockToolExecute } =
   createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn().mockImplementation(() => mockToolManagerInstance),
+  ToolManager: vi.fn().mockImplementation(function () {
+    return mockToolManagerInstance;
+  }),
 }));
 
 describe("Hook Blocking Error Behavior (User Story 2)", () => {

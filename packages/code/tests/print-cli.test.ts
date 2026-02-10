@@ -14,7 +14,9 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 });
 
 // Mock console methods to suppress all console output during testing
-const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+const consoleErrorSpy = vi
+  .spyOn(console, "error")
+  .mockImplementation(function () {});
 
 // Mock process.stderr.write to suppress stderr output during testing
 const stderrWriteSpy = vi

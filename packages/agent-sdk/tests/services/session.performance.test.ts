@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
 
 // Mock fs/promises (used by session.ts)
 vi.mock("fs", () => ({
@@ -56,26 +56,53 @@ import {
   generateSessionId,
   listSessionsFromJsonl,
 } from "@/services/session.js";
+import type { Message } from "@/types/index.js";
 
 describe("Session Performance Optimization", () => {
   let tempDir: string;
   let testWorkdir: string;
   let mockJsonlHandler: {
-    read: ReturnType<typeof vi.fn>;
-    append: ReturnType<typeof vi.fn>;
-    isValidSessionFilename: ReturnType<typeof vi.fn>;
-    generateSessionFilename: ReturnType<typeof vi.fn>;
-    getLastMessage: ReturnType<typeof vi.fn>;
-    createSession: ReturnType<typeof vi.fn>;
+    read: Mock<(filePath: string) => Promise<Message[]>>;
+    append: Mock<(filePath: string, messages: Message[]) => Promise<void>>;
+    isValidSessionFilename: Mock<(filename: string) => boolean>;
+    generateSessionFilename: Mock<
+      (sessionId: string, sessionType?: "main" | "subagent") => string
+    >;
+    getLastMessage: Mock<(filePath: string) => Promise<Message | null>>;
+    createSession: Mock<(filePath: string) => Promise<void>>;
   };
   let mockPathEncoder: {
-    createProjectDirectory: ReturnType<typeof vi.fn>;
-    getProjectDirectory: ReturnType<typeof vi.fn>;
-    decode: ReturnType<typeof vi.fn>;
+    createProjectDirectory: Mock<
+      (
+        workdir: string,
+        baseDir: string,
+      ) => Promise<{
+        originalPath: string;
+        encodedName: string;
+        encodedPath: string;
+        pathHash: string | undefined;
+        isSymbolicLink: boolean;
+      }>
+    >;
+    getProjectDirectory: Mock<
+      (
+        workdir: string,
+        baseDir: string,
+      ) => Promise<{
+        originalPath: string;
+        encodedName: string;
+        encodedPath: string;
+        pathHash: string | undefined;
+        isSymbolicLink: boolean;
+      }>
+    >;
+    decode: Mock<(encoded: string) => string>;
   };
   let mockFileUtils: {
-    readFirstLine: ReturnType<typeof vi.fn>;
-    getLastLine: ReturnType<typeof vi.fn>;
+    readFirstLine: Mock<(filePath: string) => Promise<string>>;
+    getLastLine: Mock<
+      (filePath: string, minLength?: number) => Promise<string>
+    >;
   };
 
   beforeEach(async () => {
@@ -122,12 +149,12 @@ describe("Session Performance Optimization", () => {
     const { PathEncoder } = await import("@/utils/pathEncoder.js");
     const fileUtilsModule = await import("@/utils/fileUtils.js");
 
-    vi.mocked(JsonlHandler).mockImplementation(
-      () => mockJsonlHandler as unknown as InstanceType<typeof JsonlHandler>,
-    );
-    vi.mocked(PathEncoder).mockImplementation(
-      () => mockPathEncoder as unknown as InstanceType<typeof PathEncoder>,
-    );
+    vi.mocked(JsonlHandler).mockImplementation(function () {
+      return mockJsonlHandler as unknown as InstanceType<typeof JsonlHandler>;
+    });
+    vi.mocked(PathEncoder).mockImplementation(function () {
+      return mockPathEncoder as unknown as InstanceType<typeof PathEncoder>;
+    });
 
     // Mock fileUtils methods
     vi.mocked(fileUtilsModule.readFirstLine).mockImplementation(

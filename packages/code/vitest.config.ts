@@ -22,7 +22,7 @@ export default defineConfig(() => {
       coverage: {
         provider: "v8",
         reporter: ["text", "json", "html"],
-        include: ["src/**/*"],
+        include: ["src/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
         exclude: ["node_modules", "dist", "tests", "examples"],
         thresholds: {
           lines: 80,

@@ -10,25 +10,27 @@ import { Agent } from "../../src/agent.js";
 
 // Mock OpenAIClient to prevent real network requests
 vi.mock("../../src/utils/openaiClient.js", () => ({
-  OpenAIClient: vi.fn().mockImplementation(() => ({
-    chat: {
-      completions: {
-        create: vi.fn().mockReturnValue({
-          withResponse: vi.fn().mockResolvedValue({
-            data: {
-              choices: [{ message: { content: "Mocked response" } }],
-              usage: {
-                prompt_tokens: 10,
-                completion_tokens: 10,
-                total_tokens: 20,
+  OpenAIClient: vi.fn().mockImplementation(function () {
+    return {
+      chat: {
+        completions: {
+          create: vi.fn().mockReturnValue({
+            withResponse: vi.fn().mockResolvedValue({
+              data: {
+                choices: [{ message: { content: "Mocked response" } }],
+                usage: {
+                  prompt_tokens: 10,
+                  completion_tokens: 10,
+                  total_tokens: 20,
+                },
               },
-            },
-            response: { headers: new Map() },
+              response: { headers: new Map() },
+            }),
           }),
-        }),
+        },
       },
-    },
-  })),
+    };
+  }),
 }));
 
 import {

@@ -1,5 +1,5 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render } from "ink-testing-library";
 import { InputBox } from "../../src/components/InputBox.js";
 import { stripAnsiColors } from "wave-agent-sdk";
@@ -117,8 +117,10 @@ describe("InputBox Smoke Tests", () => {
   });
 
   describe("Slash Commands", () => {
-    let mockHasSlashCommand: ReturnType<typeof vi.fn>;
-    let mockSendMessage: ReturnType<typeof vi.fn>;
+    let mockHasSlashCommand: Mock<(commandId: string) => boolean>;
+    let mockSendMessage: Mock<
+      (message: string, images?: { path: string; mimeType: string }[]) => void
+    >;
 
     const testCommands: SlashCommand[] = [
       {
@@ -136,8 +138,14 @@ describe("InputBox Smoke Tests", () => {
     ];
 
     beforeEach(() => {
-      mockHasSlashCommand = vi.fn();
-      mockSendMessage = vi.fn();
+      mockHasSlashCommand = vi.fn<(commandId: string) => boolean>();
+      mockSendMessage =
+        vi.fn<
+          (
+            message: string,
+            images?: { path: string; mimeType: string }[],
+          ) => void
+        >();
       vi.clearAllMocks();
     });
 

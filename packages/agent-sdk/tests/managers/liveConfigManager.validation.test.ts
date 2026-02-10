@@ -53,18 +53,17 @@ describe("LiveConfigManager - Validation", () => {
     ]);
 
     // Mock constructors
-    vi.mocked(ConfigurationService).mockImplementation(
-      () => mockConfigurationService,
-    );
-    vi.mocked(FileWatcherService).mockImplementation(
-      () =>
-        ({
-          on: vi.fn(),
-          watchFile: vi.fn(),
-          cleanup: vi.fn(),
-          getAllWatcherStatuses: vi.fn().mockReturnValue([]),
-        }) as Partial<FileWatcherService> as FileWatcherService,
-    );
+    vi.mocked(ConfigurationService).mockImplementation(function () {
+      return mockConfigurationService;
+    });
+    vi.mocked(FileWatcherService).mockImplementation(function () {
+      return {
+        on: vi.fn(),
+        watchFile: vi.fn(),
+        cleanup: vi.fn(),
+        getAllWatcherStatuses: vi.fn().mockReturnValue([]),
+      } as Partial<FileWatcherService> as FileWatcherService;
+    });
 
     workdir = "/mock/project";
     liveConfigManager = new LiveConfigManager({

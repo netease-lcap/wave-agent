@@ -10,7 +10,9 @@ vi.mock("@/services/aiService");
 // Mock the toolManager
 const { instance: mockToolManagerInstance } = createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
-  ToolManager: vi.fn().mockImplementation(() => mockToolManagerInstance),
+  ToolManager: vi.fn().mockImplementation(function () {
+    return mockToolManagerInstance;
+  }),
 }));
 
 // Mock logger
@@ -24,9 +26,11 @@ vi.mock("@/utils/logger", () => ({
 
 // Mock memory manager
 vi.mock("@/services/memoryManager", () => ({
-  createMemoryManager: vi.fn(() => ({
-    getUserMemoryContent: vi.fn().mockResolvedValue(""),
-  })),
+  createMemoryManager: vi.fn().mockImplementation(function () {
+    return {
+      getUserMemoryContent: vi.fn().mockResolvedValue(""),
+    };
+  }),
 }));
 
 describe("Agent - System Prompt", () => {

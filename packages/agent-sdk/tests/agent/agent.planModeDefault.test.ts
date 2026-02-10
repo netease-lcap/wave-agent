@@ -8,7 +8,7 @@ import os from "node:os";
 // Mock ConfigurationService
 vi.mock("../../src/services/configurationService.js", () => {
   return {
-    ConfigurationService: vi.fn().mockImplementation(() => {
+    ConfigurationService: vi.fn().mockImplementation(function () {
       return {
         loadMergedConfiguration: vi.fn().mockResolvedValue({
           success: true,
@@ -80,7 +80,7 @@ describe("Agent Plan Mode Default", () => {
     const { ConfigurationService } = await import(
       "../../src/services/configurationService.js"
     );
-    vi.mocked(ConfigurationService).mockImplementationOnce(() => {
+    vi.mocked(ConfigurationService).mockImplementationOnce(function () {
       return {
         loadMergedConfiguration: vi.fn().mockResolvedValue({
           success: true,

@@ -110,7 +110,7 @@ describe("Mixed Flat and Nested Command Discovery", () => {
         ] as unknown as ReturnType<typeof readdirSync>)
         .mockReturnValue([] as unknown as ReturnType<typeof readdirSync>);
 
-      vi.mocked(statSync).mockImplementation((path) => {
+      vi.mocked(statSync).mockImplementation(function (path) {
         const pathStr = String(path);
         if (
           pathStr.endsWith("openspec") ||
@@ -178,7 +178,7 @@ describe("Mixed Flat and Nested Command Discovery", () => {
         >)
         .mockReturnValue([] as unknown as ReturnType<typeof readdirSync>);
 
-      vi.mocked(statSync).mockImplementation((path) => {
+      vi.mocked(statSync).mockImplementation(function (path) {
         const pathStr = String(path);
         if (pathStr.endsWith("tools")) {
           return {
@@ -193,7 +193,7 @@ describe("Mixed Flat and Nested Command Discovery", () => {
       });
 
       // Mock different content for different commands
-      vi.mocked(parseMarkdownFile).mockImplementation((filePath) => {
+      vi.mocked(parseMarkdownFile).mockImplementation(function (filePath) {
         const pathStr = String(filePath);
         if (pathStr.includes("help.md")) {
           return {
@@ -247,14 +247,14 @@ describe("Mixed Flat and Nested Command Discovery", () => {
   describe("Precedence rules for mixed commands", () => {
     it("should prioritize project commands over user commands for both flat and nested", () => {
       // Mock project commands
-      vi.mocked(existsSync).mockImplementation((path) => {
+      vi.mocked(existsSync).mockImplementation(function (path) {
         return String(path).includes(".wave/commands");
       });
 
       let projectCallCount = 0;
       let userCallCount = 0;
 
-      vi.mocked(readdirSync).mockImplementation((path) => {
+      vi.mocked(readdirSync).mockImplementation(function (path) {
         const pathStr = String(path);
 
         if (pathStr.includes("/mock/project/.wave/commands")) {
@@ -286,7 +286,7 @@ describe("Mixed Flat and Nested Command Discovery", () => {
         return [] as unknown as ReturnType<typeof readdirSync>;
       });
 
-      vi.mocked(statSync).mockImplementation((path) => {
+      vi.mocked(statSync).mockImplementation(function (path) {
         const pathStr = String(path);
         if (pathStr.endsWith("tools")) {
           return {
@@ -300,7 +300,7 @@ describe("Mixed Flat and Nested Command Discovery", () => {
         } as unknown as ReturnType<typeof statSync>;
       });
 
-      vi.mocked(parseMarkdownFile).mockImplementation((filePath) => {
+      vi.mocked(parseMarkdownFile).mockImplementation(function (filePath) {
         const pathStr = String(filePath);
         if (pathStr.includes("/mock/project/")) {
           return {
@@ -340,12 +340,12 @@ describe("Mixed Flat and Nested Command Discovery", () => {
 
     it("should handle namespace conflicts between project and user commands", () => {
       // Test when project has "api:deploy" and user has "api:test"
-      vi.mocked(existsSync).mockImplementation((path) => {
+      vi.mocked(existsSync).mockImplementation(function (path) {
         return String(path).includes(".wave/commands");
       });
 
       let callCount = 0;
-      vi.mocked(readdirSync).mockImplementation((path) => {
+      vi.mocked(readdirSync).mockImplementation(function (path) {
         callCount++;
         const pathStr = String(path);
 
@@ -373,7 +373,7 @@ describe("Mixed Flat and Nested Command Discovery", () => {
         return [] as unknown as ReturnType<typeof readdirSync>;
       });
 
-      vi.mocked(statSync).mockImplementation((path) => {
+      vi.mocked(statSync).mockImplementation(function (path) {
         const pathStr = String(path);
         if (pathStr.endsWith("api")) {
           return {
@@ -421,7 +421,7 @@ describe("Mixed Flat and Nested Command Discovery", () => {
         ] as unknown as ReturnType<typeof readdirSync>)
         .mockReturnValue([] as unknown as ReturnType<typeof readdirSync>);
 
-      vi.mocked(statSync).mockImplementation((path) => {
+      vi.mocked(statSync).mockImplementation(function (path) {
         const pathStr = String(path);
         if (pathStr.endsWith("dev") || pathStr.endsWith("deploy")) {
           return {
@@ -469,7 +469,7 @@ describe("Mixed Flat and Nested Command Discovery", () => {
         .mockReturnValueOnce([] as unknown as ReturnType<typeof readdirSync>)
         .mockReturnValue([] as unknown as ReturnType<typeof readdirSync>);
 
-      vi.mocked(statSync).mockImplementation((path) => {
+      vi.mocked(statSync).mockImplementation(function (path) {
         const pathStr = String(path);
         if (pathStr.endsWith("empty-namespace")) {
           return {
@@ -511,7 +511,7 @@ describe("Mixed Flat and Nested Command Discovery", () => {
         ] as unknown as ReturnType<typeof readdirSync>)
         .mockReturnValue([] as unknown as ReturnType<typeof readdirSync>);
 
-      vi.mocked(statSync).mockImplementation((path) => {
+      vi.mocked(statSync).mockImplementation(function (path) {
         const pathStr = String(path);
         if (pathStr.endsWith("valid-ns")) {
           return {
@@ -573,7 +573,7 @@ describe("Mixed Flat and Nested Command Discovery", () => {
         >)
         .mockReturnValue([] as unknown as ReturnType<typeof readdirSync>);
 
-      vi.mocked(statSync).mockImplementation((path) => {
+      vi.mocked(statSync).mockImplementation(function (path) {
         const pathStr = String(path);
         if (
           pathStr.endsWith("shallow") ||

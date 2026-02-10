@@ -13,10 +13,12 @@ vi.mock("../../src/managers/messageManager.js");
 vi.mock("../../src/managers/toolManager.js");
 vi.mock("../../src/managers/backgroundTaskManager.js");
 vi.mock("../../src/managers/aiManager.js", () => ({
-  AIManager: vi.fn().mockImplementation(() => ({
-    sendAIMessage: vi.fn().mockResolvedValue("Test response"),
-    abortAIMessage: vi.fn(),
-  })),
+  AIManager: vi.fn().mockImplementation(function () {
+    return {
+      sendAIMessage: vi.fn().mockResolvedValue("Test response"),
+      abortAIMessage: vi.fn(),
+    };
+  }),
 }));
 
 describe("SubagentManager - Backgrounding Coverage", () => {

@@ -71,12 +71,12 @@ describe("LiveConfigManager - Configuration Management", () => {
     ]);
 
     // Mock constructors
-    vi.mocked(ConfigurationService).mockImplementation(
-      () => mockConfigurationService,
-    );
-    vi.mocked(FileWatcherService).mockImplementation(
-      () => mockFileWatcherService,
-    );
+    vi.mocked(ConfigurationService).mockImplementation(function () {
+      return mockConfigurationService;
+    });
+    vi.mocked(FileWatcherService).mockImplementation(function () {
+      return mockFileWatcherService;
+    });
 
     workdir = "/mock/project";
     liveConfigManager = new LiveConfigManager({

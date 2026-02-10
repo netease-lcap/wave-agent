@@ -2,7 +2,24 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "fs";
 import { PromptHistoryManager } from "../../src/utils/promptHistory.js";
 
-vi.mock("fs");
+vi.mock("fs", () => ({
+  default: {
+    existsSync: vi.fn(),
+    promises: {
+      appendFile: vi.fn(),
+      readFile: vi.fn(),
+      writeFile: vi.fn(),
+      mkdir: vi.fn(),
+    },
+  },
+  existsSync: vi.fn(),
+  promises: {
+    appendFile: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    mkdir: vi.fn(),
+  },
+}));
 vi.mock("../../src/utils/constants.js", () => ({
   PROMPT_HISTORY_FILE: "/mock/path/history.jsonl",
   DATA_DIRECTORY: "/mock/path",

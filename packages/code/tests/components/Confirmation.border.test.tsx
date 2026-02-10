@@ -1,19 +1,19 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render } from "ink-testing-library";
 import { Confirmation } from "../../src/components/Confirmation.js";
 
-import { stripAnsiColors } from "wave-agent-sdk";
+import { stripAnsiColors, type PermissionDecision } from "wave-agent-sdk";
 
 describe("Confirmation Border", () => {
-  let mockOnDecision: ReturnType<typeof vi.fn>;
-  let mockOnCancel: ReturnType<typeof vi.fn>;
-  let mockOnAbort: ReturnType<typeof vi.fn>;
+  let mockOnDecision: Mock<(decision: PermissionDecision) => void>;
+  let mockOnCancel: Mock<() => void>;
+  let mockOnAbort: Mock<() => void>;
 
   beforeEach(() => {
-    mockOnDecision = vi.fn();
-    mockOnCancel = vi.fn();
-    mockOnAbort = vi.fn();
+    mockOnDecision = vi.fn<(decision: PermissionDecision) => void>();
+    mockOnCancel = vi.fn<() => void>();
+    mockOnAbort = vi.fn<() => void>();
     vi.clearAllMocks();
   });
 

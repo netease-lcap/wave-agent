@@ -479,7 +479,7 @@ describe("ChatProvider", () => {
   });
 
   it("handles agent.create error", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(function () {});
     vi.mocked(Agent.create).mockRejectedValue(
       new Error("Failed to create agent"),
     );
@@ -497,7 +497,9 @@ describe("ChatProvider", () => {
   });
 
   it("handles sendMessage error", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(function () {});
     mockAgent.sendMessage.mockRejectedValue(new Error("Send failed"));
 
     let lastValue: ChatContextType | undefined;
@@ -520,7 +522,9 @@ describe("ChatProvider", () => {
   });
 
   it("handles executeBashCommand error", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(function () {});
     mockAgent.executeBashCommand.mockRejectedValue(new Error("Bash failed"));
 
     let lastValue: ChatContextType | undefined;
@@ -545,7 +549,7 @@ describe("ChatProvider", () => {
   });
 
   it("handles truncateHistory error", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(function () {});
     mockAgent.truncateHistory.mockRejectedValue(new Error("Rewind failed"));
 
     let lastValue: ChatContextType | undefined;
@@ -683,7 +687,7 @@ describe("ChatProvider", () => {
     const displayUsageSummary = (
       await import("../../src/utils/usageSummary.js")
     ).displayUsageSummary;
-    vi.mocked(displayUsageSummary).mockImplementation(() => {
+    vi.mocked(displayUsageSummary).mockImplementation(function () {
       throw new Error("Summary failed");
     });
 
