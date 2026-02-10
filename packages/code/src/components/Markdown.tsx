@@ -271,8 +271,13 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
                       </Text>
                       <Box flexDirection="column" flexGrow={1}>
                         {item.tokens.map((itemToken, itemIndex) => {
-                          if (itemToken.type === "text") {
-                            const it = itemToken as Tokens.Text;
+                          if (
+                            itemToken.type === "text" ||
+                            itemToken.type === "paragraph"
+                          ) {
+                            const it = itemToken as
+                              | Tokens.Text
+                              | Tokens.Paragraph;
                             return (
                               <Box key={itemIndex} flexDirection="row">
                                 <Text>
