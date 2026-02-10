@@ -2,11 +2,7 @@ import { readFile, writeFile } from "fs/promises";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
-import {
-  findIndentationInsensitiveMatch,
-  escapeRegExp,
-  saveEditErrorSnapshot,
-} from "../utils/editUtils.js";
+import { escapeRegExp, analyzeEditMismatch } from "../utils/editUtils.js";
 import { EDIT_TOOL_NAME, READ_TOOL_NAME } from "../constants/tools.js";
 
 /**
@@ -115,23 +111,16 @@ export const editTool: ToolPlugin = {
         };
       }
 
-      // Check if old_string exists (with smart indentation matching)
-      const matchedOldString = findIndentationInsensitiveMatch(
-        originalContent,
-        oldString,
-      );
+      // Check if old_string exists
+      const matchedOldString = originalContent.includes(oldString)
+        ? oldString
+        : null;
 
       if (!matchedOldString) {
-        await saveEditErrorSnapshot(
-          resolvedPath,
-          oldString,
-          originalContent,
-          EDIT_TOOL_NAME,
-        );
         return {
           success: false,
           content: "",
-          error: `old_string not found in file`,
+          error: analyzeEditMismatch(originalContent, oldString),
         };
       }
 

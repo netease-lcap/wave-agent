@@ -2,16 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { multiEditTool } from "@/tools/multiEditTool.js";
 import { readFile, writeFile } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
-import { saveEditErrorSnapshot } from "../../src/utils/editUtils.js";
 
 // Mock fs/promises
 vi.mock("fs/promises");
 vi.mock("../../src/utils/editUtils.js", () => ({
-  saveEditErrorSnapshot: vi.fn(),
-  findIndentationInsensitiveMatch: vi.fn((content, search) =>
-    content.includes(search) ? search : null,
-  ),
   escapeRegExp: vi.fn((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+  analyzeEditMismatch: vi.fn(() => "old_string not found in file"),
 }));
 
 describe("multiEditTool", () => {
@@ -147,7 +143,7 @@ describe("multiEditTool", () => {
     expect(result.content).toContain("Applied 2 edits");
   });
 
-  it("should fail if any edit operation fails and call saveEditErrorSnapshot", async () => {
+  it("should fail if any edit operation fails", async () => {
     const mockContent = "function hello() {\n  console.log('Hello');\n}";
 
     vi.mocked(readFile).mockResolvedValue(mockContent);
@@ -171,7 +167,6 @@ describe("multiEditTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Edit operation 2: old_string not found");
-    expect(saveEditErrorSnapshot).toHaveBeenCalled();
   });
 
   it("should fail when edit makes old_string non-unique for later edits", async () => {

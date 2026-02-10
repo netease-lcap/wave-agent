@@ -2,16 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { editTool } from "@/tools/editTool.js";
 import { readFile, writeFile } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
-import { saveEditErrorSnapshot } from "../../src/utils/editUtils.js";
 
 // Mock fs/promises
 vi.mock("fs/promises");
 vi.mock("../../src/utils/editUtils.js", () => ({
-  saveEditErrorSnapshot: vi.fn(),
-  findIndentationInsensitiveMatch: vi.fn((content, search) =>
-    content.includes(search) ? search : null,
-  ),
   escapeRegExp: vi.fn((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+  analyzeEditMismatch: vi.fn(() => "old_string not found in file"),
 }));
 
 describe("editTool", () => {
@@ -145,7 +141,6 @@ describe("editTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("old_string not found in file");
-    expect(saveEditErrorSnapshot).toHaveBeenCalled();
   });
 
   it("should fail when file cannot be read", async () => {
