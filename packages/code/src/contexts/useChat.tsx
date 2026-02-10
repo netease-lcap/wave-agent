@@ -78,6 +78,8 @@ export interface ChatContextType {
   hideConfirmation: () => void;
   handleConfirmationDecision: (decision: PermissionDecision) => void;
   handleConfirmationCancel: () => void;
+  // Background current task
+  backgroundCurrentTask: () => void;
   // Rewind functionality
   rewindId: number;
   handleRewindSelect: (index: number) => Promise<void>;
@@ -480,6 +482,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     hideConfirmation();
   }, [currentConfirmation, hideConfirmation]);
 
+  const backgroundCurrentTask = useCallback(() => {
+    agentRef.current?.backgroundCurrentTask();
+  }, []);
+
   const handleRewindSelect = useCallback(async (index: number) => {
     if (agentRef.current) {
       try {
@@ -542,6 +548,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     hideConfirmation,
     handleConfirmationDecision,
     handleConfirmationCancel,
+    backgroundCurrentTask,
     rewindId,
     handleRewindSelect,
   };

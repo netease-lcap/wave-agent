@@ -44,6 +44,7 @@ export interface InputManagerCallbacks {
   onHasSlashCommand?: (commandId: string) => boolean;
   onSaveMemory?: (message: string, type: "project" | "user") => Promise<void>;
   onAbortMessage?: () => void;
+  onBackgroundCurrentTask?: () => void;
   onResetHistoryNavigation?: () => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
   logger?: Logger;
@@ -1002,6 +1003,12 @@ export class InputManager {
     // Handle Ctrl+R for history search
     if (key.ctrl && input === "r") {
       this.activateHistorySearch();
+      return true;
+    }
+
+    // Handle Ctrl+B for backgrounding current task
+    if (key.ctrl && input === "b") {
+      this.callbacks.onBackgroundCurrentTask?.();
       return true;
     }
 

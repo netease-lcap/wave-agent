@@ -1,4 +1,4 @@
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { logger } from "../utils/globalLogger.js";
@@ -44,7 +44,10 @@ export class BackgroundTaskManager {
     return Array.from(this.tasks.values());
   }
 
-  public startShell(command: string, timeout?: number): string {
+  public startShell(
+    command: string,
+    timeout?: number,
+  ): { id: string; child: ChildProcess; detach: () => void } {
     const id = this.generateId();
     const startTime = Date.now();
 
@@ -81,6 +84,82 @@ export class BackgroundTaskManager {
       }, timeout);
     }
 
+    const onStdout = (data: Buffer | string) => {
+      shell.stdout += stripAnsiColors(data.toString());
+      this.notifyTasksChange();
+    };
+
+    const onStderr = (data: Buffer | string) => {
+      shell.stderr += stripAnsiColors(data.toString());
+      this.notifyTasksChange();
+    };
+
+    const onExit = (code: number | null) => {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      shell.status = code === 0 ? "completed" : "failed";
+      shell.exitCode = code ?? 0;
+      shell.endTime = Date.now();
+      shell.runtime = shell.endTime - startTime;
+      this.notifyTasksChange();
+    };
+
+    const onError = (error: Error) => {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      shell.status = "failed";
+      shell.stderr += `\nProcess error: ${stripAnsiColors(error.message)}`;
+      shell.exitCode = 1;
+      shell.endTime = Date.now();
+      shell.runtime = shell.endTime - startTime;
+      this.notifyTasksChange();
+    };
+
+    child.stdout?.on("data", onStdout);
+    child.stderr?.on("data", onStderr);
+    child.on("exit", onExit);
+    child.on("error", onError);
+
+    const detach = () => {
+      child.stdout?.off("data", onStdout);
+      child.stderr?.off("data", onStderr);
+      child.off("exit", onExit);
+      child.off("error", onError);
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      this.tasks.delete(id);
+      this.notifyTasksChange();
+    };
+
+    return { id, child, detach };
+  }
+
+  public adoptProcess(
+    child: ChildProcess,
+    command: string,
+    initialStdout: string = "",
+    initialStderr: string = "",
+  ): string {
+    const id = this.generateId();
+    const startTime = Date.now();
+
+    const shell: BackgroundShell = {
+      id,
+      type: "shell",
+      process: child,
+      command,
+      startTime,
+      status: "running",
+      stdout: initialStdout,
+      stderr: initialStderr,
+    };
+
+    this.tasks.set(id, shell);
+    this.notifyTasksChange();
+
     child.stdout?.on("data", (data) => {
       shell.stdout += stripAnsiColors(data.toString());
       this.notifyTasksChange();
@@ -92,9 +171,6 @@ export class BackgroundTaskManager {
     });
 
     child.on("exit", (code) => {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
       shell.status = code === 0 ? "completed" : "failed";
       shell.exitCode = code ?? 0;
       shell.endTime = Date.now();
@@ -103,9 +179,6 @@ export class BackgroundTaskManager {
     });
 
     child.on("error", (error) => {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
       shell.status = "failed";
       shell.stderr += `\nProcess error: ${stripAnsiColors(error.message)}`;
       shell.exitCode = 1;

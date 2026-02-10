@@ -3,6 +3,7 @@ import {
   addOnceAbortListener,
   createAbortPromise,
   addConsolidatedAbortListener,
+  withAbortCleanup,
 } from "@/utils/abortUtils.js";
 
 describe("AbortUtils - Memory Leak Prevention", () => {
@@ -24,6 +25,26 @@ describe("AbortUtils - Memory Leak Prevention", () => {
     if (!abortController.signal.aborted) {
       abortController.abort();
     }
+  });
+
+  describe("withAbortCleanup", () => {
+    it("should execute operation and return result", async () => {
+      const result = await withAbortCleanup(
+        abortController.signal,
+        async () => {
+          return "success";
+        },
+      );
+      expect(result).toBe("success");
+    });
+
+    it("should handle errors in operation", async () => {
+      await expect(
+        withAbortCleanup(abortController.signal, async () => {
+          throw new Error("operation failed");
+        }),
+      ).rejects.toThrow("operation failed");
+    });
   });
 
   describe("addOnceAbortListener", () => {

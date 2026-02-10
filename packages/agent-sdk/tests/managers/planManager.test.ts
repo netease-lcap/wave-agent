@@ -32,4 +32,12 @@ describe("PlanManager", () => {
     const expectedDir = path.join("/home/user", ".wave", "plans");
     expect(planManager.getPlanDir()).toBe(expectedDir);
   });
+
+  it("should throw error if mkdir fails", async () => {
+    const planManager = new PlanManager();
+    vi.mocked(fs.mkdir).mockRejectedValue(new Error("mkdir failed"));
+    await expect(planManager.getOrGeneratePlanFilePath()).rejects.toThrow(
+      "mkdir failed",
+    );
+  });
 });

@@ -30,3 +30,18 @@ export interface BackgroundShell extends BackgroundTask {
   type: "shell";
   process: ChildProcess;
 }
+
+export interface ForegroundTask {
+  id: string;
+  backgroundHandler: () => Promise<void>;
+}
+
+export interface IForegroundTaskManager {
+  registerForegroundTask(task: ForegroundTask): void;
+  unregisterForegroundTask(id: string): void;
+}
+
+export interface IForegroundTaskManager {
+  registerForegroundTask(task: ForegroundTask): void;
+  unregisterForegroundTask(id: string): void;
+}

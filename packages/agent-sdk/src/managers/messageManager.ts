@@ -562,6 +562,7 @@ export class MessageManager {
     updates: Partial<{
       status: "active" | "completed" | "error" | "aborted";
       sessionId: string;
+      runInBackground: boolean;
     }>,
   ): void {
     const updatedMessages = updateSubagentBlockInMessage(
@@ -575,7 +576,9 @@ export class MessageManager {
       subagentId,
       status: updates.status || "active",
     };
-    this.callbacks.onSubAgentBlockUpdated?.(params.subagentId, params.status);
+    if (updates.status) {
+      this.callbacks.onSubAgentBlockUpdated?.(params.subagentId, params.status);
+    }
   }
 
   /**

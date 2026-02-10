@@ -62,6 +62,7 @@ export interface SubagentInstance {
   status: "initializing" | "active" | "completed" | "error" | "aborted";
   messages: Message[];
   subagentType: string; // Store the subagent type for hook context
+  backgroundTaskId?: string; // ID of the background task if transitioned
 }
 
 export interface SubagentManagerOptions {
@@ -295,6 +296,8 @@ export class SubagentManager {
           stderr: "",
         });
 
+        instance.backgroundTaskId = taskId;
+
         // Execute in background
         (async () => {
           try {
@@ -333,6 +336,39 @@ export class SubagentManager {
       });
       throw error;
     }
+  }
+
+  async backgroundInstance(subagentId: string): Promise<string> {
+    const instance = this.instances.get(subagentId);
+    if (!instance) {
+      throw new Error(`Subagent instance ${subagentId} not found`);
+    }
+
+    if (!this.backgroundTaskManager) {
+      throw new Error("BackgroundTaskManager not available");
+    }
+
+    const taskId = this.backgroundTaskManager.generateId();
+    const startTime = Date.now();
+
+    this.backgroundTaskManager.addTask({
+      id: taskId,
+      type: "subagent",
+      status: "running",
+      startTime,
+      description: instance.configuration.description,
+      stdout: "",
+      stderr: "",
+    });
+
+    instance.backgroundTaskId = taskId;
+
+    // Update parent message manager to reflect background status
+    this.parentMessageManager.updateSubagentBlock(subagentId, {
+      runInBackground: true,
+    });
+
+    return taskId;
   }
 
   private async internalExecute(
@@ -430,7 +466,38 @@ export class SubagentManager {
         status: "completed",
       });
 
+      // If this was transitioned to background, update the background task
+      if (instance.backgroundTaskId && this.backgroundTaskManager) {
+        const task = this.backgroundTaskManager.getTask(
+          instance.backgroundTaskId,
+        );
+        if (task) {
+          task.status = "completed";
+          task.stdout = response || "Task completed with no text response";
+          task.endTime = Date.now();
+          if (task.startTime) {
+            task.runtime = task.endTime - task.startTime;
+          }
+        }
+      }
+
       return response || "Task completed with no text response";
+    } catch (error) {
+      // If this was transitioned to background, update the background task with error
+      if (instance.backgroundTaskId && this.backgroundTaskManager) {
+        const task = this.backgroundTaskManager.getTask(
+          instance.backgroundTaskId,
+        );
+        if (task) {
+          task.status = "failed";
+          task.stderr = error instanceof Error ? error.message : String(error);
+          task.endTime = Date.now();
+          if (task.startTime) {
+            task.runtime = task.endTime - task.startTime;
+          }
+        }
+      }
+      throw error;
     } finally {
       // Clean up abort listeners to prevent memory leaks
       if (abortCleanup) {

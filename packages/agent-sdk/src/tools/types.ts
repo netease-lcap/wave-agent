@@ -55,4 +55,6 @@ export interface ToolContext {
   reversionManager?: import("../managers/reversionManager.js").ReversionManager;
   /** Current message ID for associating snapshots */
   messageId?: string;
+  /** Foreground task manager for backgrounding tasks */
+  foregroundTaskManager?: import("../types/processes.js").IForegroundTaskManager;
 }

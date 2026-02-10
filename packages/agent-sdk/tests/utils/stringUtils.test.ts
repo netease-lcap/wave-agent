@@ -1,5 +1,30 @@
 import { describe, it, expect } from "vitest";
-import { parseCustomHeaders } from "@/utils/stringUtils.js";
+import {
+  parseCustomHeaders,
+  removeCodeBlockWrappers,
+} from "@/utils/stringUtils.js";
+
+describe("removeCodeBlockWrappers", () => {
+  it("should remove code block wrappers with language", () => {
+    const input = "```typescript\nconst x = 1;\n```";
+    expect(removeCodeBlockWrappers(input)).toBe("const x = 1;");
+  });
+
+  it("should remove code block wrappers without language", () => {
+    const input = "```\nconst x = 1;\n```";
+    expect(removeCodeBlockWrappers(input)).toBe("const x = 1;");
+  });
+
+  it("should return original content if no wrappers", () => {
+    const input = "const x = 1;";
+    expect(removeCodeBlockWrappers(input)).toBe("const x = 1;");
+  });
+
+  it("should handle content with multiple lines", () => {
+    const input = "```\nline 1\nline 2\n```";
+    expect(removeCodeBlockWrappers(input)).toBe("line 1\nline 2");
+  });
+});
 
 describe("parseCustomHeaders", () => {
   it("should parse a single header", () => {
