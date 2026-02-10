@@ -14,7 +14,7 @@ export const PlanDisplay: React.FC<PlanDisplayProps> = ({
   const { stdout } = useStdout();
   const maxHeight = useMemo(() => {
     // Similar to DiffDisplay.tsx maxHeight calculation
-    return Math.max(5, (stdout?.rows || 24) - 20);
+    return Math.max(5, (stdout?.rows || 24) - 25);
   }, [stdout?.rows]);
 
   const lines = useMemo(() => plan.split("\n"), [plan]);
