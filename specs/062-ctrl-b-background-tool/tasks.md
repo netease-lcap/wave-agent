@@ -37,7 +37,11 @@
 - [x] T013 Ensure `Agent.executeBashCommand` (for `!command`) does NOT register as a backgroundable foreground task in `packages/agent-sdk/src/agent.ts`
 - [x] T014 Add unit tests for `Agent.backgroundCurrentTask` logic in `packages/agent-sdk/tests/agent.test.ts`
 - [x] T014.1 Add integration tests for Bash and Task backgrounding in `packages/agent-sdk/tests/integration/backgrounding.test.ts`
-- [ ] T014.2 Create functional example for backgrounding in `packages/agent-sdk/examples/backgrounding-demo.ts`
+- [x] T017 Implement `abortRecursion` in `AIManager` to stop the AI loop immediately after backgrounding in `packages/agent-sdk/src/managers/aiManager.ts`
+- [x] T018 Update `Agent.backgroundCurrentTask` to call `abortRecursion` if no foreground task is active in `packages/agent-sdk/src/agent.ts`
+- [x] T019 Update `BashTool` to ignore `abortSignal` if it has been backgrounded to prevent process termination in `packages/agent-sdk/src/tools/bashTool.ts`
+- [x] T020 Suppress "Request was aborted" error block in `AIManager` for intentional backgrounding aborts in `packages/agent-sdk/src/managers/aiManager.ts`
+- [x] T021 Ensure `AIManager` returns immediately after backgrounding to prevent further tool execution in the same turn.
 - [x] T015 Verify race condition where tool finishes exactly when `Ctrl-B` is pressed
 - [x] T016 [P] Final lint and type-check across `agent-sdk` and `code` packages
 

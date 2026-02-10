@@ -34,6 +34,7 @@ As a user, I want to retrieve the output of a background task (either while it's
 
 1. **Given** a running background task, **When** I use `TaskOutput` with `block: true`, **Then** the tool should wait for the task to complete and then return the full output.
 2. **Given** a running background task, **When** I use `TaskOutput` with `block: false`, **Then** the tool should immediately return the output generated so far without waiting for completion.
+3. **Given** a blocking `TaskOutput` call is active, **When** I press **Esc** (abort), **Then** the output retrieval should stop (unblocking the UI), but the underlying background task MUST continue running.
 
 ---
 
@@ -89,7 +90,7 @@ As a user, I want to use a `/tasks` command in the CLI to list and manage all ba
 - **FR-010**: `TaskOutput` MUST work for both background shell tasks and async agent tasks.
 - **FR-011**: The CLI MUST implement a `/tasks` command to list all active and recently completed tasks.
 - **FR-012**: The legacy `/bashes` command MUST be removed from the CLI.
-- **FR-013**: The `/tasks` command output MUST include task IDs, status, and task type.
+- **FR-014**: Aborting a `TaskOutput` tool call (e.g., via Esc key) MUST NOT terminate the underlying background task.
 
 ### Key Entities *(include if feature involves data)*
 

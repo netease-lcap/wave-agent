@@ -964,6 +964,12 @@ export class Agent {
   public async backgroundCurrentTask(): Promise<void> {
     await this.foregroundTaskManager.backgroundCurrentTask();
     this.options.callbacks?.onBackgroundCurrentTask?.();
+
+    // If there was no foreground task (e.g. a tool that doesn't register one),
+    // or even if there was, we should stop the AI recursion loop.
+    if (!this.foregroundTaskManager.hasActiveTasks()) {
+      this.aiManager.abortRecursion();
+    }
   }
 
   /** Destroy managers, clean up resources */

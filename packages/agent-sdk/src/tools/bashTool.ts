@@ -291,13 +291,23 @@ Usage notes:
       // Handle abort signal from context
       if (context?.abortSignal) {
         if (context.abortSignal.aborted) {
-          handleAbort();
+          if (!isBackgrounded) {
+            handleAbort();
+          }
           return;
         }
         // Use { once: true } to prevent listener accumulation on signal reuse
-        context.abortSignal.addEventListener("abort", () => handleAbort(), {
-          once: true,
-        });
+        context.abortSignal.addEventListener(
+          "abort",
+          () => {
+            if (!isBackgrounded) {
+              handleAbort();
+            }
+          },
+          {
+            once: true,
+          },
+        );
       }
 
       child.stdout?.on("data", (data) => {
