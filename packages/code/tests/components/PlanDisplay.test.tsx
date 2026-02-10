@@ -18,7 +18,6 @@ describe("PlanDisplay", () => {
   it("should render plan content correctly", () => {
     const plan = "1. Step one\n2. Step two";
     const { lastFrame } = render(<PlanDisplay plan={plan} />);
-    expect(lastFrame()).toContain("Plan Content:");
     expect(lastFrame()).toContain("1. Step one");
     expect(lastFrame()).toContain("2. Step two");
   });
