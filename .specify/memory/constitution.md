@@ -1,9 +1,10 @@
 <!--
 Sync Impact Report:
-- Version change: 1.9.0 → 1.10.0
-- Modified principles: XI. Planning with General-Purpose Agent (added requirement to use general-purpose agent for all planning phases)
-- Modified sections: Quality Standards, Development Workflow (added general-purpose agent requirement to planning steps)
-- Templates requiring updates: ✅ plan-template.md, ✅ spec-template.md, ✅ tasks-template.md
+- Version change: 1.10.0 → 1.11.0
+- Modified principles: Added XII. User-Centric Quickstart
+- Added sections: None
+- Removed sections: None
+- Templates requiring updates: ✅ plan-template.md
 - Follow-up TODOs: None
 -->
 
@@ -66,78 +67,10 @@ The general-purpose agent MUST be used for all planning phases. Every phrase and
 
 **Rationale**: The general-purpose agent's ability to perform multi-step research and analyze complex system architectures ensures that implementation plans are grounded in the actual state of the codebase and follow established patterns.
 
-## Quality Standards
+### XII. User-Centric Quickstart
+The `quickstart.md` file MUST be designed for end-users (CLI users or SDK users), not for developers of the project itself. It MUST focus on installation, configuration, and basic usage examples that allow a new user to get started quickly. Technical implementation details or developer-specific setup (like building from source) SHOULD be kept in `README.md` or dedicated developer documentation.
 
-All code MUST pass TypeScript compilation without errors or warnings. All existing tests MUST pass before merging. Code MUST follow the established linting and formatting rules enforced by ESLint and Prettier. Quality gates (type-check and lint) MUST be run and pass after every modification.
-
-**Testing Requirements**: 
-- Unit tests and integration tests are REQUIRED for all functionality
-- Real-world functional examples in `examples/` are REQUIRED for complex features
-- Test essential functionality and critical edge cases
-- Focus on behavior verification rather than coverage metrics
-- TDD SHOULD be used for complex or critical components
-- Test coverage: Prioritize high-risk areas over comprehensive coverage
-
-**Type Evolution Requirements**:
-- Evaluate existing types before creating new ones
-- Justify new type creation with clear semantic reasoning
-- Document type evolution decisions in code comments
-
-**Data Modeling Requirements**:
-- Keep entity definitions concise and focused
-- Include only actively used attributes
-- Prefer simple, flat structures over complex hierarchies
-- Document entity relationships clearly but minimally
-
-**Planning Requirements**:
-- Use general-purpose agent for all research and design tasks
-- Validate all architectural decisions against the current codebase using the general-purpose agent
-- Always use general-purpose agent for every phrase during planning
-
-## Development Workflow
-
-**Package Management**: Use `pnpm` for all dependency management operations. Never use `npm` directly.
-
-**TDD Development Process**:
-1. Identify functionality that requires testing (unit and integration)
-2. Write focused tests for essential behavior and edge cases
-3. Run tests to ensure they pass with implementation
-4. Refactor code while keeping tests passing
-5. REQUIRED: Ensure both unit and integration tests are present
-6. REQUIRED: Create functional examples in `examples/` for real-world validation
-
-**Type Evolution Process**:
-1. Identify existing types that could be extended or modified
-2. Evaluate semantic compatibility of proposed changes
-3. Choose modification over creation when semantically appropriate
-4. Document rationale for new type creation when necessary
-
-**Data Modeling Process**:
-1. Identify essential entities and their core attributes
-2. Eliminate unnecessary fields and complex relationships
-3. Validate model supports all required use cases with minimal structure
-4. Review for simplification opportunities before finalizing
-
-**Planning Process**:
-1. REQUIRED: Invoke general-purpose agent for Phase 0 Research
-2. REQUIRED: Use general-purpose agent for Phase 1 Design and Data Modeling
-4. REQUIRED: Always use general-purpose agent for every phrase during planning
-5. Ensure all planning outputs are reviewed for consistency with the Constitution
-
-**Build Process**: 
-1. Apply essential testing for critical functionality
-2. Apply type evolution principles before creating new types
-3. Apply data model minimalism to entity design
-4. Modify code in any package
-5. Run `pnpm build` if changes affect `agent-sdk`
-6. Test in dependent packages
-7. Run `pnpm run type-check` and `pnpm lint`
-8. Commit with clear, descriptive messages
-
-**Testing Strategy**:
-- Focus tests on high-risk and critical functionality
-- Use appropriate isolation based on test importance
-- Maintain existing tests but avoid over-testing for speed
+**Rationale**: A clear distinction between user-facing quickstart and developer-facing setup improves the onboarding experience for both groups and ensures that users are not overwhelmed by irrelevant technical details.
 
 ## Governance
 
@@ -147,5 +80,5 @@ This constitution supersedes all other development practices. All pull requests 
 
 **Version Control**: Use semantic versioning for constitution updates. Breaking changes to principles require major version bump.
 
-**Version**: 1.10.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2026-02-03
+**Version**: 1.11.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2026-02-10
 
