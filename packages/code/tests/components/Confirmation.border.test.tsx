@@ -61,7 +61,7 @@ describe("Confirmation Border", () => {
     );
 
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Plan Content:");
+      expect(stripAnsiColors(lastFrame() || "")).toContain("Test Plan Content");
     });
 
     const frame = lastFrame();
@@ -76,10 +76,8 @@ describe("Confirmation Border", () => {
 
     // Check for absence of horizontal padding
     const lines = cleanFrame.split("\n");
-    const planContentHeaderLine = lines.find((l) =>
-      l.includes("Plan Content:"),
-    );
-    expect(planContentHeaderLine?.trimStart()).toBe("Plan Content:");
+    const planContentLine = lines.find((l) => l.includes("Test Plan Content"));
+    expect(planContentLine?.trimStart()).toBe("Test Plan Content");
 
     // Verify markdown rendering (bold text should have asterisks removed by Markdown component)
     expect(cleanFrame).toContain("Test Plan Content");
