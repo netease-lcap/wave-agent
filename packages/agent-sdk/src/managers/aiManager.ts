@@ -305,9 +305,6 @@ export class AIManager {
       return;
     }
 
-    // Save session in each recursion to ensure message persistence
-    await this.messageManager.saveSession();
-
     // Only create new AbortControllers for the initial call (recursionDepth === 0)
     // For recursive calls, reuse existing controllers to maintain abort signal
     let abortController: AbortController;
@@ -322,9 +319,13 @@ export class AIManager {
       this.toolAbortController = toolAbortController;
     } else {
       // Reuse existing controllers for recursive calls
-      abortController = this.abortController!;
-      toolAbortController = this.toolAbortController!;
+      // Fallback to new controllers if they were cleared (should not happen in normal flow but good for tests)
+      abortController = this.abortController || new AbortController();
+      toolAbortController = this.toolAbortController || new AbortController();
     }
+
+    // Save session in each recursion to ensure message persistence
+    await this.messageManager.saveSession();
 
     // Only set loading state for the initial call
     if (recursionDepth === 0) {
@@ -733,6 +734,7 @@ export class AIManager {
       }
     } catch (error) {
       // Check if the error is an abort error
+      // Use the local variables to avoid null reference if this.abortController was cleared
       const isCurrentlyAborted =
         abortController.signal.aborted || toolAbortController.signal.aborted;
 
