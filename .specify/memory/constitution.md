@@ -1,10 +1,10 @@
 <!--
 Sync Impact Report:
-- Version change: 1.11.0 → 1.12.0
-- Modified principles: Updated XI. Planning and Task Delegation
+- Version change: 1.12.0 → 1.12.1
+- Modified principles: Updated III. Test Alignment and VI. Quality Gates to mandate pnpm test:coverage
 - Added sections: None
 - Removed sections: None
-- Templates requiring updates: ✅ tasks-template.md
+- Templates requiring updates: ✅ tasks-template.md, ✅ plan-template.md
 - Follow-up TODOs: None
 -->
 
@@ -23,9 +23,9 @@ All code MUST be written in TypeScript with strict type checking enabled. No `an
 **Rationale**: Type safety prevents runtime errors and improves developer experience in an AI-assisted development environment.
 
 ### III. Test Alignment
-Test file organization MUST follow logical patterns for discoverability. Both unit tests and integration tests are REQUIRED for all new functionality. Unit tests MUST focus on individual components and pure functions. Integration tests MUST verify the interaction between multiple components or packages. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. All tests MUST be in `packages/*/tests` directories. For features that are hard to mock or require real-world validation, MUST provide functional examples in `packages/*/examples/` directory. Focus on essential functionality testing rather than comprehensive coverage to enable faster development iterations.
+Test file organization MUST follow logical patterns for discoverability. Both unit tests and integration tests are REQUIRED for all new functionality. Unit tests MUST focus on individual components and pure functions. Integration tests MUST verify the interaction between multiple components or packages. Simple modules use direct mapping (e.g., `src/utils/foo.ts` → `tests/utils/foo.test.ts`). Complex modules may use feature-based organization (e.g., `src/agent.ts` → `tests/agent/agent.feature.test.ts`). Use Vitest as the testing framework. Use HookTester for testing React hooks. All tests MUST be in `packages/*/tests` directories. For features that are hard to mock or require real-world validation, MUST provide functional examples in `packages/*/examples/` directory. All tests MUST pass and `pnpm test:coverage` MUST be maintained or improved.
 
-**Rationale**: Flexible test organization enables both predictable discovery and manageable test suites. Essential testing provides confidence while maintaining development velocity. Mandatory unit and integration tests ensure both component-level correctness and system-level stability. Real-world examples ensure functionality works in non-mocked environments.
+**Rationale**: Flexible test organization enables both predictable discovery and manageable test suites. Essential testing provides confidence while maintaining development velocity. Mandatory unit and integration tests ensure both component-level correctness and system-level stability. Real-world examples ensure functionality works in non-mocked environments. Coverage requirements ensure that new code is adequately tested and regressions are prevented.
 
 ### IV. Build Dependencies
 After modifying `agent-sdk`, MUST run `pnpm build` before testing changes in dependent packages. Use `pnpm` exclusively for package management, never `npm`.
@@ -38,9 +38,9 @@ Do NOT create Markdown documentation files unless explicitly requested by users.
 **Rationale**: Over-documentation creates maintenance burden; well-written code with good naming is often self-documenting.
 
 ### VI. Quality Gates
-After any modifications, MUST run `pnpm run type-check` and `pnpm run lint` to validate code quality. All type checking MUST pass without errors or warnings. All linting rules MUST be satisfied before committing changes.
+After any modifications, MUST run `pnpm run type-check`, `pnpm run lint`, and `pnpm test:coverage` to validate code quality. All type checking MUST pass without errors or warnings. All linting rules MUST be satisfied. Test coverage MUST NOT decrease.
 
-**Rationale**: Automated quality checks prevent defects from entering the codebase and ensure consistent code standards across all contributors.
+**Rationale**: Automated quality checks prevent defects from entering the codebase and ensure consistent code standards across all contributors. Coverage enforcement ensures that the codebase remains maintainable and reliable as it grows.
 
 ### VII. Source Code Structure
 Package source code MUST follow established patterns for maintainability and discoverability. For `agent-sdk`: managers for state-related logic, services for network or IO-related logic, utils for pure functions, types.ts for cross-file type definitions. For `code` package: components for UI, contexts for global state and logic, hooks for reusable state and logic, utils for utility functions. Directory structure MUST reflect functional organization, not technical organization.
@@ -80,6 +80,6 @@ This constitution supersedes all other development practices. All pull requests 
 
 **Version Control**: Use semantic versioning for constitution updates. Breaking changes to principles require major version bump.
 
-**Version**: 1.12.0 | **Ratified**: 2025-01-27 | **Last Amended**: 2026-02-10
+**Version**: 1.12.1 | **Ratified**: 2025-01-27 | **Last Amended**: 2026-02-10
 
 
