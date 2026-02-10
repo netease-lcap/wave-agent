@@ -172,7 +172,7 @@ Usage notes:
         };
       }
 
-      const taskId = backgroundTaskManager.startShell(command, timeout);
+      const { id: taskId } = backgroundTaskManager.startShell(command, timeout);
       return {
         success: true,
         content: `Command started in background with ID: ${taskId}. Use TaskOutput tool with task_id="${taskId}" to monitor output.`,
@@ -194,6 +194,41 @@ Usage notes:
       let outputBuffer = "";
       let errorBuffer = "";
       let isAborted = false;
+      let isBackgrounded = false;
+
+      const foregroundTaskId = `bash_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Register as foreground task
+      if (context.foregroundTaskManager && command) {
+        context.foregroundTaskManager.registerForegroundTask({
+          id: foregroundTaskId,
+          backgroundHandler: async () => {
+            isBackgrounded = true;
+            if (timeoutHandle) {
+              clearTimeout(timeoutHandle);
+            }
+
+            const backgroundTaskManager = context.backgroundTaskManager;
+            if (backgroundTaskManager) {
+              const taskId = backgroundTaskManager.adoptProcess(
+                child,
+                command,
+                outputBuffer,
+                errorBuffer,
+              );
+              resolve({
+                success: true,
+                content: `Command moved to background with ID: ${taskId}. Use TaskOutput tool with task_id="${taskId}" to monitor output.`,
+                shortResult: `Process ${taskId} backgrounded`,
+              });
+            } else {
+              handleAbort(
+                "Failed to background: Background task manager not available",
+              );
+            }
+          },
+        });
+      }
 
       // Set up timeout
       let timeoutHandle: NodeJS.Timeout | undefined;
@@ -266,19 +301,25 @@ Usage notes:
       }
 
       child.stdout?.on("data", (data) => {
-        if (!isAborted) {
+        if (!isAborted && !isBackgrounded) {
           outputBuffer += stripAnsiColors(data.toString());
         }
       });
 
       child.stderr?.on("data", (data) => {
-        if (!isAborted) {
+        if (!isAborted && !isBackgrounded) {
           errorBuffer += stripAnsiColors(data.toString());
         }
       });
 
       child.on("exit", (code) => {
-        if (!isAborted) {
+        if (context.foregroundTaskManager) {
+          context.foregroundTaskManager.unregisterForegroundTask(
+            foregroundTaskId,
+          );
+        }
+
+        if (!isAborted && !isBackgrounded) {
           if (timeoutHandle) {
             clearTimeout(timeoutHandle);
           }
@@ -308,7 +349,13 @@ Usage notes:
       });
 
       child.on("error", (error) => {
-        if (!isAborted) {
+        if (context.foregroundTaskManager) {
+          context.foregroundTaskManager.unregisterForegroundTask(
+            foregroundTaskId,
+          );
+        }
+
+        if (!isAborted && !isBackgrounded) {
           if (timeoutHandle) {
             clearTimeout(timeoutHandle);
           }

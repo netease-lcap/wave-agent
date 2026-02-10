@@ -37,7 +37,7 @@ describe("BackgroundTaskManager", () => {
   });
 
   it("should start a shell task", async () => {
-    const id = manager.startShell("echo hello");
+    const { id } = manager.startShell("echo hello");
     expect(id).toBe("task_1");
     const task = manager.getTask(id);
     expect(task?.type).toBe("shell");
@@ -125,7 +125,7 @@ describe("BackgroundTaskManager", () => {
   });
 
   it("should handle shell process error", async () => {
-    const id = manager.startShell("non-existent-command");
+    const { id } = manager.startShell("non-existent-command");
     const task = manager.getTask(id) as BackgroundShell;
 
     // Manually trigger error event
@@ -136,7 +136,7 @@ describe("BackgroundTaskManager", () => {
   });
 
   it("should handle shell process exit with non-zero code", async () => {
-    const id = manager.startShell("exit 1");
+    const { id } = manager.startShell("exit 1");
     const task = manager.getTask(id) as BackgroundShell;
 
     // Manually trigger exit event
@@ -148,7 +148,7 @@ describe("BackgroundTaskManager", () => {
 
   it("should handle shell process timeout", async () => {
     vi.useFakeTimers();
-    const id = manager.startShell("sleep 10", 100);
+    const { id } = manager.startShell("sleep 10", 100);
     const task = manager.getTask(id) as BackgroundShell;
 
     vi.advanceTimersByTime(150);
@@ -158,7 +158,7 @@ describe("BackgroundTaskManager", () => {
   });
 
   it("should handle process kill failure", () => {
-    const id = manager.startShell("sleep 10");
+    const { id } = manager.startShell("sleep 10");
     const task = manager.getTask(id) as BackgroundShell;
 
     // Mock process.kill to throw

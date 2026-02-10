@@ -62,94 +62,131 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
       args: Record<string, unknown>,
       context: ToolContext,
     ): Promise<ToolResult> => {
-      // Input validation
-      const description = args.description as string;
-      const prompt = args.prompt as string;
-      const subagent_type = args.subagent_type as string;
-      const run_in_background = args.run_in_background as boolean;
+      return new Promise((resolve) => {
+        (async () => {
+          // Input validation
+          const description = args.description as string;
+          const prompt = args.prompt as string;
+          const subagent_type = args.subagent_type as string;
+          const run_in_background = args.run_in_background as boolean;
 
-      if (!description || typeof description !== "string") {
-        return {
-          success: false,
-          content: "",
-          error: "description parameter is required and must be a string",
-          shortResult: "Task delegation failed",
-        };
-      }
+          if (!description || typeof description !== "string") {
+            return resolve({
+              success: false,
+              content: "",
+              error: "description parameter is required and must be a string",
+              shortResult: "Task delegation failed",
+            });
+          }
 
-      if (!prompt || typeof prompt !== "string") {
-        return {
-          success: false,
-          content: "",
-          error: "prompt parameter is required and must be a string",
-          shortResult: "Task delegation failed",
-        };
-      }
+          if (!prompt || typeof prompt !== "string") {
+            return resolve({
+              success: false,
+              content: "",
+              error: "prompt parameter is required and must be a string",
+              shortResult: "Task delegation failed",
+            });
+          }
 
-      if (!subagent_type || typeof subagent_type !== "string") {
-        return {
-          success: false,
-          content: "",
-          error: "subagent_type parameter is required and must be a string",
-          shortResult: "Task delegation failed",
-        };
-      }
+          if (!subagent_type || typeof subagent_type !== "string") {
+            return resolve({
+              success: false,
+              content: "",
+              error: "subagent_type parameter is required and must be a string",
+              shortResult: "Task delegation failed",
+            });
+          }
 
-      try {
-        // Subagent selection logic with explicit name matching only
-        const configuration = await subagentManager.findSubagent(subagent_type);
+          try {
+            // Subagent selection logic with explicit name matching only
+            const configuration =
+              await subagentManager.findSubagent(subagent_type);
 
-        if (!configuration) {
-          // Error handling for nonexistent subagents with available subagents listing
-          const allConfigs = subagentManager.getConfigurations();
-          const availableNames = allConfigs.map((c) => c.name).join(", ");
+            if (!configuration) {
+              // Error handling for nonexistent subagents with available subagents listing
+              const allConfigs = subagentManager.getConfigurations();
+              const availableNames = allConfigs.map((c) => c.name).join(", ");
 
-          return {
-            success: false,
-            content: "",
-            error: `No subagent found matching "${subagent_type}". Available subagents: ${availableNames || "none"}`,
-            shortResult: "Subagent not found",
-          };
-        }
+              return resolve({
+                success: false,
+                content: "",
+                error: `No subagent found matching "${subagent_type}". Available subagents: ${availableNames || "none"}`,
+                shortResult: "Subagent not found",
+              });
+            }
 
-        // Create subagent instance and execute task
-        const instance = await subagentManager.createInstance(
-          configuration,
-          {
-            description,
-            prompt,
-            subagent_type,
-          },
-          run_in_background,
-        );
-        const response = await subagentManager.executeTask(
-          instance,
-          prompt,
-          context.abortSignal,
-          run_in_background,
-        );
+            // Create subagent instance and execute task
+            const instance = await subagentManager.createInstance(
+              configuration,
+              {
+                description,
+                prompt,
+                subagent_type,
+              },
+              run_in_background,
+            );
 
-        if (run_in_background) {
-          return {
-            success: true,
-            content: `Task started in background with ID: ${response}`,
-            shortResult: `Task started in background: ${response}`,
-          };
-        }
+            let isBackgrounded = false;
 
-        return {
-          success: true,
-          content: response,
-          shortResult: `Task completed by ${configuration.name}`,
-        };
-      } catch (error) {
-        return {
-          success: false,
-          content: "",
-          error: `Task delegation failed: ${error instanceof Error ? error.message : String(error)}`,
-          shortResult: "Delegation error",
-        };
-      }
+            // Register for backgrounding if not already in background
+            if (!run_in_background && context.foregroundTaskManager) {
+              context.foregroundTaskManager.registerForegroundTask({
+                id: instance.subagentId,
+                backgroundHandler: async () => {
+                  isBackgrounded = true;
+                  const taskId = await subagentManager.backgroundInstance(
+                    instance.subagentId,
+                  );
+                  // Resolve the tool execution early so the main agent can continue
+                  resolve({
+                    success: true,
+                    content: `Task moved to background with ID: ${taskId}. Use TaskOutput to monitor progress.`,
+                    shortResult: "Task backgrounded",
+                  });
+                },
+              });
+            }
+
+            try {
+              const result = await subagentManager.executeTask(
+                instance,
+                prompt,
+                context.abortSignal,
+                run_in_background,
+              );
+
+              if (isBackgrounded) return;
+
+              if (run_in_background) {
+                return resolve({
+                  success: true,
+                  content: `Task started in background with ID: ${result}`,
+                  shortResult: `Task started in background: ${result}`,
+                });
+              }
+
+              return resolve({
+                success: true,
+                content: result,
+                shortResult: `Task completed by ${configuration.name}`,
+              });
+            } finally {
+              if (!run_in_background && context.foregroundTaskManager) {
+                context.foregroundTaskManager.unregisterForegroundTask(
+                  instance.subagentId,
+                );
+              }
+            }
+          } catch (error) {
+            return resolve({
+              success: false,
+              content: "",
+              error: `Task delegation failed: ${error instanceof Error ? error.message : String(error)}`,
+              shortResult: "Delegation error",
+            });
+          }
+        })();
+      });
     },
 
     formatCompactParams: (params: Record<string, unknown>) => {

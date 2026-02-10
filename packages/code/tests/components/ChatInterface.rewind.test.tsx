@@ -48,6 +48,7 @@ describe("ChatInterface Rewind Visibility", () => {
       hideConfirmation: vi.fn(),
       handleConfirmationDecision: vi.fn(),
       handleConfirmationCancel: vi.fn(),
+      backgroundCurrentTask: vi.fn(),
     } as ChatContextType);
 
     vi.mocked(useInputManager).mockReturnValue({
@@ -114,6 +115,7 @@ describe("ChatInterface Rewind Visibility", () => {
       hideConfirmation: vi.fn(),
       handleConfirmationDecision: vi.fn(),
       handleConfirmationCancel: vi.fn(),
+      backgroundCurrentTask: vi.fn(),
     } as ChatContextType);
 
     vi.mocked(useInputManager).mockReturnValue({

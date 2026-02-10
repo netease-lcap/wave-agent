@@ -558,6 +558,7 @@ export const updateSubagentBlockInMessage = (
   updates: Partial<{
     status: "active" | "completed" | "error" | "aborted";
     sessionId: string;
+    runInBackground: boolean;
   }>,
 ): Message[] => {
   const newMessages = [...messages];
@@ -573,6 +574,9 @@ export const updateSubagentBlockInMessage = (
           }
           if (updates.sessionId !== undefined) {
             block.sessionId = updates.sessionId;
+          }
+          if (updates.runInBackground !== undefined) {
+            block.runInBackground = updates.runInBackground;
           }
           return newMessages;
         }

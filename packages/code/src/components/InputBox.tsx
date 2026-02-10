@@ -58,6 +58,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     permissionMode: chatPermissionMode,
     setPermissionMode: setChatPermissionMode,
     handleRewindSelect,
+    backgroundCurrentTask,
     messages,
   } = useChat();
 
@@ -111,6 +112,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onHasSlashCommand: hasSlashCommand,
     onSaveMemory: saveMemory,
     onAbortMessage: abortMessage,
+    onBackgroundCurrentTask: backgroundCurrentTask,
     onPermissionModeChange: setChatPermissionMode,
   });
 

@@ -1,3 +1,4 @@
+import { ForegroundTaskManager } from "./managers/foregroundTaskManager.js";
 import {
   MessageManager,
   type MessageManagerCallbacks,
@@ -39,6 +40,7 @@ import type {
   PermissionMode,
   PermissionCallback,
   BackgroundTask,
+  ForegroundTask,
 } from "./types/index.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
@@ -106,6 +108,7 @@ export interface AgentCallbacks
     SubagentManagerCallbacks {
   onTasksChange?: (tasks: BackgroundTask[]) => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
+  onBackgroundCurrentTask?: () => void;
 }
 
 export class Agent {
@@ -128,6 +131,7 @@ export class Agent {
   private reversionManager: ReversionManager;
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
+  private foregroundTaskManager: ForegroundTaskManager;
   private configurationService: ConfigurationService; // Add configuration service
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
@@ -201,6 +205,8 @@ export class Agent {
 
     // Store options for dynamic configuration resolution
     this.options = options;
+
+    this.foregroundTaskManager = new ForegroundTaskManager();
 
     this.backgroundTaskManager = new BackgroundTaskManager({
       callbacks: {
@@ -307,6 +313,7 @@ export class Agent {
       permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
       canUseToolCallback: canUseToolWithNotification,
       backgroundTaskManager: this.backgroundTaskManager,
+      foregroundTaskManager: this.foregroundTaskManager,
     }); // Initialize tool registry with permission support
     this.liveConfigManager = new LiveConfigManager({
       workdir: this.workdir,
@@ -935,6 +942,28 @@ export class Agent {
   /** Interrupt slash command execution */
   public abortSlashCommand(): void {
     this.slashCommandManager.abortCurrentCommand();
+  }
+
+  /**
+   * Register a foreground task that can be backgrounded
+   */
+  public registerForegroundTask(task: ForegroundTask): void {
+    this.foregroundTaskManager.registerForegroundTask(task);
+  }
+
+  /**
+   * Unregister a foreground task
+   */
+  public unregisterForegroundTask(id: string): void {
+    this.foregroundTaskManager.unregisterForegroundTask(id);
+  }
+
+  /**
+   * Background the current foreground task
+   */
+  public async backgroundCurrentTask(): Promise<void> {
+    await this.foregroundTaskManager.backgroundCurrentTask();
+    this.options.callbacks?.onBackgroundCurrentTask?.();
   }
 
   /** Destroy managers, clean up resources */

@@ -35,8 +35,10 @@ export interface ToolManagerOptions {
   mcpManager: McpManager;
   lspManager?: ILspManager;
   logger?: Logger;
-  /** Optional permission manager for handling tool permission checks */
+  /** Permission manager for handling tool permission checks */
   permissionManager?: PermissionManager;
+  /** Foreground task manager for backgrounding tasks */
+  foregroundTaskManager?: import("../types/processes.js").IForegroundTaskManager;
   /** Reversion manager for file snapshots */
   reversionManager?: ReversionManager;
   /** Background task manager for background execution */
@@ -59,6 +61,7 @@ class ToolManager {
   private lspManager?: ILspManager;
   private logger?: Logger;
   private permissionManager?: PermissionManager;
+  private foregroundTaskManager?: import("../types/processes.js").IForegroundTaskManager;
   private reversionManager?: ReversionManager;
   private backgroundTaskManager?: import("./backgroundTaskManager.js").BackgroundTaskManager;
   private permissionMode?: PermissionMode;
@@ -69,6 +72,7 @@ class ToolManager {
     this.lspManager = options.lspManager;
     this.logger = options.logger;
     this.permissionManager = options.permissionManager;
+    this.foregroundTaskManager = options.foregroundTaskManager;
     this.reversionManager = options.reversionManager;
     this.backgroundTaskManager = options.backgroundTaskManager;
     // Store CLI permission mode, let PermissionManager resolve effective mode
@@ -175,6 +179,7 @@ class ToolManager {
       permissionManager: this.permissionManager,
       reversionManager: this.reversionManager,
       backgroundTaskManager: this.backgroundTaskManager,
+      foregroundTaskManager: this.foregroundTaskManager,
       mcpManager: this.mcpManager,
       lspManager: this.lspManager,
     };

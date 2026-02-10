@@ -23,7 +23,7 @@ describe("Task Management Tools", () => {
     it("should retrieve output from background task", async () => {
       // Manually add a task to the manager for testing
       // Since startShell is the easiest way to get a task in
-      const taskId = backgroundTaskManager.startShell("echo hello");
+      const { id: taskId } = backgroundTaskManager.startShell("echo hello");
 
       // Mock some output
       const task = backgroundTaskManager.getTask(taskId);
@@ -63,7 +63,7 @@ describe("Task Management Tools", () => {
     });
 
     it("should handle block parameter", async () => {
-      const taskId = backgroundTaskManager.startShell("echo hello");
+      const { id: taskId } = backgroundTaskManager.startShell("echo hello");
       const task = backgroundTaskManager.getTask(taskId);
       if (task) {
         task.status = "completed";
@@ -86,7 +86,7 @@ describe("Task Management Tools", () => {
   describe("TaskStop tool", () => {
     it("should stop a running task", async () => {
       // Start a long running shell
-      const taskId = backgroundTaskManager.startShell("sleep 100");
+      const { id: taskId } = backgroundTaskManager.startShell("sleep 100");
 
       const result = await taskStopTool.execute(
         {
