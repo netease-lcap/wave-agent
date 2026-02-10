@@ -201,7 +201,7 @@ describe("multiEditTool", () => {
     const result1 = await multiEditTool.execute(
       {
         edits: [{ old_string: "old", new_string: "new" }],
-      },
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
       mockContext,
     );
 
@@ -210,24 +210,48 @@ describe("multiEditTool", () => {
 
     const result2 = await multiEditTool.execute(
       {
-        file_path: "/test/file.js",
-      },
+        file_path: 123,
+        edits: [{ old_string: "old", new_string: "new" }],
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
       mockContext,
     );
 
     expect(result2.success).toBe(false);
-    expect(result2.error).toContain("edits parameter is required");
+    expect(result2.error).toContain("file_path parameter is required");
 
     const result3 = await multiEditTool.execute(
       {
         file_path: "/test/file.js",
-        edits: [],
-      },
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
       mockContext,
     );
 
     expect(result3.success).toBe(false);
-    expect(result3.error).toContain(
+    expect(result3.error).toContain("edits parameter is required");
+
+    const result4 = await multiEditTool.execute(
+      {
+        file_path: "/test/file.js",
+        edits: [],
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
+      mockContext,
+    );
+
+    expect(result4.success).toBe(false);
+    expect(result4.error).toContain(
+      "edits parameter is required and must be a non-empty array",
+    );
+
+    const result5 = await multiEditTool.execute(
+      {
+        file_path: "/test/file.js",
+        edits: "not an array",
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
+      mockContext,
+    );
+
+    expect(result5.success).toBe(false);
+    expect(result5.error).toContain(
       "edits parameter is required and must be a non-empty array",
     );
   });
@@ -237,7 +261,7 @@ describe("multiEditTool", () => {
       {
         file_path: "/test/file.js",
         edits: [null],
-      },
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
       mockContext,
     );
 
@@ -248,7 +272,7 @@ describe("multiEditTool", () => {
       {
         file_path: "/test/file.js",
         edits: [{ new_string: "new" }],
-      },
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
       mockContext,
     );
 
@@ -258,24 +282,46 @@ describe("multiEditTool", () => {
     const result3 = await multiEditTool.execute(
       {
         file_path: "/test/file.js",
-        edits: [{ old_string: "old" }],
-      },
+        edits: [{ old_string: 123, new_string: "new" }],
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
       mockContext,
     );
 
     expect(result3.success).toBe(false);
-    expect(result3.error).toContain("Edit operation 1: new_string is required");
+    expect(result3.error).toContain("Edit operation 1: old_string is required");
 
     const result4 = await multiEditTool.execute(
       {
         file_path: "/test/file.js",
-        edits: [{ old_string: "same", new_string: "same" }],
-      },
+        edits: [{ old_string: "old" }],
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
       mockContext,
     );
 
     expect(result4.success).toBe(false);
-    expect(result4.error).toContain(
+    expect(result4.error).toContain("Edit operation 1: new_string is required");
+
+    const result5 = await multiEditTool.execute(
+      {
+        file_path: "/test/file.js",
+        edits: [{ old_string: "old", new_string: 123 }],
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
+      mockContext,
+    );
+
+    expect(result5.success).toBe(false);
+    expect(result5.error).toContain("Edit operation 1: new_string is required");
+
+    const result6 = await multiEditTool.execute(
+      {
+        file_path: "/test/file.js",
+        edits: [{ old_string: "same", new_string: "same" }],
+      } as unknown as Parameters<typeof multiEditTool.execute>[0],
+      mockContext,
+    );
+
+    expect(result6.success).toBe(false);
+    expect(result6.error).toContain(
       "Edit operation 1: old_string and new_string must be different",
     );
   });
@@ -360,5 +406,150 @@ describe("multiEditTool", () => {
     expect(result.content).toContain("Operations performed:");
     expect(result.content).toContain('1. Replaced "var x"');
     expect(result.content).toContain('2. Replaced "var y"');
+  });
+
+  it("should handle permission denial", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+
+    const mockPermissionManager = {
+      createContext: vi.fn().mockReturnValue({}),
+      checkPermission: vi.fn().mockResolvedValue({
+        behavior: "deny",
+        message: "User denied",
+      }),
+    };
+
+    const result = await multiEditTool.execute(
+      {
+        file_path: "/test/file.js",
+        edits: [{ old_string: "some", new_string: "other" }],
+      },
+      {
+        ...mockContext,
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain(
+      "MultiEdit operation denied, reason: User denied",
+    );
+  });
+
+  it("should handle permission check failure", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+
+    const mockPermissionManager = {
+      createContext: vi.fn().mockReturnValue({}),
+      checkPermission: vi.fn().mockRejectedValue(new Error("Check failed")),
+    };
+
+    const result = await multiEditTool.execute(
+      {
+        file_path: "/test/file.js",
+        edits: [{ old_string: "some", new_string: "other" }],
+      },
+      {
+        ...mockContext,
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Permission check failed");
+  });
+
+  it("should record and commit snapshot when reversionManager is present", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const mockReversionManager = {
+      recordSnapshot: vi.fn().mockResolvedValue("snapshot-123"),
+      commitSnapshot: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await multiEditTool.execute(
+      {
+        file_path: "/test/file.js",
+        edits: [{ old_string: "some", new_string: "other" }],
+      },
+      {
+        ...mockContext,
+        reversionManager:
+          mockReversionManager as unknown as ToolContext["reversionManager"],
+        messageId: "msg-123",
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockReversionManager.recordSnapshot).toHaveBeenCalledWith(
+      "msg-123",
+      "/test/file.js",
+      "modify",
+    );
+    expect(mockReversionManager.commitSnapshot).toHaveBeenCalledWith(
+      "snapshot-123",
+    );
+  });
+
+  it("should handle generic errors in execute", async () => {
+    vi.mocked(readFile).mockImplementation(() => {
+      throw new Error("Generic error");
+    });
+
+    const result = await multiEditTool.execute(
+      {
+        file_path: "/test/file.js",
+        edits: [{ old_string: "old", new_string: "new" }],
+      },
+      mockContext,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Generic error");
+  });
+
+  it("should format compact params correctly", () => {
+    const formatCompactParams = (
+      multiEditTool as unknown as {
+        formatCompactParams: (
+          params: { file_path: string; edits: unknown[] },
+          context: { workdir: string },
+        ) => string;
+      }
+    ).formatCompactParams;
+    const result = formatCompactParams(
+      {
+        file_path: "src/index.ts",
+        edits: [{ old_string: "a", new_string: "b" }],
+      },
+      { workdir: "/test" },
+    );
+    expect(result).toBe("src/index.ts 1 edits");
+  });
+
+  it("should handle long strings in appliedEdits display", async () => {
+    const mockContent = "a".repeat(100);
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const result = await multiEditTool.execute(
+      {
+        file_path: "/test/file.js",
+        edits: [
+          { old_string: "a".repeat(60), new_string: "c" },
+          { old_string: "a".repeat(10), new_string: "d", replace_all: true },
+        ],
+      },
+      mockContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("...");
   });
 });

@@ -222,6 +222,170 @@ describe("bashTool", () => {
       const params2 = { command: "echo hello", run_in_background: true };
       const result2 = bashTool.formatCompactParams?.(params2, context);
       expect(result2).toBe("echo hello (background)");
+
+      const params3 = { command: "echo hello", description: "say hello" };
+      const result3 = bashTool.formatCompactParams?.(params3, context);
+      expect(result3).toBe("say hello");
+    });
+
+    it("should handle command timeout", async () => {
+      vi.useFakeTimers();
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const promise = bashTool.execute(
+        {
+          command: "sleep 10",
+          timeout: 1000,
+        },
+        context,
+      );
+
+      vi.advanceTimersByTime(1001);
+      const result = await promise;
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Command timed out");
+      vi.useRealTimers();
+    });
+
+    it("should handle large output truncation", async () => {
+      const largeOutput = "a".repeat(30001);
+      const mockProcess = {
+        pid: 1234,
+        stdout: {
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => callback(Buffer.from(largeOutput)), 10);
+            }
+          }),
+        },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(0), 20);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const result = await bashTool.execute(
+        { command: "large-output" },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content.length).toBeLessThanOrEqual(30000 + 24); // 30000 + "\n\n... (output truncated)".length
+      expect(result.content).toContain("... (output truncated)");
+    });
+
+    it("should handle permission denial", async () => {
+      const mockPermissionManager = {
+        createContext: vi.fn().mockReturnValue({}),
+        checkPermission: vi
+          .fn()
+          .mockResolvedValue({ behavior: "deny", message: "No way" }),
+      };
+      const testContext = {
+        ...context,
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      };
+
+      const result = await bashTool.execute({ command: "ls" }, testContext);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("operation denied, reason: No way");
+    });
+
+    it("should handle permission check failure", async () => {
+      const mockPermissionManager = {
+        createContext: vi.fn().mockReturnValue({}),
+        checkPermission: vi.fn().mockRejectedValue(new Error("Check failed")),
+      };
+      const testContext = {
+        ...context,
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      };
+
+      const result = await bashTool.execute({ command: "ls" }, testContext);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Permission check failed");
+    });
+
+    it("should handle background adoption", async () => {
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      let backgroundHandler: (() => Promise<void>) | undefined;
+      const mockForegroundTaskManager = {
+        registerForegroundTask: vi.fn(({ backgroundHandler: handler }) => {
+          backgroundHandler = handler;
+        }),
+        unregisterForegroundTask: vi.fn(),
+      };
+      const mockBackgroundTaskManager = {
+        adoptProcess: vi.fn().mockReturnValue("task_adopted"),
+      };
+
+      const testContext = {
+        ...context,
+        foregroundTaskManager:
+          mockForegroundTaskManager as unknown as ToolContext["foregroundTaskManager"],
+        backgroundTaskManager:
+          mockBackgroundTaskManager as unknown as ToolContext["backgroundTaskManager"],
+      };
+
+      const executePromise = bashTool.execute({ command: "long" }, testContext);
+
+      // Trigger backgrounding
+      await backgroundHandler!();
+
+      const result = await executePromise;
+      expect(result.success).toBe(true);
+      expect(result.content).toContain(
+        "Command moved to background with ID: task_adopted",
+      );
+      expect(mockBackgroundTaskManager.adoptProcess).toHaveBeenCalled();
+    });
+
+    it("should handle spawn error", async () => {
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event, callback) => {
+          if (event === "error") {
+            setTimeout(() => callback(new Error("spawn failed")), 10);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const result = await bashTool.execute({ command: "fail" }, context);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Failed to execute command: spawn failed");
     });
   });
 
