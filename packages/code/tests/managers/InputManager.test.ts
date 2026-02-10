@@ -684,4 +684,188 @@ describe("InputManager", () => {
       );
     });
   });
+
+  describe("Edge Cases and Branch Coverage", () => {
+    it("should handle deleteCharAtCursor when cursor is at 0", () => {
+      manager.insertTextAtCursor("test");
+      manager.setCursorPosition(0);
+      manager.deleteCharAtCursor();
+      expect(manager.getInputText()).toBe("test");
+      expect(manager.getCursorPosition()).toBe(0);
+    });
+
+    it("should handle navigateHistory down to -2", () => {
+      manager.setUserInputHistory(["one"]);
+      manager.navigateHistory("up", "current"); // index 0, text "one"
+      manager.navigateHistory("down", "one"); // index -1, text "current"
+      const result = manager.navigateHistory("down", "current"); // index -2, text ""
+      expect(result.newInput).toBe("");
+      expect(manager.getCursorPosition()).toBe(0);
+    });
+
+    it("should handle navigateHistory with empty history", () => {
+      manager.setUserInputHistory([]);
+      const result = manager.navigateHistory("up", "");
+      expect(result.newInput).toBe("");
+    });
+
+    it("should handle handleFileSelect when atPosition is -1", () => {
+      const result = manager.handleFileSelect("test.ts");
+      expect(result.newInput).toBe("");
+    });
+
+    it("should handle handleCommandSelect when slashPosition is -1", () => {
+      const result = manager.handleCommandSelect("test");
+      expect(result.newInput).toBe("");
+    });
+
+    it("should handle handleCommandInsert when slashPosition is -1", () => {
+      const result = manager.handleCommandInsert("test");
+      expect(result.newInput).toBe("");
+    });
+
+    it("should handle handleCommandSelect for local commands", async () => {
+      manager.insertTextAtCursor("/tasks");
+      manager.activateCommandSelector(0);
+      mockCallbacks.onShowTaskManager = vi.fn();
+      manager.handleCommandSelect("tasks");
+      await vi.waitFor(() =>
+        expect(mockCallbacks.onShowTaskManager).toHaveBeenCalled(),
+      );
+
+      manager.clearInput();
+      manager.insertTextAtCursor("/mcp");
+      manager.activateCommandSelector(0);
+      mockCallbacks.onShowMcpManager = vi.fn();
+      manager.handleCommandSelect("mcp");
+      await vi.waitFor(() =>
+        expect(mockCallbacks.onShowMcpManager).toHaveBeenCalled(),
+      );
+
+      manager.clearInput();
+      manager.insertTextAtCursor("/rewind");
+      manager.activateCommandSelector(0);
+      mockCallbacks.onShowRewindManager = vi.fn();
+      manager.handleCommandSelect("rewind");
+      await vi.waitFor(() =>
+        expect(mockCallbacks.onShowRewindManager).toHaveBeenCalled(),
+      );
+    });
+
+    it("should handle handlePasteInput with Chinese exclamation mark", () => {
+      manager.handlePasteInput("！");
+      expect(manager.getInputText()).toBe("!");
+    });
+
+    it("should handle handlePasteInput with multi-character string (not debounced yet)", () => {
+      vi.useFakeTimers();
+      manager.handlePasteInput("multi");
+      expect(manager.getInputText()).toBe(""); // Still in buffer
+      vi.runAllTimers();
+      expect(manager.getInputText()).toBe("multi");
+      vi.useRealTimers();
+    });
+
+    it("should handle handleInput with selectorJustUsed", async () => {
+      // We need to access private property or trigger the timeout
+      manager.insertTextAtCursor("@");
+      manager.activateFileSelector(0);
+      manager.handleFileSelect("file.ts");
+
+      const mockKey: Key = { return: true } as unknown as Key;
+      const handled = await manager.handleInput("", mockKey, []);
+      expect(handled).toBe(true); // Should return true and do nothing
+    });
+
+    it("should handle handleInput with escape during loading", async () => {
+      const mockKey: Key = { escape: true } as unknown as Key;
+      const handled = await manager.handleInput("", mockKey, [], true, false);
+      expect(handled).toBe(true);
+      expect(mockCallbacks.onAbortMessage).toHaveBeenCalled();
+    });
+
+    it("should handle handleInput with Shift+Tab", async () => {
+      const mockKey: Key = { tab: true, shift: true } as unknown as Key;
+      const handled = await manager.handleInput("", mockKey, []);
+      expect(handled).toBe(true);
+      expect(manager.getPermissionMode()).toBe("acceptEdits");
+    });
+
+    it("should handle handleInput for history search backspace and input", async () => {
+      manager.activateHistorySearch();
+      const backspaceKey: Key = { backspace: true } as unknown as Key;
+      await manager.handleInput("", backspaceKey, []); // Should do nothing as query is empty
+
+      manager.updateHistorySearchQuery("a");
+      await manager.handleInput("", backspaceKey, []);
+      // We can't easily check historySearchQuery as it's private, but we can check if callback was called
+      expect(mockCallbacks.onHistorySearchStateChange).toHaveBeenCalledWith(
+        true,
+        "",
+      );
+
+      await manager.handleInput("b", {} as unknown as Key, []);
+      expect(mockCallbacks.onHistorySearchStateChange).toHaveBeenCalledWith(
+        true,
+        "b",
+      );
+    });
+
+    it("should handle handleSelectorInput with backspace", () => {
+      manager.insertTextAtCursor("@a");
+      manager.activateFileSelector(0);
+      const backspaceKey: Key = { backspace: true } as unknown as Key;
+      manager.handleSelectorInput("", backspaceKey);
+      expect(manager.getInputText()).toBe("@");
+    });
+
+    it("should handle handleSelectorInput with navigation keys", () => {
+      manager.activateFileSelector(0);
+      const upKey: Key = { upArrow: true } as unknown as Key;
+      const handled = manager.handleSelectorInput("", upKey);
+      expect(handled).toBe(true);
+    });
+
+    it("should handle handleSubmit with empty input", async () => {
+      await manager.handleSubmit([], false, false);
+      expect(mockCallbacks.onSendMessage).not.toHaveBeenCalled();
+    });
+
+    it("should handle handleSubmit with multi-line memory message (should not trigger selector)", async () => {
+      manager.insertTextAtCursor("#line1\nline2");
+      await manager.handleSubmit([], false, false);
+      expect(
+        mockCallbacks.onMemoryTypeSelectorStateChange,
+      ).not.toHaveBeenCalled();
+      expect(mockCallbacks.onSendMessage).toHaveBeenCalled();
+    });
+
+    it("should handle updateCallbacks", () => {
+      const newOnInputTextChange = vi.fn();
+      manager.updateCallbacks({ onInputTextChange: newOnInputTextChange });
+      manager.insertTextAtCursor("a");
+      expect(newOnInputTextChange).toHaveBeenCalledWith("a");
+    });
+
+    it("should handle searchFiles error", async () => {
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      mockSearchFiles.mockRejectedValue(new Error("search failed"));
+      (manager as unknown as { showFileSelector: boolean }).showFileSelector =
+        true;
+      (manager as unknown as { fileSearchQuery: string }).fileSearchQuery =
+        "query";
+      await (
+        manager as unknown as { searchFiles: (query: string) => Promise<void> }
+      ).searchFiles("query");
+      expect(mockCallbacks.onFileSelectorStateChange).toHaveBeenCalledWith(
+        true,
+        [],
+        "query",
+        -1,
+      );
+      consoleSpy.mockRestore();
+    });
+  });
 });

@@ -70,6 +70,22 @@ describe("Clipboard Utils", () => {
       expect(result.error).toContain("not supported on platform");
     });
 
+    it("should handle unexpected errors in readClipboardImage", async () => {
+      // Mock process.platform to throw
+      Object.defineProperty(process, "platform", {
+        get: () => {
+          throw new Error("Platform access error");
+        },
+        configurable: true,
+      });
+
+      const result = await readClipboardImage();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Failed to read clipboard image");
+      expect(result.error).toContain("Platform access error");
+    });
+
     describe("macOS", () => {
       beforeEach(() => {
         Object.defineProperty(process, "platform", {
@@ -126,6 +142,31 @@ describe("Clipboard Utils", () => {
           "Failed to save clipboard image to temporary file",
         );
       });
+
+      it("should handle unexpected errors in readClipboardImageMac", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "true" }) // hasImage check
+          .mockImplementationOnce(() => {
+            throw new Error("Unexpected error");
+          });
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(
+          "Failed to read clipboard image on macOS",
+        );
+        expect(result.error).toContain("Unexpected error");
+      });
+
+      it("should handle hasImage check failure", async () => {
+        mockExec.mockRejectedValueOnce(new Error("Check failed"));
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("No image found in clipboard");
+      });
     });
 
     describe("Windows", () => {
@@ -177,6 +218,21 @@ describe("Clipboard Utils", () => {
         expect(result.success).toBe(false);
         expect(result.error).toContain(
           "Failed to save clipboard image to temporary file",
+        );
+      });
+
+      it("should handle unexpected errors in readClipboardImageWindows", async () => {
+        // Mock promisify to throw
+        const { promisify } = await import("util");
+        vi.mocked(promisify).mockImplementationOnce(() => {
+          throw new Error("Promisify failed");
+        });
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(
+          "Failed to read clipboard image on Windows",
         );
       });
     });
@@ -234,6 +290,69 @@ describe("Clipboard Utils", () => {
         expect(result.success).toBe(false);
         expect(result.error).toContain("Failed to save clipboard image");
       });
+
+      it("should handle file not created after save", async () => {
+        mockExec
+          .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
+          .mockResolvedValueOnce({ stdout: "has image" }) // clipboard check
+          .mockResolvedValueOnce({ stdout: "saved" }); // save image
+        mockExistsSync.mockReturnValue(false);
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(
+          "Failed to save clipboard image to temporary file",
+        );
+      });
+
+      it("should handle unexpected errors in readClipboardImageLinux", async () => {
+        // Mock the first exec call (which xclip) to throw an error that is NOT caught by the inner try-catch
+        // Actually, the first try-catch in readClipboardImageLinux catches the error and returns a specific message.
+        // To reach the outer catch in readClipboardImage, we need something to throw outside the inner try-catches
+        // or make one of the inner try-catches rethrow.
+        // But wait, the outer catch is in readClipboardImage, not readClipboardImageLinux.
+        // readClipboardImageLinux has its own try-catch that covers everything.
+
+        // Let's look at readClipboardImageLinux again:
+        /*
+        async function readClipboardImageLinux(): Promise<ClipboardImageResult> {
+          try {
+            const { exec } = await import("child_process");
+            ...
+          } catch (err) {
+            return {
+              success: false,
+              error: `Failed to read clipboard image on Linux: ...`,
+            };
+          }
+        }
+        */
+        // So it should return "Failed to read clipboard image on Linux".
+        // The reason it returns "xclip is required..." is because mockExec.mockImplementationOnce
+        // is being called for `await execAsync("which xclip");` which is INSIDE a try-catch that returns the xclip message.
+
+        // To trigger the catch(err) at the end of readClipboardImageLinux, we need to throw BEFORE the first inner try-catch.
+        // The first inner try-catch starts at line 211.
+        // Line 206-208 are:
+        // const { exec } = await import("child_process");
+        // const { promisify } = await import("util");
+        // const execAsync = promisify(exec);
+
+        // If we mock promisify to throw, it should work.
+        const { promisify } = await import("util");
+        vi.mocked(promisify).mockImplementationOnce(() => {
+          throw new Error("Promisify failed");
+        });
+
+        const result = await readClipboardImage();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(
+          "Failed to read clipboard image on Linux",
+        );
+        expect(result.error).toContain("Promisify failed");
+      });
     });
   });
 
@@ -276,6 +395,13 @@ describe("Clipboard Utils", () => {
         const result = await hasClipboardImage();
         expect(result).toBe(false);
       });
+
+      it("should return false when stdout is empty", async () => {
+        mockExec.mockResolvedValueOnce({ stdout: "" });
+
+        const result = await hasClipboardImage();
+        expect(result).toBe(false);
+      });
     });
 
     describe("Windows", () => {
@@ -295,6 +421,15 @@ describe("Clipboard Utils", () => {
 
       it("should return false when no image available", async () => {
         mockExec.mockResolvedValueOnce({ stdout: "false" });
+
+        const result = await hasClipboardImage();
+        expect(result).toBe(false);
+      });
+
+      it("should return false on unexpected error", async () => {
+        mockExec.mockImplementationOnce(() => {
+          throw new Error("Unexpected error");
+        });
 
         const result = await hasClipboardImage();
         expect(result).toBe(false);
@@ -329,6 +464,15 @@ describe("Clipboard Utils", () => {
         mockExec
           .mockResolvedValueOnce({ stdout: "xclip found" }) // which xclip
           .mockRejectedValueOnce(new Error("No image")); // clipboard check
+
+        const result = await hasClipboardImage();
+        expect(result).toBe(false);
+      });
+
+      it("should return false on unexpected error", async () => {
+        mockExec.mockImplementationOnce(() => {
+          throw new Error("Unexpected error");
+        });
 
         const result = await hasClipboardImage();
         expect(result).toBe(false);

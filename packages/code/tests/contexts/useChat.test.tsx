@@ -79,6 +79,7 @@ describe("ChatProvider", () => {
     stopBackgroundTask: vi.fn(),
     hasSlashCommand: vi.fn(),
     truncateHistory: vi.fn(),
+    backgroundCurrentTask: vi.fn(),
     destroy: vi.fn(),
     setPermissionMode: vi.fn(),
     usages: [],
@@ -811,6 +812,175 @@ describe("ChatProvider", () => {
     await expect(decisionPromise).rejects.toBeUndefined();
     await vi.waitFor(() => {
       expect(lastValue?.isConfirmationVisible).toBe(false);
+    });
+  });
+
+  it("handles backgroundCurrentTask", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    lastValue?.backgroundCurrentTask();
+    expect(mockAgent.backgroundCurrentTask).toHaveBeenCalled();
+  });
+
+  // it("throws error when useChat is used outside of ChatProvider", () => {
+  //   const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  //   const TestComponent = () => {
+  //     useChat();
+  //     return null;
+  //   };
+
+  //   expect(() => {
+  //     try {
+  //       render(<TestComponent />);
+  //     } catch (e) {
+  //       throw new Error("Caught: " + (e as Error).message);
+  //     }
+  //   }).toThrow();
+  //   consoleSpy.mockRestore();
+  // });
+
+  it("handles multiple confirmations in queue", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const decisionPromise1 = lastValue?.showConfirmation("tool1");
+    const decisionPromise2 = lastValue?.showConfirmation("tool2");
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isConfirmationVisible).toBe(true);
+      expect(lastValue?.confirmingTool?.name).toBe("tool1");
+    });
+
+    // Resolve first confirmation
+    lastValue?.handleConfirmationDecision({ behavior: "allow" });
+    await expect(decisionPromise1).resolves.toEqual({ behavior: "allow" });
+
+    // Second confirmation should now be visible
+    await vi.waitFor(() => {
+      expect(lastValue?.isConfirmationVisible).toBe(true);
+      expect(lastValue?.confirmingTool?.name).toBe("tool2");
+    });
+
+    lastValue?.handleConfirmationDecision({ behavior: "deny" });
+    await expect(decisionPromise2).resolves.toEqual({ behavior: "deny" });
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isConfirmationVisible).toBe(false);
+    });
+  });
+
+  it("handles setPermissionMode when mode is same as current", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    // Initial mode is "default"
+    lastValue?.setPermissionMode("default");
+    expect(mockAgent.setPermissionMode).not.toHaveBeenCalled();
+  });
+
+  it("handles sendMessage with images", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const images = [{ path: "test.png", mimeType: "image/png" }];
+    await lastValue?.sendMessage("", images);
+
+    expect(mockAgent.sendMessage).toHaveBeenCalledWith("", images);
+  });
+
+  it("handles sendMessage with multiline memory message", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const multilineMemory = "#line1\nline2";
+    await lastValue?.sendMessage(multilineMemory);
+
+    expect(mockAgent.sendMessage).toHaveBeenCalledWith(
+      multilineMemory,
+      undefined,
+    );
+  });
+
+  it("handles sendMessage with multiline bash message", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    const multilineBash = "!line1\nline2";
+    await lastValue?.sendMessage(multilineBash);
+
+    expect(mockAgent.sendMessage).toHaveBeenCalledWith(
+      multilineBash,
+      undefined,
+    );
+  });
+
+  it("handles agent.getMcpServers and agent.getSlashCommands returning undefined", async () => {
+    const minimalAgent = {
+      ...mockAgent,
+      getMcpServers: undefined,
+      getSlashCommands: undefined,
+    };
+    vi.mocked(Agent.create).mockResolvedValue(minimalAgent as unknown as Agent);
+
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue?.mcpServers).toEqual([]);
+      expect(lastValue?.slashCommands).toEqual([]);
     });
   });
 });

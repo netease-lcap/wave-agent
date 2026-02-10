@@ -111,11 +111,16 @@ describe("HistorySearch", () => {
 
     // Wait for selection to change in UI
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("second prompt");
+      const output = stripAnsiColors(lastFrame() || "");
+      // In Ink, the selected item often has a different visual indicator.
+      // We need to make sure the state has updated before pressing Enter.
+      // Since we can't easily see the "selection" in stripAnsiColors,
+      // we might need to wait for a frame or use a more specific check if available.
+      expect(output).toContain("second prompt");
     });
 
-    // Small delay to ensure state is fully propagated
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Give it one more tick to ensure the index state is updated
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     stdin.write("\r");
     await vi.waitFor(() => {

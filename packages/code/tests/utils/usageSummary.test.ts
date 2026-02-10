@@ -189,6 +189,58 @@ describe("Usage Summary Utilities", () => {
       });
     });
 
+    it("should handle unknown operation types", () => {
+      const usages: Usage[] = [
+        {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+          model: "gpt-4",
+          operation_type: "unknown" as Usage["operation_type"],
+        },
+      ];
+
+      const result = calculateTokenSummary(usages);
+
+      expect(result["gpt-4"].operations).toEqual({
+        agent_calls: 0,
+        compressions: 0,
+      });
+    });
+
+    it("should handle partial cache creation data", () => {
+      const usages: Usage[] = [
+        {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+          model: "claude-3",
+          operation_type: "agent",
+          cache_creation: {
+            ephemeral_5m_input_tokens: 10,
+            ephemeral_1h_input_tokens: 0,
+          },
+        },
+        {
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          total_tokens: 150,
+          model: "claude-3",
+          operation_type: "agent",
+          cache_creation: {
+            ephemeral_5m_input_tokens: 0,
+            ephemeral_1h_input_tokens: 20,
+          },
+        },
+      ];
+
+      const result = calculateTokenSummary(usages);
+      expect(result["claude-3"].cache_creation).toEqual({
+        ephemeral_5m_input_tokens: 10,
+        ephemeral_1h_input_tokens: 20,
+      });
+    });
+
     it("should sort results by total tokens descending", () => {
       const usages: Usage[] = [
         {
@@ -519,6 +571,109 @@ describe("Usage Summary Utilities", () => {
         expect(logCalls).toContain("    Created cache: 70 tokens");
         expect(logCalls).toContain("    5m cache: 40 tokens");
         expect(logCalls).toContain("    1h cache: 30 tokens");
+
+        consoleSpy.mockRestore();
+      });
+
+      it("should display overall cache information for multiple models", () => {
+        const consoleSpy = vi
+          .spyOn(console, "log")
+          .mockImplementation(() => {});
+
+        const usages: Usage[] = [
+          {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            model: "claude-3-sonnet",
+            operation_type: "agent",
+            cache_read_input_tokens: 30,
+          },
+          {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            model: "claude-3-opus",
+            operation_type: "agent",
+            cache_creation_input_tokens: 70,
+            cache_creation: {
+              ephemeral_5m_input_tokens: 40,
+              ephemeral_1h_input_tokens: 30,
+            },
+          },
+        ];
+
+        displayUsageSummary(usages);
+
+        const logCalls = consoleSpy.mock.calls.map((call) => call[0]);
+        // Check overall total section
+        const overallTotalIndex = logCalls.indexOf("Overall Total:");
+        expect(overallTotalIndex).toBeGreaterThan(-1);
+        const overallLogs = logCalls.slice(overallTotalIndex);
+
+        expect(overallLogs).toContain("  Cache Usage:");
+        expect(overallLogs).toContain("    Read from cache: 30 tokens");
+        expect(overallLogs).toContain("    Created cache: 70 tokens");
+        expect(overallLogs).toContain("    5m cache: 40 tokens");
+        expect(overallLogs).toContain("    1h cache: 30 tokens");
+
+        consoleSpy.mockRestore();
+      });
+
+      it("should handle partial cache data in overall total", () => {
+        const consoleSpy = vi
+          .spyOn(console, "log")
+          .mockImplementation(() => {});
+
+        const usages: Usage[] = [
+          {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            model: "model-1",
+            operation_type: "agent",
+            cache_read_input_tokens: 10,
+          },
+          {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            model: "model-2",
+            operation_type: "agent",
+            cache_creation_input_tokens: 20,
+          },
+          {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            model: "model-3",
+            operation_type: "agent",
+            cache_creation: {
+              ephemeral_5m_input_tokens: 5,
+              ephemeral_1h_input_tokens: 0,
+            },
+          },
+          {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            model: "model-4",
+            operation_type: "agent",
+            cache_creation: {
+              ephemeral_5m_input_tokens: 0,
+              ephemeral_1h_input_tokens: 15,
+            },
+          },
+        ];
+
+        displayUsageSummary(usages);
+
+        const logCalls = consoleSpy.mock.calls.map((call) => call[0]);
+        const overallLogs = logCalls.slice(logCalls.indexOf("Overall Total:"));
+        expect(overallLogs).toContain("    Read from cache: 10 tokens");
+        expect(overallLogs).toContain("    Created cache: 20 tokens");
+        expect(overallLogs).toContain("    5m cache: 5 tokens");
+        expect(overallLogs).toContain("    1h cache: 15 tokens");
 
         consoleSpy.mockRestore();
       });
