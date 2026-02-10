@@ -68,4 +68,23 @@ describe("ForegroundTaskManager", () => {
       manager.unregisterForegroundTask("non-existent"),
     ).not.toThrow();
   });
+
+  it("should handle race condition where task is unregistered while backgrounding is requested", async () => {
+    const manager = new ForegroundTaskManager();
+    const handler = vi.fn().mockResolvedValue(undefined);
+    const task: ForegroundTask = {
+      id: "test-task",
+      backgroundHandler: handler,
+    };
+
+    manager.registerForegroundTask(task);
+
+    // Simulate task finishing (unregistering) just before backgrounding logic processes it
+    manager.unregisterForegroundTask("test-task");
+
+    await manager.backgroundCurrentTask();
+
+    // Handler should not be called because the task was already removed from the stack by unregister
+    expect(handler).not.toHaveBeenCalled();
+  });
 });
