@@ -208,6 +208,12 @@ Task: "Create [Entity2] model in src/models/[entity2].py"
 
 ## Implementation Strategy
 
+### Task Delegation (CRITICAL)
+Tasks in this file MUST be delegated to specialized subagents whenever possible to reduce context costs of the main agent.
+- Use `typescript-expert` for implementation and type fixes.
+- Use `vitest-expert` for creating and running tests.
+- Use `Explore` for codebase research.
+
 ### MVP First (User Story 1 Only)
 
 1. Complete Phase 1: Setup
