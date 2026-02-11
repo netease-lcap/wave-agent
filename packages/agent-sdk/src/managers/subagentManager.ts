@@ -200,6 +200,7 @@ export class SubagentManager {
       workdir: this.workdir,
       systemPrompt: configuration.systemPrompt,
       subagentType: parameters.subagent_type, // Pass subagent type for hook context
+      mainSessionId: this.parentMessageManager.getSessionId(),
       hookManager: this.hookManager,
       permissionManager: this.parentToolManager.getPermissionManager(),
       getGatewayConfig: this.getGatewayConfig,

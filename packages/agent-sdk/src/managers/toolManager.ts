@@ -196,6 +196,7 @@ class ToolManager {
       mcpManager: this.mcpManager,
       lspManager: this.lspManager,
       sessionId: context.sessionId,
+      mainSessionId: context.mainSessionId,
     };
 
     this.logger?.debug("Executing tool with enhanced context", {

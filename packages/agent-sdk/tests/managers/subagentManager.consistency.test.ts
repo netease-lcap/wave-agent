@@ -50,6 +50,7 @@ describe("SubagentManager Consistency", () => {
     mockMessageManager = {
       addSubagentBlock: vi.fn(),
       updateSubagentBlock: vi.fn(),
+      getSessionId: vi.fn().mockReturnValue("parent-session-id"),
     } as unknown as MessageManager;
 
     // Mock ToolManager

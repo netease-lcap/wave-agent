@@ -59,7 +59,7 @@ export const taskCreateTool: ToolPlugin = {
     },
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
-    const sessionId = context.sessionId;
+    const sessionId = context.mainSessionId || context.sessionId;
     const taskManager = context.taskManager;
     if (!sessionId) {
       return {
@@ -118,7 +118,7 @@ export const taskGetTool: ToolPlugin = {
     },
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
-    const sessionId = context.sessionId;
+    const sessionId = context.mainSessionId || context.sessionId;
     const taskManager = context.taskManager;
     if (!sessionId) {
       return {
@@ -204,7 +204,7 @@ export const taskUpdateTool: ToolPlugin = {
     },
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
-    const sessionId = context.sessionId;
+    const sessionId = context.mainSessionId || context.sessionId;
     const taskManager = context.taskManager;
     if (!sessionId) {
       return {
@@ -274,7 +274,7 @@ export const taskListTool: ToolPlugin = {
     },
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
-    const sessionId = context.sessionId;
+    const sessionId = context.mainSessionId || context.sessionId;
     const taskManager = context.taskManager;
     if (!sessionId) {
       return {

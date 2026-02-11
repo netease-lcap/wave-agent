@@ -44,6 +44,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     mockMessageManager = {
       addSubagentBlock: vi.fn(),
       updateSubagentBlock: vi.fn(),
+      getSessionId: vi.fn().mockReturnValue("parent-session-id"),
     } as unknown as MessageManager;
 
     mockToolManager = {
