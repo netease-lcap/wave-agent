@@ -707,13 +707,13 @@ export class AIManager {
             (block): block is import("../types/messaging.js").ToolBlock =>
               block.type === "tool",
           ) || [];
-        const allBackgrounded =
+        const hasBackgrounded =
           toolBlocks.length > 0 &&
-          toolBlocks.every((block) => block.isManuallyBackgrounded);
+          toolBlocks.some((block) => block.isManuallyBackgrounded);
 
-        if (allBackgrounded) {
+        if (hasBackgrounded) {
           this.logger?.info(
-            "All tools were manually backgrounded, stopping recursion.",
+            "Some tools were manually backgrounded, stopping recursion.",
           );
         } else if (!isCurrentlyAborted) {
           // Recursively call AI service, increment recursion depth, and pass same configuration
