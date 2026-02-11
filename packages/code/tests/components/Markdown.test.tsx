@@ -340,6 +340,14 @@ describe("Markdown Component - Additional Branch Coverage", () => {
     expect(output).toContain("no language code");
   });
 
+  it("should not crash when an unknown language is specified", () => {
+    const markdown = "```unknownlang\nconst x = 1;\n```";
+    const { lastFrame } = render(<Markdown>{markdown}</Markdown>);
+    const output = lastFrame();
+    expect(output).toContain("const x = 1;");
+    expect(output).toContain(chalk.gray("```unknownlang"));
+  });
+
   it("should render list items with complex content", () => {
     const markdown = "- item with\n  multiple\n  lines";
     const { lastFrame } = render(<Markdown>{markdown}</Markdown>);

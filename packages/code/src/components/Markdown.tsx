@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { Box, Text, useStdout } from "ink";
 import { marked, type Token, type Tokens } from "marked";
-import { highlight } from "cli-highlight";
+import { highlight, supportsLanguage } from "cli-highlight";
 
 export interface MarkdownProps {
   children: string;
@@ -225,7 +225,8 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
               const content = lines.slice(1, -1).join("\n");
               const highlighted = content
                 ? highlight(unescapeHtml(content), {
-                    language: t.lang,
+                    language:
+                      t.lang && supportsLanguage(t.lang) ? t.lang : undefined,
                     ignoreIllegals: true,
                   })
                 : "";
