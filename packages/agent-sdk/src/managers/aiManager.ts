@@ -639,6 +639,7 @@ export class AIManager {
                 stage: "end",
                 name: toolName,
                 shortResult: toolResult.shortResult,
+                isManuallyBackgrounded: toolResult.isManuallyBackgrounded,
               });
 
               // Execute PostToolUse hooks after successful tool completion
@@ -663,6 +664,7 @@ export class AIManager {
                 stage: "end",
                 name: toolName,
                 compactParams,
+                isManuallyBackgrounded: false,
               });
             }
           },
@@ -694,7 +696,25 @@ export class AIManager {
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
 
-        if (!isCurrentlyAborted) {
+        // Check if all tools were manually backgrounded
+        const lastMessage =
+          this.messageManager.getMessages()[
+            this.messageManager.getMessages().length - 1
+          ];
+        const toolBlocks =
+          lastMessage?.blocks.filter(
+            (block): block is import("../types/messaging.js").ToolBlock =>
+              block.type === "tool",
+          ) || [];
+        const allBackgrounded =
+          toolBlocks.length > 0 &&
+          toolBlocks.every((block) => block.isManuallyBackgrounded);
+
+        if (allBackgrounded) {
+          this.logger?.info(
+            "All tools were manually backgrounded, stopping recursion.",
+          );
+        } else if (!isCurrentlyAborted) {
           // Recursively call AI service, increment recursion depth, and pass same configuration
           await this.sendAIMessage({
             recursionDepth: recursionDepth + 1,

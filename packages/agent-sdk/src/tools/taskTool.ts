@@ -142,6 +142,7 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
                     success: true,
                     content: `Task moved to background with ID: ${taskId}. Use TaskOutput to monitor progress.`,
                     shortResult: "Task backgrounded",
+                    isManuallyBackgrounded: true,
                   });
                 },
               });

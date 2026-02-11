@@ -220,6 +220,7 @@ Usage notes:
                 success: true,
                 content: `Command moved to background with ID: ${taskId}. Use TaskOutput tool with task_id="${taskId}" to monitor output.`,
                 shortResult: `Process ${taskId} backgrounded`,
+                isManuallyBackgrounded: true,
               });
             } else {
               handleAbort(
