@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TaskManager } from "../../src/components/TaskManager.js";
+import { BackgroundTaskManager } from "../../src/components/BackgroundTaskManager.js";
 import { ChatProvider } from "../../src/contexts/useChat.js";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import { Agent, type BackgroundTask } from "wave-agent-sdk";
@@ -29,7 +29,7 @@ vi.mock("wave-agent-sdk", async () => {
   };
 });
 
-describe("TaskManager", () => {
+describe("BackgroundTaskManager", () => {
   const mockTasks: Partial<BackgroundTask>[] = [
     {
       id: "task-1",
@@ -91,7 +91,7 @@ describe("TaskManager", () => {
     const { lastFrame } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -118,7 +118,7 @@ describe("TaskManager", () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -159,7 +159,7 @@ describe("TaskManager", () => {
     const { stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={onCancel} />
+          <BackgroundTaskManager onCancel={onCancel} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -187,7 +187,7 @@ describe("TaskManager", () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -222,7 +222,7 @@ describe("TaskManager", () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -255,7 +255,7 @@ describe("TaskManager", () => {
     const { lastFrame } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -269,7 +269,7 @@ describe("TaskManager", () => {
     const { lastFrame } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -315,7 +315,7 @@ describe("TaskManager", () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -354,7 +354,7 @@ describe("TaskManager", () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -399,7 +399,7 @@ describe("TaskManager", () => {
     const { lastFrame } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -422,7 +422,7 @@ describe("TaskManager", () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
@@ -461,7 +461,7 @@ describe("TaskManager", () => {
     const { lastFrame, stdin } = render(
       <AppProvider>
         <ChatProvider>
-          <TaskManager onCancel={vi.fn()} />
+          <BackgroundTaskManager onCancel={vi.fn()} />
         </ChatProvider>
       </AppProvider>,
     );
