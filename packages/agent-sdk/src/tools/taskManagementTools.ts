@@ -75,9 +75,7 @@ export const taskCreateTool: ToolPlugin = {
       };
     }
 
-    const taskId = await taskManager.getNextTaskId(sessionId);
-    const task: Task = {
-      id: taskId,
+    const task: Omit<Task, "id"> = {
       subject: args.subject as string,
       description: args.description as string,
       status: (args.status as TaskStatus) || "pending",
@@ -88,7 +86,7 @@ export const taskCreateTool: ToolPlugin = {
       metadata: (args.metadata as Record<string, unknown>) || {},
     };
 
-    await taskManager.createTask(sessionId, task);
+    const taskId = await taskManager.createTask(sessionId, task);
 
     return {
       success: true,
