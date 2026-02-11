@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { Task } from "../../src/types/tasks.js";
 import { promises as fs } from "fs";
@@ -66,7 +66,7 @@ describe("TaskManager", () => {
         { recursive: true },
       );
       expect(fs.open).toHaveBeenCalledWith(
-        expect.stringContaining("session.lock"),
+        expect.stringMatching(/\/\.lock$/),
         "wx",
       );
       expect(fs.writeFile).toHaveBeenCalledWith(
@@ -76,7 +76,7 @@ describe("TaskManager", () => {
       );
       expect(mockFileHandle.close).toHaveBeenCalled();
       expect(fs.unlink).toHaveBeenCalledWith(
-        expect.stringContaining("session.lock"),
+        expect.stringMatching(/\/\.lock$/),
       );
     });
 
@@ -150,14 +150,7 @@ describe("TaskManager", () => {
       vi.mocked(fs.open).mockResolvedValue(
         mockFileHandle as unknown as Awaited<ReturnType<typeof fs.open>>,
       );
-      // We need to mock getNextTaskId to return an empty string to trigger the validation error
-      // but getNextTaskId is private or called internally.
-      // Actually, createTask now ignores the passed task.id and uses getNextTaskId.
-      // To test validation of ID, we'd need getNextTaskId to return an invalid ID.
-      // But getNextTaskId always returns a string "1" or higher.
 
-      // Let's change the test to expect it to SUCCEED in creating task "1"
-      // because it ignores the empty id in the input.
       const taskId = await taskManager.createTask(sessionId, invalidTask);
       expect(taskId).toBe("1");
     });
@@ -199,14 +192,6 @@ describe("TaskManager", () => {
   });
 
   describe("Concurrency and Locking", () => {
-    beforeEach(() => {
-      // vi.useFakeTimers();
-    });
-
-    afterEach(() => {
-      // vi.useRealTimers();
-    });
-
     it("should retry if lock exists and eventually succeed", async () => {
       const mockFileHandle = {
         close: vi.fn().mockResolvedValue(undefined),
@@ -243,7 +228,7 @@ describe("TaskManager", () => {
       vi.mocked(fs.open).mockRejectedValue(lockError);
 
       await expect(taskManager.createTask(sessionId, mockTask)).rejects.toThrow(
-        "Could not acquire session lock for test-session after 100 retries",
+        `Could not acquire lock for session ${sessionId} after 100 retries`,
       );
     });
 
@@ -265,7 +250,7 @@ describe("TaskManager", () => {
 
       expect(mockFileHandle.close).toHaveBeenCalled();
       expect(fs.unlink).toHaveBeenCalledWith(
-        expect.stringContaining("session.lock"),
+        expect.stringMatching(/\/\.lock$/),
       );
     });
 
