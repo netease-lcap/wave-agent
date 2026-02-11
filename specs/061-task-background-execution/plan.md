@@ -50,7 +50,6 @@
 ### Step 2: Tool Updates
 - Update `Task` tool to support `run_in_background`.
 - Implement `TaskOutput` and `TaskStop` tools.
-- Ensure `TaskOutput` blocking retrieval can be aborted (Esc) without killing the background task.
 - Update `Bash` tool to use the new manager.
 - Remove `BashOutput` and `KillBash` tools.
 

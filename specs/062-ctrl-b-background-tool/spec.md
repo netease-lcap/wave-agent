@@ -32,7 +32,7 @@ As a user, I want to be able to background a subagent task (Task tool) that is t
 
 **Acceptance Scenarios**:
 
-1. **Given** a Task tool is running in the foreground, **When** the user sees the hint `[Ctrl-B] Background` and presses Ctrl-B, **Then** the tool's foreground execution ends with the specified result message, the task continues in the background, and the main agent's AI recursion loop MUST stop immediately for that turn.
+1. **Given** a Task tool is running in the foreground, **When** the user sees the hint `[Ctrl-B] Background` and presses Ctrl-B, **Then** the tool's foreground execution ends with the specified result message, and the task continues in the background.
 
 ---
 
@@ -58,9 +58,6 @@ As a user, I want to be able to background a subagent task (Task tool) that is t
 - **FR-006**: The CLI MUST return control to the user (show the prompt or next agent message) immediately after a tool is backgrounded.
 - **FR-007**: The system MUST include the unique ID of the backgrounded task/command in the result message.
 - **FR-008**: The system MUST NOT background bash commands that were initiated directly by the user using the `!` prefix when Ctrl-B is pressed.
-- **FR-009**: When a tool is backgrounded via Ctrl-B, the AI recursion loop in `AIManager` MUST stop immediately, preventing the agent from making further tool calls or generating more content in the current turn.
-- **FR-010**: The system MUST NOT show an error message (e.g., "Request was aborted") when the AI recursion is stopped due to backgrounding.
-- **FR-011**: Backgrounded processes MUST NOT be killed by the AI's abort signal when the recursion loop is stopped.
 
 ### Key Entities *(include if feature involves data)*
 
