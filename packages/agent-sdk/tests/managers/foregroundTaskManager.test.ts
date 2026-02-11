@@ -35,7 +35,7 @@ describe("ForegroundTaskManager", () => {
     expect(backgroundHandler).toHaveBeenCalledTimes(1);
   });
 
-  it("should handle multiple tasks in a stack (LIFO)", async () => {
+  it("should background all tasks in the stack", async () => {
     const manager = new ForegroundTaskManager();
     const handler1 = vi.fn().mockResolvedValue(undefined);
     const handler2 = vi.fn().mockResolvedValue(undefined);
@@ -51,9 +51,11 @@ describe("ForegroundTaskManager", () => {
 
     await manager.backgroundCurrentTask();
     expect(handler2).toHaveBeenCalledTimes(1);
-    expect(handler1).not.toHaveBeenCalled();
+    expect(handler1).toHaveBeenCalledTimes(1);
 
+    // Calling it again should not call handlers again (tasks were popped)
     await manager.backgroundCurrentTask();
+    expect(handler2).toHaveBeenCalledTimes(1);
     expect(handler1).toHaveBeenCalledTimes(1);
   });
 
