@@ -140,7 +140,7 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
                   // Resolve the tool execution early so the main agent can continue
                   resolve({
                     success: true,
-                    content: `Task moved to background with ID: ${taskId}. Use TaskOutput to monitor progress.`,
+                    content: `Task moved to background with ID: ${taskId}.`,
                     shortResult: "Task backgrounded",
                     isManuallyBackgrounded: true,
                   });
