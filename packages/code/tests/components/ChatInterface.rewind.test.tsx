@@ -50,6 +50,8 @@ describe("ChatInterface Rewind Visibility", () => {
       handleConfirmationCancel: vi.fn(),
       backgroundCurrentTask: vi.fn(),
       sessionTasks: [],
+      isTaskListVisible: true,
+      setIsTaskListVisible: vi.fn(),
     } as ChatContextType);
 
     vi.mocked(useInputManager).mockReturnValue({
@@ -118,6 +120,8 @@ describe("ChatInterface Rewind Visibility", () => {
       handleConfirmationCancel: vi.fn(),
       backgroundCurrentTask: vi.fn(),
       sessionTasks: [],
+      isTaskListVisible: true,
+      setIsTaskListVisible: vi.fn(),
     } as ChatContextType);
 
     vi.mocked(useInputManager).mockReturnValue({

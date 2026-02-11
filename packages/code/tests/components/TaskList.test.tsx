@@ -3,15 +3,43 @@ import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { TaskList } from "../../src/components/TaskList.js";
 import { useTasks } from "../../src/hooks/useTasks.js";
+import { ChatContextType, useChat } from "../../src/contexts/useChat.js";
 import type { Task } from "wave-agent-sdk";
 
 vi.mock("../../src/hooks/useTasks.js", () => ({
   useTasks: vi.fn(),
 }));
 
+vi.mock("../../src/contexts/useChat.js", () => ({
+  useChat: vi.fn(),
+}));
+
 describe("TaskList", () => {
   it("should render nothing when there are no tasks", () => {
     vi.mocked(useTasks).mockReturnValue([]);
+    vi.mocked(useChat).mockReturnValue({
+      isTaskListVisible: true,
+    } as unknown as ChatContextType);
+    const { lastFrame } = render(<TaskList />);
+    expect(lastFrame()).toBeFalsy();
+  });
+
+  it("should render nothing when isTaskListVisible is false", () => {
+    const mockTasks: Task[] = [
+      {
+        id: "1",
+        subject: "Task 1",
+        status: "pending",
+        description: "",
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+      },
+    ];
+    vi.mocked(useTasks).mockReturnValue(mockTasks);
+    vi.mocked(useChat).mockReturnValue({
+      isTaskListVisible: false,
+    } as unknown as ChatContextType);
     const { lastFrame } = render(<TaskList />);
     expect(lastFrame()).toBeFalsy();
   });
@@ -56,6 +84,9 @@ describe("TaskList", () => {
       },
     ];
     vi.mocked(useTasks).mockReturnValue(mockTasks);
+    vi.mocked(useChat).mockReturnValue({
+      isTaskListVisible: true,
+    } as unknown as ChatContextType);
 
     const { lastFrame } = render(<TaskList />);
     const output = lastFrame();
@@ -82,6 +113,9 @@ describe("TaskList", () => {
       },
     ];
     vi.mocked(useTasks).mockReturnValue(mockTasks);
+    vi.mocked(useChat).mockReturnValue({
+      isTaskListVisible: true,
+    } as unknown as ChatContextType);
 
     const { lastFrame } = render(<TaskList />);
     const output = lastFrame();
