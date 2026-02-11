@@ -30,7 +30,7 @@ export interface InputManagerCallbacks {
   ) => void;
   onHistorySearchStateChange?: (show: boolean, query: string) => void;
   onMemoryTypeSelectorStateChange?: (show: boolean, message: string) => void;
-  onTaskManagerStateChange?: (show: boolean) => void;
+  onBackgroundTaskManagerStateChange?: (show: boolean) => void;
   onMcpManagerStateChange?: (show: boolean) => void;
   onRewindManagerStateChange?: (show: boolean) => void;
   onImagesStateChange?: (images: AttachedImage[]) => void;
@@ -92,7 +92,7 @@ export class InputManager {
   private imageIdCounter: number = 1;
 
   // Additional UI state
-  private showTaskManager: boolean = false;
+  private showBackgroundTaskManager: boolean = false;
   private showMcpManager: boolean = false;
   private showRewindManager: boolean = false;
 
@@ -360,7 +360,7 @@ export class InputManager {
         // If not an agent command or execution failed, check local commands
         if (!commandExecuted) {
           if (command === "tasks") {
-            this.setShowTaskManager(true);
+            this.setShowBackgroundTaskManager(true);
             commandExecuted = true;
           } else if (command === "mcp") {
             this.setShowMcpManager(true);
@@ -747,13 +747,13 @@ export class InputManager {
   }
 
   // Task manager state methods
-  getShowTaskManager(): boolean {
-    return this.showTaskManager;
+  getShowBackgroundTaskManager(): boolean {
+    return this.showBackgroundTaskManager;
   }
 
-  setShowTaskManager(show: boolean): void {
-    this.showTaskManager = show;
-    this.callbacks.onTaskManagerStateChange?.(show);
+  setShowBackgroundTaskManager(show: boolean): void {
+    this.showBackgroundTaskManager = show;
+    this.callbacks.onBackgroundTaskManagerStateChange?.(show);
   }
 
   getShowMcpManager(): boolean {
@@ -1073,13 +1073,13 @@ export class InputManager {
       this.showCommandSelector ||
       this.showHistorySearch ||
       this.showMemoryTypeSelector ||
-      this.showTaskManager ||
+      this.showBackgroundTaskManager ||
       this.showMcpManager ||
       this.showRewindManager
     ) {
       if (
         this.showMemoryTypeSelector ||
-        this.showTaskManager ||
+        this.showBackgroundTaskManager ||
         this.showMcpManager ||
         this.showRewindManager
       ) {
