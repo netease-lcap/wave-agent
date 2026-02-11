@@ -43,13 +43,11 @@ describe("Task Management Tools", () => {
         description: "Test Description",
         status: "in_progress",
       };
-      mockTaskManager.getNextTaskId.mockResolvedValue("1");
+      mockTaskManager.createTask.mockResolvedValue("1");
 
       const result = await taskCreateTool.execute(args, context);
 
-      expect(mockTaskManager.getNextTaskId).toHaveBeenCalledWith(sessionId);
       expect(mockTaskManager.createTask).toHaveBeenCalledWith(sessionId, {
-        id: "1",
         subject: "Test Task",
         description: "Test Description",
         status: "in_progress",
@@ -68,12 +66,11 @@ describe("Task Management Tools", () => {
         subject: "Minimal Task",
         description: "Minimal Description",
       };
-      mockTaskManager.getNextTaskId.mockResolvedValue("2");
+      mockTaskManager.createTask.mockResolvedValue("2");
 
       const result = await taskCreateTool.execute(args, context);
 
       expect(mockTaskManager.createTask).toHaveBeenCalledWith(sessionId, {
-        id: "2",
         subject: "Minimal Task",
         description: "Minimal Description",
         status: "pending",
