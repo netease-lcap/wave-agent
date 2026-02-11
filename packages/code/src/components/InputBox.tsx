@@ -5,7 +5,7 @@ import { FileSelector } from "./FileSelector.js";
 import { CommandSelector } from "./CommandSelector.js";
 import { HistorySearch } from "./HistorySearch.js";
 import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
-import { TaskManager } from "./TaskManager.js";
+import { BackgroundTaskManager } from "./BackgroundTaskManager.js";
 import { McpManager } from "./McpManager.js";
 import { RewindCommand } from "./RewindCommand.js";
 import { useInputManager } from "../hooks/useInputManager.js";
@@ -219,7 +219,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       )}
 
       {showTaskManager && (
-        <TaskManager onCancel={() => setShowTaskManager(false)} />
+        <BackgroundTaskManager onCancel={() => setShowTaskManager(false)} />
       )}
 
       {showMcpManager && (

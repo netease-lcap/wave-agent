@@ -2,7 +2,7 @@
 
 ## Decision: Unified Task Management System
 
-We will implement a unified `BackgroundTaskManager` (or extend `BackgroundBashManager` into a more generic `TaskManager`) to handle both background shell processes and background agent subtasks.
+We will implement a unified `BackgroundTaskManager` (or extend `BackgroundBashManager` into a more generic `BackgroundTaskManager`) to handle both background shell processes and background agent subtasks.
 
 ### Rationale
 - **Consistency**: Users should have a single way to interact with any background operation, whether it's a simple shell command or a complex agent task.

@@ -104,7 +104,7 @@
 - [x] T021 [US4] Implement `/tasks` command in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 - [x] T022 [US4] Remove `/bashes` command from `packages/agent-sdk/src/managers/slashCommandManager.ts`
 - [x] T023 [US4] Update `useChat` context to handle `onTasksChange` in `packages/code/src/contexts/useChat.tsx`
-- [x] T024 [US4] Update CLI UI to display background tasks in `packages/code/src/components/`
+- [x] T024 [US4] Update CLI UI to display background tasks in `packages/code/src/components/BackgroundTaskManager.tsx`
 
 **Checkpoint**: Centralized task management is available in the CLI.
 

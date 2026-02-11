@@ -12,11 +12,13 @@ interface Task {
   runtime?: number;
 }
 
-export interface TaskManagerProps {
+export interface BackgroundTaskManagerProps {
   onCancel: () => void;
 }
 
-export const TaskManager: React.FC<TaskManagerProps> = ({ onCancel }) => {
+export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
+  onCancel,
+}) => {
   const { backgroundTasks, getBackgroundTaskOutput, stopBackgroundTask } =
     useChat();
   const [tasks, setTasks] = useState<Task[]>([]);

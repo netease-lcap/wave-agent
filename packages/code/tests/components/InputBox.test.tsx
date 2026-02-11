@@ -244,7 +244,7 @@ describe("InputBox Smoke Tests", () => {
   });
 
   describe("Additional Branch Coverage", () => {
-    it("should render TaskManager when showTaskManager is true", async () => {
+    it("should render BackgroundTaskManager when showTaskManager is true", async () => {
       const { stdin, lastFrame } = render(<InputBox />);
       await vi.waitFor(() =>
         expect(lastFrame()).toContain("Type your message"),
