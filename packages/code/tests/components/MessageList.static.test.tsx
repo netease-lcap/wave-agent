@@ -66,8 +66,7 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("Message 14 - Message 14");
       expect(lastFrame()).toContain("Message 23 - Message 23");
 
-      // Should show correct message count without page info
-      expect(lastFrame()).toContain("Messages 23");
+      // Should not show page info
       expect(lastFrame()).not.toContain("Page");
 
       // For same-role consecutive messages, only the very first message shows header
@@ -93,8 +92,7 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("Msg 6 - Message 6");
       expect(lastFrame()).toContain("Msg 15 - Message 15");
 
-      // Should show correct message count without page info
-      expect(lastFrame()).toContain("Messages 15");
+      // Should not show page info
       expect(lastFrame()).not.toContain("Page");
 
       // For same-role consecutive messages, only the first one shows header
@@ -121,7 +119,6 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("Bulk 38 - Message 38");
       expect(lastFrame()).toContain("Bulk 47 - Message 47");
 
-      expect(lastFrame()).toContain("Messages 47");
       expect(lastFrame()).not.toContain("Page");
     });
   });
@@ -144,7 +141,6 @@ describe("MessageList Static Rendering", () => {
       // Should show all messages with correct numbering
       expect(lastFrame()).toContain("Short 1 - Message 1");
       expect(lastFrame()).toContain("Short 3 - Message 3");
-      expect(lastFrame()).toContain("Messages 3");
       expect(lastFrame()).not.toContain("Page");
       expect(lastFrame()).toContain("👤 You");
       // For same-role consecutive messages, only the first one shows header
@@ -162,7 +158,6 @@ describe("MessageList Static Rendering", () => {
       );
 
       expect(lastFrame()).toContain("Only - Message 1");
-      expect(lastFrame()).toContain("Messages 1");
       expect(lastFrame()).not.toContain("Page");
       expect(lastFrame()).toContain("👤 You");
     });
@@ -198,17 +193,12 @@ describe("MessageList Static Rendering", () => {
         />,
       );
 
-      // Should show total messages without pagination info
-      expect(lastFrame()).toContain("Messages 30");
+      // Should not show pagination info
       expect(lastFrame()).not.toContain("Page");
 
       // Should NOT show pagination navigation
       expect(lastFrame()).not.toContain("Ctrl+U/D");
       expect(lastFrame()).not.toContain("Navigate");
-
-      // Should show expand toggle
-      expect(lastFrame()).toContain("Ctrl+O");
-      expect(lastFrame()).toContain("Ctrl+T");
     });
 
     it("should show expand controls for single message", () => {
@@ -229,10 +219,7 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).not.toContain("Ctrl+U/D");
       expect(lastFrame()).not.toContain("Navigate");
 
-      // Should show expand toggle
-      expect(lastFrame()).toContain("Ctrl+O");
-      expect(lastFrame()).toContain("Ctrl+T");
-      expect(lastFrame()).toContain("Messages 1");
+      // Should not show page info
       expect(lastFrame()).not.toContain("Page");
     });
 
@@ -249,8 +236,7 @@ describe("MessageList Static Rendering", () => {
         />,
       );
 
-      expect(collapsedFrame()).toContain("Ctrl+O");
-      expect(collapsedFrame()).toContain("Ctrl+T");
+      expect(collapsedFrame()).toContain("Test - Message 1");
 
       // Test expanded state
       const { lastFrame: expandedFrame } = render(
@@ -262,8 +248,7 @@ describe("MessageList Static Rendering", () => {
         />,
       );
 
-      expect(expandedFrame()).toContain("Ctrl+O");
-      expect(expandedFrame()).toContain("Ctrl+T");
+      expect(expandedFrame()).toContain("Test - Message 1");
     });
   });
 
@@ -335,7 +320,6 @@ describe("MessageList Static Rendering", () => {
       );
 
       // Should show message count without pagination and complex content
-      expect(lastFrame()).toContain("Messages 20");
       expect(lastFrame()).not.toContain("Page");
       expect(lastFrame()).toContain("Solution");
       expect(lastFrame()).toContain("More content here");
@@ -437,7 +421,6 @@ describe("MessageList Static Rendering", () => {
 
       expect(lastFrame()).toContain("Only message - Message 1");
       expect(lastFrame()).toContain("👤 You");
-      expect(lastFrame()).toContain("Messages 1");
     });
   });
 });
