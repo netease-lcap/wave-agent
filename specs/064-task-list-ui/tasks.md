@@ -49,6 +49,12 @@ Implement a persistent, read-only task list summary at the bottom of the message
 - [x] T019 Run `pnpm test:coverage` and ensure no regressions
 - [x] T020 Final manual verification of the task list UI in the CLI
 
+## Phase 6: Blocked By Feature
+
+- [x] T021 Update `TaskList` component to display "blocked" status or icon for tasks with `blockedBy` in `packages/code/src/components/TaskList.tsx` (typescript-expert)
+- [x] T022 Implement a way to show blocking task subjects in `TaskList` (e.g., on a second line or in parentheses) in `packages/code/src/components/TaskList.tsx` (typescript-expert)
+- [x] T023 [P] Add unit tests for "blocked by" UI in `packages/code/tests/components/TaskList.test.ts` (vitest-expert)
+
 ## Dependency Graph
 
 ```mermaid

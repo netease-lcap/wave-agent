@@ -124,4 +124,36 @@ describe("TaskList", () => {
     // The truncated text should be present
     expect(output).toContain(longSubject.slice(0, 10));
   });
+
+  it("should render blocked tasks with lock icon and blocking subjects", () => {
+    const mockTasks: Task[] = [
+      {
+        id: "1",
+        subject: "Blocking Task",
+        status: "pending",
+        description: "",
+        blocks: ["2"],
+        blockedBy: [],
+        metadata: {},
+      },
+      {
+        id: "2",
+        subject: "Blocked Task",
+        status: "pending",
+        description: "",
+        blocks: [],
+        blockedBy: ["1"],
+        metadata: {},
+      },
+    ];
+    vi.mocked(useTasks).mockReturnValue(mockTasks);
+    vi.mocked(useChat).mockReturnValue({
+      isTaskListVisible: true,
+    } as unknown as ChatContextType);
+
+    const { lastFrame } = render(<TaskList />);
+    const output = lastFrame();
+
+    expect(output).toContain("🔒 Blocked Task (Blocked by: Blocking Task)");
+  });
 });

@@ -14,7 +14,10 @@ export const TaskList: React.FC = () => {
     return null;
   }
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string, isBlocked: boolean) => {
+    if (isBlocked) {
+      return <Text color="red">🔒</Text>;
+    }
     switch (status) {
       case "pending":
         return <Text color="gray">○</Text>;
@@ -46,11 +49,25 @@ export const TaskList: React.FC = () => {
       {tasks.map((task) => {
         const isDimmed =
           task.status === "completed" || task.status === "deleted";
+        const isBlocked = task.blockedBy && task.blockedBy.length > 0;
+        const blockingTaskSubjects = isBlocked
+          ? task.blockedBy
+              .map((id) => tasks.find((t) => t.id === id)?.subject)
+              .filter(Boolean)
+          : [];
+
+        const blockedByText =
+          isBlocked && blockingTaskSubjects.length > 0
+            ? ` (Blocked by: ${blockingTaskSubjects.join(", ")})`
+            : "";
+
+        const fullText = `${task.subject}${blockedByText}`;
+
         return (
           <Box key={task.id} gap={1}>
-            {getStatusIcon(task.status)}
+            {getStatusIcon(task.status, isBlocked)}
             <Text dimColor={isDimmed}>
-              {truncate(task.subject, maxSubjectWidth)}
+              {truncate(fullText, maxSubjectWidth)}
             </Text>
           </Box>
         );
