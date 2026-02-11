@@ -93,9 +93,7 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
       borderStyle="classic"
       borderColor="magenta"
       paddingX={1}
-      paddingY={0}
       flexDirection="column"
-      marginBottom={1}
     >
       {/* Header Section */}
       <Box flexDirection="row" gap={1}>

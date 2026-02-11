@@ -196,7 +196,7 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
           case "heading": {
             const t = token as Tokens.Heading;
             return (
-              <Box key={index} marginBottom={1} flexDirection="column">
+              <Box key={index} marginY={1} flexDirection="column">
                 <Text bold color="cyan">
                   {"#".repeat(t.depth)} <InlineRenderer tokens={t.tokens} />
                 </Text>
@@ -206,7 +206,7 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
           case "paragraph": {
             const t = token as Tokens.Paragraph;
             return (
-              <Box key={index} marginBottom={1} flexDirection="row">
+              <Box key={index} flexDirection="row">
                 <Text>
                   <InlineRenderer tokens={t.tokens} />
                 </Text>
