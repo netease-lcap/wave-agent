@@ -18,6 +18,8 @@ vi.mock("fs", async (importOriginal) => {
       writeFile: vi.fn(),
       readFile: vi.fn(),
       readdir: vi.fn(),
+      open: vi.fn(),
+      unlink: vi.fn(),
     },
   };
 });
@@ -55,6 +57,24 @@ describe("Task Management Integration Tests", () => {
         .map((p) => p.replace(dirPath + "/", ""));
 
       return files as unknown as Awaited<ReturnType<typeof fs.readdir>>;
+    });
+
+    vi.mocked(fs.open).mockImplementation(async (path, flags) => {
+      if (flags === "wx") {
+        if (virtualFs.has(path.toString())) {
+          const error = new Error("File exists") as NodeJS.ErrnoException;
+          error.code = "EEXIST";
+          throw error;
+        }
+        virtualFs.set(path.toString(), "");
+      }
+      return {
+        close: vi.fn().mockResolvedValue(undefined),
+      } as unknown as Awaited<ReturnType<typeof fs.open>>;
+    });
+
+    vi.mocked(fs.unlink).mockImplementation(async (path) => {
+      virtualFs.delete(path.toString());
     });
   });
 
