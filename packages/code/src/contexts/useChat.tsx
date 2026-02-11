@@ -44,8 +44,6 @@ export interface ChatContextType {
   ) => Promise<void>;
   abortMessage: () => void;
   latestTotalTokens: number;
-  // Memory functionality
-  saveMemory: (message: string, type: "project" | "user") => Promise<void>;
   // MCP functionality
   mcpServers: McpServerStatus[];
   connectMcpServer: (serverName: string) => Promise<boolean>;
@@ -349,16 +347,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       if (!hasTextContent && !hasImageAttachments) return;
 
       try {
-        // Handle memory mode - check if it's a memory message (starts with # and only one line)
-        if (content.startsWith("#") && !content.includes("\n")) {
-          const memoryText = content.substring(1).trim();
-          if (!memoryText) return;
-
-          // In memory mode, don't add user message, only wait for user to choose memory type then add assistant message
-          // Don't auto-save, wait for user to choose memory type
-          return;
-        }
-
         // Handle bash mode - check if it's a bash command (starts with ! and only one line)
         if (content.startsWith("!") && !content.includes("\n")) {
           const command = content.substring(1).trim();
@@ -404,14 +392,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const abortMessage = useCallback(() => {
     agentRef.current?.abortMessage();
   }, []);
-
-  // Memory save function - delegate to Agent
-  const saveMemory = useCallback(
-    async (message: string, type: "project" | "user") => {
-      await agentRef.current?.saveMemory(message, type);
-    },
-    [],
-  );
 
   // Permission management methods
   const setPermissionMode = useCallback((mode: PermissionMode) => {
@@ -547,7 +527,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     abortMessage,
     latestTotalTokens,
     isCompressing,
-    saveMemory,
     mcpServers,
     connectMcpServer,
     disconnectMcpServer,

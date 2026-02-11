@@ -9,7 +9,6 @@ import {
   SubagentManager,
   type SubagentManagerCallbacks,
 } from "./managers/subagentManager.js";
-import * as memory from "./services/memory.js";
 import { McpManager, type McpManagerCallbacks } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BashManager } from "./managers/bashManager.js";
@@ -1141,67 +1140,6 @@ export class Agent {
     } catch (error) {
       console.error("Failed to add user message:", error);
       // Loading state will be automatically updated by the useEffect that watches messages
-    }
-  }
-
-  /** Save memory to project or user memory file */
-  public async saveMemory(
-    message: string,
-    type: "project" | "user",
-  ): Promise<void> {
-    try {
-      // Ensure the message starts with # for memory functions
-      const formattedMessage = message.startsWith("#")
-        ? message
-        : `#${message}`;
-
-      if (type === "project") {
-        await memory.addMemory(formattedMessage, this.workdir);
-        // Update internal state after successful save
-        this._projectMemoryContent = await memory.readMemoryFile(this.workdir);
-      } else {
-        await memory.addUserMemory(formattedMessage);
-        // Update internal state after successful save
-        this._userMemoryContent = await memory.getUserMemoryContent();
-      }
-
-      // Add successful MemoryBlock to the last assistant message
-      const memoryText = message.substring(1).trim();
-      const typeLabel = type === "project" ? "Project Memory" : "User Memory";
-      const storagePath = "AGENTS.md";
-
-      const messages = this.messageManager.getMessages();
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage && lastMessage.role === "assistant") {
-        lastMessage.blocks.push({
-          type: "memory",
-          content: `${typeLabel}: ${memoryText}`,
-          isSuccess: true,
-          memoryType: type,
-          storagePath,
-        });
-        this.messageManager.setMessages(messages);
-      }
-    } catch (error) {
-      // Add failed MemoryBlock to the last assistant message
-      const memoryText = message.substring(1).trim();
-      const typeLabel = type === "project" ? "Project Memory" : "User Memory";
-      const storagePath = "AGENTS.md";
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-
-      const messages = this.messageManager.getMessages();
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage && lastMessage.role === "assistant") {
-        lastMessage.blocks.push({
-          type: "memory",
-          content: `${typeLabel}: ${memoryText} - Error: ${errorMessage}`,
-          isSuccess: false,
-          memoryType: type,
-          storagePath,
-        });
-        this.messageManager.setMessages(messages);
-      }
     }
   }
 

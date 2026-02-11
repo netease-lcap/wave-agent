@@ -4,54 +4,6 @@ import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
 import { logger } from "../utils/globalLogger.js";
 
 // Project memory related methods
-export const isMemoryMessage = (message: string): boolean => {
-  return message.trim().startsWith("#");
-};
-
-export const addMemory = async (
-  message: string,
-  workdir: string,
-): Promise<void> => {
-  if (!isMemoryMessage(message)) {
-    return;
-  }
-
-  try {
-    const memoryFilePath = path.join(workdir, "AGENTS.md");
-
-    // Format memory entry, starting with -, no timestamp
-    const memoryEntry = `- ${message.substring(1).trim()}\n`;
-
-    // Check if file exists
-    let existingContent = "";
-    try {
-      existingContent = await fs.readFile(memoryFilePath, "utf-8");
-    } catch (error) {
-      // File does not exist, create new file
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        logger.info("Memory file does not exist, will create new one", {
-          memoryFilePath,
-        });
-        existingContent =
-          "# Memory\n\nThis is the AI assistant's memory file, recording important information and context.\n\n";
-      } else {
-        throw error;
-      }
-    }
-
-    // Append new memory entry to the end of the file
-    const updatedContent = existingContent + memoryEntry;
-
-    // Write file
-    await fs.writeFile(memoryFilePath, updatedContent, "utf-8");
-
-    logger.debug(`Memory added to ${memoryFilePath}:`, message);
-  } catch (error) {
-    logger.error("Failed to add memory:", error);
-    throw new Error(`Failed to add memory: ${(error as Error).message}`);
-  }
-};
-
 // User memory related methods
 export const ensureUserMemoryFile = async (): Promise<void> => {
   try {
@@ -80,30 +32,6 @@ export const ensureUserMemoryFile = async (): Promise<void> => {
     throw new Error(
       `Failed to ensure user memory file: ${(error as Error).message}`,
     );
-  }
-};
-
-export const addUserMemory = async (message: string): Promise<void> => {
-  try {
-    // Ensure user memory file exists
-    await ensureUserMemoryFile();
-
-    // Format memory entry, starting with -
-    const memoryEntry = `- ${message.substring(1).trim()}\n`;
-
-    // Read existing content
-    const existingContent = await fs.readFile(USER_MEMORY_FILE, "utf-8");
-
-    // Append new memory entry to the end of the file
-    const updatedContent = existingContent + memoryEntry;
-
-    // Write file
-    await fs.writeFile(USER_MEMORY_FILE, updatedContent, "utf-8");
-
-    logger.debug(`User memory added to ${USER_MEMORY_FILE}:`, message);
-  } catch (error) {
-    logger.error("Failed to add user memory:", error);
-    throw new Error(`Failed to add user memory: ${(error as Error).message}`);
   }
 };
 

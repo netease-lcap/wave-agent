@@ -12,9 +12,6 @@ vi.mock("../../src/components/CommandOutputDisplay.js", () => ({
 vi.mock("../../src/components/ToolResultDisplay.js", () => ({
   ToolResultDisplay: () => <Text>MOCKED_TOOL_RESULT</Text>,
 }));
-vi.mock("../../src/components/MemoryDisplay.js", () => ({
-  MemoryDisplay: () => <Text>MOCKED_MEMORY</Text>,
-}));
 vi.mock("../../src/components/CompressDisplay.js", () => ({
   CompressDisplay: () => <Text>MOCKED_COMPRESS</Text>,
 }));
@@ -243,21 +240,6 @@ describe("MessageItem Component", () => {
       );
       expect(lastFrame()).toContain("📷 Image");
       expect(lastFrame()).toContain("(2)");
-    });
-
-    it("should render memory block", () => {
-      const message: Message = {
-        role: "assistant",
-        blocks: [{ type: "memory", content: "mem", isSuccess: true }],
-      };
-      const { lastFrame } = render(
-        <MessageItem
-          message={message}
-          isExpanded={false}
-          shouldShowHeader={false}
-        />,
-      );
-      expect(lastFrame()).toContain("MOCKED_MEMORY");
     });
 
     it("should render compress block", () => {

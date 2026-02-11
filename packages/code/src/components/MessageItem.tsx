@@ -4,7 +4,6 @@ import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageSource } from "wave-agent-sdk";
 import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
-import { MemoryDisplay } from "./MemoryDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
 import { SubagentBlock } from "./SubagentBlock.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
@@ -67,8 +66,6 @@ export const MessageItem = ({
           )}
         </Box>
       )}
-
-      {block.type === "memory" && <MemoryDisplay block={block} />}
 
       {block.type === "compress" && (
         <CompressDisplay block={block} isExpanded={isExpanded} />

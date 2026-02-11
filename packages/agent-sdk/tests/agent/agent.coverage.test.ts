@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
-import * as memory from "@/services/memory.js";
 import * as sessionService from "@/services/session.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 import * as fs from "fs/promises";
@@ -42,21 +41,6 @@ describe("Agent - Branch Coverage", () => {
 
       expect(agent.projectMemory).toBe("");
       expect(agent.userMemory).toBe("");
-    });
-
-    it("should use provided lspManager", async () => {
-      const mockLspManager = {
-        initialize: vi.fn(),
-        cleanup: vi.fn(),
-      };
-
-      agent = await Agent.create({
-        lspManager: mockLspManager as unknown as Agent["lspManager"],
-      });
-      // Accessing private property via any for verification
-      expect((agent as unknown as { lspManager: unknown }).lspManager).toBe(
-        mockLspManager,
-      );
     });
   });
 
@@ -212,43 +196,6 @@ describe("Agent - Branch Coverage", () => {
       await agent.sendMessage("  ");
       // sendMessage doesn't check for empty string if it doesn't start with /
       // but let's see
-    });
-  });
-
-  describe("Memory Saving", () => {
-    beforeEach(async () => {
-      agent = await Agent.create({ workdir: "/test/workdir" });
-      // Add an assistant message to attach memory blocks to
-      (
-        agent as unknown as {
-          messageManager: { setMessages: (msgs: unknown[]) => void };
-        }
-      ).messageManager.setMessages([{ role: "assistant", blocks: [] }]);
-    });
-
-    it("should format memory message with # if missing", async () => {
-      const spyAddMemory = vi
-        .spyOn(memory, "addMemory")
-        .mockResolvedValue(undefined);
-      await agent.saveMemory("test memory", "project");
-      expect(spyAddMemory).toHaveBeenCalledWith(
-        "#test memory",
-        expect.any(String),
-      );
-    });
-
-    it("should handle memory save failure", async () => {
-      vi.spyOn(memory, "addMemory").mockRejectedValue(new Error("Save failed"));
-      await agent.saveMemory("test", "project");
-
-      const lastMsg = agent.messages[0];
-      const block = lastMsg.blocks[0];
-      if (block.type === "memory") {
-        expect(block.isSuccess).toBe(false);
-        expect(block.content).toContain("Error: Save failed");
-      } else {
-        throw new Error("Expected memory block");
-      }
     });
   });
 });

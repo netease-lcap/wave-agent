@@ -33,10 +33,6 @@ export const useInputManager = (
     show: false,
     query: "",
   });
-  const [memoryTypeSelectorState, setMemoryTypeSelectorState] = useState({
-    show: false,
-    message: "",
-  });
   const [showBackgroundTaskManager, setShowBackgroundTaskManager] =
     useState(false);
   const [showMcpManager, setShowMcpManager] = useState(false);
@@ -61,9 +57,6 @@ export const useInputManager = (
         },
         onHistorySearchStateChange: (show, query) => {
           setHistorySearchState({ show, query });
-        },
-        onMemoryTypeSelectorStateChange: (show, message) => {
-          setMemoryTypeSelectorState({ show, message });
         },
         onBackgroundTaskManagerStateChange: (show) => {
           setShowBackgroundTaskManager(show);
@@ -98,9 +91,6 @@ export const useInputManager = (
         },
         onHistorySearchStateChange: (show, query) => {
           setHistorySearchState({ show, query });
-        },
-        onMemoryTypeSelectorStateChange: (show, message) => {
-          setMemoryTypeSelectorState({ show, message });
         },
         onBackgroundTaskManagerStateChange: (show) => {
           setShowBackgroundTaskManager(show);
@@ -247,22 +237,6 @@ export const useInputManager = (
     managerRef.current?.handleCancelHistorySearch();
   }, []);
 
-  // Memory type selector methods
-  const activateMemoryTypeSelector = useCallback((message: string) => {
-    managerRef.current?.activateMemoryTypeSelector(message);
-  }, []);
-
-  const handleMemoryTypeSelect = useCallback(
-    async (type: "project" | "user") => {
-      await managerRef.current?.handleMemoryTypeSelect(type);
-    },
-    [],
-  );
-
-  const handleCancelMemoryTypeSelect = useCallback(() => {
-    managerRef.current?.handleCancelMemoryTypeSelect();
-  }, []);
-
   // Input history methods
   const setUserInputHistory = useCallback((history: string[]) => {
     managerRef.current?.setUserInputHistory(history);
@@ -312,8 +286,6 @@ export const useInputManager = (
     slashPosition: commandSelectorState.position,
     showHistorySearch: historySearchState.show,
     historySearchQuery: historySearchState.query,
-    showMemoryTypeSelector: memoryTypeSelectorState.show,
-    memoryMessage: memoryTypeSelectorState.message,
     showBackgroundTaskManager,
     showMcpManager,
     showRewindManager,
@@ -348,11 +320,6 @@ export const useInputManager = (
     // History search
     handleHistorySearchSelect,
     handleCancelHistorySearch,
-
-    // Memory type selector
-    activateMemoryTypeSelector,
-    handleMemoryTypeSelect,
-    handleCancelMemoryTypeSelect,
 
     // Input history
     setUserInputHistory,

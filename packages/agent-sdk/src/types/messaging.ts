@@ -26,7 +26,6 @@ export type MessageBlock =
   | ImageBlock
   | CommandOutputBlock
   | CompressBlock
-  | MemoryBlock
   | SubagentBlock
   | ReasoningBlock
   | FileHistoryBlock;
@@ -87,14 +86,6 @@ export interface CompressBlock {
   type: "compress";
   content: string;
   sessionId: string;
-}
-
-export interface MemoryBlock {
-  type: "memory";
-  content: string;
-  isSuccess: boolean;
-  memoryType?: "project" | "user"; // Memory type
-  storagePath?: string; // Storage path text
 }
 
 export interface SubagentBlock {

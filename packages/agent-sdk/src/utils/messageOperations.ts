@@ -54,14 +54,6 @@ export interface AddErrorBlockParams {
   error: string;
 }
 
-export interface AddMemoryBlockParams {
-  messages: Message[];
-  content: string;
-  isSuccess: boolean;
-  memoryType?: "project" | "user";
-  storagePath?: string;
-}
-
 export interface AddCommandOutputParams {
   messages: Message[];
   command: string;
@@ -317,35 +309,6 @@ export const addErrorBlockToMessage = ({
     });
   }
 
-  return newMessages;
-};
-
-// Add Memory Block as new assistant message
-export const addMemoryBlockToMessage = ({
-  messages,
-  content,
-  isSuccess,
-  memoryType,
-  storagePath,
-}: AddMemoryBlockParams): Message[] => {
-  const newMessages = [...messages];
-
-  // Create new assistant message containing MemoryBlock
-  const memoryMessage: Message = {
-    role: "assistant",
-    blocks: [
-      {
-        type: "memory",
-        content,
-        isSuccess,
-        memoryType,
-        storagePath,
-      },
-    ],
-  };
-
-  // Add to end of message list
-  newMessages.push(memoryMessage);
   return newMessages;
 };
 

@@ -14,7 +14,6 @@ export const ChatInterface: React.FC = () => {
     isCompressing,
     sendMessage,
     abortMessage,
-    saveMemory,
     mcpServers,
     connectMcpServer,
     disconnectMcpServer,
@@ -63,7 +62,6 @@ export const ChatInterface: React.FC = () => {
           userInputHistory={userInputHistory}
           sendMessage={sendMessage}
           abortMessage={abortMessage}
-          saveMemory={saveMemory}
           mcpServers={mcpServers}
           connectMcpServer={connectMcpServer}
           disconnectMcpServer={disconnectMcpServer}

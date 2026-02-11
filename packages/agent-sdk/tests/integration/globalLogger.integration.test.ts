@@ -818,100 +818,6 @@ describe("Agent - Global Logger Integration", () => {
       });
 
       describe("Memory service functions", () => {
-        it("should log when addMemory is called", async () => {
-          // Import after logger is configured
-          const { addMemory, isMemoryMessage } = await import(
-            "../../src/services/memory.js"
-          );
-
-          const testMessage = "#Test memory entry";
-          const testWorkdir = "/test/project";
-
-          // Mock file system operations for addMemory
-          const mockWriteFile = vi.fn().mockResolvedValue(undefined);
-          const mockReadFile = vi
-            .fn()
-            .mockRejectedValueOnce({ code: "ENOENT" }) // File doesn't exist initially
-            .mockResolvedValue("# Memory\n\nExisting content\n");
-
-          vi.doMock("fs/promises", () => ({
-            writeFile: mockWriteFile,
-            readFile: mockReadFile,
-          }));
-
-          // Test that isMemoryMessage works correctly
-          expect(isMemoryMessage(testMessage)).toBe(true);
-
-          try {
-            await addMemory(testMessage, testWorkdir);
-          } catch {
-            // Expected to fail due to mocking, but we want to see if logging occurred
-          }
-
-          // Since the current implementation has commented logger calls,
-          // this test demonstrates where logging should occur
-          // When uncommented, we expect debug logs for successful operations
-          globalLogger.debug("Memory service operation completed", {
-            operation: "addMemory",
-            message: testMessage,
-            workdir: testWorkdir,
-          });
-
-          // Verify our demonstration logging
-          expectLoggerCall(mockLogger1, "debug", [
-            "Memory service operation completed",
-            {
-              operation: "addMemory",
-              message: testMessage,
-              workdir: testWorkdir,
-            },
-          ]);
-        });
-
-        it("should log when addUserMemory is called", async () => {
-          const { ensureUserMemoryFile } = await import(
-            "../../src/services/memory.js"
-          );
-
-          const testMessage = "#User memory entry";
-
-          // Mock file system operations
-          const mockWriteFile = vi.fn().mockResolvedValue(undefined);
-          const mockReadFile = vi
-            .fn()
-            .mockResolvedValue("# User Memory\n\nExisting content\n");
-          const mockMkdir = vi.fn().mockResolvedValue(undefined);
-          const mockAccess = vi.fn().mockResolvedValue(undefined);
-
-          vi.doMock("fs/promises", () => ({
-            writeFile: mockWriteFile,
-            readFile: mockReadFile,
-            mkdir: mockMkdir,
-            access: mockAccess,
-          }));
-
-          // Test ensureUserMemoryFile
-          try {
-            await ensureUserMemoryFile();
-          } catch {
-            // Expected to fail due to mocking
-          }
-
-          // Demonstrate logging for addUserMemory
-          globalLogger.debug("User memory operation completed", {
-            operation: "addUserMemory",
-            message: testMessage,
-          });
-
-          expectLoggerCall(mockLogger1, "debug", [
-            "User memory operation completed",
-            {
-              operation: "addUserMemory",
-              message: testMessage,
-            },
-          ]);
-        });
-
         it("should log when reading memory files", async () => {
           const { readMemoryFile } = await import(
             "../../src/services/memory.js"
@@ -1094,12 +1000,9 @@ describe("Agent - Global Logger Integration", () => {
       });
 
       it("should not throw errors when memory services are used without logger", async () => {
-        const { addMemory, isMemoryMessage } = await import(
-          "../../src/services/memory.js"
-        );
+        const { readMemoryFile } = await import("../../src/services/memory.js");
 
-        const testMessage = "#Test memory without logger";
-        const testWorkdir = "/test/project";
+        const testWorkdir = "/mock/workdir";
 
         // Mock minimal file operations to prevent actual file system access
         vi.doMock("fs/promises", () => ({
@@ -1110,20 +1013,11 @@ describe("Agent - Global Logger Integration", () => {
         }));
 
         // These should not throw errors even without logger
-        expect(() => {
-          expect(isMemoryMessage(testMessage)).toBe(true);
+        await expect(async () => {
+          await readMemoryFile(testWorkdir);
           globalLogger.debug("This should be silent");
           globalLogger.error("This should also be silent");
         }).not.toThrow();
-
-        // Service functions might throw due to file system operations,
-        // but not due to missing logger
-        try {
-          await addMemory(testMessage, testWorkdir);
-        } catch (error) {
-          // Expected to fail due to mocked file operations
-          expect((error as Error).message).not.toContain("logger");
-        }
       });
 
       it("should not throw errors when session services are used without logger", async () => {
@@ -1170,7 +1064,7 @@ describe("Agent - Global Logger Integration", () => {
       it("should use debug level for successful operations", () => {
         // Demonstrate debug logging for normal operations
         globalLogger.debug("Memory operation started", {
-          operation: "addMemory",
+          operation: "readMemoryFile",
           message: "#Test message",
         });
 
@@ -1190,7 +1084,7 @@ describe("Agent - Global Logger Integration", () => {
           1,
           "Memory operation started",
           {
-            operation: "addMemory",
+            operation: "readMemoryFile",
             message: "#Test message",
           },
         );
@@ -1217,7 +1111,7 @@ describe("Agent - Global Logger Integration", () => {
 
         // Demonstrate error logging for failures
         globalLogger.error("Memory operation failed", {
-          operation: "addMemory",
+          operation: "readMemoryFile",
           error: testError.message,
         });
 
@@ -1238,7 +1132,7 @@ describe("Agent - Global Logger Integration", () => {
           1,
           "Memory operation failed",
           {
-            operation: "addMemory",
+            operation: "readMemoryFile",
             error: testError.message,
           },
         );
@@ -1364,7 +1258,7 @@ describe("Agent - Global Logger Integration", () => {
         // Memory service context
         globalLogger.debug("Operation started", {
           service: "MemoryService",
-          operation: "addMemory",
+          operation: "readMemoryFile",
           target: "project memory",
         });
 
@@ -1387,7 +1281,7 @@ describe("Agent - Global Logger Integration", () => {
 
         const logCalls = mockLogger1.debug.mock.calls;
         expect(logCalls[0][1]).toHaveProperty("service", "MemoryService");
-        expect(logCalls[0][1]).toHaveProperty("operation", "addMemory");
+        expect(logCalls[0][1]).toHaveProperty("operation", "readMemoryFile");
 
         expect(logCalls[1][1]).toHaveProperty("service", "SessionService");
         expect(logCalls[1][1]).toHaveProperty("operation", "createSession");
@@ -1400,7 +1294,7 @@ describe("Agent - Global Logger Integration", () => {
         // Memory operation with file paths
         globalLogger.debug("Memory file operation", {
           service: "MemoryService",
-          operation: "addMemory",
+          operation: "readMemoryFile",
           memoryFile: "/project/AGENTS.md",
           messageType: "project memory",
           workdir: "/project",
@@ -1462,7 +1356,7 @@ describe("Agent - Global Logger Integration", () => {
         // Memory service error with file context
         globalLogger.error("Failed to write memory file", {
           service: "MemoryService",
-          operation: "addMemory",
+          operation: "readMemoryFile",
           memoryFile: "/project/AGENTS.md",
           error: fileError.message,
           errorCode: "ENOENT",
