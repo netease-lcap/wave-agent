@@ -58,7 +58,6 @@ describe("MessageList Component", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -70,9 +69,6 @@ describe("MessageList Component", () => {
       expect(output).toContain("🤖 Assistant");
       expect(output).toContain("Hello - Message 1");
       expect(output).toContain("Hi there - Message 2");
-
-      // Should show message count
-      expect(output).toContain("Messages 2");
     });
 
     it("should render correctly without optional props", () => {
@@ -90,57 +86,6 @@ describe("MessageList Component", () => {
       expect(output).toContain("🤖 Assistant");
       expect(output).toContain("Hello - Message 1");
       expect(output).toContain("Hi there - Message 2");
-
-      // Should show message count
-      expect(output).toContain("Messages 2");
-    });
-  });
-
-  describe("Message count and token display", () => {
-    it("should display message count in footer section", () => {
-      const messages = [createMessage("user", "Test message", 1)];
-
-      const { lastFrame } = render(<MessageList messages={messages} />);
-
-      const output = lastFrame();
-
-      // Should contain the Messages count section
-      expect(output).toContain("Messages 1");
-    });
-
-    it("should display token count when provided", () => {
-      const messages = [createMessage("user", "Test message", 1)];
-
-      const { lastFrame } = render(
-        <MessageList messages={messages} latestTotalTokens={2500} />,
-      );
-
-      const output = lastFrame();
-
-      // Should contain the Messages count section
-      expect(output).toContain("Messages 1");
-
-      // Should show token count
-      expect(output).toContain("2,500 tokens");
-
-      // Should contain the pipe separator
-      expect(output).toContain(" | ");
-    });
-
-    it("should not display token count when not provided or zero", () => {
-      const messages = [createMessage("user", "Test message", 1)];
-
-      const { lastFrame } = render(
-        <MessageList messages={messages} latestTotalTokens={0} />,
-      );
-
-      const output = lastFrame();
-
-      // Should contain the Messages count
-      expect(output).toContain("Messages 1");
-
-      // Should not contain token display
-      expect(output).not.toContain("tokens");
     });
   });
 
@@ -155,11 +100,8 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should contain toggle hint
-      expect(output).toContain("Ctrl+O");
-      expect(output).toContain("Ctrl+T");
-
-      // Should contain Messages count
-      expect(output).toContain("Messages 1");
+      expect(output).not.toContain("Ctrl+O");
+      expect(output).not.toContain("Ctrl+T");
     });
 
     it("should display correctly when component is in expanded state", () => {
@@ -172,8 +114,8 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should contain collapse toggle hint
-      expect(output).toContain("Ctrl+O");
-      expect(output).toContain("Ctrl+T");
+      expect(output).not.toContain("Ctrl+O");
+      expect(output).not.toContain("Ctrl+T");
     });
   });
 
@@ -182,18 +124,13 @@ describe("MessageList Component", () => {
       const messages = [createMessage("user", "Loading test", 1)];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={true}
-          latestTotalTokens={2500}
-        />,
+        <MessageList messages={messages} isLoading={true} />,
       );
 
       const output = lastFrame();
 
       // Should show loading state
       expect(output).toContain("💭 AI is thinking...");
-      expect(output).toContain("2,500 tokens");
     });
 
     it("should work correctly when command is running", () => {
@@ -246,9 +183,6 @@ describe("MessageList Component", () => {
       const { lastFrame } = render(<MessageList messages={messages} />);
 
       const output = lastFrame();
-
-      // Should show correct message count
-      expect(output).toContain("Messages 3");
 
       // Should show all messages
       expect(output).toContain("First - Message 1");

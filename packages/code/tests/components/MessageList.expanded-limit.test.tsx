@@ -200,7 +200,7 @@ describe("MessageList Component - Expanded Mode Limit", () => {
   });
 
   describe("Integration with other features", () => {
-    it("should work with token display and message limiting", () => {
+    it("should work with message limiting", () => {
       const messages = Array.from({ length: 25 }, (_, i) =>
         createMessage(
           i % 2 === 0 ? "user" : "assistant",
@@ -210,17 +210,10 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isExpanded={true}
-          latestTotalTokens={5000}
-        />,
+        <MessageList messages={messages} isExpanded={true} />,
       );
 
       const output = lastFrame();
-
-      // Should show token count
-      expect(output).toContain("5,000 tokens");
 
       // Should show message limiting
       expect(output).toContain("5 earlier messages omitted");

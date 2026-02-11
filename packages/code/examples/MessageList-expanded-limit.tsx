@@ -45,11 +45,7 @@ const ExampleApp = () => {
               <text>Collapsed Mode (shows all 30 messages):</text>
             </Box>
           </Box>
-          <MessageList
-            messages={manyMessages}
-            isExpanded={false}
-            latestTotalTokens={15000}
-          />
+          <MessageList messages={manyMessages} isExpanded={false} />
         </Box>
       </Box>
 
@@ -61,11 +57,7 @@ const ExampleApp = () => {
               <text>Expanded Mode (limits to latest 20 messages):</text>
             </Box>
           </Box>
-          <MessageList
-            messages={manyMessages}
-            isExpanded={true}
-            latestTotalTokens={15000}
-          />
+          <MessageList messages={manyMessages} isExpanded={true} />
         </Box>
       </Box>
     </Box>

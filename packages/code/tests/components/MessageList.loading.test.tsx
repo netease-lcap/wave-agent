@@ -42,17 +42,13 @@ describe("MessageList Loading State", () => {
         messages={messages}
         isLoading={true}
         isCommandRunning={false}
-        latestTotalTokens={1000}
         isExpanded={false}
       />,
     );
     const output = lastFrame();
 
-    // Should show the loading message without tokens (tokens are now in Messages row)
+    // Should show the loading message
     expect(output).toContain("💭 AI is thinking... | Esc to abort");
-
-    // Should show token count in the Messages row at the bottom
-    expect(output).toContain("Messages 2 | 1,000 tokens");
 
     // Should still show the actual messages
     expect(output).toContain("Hello");
@@ -70,7 +66,6 @@ describe("MessageList Loading State", () => {
         messages={messages}
         isLoading={false}
         isCommandRunning={true}
-        latestTotalTokens={1000}
         isExpanded={false}
       />,
     );
@@ -78,9 +73,6 @@ describe("MessageList Loading State", () => {
 
     // Should show the command running message
     expect(output).toContain("Command is running...");
-
-    // Should show token count in the Messages row at the bottom
-    expect(output).toContain("Messages 2 | 1,000 tokens");
 
     // Should still show the actual messages
     expect(output).toContain("Hello");
@@ -98,7 +90,6 @@ describe("MessageList Loading State", () => {
         messages={messages}
         isLoading={false}
         isCommandRunning={false}
-        latestTotalTokens={1000}
         isExpanded={false}
       />,
     );
@@ -107,9 +98,6 @@ describe("MessageList Loading State", () => {
     // Should not show any loading message
     expect(output).not.toContain("💭 AI is thinking...");
     expect(output).not.toContain("Command is running...");
-
-    // Should show token count in the Messages row at the bottom
-    expect(output).toContain("Messages 2 | 1,000 tokens");
 
     // Should show the actual messages
     expect(output).toContain("Hello");
@@ -122,7 +110,6 @@ describe("MessageList Loading State", () => {
         messages={[]}
         isLoading={false}
         isCommandRunning={false}
-        latestTotalTokens={1000}
         isExpanded={false}
       />,
     );
@@ -143,13 +130,12 @@ describe("MessageList Loading State", () => {
         messages={messages}
         isLoading={false}
         isCommandRunning={false}
-        latestTotalTokens={0}
         isExpanded={false}
       />,
     );
     const output = lastFrame();
 
-    // Should show Messages count but not tokens when latestTotalTokens is 0
+    // Should show Messages count
     expect(output).toContain("Messages 1");
     expect(output).not.toContain("tokens");
   });
@@ -165,7 +151,6 @@ describe("MessageList Loading State", () => {
         messages={messages}
         isLoading={true}
         isCommandRunning={true}
-        latestTotalTokens={2500}
         isExpanded={false}
       />,
     );
@@ -174,9 +159,6 @@ describe("MessageList Loading State", () => {
     // Should show both loading and command running messages
     expect(output).toContain("💭 AI is thinking... | Esc to abort");
     expect(output).toContain("Command is running...");
-
-    // Should show token count in the Messages row
-    expect(output).toContain("Messages 2 | 2,500 tokens");
 
     // Should show the actual messages
     expect(output).toContain("Hello");

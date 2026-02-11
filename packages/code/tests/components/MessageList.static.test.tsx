@@ -57,7 +57,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -85,7 +84,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -113,7 +111,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -140,7 +137,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -161,7 +157,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -179,7 +174,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -200,7 +194,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -228,7 +221,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -253,7 +245,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -267,7 +258,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={true}
         />,
       );
@@ -288,7 +278,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -312,7 +301,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -342,7 +330,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -368,7 +355,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -396,7 +382,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -424,7 +409,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -447,7 +431,6 @@ describe("MessageList Static Rendering", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
