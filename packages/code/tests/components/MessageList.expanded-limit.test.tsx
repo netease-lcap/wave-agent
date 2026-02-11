@@ -63,7 +63,6 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       const output = lastFrame();
 
       // Should show all 15 messages
-      expect(output).toContain("Messages 15");
       expect(output).toContain("Test 1 - Message 1");
       expect(output).toContain("Test 15 - Message 15");
 
@@ -85,9 +84,6 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const output = lastFrame();
-
-      // Should show total message count (25)
-      expect(output).toContain("Messages 25");
 
       // Should show omitted message indicator
       expect(output).toContain("5 earlier messages omitted");
@@ -116,7 +112,6 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       const output = lastFrame();
 
       // Should show all messages in collapsed mode
-      expect(output).toContain("Messages 25");
       expect(output).toContain("Test 1 - Message 1");
       expect(output).toContain("Test 25 - Message 25");
 
@@ -140,7 +135,6 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       const output = lastFrame();
 
       // Should show all 20 messages without limiting
-      expect(output).toContain("Messages 20");
       expect(output).toContain("Test 1 - Message 1");
       expect(output).toContain("Test 20 - Message 20");
 
@@ -164,7 +158,6 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       const output = lastFrame();
 
       // Should limit to 20 messages
-      expect(output).toContain("Messages 21");
       expect(output).toContain("1 earlier message omitted");
       expect(output).toContain("showing latest 20");
 
@@ -217,7 +210,6 @@ describe("MessageList Component - Expanded Mode Limit", () => {
 
       // Should show message limiting
       expect(output).toContain("5 earlier messages omitted");
-      expect(output).toContain("Messages 25");
     });
 
     it("should work with loading state and message limiting", () => {
@@ -240,7 +232,6 @@ describe("MessageList Component - Expanded Mode Limit", () => {
 
       // Should show message limiting
       expect(output).toContain("5 earlier messages omitted");
-      expect(output).toContain("Messages 25");
     });
   });
 });

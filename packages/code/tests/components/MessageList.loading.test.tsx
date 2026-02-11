@@ -122,7 +122,7 @@ describe("MessageList Loading State", () => {
     expect(output).not.toContain("Messages");
   });
 
-  it("should show token count with zero tokens", () => {
+  it("should not show token count", () => {
     const messages = [createMessage("user", "Hello")];
 
     const { lastFrame } = render(
@@ -135,8 +135,8 @@ describe("MessageList Loading State", () => {
     );
     const output = lastFrame();
 
-    // Should show Messages count
-    expect(output).toContain("Messages 1");
+    // Should not show Messages count or tokens
+    expect(output).not.toContain("Messages");
     expect(output).not.toContain("tokens");
   });
 
