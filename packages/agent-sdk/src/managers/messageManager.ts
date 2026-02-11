@@ -402,17 +402,7 @@ export class MessageManager {
   public updateToolBlock(params: AgentToolBlockUpdateParams): void {
     const newMessages = updateToolBlockInMessage({
       messages: this.messages,
-      id: params.id,
-      parameters: params.parameters,
-      result: params.result,
-      success: params.success,
-      error: params.error,
-      stage: params.stage,
-      name: params.name,
-      shortResult: params.shortResult,
-      images: params.images,
-      compactParams: params.compactParams,
-      parametersChunk: params.parametersChunk,
+      ...params,
     });
     this.setMessages(newMessages);
     this.callbacks.onToolBlockUpdated?.(params);
