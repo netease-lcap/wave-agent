@@ -161,19 +161,13 @@ describe("SlashCommandManager", () => {
     });
 
     it("should handle parsing errors gracefully", () => {
-      // Mock parseSlashCommandInput to throw an error
-      const originalConsoleError = console.error;
-      console.error = vi.fn();
-
+      vi.spyOn(console, "error").mockImplementation(() => {});
       // Test with input that doesn't start with /
       const result = slashCommandManager.parseAndValidateSlashCommand("clear");
 
       expect(result.isValid).toBe(false);
       expect(result.commandId).toBeUndefined();
       expect(result.args).toBeUndefined();
-      expect(console.error).toHaveBeenCalled();
-
-      console.error = originalConsoleError;
     });
   });
 

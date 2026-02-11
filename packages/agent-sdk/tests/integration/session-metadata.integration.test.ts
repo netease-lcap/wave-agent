@@ -30,10 +30,6 @@ vi.mock("fs/promises", () => ({
   rename: vi.fn(),
 }));
 
-// Mock stdout/stderr to suppress output during testing
-const mockConsoleLog = vi.fn();
-const mockConsoleError = vi.fn();
-
 describe("Session Metadata Integration Tests - User Story 1", () => {
   let handler: JsonlHandler;
   let mockWriteFile: Mock<typeof import("fs/promises").writeFile>;
@@ -41,8 +37,6 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
   let mockReadFile: Mock<typeof import("fs/promises").readFile>;
   let mockStat: Mock<typeof import("fs/promises").stat>;
   let mockMkdir: Mock<typeof import("fs/promises").mkdir>;
-  let originalConsoleLog: typeof console.log;
-  let originalConsoleError: typeof console.error;
 
   const createTestMessage = (
     role: "user" | "assistant",
@@ -55,14 +49,6 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
   });
 
   beforeEach(async () => {
-    // Store original console methods
-    originalConsoleLog = console.log;
-    originalConsoleError = console.error;
-
-    // Mock console methods to suppress output
-    console.log = mockConsoleLog;
-    console.error = mockConsoleError;
-
     // Reset all mocks
     vi.clearAllMocks();
 
@@ -88,10 +74,6 @@ describe("Session Metadata Integration Tests - User Story 1", () => {
   });
 
   afterEach(() => {
-    // Restore original console methods
-    console.log = originalConsoleLog;
-    console.error = originalConsoleError;
-
     // Restore all mocks
     vi.restoreAllMocks();
   });

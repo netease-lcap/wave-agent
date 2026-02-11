@@ -127,10 +127,6 @@ describe("ExitPlanMode Integration", () => {
       agent as unknown as AgentInternal
     ).toolManager.execute("ExitPlanMode", {}, { workdir });
 
-    if (!result.success) {
-      console.log("Tool execution failed:", result.error);
-    }
-
     expect(result.success).toBe(true);
     expect(agent.getPermissionMode()).toBe("default");
     expect(mockCallback).toHaveBeenCalledWith(
@@ -166,10 +162,6 @@ describe("ExitPlanMode Integration", () => {
       agent as unknown as AgentInternal
     ).toolManager.execute("ExitPlanMode", {}, { workdir });
 
-    if (!result.success) {
-      console.log("Tool execution failed:", result.error);
-    }
-
     expect(result.success).toBe(true);
     expect(agent.getPermissionMode()).toBe("acceptEdits");
   });
@@ -199,10 +191,6 @@ describe("ExitPlanMode Integration", () => {
     const result = await (
       agent as unknown as AgentInternal
     ).toolManager.execute("ExitPlanMode", {}, { workdir });
-
-    if (result.success) {
-      console.log("Tool execution should have failed");
-    }
 
     expect(result.success).toBe(false);
     expect(result.content).toBe(feedback);
