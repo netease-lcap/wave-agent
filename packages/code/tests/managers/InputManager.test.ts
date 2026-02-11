@@ -622,6 +622,78 @@ describe("InputManager", () => {
       expect(mockCallbacks.onAbortMessage).toHaveBeenCalled();
     });
 
+    it("should NOT handle escape to abort during loading if background task manager is active", async () => {
+      manager.setShowBackgroundTaskManager(true);
+      const mockKey: Key = {
+        escape: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      };
+
+      await manager.handleInput("", mockKey, [], true, false); // isLoading = true
+
+      expect(mockCallbacks.onAbortMessage).not.toHaveBeenCalled();
+    });
+
+    it("should NOT handle escape to abort during loading if MCP manager is active", async () => {
+      manager.setShowMcpManager(true);
+      const mockKey: Key = {
+        escape: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      };
+
+      await manager.handleInput("", mockKey, [], true, false); // isLoading = true
+
+      expect(mockCallbacks.onAbortMessage).not.toHaveBeenCalled();
+    });
+
+    it("should NOT handle escape to abort during loading if Rewind manager is active", async () => {
+      manager.setShowRewindManager(true);
+      const mockKey: Key = {
+        escape: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      };
+
+      await manager.handleInput("", mockKey, [], true, false); // isLoading = true
+
+      expect(mockCallbacks.onAbortMessage).not.toHaveBeenCalled();
+    });
+
     it("should prevent submission when loading", async () => {
       manager.insertTextAtCursor("test");
 

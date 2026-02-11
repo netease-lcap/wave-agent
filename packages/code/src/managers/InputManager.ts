@@ -997,7 +997,13 @@ export class InputManager {
     }
 
     // Handle interrupt request - use Esc key to interrupt AI request or command
-    if (key.escape && (isLoading || isCommandRunning)) {
+    if (
+      key.escape &&
+      (isLoading || isCommandRunning) &&
+      !this.showBackgroundTaskManager &&
+      !this.showMcpManager &&
+      !this.showRewindManager
+    ) {
       // Unified interrupt for AI message generation and command execution
       this.callbacks.onAbortMessage?.();
       return true;
