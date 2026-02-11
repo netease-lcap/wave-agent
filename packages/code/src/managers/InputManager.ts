@@ -363,16 +363,16 @@ export class InputManager {
         // If not an agent command or execution failed, check local commands
         if (!commandExecuted) {
           if (command === "tasks" && this.callbacks.onShowTaskManager) {
-            this.callbacks.onShowTaskManager();
+            this.setShowTaskManager(true);
             commandExecuted = true;
           } else if (command === "mcp" && this.callbacks.onShowMcpManager) {
-            this.callbacks.onShowMcpManager();
+            this.setShowMcpManager(true);
             commandExecuted = true;
           } else if (
             command === "rewind" &&
             this.callbacks.onShowRewindManager
           ) {
-            this.callbacks.onShowRewindManager();
+            this.setShowRewindManager(true);
             commandExecuted = true;
           }
         }
@@ -1090,7 +1090,8 @@ export class InputManager {
         this.showRewindManager
       ) {
         // Memory type selector, task manager, MCP manager and Rewind don't need to handle input, handled by component itself
-        return false;
+        // Return true to indicate we've "handled" it (by ignoring it) so it doesn't leak to normal input
+        return true;
       }
 
       if (this.showHistorySearch) {
