@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { exitPlanModeTool } from "@/tools/exitPlanMode.js";
+import { TaskManager } from "@/services/taskManager.js";
 import { readFile } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 import { PermissionManager } from "@/managers/permissionManager.js";
@@ -24,6 +25,7 @@ describe("exitPlanModeTool", () => {
 
     mockContext = {
       workdir: "/test/workdir",
+      taskManager: new TaskManager("test-session"),
       permissionManager: mockPermissionManager as unknown as PermissionManager,
       permissionMode: "plan",
       canUseToolCallback: vi.fn(),
@@ -48,7 +50,10 @@ describe("exitPlanModeTool", () => {
   });
 
   it("should fail if permission manager is not available", async () => {
-    const result = await exitPlanModeTool.execute({}, { workdir: "/test" });
+    const result = await exitPlanModeTool.execute(
+      {},
+      { workdir: "/test", taskManager: new TaskManager("test-session") },
+    );
     expect(result.success).toBe(false);
     expect(result.error).toBe("Permission manager is not available");
   });

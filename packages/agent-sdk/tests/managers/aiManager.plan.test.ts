@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mocked } from "vitest";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import fs from "node:fs/promises";
 import { callAgent } from "../../src/services/aiService.js";
@@ -42,6 +43,7 @@ describe("AIManager Plan Mode Prompt", () => {
     aiManager = new AIManager({
       messageManager: mockMessageManager,
       toolManager: mockToolManager,
+      taskManager: {} as unknown as TaskManager,
       permissionManager: mockPermissionManager,
       workdir: "/test/workdir",
       getGatewayConfig: () => ({}) as GatewayConfig,

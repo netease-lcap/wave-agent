@@ -10,6 +10,7 @@ vi.mock("os", async () => {
   };
 });
 
+import { TaskManager } from "../../src/services/taskManager.js";
 import { Agent } from "@/agent.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionCallback } from "../../src/types/permissions.js";
@@ -55,11 +56,13 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     // We'll use the toolManager directly.
     const toolManager = (agent as unknown as { toolManager: ToolManager })
       .toolManager;
+    const taskManager = (agent as unknown as { taskManager: TaskManager })
+      .taskManager;
 
     await toolManager.execute(
       "Bash",
       { command: "rm test.txt" },
-      { workdir: tempDir },
+      { workdir: tempDir, taskManager },
     );
 
     expect(agent.getPermissionMode()).toBe("acceptEdits");
@@ -76,7 +79,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     await toolManager.execute(
       "Bash",
       { command: "whoami" },
-      { workdir: tempDir },
+      { workdir: tempDir, taskManager },
     );
 
     // Check if rule was persisted to settings.local.json
@@ -91,7 +94,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     await toolManager.execute(
       "Bash",
       { command: "whoami" },
-      { workdir: tempDir },
+      { workdir: tempDir, taskManager },
     );
     expect(mockCallback).not.toHaveBeenCalled();
   });
@@ -121,10 +124,12 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     // 3. Verify rule is loaded and applied
     const toolManager = (agent as unknown as { toolManager: ToolManager })
       .toolManager;
+    const taskManager = (agent as unknown as { taskManager: TaskManager })
+      .taskManager;
     await toolManager.execute(
       "Bash",
       { command: "rm -rf /tmp/test" },
-      { workdir: tempDir },
+      { workdir: tempDir, taskManager },
     );
     expect(mockCallback).not.toHaveBeenCalled();
   });
@@ -175,18 +180,20 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     // 4. Verify both rules are applied
     const toolManager = (agent as unknown as { toolManager: ToolManager })
       .toolManager;
+    const taskManager = (agent as unknown as { taskManager: TaskManager })
+      .taskManager;
 
     await toolManager.execute(
       "Bash",
       { command: "global" },
-      { workdir: tempDir },
+      { workdir: tempDir, taskManager },
     );
     expect(mockCallback).not.toHaveBeenCalled();
 
     await toolManager.execute(
       "Bash",
       { command: "local" },
-      { workdir: tempDir },
+      { workdir: tempDir, taskManager },
     );
     expect(mockCallback).not.toHaveBeenCalled();
 
@@ -203,6 +210,8 @@ describe("Agent Auto-Accept Permissions Integration", () => {
 
     const toolManager = (agent as unknown as { toolManager: ToolManager })
       .toolManager;
+    const taskManager = (agent as unknown as { taskManager: TaskManager })
+      .taskManager;
 
     // 1. Trigger permission check for a chained command
     mockCallback.mockResolvedValueOnce({
@@ -216,7 +225,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     await toolManager.execute(
       "Bash",
       { command: "mkdir -p test && cd test" },
-      { workdir: tempDir },
+      { workdir: tempDir, taskManager },
     );
 
     // 2. Check if rules were split and filtered in settings.local.json
@@ -236,7 +245,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     await toolManager.execute(
       "Bash",
       { command: "mkdir -p test" },
-      { workdir: tempDir },
+      { workdir: tempDir, taskManager },
     );
     expect(mockCallback).not.toHaveBeenCalled();
   });

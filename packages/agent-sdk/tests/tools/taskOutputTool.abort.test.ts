@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { taskOutputTool } from "../../src/tools/taskOutputTool.js";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import type { BackgroundTask } from "../../src/types/processes.js";
@@ -18,6 +19,7 @@ describe("TaskOutput Tool Abort Handling", () => {
     context = {
       backgroundTaskManager,
       workdir: "/test/workdir",
+      taskManager: new TaskManager("test-session"),
       abortSignal: abortController.signal,
     };
   });

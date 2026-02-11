@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { multiEditTool } from "@/tools/multiEditTool.js";
+import { TaskManager } from "@/services/taskManager.js";
 import { readFile, writeFile } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 
@@ -17,6 +18,7 @@ describe("multiEditTool", () => {
     mockContext = {
       abortSignal: new AbortController().signal,
       workdir: "/test/workdir",
+      taskManager: new TaskManager("test-session"),
     };
   });
 

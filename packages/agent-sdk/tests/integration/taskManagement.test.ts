@@ -33,8 +33,12 @@ describe("Task Management Integration Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    taskManager = new TaskManager();
-    context = { sessionId, taskManager } as ToolContext;
+    taskManager = new TaskManager(sessionId);
+    context = {
+      sessionId,
+      taskManager,
+      workdir: "/test/workdir",
+    } as ToolContext;
     virtualFs = new Map();
 
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);

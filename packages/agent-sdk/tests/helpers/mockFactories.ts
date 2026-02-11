@@ -1,6 +1,7 @@
 import { vi, type Mock } from "vitest";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionMode } from "../../src/types/permissions.js";
+import type { TaskManager } from "../../src/services/taskManager.js";
 
 interface MockToolManager {
   execute: Mock<ToolManager["execute"]>;
@@ -12,6 +13,20 @@ interface MockToolManager {
   getPermissionManager: Mock<ToolManager["getPermissionManager"]>;
   instance: ToolManager;
 }
+
+/**
+ * Creates a mock TaskManager instance.
+ */
+export const createMockTaskManager = (): TaskManager => {
+  return {
+    createTask: vi.fn(),
+    getTask: vi.fn(),
+    updateTask: vi.fn(),
+    listTasks: vi.fn(),
+    on: vi.fn(),
+    emit: vi.fn(),
+  } as unknown as TaskManager;
+};
 
 /**
  * Creates a mock ToolManager instance and its associated mock functions.

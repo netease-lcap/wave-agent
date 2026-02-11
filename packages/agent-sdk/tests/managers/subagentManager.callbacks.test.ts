@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
@@ -76,6 +77,7 @@ describe("SubagentManager - Callback Integration", () => {
       workdir: "/tmp/test",
       parentToolManager,
       parentMessageManager,
+      taskManager: {} as unknown as TaskManager,
       callbacks,
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
@@ -454,6 +456,7 @@ describe("SubagentManager - Callback Integration", () => {
         workdir: "/tmp/test",
         parentToolManager,
         parentMessageManager,
+        taskManager: {} as unknown as TaskManager,
         callbacks: errorCallbacks,
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
@@ -500,6 +503,7 @@ describe("SubagentManager - Callback Integration", () => {
         workdir: "/tmp/test",
         parentToolManager,
         parentMessageManager,
+        taskManager: {} as unknown as TaskManager,
         // No callbacks provided
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
@@ -620,6 +624,7 @@ describe("SubagentManager - Callback Integration", () => {
         workdir: "/tmp/test",
         parentToolManager,
         parentMessageManager,
+        taskManager: {} as unknown as TaskManager,
         backgroundTaskManager,
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,

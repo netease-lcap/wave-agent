@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { ToolContext, ToolPlugin } from "../../src/tools/types.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
 
@@ -180,7 +181,10 @@ describe("McpManager - Tools Registry", () => {
         mockResult,
       );
 
-      const context: ToolContext = { workdir: "/test/workdir" };
+      const context: ToolContext = {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      };
       const result = await mcpManager.executeMcpToolByRegistry(
         "server1_tool1",
         { param: "test" },

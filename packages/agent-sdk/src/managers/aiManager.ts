@@ -34,6 +34,7 @@ export interface AIManagerCallbacks {
 export interface AIManagerOptions {
   messageManager: MessageManager;
   toolManager: ToolManager;
+  taskManager: import("../services/taskManager.js").TaskManager;
   logger?: Logger;
   backgroundTaskManager?: BackgroundTaskManager;
   hookManager?: HookManager;
@@ -42,7 +43,6 @@ export interface AIManagerOptions {
   workdir: string;
   systemPrompt?: string;
   subagentType?: string; // Optional subagent type for hook context
-  mainSessionId?: string; // Main agent session ID
   reversionManager?: import("./reversionManager.js").ReversionManager;
   /**Whether to use streaming mode for AI responses - defaults to true */
   stream?: boolean;
@@ -61,6 +61,7 @@ export class AIManager {
   private logger?: Logger;
   private toolManager: ToolManager;
   private messageManager: MessageManager;
+  private taskManager: import("../services/taskManager.js").TaskManager;
   private backgroundTaskManager?: BackgroundTaskManager;
   private hookManager?: HookManager;
   private reversionManager?: import("./reversionManager.js").ReversionManager;
@@ -68,7 +69,6 @@ export class AIManager {
   private workdir: string;
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
-  private mainSessionId?: string; // Store main agent session ID
   private stream: boolean; // Streaming mode flag
 
   // Configuration properties (replaced with getter function storage)
@@ -81,6 +81,7 @@ export class AIManager {
   constructor(options: AIManagerOptions) {
     this.messageManager = options.messageManager;
     this.toolManager = options.toolManager;
+    this.taskManager = options.taskManager;
     this.backgroundTaskManager = options.backgroundTaskManager;
     this.hookManager = options.hookManager;
     this.reversionManager = options.reversionManager;
@@ -89,7 +90,6 @@ export class AIManager {
     this.workdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
     this.subagentType = options.subagentType; // Store subagent type
-    this.mainSessionId = options.mainSessionId; // Store main agent session ID
     this.stream = options.stream ?? true; // Default to true if not specified
     this.callbacks = options.callbacks ?? {};
 
@@ -174,6 +174,7 @@ export class AIManager {
       if (toolPlugin?.formatCompactParams) {
         const context: ToolContext = {
           workdir: this.workdir,
+          taskManager: this.taskManager,
         };
         return toolPlugin.formatCompactParams(toolArgs, context);
       }
@@ -622,7 +623,7 @@ export class AIManager {
                 workdir: this.workdir,
                 messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
                 sessionId: this.messageManager.getSessionId(),
-                mainSessionId: this.mainSessionId,
+                taskManager: this.taskManager,
               };
 
               // Execute tool

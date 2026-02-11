@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { TaskManager } from "@/services/taskManager.js";
 import { Agent } from "@/agent.js";
 import { readFile } from "fs/promises";
 import type { PermissionCallback } from "@/types/permissions.js";
@@ -123,9 +124,11 @@ describe("ExitPlanMode Integration", () => {
     vi.mocked(readFile).mockResolvedValue(planContent);
 
     // Execute ExitPlanMode tool
+    const taskManager = (agent as unknown as { taskManager: TaskManager })
+      .taskManager;
     const result = await (
       agent as unknown as AgentInternal
-    ).toolManager.execute("ExitPlanMode", {}, { workdir });
+    ).toolManager.execute("ExitPlanMode", {}, { workdir, taskManager });
 
     expect(result.success).toBe(true);
     expect(agent.getPermissionMode()).toBe("default");
@@ -158,9 +161,11 @@ describe("ExitPlanMode Integration", () => {
     vi.mocked(readFile).mockResolvedValue(planContent);
 
     // Execute ExitPlanMode tool
+    const taskManager = (agent as unknown as { taskManager: TaskManager })
+      .taskManager;
     const result = await (
       agent as unknown as AgentInternal
-    ).toolManager.execute("ExitPlanMode", {}, { workdir });
+    ).toolManager.execute("ExitPlanMode", {}, { workdir, taskManager });
 
     expect(result.success).toBe(true);
     expect(agent.getPermissionMode()).toBe("acceptEdits");
@@ -188,9 +193,11 @@ describe("ExitPlanMode Integration", () => {
     vi.mocked(readFile).mockResolvedValue(planContent);
 
     // Execute ExitPlanMode tool
+    const taskManager = (agent as unknown as { taskManager: TaskManager })
+      .taskManager;
     const result = await (
       agent as unknown as AgentInternal
-    ).toolManager.execute("ExitPlanMode", {}, { workdir });
+    ).toolManager.execute("ExitPlanMode", {}, { workdir, taskManager });
 
     expect(result.success).toBe(false);
     expect(result.content).toBe(feedback);

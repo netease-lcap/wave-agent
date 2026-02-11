@@ -189,14 +189,13 @@ class ToolManager {
       permissionMode: effectivePermissionMode,
       canUseToolCallback: this.canUseToolCallback,
       permissionManager: this.permissionManager,
-      taskManager: this.taskManager,
+      taskManager: this.taskManager!,
       reversionManager: this.reversionManager,
       backgroundTaskManager: this.backgroundTaskManager,
       foregroundTaskManager: this.foregroundTaskManager,
       mcpManager: this.mcpManager,
       lspManager: this.lspManager,
       sessionId: context.sessionId,
-      mainSessionId: context.mainSessionId,
     };
 
     this.logger?.debug("Executing tool with enhanced context", {
@@ -292,6 +291,15 @@ class ToolManager {
    */
   public getPermissionManager(): PermissionManager | undefined {
     return this.permissionManager;
+  }
+
+  /**
+   * Get the task manager
+   */
+  public getTaskManager():
+    | import("../services/taskManager.js").TaskManager
+    | undefined {
+    return this.taskManager;
   }
 }
 

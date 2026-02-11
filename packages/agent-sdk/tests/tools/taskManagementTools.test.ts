@@ -21,7 +21,9 @@ vi.mock("../../src/services/taskManager.js", () => {
 });
 
 // Get the mocked instance
-const mockTaskManager = new TaskManager() as Mocked<TaskManager>;
+const mockTaskManager = new TaskManager(
+  "test-session-id",
+) as Mocked<TaskManager>;
 
 describe("Task Management Tools", () => {
   const sessionId = "test-session-id";
@@ -47,7 +49,7 @@ describe("Task Management Tools", () => {
 
       const result = await taskCreateTool.execute(args, context);
 
-      expect(mockTaskManager.createTask).toHaveBeenCalledWith(sessionId, {
+      expect(mockTaskManager.createTask).toHaveBeenCalledWith({
         subject: "Test Task",
         description: "Test Description",
         status: "in_progress",
@@ -70,7 +72,7 @@ describe("Task Management Tools", () => {
 
       const result = await taskCreateTool.execute(args, context);
 
-      expect(mockTaskManager.createTask).toHaveBeenCalledWith(sessionId, {
+      expect(mockTaskManager.createTask).toHaveBeenCalledWith({
         subject: "Minimal Task",
         description: "Minimal Description",
         status: "pending",
@@ -83,13 +85,17 @@ describe("Task Management Tools", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should return error if sessionId is missing", async () => {
-      const result = await taskCreateTool.execute({}, {
+    it("should work without sessionId in context", async () => {
+      const args = {
+        subject: "Test Task",
+        description: "Test Description",
+      };
+      mockTaskManager.createTask.mockResolvedValue("1");
+      const result = await taskCreateTool.execute(args, {
         taskManager: mockTaskManager,
         workdir: "/test/workdir",
       } as ToolContext);
-      expect(result.success).toBe(false);
-      expect(result.content).toBe("Session ID not found in context.");
+      expect(result.success).toBe(true);
     });
   });
 
@@ -108,7 +114,7 @@ describe("Task Management Tools", () => {
 
       const result = await taskGetTool.execute({ id: "1" }, context);
 
-      expect(mockTaskManager.getTask).toHaveBeenCalledWith(sessionId, "1");
+      expect(mockTaskManager.getTask).toHaveBeenCalledWith("1");
       expect(result.success).toBe(true);
       expect(JSON.parse(result.content as string)).toEqual(task);
     });
@@ -144,8 +150,8 @@ describe("Task Management Tools", () => {
 
       const result = await taskUpdateTool.execute(args, context);
 
-      expect(mockTaskManager.getTask).toHaveBeenCalledWith(sessionId, "1");
-      expect(mockTaskManager.updateTask).toHaveBeenCalledWith(sessionId, {
+      expect(mockTaskManager.getTask).toHaveBeenCalledWith("1");
+      expect(mockTaskManager.updateTask).toHaveBeenCalledWith({
         ...existingTask,
         subject: "New Subject",
         status: "completed",
@@ -190,7 +196,7 @@ describe("Task Management Tools", () => {
 
       const result = await taskListTool.execute({}, context);
 
-      expect(mockTaskManager.listTasks).toHaveBeenCalledWith(sessionId);
+      expect(mockTaskManager.listTasks).toHaveBeenCalled();
       expect(result.success).toBe(true);
       expect(result.content).toBe(
         "[1] Task 1 (completed)\n[2] Task 2 (pending)",

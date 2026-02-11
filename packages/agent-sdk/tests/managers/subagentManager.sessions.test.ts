@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
+import { TaskManager } from "../../src/services/taskManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 
@@ -105,6 +106,7 @@ describe("SubagentManager - Session Functionality", () => {
       workdir: "/tmp/test",
       parentToolManager,
       parentMessageManager,
+      taskManager: new TaskManager("test-session"),
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 1000,

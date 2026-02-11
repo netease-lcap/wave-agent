@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { createTaskTool } from "../../src/tools/taskTool.js";
 import {
   SubagentManager,
@@ -16,6 +17,10 @@ describe("Task Tool Integration with Built-in Subagents", () => {
   const mockToolContext: ToolContext = {
     abortSignal: new AbortController().signal,
     workdir: "/test/workdir",
+    taskManager: {
+      on: vi.fn(),
+      listTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as TaskManager,
   };
 
   const exploreConfig: SubagentConfiguration = {

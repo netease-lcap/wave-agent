@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
@@ -69,6 +70,7 @@ describe("SubagentManager Consistency", () => {
       workdir: "/test",
       parentToolManager: mockToolManager,
       parentMessageManager: mockMessageManager,
+      taskManager: {} as unknown as TaskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
         agentModel: "claude-3-5-sonnet",

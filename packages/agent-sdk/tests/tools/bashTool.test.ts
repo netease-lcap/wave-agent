@@ -5,6 +5,7 @@ import { taskStopTool } from "../../src/tools/taskStopTool.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import type { ChildProcess } from "child_process";
+import { createMockTaskManager } from "../helpers/mockFactories.js";
 
 // Mock child_process
 vi.mock("child_process");
@@ -33,6 +34,7 @@ describe("bashTool", () => {
     context = {
       backgroundTaskManager,
       workdir: "/test/workdir",
+      taskManager: createMockTaskManager(),
     };
   });
 
@@ -195,6 +197,7 @@ describe("bashTool", () => {
         abortSignal: abortController.signal,
         backgroundTaskManager,
         workdir: "/test/workdir",
+        taskManager: createMockTaskManager(),
       };
 
       // Start the command execution

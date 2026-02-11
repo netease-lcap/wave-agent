@@ -60,9 +60,7 @@ export interface ToolContext {
   /** Foreground task manager for backgrounding tasks */
   foregroundTaskManager?: import("../types/processes.js").IForegroundTaskManager;
   /** Task manager instance for task management */
-  taskManager?: import("../services/taskManager.js").TaskManager;
+  taskManager: import("../services/taskManager.js").TaskManager;
   /** Current session ID */
   sessionId?: string;
-  /** Main agent session ID (for shared resources like tasks) */
-  mainSessionId?: string;
 }

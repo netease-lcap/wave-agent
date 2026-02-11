@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
@@ -86,6 +87,7 @@ describe("AIManager finish reason", () => {
     aiManager = new AIManager({
       messageManager: mockMessageManager,
       toolManager: mockToolManager,
+      taskManager: {} as unknown as TaskManager,
       logger: mockLogger,
       workdir: "/test/workdir",
       getGatewayConfig: () => mockGatewayConfig,

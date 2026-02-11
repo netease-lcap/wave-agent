@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { writeTool } from "@/tools/writeTool.js";
+import { TaskManager } from "@/services/taskManager.js";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 
-const testContext: ToolContext = { workdir: "/test/workdir" };
+const testContext: ToolContext = {
+  workdir: "/test/workdir",
+  taskManager: new TaskManager("test-session"),
+};
 
 // Mock fs/promises
 vi.mock("fs/promises");
@@ -15,6 +19,7 @@ describe("writeTool", () => {
     mockContext = {
       abortSignal: new AbortController().signal,
       workdir: "/test/workdir",
+      taskManager: new TaskManager("test-session"),
     };
   });
 
