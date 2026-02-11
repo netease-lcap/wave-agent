@@ -51,6 +51,8 @@ As a user, I want the task list to be persistent but non-intrusive so that it do
 - **FR-002**: The task list MUST display tasks from the current session (as defined in spec 063).
 - **FR-003**: Each task in the list MUST show its current status (e.g., using icons or colors).
 - **FR-004**: Each task in the list MUST show its subject.
+- **FR-008**: The task list SHOULD indicate if a task is blocked by other tasks (e.g., via a "blocked" status or icon).
+- **FR-009**: If a task is blocked, the UI SHOULD provide a way to see which tasks are blocking it (if space permits).
 - **FR-005**: The task list MUST update automatically when tasks are created or updated via the task management tools.
 - **FR-006**: The task list MUST be distinct from "background tasks" (which might refer to running processes or tool executions).
 - **FR-007**: The UI MUST use React Ink components to match the existing CLI style.
