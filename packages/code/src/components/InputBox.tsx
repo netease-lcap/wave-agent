@@ -4,7 +4,6 @@ import { useInput } from "ink";
 import { FileSelector } from "./FileSelector.js";
 import { CommandSelector } from "./CommandSelector.js";
 import { HistorySearch } from "./HistorySearch.js";
-import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
 import { BackgroundTaskManager } from "./BackgroundTaskManager.js";
 import { McpManager } from "./McpManager.js";
 import { RewindCommand } from "./RewindCommand.js";
@@ -14,7 +13,7 @@ import { useChat } from "../contexts/useChat.js";
 import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
 
 export const INPUT_PLACEHOLDER_TEXT =
-  "Type your message (use @ to reference files, / for commands, # to add memory, Ctrl+R to search history, Ctrl+O to expand messages)...";
+  "Type your message (use @ to reference files, / for commands, Ctrl+R to search history, Ctrl+O to expand messages)...";
 
 export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
   0,
@@ -31,7 +30,6 @@ export interface InputBoxProps {
     images?: Array<{ path: string; mimeType: string }>,
   ) => void;
   abortMessage?: () => void;
-  saveMemory?: (message: string, type: "project" | "user") => Promise<void>;
   // MCP related properties
   mcpServers?: McpServerStatus[];
   connectMcpServer?: (serverName: string) => Promise<boolean>;
@@ -48,7 +46,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   userInputHistory = [],
   sendMessage = () => {},
   abortMessage = () => {},
-  saveMemory = async () => {},
   mcpServers = [],
   connectMcpServer = async () => false,
   disconnectMcpServer = async () => false,
@@ -85,11 +82,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     handleCancelCommandSelect,
     handleHistorySearchSelect,
     handleCancelHistorySearch,
-    // Memory type selector
-    showMemoryTypeSelector,
-    memoryMessage,
-    handleMemoryTypeSelect,
-    handleCancelMemoryTypeSelect,
     // History search
     showHistorySearch,
     historySearchQuery,
@@ -112,7 +104,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   } = useInputManager({
     onSendMessage: sendMessage,
     onHasSlashCommand: hasSlashCommand,
-    onSaveMemory: saveMemory,
     onAbortMessage: abortMessage,
     onBackgroundCurrentTask: backgroundCurrentTask,
     onPermissionModeChange: setChatPermissionMode,
@@ -209,14 +200,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
           searchQuery={historySearchQuery}
           onSelect={handleHistorySearchSelect}
           onCancel={handleCancelHistorySearch}
-        />
-      )}
-
-      {showMemoryTypeSelector && (
-        <MemoryTypeSelector
-          message={memoryMessage}
-          onSelect={handleMemoryTypeSelect}
-          onCancel={handleCancelMemoryTypeSelect}
         />
       )}
 

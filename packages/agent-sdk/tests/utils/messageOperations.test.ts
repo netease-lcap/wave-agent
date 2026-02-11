@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "fs";
 import {
   convertImageToBase64,
-  addMemoryBlockToMessage,
   addCommandOutputMessage,
   updateCommandOutputInMessage,
   completeCommandInMessage,
@@ -235,103 +234,6 @@ describe("convertImageToBase64", () => {
     // Should default to PNG MIME type
     expect(result).toMatch(/^data:image\/png;base64,/);
     expect(readFileSync).toHaveBeenCalledWith("/test/image.unknown");
-  });
-});
-
-describe("addMemoryBlockToMessage", () => {
-  it("should create a new assistant message with MemoryBlock", () => {
-    const initialMessages: Message[] = [
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "Hello" }],
-      },
-    ];
-
-    const result = addMemoryBlockToMessage({
-      messages: initialMessages,
-      content: "Remember this important information",
-      isSuccess: true,
-    });
-
-    expect(result).toHaveLength(2);
-    expect(result[1]).toMatchObject({
-      role: "assistant",
-      blocks: [
-        {
-          type: "memory",
-          content: "Remember this important information",
-          isSuccess: true,
-        },
-      ],
-    });
-  });
-
-  it("should create a new assistant message with failed MemoryBlock", () => {
-    const initialMessages: Message[] = [
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "Hello" }],
-      },
-    ];
-
-    const result = addMemoryBlockToMessage({
-      messages: initialMessages,
-      content: "Memory addition failed: Insufficient disk space",
-      isSuccess: false,
-    });
-
-    expect(result).toHaveLength(2);
-    expect(result[1]).toMatchObject({
-      role: "assistant",
-      blocks: [
-        {
-          type: "memory",
-          content: "Memory addition failed: Insufficient disk space",
-          isSuccess: false,
-        },
-      ],
-    });
-  });
-
-  it("should work with empty message list", () => {
-    const initialMessages: Message[] = [];
-
-    const result = addMemoryBlockToMessage({
-      messages: initialMessages,
-      content: "First memory",
-      isSuccess: true,
-    });
-
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({
-      role: "assistant",
-      blocks: [
-        {
-          type: "memory",
-          content: "First memory",
-          isSuccess: true,
-        },
-      ],
-    });
-  });
-
-  it("should not modify the original messages array", () => {
-    const initialMessages: Message[] = [
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "Hello" }],
-      },
-    ];
-
-    const result = addMemoryBlockToMessage({
-      messages: initialMessages,
-      content: "Memory content",
-      isSuccess: true,
-    });
-
-    expect(initialMessages).toHaveLength(1);
-    expect(result).toHaveLength(2);
-    expect(result).not.toBe(initialMessages);
   });
 });
 

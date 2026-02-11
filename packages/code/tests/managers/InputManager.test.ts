@@ -44,14 +44,12 @@ describe("InputManager", () => {
       onFileSelectorStateChange: vi.fn(),
       onCommandSelectorStateChange: vi.fn(),
       onHistorySearchStateChange: vi.fn(),
-      onMemoryTypeSelectorStateChange: vi.fn(),
       onBackgroundTaskManagerStateChange: vi.fn(),
       onMcpManagerStateChange: vi.fn(),
       onRewindManagerStateChange: vi.fn(),
       onImagesStateChange: vi.fn(),
       onSendMessage: vi.fn(),
       onHasSlashCommand: vi.fn(),
-      onSaveMemory: vi.fn(),
       onAbortMessage: vi.fn(),
       onResetHistoryNavigation: vi.fn(),
     };
@@ -288,35 +286,6 @@ describe("InputManager", () => {
         false,
         "",
       );
-    });
-  });
-
-  describe("Memory Type Selector", () => {
-    it("should activate memory type selector", () => {
-      const message = "#test memory";
-      manager.activateMemoryTypeSelector(message);
-
-      expect(
-        mockCallbacks.onMemoryTypeSelectorStateChange,
-      ).toHaveBeenCalledWith(true, message);
-    });
-
-    it("should handle memory type selection", () => {
-      manager.activateMemoryTypeSelector("#test");
-      manager.handleMemoryTypeSelect("project");
-
-      expect(
-        mockCallbacks.onMemoryTypeSelectorStateChange,
-      ).toHaveBeenLastCalledWith(false, "");
-    });
-
-    it("should cancel memory type selector", () => {
-      manager.activateMemoryTypeSelector("#test");
-      manager.handleCancelMemoryTypeSelect();
-
-      expect(
-        mockCallbacks.onMemoryTypeSelectorStateChange,
-      ).toHaveBeenLastCalledWith(false, "");
     });
   });
 
@@ -713,16 +682,6 @@ describe("InputManager", () => {
   });
 
   describe("Submit Logic", () => {
-    it("should handle memory message submission", async () => {
-      manager.insertTextAtCursor("#test memory");
-
-      await manager.handleSubmit([], false, false);
-
-      expect(
-        mockCallbacks.onMemoryTypeSelectorStateChange,
-      ).toHaveBeenCalledWith(true, "#test memory");
-    });
-
     it("should handle message with images", async () => {
       manager.insertTextAtCursor("Check this [Image #1] out");
       const images = [{ id: 1, path: "/test.png", mimeType: "image/png" }];
@@ -896,15 +855,6 @@ describe("InputManager", () => {
     it("should handle handleSubmit with empty input", async () => {
       await manager.handleSubmit([], false, false);
       expect(mockCallbacks.onSendMessage).not.toHaveBeenCalled();
-    });
-
-    it("should handle handleSubmit with multi-line memory message (should not trigger selector)", async () => {
-      manager.insertTextAtCursor("#line1\nline2");
-      await manager.handleSubmit([], false, false);
-      expect(
-        mockCallbacks.onMemoryTypeSelectorStateChange,
-      ).not.toHaveBeenCalled();
-      expect(mockCallbacks.onSendMessage).toHaveBeenCalled();
     });
 
     it("should handle updateCallbacks", () => {

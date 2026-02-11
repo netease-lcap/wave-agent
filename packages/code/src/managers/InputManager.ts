@@ -29,7 +29,6 @@ export interface InputManagerCallbacks {
     position: number,
   ) => void;
   onHistorySearchStateChange?: (show: boolean, query: string) => void;
-  onMemoryTypeSelectorStateChange?: (show: boolean, message: string) => void;
   onBackgroundTaskManagerStateChange?: (show: boolean) => void;
   onMcpManagerStateChange?: (show: boolean) => void;
   onRewindManagerStateChange?: (show: boolean) => void;
@@ -39,7 +38,6 @@ export interface InputManagerCallbacks {
     images?: Array<{ path: string; mimeType: string }>,
   ) => void | Promise<void>;
   onHasSlashCommand?: (commandId: string) => boolean;
-  onSaveMemory?: (message: string, type: "project" | "user") => Promise<void>;
   onAbortMessage?: () => void;
   onBackgroundCurrentTask?: () => void;
   onResetHistoryNavigation?: () => void;
@@ -67,10 +65,6 @@ export class InputManager {
   // History search state
   private showHistorySearch: boolean = false;
   private historySearchQuery: string = "";
-
-  // Memory type selector state
-  private showMemoryTypeSelector: boolean = false;
-  private memoryMessage: string = "";
 
   // Input history state
   private userInputHistory: string[] = [];
@@ -433,35 +427,6 @@ export class InputManager {
     return false;
   }
 
-  // Memory type selector methods
-  activateMemoryTypeSelector(message: string): void {
-    this.showMemoryTypeSelector = true;
-    this.memoryMessage = message;
-
-    this.callbacks.onMemoryTypeSelectorStateChange?.(true, message);
-  }
-
-  async handleMemoryTypeSelect(type: "project" | "user"): Promise<void> {
-    const currentMessage = this.inputText.trim();
-    if (currentMessage.startsWith("#")) {
-      await this.callbacks.onSaveMemory?.(currentMessage, type);
-    }
-    // Close the selector
-    this.showMemoryTypeSelector = false;
-    this.memoryMessage = "";
-    this.callbacks.onMemoryTypeSelectorStateChange?.(false, "");
-
-    // Clear input box
-    this.clearInput();
-  }
-
-  handleCancelMemoryTypeSelect(): void {
-    this.showMemoryTypeSelector = false;
-    this.memoryMessage = "";
-
-    this.callbacks.onMemoryTypeSelectorStateChange?.(false, "");
-  }
-
   // Input history methods
   setUserInputHistory(history: string[]): void {
     this.userInputHistory = history;
@@ -531,10 +496,6 @@ export class InputManager {
     return this.showCommandSelector;
   }
 
-  isMemoryTypeSelectorActive(): boolean {
-    return this.showMemoryTypeSelector;
-  }
-
   getFileSelectorState() {
     return {
       show: this.showFileSelector,
@@ -549,13 +510,6 @@ export class InputManager {
       show: this.showCommandSelector,
       query: this.commandSearchQuery,
       position: this.slashPosition,
-    };
-  }
-
-  getMemoryTypeSelectorState() {
-    return {
-      show: this.showMemoryTypeSelector,
-      message: this.memoryMessage,
     };
   }
 
@@ -589,8 +543,6 @@ export class InputManager {
       // Don't activate command selector when file selector is active
       // Only activate command selector if '/' is at the start of input
       this.activateCommandSelector(this.cursorPosition - 1);
-    } else if (char === "#" && this.cursorPosition === 1) {
-      // Memory message detection will be handled in submit
     } else {
       // Update search queries for active selectors
       this.updateSearchQueriesForActiveSelectors(
@@ -809,15 +761,6 @@ export class InputManager {
     }
 
     if (this.inputText.trim()) {
-      const trimmedInput = this.inputText.trim();
-
-      // Check if it's a memory message (starts with # and only one line)
-      if (trimmedInput.startsWith("#") && !trimmedInput.includes("\n")) {
-        // Activate memory type selector
-        this.activateMemoryTypeSelector(trimmedInput);
-        return;
-      }
-
       // Extract image information
       const imageRegex = /\[Image #(\d+)\]/g;
       const matches = [...this.inputText.matchAll(imageRegex)];
@@ -1072,18 +1015,16 @@ export class InputManager {
       this.showFileSelector ||
       this.showCommandSelector ||
       this.showHistorySearch ||
-      this.showMemoryTypeSelector ||
       this.showBackgroundTaskManager ||
       this.showMcpManager ||
       this.showRewindManager
     ) {
       if (
-        this.showMemoryTypeSelector ||
         this.showBackgroundTaskManager ||
         this.showMcpManager ||
         this.showRewindManager
       ) {
-        // Memory type selector, task manager, MCP manager and Rewind don't need to handle input, handled by component itself
+        // Task manager, MCP manager and Rewind don't need to handle input, handled by component itself
         // Return true to indicate we've "handled" it (by ignoring it) so it doesn't leak to normal input
         return true;
       }

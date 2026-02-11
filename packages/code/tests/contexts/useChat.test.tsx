@@ -72,7 +72,6 @@ describe("ChatProvider", () => {
     sendMessage: vi.fn(),
     executeBashCommand: vi.fn(),
     abortMessage: vi.fn(),
-    saveMemory: vi.fn(),
     connectMcpServer: vi.fn(),
     disconnectMcpServer: vi.fn(),
     getBackgroundTaskOutput: vi.fn(),
@@ -287,9 +286,11 @@ describe("ChatProvider", () => {
 
     await lastValue?.sendMessage("#Remember this");
 
-    // Memory messages starting with # and no newline don't call agent.sendMessage or executeBashCommand directly
-    // They wait for user to choose memory type (handled in UI, not in sendMessage itself)
-    expect(mockAgent.sendMessage).not.toHaveBeenCalled();
+    // Memory messages starting with # are now treated as normal messages
+    expect(mockAgent.sendMessage).toHaveBeenCalledWith(
+      "#Remember this",
+      undefined,
+    );
     expect(mockAgent.executeBashCommand).not.toHaveBeenCalled();
   });
 
@@ -370,22 +371,6 @@ describe("ChatProvider", () => {
 
     lastValue?.abortMessage();
     expect(mockAgent.abortMessage).toHaveBeenCalled();
-  });
-
-  it("handles saveMemory", async () => {
-    let lastValue: ChatContextType | undefined;
-    const onHookValue = (val: ChatContextType) => {
-      lastValue = val;
-    };
-
-    renderWithProvider(onHookValue);
-
-    await vi.waitFor(() => {
-      expect(lastValue).toBeDefined();
-    });
-
-    await lastValue?.saveMemory("test memory", "project");
-    expect(mockAgent.saveMemory).toHaveBeenCalledWith("test memory", "project");
   });
 
   it("handles setPermissionMode", async () => {
@@ -602,7 +587,8 @@ describe("ChatProvider", () => {
     });
 
     await lastValue?.sendMessage("# ");
-    expect(mockAgent.sendMessage).not.toHaveBeenCalled();
+    // Memory messages starting with # are now treated as normal messages
+    expect(mockAgent.sendMessage).toHaveBeenCalledWith("# ", undefined);
   });
 
   it("handles bash message with empty command", async () => {
