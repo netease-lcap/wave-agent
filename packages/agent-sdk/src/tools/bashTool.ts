@@ -218,7 +218,7 @@ Usage notes:
               );
               resolve({
                 success: true,
-                content: `Command moved to background with ID: ${taskId}. Use TaskOutput tool with task_id="${taskId}" to monitor output.`,
+                content: `Command moved to background with ID: ${taskId}.`,
                 shortResult: `Process ${taskId} backgrounded`,
                 isManuallyBackgrounded: true,
               });
