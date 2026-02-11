@@ -3,10 +3,10 @@ import { TaskManager } from "../../src/services/taskManager.js";
 import { Task } from "../../src/types/tasks.js";
 import { promises as fs } from "fs";
 
-
 vi.mock("fs", () => ({
   promises: {
-        mkdir: vi.fn(),
+    readdir: vi.fn(),
+    mkdir: vi.fn(),
     open: vi.fn(),
     writeFile: vi.fn(),
     readFile: vi.fn(),
@@ -253,24 +253,24 @@ describe("TaskManager", () => {
 
       expect(fs.writeFile).toHaveBeenCalledTimes(2);
     });
-  it("should emit tasksChange when a task is created", async () => {
-    const spy = vi.fn();
-    taskManager.on("tasksChange", spy);
+    it("should emit tasksChange when a task is created", async () => {
+      const spy = vi.fn();
+      taskManager.on("tasksChange", spy);
 
-    await taskManager.createTask(sessionId, mockTask);
+      await taskManager.createTask(sessionId, mockTask);
 
-    expect(spy).toHaveBeenCalledWith(sessionId);
-    expect(fs.writeFile).toHaveBeenCalled();
-  });
+      expect(spy).toHaveBeenCalledWith(sessionId);
+      expect(fs.writeFile).toHaveBeenCalled();
+    });
 
-  it("should emit tasksChange when a task is updated", async () => {
-    const spy = vi.fn();
-    taskManager.on("tasksChange", spy);
+    it("should emit tasksChange when a task is updated", async () => {
+      const spy = vi.fn();
+      taskManager.on("tasksChange", spy);
 
-    await taskManager.updateTask(sessionId, mockTask);
+      await taskManager.updateTask(sessionId, mockTask);
 
-    expect(spy).toHaveBeenCalledWith(sessionId);
-    expect(fs.writeFile).toHaveBeenCalled();
-  });
+      expect(spy).toHaveBeenCalledWith(sessionId);
+      expect(fs.writeFile).toHaveBeenCalled();
+    });
   });
 });
