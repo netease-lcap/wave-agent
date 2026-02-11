@@ -47,6 +47,7 @@ describe("InputManager", () => {
       onMemoryTypeSelectorStateChange: vi.fn(),
       onTaskManagerStateChange: vi.fn(),
       onMcpManagerStateChange: vi.fn(),
+      onRewindManagerStateChange: vi.fn(),
       onImagesStateChange: vi.fn(),
       onSendMessage: vi.fn(),
       onHasSlashCommand: vi.fn(),
@@ -456,6 +457,65 @@ describe("InputManager", () => {
       expect(manager.getShowMcpManager()).toBe(true);
       expect(mockCallbacks.onMcpManagerStateChange).toHaveBeenCalledWith(true);
     });
+
+    it("should consume input when task manager is active", async () => {
+      manager.setShowTaskManager(true);
+      const mockKey: Key = {
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        escape: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      };
+
+      const handled = await manager.handleInput("k", mockKey, [], false, false);
+
+      expect(handled).toBe(true);
+      expect(manager.getInputText()).toBe(""); // Should not have added 'k'
+    });
+
+    it("should update internal state when opening task manager via command", async () => {
+      manager.insertTextAtCursor("/tasks");
+      manager.activateCommandSelector(0);
+
+      // Mock onHasSlashCommand to return false so it falls through to local commands
+      mockCallbacks.onHasSlashCommand = vi.fn().mockReturnValue(false);
+
+      manager.handleCommandSelect("tasks");
+
+      // Wait for async command execution
+      await vi.waitFor(() => expect(manager.getShowTaskManager()).toBe(true));
+
+      const mockKey: Key = {
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        escape: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      };
+
+      const handled = await manager.handleInput("k", mockKey, [], false, false);
+      expect(handled).toBe(true);
+      expect(manager.getInputText()).toBe("");
+    });
   });
 
   describe("Handle Input Integration", () => {
@@ -727,28 +787,31 @@ describe("InputManager", () => {
     it("should handle handleCommandSelect for local commands", async () => {
       manager.insertTextAtCursor("/tasks");
       manager.activateCommandSelector(0);
-      mockCallbacks.onShowTaskManager = vi.fn();
       manager.handleCommandSelect("tasks");
       await vi.waitFor(() =>
-        expect(mockCallbacks.onShowTaskManager).toHaveBeenCalled(),
+        expect(mockCallbacks.onTaskManagerStateChange).toHaveBeenCalledWith(
+          true,
+        ),
       );
 
       manager.clearInput();
       manager.insertTextAtCursor("/mcp");
       manager.activateCommandSelector(0);
-      mockCallbacks.onShowMcpManager = vi.fn();
       manager.handleCommandSelect("mcp");
       await vi.waitFor(() =>
-        expect(mockCallbacks.onShowMcpManager).toHaveBeenCalled(),
+        expect(mockCallbacks.onMcpManagerStateChange).toHaveBeenCalledWith(
+          true,
+        ),
       );
 
       manager.clearInput();
       manager.insertTextAtCursor("/rewind");
       manager.activateCommandSelector(0);
-      mockCallbacks.onShowRewindManager = vi.fn();
       manager.handleCommandSelect("rewind");
       await vi.waitFor(() =>
-        expect(mockCallbacks.onShowRewindManager).toHaveBeenCalled(),
+        expect(mockCallbacks.onRewindManagerStateChange).toHaveBeenCalledWith(
+          true,
+        ),
       );
     });
 
