@@ -78,9 +78,6 @@ export const useInputManager = (
           callbacks.onPermissionModeChange?.(mode);
         },
         onImagesStateChange: setAttachedImages,
-        onShowTaskManager: () => setShowTaskManager(true),
-        onShowMcpManager: () => setShowMcpManager(true),
-        onShowRewindManager: () => setShowRewindManager(true),
         ...callbacks,
       });
 
@@ -118,9 +115,6 @@ export const useInputManager = (
           callbacks.onPermissionModeChange?.(mode);
         },
         onImagesStateChange: setAttachedImages,
-        onShowTaskManager: () => setShowTaskManager(true),
-        onShowMcpManager: () => setShowMcpManager(true),
-        onShowRewindManager: () => setShowRewindManager(true),
         ...callbacks,
       });
     }

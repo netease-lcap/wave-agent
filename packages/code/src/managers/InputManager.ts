@@ -30,11 +30,8 @@ export interface InputManagerCallbacks {
   ) => void;
   onHistorySearchStateChange?: (show: boolean, query: string) => void;
   onMemoryTypeSelectorStateChange?: (show: boolean, message: string) => void;
-  onShowTaskManager?: () => void;
   onTaskManagerStateChange?: (show: boolean) => void;
-  onShowMcpManager?: () => void;
   onMcpManagerStateChange?: (show: boolean) => void;
-  onShowRewindManager?: () => void;
   onRewindManagerStateChange?: (show: boolean) => void;
   onImagesStateChange?: (images: AttachedImage[]) => void;
   onSendMessage?: (
@@ -362,16 +359,13 @@ export class InputManager {
 
         // If not an agent command or execution failed, check local commands
         if (!commandExecuted) {
-          if (command === "tasks" && this.callbacks.onShowTaskManager) {
+          if (command === "tasks") {
             this.setShowTaskManager(true);
             commandExecuted = true;
-          } else if (command === "mcp" && this.callbacks.onShowMcpManager) {
+          } else if (command === "mcp") {
             this.setShowMcpManager(true);
             commandExecuted = true;
-          } else if (
-            command === "rewind" &&
-            this.callbacks.onShowRewindManager
-          ) {
+          } else if (command === "rewind") {
             this.setShowRewindManager(true);
             commandExecuted = true;
           }
