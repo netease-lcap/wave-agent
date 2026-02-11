@@ -2,6 +2,8 @@ import React from "react";
 import { Box, Text, Static } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { MessageItem } from "./MessageItem.js";
+import { TaskManager } from "./TaskManager.js";
+import { useChat } from "../contexts/useChat.js";
 
 export interface MessageListProps {
   messages: Message[];
@@ -10,6 +12,8 @@ export interface MessageListProps {
   isCompressing?: boolean;
   latestTotalTokens?: number;
   isExpanded?: boolean;
+  showTaskManager?: boolean;
+  setShowTaskManager?: (show: boolean) => void;
 }
 
 export const MessageList = React.memo(
@@ -20,7 +24,10 @@ export const MessageList = React.memo(
     isCompressing = false,
     latestTotalTokens = 0,
     isExpanded = false,
+    showTaskManager = false,
+    setShowTaskManager,
   }: MessageListProps) => {
+    const { backgroundTasks } = useChat();
     // Empty message state
     if (messages.length === 0) {
       return (
@@ -124,7 +131,7 @@ export const MessageList = React.memo(
 
         {/* Bottom info and shortcut key hints */}
         {messages.length > 0 && (
-          <Box>
+          <Box flexDirection="column">
             <Box justifyContent="space-between" width="100%">
               <Box>
                 <Text color="gray">
@@ -146,11 +153,39 @@ export const MessageList = React.memo(
                   )}
                 </Text>
               </Box>
-              <Text color="gray" dimColor>
-                <Text color="cyan">Ctrl+O</Text> Toggle{" "}
-                {isExpanded ? "Collapse" : "Expand"}
-              </Text>
+              <Box gap={1}>
+                <Text color="gray" dimColor>
+                  <Text color="cyan">Ctrl+T</Text> Tasks
+                </Text>
+                <Text color="gray" dimColor>
+                  <Text color="cyan">Ctrl+O</Text> Toggle{" "}
+                  {isExpanded ? "Collapse" : "Expand"}
+                </Text>
+              </Box>
             </Box>
+            {showTaskManager && (
+              <Box marginTop={1}>
+                {backgroundTasks.length > 0 ? (
+                  <TaskManager onCancel={() => setShowTaskManager?.(false)} />
+                ) : (
+                  <Box
+                    flexDirection="column"
+                    borderStyle="single"
+                    borderColor="cyan"
+                    borderBottom={false}
+                    borderLeft={false}
+                    borderRight={false}
+                    paddingTop={1}
+                  >
+                    <Text color="cyan" bold>
+                      Background Tasks
+                    </Text>
+                    <Text>No background tasks found</Text>
+                    <Text dimColor>Press Ctrl+T to close</Text>
+                  </Box>
+                )}
+              </Box>
+            )}
           </Box>
         )}
       </Box>

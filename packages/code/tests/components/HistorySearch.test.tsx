@@ -117,14 +117,43 @@ describe("HistorySearch", () => {
       // Since we can't easily see the "selection" in stripAnsiColors,
       // we might need to wait for a frame or use a more specific check if available.
       expect(output).toContain("second prompt");
-    });
 
-    // Give it one more tick to ensure the index state is updated
-    await new Promise((resolve) => setTimeout(resolve, 10));
+      // Check if the timestamp for the second prompt is visible,
+      // which only happens when it's selected.
+      expect(output).toMatch(/second prompt\s+\d+d ago/);
+    });
 
     stdin.write("\r");
     await vi.waitFor(() => {
       expect(onSelect).toHaveBeenCalledWith("second prompt");
+    });
+  });
+
+  it("should navigate with arrow keys (up arrow)", async () => {
+    const onSelect = vi.fn();
+    const { stdin, lastFrame } = render(
+      <HistorySearch {...mockProps} onSelect={onSelect} />,
+    );
+
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("first prompt");
+    });
+
+    stdin.write("\u001B[B"); // Down arrow
+    await vi.waitFor(() => {
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).toMatch(/second prompt\s+\d+d ago/);
+    });
+
+    stdin.write("\u001B[A"); // Up arrow
+    await vi.waitFor(() => {
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).toMatch(/first prompt\s+\d+d ago/);
+    });
+
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(onSelect).toHaveBeenCalledWith("first prompt");
     });
   });
 

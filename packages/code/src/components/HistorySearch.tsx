@@ -16,17 +16,6 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [entries, setEntries] = useState<PromptEntry[]>([]);
 
-  const entriesRef = React.useRef<PromptEntry[]>([]);
-  const selectedIndexRef = React.useRef(0);
-
-  useEffect(() => {
-    entriesRef.current = entries;
-  }, [entries]);
-
-  useEffect(() => {
-    selectedIndexRef.current = selectedIndex;
-  }, [selectedIndex]);
-
   useEffect(() => {
     const fetchHistory = async () => {
       const results = await PromptHistoryManager.searchHistory(searchQuery);
@@ -39,11 +28,8 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
 
   useInput((input, key) => {
     if (key.return) {
-      if (
-        entriesRef.current.length > 0 &&
-        selectedIndexRef.current < entriesRef.current.length
-      ) {
-        onSelect(entriesRef.current[selectedIndexRef.current].prompt);
+      if (entries.length > 0 && selectedIndex < entries.length) {
+        onSelect(entries[selectedIndex].prompt);
       }
       return;
     }
@@ -59,9 +45,7 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
     }
 
     if (key.downArrow) {
-      setSelectedIndex((prev) =>
-        Math.min(entriesRef.current.length - 1, prev + 1),
-      );
+      setSelectedIndex((prev) => Math.min(entries.length - 1, prev + 1));
       return;
     }
   });

@@ -456,6 +456,35 @@ describe("InputManager", () => {
       expect(manager.getShowMcpManager()).toBe(true);
       expect(mockCallbacks.onMcpManagerStateChange).toHaveBeenCalledWith(true);
     });
+
+    it("should toggle task manager state with Ctrl+T", async () => {
+      const ctrlTKey: Key = {
+        ctrl: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        escape: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      };
+
+      await manager.handleInput("t", ctrlTKey, [], false, false);
+      expect(manager.getShowTaskManager()).toBe(true);
+      expect(mockCallbacks.onTaskManagerStateChange).toHaveBeenCalledWith(true);
+
+      await manager.handleInput("t", ctrlTKey, [], false, false);
+      expect(manager.getShowTaskManager()).toBe(false);
+      expect(mockCallbacks.onTaskManagerStateChange).toHaveBeenCalledWith(
+        false,
+      );
+    });
   });
 
   describe("Handle Input Integration", () => {
@@ -563,6 +592,37 @@ describe("InputManager", () => {
       expect(mockCallbacks.onHistorySearchStateChange).toHaveBeenCalledWith(
         true,
         "",
+      );
+    });
+
+    it("should handle Ctrl+T for task manager toggle", async () => {
+      const mockKey: Key = {
+        ctrl: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        escape: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      };
+
+      await manager.handleInput("t", mockKey, [], false, false);
+
+      expect(manager.getShowTaskManager()).toBe(true);
+      expect(mockCallbacks.onTaskManagerStateChange).toHaveBeenCalledWith(true);
+
+      // Toggle off
+      await manager.handleInput("t", mockKey, [], false, false);
+      expect(manager.getShowTaskManager()).toBe(false);
+      expect(mockCallbacks.onTaskManagerStateChange).toHaveBeenCalledWith(
+        false,
       );
     });
 

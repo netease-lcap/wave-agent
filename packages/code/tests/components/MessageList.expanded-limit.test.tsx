@@ -2,6 +2,8 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
+import { ChatProvider } from "../../src/contexts/useChat.js";
+import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import type { Message } from "wave-agent-sdk";
 
 // Mock useInput to prevent key handling during tests
@@ -43,7 +45,11 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={true} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} isExpanded={true} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -67,7 +73,11 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={true} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} isExpanded={true} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -96,7 +106,11 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={false} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} isExpanded={false} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -120,7 +134,11 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={true} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} isExpanded={true} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -144,7 +162,11 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={true} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} isExpanded={true} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -167,7 +189,11 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame: frame21 } = render(
-        <MessageList messages={messages21} isExpanded={true} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages21} isExpanded={true} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(frame21()).toContain("1 earlier message omitted");
@@ -178,7 +204,11 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame: frame25 } = render(
-        <MessageList messages={messages25} isExpanded={true} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages25} isExpanded={true} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(frame25()).toContain("5 earlier messages omitted");
@@ -196,11 +226,15 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isExpanded={true}
-          latestTotalTokens={5000}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isExpanded={true}
+              latestTotalTokens={5000}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -223,7 +257,15 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={true} isLoading={true} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isExpanded={true}
+              isLoading={true}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();

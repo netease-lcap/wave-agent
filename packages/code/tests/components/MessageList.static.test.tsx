@@ -2,6 +2,8 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
+import { AppProvider } from "../../src/contexts/useAppConfig.js";
+import { ChatProvider } from "../../src/contexts/useChat.js";
 import type { Message } from "wave-agent-sdk";
 
 // Mock useInput to prevent key handling during tests
@@ -39,13 +41,17 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // All messages should be visible (no pagination)
@@ -67,13 +73,17 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // All messages should be visible
@@ -95,13 +105,17 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // All messages should be visible (no pagination limits)
@@ -122,13 +136,17 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // Should show all messages with correct numbering
@@ -143,13 +161,17 @@ describe("MessageList Static Rendering", () => {
     it("should handle single message", () => {
       const messages = [createMessage("user", "Only", 1)];
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(lastFrame()).toContain("Only - Message 1");
@@ -161,13 +183,17 @@ describe("MessageList Static Rendering", () => {
     it("should handle empty message list", () => {
       const messages: Message[] = [];
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // Should show welcome message when no messages
@@ -182,13 +208,17 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // Should show total messages without pagination info
@@ -210,13 +240,17 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // Should NOT show pagination navigation
@@ -234,26 +268,34 @@ describe("MessageList Static Rendering", () => {
 
       // Test collapsed state
       const { lastFrame: collapsedFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(collapsedFrame()).toContain("Toggle Expand");
 
       // Test expanded state
       const { lastFrame: expandedFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={true}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={true}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(expandedFrame()).toContain("Toggle Collapse");
@@ -267,13 +309,17 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // ALL messages should be visible (no pagination)
@@ -291,13 +337,17 @@ describe("MessageList Static Rendering", () => {
       });
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // All messages should be visible
@@ -321,13 +371,17 @@ describe("MessageList Static Rendering", () => {
         createComplexMessage(i + 1),
       );
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // Should show message count without pagination and complex content
@@ -347,13 +401,17 @@ describe("MessageList Static Rendering", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // All role headers should be visible
@@ -375,13 +433,17 @@ describe("MessageList Static Rendering", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // Only the first message should have a header
@@ -403,13 +465,17 @@ describe("MessageList Static Rendering", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       // All messages should be visible
@@ -426,13 +492,17 @@ describe("MessageList Static Rendering", () => {
       const messages = [createMessage("user", "Only message", 1)];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(lastFrame()).toContain("Only message - Message 1");

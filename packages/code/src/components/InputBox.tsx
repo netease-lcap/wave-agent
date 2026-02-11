@@ -5,7 +5,6 @@ import { FileSelector } from "./FileSelector.js";
 import { CommandSelector } from "./CommandSelector.js";
 import { HistorySearch } from "./HistorySearch.js";
 import { MemoryTypeSelector } from "./MemoryTypeSelector.js";
-import { TaskManager } from "./TaskManager.js";
 import { McpManager } from "./McpManager.js";
 import { RewindCommand } from "./RewindCommand.js";
 import { useInputManager } from "../hooks/useInputManager.js";
@@ -39,6 +38,7 @@ export interface InputBoxProps {
   // Slash Command related properties
   slashCommands?: SlashCommand[];
   hasSlashCommand?: (commandId: string) => boolean;
+  inputManagerState?: ReturnType<typeof useInputManager>;
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
@@ -53,6 +53,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   disconnectMcpServer = async () => false,
   slashCommands = [],
   hasSlashCommand = () => false,
+  inputManagerState,
 }) => {
   const {
     permissionMode: chatPermissionMode,
@@ -62,52 +63,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
     messages,
   } = useChat();
 
-  // Input manager with all input state and functionality (including images)
-  const {
-    inputText,
-    cursorPosition,
-    // Image management
-    attachedImages,
-    clearImages,
-    // File selector
-    showFileSelector,
-    filteredFiles,
-    fileSearchQuery: searchQuery,
-    handleFileSelect,
-    handleCancelFileSelect,
-    // Command selector
-    showCommandSelector,
-    commandSearchQuery,
-    handleCommandSelect,
-    handleCommandInsert,
-    handleCancelCommandSelect,
-    handleHistorySearchSelect,
-    handleCancelHistorySearch,
-    // Memory type selector
-    showMemoryTypeSelector,
-    memoryMessage,
-    handleMemoryTypeSelect,
-    handleCancelMemoryTypeSelect,
-    // History search
-    showHistorySearch,
-    historySearchQuery,
-    // Task/MCP Manager
-    showTaskManager,
-    showMcpManager,
-    showRewindManager,
-    setShowTaskManager,
-    setShowMcpManager,
-    setShowRewindManager,
-    // Permission mode
-    permissionMode,
-    setPermissionMode,
-    // Input history
-    setUserInputHistory,
-    // Main handler
-    handleInput,
-    // Manager ready state
-    isManagerReady,
-  } = useInputManager({
+  // Use provided input manager state or create a new one (fallback)
+  const localInputManager = useInputManager({
     onSendMessage: sendMessage,
     onHasSlashCommand: hasSlashCommand,
     onSaveMemory: saveMemory,
@@ -115,6 +72,41 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onBackgroundCurrentTask: backgroundCurrentTask,
     onPermissionModeChange: setChatPermissionMode,
   });
+
+  const {
+    inputText,
+    cursorPosition,
+    attachedImages,
+    clearImages,
+    showFileSelector,
+    filteredFiles,
+    fileSearchQuery: searchQuery,
+    handleFileSelect,
+    handleCancelFileSelect,
+    showCommandSelector,
+    commandSearchQuery,
+    handleCommandSelect,
+    handleCommandInsert,
+    handleCancelCommandSelect,
+    handleHistorySearchSelect,
+    handleCancelHistorySearch,
+    showMemoryTypeSelector,
+    memoryMessage,
+    handleMemoryTypeSelect,
+    handleCancelMemoryTypeSelect,
+    showHistorySearch,
+    historySearchQuery,
+    showTaskManager,
+    showMcpManager,
+    showRewindManager,
+    setShowMcpManager,
+    setShowRewindManager,
+    permissionMode,
+    setPermissionMode,
+    setUserInputHistory,
+    handleInput,
+    isManagerReady,
+  } = inputManagerState || localInputManager;
 
   // Sync permission mode from useChat to InputManager
   useEffect(() => {
@@ -219,7 +211,21 @@ export const InputBox: React.FC<InputBoxProps> = ({
       )}
 
       {showTaskManager && (
-        <TaskManager onCancel={() => setShowTaskManager(false)} />
+        <Box
+          flexDirection="column"
+          borderStyle="single"
+          borderColor="cyan"
+          borderBottom={false}
+          borderLeft={false}
+          borderRight={false}
+          paddingTop={1}
+        >
+          <Text color="cyan" bold>
+            Background Tasks
+          </Text>
+          <Text>No background tasks found</Text>
+          <Text dimColor>Press Ctrl+T to close</Text>
+        </Box>
       )}
 
       {showMcpManager && (

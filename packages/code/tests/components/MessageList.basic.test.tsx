@@ -2,6 +2,8 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
+import { ChatProvider } from "../../src/contexts/useChat.js";
+import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import type { Message } from "wave-agent-sdk";
 
 // Mock useInput to prevent key handling during tests
@@ -35,13 +37,17 @@ describe("MessageList Component", () => {
   describe("Empty state", () => {
     it("should display welcome message when no messages", () => {
       const { lastFrame } = render(
-        <MessageList
-          messages={[]}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={[]}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(lastFrame()).toContain("Welcome to WAVE Code Assistant!");
@@ -52,13 +58,17 @@ describe("MessageList Component", () => {
     it("should render a single message", () => {
       const messages = [createMessage("user", "Hello", 1)];
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(lastFrame()).toContain("👤 You");
@@ -71,13 +81,17 @@ describe("MessageList Component", () => {
         createMessage("assistant", "Hi there", 2),
       ];
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(lastFrame()).toContain("👤 You");
@@ -94,13 +108,17 @@ describe("MessageList Component", () => {
         },
       ];
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(lastFrame()).toContain("❌ Error: Something went wrong");
@@ -112,13 +130,17 @@ describe("MessageList Component", () => {
         createMessage("assistant", "Second", 2),
       ];
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       expect(lastFrame()).toContain("👤 You");
@@ -145,13 +167,17 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messagesWithImage}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messagesWithImage}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -176,13 +202,17 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messagesWithImages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messagesWithImages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -205,13 +235,17 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messagesWithEmptyImage}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messagesWithEmptyImage}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -236,13 +270,17 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={imageOnlyMessage}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={imageOnlyMessage}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -274,13 +312,17 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messagesWithReasoning}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messagesWithReasoning}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -314,13 +356,17 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messagesWithEmptyReasoning}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messagesWithEmptyReasoning}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();

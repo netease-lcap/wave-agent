@@ -313,6 +313,33 @@ describe("InputBox Smoke Tests", () => {
 
       // Cancel rewind
       stdin.write("\u001b"); // Escape
+      // After escape, it might show TaskManager if it was open before
+      // Let's ensure TaskManager is closed if it's visible
+      await vi.waitFor(() => {
+        const frame = stripAnsiColors(lastFrame() || "");
+        if (frame.includes("Background Tasks")) {
+          stdin.write("\u0014"); // Ctrl+T to close
+        }
+        expect(lastFrame()).toContain("Type your message");
+      });
+    });
+
+    it("should toggle TaskManager on Ctrl+T", async () => {
+      const { stdin, lastFrame } = render(<InputBox />);
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("Type your message"),
+      );
+
+      // Open TaskManager
+      stdin.write("\u0014"); // Ctrl+T
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Background Tasks",
+        );
+      });
+
+      // Close TaskManager
+      stdin.write("\u0014"); // Ctrl+T
       await vi.waitFor(() => {
         expect(lastFrame()).toContain("Type your message");
       });

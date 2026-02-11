@@ -1006,6 +1006,12 @@ export class InputManager {
       return true;
     }
 
+    // Handle Ctrl+T for task manager toggle
+    if (key.ctrl && input === "t") {
+      this.setShowTaskManager(!this.showTaskManager);
+      return true;
+    }
+
     // Handle Ctrl+B for backgrounding current task
     if (key.ctrl && input === "b") {
       this.callbacks.onBackgroundCurrentTask?.();
@@ -1083,6 +1089,12 @@ export class InputManager {
       this.showMcpManager ||
       this.showRewindManager
     ) {
+      // Handle Ctrl+T for task manager toggle even when it's already open
+      if (key.ctrl && input === "t") {
+        this.setShowTaskManager(!this.showTaskManager);
+        return true;
+      }
+
       if (
         this.showMemoryTypeSelector ||
         this.showTaskManager ||

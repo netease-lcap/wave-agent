@@ -2,6 +2,8 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
+import { ChatProvider } from "../../src/contexts/useChat.js";
+import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import type { Message } from "wave-agent-sdk";
 
 const createMessage = (
@@ -24,13 +26,17 @@ describe("MessageList Loading State", () => {
     ];
 
     const { lastFrame } = render(
-      <MessageList
-        messages={messages}
-        isLoading={true}
-        isCommandRunning={false}
-        latestTotalTokens={1000}
-        isExpanded={false}
-      />,
+      <AppProvider>
+        <ChatProvider>
+          <MessageList
+            messages={messages}
+            isLoading={true}
+            isCommandRunning={false}
+            latestTotalTokens={1000}
+            isExpanded={false}
+          />
+        </ChatProvider>
+      </AppProvider>,
     );
     const output = lastFrame();
 
@@ -52,13 +58,17 @@ describe("MessageList Loading State", () => {
     ];
 
     const { lastFrame } = render(
-      <MessageList
-        messages={messages}
-        isLoading={false}
-        isCommandRunning={true}
-        latestTotalTokens={1000}
-        isExpanded={false}
-      />,
+      <AppProvider>
+        <ChatProvider>
+          <MessageList
+            messages={messages}
+            isLoading={false}
+            isCommandRunning={true}
+            latestTotalTokens={1000}
+            isExpanded={false}
+          />
+        </ChatProvider>
+      </AppProvider>,
     );
     const output = lastFrame();
 
@@ -80,13 +90,17 @@ describe("MessageList Loading State", () => {
     ];
 
     const { lastFrame } = render(
-      <MessageList
-        messages={messages}
-        isLoading={false}
-        isCommandRunning={false}
-        latestTotalTokens={1000}
-        isExpanded={false}
-      />,
+      <AppProvider>
+        <ChatProvider>
+          <MessageList
+            messages={messages}
+            isLoading={false}
+            isCommandRunning={false}
+            latestTotalTokens={1000}
+            isExpanded={false}
+          />
+        </ChatProvider>
+      </AppProvider>,
     );
     const output = lastFrame();
 
@@ -104,13 +118,17 @@ describe("MessageList Loading State", () => {
 
   it("should display welcome message only when no messages and not loading", () => {
     const { lastFrame } = render(
-      <MessageList
-        messages={[]}
-        isLoading={false}
-        isCommandRunning={false}
-        latestTotalTokens={1000}
-        isExpanded={false}
-      />,
+      <AppProvider>
+        <ChatProvider>
+          <MessageList
+            messages={[]}
+            isLoading={false}
+            isCommandRunning={false}
+            latestTotalTokens={1000}
+            isExpanded={false}
+          />
+        </ChatProvider>
+      </AppProvider>,
     );
     const output = lastFrame();
 
@@ -125,13 +143,17 @@ describe("MessageList Loading State", () => {
     const messages = [createMessage("user", "Hello")];
 
     const { lastFrame } = render(
-      <MessageList
-        messages={messages}
-        isLoading={false}
-        isCommandRunning={false}
-        latestTotalTokens={0}
-        isExpanded={false}
-      />,
+      <AppProvider>
+        <ChatProvider>
+          <MessageList
+            messages={messages}
+            isLoading={false}
+            isCommandRunning={false}
+            latestTotalTokens={0}
+            isExpanded={false}
+          />
+        </ChatProvider>
+      </AppProvider>,
     );
     const output = lastFrame();
 
@@ -147,13 +169,17 @@ describe("MessageList Loading State", () => {
     ];
 
     const { lastFrame } = render(
-      <MessageList
-        messages={messages}
-        isLoading={true}
-        isCommandRunning={true}
-        latestTotalTokens={2500}
-        isExpanded={false}
-      />,
+      <AppProvider>
+        <ChatProvider>
+          <MessageList
+            messages={messages}
+            isLoading={true}
+            isCommandRunning={true}
+            latestTotalTokens={2500}
+            isExpanded={false}
+          />
+        </ChatProvider>
+      </AppProvider>,
     );
     const output = lastFrame();
 

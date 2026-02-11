@@ -2,6 +2,8 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
+import { ChatProvider } from "../../src/contexts/useChat.js";
+import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import type { Message } from "wave-agent-sdk";
 
 // Mock useInput to prevent key handling during tests
@@ -40,13 +42,17 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          latestTotalTokens={1000}
-          isExpanded={false}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={false}
+              isCommandRunning={false}
+              latestTotalTokens={1000}
+              isExpanded={false}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -67,7 +73,13 @@ describe("MessageList Component", () => {
         createMessage("assistant", "Hi there", 2),
       ];
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} />
+          </ChatProvider>
+        </AppProvider>,
+      );
 
       const output = lastFrame();
 
@@ -86,7 +98,13 @@ describe("MessageList Component", () => {
     it("should display message count in footer section", () => {
       const messages = [createMessage("user", "Test message", 1)];
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} />
+          </ChatProvider>
+        </AppProvider>,
+      );
 
       const output = lastFrame();
 
@@ -98,7 +116,11 @@ describe("MessageList Component", () => {
       const messages = [createMessage("user", "Test message", 1)];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} latestTotalTokens={2500} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} latestTotalTokens={2500} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -117,7 +139,11 @@ describe("MessageList Component", () => {
       const messages = [createMessage("user", "Test message", 1)];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} latestTotalTokens={0} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} latestTotalTokens={0} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -135,7 +161,11 @@ describe("MessageList Component", () => {
       const messages = [createMessage("user", "Test message", 1)];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={false} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} isExpanded={false} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -152,7 +182,11 @@ describe("MessageList Component", () => {
       const messages = [createMessage("user", "Test message", 1)];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={true} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} isExpanded={true} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -168,11 +202,15 @@ describe("MessageList Component", () => {
       const messages = [createMessage("user", "Loading test", 1)];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={true}
-          latestTotalTokens={2500}
-        />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList
+              messages={messages}
+              isLoading={true}
+              latestTotalTokens={2500}
+            />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -186,7 +224,11 @@ describe("MessageList Component", () => {
       const messages = [createMessage("user", "Command test", 1)];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isCommandRunning={true} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} isCommandRunning={true} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -199,7 +241,11 @@ describe("MessageList Component", () => {
       const messages = [createMessage("user", "Compress test", 1)];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isCompressing={true} />,
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} isCompressing={true} />
+          </ChatProvider>
+        </AppProvider>,
       );
 
       const output = lastFrame();
@@ -209,7 +255,13 @@ describe("MessageList Component", () => {
     });
 
     it("should show welcome message in empty state", () => {
-      const { lastFrame } = render(<MessageList messages={[]} />);
+      const { lastFrame } = render(
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={[]} />
+          </ChatProvider>
+        </AppProvider>,
+      );
 
       const output = lastFrame();
 
@@ -229,7 +281,13 @@ describe("MessageList Component", () => {
         createMessage("user", "Third", 3),
       ];
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <AppProvider>
+          <ChatProvider>
+            <MessageList messages={messages} />
+          </ChatProvider>
+        </AppProvider>,
+      );
 
       const output = lastFrame();
 

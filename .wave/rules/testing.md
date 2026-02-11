@@ -15,4 +15,5 @@ paths:
   - MUST not write `mkdtemp` in test, use mocking instead
   - Mock stdout and stderr to suppress output during testing and restore mocks after tests
   - Avoid unnecessary `setTimeout` or `sleep` in tests to keep them fast; prefer awaiting promises or using `vi.waitFor` if needed
+  - ALWAYS create multiple tasks and delegate them to multiple agents in parallel to speed up test implementation and fixing.
 - While writing tests about `Agent`, always use `await Agent.create` instead of `new Agent`

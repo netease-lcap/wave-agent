@@ -4,6 +4,7 @@ import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
 import { Confirmation } from "./Confirmation.js";
 import { useChat } from "../contexts/useChat.js";
+import { useInputManager } from "../hooks/useInputManager.js";
 
 export const ChatInterface: React.FC = () => {
   const {
@@ -28,7 +29,22 @@ export const ChatInterface: React.FC = () => {
     handleConfirmationDecision,
     handleConfirmationCancel,
     rewindId,
+    backgroundCurrentTask,
   } = useChat();
+
+  // Input manager with all input state and functionality (including images)
+  const inputManager = useInputManager({
+    onSendMessage: sendMessage,
+    onHasSlashCommand: hasSlashCommand,
+    onSaveMemory: saveMemory,
+    onAbortMessage: abortMessage,
+    onBackgroundCurrentTask: backgroundCurrentTask,
+    onPermissionModeChange: () => {
+      // Sync back to chat context if needed
+    },
+  });
+
+  const { showTaskManager, setShowTaskManager } = inputManager;
 
   if (!sessionId) return null;
 
@@ -41,6 +57,8 @@ export const ChatInterface: React.FC = () => {
         isCompressing={isCompressing}
         latestTotalTokens={latestTotalTokens}
         isExpanded={isExpanded}
+        showTaskManager={showTaskManager}
+        setShowTaskManager={setShowTaskManager}
         key={String(isExpanded) + sessionId + rewindId}
       />
 
@@ -70,6 +88,8 @@ export const ChatInterface: React.FC = () => {
           disconnectMcpServer={disconnectMcpServer}
           slashCommands={slashCommands}
           hasSlashCommand={hasSlashCommand}
+          // Pass input manager state and methods
+          inputManagerState={inputManager}
         />
       )}
     </Box>
