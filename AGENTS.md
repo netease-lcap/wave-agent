@@ -34,3 +34,11 @@ Always use `pnpm` as the package manager.
 - **Lint all**: `pnpm lint`
 - **Format**: `pnpm exec prettier --write .`
 
+## 🔍 Code Navigation & Exploration
+
+- **Code Exploration**: This is a large codebase. NEVER read too many code files at once. ALWAYS prefer using the `LSP` tool (goToDefinition, findReferences, etc.) to understand code relationships and navigate the codebase efficiently.
+
+## 🤖 Subagent Usage
+
+- **Subagent Usage**: Use specialized agents (typescript-expert, vitest-expert, Explore) for focused tasks (exploration, development, or testing) to reduce context usage.
+
