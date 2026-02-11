@@ -63,4 +63,6 @@ export interface ToolContext {
   taskManager?: import("../services/taskManager.js").TaskManager;
   /** Current session ID */
   sessionId?: string;
+  /** Main agent session ID (for shared resources like tasks) */
+  mainSessionId?: string;
 }

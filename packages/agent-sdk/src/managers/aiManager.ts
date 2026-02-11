@@ -42,6 +42,7 @@ export interface AIManagerOptions {
   workdir: string;
   systemPrompt?: string;
   subagentType?: string; // Optional subagent type for hook context
+  mainSessionId?: string; // Main agent session ID
   reversionManager?: import("./reversionManager.js").ReversionManager;
   /**Whether to use streaming mode for AI responses - defaults to true */
   stream?: boolean;
@@ -67,6 +68,7 @@ export class AIManager {
   private workdir: string;
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
+  private mainSessionId?: string; // Store main agent session ID
   private stream: boolean; // Streaming mode flag
 
   // Configuration properties (replaced with getter function storage)
@@ -87,6 +89,7 @@ export class AIManager {
     this.workdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
     this.subagentType = options.subagentType; // Store subagent type
+    this.mainSessionId = options.mainSessionId; // Store main agent session ID
     this.stream = options.stream ?? true; // Default to true if not specified
     this.callbacks = options.callbacks ?? {};
 
@@ -619,6 +622,7 @@ export class AIManager {
                 workdir: this.workdir,
                 messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
                 sessionId: this.messageManager.getSessionId(),
+                mainSessionId: this.mainSessionId,
               };
 
               // Execute tool
