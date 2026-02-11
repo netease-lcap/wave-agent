@@ -1,6 +1,6 @@
 {
   "name": "wave-code",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "CLI-based code assistant powered by AI, built with React and Ink",
   "repository": {
     "type": "git",
