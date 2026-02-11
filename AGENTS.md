@@ -11,11 +11,6 @@ This is a pnpm monorepo focused on AI-powered development tools.
 - **`specs/`**: Contains numbered feature specifications (e.g., `specs/053-modular-rules/`). These are the source of truth for feature design and implementation tasks.
 - **`.wave/rules/`**: Modular memory rules scoped to specific paths or tasks.
 
-## 🛠 Development Guidelines
-
-- **Code Exploration**: This is a large codebase. NEVER read too many code files at once. ALWAYS prefer using the `LSP` tool (goToDefinition, findReferences, etc.) to understand code relationships and navigate the codebase efficiently.
-- **Subagent Usage**: Use specialized agents (typescript-expert, vitest-expert, Explore) for focused tasks to reduce context usage.
-
 ### Key Dependencies
 - `packages/code` depends on `packages/agent-sdk`.
 - **Important**: After modifying `agent-sdk`, you MUST rebuild it (`pnpm -F wave-agent-sdk build`) before the changes are available to `packages/code`.

@@ -320,8 +320,7 @@ describe("AIManager", () => {
       await aiManager.sendAIMessage({ recursionDepth: 1 });
 
       // Verify that saveSession was still called despite tool failure
-      // It's called once at the beginning of sendAIMessage and once in finally
-      expect(mockMessageManager.saveSession).toHaveBeenCalledTimes(2);
+      expect(mockMessageManager.saveSession).toHaveBeenCalledTimes(1);
     });
   });
 

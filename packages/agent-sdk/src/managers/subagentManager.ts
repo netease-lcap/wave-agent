@@ -382,20 +382,14 @@ export class SubagentManager {
       abortCleanup = addConsolidatedAbortListener(abortSignal, [
         () => {
           // Update status to aborted
-          // Only update status if it's NOT a background task
-          if (!instance.backgroundTaskId) {
-            this.updateInstanceStatus(instance.subagentId, "aborted");
-            this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
-              status: "aborted",
-            });
-          }
+          this.updateInstanceStatus(instance.subagentId, "aborted");
+          this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
+            status: "aborted",
+          });
         },
         () => {
           // Abort the AI execution
-          // Only abort if it's NOT a background task
-          if (!instance.backgroundTaskId) {
-            instance.aiManager.abortAIMessage();
-          }
+          instance.aiManager.abortAIMessage();
         },
       ]);
     }
@@ -441,9 +435,7 @@ export class SubagentManager {
       });
 
       // If we have an abort signal, race against it using utilities to prevent listener accumulation
-      // BUT: If this is a background task, we DON'T want to race against the abort signal
-      // because the abort signal (Esc) should only stop the tool watching the task, not the task itself.
-      if (abortSignal && !instance.backgroundTaskId) {
+      if (abortSignal) {
         await Promise.race([
           executeAI,
           createAbortPromise(abortSignal, "Task was aborted"),
