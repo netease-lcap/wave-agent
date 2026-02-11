@@ -52,6 +52,8 @@ export default [
       },
     },
     rules: {
+      // Prohibit console.log in tests
+      "no-console": "error",
       // Also prohibit warning comments in test files
       "no-warning-comments": [
         "error",

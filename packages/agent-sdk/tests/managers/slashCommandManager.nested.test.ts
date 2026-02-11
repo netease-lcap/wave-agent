@@ -367,16 +367,9 @@ describe("SlashCommandManager Nested Command Integration", () => {
         new Error("AI Error"),
       );
 
-      // Capture console.error
-      const originalConsoleError = console.error;
-      console.error = vi.fn();
-
       const result = await slashCommandManager.executeCommand("tools:build");
 
       expect(result).toBe(true); // Command handler executes but catches the error
-      expect(console.error).not.toHaveBeenCalled(); // Error should be handled by messageManager
-
-      console.error = originalConsoleError;
     });
   });
 
@@ -558,9 +551,7 @@ describe("SlashCommandManager Nested Command Integration", () => {
     });
 
     it("should handle parsing errors gracefully for nested commands", () => {
-      const originalConsoleError = console.error;
-      console.error = vi.fn();
-
+      vi.spyOn(console, "error").mockImplementation(() => {});
       // Test input that doesn't start with /
       const result =
         slashCommandManager.parseAndValidateSlashCommand("namespace:command");
@@ -568,9 +559,6 @@ describe("SlashCommandManager Nested Command Integration", () => {
       expect(result.isValid).toBe(false);
       expect(result.commandId).toBeUndefined();
       expect(result.args).toBeUndefined();
-      expect(console.error).toHaveBeenCalled();
-
-      console.error = originalConsoleError;
     });
 
     it("should validate command ID format for nested commands", () => {

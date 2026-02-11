@@ -40,8 +40,7 @@ describe("TaskCreate Concurrency", () => {
   it("should result in unique IDs when TaskCreate is called concurrently", async () => {
     // Mock readdir to return empty initially, then return files as they are "created"
     const createdFiles: string[] = [];
-    vi.mocked(fs.readdir).mockImplementation(async (path) => {
-      console.log(`readdir called for ${path}, returning:`, createdFiles);
+    vi.mocked(fs.readdir).mockImplementation(async () => {
       return createdFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>;
     });
 
@@ -120,8 +119,6 @@ describe("TaskCreate Concurrency", () => {
       }
       return null;
     });
-
-    console.log("Created Task IDs:", taskIds);
 
     // Now we expect all IDs to be unique
     const uniqueIds = new Set(taskIds);

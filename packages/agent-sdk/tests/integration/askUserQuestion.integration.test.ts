@@ -35,10 +35,6 @@ describe("AskUserQuestion Integration", () => {
 
     const result = await toolManager.execute("AskUserQuestion", args, context);
 
-    if (!result.success) {
-      console.error("Tool execution failed:", result.error);
-    }
-
     expect(result.success).toBe(true);
     expect(JSON.parse(result.content)).toEqual({
       answers: { "Choose approach": "JWT" },
