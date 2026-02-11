@@ -14,7 +14,7 @@ import { useChat } from "../contexts/useChat.js";
 import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
 
 export const INPUT_PLACEHOLDER_TEXT =
-  "Type your message (use @ to reference files, / for commands, # to add memory, Ctrl+R to search history)...";
+  "Type your message (use @ to reference files, / for commands, # to add memory, Ctrl+R to search history, Ctrl+O to expand messages)...";
 
 export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
   0,
@@ -37,6 +37,7 @@ export interface InputBoxProps {
   connectMcpServer?: (serverName: string) => Promise<boolean>;
   disconnectMcpServer?: (serverName: string) => Promise<boolean>;
   // Slash Command related properties
+  latestTotalTokens?: number;
   slashCommands?: SlashCommand[];
   hasSlashCommand?: (commandId: string) => boolean;
 }
@@ -51,6 +52,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
   mcpServers = [],
   connectMcpServer = async () => false,
   disconnectMcpServer = async () => false,
+  latestTotalTokens = 0,
   slashCommands = [],
   hasSlashCommand = () => false,
 }) => {
@@ -253,7 +255,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
               )}
             </Text>
           </Box>
-          <Box paddingRight={1}>
+          <Box paddingRight={1} justifyContent="space-between" width="100%">
             <Text color="gray">
               Mode:{" "}
               <Text color={permissionMode === "plan" ? "yellow" : "cyan"}>
@@ -261,6 +263,14 @@ export const InputBox: React.FC<InputBoxProps> = ({
               </Text>{" "}
               (Shift+Tab to cycle)
             </Text>
+            {latestTotalTokens > 0 && (
+              <Text color="gray">
+                <Text color="blue" bold>
+                  {latestTotalTokens.toLocaleString()}
+                </Text>{" "}
+                tokens
+              </Text>
+            )}
           </Box>
         </Box>
       )}

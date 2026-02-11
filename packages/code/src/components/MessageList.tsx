@@ -18,7 +18,6 @@ export const MessageList = React.memo(
     isLoading = false,
     isCommandRunning = false,
     isCompressing = false,
-    latestTotalTokens = 0,
     isExpanded = false,
   }: MessageListProps) => {
     // Empty message state
@@ -119,38 +118,6 @@ export const MessageList = React.memo(
             {isCompressing && (
               <Text color="magenta">🗜️ Compressing message history...</Text>
             )}
-          </Box>
-        )}
-
-        {/* Bottom info and shortcut key hints */}
-        {messages.length > 0 && (
-          <Box>
-            <Box justifyContent="space-between" width="100%">
-              <Box>
-                <Text color="gray">
-                  Messages {messages.length}
-                  {latestTotalTokens > 0 && (
-                    <>
-                      <Text color="gray" dimColor>
-                        {" "}
-                        |{" "}
-                      </Text>
-                      <Text color="blue" bold>
-                        {latestTotalTokens.toLocaleString()}
-                      </Text>
-                      <Text color="gray" dimColor>
-                        {" "}
-                        tokens
-                      </Text>
-                    </>
-                  )}
-                </Text>
-              </Box>
-              <Text color="gray" dimColor>
-                <Text color="cyan">Ctrl+O</Text> Toggle{" "}
-                {isExpanded ? "Collapse" : "Expand"}
-              </Text>
-            </Box>
           </Box>
         )}
       </Box>

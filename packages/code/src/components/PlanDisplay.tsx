@@ -50,7 +50,7 @@ export const PlanDisplay: React.FC<PlanDisplayProps> = ({
       {isOverflowing && (
         <Box marginTop={1}>
           <Text color="yellow" dimColor>
-            ... (plan truncated, {lines.length} lines total)
+            ... (plan truncated, {lines.length} lines total, Ctrl+O to expand)
           </Text>
         </Box>
       )}
