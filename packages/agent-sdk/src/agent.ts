@@ -792,8 +792,12 @@ export class Agent {
       // After main session is restored, restore any associated subagent sessions
       await this.restoreSubagentSessions(sessionToRestore?.messages || []);
 
-      if (sessionToRestore)
+      if (sessionToRestore) {
         this.messageManager.initializeFromSession(sessionToRestore);
+        // After session is initialized, load tasks for the session
+        const tasks = await this.taskManager.listTasks(sessionToRestore.id);
+        this.options.callbacks?.onSessionTasksChange?.(tasks);
+      }
     }
   }
 
@@ -916,6 +920,10 @@ export class Agent {
 
     // 6. Initialize session state last
     this.messageManager.initializeFromSession(sessionData);
+
+    // 7. Load tasks for the restored session
+    const tasks = await this.taskManager.listTasks(sessionId);
+    this.options.callbacks?.onSessionTasksChange?.(tasks);
   }
 
   public abortAIMessage(): void {
