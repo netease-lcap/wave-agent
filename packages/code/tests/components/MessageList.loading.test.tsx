@@ -3,10 +3,15 @@ import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
 import { useTasks } from "../../src/hooks/useTasks.js";
+import { ChatContextType, useChat } from "../../src/contexts/useChat.js";
 import type { Message } from "wave-agent-sdk";
 
 vi.mock("../../src/hooks/useTasks.js", () => ({
   useTasks: vi.fn(),
+}));
+
+vi.mock("../../src/contexts/useChat.js", () => ({
+  useChat: vi.fn(),
 }));
 
 const createMessage = (
@@ -21,6 +26,9 @@ describe("MessageList Loading State", () => {
   beforeEach(() => {
     // Clear any potential state
     vi.mocked(useTasks).mockReturnValue([]);
+    vi.mocked(useChat).mockReturnValue({
+      isTaskListVisible: true,
+    } as unknown as ChatContextType);
   });
 
   it("should show loading message when AI is thinking", () => {

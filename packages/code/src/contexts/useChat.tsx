@@ -34,6 +34,8 @@ export interface ChatContextType {
   userInputHistory: string[];
   // Message display state
   isExpanded: boolean;
+  isTaskListVisible: boolean;
+  setIsTaskListVisible: (visible: boolean) => void;
   // AI functionality
   sessionId: string;
   sendMessage: (
@@ -113,6 +115,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Message Display State
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isTaskListVisible, setIsTaskListVisible] = useState(true);
 
   // AI State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -521,6 +524,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       });
     }
 
+    if (key.ctrl && input === "t") {
+      setIsTaskListVisible((prev) => !prev);
+    }
+
     // Handle ESC key to cancel confirmation
     if (key.escape && isConfirmationVisible) {
       handleConfirmationCancel();
@@ -533,6 +540,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     isCommandRunning,
     userInputHistory,
     isExpanded,
+    isTaskListVisible,
+    setIsTaskListVisible,
     sessionId,
     sendMessage,
     abortMessage,

@@ -1,14 +1,16 @@
 import React from "react";
+import { useChat } from "../contexts/useChat.js";
 import { Box, Text, useStdout } from "ink";
 import { useTasks } from "../hooks/useTasks.js";
 
 export const TaskList: React.FC = () => {
   const tasks = useTasks();
+  const { isTaskListVisible } = useChat();
   const { stdout } = useStdout();
   const terminalWidth = stdout?.columns ?? 80;
   const maxSubjectWidth = Math.max(20, terminalWidth - 10);
 
-  if (tasks.length === 0) {
+  if (tasks.length === 0 || !isTaskListVisible) {
     return null;
   }
 

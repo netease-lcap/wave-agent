@@ -3,6 +3,7 @@ import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
 import { useTasks } from "../../src/hooks/useTasks.js";
+import { ChatContextType, useChat } from "../../src/contexts/useChat.js";
 import type { Message } from "wave-agent-sdk";
 
 // Mock useInput to prevent key handling during tests
@@ -16,6 +17,10 @@ vi.mock("ink", async () => {
 
 vi.mock("../../src/hooks/useTasks.js", () => ({
   useTasks: vi.fn(),
+}));
+
+vi.mock("../../src/contexts/useChat.js", () => ({
+  useChat: vi.fn(),
 }));
 
 describe("MessageList Component", () => {
@@ -36,6 +41,9 @@ describe("MessageList Component", () => {
   beforeEach(() => {
     // Clear any potential state
     vi.mocked(useTasks).mockReturnValue([]);
+    vi.mocked(useChat).mockReturnValue({
+      isTaskListVisible: true,
+    } as unknown as ChatContextType);
   });
 
   describe("Empty state", () => {
