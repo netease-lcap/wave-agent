@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SkillManager } from "../../src/managers/skillManager.js";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { createSkillTool } from "../../src/tools/skillTool.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { createTaskTool } from "../../src/tools/taskTool.js";
@@ -74,6 +75,7 @@ describe("Dynamic Tool Definitions", () => {
     it("should dynamically reflect subagents added after tool creation", async () => {
       const subagentManager = new SubagentManager({
         workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
         parentToolManager: {} as unknown as ToolManager,
         parentMessageManager: {} as unknown as MessageManager,
         logger: mockLogger,

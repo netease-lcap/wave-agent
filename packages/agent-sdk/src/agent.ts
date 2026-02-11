@@ -210,12 +210,23 @@ export class Agent {
 
     this.foregroundTaskManager = new ForegroundTaskManager();
 
-    this.taskManager = new TaskManager();
-    this.taskManager.on("tasksChange", async (sessionId: string) => {
-      if (sessionId === this.sessionId) {
-        const tasks = await this.taskManager.listTasks(sessionId);
-        this.options.callbacks?.onSessionTasksChange?.(tasks);
-      }
+    // Initialize memory rule manager
+    this.memoryRuleManager = new MemoryRuleManager({
+      workdir: this.workdir,
+    });
+
+    // Initialize MessageManager
+    this.messageManager = new MessageManager({
+      callbacks,
+      workdir: this.workdir,
+      logger: this.logger,
+      memoryRuleManager: this.memoryRuleManager,
+    });
+
+    this.taskManager = new TaskManager(this.messageManager.getSessionId());
+    this.taskManager.on("tasksChange", async () => {
+      const tasks = await this.taskManager.listTasks();
+      this.options.callbacks?.onSessionTasksChange?.(tasks);
     });
 
     this.backgroundTaskManager = new BackgroundTaskManager({
@@ -253,20 +264,7 @@ export class Agent {
       workdir: this.workdir,
     });
 
-    // Initialize memory rule manager
-    this.memoryRuleManager = new MemoryRuleManager({
-      workdir: this.workdir,
-    });
-
-    // Initialize MessageManager
-    this.messageManager = new MessageManager({
-      callbacks,
-      workdir: this.workdir,
-      logger: this.logger,
-      memoryRuleManager: this.memoryRuleManager,
-    });
-
-    // Initialize ReversionManager
+    // ReversionManager depends on MessageManager
     this.reversionManager = new ReversionManager(
       new ReversionService(this.messageManager.getTranscriptPath()),
     );
@@ -359,6 +357,7 @@ export class Agent {
       hookManager: this.hookManager,
       onUsageAdded: (usage) => this.addUsage(usage),
       backgroundTaskManager: this.backgroundTaskManager,
+      taskManager: this.taskManager,
       memoryRuleManager: this.memoryRuleManager,
     });
 
@@ -366,6 +365,7 @@ export class Agent {
     this.aiManager = new AIManager({
       messageManager: this.messageManager,
       toolManager: this.toolManager,
+      taskManager: this.taskManager,
       logger: this.logger,
       backgroundTaskManager: this.backgroundTaskManager,
       hookManager: this.hookManager,
@@ -794,7 +794,7 @@ export class Agent {
       if (sessionToRestore) {
         this.messageManager.initializeFromSession(sessionToRestore);
         // After session is initialized, load tasks for the session
-        const tasks = await this.taskManager.listTasks(sessionToRestore.id);
+        const tasks = await this.taskManager.listTasks();
         this.options.callbacks?.onSessionTasksChange?.(tasks);
       }
     }
@@ -921,7 +921,7 @@ export class Agent {
     this.messageManager.initializeFromSession(sessionData);
 
     // 7. Load tasks for the restored session
-    const tasks = await this.taskManager.listTasks(sessionId);
+    const tasks = await this.taskManager.listTasks();
     this.options.callbacks?.onSessionTasksChange?.(tasks);
   }
 

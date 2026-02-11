@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { lsTool } from "@/tools/lsTool.js";
+import { TaskManager } from "@/services/taskManager.js";
 import type { ToolContext } from "@/tools/types.js";
 import type { Stats, Dirent } from "fs";
 
-const testContext: ToolContext = { workdir: "/test/workdir" };
+const testContext: ToolContext = {
+  workdir: "/test/workdir",
+  taskManager: new TaskManager("test-session"),
+};
 
 // Mock fs/promises
 vi.mock("fs", () => ({

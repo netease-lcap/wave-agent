@@ -6,7 +6,16 @@ import * as fs from "fs/promises";
 
 // Mock dependencies
 vi.mock("@/services/aiService");
-vi.mock("@/services/session");
+vi.mock("@/services/session", async () => {
+  const actual = await vi.importActual("@/services/session");
+  return {
+    ...actual,
+    generateSessionId: vi.fn(() => "test-session-id"),
+    handleSessionRestoration: vi.fn(),
+    loadSessionFromJsonl: vi.fn(),
+    appendMessages: vi.fn(),
+  };
+});
 vi.mock("fs/promises");
 
 const { instance: mockToolManagerInstance } = createMockToolManager();

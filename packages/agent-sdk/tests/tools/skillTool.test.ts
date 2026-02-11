@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Stats } from "fs";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { createSkillTool } from "../../src/tools/skillTool.js";
 import type { Logger } from "../../src/types/index.js";
@@ -88,7 +89,10 @@ describe("createSkillTool", () => {
   it("should format compact params correctly", async () => {
     await skillManager.initialize();
     const tool = createSkillTool(skillManager);
-    const context = { workdir: "/test" };
+    const context = {
+      workdir: "/test",
+      taskManager: new TaskManager("test-session"),
+    };
 
     const params = { skill_name: "test-skill" };
     const formatted = tool.formatCompactParams?.(params, context);
@@ -99,7 +103,10 @@ describe("createSkillTool", () => {
   it("should handle missing skill_name parameter in formatCompactParams", async () => {
     await skillManager.initialize();
     const tool = createSkillTool(skillManager);
-    const context = { workdir: "/test" };
+    const context = {
+      workdir: "/test",
+      taskManager: new TaskManager("test-session"),
+    };
 
     const params = {};
     const formatted = tool.formatCompactParams?.(params, context);
@@ -110,7 +117,10 @@ describe("createSkillTool", () => {
   it("should validate skill_name parameter", async () => {
     await skillManager.initialize();
     const tool = createSkillTool(skillManager);
-    const context = { workdir: "/test" };
+    const context = {
+      workdir: "/test",
+      taskManager: new TaskManager("test-session"),
+    };
 
     const result = await tool.execute({}, context);
 
@@ -130,7 +140,10 @@ describe("createSkillTool", () => {
     });
 
     const tool = createSkillTool(skillManager);
-    const context = { workdir: "/test" };
+    const context = {
+      workdir: "/test",
+      taskManager: new TaskManager("test-session"),
+    };
 
     const result = await tool.execute({ skill_name: "test-skill" }, context);
 
@@ -148,7 +161,10 @@ describe("createSkillTool", () => {
     );
 
     const tool = createSkillTool(skillManager);
-    const context = { workdir: "/test" };
+    const context = {
+      workdir: "/test",
+      taskManager: new TaskManager("test-session"),
+    };
 
     const result = await tool.execute({ skill_name: "test" }, context);
 

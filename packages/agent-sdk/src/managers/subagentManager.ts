@@ -69,6 +69,7 @@ export interface SubagentManagerOptions {
   workdir: string;
   parentToolManager: ToolManager;
   parentMessageManager: MessageManager;
+  taskManager: import("../services/taskManager.js").TaskManager;
   callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
   logger?: Logger;
   getGatewayConfig: () => GatewayConfig;
@@ -88,6 +89,7 @@ export class SubagentManager {
   private workdir: string;
   private parentToolManager: ToolManager;
   private parentMessageManager: MessageManager;
+  private taskManager: import("../services/taskManager.js").TaskManager;
   private callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
   private logger?: Logger;
   private getGatewayConfig: () => GatewayConfig;
@@ -103,6 +105,7 @@ export class SubagentManager {
     this.workdir = options.workdir;
     this.parentToolManager = options.parentToolManager;
     this.parentMessageManager = options.parentMessageManager;
+    this.taskManager = options.taskManager;
     this.callbacks = options.callbacks; // Store SubagentManagerCallbacks
     this.logger = options.logger;
     this.getGatewayConfig = options.getGatewayConfig;
@@ -196,11 +199,11 @@ export class SubagentManager {
     const aiManager = new AIManager({
       messageManager,
       toolManager,
+      taskManager: this.taskManager,
       logger: this.logger,
       workdir: this.workdir,
       systemPrompt: configuration.systemPrompt,
       subagentType: parameters.subagent_type, // Pass subagent type for hook context
-      mainSessionId: this.parentMessageManager.getSessionId(),
       hookManager: this.hookManager,
       permissionManager: this.parentToolManager.getPermissionManager(),
       getGatewayConfig: this.getGatewayConfig,
@@ -616,6 +619,7 @@ export class SubagentManager {
         const aiManager = new AIManager({
           messageManager,
           toolManager,
+          taskManager: this.taskManager,
           logger: this.logger,
           workdir: this.workdir,
           systemPrompt: configuration.systemPrompt,

@@ -34,7 +34,7 @@ describe("TaskCreate Concurrency", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    taskManager = new TaskManager();
+    taskManager = new TaskManager(sessionId);
   });
 
   it("should result in unique IDs when TaskCreate is called concurrently", async () => {
@@ -94,6 +94,7 @@ describe("TaskCreate Concurrency", () => {
     const context: ToolContext = {
       sessionId,
       taskManager,
+      workdir: "/test/workdir",
     } as unknown as ToolContext;
 
     // Trigger multiple concurrent task creations

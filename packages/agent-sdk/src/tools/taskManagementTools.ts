@@ -59,22 +59,7 @@ export const taskCreateTool: ToolPlugin = {
     },
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
-    const sessionId = context.mainSessionId || context.sessionId;
     const taskManager = context.taskManager;
-    if (!sessionId) {
-      return {
-        success: false,
-        content: "Session ID not found in context.",
-      };
-    }
-
-    if (!taskManager) {
-      return {
-        success: false,
-        content: "TaskManager not found in context.",
-      };
-    }
-
     const task: Omit<Task, "id"> = {
       subject: args.subject as string,
       description: args.description as string,
@@ -86,7 +71,7 @@ export const taskCreateTool: ToolPlugin = {
       metadata: (args.metadata as Record<string, unknown>) || {},
     };
 
-    const taskId = await taskManager.createTask(sessionId, task);
+    const taskId = await taskManager.createTask(task);
 
     return {
       success: true,
@@ -116,23 +101,9 @@ export const taskGetTool: ToolPlugin = {
     },
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
-    const sessionId = context.mainSessionId || context.sessionId;
     const taskManager = context.taskManager;
-    if (!sessionId) {
-      return {
-        success: false,
-        content: "Session ID not found in context.",
-      };
-    }
 
-    if (!taskManager) {
-      return {
-        success: false,
-        content: "TaskManager not found in context.",
-      };
-    }
-
-    const task = await taskManager.getTask(sessionId, args.id as string);
+    const task = await taskManager.getTask(args.id as string);
     if (!task) {
       return {
         success: false,
@@ -202,26 +173,9 @@ export const taskUpdateTool: ToolPlugin = {
     },
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
-    const sessionId = context.mainSessionId || context.sessionId;
     const taskManager = context.taskManager;
-    if (!sessionId) {
-      return {
-        success: false,
-        content: "Session ID not found in context.",
-      };
-    }
 
-    if (!taskManager) {
-      return {
-        success: false,
-        content: "TaskManager not found in context.",
-      };
-    }
-
-    const existingTask = await taskManager.getTask(
-      sessionId,
-      args.id as string,
-    );
+    const existingTask = await taskManager.getTask(args.id as string);
     if (!existingTask) {
       return {
         success: false,
@@ -242,7 +196,7 @@ export const taskUpdateTool: ToolPlugin = {
         (args.metadata as Record<string, unknown>) ?? existingTask.metadata,
     };
 
-    await taskManager.updateTask(sessionId, updatedTask);
+    await taskManager.updateTask(updatedTask);
 
     return {
       success: true,
@@ -272,23 +226,9 @@ export const taskListTool: ToolPlugin = {
     },
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
-    const sessionId = context.mainSessionId || context.sessionId;
     const taskManager = context.taskManager;
-    if (!sessionId) {
-      return {
-        success: false,
-        content: "Session ID not found in context.",
-      };
-    }
 
-    if (!taskManager) {
-      return {
-        success: false,
-        content: "TaskManager not found in context.",
-      };
-    }
-
-    let tasks = await taskManager.listTasks(sessionId);
+    let tasks = await taskManager.listTasks();
     if (args.status) {
       tasks = tasks.filter((t) => t.status === args.status);
     }

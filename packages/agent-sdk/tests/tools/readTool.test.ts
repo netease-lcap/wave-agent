@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { readTool } from "@/tools/readTool.js";
+import { TaskManager } from "@/services/taskManager.js";
 import { readFile, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 
@@ -31,7 +32,10 @@ vi.mock("@/utils/fileFormat.js", () => ({
   getBinaryDocumentError: vi.fn(() => "Binary document error"),
 }));
 
-const testContext: ToolContext = { workdir: "/test/workdir" };
+const testContext: ToolContext = {
+  workdir: "/test/workdir",
+  taskManager: new TaskManager("test-session"),
+};
 
 // Mock file contents for different test scenarios
 const mockFiles: Record<string, string> = {
@@ -219,7 +223,10 @@ describe("readTool", () => {
       {
         file_path: "small.txt",
       },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(true);

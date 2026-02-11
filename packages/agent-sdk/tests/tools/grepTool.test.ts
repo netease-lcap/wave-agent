@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { grepTool } from "@/tools/grepTool.js";
 import type { ToolContext } from "@/tools/types.js";
+import { TaskManager } from "@/services/taskManager.js";
 import type { ChildProcess } from "child_process";
 
-const testContext: ToolContext = { workdir: "/test/workdir" };
+const testContext: ToolContext = {
+  workdir: "/test/workdir",
+  taskManager: new TaskManager("test-session"),
+};
 
 // Mock child_process
 vi.mock("child_process");
@@ -118,7 +122,7 @@ describe("grepTool", () => {
         pattern: "export",
         output_mode: "files_with_matches",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -138,7 +142,7 @@ src/utils.ts:1:export const logger = {};
         pattern: "export const",
         output_mode: "content",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -159,7 +163,7 @@ src/utils.ts:3
         pattern: "export",
         output_mode: "count",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -180,7 +184,7 @@ src/utils.ts:1:export const logger = {};
         output_mode: "content",
         "-n": true,
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -198,7 +202,7 @@ src/utils.ts:1:export const logger = {};
         "-i": true,
         output_mode: "files_with_matches",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -222,7 +226,7 @@ src/utils.ts:1:export const logger = {};
         type: "ts",
         output_mode: "files_with_matches",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -248,7 +252,7 @@ src/utils.ts:1:export const logger = {};
         glob: "*.ts",
         output_mode: "files_with_matches",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -277,7 +281,7 @@ src/index.ts-3-  return new Application();
         output_mode: "content",
         "-C": 2,
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -305,7 +309,7 @@ src/index.ts:2:export function createApp() {
         output_mode: "content",
         "-B": 1,
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -325,7 +329,7 @@ src/index.ts-3-  return new Application();
         output_mode: "content",
         "-A": 1,
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -343,7 +347,7 @@ src/index.ts-3-  return new Application();
         output_mode: "files_with_matches",
         head_limit: 1,
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -362,7 +366,7 @@ src/index.ts-3-  return new Application();
         multiline: true,
         output_mode: "files_with_matches",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -388,7 +392,7 @@ src/index.ts-3-  return new Application();
         path: "src",
         output_mode: "files_with_matches",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -411,7 +415,7 @@ src/index.ts-3-  return new Application();
       {
         pattern: "NONEXISTENT_PATTERN_12345",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -465,7 +469,7 @@ src/index.ts-3-  return new Application();
         glob: "**/*.{ts,tsx,js,jsx}",
         output_mode: "files_with_matches",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -483,7 +487,7 @@ src/index.ts-3-  return new Application();
         pattern: "function\\s+\\w+",
         output_mode: "files_with_matches",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -503,7 +507,7 @@ tasks.md:4:- [ ] Create API endpoints
         output_mode: "content",
         "-n": true,
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -522,7 +526,7 @@ tasks.md:4:- [ ] Create API endpoints
         pattern: "--verbose",
         output_mode: "files_with_matches",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(true);
@@ -553,7 +557,7 @@ tasks.md:4:- [ ] Create API endpoints
       {
         pattern: "test",
       },
-      { workdir: "/test/workdir" },
+      testContext,
     );
 
     expect(result.success).toBe(false);

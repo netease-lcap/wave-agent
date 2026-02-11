@@ -43,7 +43,7 @@ describe("TaskManager", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    taskManager = new TaskManager();
+    taskManager = new TaskManager(sessionId);
   });
 
   describe("Basic CRUD Operations", () => {
@@ -59,7 +59,7 @@ describe("TaskManager", () => {
         [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
       );
 
-      await taskManager.createTask(sessionId, mockTask);
+      await taskManager.createTask(mockTask);
 
       expect(fs.mkdir).toHaveBeenCalledWith(
         expect.stringContaining(sessionId),
@@ -83,7 +83,7 @@ describe("TaskManager", () => {
     it("should get a task", async () => {
       vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(mockTask));
 
-      const task = await taskManager.getTask(sessionId, "1");
+      const task = await taskManager.getTask("1");
 
       expect(task).toEqual(mockTask);
       expect(fs.readFile).toHaveBeenCalledWith(
@@ -97,7 +97,7 @@ describe("TaskManager", () => {
       error.code = "ENOENT";
       vi.mocked(fs.readFile).mockRejectedValue(error);
 
-      const task = await taskManager.getTask(sessionId, "non-existent");
+      const task = await taskManager.getTask("non-existent");
 
       expect(task).toBeNull();
     });
@@ -112,7 +112,7 @@ describe("TaskManager", () => {
       vi.mocked(fs.writeFile).mockResolvedValue(undefined);
 
       const updatedTask = { ...mockTask, status: "in_progress" as const };
-      await taskManager.updateTask(sessionId, updatedTask);
+      await taskManager.updateTask(updatedTask);
 
       expect(fs.writeFile).toHaveBeenCalledWith(
         expect.stringContaining("1.json"),
@@ -130,7 +130,7 @@ describe("TaskManager", () => {
         .mockResolvedValueOnce(JSON.stringify(mockTask))
         .mockResolvedValueOnce(JSON.stringify({ ...mockTask, id: "2" }));
 
-      const tasks = await taskManager.listTasks(sessionId);
+      const tasks = await taskManager.listTasks();
 
       expect(tasks).toHaveLength(2);
       expect(tasks[0].id).toBe("1");
@@ -151,7 +151,7 @@ describe("TaskManager", () => {
         mockFileHandle as unknown as Awaited<ReturnType<typeof fs.open>>,
       );
 
-      const taskId = await taskManager.createTask(sessionId, invalidTask);
+      const taskId = await taskManager.createTask(invalidTask);
       expect(taskId).toBe("1");
     });
 
@@ -166,9 +166,9 @@ describe("TaskManager", () => {
       vi.mocked(fs.open).mockResolvedValue(
         mockFileHandle as unknown as Awaited<ReturnType<typeof fs.open>>,
       );
-      await expect(
-        taskManager.createTask(sessionId, invalidTask),
-      ).rejects.toThrow("Invalid task subject");
+      await expect(taskManager.createTask(invalidTask)).rejects.toThrow(
+        "Invalid task subject",
+      );
     });
 
     it("should throw error for invalid task status", async () => {
@@ -185,9 +185,9 @@ describe("TaskManager", () => {
       vi.mocked(fs.open).mockResolvedValue(
         mockFileHandle as unknown as Awaited<ReturnType<typeof fs.open>>,
       );
-      await expect(
-        taskManager.createTask(sessionId, invalidTask),
-      ).rejects.toThrow("Invalid task status");
+      await expect(taskManager.createTask(invalidTask)).rejects.toThrow(
+        "Invalid task status",
+      );
     });
   });
 
@@ -212,7 +212,7 @@ describe("TaskManager", () => {
           mockFileHandle as unknown as Awaited<ReturnType<typeof fs.open>>,
         );
 
-      await taskManager.createTask(sessionId, mockTask);
+      await taskManager.createTask(mockTask);
 
       expect(fs.open).toHaveBeenCalledTimes(3);
       expect(fs.writeFile).toHaveBeenCalled();
@@ -227,8 +227,8 @@ describe("TaskManager", () => {
       );
       vi.mocked(fs.open).mockRejectedValue(lockError);
 
-      await expect(taskManager.createTask(sessionId, mockTask)).rejects.toThrow(
-        `Could not acquire lock for session ${sessionId} after 100 retries`,
+      await expect(taskManager.createTask(mockTask)).rejects.toThrow(
+        `Could not acquire lock for task list ${sessionId} after 100 retries`,
       );
     });
 
@@ -244,7 +244,7 @@ describe("TaskManager", () => {
       );
       vi.mocked(fs.writeFile).mockRejectedValueOnce(new Error("Write failed"));
 
-      await expect(taskManager.createTask(sessionId, mockTask)).rejects.toThrow(
+      await expect(taskManager.createTask(mockTask)).rejects.toThrow(
         "Write failed",
       );
 
@@ -280,10 +280,10 @@ describe("TaskManager", () => {
       });
 
       // Start two updates
-      const p1 = taskManager.updateTask(sessionId, mockTask);
+      const p1 = taskManager.updateTask(mockTask);
       // Small delay to ensure p1 starts first
       await new Promise((resolve) => setTimeout(resolve, 50));
-      const p2 = taskManager.updateTask(sessionId, mockTask);
+      const p2 = taskManager.updateTask(mockTask);
 
       await Promise.all([p1, p2]);
 
@@ -293,7 +293,7 @@ describe("TaskManager", () => {
       const spy = vi.fn();
       taskManager.on("tasksChange", spy);
 
-      await taskManager.createTask(sessionId, mockTask);
+      await taskManager.createTask(mockTask);
 
       expect(spy).toHaveBeenCalledWith(sessionId);
       expect(fs.writeFile).toHaveBeenCalled();
@@ -303,7 +303,7 @@ describe("TaskManager", () => {
       const spy = vi.fn();
       taskManager.on("tasksChange", spy);
 
-      await taskManager.updateTask(sessionId, mockTask);
+      await taskManager.updateTask(mockTask);
 
       expect(spy).toHaveBeenCalledWith(sessionId);
       expect(fs.writeFile).toHaveBeenCalled();

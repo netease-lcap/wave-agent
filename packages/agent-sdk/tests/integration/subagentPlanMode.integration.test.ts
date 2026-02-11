@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
@@ -91,6 +92,9 @@ describe("Subagent Plan Mode Integration", () => {
       workdir: "/test/project",
       parentToolManager: mockToolManager,
       parentMessageManager: mockMessageManager,
+      taskManager: {
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
         agentModel: "test-model",

@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { globTool } from "@/tools/globTool.js";
+import { TaskManager } from "@/services/taskManager.js";
 import type { ToolContext } from "@/tools/types.js";
 import type { Stats } from "fs";
 
-const testContext: ToolContext = { workdir: "/test/workdir" };
+const testContext: ToolContext = {
+  workdir: "/test/workdir",
+  taskManager: new TaskManager("test-session"),
+};
 
 // Mock glob
 vi.mock("glob", () => ({
@@ -72,7 +76,10 @@ describe("globTool", () => {
 
     const result = await globTool.execute(
       { pattern: "**/*.ts" },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(true);
@@ -97,7 +104,10 @@ describe("globTool", () => {
 
     const result = await globTool.execute(
       { pattern: "**/*" },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(true);
@@ -119,7 +129,10 @@ describe("globTool", () => {
 
     const result = await globTool.execute(
       { pattern: "src/*" },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(true);
@@ -133,7 +146,10 @@ describe("globTool", () => {
 
     const result = await globTool.execute(
       { pattern: "**/*.nonexistent" },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(true);
@@ -202,7 +218,10 @@ describe("globTool", () => {
 
     const result = await globTool.execute(
       { pattern: "file*.txt" },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(true);
@@ -222,7 +241,10 @@ describe("globTool", () => {
 
     const result = await globTool.execute(
       { pattern: "**/*.js" },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(true);
@@ -245,7 +267,10 @@ describe("globTool", () => {
 
     const result = await globTool.execute(
       { pattern: "file*.txt" },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(true);
@@ -259,7 +284,10 @@ describe("globTool", () => {
 
     const result = await globTool.execute(
       { pattern: "[invalid" },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(false);
@@ -280,7 +308,10 @@ describe("globTool", () => {
 
     const result = await globTool.execute(
       { pattern: "**/*.{ts,tsx,js}" },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(true);
@@ -296,7 +327,10 @@ describe("globTool", () => {
 
     const result = await globTool.execute(
       { pattern: "**/file.ts" },
-      { workdir: "/test/workdir" },
+      {
+        workdir: "/test/workdir",
+        taskManager: new TaskManager("test-session"),
+      },
     );
 
     expect(result.success).toBe(true);

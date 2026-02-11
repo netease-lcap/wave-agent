@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
@@ -58,10 +59,16 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       getTask: vi.fn(),
     } as unknown as BackgroundTaskManager;
 
+    const taskManager = {
+      on: vi.fn(),
+      listTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as TaskManager;
+
     subagentManager = new SubagentManager({
       workdir: "/test",
       parentToolManager: mockToolManager,
       parentMessageManager: mockMessageManager,
+      taskManager,
       backgroundTaskManager: mockBackgroundTaskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
@@ -80,10 +87,16 @@ describe("SubagentManager - Backgrounding Coverage", () => {
   });
 
   it("should handle backgroundInstance error when backgroundTaskManager is missing", async () => {
+    const taskManager = {
+      on: vi.fn(),
+      listTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as TaskManager;
+
     const managerNoBG = new SubagentManager({
       workdir: "/test",
       parentToolManager: mockToolManager,
       parentMessageManager: mockMessageManager,
+      taskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({ agentModel: "m", fastModel: "f" }),
       getMaxInputTokens: () => 1000,
@@ -182,10 +195,16 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       info: vi.fn(),
       debug: vi.fn(),
     } as unknown as Logger;
+    const taskManager = {
+      on: vi.fn(),
+      listTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as TaskManager;
+
     const manager = new SubagentManager({
       workdir: "/test",
       parentToolManager: mockToolManager,
       parentMessageManager: mockMessageManager,
+      taskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({ agentModel: "m", fastModel: "f" }),
       getMaxInputTokens: () => 1000,
@@ -214,10 +233,16 @@ describe("SubagentManager - Backgrounding Coverage", () => {
 
   it("should cover createSubagentCallbacks reasoning update", async () => {
     const onSubagentAssistantReasoningUpdated = vi.fn();
+    const taskManager = {
+      on: vi.fn(),
+      listTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as TaskManager;
+
     const manager = new SubagentManager({
       workdir: "/test",
       parentToolManager: mockToolManager,
       parentMessageManager: mockMessageManager,
+      taskManager,
       callbacks: { onSubagentAssistantReasoningUpdated },
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({ agentModel: "m", fastModel: "f" }),

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
@@ -83,10 +84,16 @@ describe("AIManager", () => {
       error: vi.fn(),
     } as unknown as Logger;
 
+    const taskManager = {
+      on: vi.fn(),
+      listTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as TaskManager;
+
     // Create AIManager instance
     aiManager = new AIManager({
       messageManager: mockMessageManager,
       toolManager: mockToolManager,
+      taskManager,
       logger: mockLogger,
       workdir: "/test/workdir",
       getGatewayConfig: () => mockGatewayConfig,
@@ -105,9 +112,15 @@ describe("AIManager", () => {
         tool_calls: [],
       });
 
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
       const aiManagerWithLanguage = new AIManager({
         messageManager: mockMessageManager,
         toolManager: mockToolManager,
+        taskManager,
         logger: mockLogger,
         workdir: "/test/workdir",
         getGatewayConfig: () => mockGatewayConfig,
@@ -155,9 +168,15 @@ describe("AIManager", () => {
         tool_calls: [],
       });
 
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
       const aiManagerWithLanguage = new AIManager({
         messageManager: mockMessageManager,
         toolManager: mockToolManager,
+        taskManager,
         logger: mockLogger,
         workdir: "/test/workdir",
         getGatewayConfig: () => mockGatewayConfig,
@@ -331,9 +350,15 @@ describe("AIManager", () => {
         clearTemporaryRules: vi.fn(),
       };
 
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
       const aiManagerWithPermissions = new AIManager({
         messageManager: mockMessageManager,
         toolManager: mockToolManager,
+        taskManager,
         logger: mockLogger,
         permissionManager:
           mockPermissionManager as unknown as PermissionManager,
@@ -368,9 +393,15 @@ describe("AIManager", () => {
         clearTemporaryRules: vi.fn(),
       };
 
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
       const aiManagerWithPermissions = new AIManager({
         messageManager: mockMessageManager,
         toolManager: mockToolManager,
+        taskManager,
         logger: mockLogger,
         permissionManager:
           mockPermissionManager as unknown as PermissionManager,
@@ -403,9 +434,15 @@ describe("AIManager", () => {
         clearTemporaryRules: vi.fn(),
       };
 
+      const taskManager = {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      } as unknown as TaskManager;
+
       const aiManagerWithPermissions = new AIManager({
         messageManager: mockMessageManager,
         toolManager: mockToolManager,
+        taskManager,
         logger: mockLogger,
         permissionManager:
           mockPermissionManager as unknown as PermissionManager,

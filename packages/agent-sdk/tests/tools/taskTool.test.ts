@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createTaskTool } from "../../src/tools/taskTool.js";
+import { TaskManager } from "../../src/services/taskManager.js";
 import {
   SubagentManager,
   type SubagentInstance,
@@ -16,6 +17,7 @@ describe("Task Tool Background Execution", () => {
   const mockToolContext: ToolContext = {
     abortSignal: new AbortController().signal,
     workdir: "/test/workdir",
+    taskManager: new TaskManager("test-session"),
   };
 
   const gpConfig: SubagentConfiguration = {

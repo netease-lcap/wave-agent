@@ -31,7 +31,7 @@ describe("Subagent Task Sharing Integration Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    taskManager = new TaskManager();
+    taskManager = new TaskManager(mainSessionId);
     virtualFs = new Map();
 
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
@@ -68,12 +68,14 @@ describe("Subagent Task Sharing Integration Tests", () => {
     const mainContext: ToolContext = {
       sessionId: mainSessionId,
       taskManager,
+      workdir: "/test/workdir",
     } as ToolContext;
 
     const subagentContext: ToolContext = {
       sessionId: subagentSessionId,
       mainSessionId: mainSessionId,
       taskManager,
+      workdir: "/test/workdir",
     } as ToolContext;
 
     // 1. Main agent creates a task
@@ -112,14 +114,19 @@ describe("Subagent Task Sharing Integration Tests", () => {
   });
 
   it("should NOT share tasks if mainSessionId is not provided (isolation check)", async () => {
+    const taskManagerA = new TaskManager("session-a");
+    const taskManagerB = new TaskManager("session-b");
+
     const contextA: ToolContext = {
       sessionId: "session-a",
-      taskManager,
+      taskManager: taskManagerA,
+      workdir: "/test/workdir",
     } as ToolContext;
 
     const contextB: ToolContext = {
       sessionId: "session-b",
-      taskManager,
+      taskManager: taskManagerB,
+      workdir: "/test/workdir",
     } as ToolContext;
 
     // 1. Session A creates a task

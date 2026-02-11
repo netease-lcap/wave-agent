@@ -17,22 +17,26 @@ vi.mock("@/managers/toolManager", () => ({
 }));
 
 // Mock session service functions
-vi.mock("../../src/services/session.js", () => ({
-  generateSessionId: vi.fn(),
-  loadSessionFromJsonl: vi.fn(),
-  appendMessages: vi.fn(),
-  getLatestSessionFromJsonl: vi.fn(),
-  listSessionsFromJsonl: vi.fn(),
-  deleteSessionFromJsonl: vi.fn(),
-  sessionExistsInJsonl: vi.fn(),
-  cleanupExpiredSessionsFromJsonl: vi.fn(() => Promise.resolve(0)),
-  getSessionFilePath: vi.fn(),
-  ensureSessionDir: vi.fn(),
-  listSessions: vi.fn(),
-  cleanupEmptyProjectDirectories: vi.fn(),
-  handleSessionRestoration: vi.fn(),
-  SESSION_DIR: "/mock/session/dir",
-}));
+vi.mock("../../src/services/session.js", async () => {
+  const actual = await vi.importActual("../../src/services/session.js");
+  return {
+    ...actual,
+    generateSessionId: vi.fn(() => "test-session-id"),
+    loadSessionFromJsonl: vi.fn(),
+    appendMessages: vi.fn(),
+    getLatestSessionFromJsonl: vi.fn(),
+    listSessionsFromJsonl: vi.fn(),
+    deleteSessionFromJsonl: vi.fn(),
+    sessionExistsInJsonl: vi.fn(),
+    cleanupExpiredSessionsFromJsonl: vi.fn(() => Promise.resolve(0)),
+    getSessionFilePath: vi.fn(),
+    ensureSessionDir: vi.fn(),
+    listSessions: vi.fn(),
+    cleanupEmptyProjectDirectories: vi.fn(),
+    handleSessionRestoration: vi.fn(),
+    SESSION_DIR: "/mock/session/dir",
+  };
+});
 
 // Type for accessing private members in tests
 interface AgentWithPrivates {
