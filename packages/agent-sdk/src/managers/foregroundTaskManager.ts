@@ -14,8 +14,9 @@ export class ForegroundTaskManager implements IForegroundTaskManager {
   }
 
   public async backgroundCurrentTask(): Promise<void> {
-    const task = this.activeForegroundTasks.pop();
-    if (task) {
+    const tasks = [...this.activeForegroundTasks].reverse();
+    this.activeForegroundTasks = [];
+    for (const task of tasks) {
       await task.backgroundHandler();
     }
   }
