@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text, Static } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { MessageItem } from "./MessageItem.js";
+import { TaskList } from "./TaskList.js";
 
 export interface MessageListProps {
   messages: Message[];
@@ -18,13 +19,17 @@ export const MessageList = React.memo(
     isLoading = false,
     isCommandRunning = false,
     isCompressing = false,
+    latestTotalTokens,
     isExpanded = false,
   }: MessageListProps) => {
     // Empty message state
     if (messages.length === 0) {
       return (
-        <Box flexDirection="column" paddingY={1}>
-          <Text color="gray">Welcome to WAVE Code Assistant!</Text>
+        <Box flexDirection="column" gap={1}>
+          <Box flexDirection="column" paddingY={1}>
+            <Text color="gray">Welcome to WAVE Code Assistant!</Text>
+          </Box>
+          <TaskList />
         </Box>
       );
     }
@@ -39,6 +44,8 @@ export const MessageList = React.memo(
     const omittedCount = shouldLimitMessages
       ? messages.length - maxExpandedMessages
       : 0;
+
+    const totalTokensFormatted = latestTotalTokens?.toLocaleString();
 
     // Compute which messages to render statically vs dynamically
     const shouldRenderLastDynamic = isLoading || isCommandRunning;
@@ -95,6 +102,8 @@ export const MessageList = React.memo(
           );
         })}
 
+        <TaskList />
+
         {(isLoading || isCommandRunning || isCompressing) && (
           <Box flexDirection="column" gap={1}>
             {isLoading && (
@@ -120,6 +129,31 @@ export const MessageList = React.memo(
             )}
           </Box>
         )}
+
+        {/* Footer with message and token counts */}
+        <Box justifyContent="space-between" paddingX={1}>
+          <Box gap={1}>
+            <Text color="gray" dimColor>
+              Messages {messages.length}
+            </Text>
+            {latestTotalTokens !== undefined && latestTotalTokens > 0 && (
+              <Text color="gray" dimColor>
+                | {totalTokensFormatted} tokens
+              </Text>
+            )}
+          </Box>
+          <Box gap={1}>
+            <Text color="gray" dimColor>
+              Ctrl+O to open
+            </Text>
+            <Text color="gray" dimColor>
+              |
+            </Text>
+            <Text color="gray" dimColor>
+              Ctrl+T for tasks
+            </Text>
+          </Box>
+        </Box>
       </Box>
     );
   },

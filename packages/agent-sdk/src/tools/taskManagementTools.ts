@@ -1,5 +1,4 @@
 import { ToolPlugin, ToolContext, ToolResult } from "./types.js";
-import { TaskManager } from "../services/taskManager.js";
 import { Task, TaskStatus } from "../types/tasks.js";
 import {
   TASK_CREATE_TOOL_NAME,
@@ -7,8 +6,6 @@ import {
   TASK_UPDATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
 } from "../constants/tools.js";
-
-const taskManager = new TaskManager();
 
 export const taskCreateTool: ToolPlugin = {
   name: TASK_CREATE_TOOL_NAME,
@@ -63,10 +60,18 @@ export const taskCreateTool: ToolPlugin = {
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
     const sessionId = context.sessionId;
+    const taskManager = context.taskManager;
     if (!sessionId) {
       return {
         success: false,
         content: "Session ID not found in context.",
+      };
+    }
+
+    if (!taskManager) {
+      return {
+        success: false,
+        content: "TaskManager not found in context.",
       };
     }
 
@@ -114,10 +119,18 @@ export const taskGetTool: ToolPlugin = {
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
     const sessionId = context.sessionId;
+    const taskManager = context.taskManager;
     if (!sessionId) {
       return {
         success: false,
         content: "Session ID not found in context.",
+      };
+    }
+
+    if (!taskManager) {
+      return {
+        success: false,
+        content: "TaskManager not found in context.",
       };
     }
 
@@ -192,10 +205,18 @@ export const taskUpdateTool: ToolPlugin = {
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
     const sessionId = context.sessionId;
+    const taskManager = context.taskManager;
     if (!sessionId) {
       return {
         success: false,
         content: "Session ID not found in context.",
+      };
+    }
+
+    if (!taskManager) {
+      return {
+        success: false,
+        content: "TaskManager not found in context.",
       };
     }
 
@@ -254,10 +275,18 @@ export const taskListTool: ToolPlugin = {
   },
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
     const sessionId = context.sessionId;
+    const taskManager = context.taskManager;
     if (!sessionId) {
       return {
         success: false,
         content: "Session ID not found in context.",
+      };
+    }
+
+    if (!taskManager) {
+      return {
+        success: false,
+        content: "TaskManager not found in context.",
       };
     }
 

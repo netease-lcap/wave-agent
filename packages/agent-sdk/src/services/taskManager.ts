@@ -1,13 +1,15 @@
 import { promises as fs } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { EventEmitter } from "events";
 import { Task } from "../types/tasks.js";
 import { logger } from "../utils/globalLogger.js";
 
-export class TaskManager {
+export class TaskManager extends EventEmitter {
   private readonly baseDir: string;
 
   constructor() {
+    super();
     this.baseDir = join(homedir(), ".wave", "tasks");
   }
 
@@ -91,6 +93,7 @@ export class TaskManager {
       const taskPath = this.getTaskPath(sessionId, task.id);
       const content = JSON.stringify(task, null, 2);
       await fs.writeFile(taskPath, content, "utf8");
+      this.emit("tasksChange", sessionId);
       logger.info(`Task ${task.id} created in session ${sessionId}`);
     });
   }
@@ -120,6 +123,7 @@ export class TaskManager {
       const taskPath = this.getTaskPath(sessionId, task.id);
       const content = JSON.stringify(task, null, 2);
       await fs.writeFile(taskPath, content, "utf8");
+       this.emit("tasksChange", sessionId);
       logger.info(`Task ${task.id} updated in session ${sessionId}`);
     });
   }

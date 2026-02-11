@@ -12,6 +12,7 @@ import type {
   Message,
   McpServerStatus,
   BackgroundTask,
+  Task,
   SlashCommand,
   PermissionDecision,
   PermissionMode,
@@ -49,6 +50,8 @@ export interface ChatContextType {
   disconnectMcpServer: (serverName: string) => Promise<boolean>;
   // Background tasks
   backgroundTasks: BackgroundTask[];
+  // Session tasks
+  sessionTasks: Task[];
   getBackgroundTaskOutput: (
     taskId: string,
   ) => { stdout: string; stderr: string; status: string } | null;
@@ -125,6 +128,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Background tasks state
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
+  // Session tasks state
+  const [sessionTasks, setSessionTasks] = useState<Task[]>([]);
 
   // Command state
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
@@ -224,6 +229,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onTasksChange: (tasks) => {
           setBackgroundTasks([...tasks]);
+        },
+        onSessionTasksChange: (tasks) => {
+          setSessionTasks([...tasks]);
         },
         onSubagentMessagesChange: (subagentId, messages) => {
           logger.debug("onSubagentMessagesChange", subagentId, messages.length);
@@ -535,6 +543,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     connectMcpServer,
     disconnectMcpServer,
     backgroundTasks,
+    sessionTasks,
     getBackgroundTaskOutput,
     stopBackgroundTask,
     slashCommands,

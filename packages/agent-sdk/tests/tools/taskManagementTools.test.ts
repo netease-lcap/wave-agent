@@ -31,6 +31,8 @@ describe("Task Management Tools", () => {
     vi.clearAllMocks();
     context = {
       sessionId,
+      taskManager: mockTaskManager,
+      workdir: "/test/workdir",
     } as ToolContext;
   });
 
@@ -85,7 +87,10 @@ describe("Task Management Tools", () => {
     });
 
     it("should return error if sessionId is missing", async () => {
-      const result = await taskCreateTool.execute({}, {} as ToolContext);
+      const result = await taskCreateTool.execute({}, {
+        taskManager: mockTaskManager,
+        workdir: "/test/workdir",
+      } as ToolContext);
       expect(result.success).toBe(false);
       expect(result.content).toBe("Session ID not found in context.");
     });

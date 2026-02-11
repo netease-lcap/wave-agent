@@ -2,6 +2,7 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
+import { useTasks } from "../../src/hooks/useTasks.js";
 import type { Message } from "wave-agent-sdk";
 
 // Mock useInput to prevent key handling during tests
@@ -12,6 +13,10 @@ vi.mock("ink", async () => {
     useInput: vi.fn(),
   };
 });
+
+vi.mock("../../src/hooks/useTasks.js", () => ({
+  useTasks: vi.fn(),
+}));
 
 describe("MessageList Static Rendering", () => {
   const createMessage = (
@@ -30,6 +35,7 @@ describe("MessageList Static Rendering", () => {
 
   beforeEach(() => {
     // Clear any potential state
+    vi.mocked(useTasks).mockReturnValue([]);
   });
 
   describe("Static rendering scenarios", () => {
@@ -201,7 +207,7 @@ describe("MessageList Static Rendering", () => {
 
       // Should show expand toggle
       expect(lastFrame()).toContain("Ctrl+O");
-      expect(lastFrame()).toContain("Toggle Expand");
+      expect(lastFrame()).toContain("Ctrl+T");
     });
 
     it("should show expand controls for single message", () => {
@@ -225,6 +231,7 @@ describe("MessageList Static Rendering", () => {
 
       // Should show expand toggle
       expect(lastFrame()).toContain("Ctrl+O");
+      expect(lastFrame()).toContain("Ctrl+T");
       expect(lastFrame()).toContain("Messages 1");
       expect(lastFrame()).not.toContain("Page");
     });
@@ -243,7 +250,8 @@ describe("MessageList Static Rendering", () => {
         />,
       );
 
-      expect(collapsedFrame()).toContain("Toggle Expand");
+      expect(collapsedFrame()).toContain("Ctrl+O");
+      expect(collapsedFrame()).toContain("Ctrl+T");
 
       // Test expanded state
       const { lastFrame: expandedFrame } = render(
@@ -256,7 +264,8 @@ describe("MessageList Static Rendering", () => {
         />,
       );
 
-      expect(expandedFrame()).toContain("Toggle Collapse");
+      expect(expandedFrame()).toContain("Ctrl+O");
+      expect(expandedFrame()).toContain("Ctrl+T");
     });
   });
 
