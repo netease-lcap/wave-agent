@@ -640,7 +640,7 @@ export class AIManager {
                 stage: "end",
                 name: toolName,
                 shortResult: toolResult.shortResult,
-                isManuallyBackgrounded: toolResult.isManuallyBackgrounded,
+                isManuallyBackgrounded: !!toolResult.isManuallyBackgrounded,
               });
 
               // Execute PostToolUse hooks after successful tool completion
@@ -709,7 +709,7 @@ export class AIManager {
           ) || [];
         const allBackgrounded =
           toolBlocks.length > 0 &&
-          toolBlocks.every((block) => block.isManuallyBackgrounded);
+          toolBlocks.every((block) => !!block.isManuallyBackgrounded);
 
         if (allBackgrounded) {
           this.logger?.info(

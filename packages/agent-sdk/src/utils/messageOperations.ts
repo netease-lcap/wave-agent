@@ -218,21 +218,10 @@ export const addAssistantMessageToMessages = (
 };
 
 // Update Tool Block of the last assistant message
-export const updateToolBlockInMessage = ({
-  messages,
-  id,
-  parameters,
-  result,
-  success,
-  error,
-  stage,
-  name,
-  shortResult,
-  images,
-  compactParams,
-  parametersChunk,
-  isManuallyBackgrounded,
-}: UpdateToolBlockParams): Message[] => {
+export const updateToolBlockInMessage = (
+  params: UpdateToolBlockParams,
+): Message[] => {
+  const { messages, id, ...updates } = params;
   const newMessages = [...messages];
   // Find the last assistant message
   for (let i = newMessages.length - 1; i >= 0; i--) {
@@ -244,37 +233,20 @@ export const updateToolBlockInMessage = ({
       if (toolBlockIndex !== -1) {
         const toolBlock = newMessages[i].blocks[toolBlockIndex];
         if (toolBlock.type === "tool") {
-          toolBlock.parameters = parameters;
-          if (result !== undefined) toolBlock.result = result;
-          if (shortResult !== undefined) toolBlock.shortResult = shortResult;
-          toolBlock.images = images; // Add image data update
-          if (success !== undefined) toolBlock.success = success;
-          if (error !== undefined) toolBlock.error = error;
-          if (stage !== undefined) toolBlock.stage = stage;
-          if (compactParams !== undefined)
-            toolBlock.compactParams = compactParams;
-          if (parametersChunk !== undefined)
-            toolBlock.parametersChunk = parametersChunk;
-          if (isManuallyBackgrounded !== undefined)
-            toolBlock.isManuallyBackgrounded = isManuallyBackgrounded;
+          // Apply all updates from params
+          Object.assign(toolBlock, updates);
         }
       } else {
         // If existing block not found, create new one
         // This handles cases where we're streaming tool parameters before execution
         newMessages[i].blocks.push({
           type: "tool",
-          parameters: parameters,
-          result: result || "",
-          shortResult: shortResult,
-          images: images, // Add image data
           id: id,
-          name: name || "unknown",
-          success: success,
-          error: error,
-          stage: stage ?? "start",
-          compactParams: compactParams,
-          parametersChunk: parametersChunk,
-          isManuallyBackgrounded: isManuallyBackgrounded,
+          name: updates.name || "unknown",
+          ...updates,
+          parameters: updates.parameters || "",
+          result: updates.result || "",
+          stage: updates.stage ?? "start",
         });
       }
       break;
