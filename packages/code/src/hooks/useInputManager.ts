@@ -37,7 +37,8 @@ export const useInputManager = (
     show: false,
     message: "",
   });
-  const [showTaskManager, setShowTaskManager] = useState(false);
+  const [showBackgroundTaskManager, setShowBackgroundTaskManager] =
+    useState(false);
   const [showMcpManager, setShowMcpManager] = useState(false);
   const [showRewindManager, setShowRewindManager] = useState(false);
   const [permissionMode, setPermissionModeState] =
@@ -64,8 +65,8 @@ export const useInputManager = (
         onMemoryTypeSelectorStateChange: (show, message) => {
           setMemoryTypeSelectorState({ show, message });
         },
-        onTaskManagerStateChange: (show) => {
-          setShowTaskManager(show);
+        onBackgroundTaskManagerStateChange: (show) => {
+          setShowBackgroundTaskManager(show);
         },
         onMcpManagerStateChange: (show) => {
           setShowMcpManager(show);
@@ -101,8 +102,8 @@ export const useInputManager = (
         onMemoryTypeSelectorStateChange: (show, message) => {
           setMemoryTypeSelectorState({ show, message });
         },
-        onTaskManagerStateChange: (show) => {
-          setShowTaskManager(show);
+        onBackgroundTaskManagerStateChange: (show) => {
+          setShowBackgroundTaskManager(show);
         },
         onMcpManagerStateChange: (show) => {
           setShowMcpManager(show);
@@ -313,7 +314,7 @@ export const useInputManager = (
     historySearchQuery: historySearchState.query,
     showMemoryTypeSelector: memoryTypeSelectorState.show,
     memoryMessage: memoryTypeSelectorState.message,
-    showTaskManager,
+    showBackgroundTaskManager,
     showMcpManager,
     showRewindManager,
     permissionMode,
@@ -362,8 +363,8 @@ export const useInputManager = (
     handleSpecialCharInput,
 
     // Bash/MCP Manager
-    setShowTaskManager: useCallback((show: boolean) => {
-      managerRef.current?.setShowTaskManager(show);
+    setShowBackgroundTaskManager: useCallback((show: boolean) => {
+      managerRef.current?.setShowBackgroundTaskManager(show);
     }, []),
     setShowMcpManager: useCallback((show: boolean) => {
       managerRef.current?.setShowMcpManager(show);

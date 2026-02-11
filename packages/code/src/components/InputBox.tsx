@@ -94,10 +94,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showHistorySearch,
     historySearchQuery,
     // Task/MCP Manager
-    showTaskManager,
+    showBackgroundTaskManager,
     showMcpManager,
     showRewindManager,
-    setShowTaskManager,
+    setShowBackgroundTaskManager,
     setShowMcpManager,
     setShowRewindManager,
     // Permission mode
@@ -220,8 +220,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {showTaskManager && (
-        <BackgroundTaskManager onCancel={() => setShowTaskManager(false)} />
+      {showBackgroundTaskManager && (
+        <BackgroundTaskManager
+          onCancel={() => setShowBackgroundTaskManager(false)}
+        />
       )}
 
       {showMcpManager && (
@@ -233,7 +235,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {showTaskManager || showMcpManager || showRewindManager || (
+      {showBackgroundTaskManager || showMcpManager || showRewindManager || (
         <Box flexDirection="column">
           <Box
             borderStyle="single"

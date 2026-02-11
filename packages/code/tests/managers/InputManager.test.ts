@@ -45,7 +45,7 @@ describe("InputManager", () => {
       onCommandSelectorStateChange: vi.fn(),
       onHistorySearchStateChange: vi.fn(),
       onMemoryTypeSelectorStateChange: vi.fn(),
-      onTaskManagerStateChange: vi.fn(),
+      onBackgroundTaskManagerStateChange: vi.fn(),
       onMcpManagerStateChange: vi.fn(),
       onRewindManagerStateChange: vi.fn(),
       onImagesStateChange: vi.fn(),
@@ -444,11 +444,13 @@ describe("InputManager", () => {
   });
 
   describe("Task/MCP Manager State", () => {
-    it("should set task manager state", () => {
-      manager.setShowTaskManager(true);
+    it("should set background task manager state", () => {
+      manager.setShowBackgroundTaskManager(true);
 
-      expect(manager.getShowTaskManager()).toBe(true);
-      expect(mockCallbacks.onTaskManagerStateChange).toHaveBeenCalledWith(true);
+      expect(manager.getShowBackgroundTaskManager()).toBe(true);
+      expect(
+        mockCallbacks.onBackgroundTaskManagerStateChange,
+      ).toHaveBeenCalledWith(true);
     });
 
     it("should set MCP manager state", () => {
@@ -458,8 +460,8 @@ describe("InputManager", () => {
       expect(mockCallbacks.onMcpManagerStateChange).toHaveBeenCalledWith(true);
     });
 
-    it("should consume input when task manager is active", async () => {
-      manager.setShowTaskManager(true);
+    it("should consume input when background task manager is active", async () => {
+      manager.setShowBackgroundTaskManager(true);
       const mockKey: Key = {
         return: false,
         upArrow: false,
@@ -483,7 +485,7 @@ describe("InputManager", () => {
       expect(manager.getInputText()).toBe(""); // Should not have added 'k'
     });
 
-    it("should update internal state when opening task manager via command", async () => {
+    it("should update internal state when opening background task manager via command", async () => {
       manager.insertTextAtCursor("/tasks");
       manager.activateCommandSelector(0);
 
@@ -493,7 +495,9 @@ describe("InputManager", () => {
       manager.handleCommandSelect("tasks");
 
       // Wait for async command execution
-      await vi.waitFor(() => expect(manager.getShowTaskManager()).toBe(true));
+      await vi.waitFor(() =>
+        expect(manager.getShowBackgroundTaskManager()).toBe(true),
+      );
 
       const mockKey: Key = {
         return: false,
@@ -789,9 +793,9 @@ describe("InputManager", () => {
       manager.activateCommandSelector(0);
       manager.handleCommandSelect("tasks");
       await vi.waitFor(() =>
-        expect(mockCallbacks.onTaskManagerStateChange).toHaveBeenCalledWith(
-          true,
-        ),
+        expect(
+          mockCallbacks.onBackgroundTaskManagerStateChange,
+        ).toHaveBeenCalledWith(true),
       );
 
       manager.clearInput();
