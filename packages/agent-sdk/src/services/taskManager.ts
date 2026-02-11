@@ -71,6 +71,53 @@ export class TaskManager extends EventEmitter {
     }
   }
 
+  private getSessionLockPath(sessionId: string): string {
+    return join(this.getSessionDir(sessionId), `session.lock`);
+  }
+
+  private async withSessionLock<T>(
+    sessionId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const lockPath = this.getSessionLockPath(sessionId);
+    let lockHandle;
+    const maxRetries = 100; // Increased retries for session lock
+    const retryDelay = process.env.NODE_ENV === "test" ? 10 : 100;
+
+    await this.ensureSessionDir(sessionId);
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        lockHandle = await fs.open(lockPath, "wx");
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+          if (i === maxRetries - 1) {
+            throw new Error(
+              `Could not acquire session lock for ${sessionId} after ${maxRetries} retries`,
+            );
+          }
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    try {
+      return await operation();
+    } finally {
+      if (lockHandle) {
+        await lockHandle.close();
+      }
+      try {
+        await fs.unlink(lockPath);
+      } catch (error) {
+        logger.error(`Failed to release session lock for ${sessionId}:`, error);
+      }
+    }
+  }
+
   private validateTask(task: Task): void {
     if (!task.id || typeof task.id !== "string")
       throw new Error("Invalid task ID");
@@ -86,15 +133,17 @@ export class TaskManager extends EventEmitter {
     }
   }
 
-  async createTask(sessionId: string, task: Task): Promise<void> {
-    this.validateTask(task);
-    await this.ensureSessionDir(sessionId);
-    await this.withLock(sessionId, task.id, async () => {
-      const taskPath = this.getTaskPath(sessionId, task.id);
-      const content = JSON.stringify(task, null, 2);
+  async createTask(sessionId: string, task: Omit<Task, "id">): Promise<string> {
+    return await this.withSessionLock(sessionId, async () => {
+      const taskId = await this.getNextTaskId(sessionId);
+      const fullTask: Task = { ...task, id: taskId };
+      this.validateTask(fullTask);
+      const taskPath = this.getTaskPath(sessionId, taskId);
+      const content = JSON.stringify(fullTask, null, 2);
       await fs.writeFile(taskPath, content, "utf8");
       this.emit("tasksChange", sessionId);
-      logger.info(`Task ${task.id} created in session ${sessionId}`);
+      logger.info(`Task ${taskId} created in session ${sessionId}`);
+      return taskId;
     });
   }
 
