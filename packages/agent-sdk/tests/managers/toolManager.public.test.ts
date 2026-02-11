@@ -52,7 +52,10 @@ describe("ToolManager.initializeBuiltInTools", () => {
     // Check that basic tools are present
     expect(toolNames).toContain("Bash");
     expect(toolNames).toContain("Read");
-    expect(toolNames).toContain("TodoWrite");
+    expect(toolNames).toContain("TaskCreate");
+    expect(toolNames).toContain("TaskGet");
+    expect(toolNames).toContain("TaskUpdate");
+    expect(toolNames).toContain("TaskList");
     expect(toolNames).toContain("Task");
     expect(toolNames).toContain("Skill");
   });
@@ -78,8 +81,8 @@ describe("ToolManager.initializeBuiltInTools", () => {
     const toolNames = tools.map((t) => t.name);
 
     // Should still have all tools (no duplicates due to Map usage)
-    expect(toolNames).toContain("TodoWrite");
-    expect(toolNames.filter((name) => name === "TodoWrite")).toHaveLength(1);
+    expect(toolNames).toContain("TaskCreate");
+    expect(toolNames.filter((name) => name === "TaskCreate")).toHaveLength(1);
   });
 });
 

@@ -13,10 +13,15 @@ import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
 import { lsTool } from "../tools/lsTool.js";
 import { readTool } from "../tools/readTool.js";
-import { todoWriteTool } from "../tools/todoWriteTool.js";
 import { lspTool } from "../tools/lspTool.js";
 import { createTaskTool } from "../tools/taskTool.js";
 import { createSkillTool } from "../tools/skillTool.js";
+import {
+  taskCreateTool,
+  taskGetTool,
+  taskUpdateTool,
+  taskListTool,
+} from "../tools/taskManagementTools.js";
 import { McpManager } from "./mcpManager.js";
 import { PermissionManager } from "./permissionManager.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
@@ -128,8 +133,11 @@ class ToolManager {
       grepTool,
       lsTool,
       readTool,
-      todoWriteTool,
       lspTool,
+      taskCreateTool,
+      taskGetTool,
+      taskUpdateTool,
+      taskListTool,
     ];
 
     for (const tool of builtInTools) {
@@ -182,6 +190,7 @@ class ToolManager {
       foregroundTaskManager: this.foregroundTaskManager,
       mcpManager: this.mcpManager,
       lspManager: this.lspManager,
+      sessionId: context.sessionId,
     };
 
     this.logger?.debug("Executing tool with enhanced context", {

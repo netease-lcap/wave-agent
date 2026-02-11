@@ -8,7 +8,10 @@ import {
   MULTI_EDIT_TOOL_NAME,
   READ_TOOL_NAME,
   TASK_TOOL_NAME,
-  TODO_WRITE_TOOL_NAME,
+  TASK_CREATE_TOOL_NAME,
+  TASK_GET_TOOL_NAME,
+  TASK_UPDATE_TOOL_NAME,
+  TASK_LIST_TOOL_NAME,
   WRITE_TOOL_NAME,
 } from "./tools.js";
 
@@ -31,9 +34,9 @@ The user will primarily request you perform software engineering tasks. This inc
 
 export const TASK_MANAGEMENT_POLICY = `
 # Task Management
-You have access to the ${TODO_WRITE_TOOL_NAME} tools to help you manage and plan tasks. Use these tools VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress.
+You have access to the ${TASK_CREATE_TOOL_NAME}, ${TASK_GET_TOOL_NAME}, ${TASK_UPDATE_TOOL_NAME}, and ${TASK_LIST_TOOL_NAME} tools to help you manage and plan tasks. Use these tools VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress.
 These tools are also EXTREMELY helpful for planning tasks, and for breaking down larger complex tasks into smaller steps. If you do not use this tool when planning, you may forget to do important tasks - and that is unacceptable.
-It is critical that you mark todos as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.`;
+It is critical that you mark tasks as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.`;
 
 export const ASK_USER_POLICY = `
 # Asking questions as you work
@@ -104,7 +107,12 @@ export function buildSystemPrompt(
     tools.map((t) => t.function?.name || t.name).filter(Boolean),
   );
 
-  if (toolNames.has(TODO_WRITE_TOOL_NAME)) {
+  if (
+    toolNames.has(TASK_CREATE_TOOL_NAME) ||
+    toolNames.has(TASK_GET_TOOL_NAME) ||
+    toolNames.has(TASK_UPDATE_TOOL_NAME) ||
+    toolNames.has(TASK_LIST_TOOL_NAME)
+  ) {
     prompt += TASK_MANAGEMENT_POLICY;
   }
   if (toolNames.has(ASK_USER_QUESTION_TOOL_NAME)) {

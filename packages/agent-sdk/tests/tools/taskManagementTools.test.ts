@@ -1,122 +1,236 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { taskOutputTool } from "../../src/tools/taskOutputTool.js";
-import { taskStopTool } from "../../src/tools/taskStopTool.js";
-import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
+import { describe, it, expect, vi, beforeEach, type Mocked } from "vitest";
+import {
+  taskCreateTool,
+  taskGetTool,
+  taskUpdateTool,
+  taskListTool,
+} from "../../src/tools/taskManagementTools.js";
+import { TaskManager } from "../../src/services/taskManager.js";
+import { Task } from "../../src/types/tasks.js";
 import type { ToolContext } from "../../src/tools/types.js";
 
+// Mock TaskManager
+vi.mock("../../src/services/taskManager.js", () => {
+  const TaskManager = vi.fn();
+  TaskManager.prototype.getNextTaskId = vi.fn();
+  TaskManager.prototype.createTask = vi.fn();
+  TaskManager.prototype.getTask = vi.fn();
+  TaskManager.prototype.updateTask = vi.fn();
+  TaskManager.prototype.listTasks = vi.fn();
+  return { TaskManager };
+});
+
+// Get the mocked instance
+const mockTaskManager = new TaskManager() as Mocked<TaskManager>;
+
 describe("Task Management Tools", () => {
-  let backgroundTaskManager: BackgroundTaskManager;
+  const sessionId = "test-session-id";
   let context: ToolContext;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    backgroundTaskManager = new BackgroundTaskManager({
-      workdir: "/test/workdir",
-    });
     context = {
-      backgroundTaskManager,
-      workdir: "/test/workdir",
-    };
+      sessionId,
+    } as ToolContext;
   });
 
-  describe("TaskOutput tool", () => {
-    it("should retrieve output from background task", async () => {
-      // Manually add a task to the manager for testing
-      // Since startShell is the easiest way to get a task in
-      const { id: taskId } = backgroundTaskManager.startShell("echo hello");
+  describe("TaskCreate tool", () => {
+    it("should create a task with provided arguments", async () => {
+      const args = {
+        subject: "Test Task",
+        description: "Test Description",
+        status: "in_progress",
+      };
+      mockTaskManager.getNextTaskId.mockResolvedValue("1");
 
-      // Mock some output
-      const task = backgroundTaskManager.getTask(taskId);
-      if (task && task.type === "shell") {
-        task.stdout += "hello world";
-      }
+      const result = await taskCreateTool.execute(args, context);
 
-      const result = await taskOutputTool.execute(
-        {
-          task_id: taskId,
-        },
-        context,
-      );
-
+      expect(mockTaskManager.getNextTaskId).toHaveBeenCalledWith(sessionId);
+      expect(mockTaskManager.createTask).toHaveBeenCalledWith(sessionId, {
+        id: "1",
+        subject: "Test Task",
+        description: "Test Description",
+        status: "in_progress",
+        activeForm: undefined,
+        owner: undefined,
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+      });
       expect(result.success).toBe(true);
-      expect(result.content).toBe("hello world");
+      expect(result.content).toContain("Task created with ID: 1");
     });
 
-    it("should handle non-existent task ID", async () => {
-      const result = await taskOutputTool.execute(
-        {
-          task_id: "task_999",
-        },
-        context,
-      );
+    it("should use default values when optional arguments are missing", async () => {
+      const args = {
+        subject: "Minimal Task",
+        description: "Minimal Description",
+      };
+      mockTaskManager.getNextTaskId.mockResolvedValue("2");
 
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Task with ID task_999 not found");
-    });
+      const result = await taskCreateTool.execute(args, context);
 
-    it("should handle missing task_id", async () => {
-      const result = await taskOutputTool.execute({}, context);
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        "task_id parameter is required and must be a string",
-      );
-    });
-
-    it("should handle block parameter", async () => {
-      const { id: taskId } = backgroundTaskManager.startShell("echo hello");
-      const task = backgroundTaskManager.getTask(taskId);
-      if (task) {
-        task.status = "completed";
-        task.stdout = "done";
-      }
-
-      const result = await taskOutputTool.execute(
-        {
-          task_id: taskId,
-          block: true,
-        },
-        context,
-      );
-
+      expect(mockTaskManager.createTask).toHaveBeenCalledWith(sessionId, {
+        id: "2",
+        subject: "Minimal Task",
+        description: "Minimal Description",
+        status: "pending",
+        activeForm: undefined,
+        owner: undefined,
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+      });
       expect(result.success).toBe(true);
-      expect(result.content).toBe("done");
+    });
+
+    it("should return error if sessionId is missing", async () => {
+      const result = await taskCreateTool.execute({}, {} as ToolContext);
+      expect(result.success).toBe(false);
+      expect(result.content).toBe("Session ID not found in context.");
     });
   });
 
-  describe("TaskStop tool", () => {
-    it("should stop a running task", async () => {
-      // Start a long running shell
-      const { id: taskId } = backgroundTaskManager.startShell("sleep 100");
+  describe("TaskGet tool", () => {
+    it("should retrieve a task by ID", async () => {
+      const task: Task = {
+        id: "1",
+        subject: "Test Task",
+        description: "Test Description",
+        status: "pending",
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+      };
+      mockTaskManager.getTask.mockResolvedValue(task);
 
-      const result = await taskStopTool.execute(
+      const result = await taskGetTool.execute({ id: "1" }, context);
+
+      expect(mockTaskManager.getTask).toHaveBeenCalledWith(sessionId, "1");
+      expect(result.success).toBe(true);
+      expect(JSON.parse(result.content as string)).toEqual(task);
+    });
+
+    it("should return error if task is not found", async () => {
+      mockTaskManager.getTask.mockResolvedValue(null);
+
+      const result = await taskGetTool.execute({ id: "non-existent" }, context);
+
+      expect(result.success).toBe(false);
+      expect(result.content).toBe("Task with ID non-existent not found.");
+    });
+  });
+
+  describe("TaskUpdate tool", () => {
+    it("should update an existing task", async () => {
+      const existingTask: Task = {
+        id: "1",
+        subject: "Old Subject",
+        description: "Old Description",
+        status: "pending",
+        blocks: [],
+        blockedBy: [],
+        metadata: {},
+      };
+      mockTaskManager.getTask.mockResolvedValue(existingTask);
+
+      const args = {
+        id: "1",
+        subject: "New Subject",
+        status: "completed",
+      };
+
+      const result = await taskUpdateTool.execute(args, context);
+
+      expect(mockTaskManager.getTask).toHaveBeenCalledWith(sessionId, "1");
+      expect(mockTaskManager.updateTask).toHaveBeenCalledWith(sessionId, {
+        ...existingTask,
+        subject: "New Subject",
+        status: "completed",
+      });
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("Task 1 updated successfully.");
+    });
+
+    it("should return error if task to update is not found", async () => {
+      mockTaskManager.getTask.mockResolvedValue(null);
+
+      const result = await taskUpdateTool.execute({ id: "2" }, context);
+
+      expect(result.success).toBe(false);
+      expect(result.content).toBe("Task with ID 2 not found.");
+    });
+  });
+
+  describe("TaskList tool", () => {
+    it("should list all tasks sorted by ID", async () => {
+      const tasks: Task[] = [
         {
-          task_id: taskId,
+          id: "2",
+          subject: "Task 2",
+          description: "",
+          status: "pending",
+          blocks: [],
+          blockedBy: [],
+          metadata: {},
         },
-        context,
+        {
+          id: "1",
+          subject: "Task 1",
+          description: "",
+          status: "completed",
+          blocks: [],
+          blockedBy: [],
+          metadata: {},
+        },
+      ];
+      mockTaskManager.listTasks.mockResolvedValue(tasks);
+
+      const result = await taskListTool.execute({}, context);
+
+      expect(mockTaskManager.listTasks).toHaveBeenCalledWith(sessionId);
+      expect(result.success).toBe(true);
+      expect(result.content).toBe(
+        "[1] Task 1 (completed)\n[2] Task 2 (pending)",
       );
+    });
+
+    it("should filter tasks by status", async () => {
+      const tasks: Task[] = [
+        {
+          id: "1",
+          subject: "Task 1",
+          description: "",
+          status: "completed",
+          blocks: [],
+          blockedBy: [],
+          metadata: {},
+        },
+        {
+          id: "2",
+          subject: "Task 2",
+          description: "",
+          status: "pending",
+          blocks: [],
+          blockedBy: [],
+          metadata: {},
+        },
+      ];
+      mockTaskManager.listTasks.mockResolvedValue(tasks);
+
+      const result = await taskListTool.execute({ status: "pending" }, context);
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe(`Task ${taskId} has been stopped`);
-
-      const task = backgroundTaskManager.getTask(taskId);
-      expect(task?.status).toBe("killed");
+      expect(result.content).toBe("[2] Task 2 (pending)");
     });
 
-    it("should handle missing task_id", async () => {
-      const result = await taskStopTool.execute({}, context);
-      expect(result.success).toBe(false);
-      expect(result.error).toBe(
-        "task_id parameter is required and must be a string",
-      );
-    });
+    it("should return 'No tasks found.' if list is empty", async () => {
+      mockTaskManager.listTasks.mockResolvedValue([]);
 
-    it("should handle non-existent task", async () => {
-      const result = await taskStopTool.execute(
-        { task_id: "invalid" },
-        context,
-      );
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Task with ID invalid not found");
+      const result = await taskListTool.execute({}, context);
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("No tasks found.");
     });
   });
 });

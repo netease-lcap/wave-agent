@@ -33,3 +33,4 @@ export * from "./plugins.js";
 export * from "./marketplace.js";
 export * from "./memoryRule.js";
 export * from "./history.js";
+export * from "./tasks.js";

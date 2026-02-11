@@ -618,6 +618,7 @@ export class AIManager {
                 backgroundTaskManager: this.backgroundTaskManager,
                 workdir: this.workdir,
                 messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
+                sessionId: this.messageManager.getSessionId(),
               };
 
               // Execute tool
