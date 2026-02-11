@@ -59,6 +59,8 @@ export interface ToolContext {
   messageId?: string;
   /** Foreground task manager for backgrounding tasks */
   foregroundTaskManager?: import("../types/processes.js").IForegroundTaskManager;
+  /** Task manager instance for task management */
+  taskManager?: import("../services/taskManager.js").TaskManager;
   /** Current session ID */
   sessionId?: string;
 }

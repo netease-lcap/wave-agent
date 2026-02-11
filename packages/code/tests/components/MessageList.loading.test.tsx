@@ -1,8 +1,13 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
+import { useTasks } from "../../src/hooks/useTasks.js";
 import type { Message } from "wave-agent-sdk";
+
+vi.mock("../../src/hooks/useTasks.js", () => ({
+  useTasks: vi.fn(),
+}));
 
 const createMessage = (
   role: "user" | "assistant",
@@ -15,6 +20,7 @@ const createMessage = (
 describe("MessageList Loading State", () => {
   beforeEach(() => {
     // Clear any potential state
+    vi.mocked(useTasks).mockReturnValue([]);
   });
 
   it("should show loading message when AI is thinking", () => {

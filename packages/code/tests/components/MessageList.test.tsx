@@ -2,6 +2,7 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
+import { useTasks } from "../../src/hooks/useTasks.js";
 import type { Message } from "wave-agent-sdk";
 
 // Mock useInput to prevent key handling during tests
@@ -12,6 +13,10 @@ vi.mock("ink", async () => {
     useInput: vi.fn(),
   };
 });
+
+vi.mock("../../src/hooks/useTasks.js", () => ({
+  useTasks: vi.fn(),
+}));
 
 describe("MessageList Component", () => {
   const createMessage = (
@@ -30,6 +35,7 @@ describe("MessageList Component", () => {
 
   beforeEach(() => {
     // Clear any potential state
+    vi.mocked(useTasks).mockReturnValue([]);
   });
 
   describe("Component rendering", () => {
@@ -142,7 +148,7 @@ describe("MessageList Component", () => {
 
       // Should contain toggle hint
       expect(output).toContain("Ctrl+O");
-      expect(output).toContain("Toggle Expand");
+      expect(output).toContain("Ctrl+T");
 
       // Should contain Messages count
       expect(output).toContain("Messages 1");
@@ -159,7 +165,7 @@ describe("MessageList Component", () => {
 
       // Should contain collapse toggle hint
       expect(output).toContain("Ctrl+O");
-      expect(output).toContain("Toggle Collapse");
+      expect(output).toContain("Ctrl+T");
     });
   });
 

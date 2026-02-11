@@ -44,6 +44,8 @@ export interface ToolManagerOptions {
   permissionManager?: PermissionManager;
   /** Foreground task manager for backgrounding tasks */
   foregroundTaskManager?: import("../types/processes.js").IForegroundTaskManager;
+  /** Task manager for task management */
+  taskManager?: import("../services/taskManager.js").TaskManager;
   /** Reversion manager for file snapshots */
   reversionManager?: ReversionManager;
   /** Background task manager for background execution */
@@ -68,6 +70,7 @@ class ToolManager {
   private permissionManager?: PermissionManager;
   private foregroundTaskManager?: import("../types/processes.js").IForegroundTaskManager;
   private reversionManager?: ReversionManager;
+  private taskManager?: import("../services/taskManager.js").TaskManager;
   private backgroundTaskManager?: import("./backgroundTaskManager.js").BackgroundTaskManager;
   private permissionMode?: PermissionMode;
   private canUseToolCallback?: PermissionCallback;
@@ -77,6 +80,7 @@ class ToolManager {
     this.lspManager = options.lspManager;
     this.logger = options.logger;
     this.permissionManager = options.permissionManager;
+    this.taskManager = options.taskManager;
     this.foregroundTaskManager = options.foregroundTaskManager;
     this.reversionManager = options.reversionManager;
     this.backgroundTaskManager = options.backgroundTaskManager;
@@ -185,6 +189,7 @@ class ToolManager {
       permissionMode: effectivePermissionMode,
       canUseToolCallback: this.canUseToolCallback,
       permissionManager: this.permissionManager,
+      taskManager: this.taskManager,
       reversionManager: this.reversionManager,
       backgroundTaskManager: this.backgroundTaskManager,
       foregroundTaskManager: this.foregroundTaskManager,

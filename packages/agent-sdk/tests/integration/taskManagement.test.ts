@@ -6,6 +6,7 @@ import {
   taskListTool,
 } from "../../src/tools/taskManagementTools.js";
 import { promises as fs } from "fs";
+import { TaskManager } from "../../src/services/taskManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
 
 // Mock fs/promises
@@ -28,10 +29,12 @@ describe("Task Management Integration Tests", () => {
   const sessionId = "test-session-id";
   let context: ToolContext;
   let virtualFs: Map<string, string>;
+  let taskManager: TaskManager;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    context = { sessionId } as ToolContext;
+    taskManager = new TaskManager();
+    context = { sessionId, taskManager } as ToolContext;
     virtualFs = new Map();
 
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);

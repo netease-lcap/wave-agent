@@ -3,15 +3,14 @@ import { TaskManager } from "../../src/services/taskManager.js";
 import { Task } from "../../src/types/tasks.js";
 import { promises as fs } from "fs";
 
-// Mock fs and os
+
 vi.mock("fs", () => ({
   promises: {
-    mkdir: vi.fn(),
+        mkdir: vi.fn(),
     open: vi.fn(),
     writeFile: vi.fn(),
     readFile: vi.fn(),
     unlink: vi.fn(),
-    readdir: vi.fn(),
   },
 }));
 
@@ -254,5 +253,24 @@ describe("TaskManager", () => {
 
       expect(fs.writeFile).toHaveBeenCalledTimes(2);
     });
+  it("should emit tasksChange when a task is created", async () => {
+    const spy = vi.fn();
+    taskManager.on("tasksChange", spy);
+
+    await taskManager.createTask(sessionId, mockTask);
+
+    expect(spy).toHaveBeenCalledWith(sessionId);
+    expect(fs.writeFile).toHaveBeenCalled();
+  });
+
+  it("should emit tasksChange when a task is updated", async () => {
+    const spy = vi.fn();
+    taskManager.on("tasksChange", spy);
+
+    await taskManager.updateTask(sessionId, mockTask);
+
+    expect(spy).toHaveBeenCalledWith(sessionId);
+    expect(fs.writeFile).toHaveBeenCalled();
+  });
   });
 });

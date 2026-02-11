@@ -46,6 +46,7 @@ import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
+import { TaskManager } from "./services/taskManager.js";
 import {
   loadSessionFromJsonl,
   handleSessionRestoration,
@@ -107,6 +108,7 @@ export interface AgentCallbacks
     McpManagerCallbacks,
     SubagentManagerCallbacks {
   onTasksChange?: (tasks: BackgroundTask[]) => void;
+  onSessionTasksChange?: (tasks: import("./types/tasks.js").Task[]) => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
   onBackgroundCurrentTask?: () => void;
 }
@@ -131,6 +133,7 @@ export class Agent {
   private reversionManager: ReversionManager;
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
+  private taskManager: TaskManager;
   private foregroundTaskManager: ForegroundTaskManager;
   private configurationService: ConfigurationService; // Add configuration service
   private workdir: string; // Working directory
@@ -207,6 +210,14 @@ export class Agent {
     this.options = options;
 
     this.foregroundTaskManager = new ForegroundTaskManager();
+
+    this.taskManager = new TaskManager();
+    this.taskManager.on("tasksChange", async (sessionId: string) => {
+      if (sessionId === this.sessionId) {
+        const tasks = await this.taskManager.listTasks(sessionId);
+        this.options.callbacks?.onSessionTasksChange?.(tasks);
+      }
+    });
 
     this.backgroundTaskManager = new BackgroundTaskManager({
       callbacks: {
@@ -312,6 +323,7 @@ export class Agent {
       reversionManager: this.reversionManager,
       permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
       canUseToolCallback: canUseToolWithNotification,
+      taskManager: this.taskManager,
       backgroundTaskManager: this.backgroundTaskManager,
       foregroundTaskManager: this.foregroundTaskManager,
     }); // Initialize tool registry with permission support
