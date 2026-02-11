@@ -27,6 +27,7 @@ describe("Agent - Branch Coverage", () => {
     vi.mocked(sessionService.handleSessionRestoration).mockResolvedValue(
       undefined,
     );
+    vi.mocked(fs.readdir).mockResolvedValue([]);
   });
 
   afterEach(async () => {
@@ -83,6 +84,7 @@ describe("Agent - Branch Coverage", () => {
         >[1],
         workdir: "/test",
         metadata: { latestTotalTokens: 100 },
+        id: "main-123",
       } as unknown as Awaited<
         ReturnType<typeof sessionService.handleSessionRestoration>
       >);
@@ -127,6 +129,7 @@ describe("Agent - Branch Coverage", () => {
         >[1],
         workdir: "/test",
         metadata: { latestTotalTokens: 100 },
+        id: "main",
       } as unknown as Awaited<
         ReturnType<typeof sessionService.handleSessionRestoration>
       >);

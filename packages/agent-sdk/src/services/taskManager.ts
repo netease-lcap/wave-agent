@@ -123,7 +123,7 @@ export class TaskManager extends EventEmitter {
       const taskPath = this.getTaskPath(sessionId, task.id);
       const content = JSON.stringify(task, null, 2);
       await fs.writeFile(taskPath, content, "utf8");
-       this.emit("tasksChange", sessionId);
+      this.emit("tasksChange", sessionId);
       logger.info(`Task ${task.id} updated in session ${sessionId}`);
     });
   }
