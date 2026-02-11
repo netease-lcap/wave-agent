@@ -53,7 +53,6 @@ describe("MessageList Component", () => {
           messages={[]}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -70,7 +69,6 @@ describe("MessageList Component", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -89,7 +87,6 @@ describe("MessageList Component", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -112,7 +109,6 @@ describe("MessageList Component", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -130,7 +126,6 @@ describe("MessageList Component", () => {
           messages={messages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -163,7 +158,6 @@ describe("MessageList Component", () => {
           messages={messagesWithImage}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -194,7 +188,6 @@ describe("MessageList Component", () => {
           messages={messagesWithImages}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -223,7 +216,6 @@ describe("MessageList Component", () => {
           messages={messagesWithEmptyImage}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -254,7 +246,6 @@ describe("MessageList Component", () => {
           messages={imageOnlyMessage}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -292,7 +283,6 @@ describe("MessageList Component", () => {
           messages={messagesWithReasoning}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );
@@ -332,7 +322,6 @@ describe("MessageList Component", () => {
           messages={messagesWithEmptyReasoning}
           isLoading={false}
           isCommandRunning={false}
-          latestTotalTokens={1000}
           isExpanded={false}
         />,
       );

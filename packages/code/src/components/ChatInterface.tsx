@@ -39,7 +39,6 @@ export const ChatInterface: React.FC = () => {
         isLoading={isLoading}
         isCommandRunning={isCommandRunning}
         isCompressing={isCompressing}
-        latestTotalTokens={latestTotalTokens}
         isExpanded={isExpanded}
         key={String(isExpanded) + sessionId + rewindId}
       />
