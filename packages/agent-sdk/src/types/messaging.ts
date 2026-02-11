@@ -67,6 +67,7 @@ export interface ToolBlock {
   error?: string | Error;
   compactParams?: string; // Compact parameter display
   parametersChunk?: string; // Incremental parameter updates for streaming
+  isManuallyBackgrounded?: boolean; // Whether the tool was manually backgrounded by the user
 }
 
 export interface ImageBlock {

@@ -34,6 +34,8 @@ export interface ToolResult {
     data: string; // base64 encoded image data
     mediaType?: string; // Image media type, such as "image/png"
   }>;
+  // Whether the tool was manually backgrounded by the user (e.g. via Ctrl-B)
+  isManuallyBackgrounded?: boolean;
 }
 
 export interface ToolContext {
