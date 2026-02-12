@@ -2,7 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-02-11
-**Feature**: [/home/liuyiqi/personal-projects/wave-agent-task-mgmt/specs/063-task-management-tools/spec.md]
+**Feature**: [./063-task-management-tools/spec.md]
 
 ## Content Quality
 

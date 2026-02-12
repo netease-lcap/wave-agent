@@ -2,7 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-01-13
-**Feature**: [/home/liuyiqi/personal-projects/wave-agent/specs/043-expand-plugin-capabilities/spec.md]
+**Feature**: [../spec.md]
 
 ## Content Quality
 

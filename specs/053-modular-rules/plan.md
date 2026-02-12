@@ -1,6 +1,6 @@
 # Implementation Plan: Modular Memory Rules
 
-**Branch**: `053-modular-rules` | **Date**: 2026-01-27 | **Spec**: [/specs/053-modular-rules/spec.md](/home/liuyiqi/personal-projects/wave-agent/specs/053-modular-rules/spec.md)
+**Branch**: `053-modular-rules` | **Date**: 2026-01-27 | **Spec**: [/specs/053-modular-rules/spec.md](./spec.md)
 
 ## Summary
 

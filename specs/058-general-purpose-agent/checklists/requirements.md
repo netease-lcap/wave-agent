@@ -2,7 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-02-03
-**Feature**: [specs/058-general-purpose-agent/spec.md](/home/liuyiqi/personal-projects/wave-agent/specs/058-general-purpose-agent/spec.md)
+**Feature**: [specs/058-general-purpose-agent/spec.md](../spec.md)
 
 ## Content Quality
 

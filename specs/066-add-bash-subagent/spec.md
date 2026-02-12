@@ -3,7 +3,7 @@
 **Feature Branch**: `066-add-bash-subagent`  
 **Created**: 2026-02-12  
 **Status**: Draft  
-**Input**: User description: "add bash builtin subagent, refer to /home/liuyiqi/.nvm/versions/node/v22.20.0/lib/node_modules/bash-agent.tmp.js"
+**Input**: User description: "add bash builtin subagent"
 
 ## User Scenarios & Testing *(mandatory)*
 
