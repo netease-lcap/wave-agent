@@ -1,4 +1,7 @@
-import { GENERAL_PURPOSE_SYSTEM_PROMPT } from "../constants/prompts.js";
+import {
+  GENERAL_PURPOSE_SYSTEM_PROMPT,
+  PLAN_SUBAGENT_SYSTEM_PROMPT,
+} from "../constants/prompts.js";
 import type { SubagentConfiguration } from "./subagentParser.js";
 
 /**
@@ -9,6 +12,7 @@ export function getBuiltinSubagents(): SubagentConfiguration[] {
   return [
     createExploreSubagent(),
     createGeneralPurposeSubagent(),
+    createPlanSubagent(),
     // Add more built-in subagents here as needed
   ];
 }
@@ -83,6 +87,27 @@ Complete the user's search request efficiently and report your findings clearly.
     tools: allowedTools,
     model: "fastModel", // Special value that will use parent's fastModel
     filePath: "<builtin:Explore>",
+    scope: "builtin",
+    priority: 3, // Lowest priority - can be overridden by user configs
+  };
+}
+
+/**
+ * Create the Plan built-in subagent configuration
+ * Specialized for designing implementation plans and exploring codebases in read-only mode
+ */
+function createPlanSubagent(): SubagentConfiguration {
+  // Define allowed tools for read-only operations
+  const allowedTools = ["Glob", "Grep", "Read", "Bash", "LS", "LSP"];
+
+  return {
+    name: "Plan",
+    description:
+      "Software architect agent for designing implementation plans. Use this when you need to plan the implementation strategy for a task. Returns step-by-step plans, identifies critical files, and considers architectural trade-offs.",
+    systemPrompt: PLAN_SUBAGENT_SYSTEM_PROMPT,
+    tools: allowedTools,
+    model: "inherit", // Uses parent agent's model
+    filePath: "<builtin:Plan>",
     scope: "builtin",
     priority: 3, // Lowest priority - can be overridden by user configs
   };
