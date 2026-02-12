@@ -21,6 +21,16 @@ describe("Built-in Subagents", () => {
       expect(explore?.priority).toBe(3);
     });
 
+    it("should include Plan subagent", () => {
+      const builtins = getBuiltinSubagents();
+      const plan = builtins.find((s) => s.name === "Plan");
+
+      expect(plan).toBeDefined();
+      expect(plan?.name).toBe("Plan");
+      expect(plan?.scope).toBe("builtin");
+      expect(plan?.priority).toBe(3);
+    });
+
     it("should have valid SubagentConfiguration structure", () => {
       const builtins = getBuiltinSubagents();
 
@@ -100,6 +110,56 @@ describe("Built-in Subagents", () => {
       expect(gp?.systemPrompt).toContain("MUST be absolute");
       expect(gp?.systemPrompt).toContain("avoid using emojis");
       expect(gp?.systemPrompt).toContain("proactively create documentation");
+    });
+
+    it("should have appropriate tools for Plan agent (read-only)", () => {
+      const builtins = getBuiltinSubagents();
+      const plan = builtins.find((s) => s.name === "Plan");
+
+      expect(plan?.tools).toContain("Glob");
+      expect(plan?.tools).toContain("Grep");
+      expect(plan?.tools).toContain("Read");
+      expect(plan?.tools).toContain("Bash");
+      expect(plan?.tools).toContain("LS");
+      expect(plan?.tools).toContain("LSP");
+      expect(plan?.tools).not.toContain("Write");
+      expect(plan?.tools).not.toContain("Edit");
+      expect(plan?.tools).not.toContain("NotebookEdit");
+    });
+
+    it("should have inherit model for Plan agent", () => {
+      const builtins = getBuiltinSubagents();
+      const plan = builtins.find((s) => s.name === "Plan");
+
+      expect(plan?.model).toBe("inherit");
+    });
+
+    it("should have read-only restrictions in Plan agent system prompt", () => {
+      const builtins = getBuiltinSubagents();
+      const plan = builtins.find((s) => s.name === "Plan");
+
+      expect(plan?.systemPrompt).toContain("READ-ONLY");
+      expect(plan?.systemPrompt).toContain("STRICTLY PROHIBITED");
+      expect(plan?.systemPrompt).toContain("Creating new files");
+      expect(plan?.systemPrompt).toContain("Modifying existing files");
+      expect(plan?.systemPrompt).toContain("software architect");
+    });
+
+    it("should require critical files section in Plan agent output", () => {
+      const builtins = getBuiltinSubagents();
+      const plan = builtins.find((s) => s.name === "Plan");
+
+      expect(plan?.systemPrompt).toContain("Critical Files for Implementation");
+      expect(plan?.systemPrompt).toContain("3-5 files");
+    });
+
+    it("should have description explaining when to use Plan agent", () => {
+      const builtins = getBuiltinSubagents();
+      const plan = builtins.find((s) => s.name === "Plan");
+
+      expect(plan?.description).toContain("implementation plan");
+      expect(plan?.description).toContain("architect");
+      expect(plan?.description).toContain("critical files");
     });
   });
 });
