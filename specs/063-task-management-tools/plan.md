@@ -5,19 +5,19 @@
 
 ## Summary
 
-The primary requirement is to implement a new set of task management tools (`TaskCreate`, `TaskGet`, `TaskUpdate`, `TaskList`) that persist tasks as JSON files in a session-specific directory (`~/.wave/tasks/{sessionId}/{taskId}.json`). Additionally, the legacy `TodoWrite` tool will be decommissioned and removed from the agent's toolset. The technical approach involves creating a new task manager service in `agent-sdk` to handle file-based persistence and updating the tool registry to expose the new tools while removing the old one.
+The primary requirement is to implement a new set of task management tools (`TaskCreate`, `TaskGet`, `TaskUpdate`, `TaskList`) that persist tasks as JSON files in a task-list-specific directory (`~/.wave/tasks/{taskListId}/{taskId}.json`). The `taskListId` is determined by the `WAVE_TASK_LIST_ID` environment variable or a default session ID. Additionally, the legacy `TodoWrite` tool will be decommissioned and removed from the agent's toolset. The technical approach involves creating a new task manager service in `agent-sdk` to handle file-based persistence and updating the tool registry to expose the new tools while removing the old one.
 
 ## Technical Context
 
 **Language/Version**: TypeScript (Strict mode)
 **Primary Dependencies**: `agent-sdk`, `vitest`
-**Storage**: File-based JSON storage in `~/.wave/tasks/{sessionId}/{taskId}.json`
+**Storage**: File-based JSON storage in `~/.wave/tasks/{taskListId}/{taskId}.json`
 **Testing**: Vitest (Unit and Integration tests)
 **Target Platform**: Node.js (CLI environment)
 **Project Type**: Monorepo (pnpm)
 **Performance Goals**: Sub-100ms for task operations (local file I/O)
-**Constraints**: Must handle directory creation, session isolation, and concurrent file access (if applicable).
-**Scale/Scope**: Session-scoped task management for AI agent workflows.
+**Constraints**: Must handle directory creation, task list isolation (via `taskListId`), and concurrent file access (if applicable).
+**Scale/Scope**: Task-list-scoped task management for AI agent workflows.
 
 ## Constitution Check
 
@@ -82,3 +82,15 @@ packages/agent-sdk/
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
 | None | N/A | N/A |
+
+## Phase 3: Task List ID Implementation
+
+### Step 1: Update TaskManager initialization
+- Modify `Agent` class in `packages/agent-sdk/src/agent.ts` to resolve the `taskListId` during construction:
+  1. Check `process.env.WAVE_TASK_LIST_ID`.
+  2. If not set, use `this.messageManager.getSessionId()` as the default.
+- Initialize `TaskManager` using this resolved `taskListId`.
+- Ensure that the `TaskManager` instance is created only once with this ID, so it remains stable even if `messageManager.getSessionId()` changes later (e.g., during compression).
+
+### Step 2: Update Tools to pass `taskListId`
+- Ensure `TaskCreate`, `TaskGet`, `TaskUpdate`, and `TaskList` tools correctly interact with the updated `TaskManager`.

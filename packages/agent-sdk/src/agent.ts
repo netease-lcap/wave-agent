@@ -223,7 +223,13 @@ export class Agent {
       memoryRuleManager: this.memoryRuleManager,
     });
 
-    this.taskManager = new TaskManager(this.messageManager.getSessionId());
+    // Resolve taskListId once during construction to ensure stability
+    const resolvedTaskListId =
+      this.configurationService.getEnvironmentVars().WAVE_TASK_LIST_ID ||
+      process.env.WAVE_TASK_LIST_ID ||
+      this.messageManager.getSessionId();
+
+    this.taskManager = new TaskManager(resolvedTaskListId);
     this.taskManager.on("tasksChange", async () => {
       const tasks = await this.taskManager.listTasks();
       this.options.callbacks?.onSessionTasksChange?.(tasks);
@@ -1301,5 +1307,12 @@ export class Agent {
     } else {
       this.permissionManager.setPlanFilePath(undefined);
     }
+  }
+
+  /**
+   * Get the current task list ID
+   */
+  public get taskListId(): string {
+    return this.taskManager.getTaskListId();
   }
 }
