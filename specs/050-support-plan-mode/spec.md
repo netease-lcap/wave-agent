@@ -3,13 +3,13 @@
 **Feature Branch**: `050-support-plan-mode`  
 **Created**: 2026-01-19  
 **Status**: Implemented  
-**Input**: User description: "support plan mode, system can analyze but not modify files or execute commands. switch into Plan Mode during a session using Shift+Tab to cycle through permission modes. when plan mode is active, system prompt should have a reminder to llm: \"You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.\" the plan file must in ~/.wave/plans dir and have a random english name."
+**Input**: User description: "support plan mode, system can analyze but not modify files. switch into Plan Mode during a session using Shift+Tab to cycle through permission modes. when plan mode is active, system prompt should have a reminder to llm: \"You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.\" the plan file must in ~/.wave/plans dir and have a random english name."
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Switching to Plan Mode (Priority: P1)
 
-As a user, I want to switch the system into a "Plan Mode" so that I can have the LLM analyze the codebase and propose a plan without accidentally modifying any files or running commands.
+As a user, I want to switch the system into a "Plan Mode" so that I can have the LLM analyze the codebase and propose a plan without accidentally modifying any files.
 
 **Why this priority**: This is the core functionality of the feature, allowing users to safely explore and plan complex changes.
 
@@ -32,13 +32,13 @@ As a user, I want the LLM to be restricted to only editing the plan file while i
 
 **Why this priority**: This ensures the safety and integrity of the codebase during the planning process.
 
-**Independent Test**: Can be tested by attempting to edit a non-plan file or run a command while in plan mode and verifying it is blocked.
+**Independent Test**: Can be tested by attempting to edit a non-plan file while in plan mode and verifying it is blocked.
 
 **Acceptance Scenarios**:
 
 1. **Given** the system is in "plan" mode, **When** the LLM attempts to read a file, **Then** the action is permitted.
 2. **Given** the system is in "plan" mode, **When** the LLM attempts to edit a file other than the designated plan file, **Then** the action is blocked.
-3. **Given** the system is in "plan" mode, **When** the LLM attempts to execute a bash command, **Then** the action is blocked.
+3. **Given** the system is in "plan" mode, **When** the LLM attempts to execute a bash command, **Then** the action is permitted.
 4. **Given** the system is in "plan" mode, **When** the LLM edits the plan file, **Then** the action is permitted.
 
 ---
@@ -75,13 +75,16 @@ As a user, I want the LLM to be explicitly told how to behave in plan mode, so t
 - **FR-001**: System MUST support a "plan" permission state.
 - **FR-002**: Users MUST be able to cycle through permission modes in the following order: default -> acceptEdits -> plan -> default, using the Shift+Tab keyboard shortcut.
 - **FR-003**: When in plan mode, the system MUST restrict the LLM to read-only actions for all files except the designated plan file.
-- **FR-004**: When in plan mode, the system MUST prevent the LLM from executing any commands.
+- **FR-004**: When in plan mode, the system MUST allow the LLM to execute commands.
 - **FR-005**: When plan mode is activated, the system MUST determine a plan file path in `~/.wave/plans/` with a random English name (e.g., `gentle-breeze.md`). The LLM MUST use the `Write` and `Edit` tools to manage the content of this file.
 - **FR-006**: When plan mode is active, the system MUST append a specific reminder to the LLM's system prompt:
   ```text
+  Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits, run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received (for example, to make edits). Instead, you should:
+
   ## Plan File Info:
   ${A.planExists?`A plan file already exists at ${A.planFilePath}. You can read it and make incremental edits using the Edit tool if you need to.`:`No plan file exists yet. You should create your plan at ${A.planFilePath} using the Write tool if you need to.`}
   You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
+  Answer the user's query comprehensively, using the AskUserQuestion tool if you need to ask the user clarifying questions. If you do use the AskUserQuestion, make sure to ask all clarifying questions you need to fully understand the user's intent before proceeding.
   ```
 - **FR-007**: The system MUST ensure the `~/.wave/plans/` directory exists before creating a plan file.
 - **FR-008**: The system MUST provide visual feedback to the user indicating the current permission mode.

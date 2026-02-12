@@ -24,6 +24,7 @@ import type { PermissionManager } from "./permissionManager.js";
 import {
   DEFAULT_SYSTEM_PROMPT,
   buildSystemPrompt,
+  buildPlanModePrompt,
 } from "../constants/prompts.js";
 
 export interface AIManagerCallbacks {
@@ -371,7 +372,7 @@ export class AIManager {
             planExists = false;
           }
 
-          const reminder = `\n\nPlan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received.\n\n## Plan File Info:\n${planExists ? `A plan file already exists at ${planFilePath}. You can read it and make incremental edits using the Edit tool if you need to.` : `No plan file exists yet. You should create your plan at ${planFilePath} using the Write tool if you need to.`}\nYou should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions. You may also use the AskUserQuestion tool to gather requirements or clarify intent before finalizing your plan.`;
+          const reminder = `\n\n${buildPlanModePrompt(planFilePath, planExists)}`;
 
           effectiveSystemPrompt = (effectiveSystemPrompt || "") + reminder;
         }
