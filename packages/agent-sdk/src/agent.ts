@@ -135,6 +135,7 @@ export class Agent {
   private taskManager: TaskManager;
   private foregroundTaskManager: ForegroundTaskManager;
   private configurationService: ConfigurationService; // Add configuration service
+  private runningBackgroundTaskIds = new Set<string>();
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
   private _usages: Usage[] = []; // Usage tracking array
@@ -240,6 +241,7 @@ export class Agent {
         ...callbacks,
         onTasksChange: (tasks) => {
           callbacks.onTasksChange?.(tasks);
+          this.handleBackgroundTasksChange(tasks);
         },
       },
       workdir: this.workdir,
@@ -1306,6 +1308,89 @@ export class Agent {
         });
     } else {
       this.permissionManager.setPlanFilePath(undefined);
+    }
+  }
+
+  /**
+   * Handle background tasks change, detect completed tasks and trigger recursion
+   */
+  private async handleBackgroundTasksChange(
+    tasks: BackgroundTask[],
+  ): Promise<void> {
+    for (const task of tasks) {
+      if (task.status === "running") {
+        this.runningBackgroundTaskIds.add(task.id);
+      } else if (this.runningBackgroundTaskIds.has(task.id)) {
+        // Task just finished (completed, failed, or killed)
+        this.runningBackgroundTaskIds.delete(task.id);
+
+        if (task.status === "completed" || task.status === "failed") {
+          this.logger?.info(
+            `Background task ${task.id} finished, notifying AI`,
+            {
+              status: task.status,
+            },
+          );
+
+          // Programmatically add TaskOutput tool call and trigger recursion
+          const toolId = `call_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+          const toolName = "TaskOutput";
+          const toolArgs = { task_id: task.id, block: false };
+          const argsString = JSON.stringify(toolArgs);
+
+          // 1. Add assistant message if needed
+          const messages = this.messageManager.getMessages();
+          const lastMessage = messages[messages.length - 1];
+          if (!lastMessage || lastMessage.role !== "assistant") {
+            this.messageManager.addAssistantMessage();
+          }
+
+          // 2. Add tool block
+          this.messageManager.updateToolBlock({
+            id: toolId,
+            name: toolName,
+            parameters: argsString,
+            stage: "running",
+            compactParams: task.id,
+          });
+
+          try {
+            // 3. Execute TaskOutput tool
+            const context = {
+              workdir: this.workdir,
+              backgroundTaskManager: this.backgroundTaskManager,
+              taskManager: this.taskManager,
+            };
+            const toolResult = await this.toolManager.execute(
+              toolName,
+              toolArgs,
+              context,
+            );
+
+            // 4. Update tool block with result
+            this.messageManager.updateToolBlock({
+              id: toolId,
+              name: toolName,
+              parameters: argsString,
+              result:
+                toolResult.content ||
+                (toolResult.error ? `Error: ${toolResult.error}` : ""),
+              success: toolResult.success,
+              error: toolResult.error,
+              stage: "end",
+              shortResult: toolResult.shortResult,
+            });
+
+            // 5. Trigger AI recursion
+            await this.aiManager.sendAIMessage();
+          } catch (error) {
+            this.logger?.error(
+              `Failed to process background task completion for ${task.id}:`,
+              error,
+            );
+          }
+        }
+      }
     }
   }
 
