@@ -350,13 +350,6 @@ export class PermissionManager {
 
     // 1.3 If plan mode, allow Read-only tools and Edit/Write for plan file
     if (context.permissionMode === "plan") {
-      if (context.toolName === BASH_TOOL_NAME) {
-        return {
-          behavior: "deny",
-          message: "Bash commands are not allowed in plan mode.",
-        };
-      }
-
       const writeTools = [
         EDIT_TOOL_NAME,
         MULTI_EDIT_TOOL_NAME,

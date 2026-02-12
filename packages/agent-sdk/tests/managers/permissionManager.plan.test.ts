@@ -12,13 +12,22 @@ describe("PermissionManager Plan Mode", () => {
     });
   });
 
-  it("should block Bash commands in plan mode", async () => {
+  it("should allow Bash commands in plan mode if allowed by rule", async () => {
+    permissionManager.addTemporaryRules(["Bash(ls)"]);
     const context = permissionManager.createContext("Bash", "plan", undefined, {
       command: "ls",
     });
     const decision = await permissionManager.checkPermission(context);
+    expect(decision.behavior).toBe("allow");
+  });
+
+  it("should block Bash commands in plan mode if not allowed by rule", async () => {
+    const context = permissionManager.createContext("Bash", "plan", undefined, {
+      command: "rm -rf /",
+    });
+    const decision = await permissionManager.checkPermission(context);
     expect(decision.behavior).toBe("deny");
-    expect(decision.message).toContain("Bash commands are not allowed");
+    expect(decision.message).toContain("requires permission approval");
   });
 
   it("should block Delete operations in plan mode", async () => {
