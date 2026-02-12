@@ -1,7 +1,9 @@
 import {
+  BASH_SUBAGENT_SYSTEM_PROMPT,
   GENERAL_PURPOSE_SYSTEM_PROMPT,
   PLAN_SUBAGENT_SYSTEM_PROMPT,
 } from "../constants/prompts.js";
+import { BASH_TOOL_NAME } from "../constants/tools.js";
 import type { SubagentConfiguration } from "./subagentParser.js";
 
 /**
@@ -10,11 +12,30 @@ import type { SubagentConfiguration } from "./subagentParser.js";
  */
 export function getBuiltinSubagents(): SubagentConfiguration[] {
   return [
+    createBashSubagent(),
     createExploreSubagent(),
     createGeneralPurposeSubagent(),
     createPlanSubagent(),
     // Add more built-in subagents here as needed
   ];
+}
+
+/**
+ * Create the Bash built-in subagent configuration
+ * Specialized for executing bash commands and git operations
+ */
+function createBashSubagent(): SubagentConfiguration {
+  return {
+    name: "Bash",
+    description:
+      "Command execution specialist for running bash commands. Use this for git operations, command execution, and other terminal tasks.",
+    systemPrompt: BASH_SUBAGENT_SYSTEM_PROMPT,
+    tools: [BASH_TOOL_NAME],
+    model: "inherit",
+    filePath: "<builtin:Bash>",
+    scope: "builtin",
+    priority: 3,
+  };
 }
 
 /**
