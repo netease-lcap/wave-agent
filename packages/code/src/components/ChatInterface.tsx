@@ -39,6 +39,7 @@ export const ChatInterface: React.FC = () => {
         isCommandRunning={isCommandRunning}
         isCompressing={isCompressing}
         isExpanded={isExpanded}
+        latestTotalTokens={latestTotalTokens}
         key={String(isExpanded) + sessionId + rewindId}
       />
 
@@ -65,7 +66,6 @@ export const ChatInterface: React.FC = () => {
           mcpServers={mcpServers}
           connectMcpServer={connectMcpServer}
           disconnectMcpServer={disconnectMcpServer}
-          latestTotalTokens={latestTotalTokens}
           slashCommands={slashCommands}
           hasSlashCommand={hasSlashCommand}
         />

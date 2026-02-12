@@ -35,7 +35,6 @@ export interface InputBoxProps {
   connectMcpServer?: (serverName: string) => Promise<boolean>;
   disconnectMcpServer?: (serverName: string) => Promise<boolean>;
   // Slash Command related properties
-  latestTotalTokens?: number;
   slashCommands?: SlashCommand[];
   hasSlashCommand?: (commandId: string) => boolean;
 }
@@ -49,7 +48,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   mcpServers = [],
   connectMcpServer = async () => false,
   disconnectMcpServer = async () => false,
-  latestTotalTokens = 0,
   slashCommands = [],
   hasSlashCommand = () => false,
 }) => {
@@ -248,14 +246,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
               </Text>{" "}
               (Shift+Tab to cycle)
             </Text>
-            {latestTotalTokens > 0 && (
-              <Text color="gray">
-                <Text color="blue" bold>
-                  {latestTotalTokens.toLocaleString()}
-                </Text>{" "}
-                tokens
-              </Text>
-            )}
           </Box>
         </Box>
       )}

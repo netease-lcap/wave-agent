@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Box, Text } from "ink";
 import type { SubagentBlock as SubagentBlockType } from "wave-agent-sdk";
 import { useChat } from "../contexts/useChat.js";
 import { Markdown } from "./Markdown.js";
+import { calculateComprehensiveTotalTokens } from "wave-agent-sdk";
 
 interface SubagentBlockProps {
   block: SubagentBlockType;
@@ -11,13 +12,26 @@ interface SubagentBlockProps {
 export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
   const { subagentMessages } = useChat();
 
+  // Get messages for this subagent from context
+  const messages = useMemo(
+    () => subagentMessages[block.subagentId] || [],
+    [subagentMessages, block.subagentId],
+  );
+
+  // Calculate total tokens for this subagent
+  const totalTokens = useMemo(() => {
+    return messages.reduce((acc, msg) => {
+      if (msg.role === "assistant" && msg.usage) {
+        return acc + calculateComprehensiveTotalTokens(msg.usage);
+      }
+      return acc;
+    }, 0);
+  }, [messages]);
+
   // If the subagent is running in the background, don't show the block
   if (block.runInBackground) {
     return null;
   }
-
-  // Get messages for this subagent from context
-  const messages = subagentMessages[block.subagentId] || [];
 
   // Status indicator mapping
   const getStatusIndicator = (status: SubagentBlockType["status"]) => {
@@ -105,7 +119,17 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
           </Text>
           <Text color="gray" dimColor>
             {" "}
-            ({messages.length} messages)
+            ({messages.length} messages
+            {totalTokens > 0 && (
+              <>
+                {" | "}
+                <Text color="blue" bold>
+                  {totalTokens.toLocaleString()}
+                </Text>
+                {" tokens"}
+              </>
+            )}
+            )
           </Text>
         </Box>
       </Box>

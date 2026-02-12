@@ -10,6 +10,7 @@ export interface MessageListProps {
   isCommandRunning?: boolean;
   isCompressing?: boolean;
   isExpanded?: boolean;
+  latestTotalTokens?: number;
 }
 
 export const MessageList = React.memo(
@@ -19,6 +20,7 @@ export const MessageList = React.memo(
     isCommandRunning = false,
     isCompressing = false,
     isExpanded = false,
+    latestTotalTokens = 0,
   }: MessageListProps) => {
     // Empty message state
     if (messages.length === 0) {
@@ -105,6 +107,20 @@ export const MessageList = React.memo(
             {isLoading && (
               <Box>
                 <Text color="yellow">💭 AI is thinking... </Text>
+                {latestTotalTokens > 0 && (
+                  <>
+                    <Text color="gray" dimColor>
+                      |{" "}
+                    </Text>
+                    <Text color="blue" bold>
+                      {latestTotalTokens.toLocaleString()}
+                    </Text>
+                    <Text color="gray" dimColor>
+                      {" "}
+                      tokens{" "}
+                    </Text>
+                  </>
+                )}
                 <Text color="gray" dimColor>
                   |{" "}
                 </Text>
