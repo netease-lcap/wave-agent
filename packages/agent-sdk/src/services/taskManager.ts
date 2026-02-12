@@ -15,6 +15,10 @@ export class TaskManager extends EventEmitter {
     this.baseDir = join(homedir(), ".wave", "tasks");
   }
 
+  public getTaskListId(): string {
+    return this.taskListId;
+  }
+
   private getSessionDir(): string {
     return join(this.baseDir, this.taskListId);
   }

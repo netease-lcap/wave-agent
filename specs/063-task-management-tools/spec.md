@@ -3,7 +3,7 @@
 **Feature Branch**: `063-task-management-tools`  
 **Created**: 2026-02-11  
 **Status**: Draft  
-**Input**: User description: "support tools: - TaskCreate: For creating new tasks - TaskGet: For retrieving task details - TaskUpdate: For updating task status and adding comments - TaskList: For listing all tasks, you can refer to tmp.js . all tasks should be stored in ~/.wave/tasks/{sessionId}/{taskId}.json, similar like ~/.claude/tasks, you can look for that. Also remove current todowrite tool."
+**Input**: User description: "support tools: - TaskCreate: For creating new tasks - TaskGet: For retrieving task details - TaskUpdate: For updating task status and adding comments - TaskList: For listing all tasks, you can refer to tmp.js . all tasks should be stored in ~/.wave/tasks/{taskListId}/{taskId}.json, similar like ~/.claude/tasks, you can look for that. Also remove current todowrite tool. task list id should be set by agent sdk and env var WAVE_TASK_LIST_ID"
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -17,7 +17,7 @@ As a user, I want to create a new task so that I can track my progress on a spec
 
 **Acceptance Scenarios**:
 
-1. **Given** a session is active, **When** I call TaskCreate with a subject and description, **Then** a new task is created with a unique ID and stored in `~/.wave/tasks/{sessionId}/{taskId}.json`.
+1. **Given** a session is active, **When** I call TaskCreate with a subject and description, **Then** a new task is created with a unique ID and stored in `~/.wave/tasks/{taskListId}/{taskId}.json`.
 2. **Given** a task has been created, **When** I call TaskGet with the taskId, **Then** I receive the full details of that task.
 
 ---
@@ -47,7 +47,7 @@ As a user, I want to see a list of all tasks for my current session so that I ca
 
 **Acceptance Scenarios**:
 
-1. **Given** multiple tasks exist for the current session, **When** I call TaskList, **Then** I receive a summary list of all tasks including their IDs, subjects, and current statuses.
+1. **Given** multiple tasks exist for the current task list, **When** I call TaskList, **Then** I receive a summary list of all tasks including their IDs, subjects, and current statuses.
 
 ---
 
@@ -79,16 +79,20 @@ As a system maintainer, I want to remove the legacy TodoWrite tool so that the a
 ### Functional Requirements
 
 - **FR-001**: System MUST provide a `TaskCreate` tool that accepts `subject`, `description`, `activeForm`, and optional `metadata`.
-- **FR-002**: System MUST store tasks as JSON files in `~/.wave/tasks/{sessionId}/{taskId}.json`.
+- **FR-002**: System MUST store tasks as JSON files in `~/.wave/tasks/{taskListId}/{taskId}.json`.
 - **FR-003**: System MUST provide a `TaskGet` tool that retrieves all information for a specific `taskId`.
 - **FR-004**: System MUST provide a `TaskUpdate` tool that allows updating `status`, `subject`, `description`, `activeForm`, `owner`, and `metadata`.
 - **FR-005**: System MUST allow managing task dependencies via `addBlocks` and `addBlockedBy` in `TaskUpdate`.
-- **FR-006**: System MUST provide a `TaskList` tool that returns all tasks associated with the current `sessionId`.
+- **FR-006**: System MUST provide a `TaskList` tool that returns all tasks associated with the current `taskListId`.
 - **FR-007**: Tasks MUST include fields: `id`, `subject`, `description`, `status`, `activeForm`, `owner`, `blocks`, `blockedBy`, and `metadata`.
 - **FR-008**: The system MUST automatically create the necessary directory structure if it does not exist.
 - **FR-009**: The system MUST remove the `TodoWrite` tool definition from the agent's tool registry.
 - **FR-010**: The system MUST remove any code implementation specifically tied to the `TodoWrite` tool.
 - **FR-011**: The system MUST update internal documentation and system prompts to remove references to `TodoWrite`.
+- **FR-012**: The system MUST determine `taskListId` using the following priority:
+  1. Value of `WAVE_TASK_LIST_ID` environment variable.
+  2. Fallback to the initial `sessionId` provided by the `MessageManager` at agent initialization.
+- **FR-013**: The `taskListId` MUST remain stable for the lifetime of the agent instance. Even if the `sessionId` changes (e.g., due to message compression), the `taskListId` MUST NOT change.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -102,5 +106,5 @@ As a system maintainer, I want to remove the legacy TodoWrite tool so that the a
   - **blocks**: List of task IDs that depend on this task (array of strings).
   - **blockedBy**: List of task IDs that this task depends on (array of strings).
   - **metadata**: Arbitrary key-value pairs (object).
-- **Session**: A grouping mechanism for tasks, identified by `sessionId`.
+- **Task List**: A grouping mechanism for tasks, identified by `taskListId`.
 - **Agent Tool Registry**: The collection of tools available to the agent.
