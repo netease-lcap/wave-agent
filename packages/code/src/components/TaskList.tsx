@@ -41,10 +41,11 @@ export const TaskList: React.FC = () => {
 
   return (
     <Box flexDirection="column">
-      <Box marginBottom={1}>
+      <Box marginBottom={1} gap={1}>
         <Text bold color="cyan">
           TASKS
         </Text>
+        <Text color="gray">(Ctrl+T to hide)</Text>
       </Box>
       {tasks.map((task) => {
         const isDimmed =
