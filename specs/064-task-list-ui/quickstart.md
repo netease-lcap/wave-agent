@@ -7,6 +7,7 @@ The Task List UI provides a persistent view of your current goals and progress d
 The task list automatically appears at the bottom of the message list whenever there are active tasks in your session.
 
 - **Location**: Below the last message, above the input prompt.
+- **Visibility**: You can toggle the task list visibility using `Ctrl+T`. A hint `(Ctrl+T to hide)` is displayed in the header.
 - **Content**: Shows the subject and status of each task.
 
 ### Status Indicators
@@ -33,10 +34,10 @@ The task list is "live". You will see it update in real-time when:
 ────────────────────────────────────────────────────────────────────────────────
 Agent: I've started working on the data model.
 
-TASKS
+TASKS (Ctrl+T to hide)
 ✓ Define Task entity
 ● Create UI event contracts
-🔒 Write quickstart guide (Blocked by: Create UI event contracts)
+🔒 Write quickstart guide (Blocked by: #2)
 ────────────────────────────────────────────────────────────────────────────────
 > _
 ```

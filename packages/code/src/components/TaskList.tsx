@@ -51,15 +51,13 @@ export const TaskList: React.FC = () => {
         const isDimmed =
           task.status === "completed" || task.status === "deleted";
         const isBlocked = task.blockedBy && task.blockedBy.length > 0;
-        const blockingTaskSubjects = isBlocked
-          ? task.blockedBy
-              .map((id) => tasks.find((t) => t.id === id)?.subject)
-              .filter(Boolean)
+        const blockingTaskIds = isBlocked
+          ? task.blockedBy.map((id) => `#${id}`)
           : [];
 
         const blockedByText =
-          isBlocked && blockingTaskSubjects.length > 0
-            ? ` (Blocked by: ${blockingTaskSubjects.join(", ")})`
+          isBlocked && blockingTaskIds.length > 0
+            ? ` (Blocked by: ${blockingTaskIds.join(", ")})`
             : "";
 
         const fullText = `${task.subject}${blockedByText}`;
