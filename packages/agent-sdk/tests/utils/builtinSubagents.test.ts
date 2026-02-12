@@ -31,6 +31,19 @@ describe("Built-in Subagents", () => {
       expect(plan?.priority).toBe(3);
     });
 
+    it("should include Bash subagent", () => {
+      const builtins = getBuiltinSubagents();
+      const bash = builtins.find((s) => s.name === "Bash");
+
+      expect(bash).toBeDefined();
+      expect(bash?.name).toBe("Bash");
+      expect(bash?.scope).toBe("builtin");
+      expect(bash?.priority).toBe(3);
+      expect(bash?.tools).toContain("Bash");
+      expect(bash?.model).toBe("inherit");
+      expect(bash?.systemPrompt).toContain("command execution specialist");
+    });
+
     it("should have valid SubagentConfiguration structure", () => {
       const builtins = getBuiltinSubagents();
 
