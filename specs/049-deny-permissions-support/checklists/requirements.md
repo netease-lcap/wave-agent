@@ -3,7 +3,7 @@
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-01-15
 **Updated**: 2026-01-15
-**Feature**: [/home/liuyiqi/personal-projects/wave-agent/specs/049-deny-permissions-support/spec.md]
+**Feature**: [../spec.md]
 
 ## Content Quality
 

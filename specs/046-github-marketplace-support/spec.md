@@ -9,7 +9,7 @@ Known marketplaces source should be like:
 {
   "source": {
     "source": "directory",
-    "path": "/home/liuyiqi/personal-projects/my-marketplace"
+    "path": "/home/xxx/my-marketplace"
   }
 }
 ```

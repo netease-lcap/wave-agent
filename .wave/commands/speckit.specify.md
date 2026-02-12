@@ -74,7 +74,7 @@ Given that feature description, do this:
       
       **Purpose**: Validate specification completeness and quality before proceeding to planning
       **Created**: [DATE]
-      **Feature**: [Link to spec.md]
+      **Feature**: [../spec.md]
       
       ## Content Quality
       

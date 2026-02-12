@@ -2,7 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2025-12-27
-**Feature**: [specs/037-bash-smart-prefix-match/spec.md](/home/liuyiqi/personal-projects/wave-agent/specs/037-bash-smart-prefix-match/spec.md)
+**Feature**: [specs/037-bash-smart-prefix-match/spec.md](../spec.md)
 
 ## Content Quality
 

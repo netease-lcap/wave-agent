@@ -3,7 +3,7 @@
 **Feature Branch**: `057-history-search-prompt`
 **Created**: 2026-02-02
 **Status**: Draft
-**Feature Spec**: `/home/liuyiqi/personal-projects/wave-agent/specs/057-history-search-prompt/spec.md`
+**Feature Spec**: `./spec.md`
 
 ## Technical Context
 

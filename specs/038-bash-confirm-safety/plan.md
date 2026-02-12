@@ -1,6 +1,6 @@
 # Implementation Plan: Bash Confirmation Safety
 
-**Branch**: `038-bash-confirm-safety` | **Date**: 2025-12-27 | **Spec**: [/specs/038-bash-confirm-safety/spec.md](/home/liuyiqi/personal-projects/wave-agent/specs/038-bash-confirm-safety/spec.md)
+**Branch**: `038-bash-confirm-safety` | **Date**: 2025-12-27 | **Spec**: [/specs/038-bash-confirm-safety/spec.md](./spec.md)
 
 ## Summary
 

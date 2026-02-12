@@ -1,6 +1,6 @@
 # Implementation Plan: Glob Pattern Match for Trusted Bash Commands
 
-**Branch**: `037-bash-glob-match` | **Date**: 2025-12-27 | **Spec**: [/specs/037-bash-glob-match/spec.md](/home/liuyiqi/personal-projects/wave-agent/specs/037-bash-glob-match/spec.md)
+**Branch**: `037-bash-glob-match` | **Date**: 2025-12-27 | **Spec**: [/specs/037-bash-glob-match/spec.md](./spec.md)
 
 **Input**: Feature specification from `/specs/037-bash-glob-match/spec.md`
 

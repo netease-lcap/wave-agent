@@ -1,6 +1,6 @@
 # Implementation Plan: Local Plugin Marketplace
 
-**Branch**: `044-local-plugin-marketplace` | **Date**: 2026-01-13 | **Spec**: [/home/liuyiqi/personal-projects/wave-agent/specs/044-local-plugin-marketplace/spec.md]
+**Branch**: `044-local-plugin-marketplace` | **Date**: 2026-01-13 | **Spec**: [./spec.md]
 **Input**: Feature specification from `/specs/044-local-plugin-marketplace/spec.md`
 
 ## Summary

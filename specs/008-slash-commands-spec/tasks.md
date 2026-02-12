@@ -1,6 +1,6 @@
 # Tasks: Custom Slash Commands
 
-**Input**: Design documents from `/home/liuyiqi/personal-projects/wave-agent/specs/008-slash-commands-spec/`
+**Input**: Design documents from `./specs/008-slash-commands-spec/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md
 
 ## Phase 1: Core Implementation (Completed)
