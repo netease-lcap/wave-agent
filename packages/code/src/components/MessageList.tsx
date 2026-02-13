@@ -6,11 +6,22 @@ import { TaskList } from "./TaskList.js";
 
 export interface MessageListProps {
   messages: Message[];
+  isLoading?: boolean;
+  isCommandRunning?: boolean;
+  isCompressing?: boolean;
   isExpanded?: boolean;
+  latestTotalTokens?: number;
 }
 
 export const MessageList = React.memo(
-  ({ messages, isExpanded = false }: MessageListProps) => {
+  ({
+    messages,
+    isLoading = false,
+    isCommandRunning = false,
+    isCompressing = false,
+    isExpanded = false,
+    latestTotalTokens = 0,
+  }: MessageListProps) => {
     // Empty message state
     if (messages.length === 0) {
       return (
@@ -35,8 +46,14 @@ export const MessageList = React.memo(
       : 0;
 
     // Compute which messages to render statically vs dynamically
-    const staticMessages = displayMessages;
-    const dynamicMessages: Message[] = [];
+    const shouldRenderLastDynamic = isLoading || isCommandRunning;
+    const staticMessages = shouldRenderLastDynamic
+      ? displayMessages.slice(0, -1)
+      : displayMessages;
+    const dynamicMessages =
+      shouldRenderLastDynamic && displayMessages.length > 0
+        ? [displayMessages[displayMessages.length - 1]]
+        : [];
 
     return (
       <Box flexDirection="column" gap={1}>
@@ -84,6 +101,46 @@ export const MessageList = React.memo(
         })}
 
         <TaskList />
+
+        {(isLoading || isCommandRunning || isCompressing) && (
+          <Box flexDirection="column" gap={1}>
+            {isLoading && (
+              <Box>
+                <Text color="yellow">💭 AI is thinking... </Text>
+                {latestTotalTokens > 0 && (
+                  <>
+                    <Text color="gray" dimColor>
+                      |{" "}
+                    </Text>
+                    <Text color="blue" bold>
+                      {latestTotalTokens.toLocaleString()}
+                    </Text>
+                    <Text color="gray" dimColor>
+                      {" "}
+                      tokens{" "}
+                    </Text>
+                  </>
+                )}
+                <Text color="gray" dimColor>
+                  |{" "}
+                </Text>
+                <Text color="red" bold>
+                  Esc
+                </Text>
+                <Text color="gray" dimColor>
+                  {" "}
+                  to abort
+                </Text>
+              </Box>
+            )}
+            {isCommandRunning && (
+              <Text color="blue">🚀 Command is running...</Text>
+            )}
+            {isCompressing && (
+              <Text color="magenta">🗜️ Compressing message history...</Text>
+            )}
+          </Box>
+        )}
       </Box>
     );
   },
