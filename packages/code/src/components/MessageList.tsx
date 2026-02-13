@@ -87,7 +87,7 @@ export const MessageList = React.memo(
           const previousMessage =
             messageIndex > 0 ? displayMessages[messageIndex - 1] : undefined;
           return (
-            <Box key={`dynamic-${index}`} marginTop={-1}>
+            <Box key={`dynamic-${index}`}>
               <MessageItem
                 message={message}
                 shouldShowHeader={previousMessage?.role !== message.role}
