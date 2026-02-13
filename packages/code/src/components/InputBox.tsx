@@ -13,7 +13,7 @@ import { useChat } from "../contexts/useChat.js";
 import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
 
 export const INPUT_PLACEHOLDER_TEXT =
-  "Type your message (use @ to reference files, / for commands, Ctrl+R to search history, Ctrl+O to expand messages)...";
+  "Type your message (use @ to reference files, / for commands, Ctrl+R to search history, Ctrl+O to expand messages, Ctrl+T to toggle tasks)...";
 
 export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
   0,
