@@ -9,7 +9,14 @@ import {
   type Mock,
 } from "vitest";
 import { render } from "ink-testing-library";
-import { Confirmation } from "../../src/components/Confirmation.js";
+import {
+  ConfirmationDetails,
+  type ConfirmationDetailsProps,
+} from "../../src/components/ConfirmationDetails.js";
+import {
+  ConfirmationSelector,
+  type ConfirmationSelectorProps,
+} from "../../src/components/ConfirmationSelector.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 import type { PermissionDecision } from "wave-agent-sdk";
 
@@ -36,6 +43,15 @@ describe("Confirmation", () => {
     consoleSpy.mockRestore();
     vi.restoreAllMocks();
   });
+
+  const Confirmation = (
+    props: ConfirmationSelectorProps & ConfirmationDetailsProps,
+  ) => (
+    <>
+      <ConfirmationDetails {...props} />
+      <ConfirmationSelector {...props} />
+    </>
+  );
 
   describe("Component Rendering Tests", () => {
     it("should render with correct tool name display", async () => {

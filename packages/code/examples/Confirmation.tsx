@@ -1,7 +1,23 @@
 import React from "react";
 import { Box, render, Text } from "ink";
-import { Confirmation } from "../src/components/Confirmation.js";
+import {
+  ConfirmationDetails,
+  type ConfirmationDetailsProps,
+} from "../src/components/ConfirmationDetails.js";
+import {
+  ConfirmationSelector,
+  type ConfirmationSelectorProps,
+} from "../src/components/ConfirmationSelector.js";
 import type { PermissionDecision } from "wave-agent-sdk";
+
+const Confirmation = (
+  props: ConfirmationSelectorProps & ConfirmationDetailsProps,
+) => (
+  <>
+    <ConfirmationDetails {...props} />
+    <ConfirmationSelector {...props} />
+  </>
+);
 
 const ExampleApp: React.FC = () => {
   const [decision, setDecision] = React.useState<PermissionDecision | null>(

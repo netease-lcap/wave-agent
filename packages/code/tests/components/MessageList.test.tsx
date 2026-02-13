@@ -54,12 +54,7 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       const output = lastFrame();
@@ -120,43 +115,37 @@ describe("MessageList Component", () => {
   });
 
   describe("Component behavior with various states", () => {
-    it("should work correctly when component is loading", () => {
+    it("should work correctly when component is loading (moved to ChatInterface)", () => {
       const messages = [createMessage("user", "Loading test", 1)];
 
-      const { lastFrame } = render(
-        <MessageList messages={messages} isLoading={true} />,
-      );
+      const { lastFrame } = render(<MessageList messages={messages} />);
 
       const output = lastFrame();
 
-      // Should show loading state
-      expect(output).toContain("💭 AI is thinking...");
+      // Should NOT show loading state
+      expect(output).not.toContain("💭 AI is thinking...");
     });
 
-    it("should work correctly when command is running", () => {
+    it("should NOT show command running message (moved to ChatInterface)", () => {
       const messages = [createMessage("user", "Command test", 1)];
 
-      const { lastFrame } = render(
-        <MessageList messages={messages} isCommandRunning={true} />,
-      );
+      const { lastFrame } = render(<MessageList messages={messages} />);
 
       const output = lastFrame();
 
-      // Should show command running state
-      expect(output).toContain("🚀 Command is running...");
+      // Should NOT show command running state
+      expect(output).not.toContain("🚀 Command is running...");
     });
 
-    it("should work correctly when compressing", () => {
+    it("should NOT show compressing message (moved to ChatInterface)", () => {
       const messages = [createMessage("user", "Compress test", 1)];
 
-      const { lastFrame } = render(
-        <MessageList messages={messages} isCompressing={true} />,
-      );
+      const { lastFrame } = render(<MessageList messages={messages} />);
 
       const output = lastFrame();
 
-      // Should show compressing state
-      expect(output).toContain("🗜️ Compressing message history...");
+      // Should NOT show compressing state
+      expect(output).not.toContain("🗜️ Compressing message history...");
     });
 
     it("should show welcome message in empty state", () => {
