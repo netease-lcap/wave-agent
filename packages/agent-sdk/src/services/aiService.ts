@@ -21,11 +21,7 @@ import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
 
-import {
-  DEFAULT_SYSTEM_PROMPT,
-  buildSystemPrompt,
-  COMPRESS_MESSAGES_SYSTEM_PROMPT,
-} from "../constants/prompts.js";
+import { COMPRESS_MESSAGES_SYSTEM_PROMPT } from "../constants/prompts.js";
 
 /**
  * Interface for debug data saved during 400 errors
@@ -66,28 +62,6 @@ interface ErrorData {
  * Use parametersChunk as compact param for better performance
  * Instead of parsing JSON, we use the raw chunk for efficient streaming
  */
-
-/**
- * Check if a directory is a git repository
- * @param dirPath Directory path to check
- * @returns "Yes" if it's a git repo, "No" otherwise
- */
-function isGitRepository(dirPath: string): string {
-  try {
-    // Check if .git directory exists in current directory or any parent directory
-    let currentPath = path.resolve(dirPath);
-    while (currentPath !== path.dirname(currentPath)) {
-      const gitPath = path.join(currentPath, ".git");
-      if (fs.existsSync(gitPath)) {
-        return "Yes";
-      }
-      currentPath = path.dirname(currentPath);
-    }
-    return "No";
-  } catch {
-    return "No";
-  }
-}
 
 /**
  * OpenAI model configuration type, based on OpenAI parameters but excluding messages
@@ -145,7 +119,6 @@ export interface CallAgentOptions {
   messages: ChatCompletionMessageParam[];
   sessionId?: string;
   abortSignal?: AbortSignal;
-  memory?: string; // Memory content parameter, content read from AGENTS.md
   workdir: string; // Current working directory
   tools?: ChatCompletionFunctionTool[]; // Tool configuration
   model?: string; // Custom model
@@ -188,7 +161,6 @@ export async function callAgent(
     modelConfig,
     messages,
     abortSignal,
-    memory,
     workdir,
     tools,
     model,
@@ -217,33 +189,12 @@ export async function callAgent(
     });
 
     // Build system prompt content
-    let systemContent = buildSystemPrompt(
-      systemPrompt || DEFAULT_SYSTEM_PROMPT,
-      tools || [],
-    );
-
-    // Always add environment information
-    systemContent += `
-
-Here is useful information about the environment you are running in:
-<env>
-Working directory: ${workdir}
-Is directory a git repo: ${isGitRepository(workdir)}
-Platform: ${os.platform()}
-OS Version: ${os.type()} ${os.release()}
-Today's date: ${new Date().toISOString().split("T")[0]}
-</env>
-`;
-
-    // If there is memory content, add it to the system prompt
-    if (memory && memory.trim()) {
-      systemContent += `\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${memory}`;
-    }
+    const systemContent = systemPrompt;
 
     // Add system prompt
     const systemMessage: ChatCompletionMessageParam = {
       role: "system",
-      content: systemContent,
+      content: systemContent!,
     };
 
     // ChatCompletionMessageParam[] is already in OpenAI format, add system prompt to the beginning

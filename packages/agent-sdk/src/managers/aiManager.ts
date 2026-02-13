@@ -1,3 +1,5 @@
+import * as os from "node:os";
+import * as path from "node:path";
 import {
   callAgent,
   compressMessages,
@@ -5,6 +7,7 @@ import {
 } from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
+import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import type {
   Logger,
@@ -20,11 +23,24 @@ import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
-import {
-  DEFAULT_SYSTEM_PROMPT,
-  buildSystemPrompt,
-  buildPlanModePrompt,
-} from "../constants/prompts.js";
+import { buildSystemPrompt } from "../constants/prompts.js";
+
+function isGitRepository(dirPath: string): string {
+  try {
+    // Check if .git directory exists in current directory or any parent directory
+    let currentPath = path.resolve(dirPath);
+    while (currentPath !== path.dirname(currentPath)) {
+      const gitPath = path.join(currentPath, ".git");
+      if (fsSync.existsSync(gitPath)) {
+        return "Yes";
+      }
+      currentPath = path.dirname(currentPath);
+    }
+    return "No";
+  } catch {
+    return "No";
+  }
+}
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -345,17 +361,10 @@ export class AIManager {
         this.getModelConfig().permissionMode,
       );
       const toolsConfig = this.getFilteredToolsConfig(tools);
-      let effectiveSystemPrompt = buildSystemPrompt(
-        this.systemPrompt || DEFAULT_SYSTEM_PROMPT,
-        toolsConfig,
-      );
 
-      // Inject language prompt if configured
-      const language = this.getLanguage();
-      if (language) {
-        const languagePrompt = `\n\n# Language\nAlways respond in ${language}. Technical terms (e.g., code, tool names, file paths) should remain in their original language or English where appropriate.`;
-        effectiveSystemPrompt = (effectiveSystemPrompt || "") + languagePrompt;
-      }
+      let planModeOptions:
+        | { planFilePath: string; planExists: boolean }
+        | undefined;
 
       if (currentMode === "plan") {
         const planFilePath = this.permissionManager?.getPlanFilePath();
@@ -367,10 +376,7 @@ export class AIManager {
           } catch {
             planExists = false;
           }
-
-          const reminder = `\n\n${buildPlanModePrompt(planFilePath, planExists)}`;
-
-          effectiveSystemPrompt = (effectiveSystemPrompt || "") + reminder;
+          planModeOptions = { planFilePath, planExists };
         }
       }
 
@@ -381,11 +387,19 @@ export class AIManager {
         messages: recentMessages,
         sessionId: this.messageManager.getSessionId(),
         abortSignal: abortController.signal,
-        memory: combinedMemory, // Pass combined memory content
         workdir: this.workdir, // Pass working directory
         tools: toolsConfig, // Pass filtered tool configuration
         model: model, // Use passed model
-        systemPrompt: effectiveSystemPrompt, // Pass custom system prompt
+        systemPrompt: buildSystemPrompt(this.systemPrompt, toolsConfig, {
+          workdir: this.workdir,
+          isGitRepo: isGitRepository(this.workdir),
+          platform: os.platform(),
+          osVersion: `${os.type()} ${os.release()}`,
+          today: new Date().toISOString().split("T")[0],
+          memory: combinedMemory,
+          language: this.getLanguage(),
+          planMode: planModeOptions,
+        }), // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override
       };
 
