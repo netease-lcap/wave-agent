@@ -9,6 +9,12 @@ import type {
   GatewayConfig,
   ModelConfig,
 } from "../../src/types/index.js";
+import * as fsSync from "node:fs";
+
+// Mock node:fs
+vi.mock("node:fs", () => ({
+  existsSync: vi.fn(),
+}));
 
 // Mock the aiService module
 vi.mock("../../src/services/aiService.js", () => ({
@@ -457,6 +463,42 @@ describe("AIManager", () => {
 
       expect(mockPermissionManager.addTemporaryRules).toHaveBeenCalled();
       expect(mockPermissionManager.clearTemporaryRules).toHaveBeenCalled();
+    });
+  });
+
+  describe("isGitRepository", () => {
+    it("should include 'Is directory a git repo: Yes' in system prompt if .git exists", async () => {
+      vi.mocked(fsSync.existsSync).mockReturnValue(true);
+      const { callAgent } = await import("../../src/services/aiService.js");
+      vi.mocked(callAgent).mockResolvedValue({
+        content: "hi",
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      });
+
+      await aiManager.sendAIMessage();
+
+      expect(callAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.stringContaining("Is directory a git repo: Yes"),
+        }),
+      );
+    });
+
+    it("should include 'Is directory a git repo: No' in system prompt if .git does not exist", async () => {
+      vi.mocked(fsSync.existsSync).mockReturnValue(false);
+      const { callAgent } = await import("../../src/services/aiService.js");
+      vi.mocked(callAgent).mockResolvedValue({
+        content: "hi",
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      });
+
+      await aiManager.sendAIMessage();
+
+      expect(callAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.stringContaining("Is directory a git repo: No"),
+        }),
+      );
     });
   });
 });

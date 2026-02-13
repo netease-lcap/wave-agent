@@ -3,7 +3,7 @@ import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/agent.js";
 
 // Mock fs operations
-vi.mock("fs/promises", () => ({
+vi.mock("node:fs/promises", () => ({
   rm: vi.fn(),
   readFile: vi.fn(),
   writeFile: vi.fn(),
@@ -14,19 +14,23 @@ vi.mock("fs/promises", () => ({
 }));
 
 // Mock os module
-vi.mock("os", () => ({
+vi.mock("node:os", () => ({
   default: {
     homedir: vi.fn(() => "/mock/home"),
     tmpdir: vi.fn(() => "/mock/tmp"),
     platform: vi.fn(() => "linux"),
+    type: vi.fn(() => "Linux"),
+    release: vi.fn(() => "1.2.3"),
   },
   homedir: vi.fn(() => "/mock/home"),
   tmpdir: vi.fn(() => "/mock/tmp"),
   platform: vi.fn(() => "linux"),
+  type: vi.fn(() => "Linux"),
+  release: vi.fn(() => "1.2.3"),
 }));
 
 // Mock the aiService
-vi.mock("@/services/aiService", () => ({
+vi.mock("../../src/services/aiService.js", () => ({
   callAgent: vi.fn().mockResolvedValue({
     content: "Test response",
     usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
@@ -35,7 +39,7 @@ vi.mock("@/services/aiService", () => ({
 }));
 
 // Mock memory
-vi.mock("@/services/memory", () => ({
+vi.mock("../../src/services/memory.js", () => ({
   addMemory: vi.fn().mockResolvedValue(undefined),
   isMemoryMessage: vi.fn().mockReturnValue(true),
   addUserMemory: vi.fn().mockResolvedValue(undefined),
@@ -62,7 +66,7 @@ describe("Agent User Memory Integration", () => {
     mockTempDir = "/mock/tmp/aimanager-test-123";
 
     // Setup fs mock implementations
-    const fs = await import("fs/promises");
+    const fs = await import("node:fs/promises");
     vi.mocked(fs.rm).mockResolvedValue(undefined);
     vi.mocked(fs.access).mockResolvedValue(undefined);
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
@@ -71,13 +75,14 @@ describe("Agent User Memory Integration", () => {
     vi.mocked(fs.readdir).mockResolvedValue([]);
     vi.mocked(fs.stat).mockResolvedValue({
       isFile: () => true,
+      isDirectory: () => false,
     } as unknown as Awaited<ReturnType<typeof fs.stat>>);
 
     // Get mock references after module imports
-    const { callAgent } = await import("@/services/aiService.js");
-    const memory = await import("@/services/memory.js");
+    const aiService = await import("../../src/services/aiService.js");
+    const memory = await import("../../src/services/memory.js");
 
-    mockCallAgent = vi.mocked(callAgent);
+    mockCallAgent = vi.mocked(aiService.callAgent);
     mockGetCombinedMemoryContent = vi.mocked(memory.getCombinedMemoryContent);
 
     // Reset all mocks
@@ -122,8 +127,9 @@ describe("Agent User Memory Integration", () => {
     // Verify that callAgent was called with combined memory
     expect(mockCallAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        memory:
+        systemPrompt: expect.stringContaining(
           "Project memory: important context\n\nUser memory: user preferences",
+        ),
       }),
     );
   });
@@ -147,7 +153,7 @@ describe("Agent User Memory Integration", () => {
     // Verify that callAgent was called with project memory only
     expect(mockCallAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        memory: "Project memory only",
+        systemPrompt: expect.stringContaining("Project memory only"),
       }),
     );
   });
@@ -171,7 +177,7 @@ describe("Agent User Memory Integration", () => {
     // Verify that callAgent was called with user memory only
     expect(mockCallAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        memory: "User memory only",
+        systemPrompt: expect.stringContaining("User memory only"),
       }),
     );
   });
@@ -195,7 +201,7 @@ describe("Agent User Memory Integration", () => {
     // Verify that callAgent was called with empty memory
     expect(mockCallAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        memory: "",
+        systemPrompt: expect.not.stringContaining("## Memory Context"),
       }),
     );
   });

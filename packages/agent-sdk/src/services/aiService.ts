@@ -189,12 +189,12 @@ export async function callAgent(
     });
 
     // Build system prompt content
-    const systemContent = systemPrompt;
+    const systemContent = systemPrompt || "";
 
     // Add system prompt
     const systemMessage: ChatCompletionMessageParam = {
       role: "system",
-      content: systemContent!,
+      content: systemContent,
     };
 
     // ChatCompletionMessageParam[] is already in OpenAI format, add system prompt to the beginning
