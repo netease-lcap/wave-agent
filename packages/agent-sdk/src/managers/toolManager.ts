@@ -14,6 +14,7 @@ import { grepTool } from "../tools/grepTool.js";
 import { lsTool } from "../tools/lsTool.js";
 import { readTool } from "../tools/readTool.js";
 import { lspTool } from "../tools/lspTool.js";
+import { enterPlanModeTool } from "../tools/enterPlanMode.js";
 import { createTaskTool } from "../tools/taskTool.js";
 import { createSkillTool } from "../tools/skillTool.js";
 import {
@@ -142,6 +143,7 @@ class ToolManager {
       taskGetTool,
       taskUpdateTool,
       taskListTool,
+      enterPlanModeTool,
     ];
 
     for (const tool of builtInTools) {
@@ -258,6 +260,9 @@ class ToolManager {
         }
         if (tool.name === "ExitPlanMode") {
           return effectivePermissionMode === "plan";
+        }
+        if (tool.name === "EnterPlanMode") {
+          return effectivePermissionMode !== "plan";
         }
         return true;
       })
