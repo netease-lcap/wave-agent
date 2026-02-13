@@ -219,9 +219,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setMcpServers([...servers]);
         },
         onSessionIdChange: (sessionId) => {
-          process.stdout.write("\x1Bc", () => {
-            setSessionId(sessionId);
-          });
+          setSessionId(sessionId);
         },
         onLatestTotalTokensChange: (tokens) => {
           setlatestTotalTokens(tokens);
@@ -496,9 +494,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         await agentRef.current.truncateHistory(index);
 
         // Clear terminal screen after rewind
-        process.stdout.write("\x1Bc", () => {
-          setRewindId((prev) => prev + 1);
-        });
+        setRewindId((prev) => prev + 1);
       } catch (error) {
         logger.error("Failed to rewind:", error);
       }
@@ -509,11 +505,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
       // Clear terminal screen when expanded state changes
-      process.stdout.write("\x1Bc", () => {
-        setIsExpanded((prev) => {
-          const newExpanded = !prev;
-          return newExpanded;
-        });
+      setIsExpanded((prev) => {
+        const newExpanded = !prev;
+        return newExpanded;
       });
     }
 
