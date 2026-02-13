@@ -35,10 +35,8 @@ const agent = await Agent.create({
     onErrorBlockAdded: (error: string) => {
       console.log(`❌ Error block added: ${error}`);
     },
-    onCompressBlockAdded: (insertIndex: number, content: string) => {
-      console.log(
-        `🗜️  Compress block added at index ${insertIndex} (${content.length} chars)`,
-      );
+    onCompressBlockAdded: (content: string) => {
+      console.log(`🗜️  Compress block added (${content.length} chars)`);
     },
     onMemoryBlockAdded: (
       content: string,

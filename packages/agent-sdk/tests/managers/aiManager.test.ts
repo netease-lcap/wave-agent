@@ -21,12 +21,7 @@ vi.mock("../../src/services/memory.js", () => ({
   getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
 }));
 
-// Mock utility modules
-vi.mock("../../src/utils/messageOperations.js", () => ({
-  getMessagesToCompress: vi
-    .fn()
-    .mockReturnValue({ messagesToCompress: [], insertIndex: 0 }),
-}));
+vi.mock("../../src/utils/messageOperations.js", () => ({}));
 
 vi.mock("../../src/utils/convertMessagesForAPI.js", () => ({
   convertMessagesForAPI: vi.fn().mockReturnValue([]),

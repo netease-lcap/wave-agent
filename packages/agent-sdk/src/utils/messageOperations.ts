@@ -1,6 +1,5 @@
 import type { Message, Usage } from "../types/index.js";
 import { MessageSource } from "../types/index.js";
-import { DEFAULT_KEEP_LAST_MESSAGES_COUNT } from "./constants.js";
 import type { SubagentConfiguration } from "./subagentParser.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
@@ -310,84 +309,6 @@ export const addErrorBlockToMessage = ({
   }
 
   return newMessages;
-};
-
-/**
- * Count valid blocks from the end
- * Only text, image, and tool type blocks are counted
- * @param messages Message array
- * @param targetCount Number of valid blocks to count
- * @returns { messageIndex: number, blockCount: number } Message index and actual counted block count
- */
-export const countValidBlocksFromEnd = (
-  messages: Message[],
-  targetCount: number,
-): { messageIndex: number; blockCount: number } => {
-  let validBlockCount = 0;
-
-  // Iterate messages from end to beginning
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i];
-
-    // Iterate through all blocks of current message
-    for (const block of message.blocks) {
-      // Only count valid block types
-      if (
-        block.type === "text" ||
-        block.type === "image" ||
-        block.type === "tool"
-      ) {
-        validBlockCount++;
-
-        // If target count reached, return current message index
-        if (validBlockCount >= targetCount) {
-          return { messageIndex: i, blockCount: validBlockCount };
-        }
-      }
-    }
-  }
-
-  // If target count not reached, return index 0
-  return { messageIndex: 0, blockCount: validBlockCount };
-};
-
-/**
- * Get messages to be compressed and insertion position
- * @param messages Message array
- * @param keepLastCount Keep the last few valid blocks uncompressed
- * @returns { messagesToCompress: Message[], insertIndex: number }
- */
-export const getMessagesToCompress = (
-  messages: Message[],
-  keepLastCount: number = DEFAULT_KEEP_LAST_MESSAGES_COUNT,
-): { messagesToCompress: Message[]; insertIndex: number } => {
-  // Calculate message position to keep from end to beginning
-  const { messageIndex } = countValidBlocksFromEnd(messages, keepLastCount);
-
-  // Find the last message containing compression block
-  let lastCompressIndex = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const hasCompressBlock = messages[i].blocks.some(
-      (block) => block.type === "compress",
-    );
-    if (hasCompressBlock) {
-      lastCompressIndex = i;
-      break;
-    }
-  }
-
-  // Determine compression start position
-  // If compression block exists, start from compression block position (include compression block)
-  // If no compression block, start from beginning
-  const startIndex = lastCompressIndex >= 0 ? lastCompressIndex : 0;
-
-  // Messages to compress are all messages from start position to before calculated position
-  const messagesToCompress = messages.slice(startIndex, messageIndex);
-
-  // Change insertion position to negative number, indicating position from end
-  const insertIndex = messageIndex - messages.length;
-
-  return { messagesToCompress, insertIndex };
 };
 
 // Add command output block to message list
