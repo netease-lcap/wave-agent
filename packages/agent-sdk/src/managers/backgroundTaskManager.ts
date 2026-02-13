@@ -69,6 +69,26 @@ export class BackgroundTaskManager {
       status: "running",
       stdout: "",
       stderr: "",
+      onStop: () => {
+        try {
+          if (child.pid) {
+            process.kill(-child.pid, "SIGTERM");
+            setTimeout(() => {
+              if (child.pid && !child.killed) {
+                try {
+                  process.kill(-child.pid, "SIGKILL");
+                } catch (error) {
+                  logger.error("Failed to force kill process:", error);
+                }
+              }
+            }, 1000);
+          } else {
+            child.kill("SIGTERM");
+          }
+        } catch {
+          child.kill("SIGTERM");
+        }
+      },
     };
 
     this.tasks.set(id, shell);
@@ -155,6 +175,26 @@ export class BackgroundTaskManager {
       status: "running",
       stdout: initialStdout,
       stderr: initialStderr,
+      onStop: () => {
+        try {
+          if (child.pid) {
+            process.kill(-child.pid, "SIGTERM");
+            setTimeout(() => {
+              if (child.pid && !child.killed) {
+                try {
+                  process.kill(-child.pid, "SIGKILL");
+                } catch (error) {
+                  logger.error("Failed to force kill process:", error);
+                }
+              }
+            }, 1000);
+          } else {
+            child.kill("SIGTERM");
+          }
+        } catch {
+          child.kill("SIGTERM");
+        }
+      },
     };
 
     this.tasks.set(id, shell);
@@ -232,75 +272,24 @@ export class BackgroundTaskManager {
       return false;
     }
 
-    if (task.type === "shell") {
-      const shell = task as BackgroundShell;
+    if (task.onStop) {
       try {
-        // Try to kill process group first
-        if (shell.process.pid) {
-          process.kill(-shell.process.pid, "SIGTERM");
-
-          // Force kill after timeout
-          setTimeout(() => {
-            if (
-              shell.status === "running" &&
-              shell.process.pid &&
-              !shell.process.killed
-            ) {
-              try {
-                process.kill(-shell.process.pid, "SIGKILL");
-              } catch (error) {
-                logger.error("Failed to force kill process:", error);
-              }
-            }
-          }, 1000);
+        const result = task.onStop();
+        if (result instanceof Promise) {
+          result.catch((error) => {
+            logger.error("Error in background task onStop callback:", error);
+          });
         }
-
-        shell.status = "killed";
-        shell.endTime = Date.now();
-        shell.runtime = shell.endTime - shell.startTime;
-        this.notifyTasksChange();
-        return true;
-      } catch {
-        // Fallback to direct process kill
-        try {
-          shell.process.kill("SIGTERM");
-          setTimeout(() => {
-            if (!shell.process.killed) {
-              shell.process.kill("SIGKILL");
-            }
-          }, 1000);
-          shell.status = "killed";
-          shell.endTime = Date.now();
-          shell.runtime = shell.endTime - shell.startTime;
-          this.notifyTasksChange();
-          return true;
-        } catch (directKillError) {
-          logger.error("Failed to kill child process:", directKillError);
-          return false;
-        }
+      } catch (error) {
+        logger.error("Error in background task onStop callback:", error);
       }
-    } else {
-      // For other task types (like subagent), use the onStop callback if provided
-      if (task.onStop) {
-        try {
-          const result = task.onStop();
-          if (result instanceof Promise) {
-            result.catch((error) => {
-              logger.error("Error in background task onStop callback:", error);
-            });
-          }
-        } catch (error) {
-          logger.error("Error in background task onStop callback:", error);
-        }
-      }
-      task.status = "killed";
-      task.endTime = Date.now();
-      task.runtime = task.endTime - task.startTime;
-      this.notifyTasksChange();
-      return true;
     }
 
-    return false;
+    task.status = "killed";
+    task.endTime = Date.now();
+    task.runtime = task.endTime - task.startTime;
+    this.notifyTasksChange();
+    return true;
   }
 
   public cleanup(): void {

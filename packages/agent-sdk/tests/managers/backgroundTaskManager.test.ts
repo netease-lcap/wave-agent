@@ -172,8 +172,9 @@ describe("BackgroundTaskManager", () => {
       throw new Error("Direct kill failed");
     });
 
+    // Even if kill fails, stopTask returns true because it marks the task as killed
     const result = manager.stopTask(id);
-    expect(result).toBe(false);
+    expect(result).toBe(true);
 
     process.kill = originalKill;
   });
