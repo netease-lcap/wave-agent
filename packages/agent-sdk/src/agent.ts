@@ -109,6 +109,10 @@ export interface AgentCallbacks
   onTasksChange?: (tasks: BackgroundTask[]) => void;
   onSessionTasksChange?: (tasks: import("./types/tasks.js").Task[]) => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
+  onSubagentLatestTotalTokensChange?: (
+    subagentId: string,
+    tokens: number,
+  ) => void;
   onBackgroundCurrentTask?: () => void;
 }
 
@@ -354,6 +358,8 @@ export class Agent {
           callbacks.onSubagentAssistantReasoningUpdated,
         onSubagentToolBlockUpdated: callbacks.onSubagentToolBlockUpdated,
         onSubagentMessagesChange: callbacks.onSubagentMessagesChange,
+        onSubagentLatestTotalTokensChange:
+          callbacks.onSubagentLatestTotalTokensChange,
       }, // Pass subagent callbacks for forwarding
       logger: this.logger,
       getGatewayConfig: () => this.getGatewayConfig(),

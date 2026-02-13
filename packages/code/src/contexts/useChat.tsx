@@ -61,6 +61,7 @@ export interface ChatContextType {
   hasSlashCommand: (commandId: string) => boolean;
   // Subagent messages
   subagentMessages: Record<string, Message[]>;
+  subagentLatestTokens: Record<string, number>;
   // Permission functionality
   permissionMode: PermissionMode;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -138,6 +139,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Subagent messages state
   const [subagentMessages, setSubagentMessages] = useState<
     Record<string, Message[]>
+  >({});
+  const [subagentLatestTokens, setSubagentLatestTokens] = useState<
+    Record<string, number>
   >({});
 
   // Permission state
@@ -239,6 +243,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setSubagentMessages((prev) => ({
             ...prev,
             [subagentId]: [...messages],
+          }));
+        },
+        onSubagentLatestTotalTokensChange: (subagentId, tokens) => {
+          setSubagentLatestTokens((prev) => ({
+            ...prev,
+            [subagentId]: tokens,
           }));
         },
         onPermissionModeChange: (mode) => {
@@ -537,6 +547,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     slashCommands,
     hasSlashCommand,
     subagentMessages,
+    subagentLatestTokens,
     permissionMode,
     setPermissionMode,
     isConfirmationVisible,
