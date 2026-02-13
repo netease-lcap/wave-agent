@@ -129,7 +129,6 @@ const TableRenderer = ({ token }: { token: Tokens.Table }) => {
   return (
     <Box
       flexDirection="column"
-      marginBottom={1}
       borderStyle="single"
       borderColor="gray"
       width={columnWidths.reduce((a, b) => a + b, 0) + token.header.length + 1}
@@ -196,7 +195,7 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
           case "heading": {
             const t = token as Tokens.Heading;
             return (
-              <Box key={index} marginY={1} flexDirection="column">
+              <Box key={index} flexDirection="column">
                 <Text bold color="cyan">
                   {"#".repeat(t.depth)} <InlineRenderer tokens={t.tokens} />
                 </Text>
@@ -231,12 +230,7 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
                   })
                 : "";
               return (
-                <Box
-                  key={index}
-                  flexDirection="column"
-                  paddingX={1}
-                  marginBottom={1}
-                >
+                <Box key={index} flexDirection="column">
                   <Text color="gray">{opening}</Text>
                   {highlighted && <Text>{highlighted}</Text>}
                   <Text color="gray">{closing}</Text>
@@ -244,12 +238,7 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
               );
             }
             return (
-              <Box
-                key={index}
-                flexDirection="column"
-                paddingX={1}
-                marginBottom={1}
-              >
+              <Box key={index} flexDirection="column">
                 <Text>{unescapeHtml(t.text)}</Text>
               </Box>
             );
@@ -257,12 +246,7 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
           case "list": {
             const t = token as Tokens.List;
             return (
-              <Box
-                key={index}
-                flexDirection="column"
-                marginBottom={1}
-                paddingLeft={2}
-              >
+              <Box key={index} flexDirection="column">
                 {t.items.map((item, i) => {
                   const start = t.start || 1;
                   return (
@@ -309,14 +293,12 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
               <Box
                 key={index}
                 flexDirection="column"
-                paddingLeft={2}
                 borderStyle="single"
                 borderLeft
                 borderRight={false}
                 borderTop={false}
                 borderBottom={false}
                 borderColor="gray"
-                marginBottom={1}
               >
                 <BlockRenderer tokens={t.tokens} />
               </Box>
@@ -324,7 +306,7 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
           }
           case "hr":
             return (
-              <Box key={index} marginBottom={1}>
+              <Box key={index}>
                 <Text color="gray">{"─".repeat(20)}</Text>
               </Box>
             );
@@ -334,7 +316,7 @@ const BlockRenderer = ({ tokens }: { tokens: Token[] }) => {
             return null;
           default:
             return (
-              <Box key={index} marginBottom={1}>
+              <Box key={index}>
                 <Text>{token.raw}</Text>
               </Box>
             );

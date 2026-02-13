@@ -40,11 +40,7 @@ export const PlanDisplay: React.FC<PlanDisplayProps> = ({
 
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Box
-        flexDirection="column"
-        height={isOverflowing ? maxHeight : undefined}
-        overflow="hidden"
-      >
+      <Box flexDirection="column">
         <Markdown>{displayedPlan}</Markdown>
       </Box>
       {isOverflowing && (
