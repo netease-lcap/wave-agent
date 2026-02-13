@@ -2,15 +2,13 @@ import React from "react";
 import { Box, Text, Static } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { MessageItem } from "./MessageItem.js";
-import { TaskList } from "./TaskList.js";
 
 export interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
   isCommandRunning?: boolean;
-  isCompressing?: boolean;
   isExpanded?: boolean;
-  latestTotalTokens?: number;
+  forceStaticLastMessage?: boolean;
 }
 
 export const MessageList = React.memo(
@@ -18,9 +16,8 @@ export const MessageList = React.memo(
     messages,
     isLoading = false,
     isCommandRunning = false,
-    isCompressing = false,
     isExpanded = false,
-    latestTotalTokens = 0,
+    forceStaticLastMessage = false,
   }: MessageListProps) => {
     // Empty message state
     if (messages.length === 0) {
@@ -29,7 +26,6 @@ export const MessageList = React.memo(
           <Box flexDirection="column" paddingY={1}>
             <Text color="gray">Welcome to WAVE Code Assistant!</Text>
           </Box>
-          <TaskList />
         </Box>
       );
     }
@@ -46,7 +42,8 @@ export const MessageList = React.memo(
       : 0;
 
     // Compute which messages to render statically vs dynamically
-    const shouldRenderLastDynamic = isLoading || isCommandRunning;
+    const shouldRenderLastDynamic =
+      !forceStaticLastMessage && (isLoading || isCommandRunning);
     const staticMessages = shouldRenderLastDynamic
       ? displayMessages.slice(0, -1)
       : displayMessages;
@@ -99,48 +96,6 @@ export const MessageList = React.memo(
             </Box>
           );
         })}
-
-        <TaskList />
-
-        {(isLoading || isCommandRunning || isCompressing) && (
-          <Box flexDirection="column" gap={1}>
-            {isLoading && (
-              <Box>
-                <Text color="yellow">💭 AI is thinking... </Text>
-                {latestTotalTokens > 0 && (
-                  <>
-                    <Text color="gray" dimColor>
-                      |{" "}
-                    </Text>
-                    <Text color="blue" bold>
-                      {latestTotalTokens.toLocaleString()}
-                    </Text>
-                    <Text color="gray" dimColor>
-                      {" "}
-                      tokens{" "}
-                    </Text>
-                  </>
-                )}
-                <Text color="gray" dimColor>
-                  |{" "}
-                </Text>
-                <Text color="red" bold>
-                  Esc
-                </Text>
-                <Text color="gray" dimColor>
-                  {" "}
-                  to abort
-                </Text>
-              </Box>
-            )}
-            {isCommandRunning && (
-              <Text color="blue">🚀 Command is running...</Text>
-            )}
-            {isCompressing && (
-              <Text color="magenta">🗜️ Compressing message history...</Text>
-            )}
-          </Box>
-        )}
       </Box>
     );
   },

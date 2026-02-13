@@ -3,44 +3,9 @@ import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
 import {
   BASH_TOOL_NAME,
-  EDIT_TOOL_NAME,
-  MULTI_EDIT_TOOL_NAME,
-  DELETE_FILE_TOOL_NAME,
-  WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
 } from "wave-agent-sdk";
-import { DiffDisplay } from "./DiffDisplay.js";
-import { PlanDisplay } from "./PlanDisplay.js";
-
-// Helper function to generate descriptive action text
-const getActionDescription = (
-  toolName: string,
-  toolInput?: Record<string, unknown>,
-): string => {
-  if (!toolInput) {
-    return "Execute operation";
-  }
-
-  switch (toolName) {
-    case BASH_TOOL_NAME:
-      return `Execute command: ${toolInput.command || "unknown command"}`;
-    case EDIT_TOOL_NAME:
-      return `Edit file: ${toolInput.file_path || "unknown file"}`;
-    case MULTI_EDIT_TOOL_NAME:
-      return `Edit multiple sections in: ${toolInput.file_path || "unknown file"}`;
-    case DELETE_FILE_TOOL_NAME:
-      return `Delete file: ${toolInput.target_file || "unknown file"}`;
-    case WRITE_TOOL_NAME:
-      return `Write to file: ${toolInput.file_path || "unknown file"}`;
-    case EXIT_PLAN_MODE_TOOL_NAME:
-      return "Review and approve the plan";
-    case ASK_USER_QUESTION_TOOL_NAME:
-      return "Answer questions to clarify intent";
-    default:
-      return "Execute operation";
-  }
-};
 
 const getHeaderColor = (header: string) => {
   const colors = ["red", "green", "blue", "magenta", "cyan"] as const;
@@ -51,7 +16,7 @@ const getHeaderColor = (header: string) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
-export interface ConfirmationProps {
+export interface ConfirmationSelectorProps {
   toolName: string;
   toolInput?: Record<string, unknown>;
   suggestedPrefix?: string;
@@ -66,10 +31,10 @@ interface ConfirmationState {
   selectedOption: "allow" | "auto" | "alternative";
   alternativeText: string;
   alternativeCursorPosition: number;
-  hasUserInput: boolean; // to hide placeholder
+  hasUserInput: boolean;
 }
 
-export const Confirmation: React.FC<ConfirmationProps> = ({
+export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   toolName,
   toolInput,
   suggestedPrefix,
@@ -86,7 +51,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     hasUserInput: false,
   });
 
-  // Specialized state for AskUserQuestion
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOptionIndex, setSelectedOptionIndex] = useState(0);
   const [selectedOptionIndices, setSelectedOptionIndices] = useState<
@@ -114,7 +78,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
   };
 
   useInput((input, key) => {
-    // Handle ESC to cancel and abort
     if (key.escape) {
       onCancel();
       onAbort();
@@ -123,10 +86,8 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
 
     if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
       if (!currentQuestion) return;
-
       const options = [...currentQuestion.options, { label: "Other" }];
-      const isMultiSelect = !!currentQuestion.multiSelect;
-
+      const isMultiSelect = currentQuestion.multiSelect;
       const isOtherFocused = selectedOptionIndex === options.length - 1;
 
       if (key.return) {
@@ -135,7 +96,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
           const selectedLabels = Array.from(selectedOptionIndices)
             .filter((i) => i < currentQuestion.options.length)
             .map((i) => currentQuestion.options[i].label);
-
           const isOtherChecked = selectedOptionIndices.has(options.length - 1);
           if (isOtherChecked && otherText.trim()) {
             selectedLabels.push(otherText.trim());
@@ -148,15 +108,12 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
             answer = options[selectedOptionIndex].label;
           }
         }
-
         if (!answer) return;
-
         const newAnswers = {
           ...userAnswers,
           [currentQuestion.question]: answer,
         };
         setUserAnswers(newAnswers);
-
         if (currentQuestionIndex < questions.length - 1) {
           setCurrentQuestionIndex(currentQuestionIndex + 1);
           setSelectedOptionIndex(0);
@@ -164,7 +121,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
           setOtherText("");
           setOtherCursorPosition(0);
         } else {
-          // All questions answered
           onDecision({
             behavior: "allow",
             message: JSON.stringify(newAnswers),
@@ -180,33 +136,23 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
         ) {
           setSelectedOptionIndices((prev) => {
             const next = new Set(prev);
-            if (next.has(selectedOptionIndex)) {
-              next.delete(selectedOptionIndex);
-            } else {
-              next.add(selectedOptionIndex);
-            }
+            if (next.has(selectedOptionIndex)) next.delete(selectedOptionIndex);
+            else next.add(selectedOptionIndex);
             return next;
           });
           return;
         }
-
-        if (!isOtherFocused) {
-          return;
-        }
-        // If isOtherFocused is true, fall through to handle space as text input
+        if (!isOtherFocused) return;
       }
 
       if (key.upArrow) {
-        if (selectedOptionIndex > 0) {
+        if (selectedOptionIndex > 0)
           setSelectedOptionIndex(selectedOptionIndex - 1);
-        }
         return;
       }
-
       if (key.downArrow) {
-        if (selectedOptionIndex < options.length - 1) {
+        if (selectedOptionIndex < options.length - 1)
           setSelectedOptionIndex(selectedOptionIndex + 1);
-        }
         return;
       }
 
@@ -223,34 +169,29 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
         }
         if (key.backspace || key.delete) {
           if (otherCursorPosition > 0) {
-            setOtherText((prev) => {
-              const next =
+            setOtherText(
+              (prev) =>
                 prev.slice(0, otherCursorPosition - 1) +
-                prev.slice(otherCursorPosition);
-              return next;
-            });
+                prev.slice(otherCursorPosition),
+            );
             setOtherCursorPosition((prev) => prev - 1);
           }
           return;
         }
         if (input && !key.ctrl && !key.meta) {
-          setOtherText((prev) => {
-            const next =
+          setOtherText(
+            (prev) =>
               prev.slice(0, otherCursorPosition) +
               input +
-              prev.slice(otherCursorPosition);
-            return next;
-          });
+              prev.slice(otherCursorPosition),
+          );
           setOtherCursorPosition((prev) => prev + input.length);
           return;
         }
-        return;
       }
-
       return;
     }
 
-    // Handle Enter to confirm selection
     if (key.return) {
       if (state.selectedOption === "allow") {
         if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
@@ -263,24 +204,12 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
           const rule = suggestedPrefix
             ? `Bash(${suggestedPrefix}*)`
             : `Bash(${toolInput?.command})`;
-          onDecision({
-            behavior: "allow",
-            newPermissionRule: rule,
-          });
+          onDecision({ behavior: "allow", newPermissionRule: rule });
         } else {
-          onDecision({
-            behavior: "allow",
-            newPermissionMode: "acceptEdits",
-          });
+          onDecision({ behavior: "allow", newPermissionMode: "acceptEdits" });
         }
-      } else {
-        // For alternative option, require text input
-        if (state.alternativeText.trim()) {
-          onDecision({
-            behavior: "deny",
-            message: state.alternativeText.trim(),
-          });
-        }
+      } else if (state.alternativeText.trim()) {
+        onDecision({ behavior: "deny", message: state.alternativeText.trim() });
       }
       return;
     }
@@ -308,15 +237,13 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       }
     }
 
-    // Handle arrow keys for navigation
     if (key.upArrow) {
       setState((prev) => {
-        if (prev.selectedOption === "alternative") {
+        if (prev.selectedOption === "alternative")
           return {
             ...prev,
             selectedOption: hidePersistentOption ? "allow" : "auto",
           };
-        }
         if (prev.selectedOption === "auto")
           return { ...prev, selectedOption: "allow" };
         return prev;
@@ -326,12 +253,11 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
 
     if (key.downArrow) {
       setState((prev) => {
-        if (prev.selectedOption === "allow") {
+        if (prev.selectedOption === "allow")
           return {
             ...prev,
             selectedOption: hidePersistentOption ? "alternative" : "auto",
           };
-        }
         if (prev.selectedOption === "auto")
           return { ...prev, selectedOption: "alternative" };
         return prev;
@@ -339,9 +265,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       return;
     }
 
-    // Handle text input for alternative option
     if (input && !key.ctrl && !key.meta && !("alt" in key && key.alt)) {
-      // Focus on alternative option when user starts typing
       setState((prev) => {
         const nextText =
           prev.alternativeText.slice(0, prev.alternativeCursorPosition) +
@@ -359,7 +283,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       return;
     }
 
-    // Handle backspace and delete
     if (key.backspace || key.delete) {
       setState((prev) => {
         if (prev.alternativeCursorPosition > 0) {
@@ -385,22 +308,7 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     state.selectedOption === "alternative" && !state.hasUserInput;
 
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="single"
-      borderColor="yellow"
-      borderBottom={false}
-      borderLeft={false}
-      borderRight={false}
-      paddingTop={1}
-    >
-      <Text color="yellow" bold>
-        Tool: {toolName}
-      </Text>
-      <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
-
-      <DiffDisplay toolName={toolName} parameters={JSON.stringify(toolInput)} />
-
+    <Box flexDirection="column">
       {toolName === ASK_USER_QUESTION_TOOL_NAME &&
         currentQuestion &&
         !isExpanded && (
@@ -417,61 +325,58 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
               </Box>
               <Text bold>{currentQuestion.question}</Text>
             </Box>
-
             <Box flexDirection="column">
-              {(() => {
-                const isMultiSelect = !!currentQuestion.multiSelect;
-                return [...currentQuestion.options, { label: "Other" }].map(
-                  (option, index) => {
-                    const isSelected = selectedOptionIndex === index;
-                    const isChecked = isMultiSelect
-                      ? selectedOptionIndices.has(index)
-                      : isSelected;
-                    const isOther = index === currentQuestion.options.length;
-                    const isRecommended = !isOther && option.isRecommended;
-
-                    return (
-                      <Box key={index}>
-                        <Text
-                          color={isSelected ? "black" : "white"}
-                          backgroundColor={isSelected ? "yellow" : undefined}
-                        >
-                          {isSelected ? "> " : "  "}
-                          {isMultiSelect ? (isChecked ? "[x] " : "[ ] ") : ""}
-                          {option.label}
-                          {isRecommended && (
-                            <Text color="green" bold>
-                              {" "}
-                              (Recommended)
-                            </Text>
-                          )}
-                          {option.description ? ` - ${option.description}` : ""}
-                          {isOther && isSelected && (
-                            <Text>
-                              :{" "}
-                              {otherText ? (
-                                <>
-                                  {otherText.slice(0, otherCursorPosition)}
-                                  <Text backgroundColor="white" color="black">
-                                    {otherText[otherCursorPosition] || " "}
-                                  </Text>
-                                  {otherText.slice(otherCursorPosition + 1)}
-                                </>
-                              ) : (
-                                <Text color="gray" dimColor>
-                                  [Type your answer...]
+              {[...currentQuestion.options, { label: "Other" }].map(
+                (option, index) => {
+                  const isSelected = selectedOptionIndex === index;
+                  const isChecked = currentQuestion.multiSelect
+                    ? selectedOptionIndices.has(index)
+                    : isSelected;
+                  const isOther = index === currentQuestion.options.length;
+                  return (
+                    <Box key={index}>
+                      <Text
+                        color={isSelected ? "black" : "white"}
+                        backgroundColor={isSelected ? "yellow" : undefined}
+                      >
+                        {isSelected ? "> " : "  "}
+                        {currentQuestion.multiSelect
+                          ? isChecked
+                            ? "[x] "
+                            : "[ ] "
+                          : ""}
+                        {option.label}
+                        {!isOther && option.isRecommended && (
+                          <Text color="green" bold>
+                            {" "}
+                            (Recommended)
+                          </Text>
+                        )}
+                        {option.description ? ` - ${option.description}` : ""}
+                        {isOther && isSelected && (
+                          <Text>
+                            :{" "}
+                            {otherText ? (
+                              <>
+                                {otherText.slice(0, otherCursorPosition)}
+                                <Text backgroundColor="white" color="black">
+                                  {otherText[otherCursorPosition] || " "}
                                 </Text>
-                              )}
-                            </Text>
-                          )}
-                        </Text>
-                      </Box>
-                    );
-                  },
-                );
-              })()}
+                                {otherText.slice(otherCursorPosition + 1)}
+                              </>
+                            ) : (
+                              <Text color="gray" dimColor>
+                                [Type your answer...]
+                              </Text>
+                            )}
+                          </Text>
+                        )}
+                      </Text>
+                    </Box>
+                  );
+                },
+              )}
             </Box>
-
             <Box marginTop={1}>
               <Text dimColor>
                 Question {currentQuestionIndex + 1} of {questions.length} •
@@ -482,23 +387,12 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
           </Box>
         )}
 
-      {toolName !== ASK_USER_QUESTION_TOOL_NAME &&
-        toolName === EXIT_PLAN_MODE_TOOL_NAME &&
-        !!toolInput?.plan_content && (
-          <PlanDisplay
-            plan={toolInput.plan_content as string}
-            isExpanded={isExpanded}
-          />
-        )}
-
       {toolName !== ASK_USER_QUESTION_TOOL_NAME && !isExpanded && (
         <>
           <Box marginTop={1}>
             <Text>Do you want to proceed?</Text>
           </Box>
-
           <Box marginTop={1} flexDirection="column">
-            {/* Option 1: Yes */}
             <Box key="allow-option">
               <Text
                 color={state.selectedOption === "allow" ? "black" : "white"}
@@ -513,8 +407,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                   : "Yes"}
               </Text>
             </Box>
-
-            {/* Option 2: Auto-accept/Persistent */}
             {!hidePersistentOption && (
               <Box key="auto-option">
                 <Text
@@ -529,8 +421,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
                 </Text>
               </Box>
             )}
-
-            {/* Option 3: Alternative */}
             <Box key="alternative-option">
               <Text
                 color={
@@ -571,7 +461,6 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
               </Text>
             </Box>
           </Box>
-
           <Box marginTop={1}>
             <Text dimColor>Use ↑↓ to navigate • ESC to cancel</Text>
           </Box>
@@ -580,3 +469,5 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     </Box>
   );
 };
+
+ConfirmationSelector.displayName = "ConfirmationSelector";

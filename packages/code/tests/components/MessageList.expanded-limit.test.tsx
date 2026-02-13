@@ -212,7 +212,7 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       expect(output).toContain("5 earlier messages omitted");
     });
 
-    it("should work with loading state and message limiting", () => {
+    it("should work with loading state and message limiting (moved to ChatInterface)", () => {
       const messages = Array.from({ length: 25 }, (_, i) =>
         createMessage(
           i % 2 === 0 ? "user" : "assistant",
@@ -222,13 +222,13 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={true} isLoading={true} />,
+        <MessageList messages={messages} isExpanded={true} />,
       );
 
       const output = lastFrame();
 
-      // Should show loading indicator
-      expect(output).toContain("💭 AI is thinking...");
+      // Should NOT show loading indicator
+      expect(output).not.toContain("💭 AI is thinking...");
 
       // Should show message limiting
       expect(output).toContain("5 earlier messages omitted");

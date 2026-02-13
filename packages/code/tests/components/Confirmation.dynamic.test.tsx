@@ -5,7 +5,23 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { Confirmation } from "../../src/components/Confirmation.js";
+import {
+  ConfirmationDetails,
+  type ConfirmationDetailsProps,
+} from "../../src/components/ConfirmationDetails.js";
+import {
+  ConfirmationSelector,
+  type ConfirmationSelectorProps,
+} from "../../src/components/ConfirmationSelector.js";
+
+const Confirmation = (
+  props: ConfirmationSelectorProps & ConfirmationDetailsProps,
+) => (
+  <>
+    <ConfirmationDetails {...props} />
+    <ConfirmationSelector {...props} />
+  </>
+);
 
 describe("Confirmation Dynamic Actions", () => {
   const mockOnDecision = vi.fn();

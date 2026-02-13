@@ -2,13 +2,18 @@ import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render } from "ink-testing-library";
 import { ChatInterface } from "../../src/components/ChatInterface.js";
-import { ChatContextType, useChat } from "../../src/contexts/useChat.js";
+import {
+  ChatContextType,
+  useChat as useChatActual,
+} from "../../src/contexts/useChat.js";
 import { useInputManager } from "../../src/hooks/useInputManager.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 
 vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: vi.fn(),
 }));
+
+const useChat = vi.mocked(useChatActual);
 
 // Mock InputManager to track handleInput calls
 const mockHandleInput = vi.fn();

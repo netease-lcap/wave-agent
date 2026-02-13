@@ -1,11 +1,30 @@
-import React from "react";
-import { Box } from "ink";
+import React, { useState, useCallback } from "react";
+import { Box, useStdout } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
-import { Confirmation } from "./Confirmation.js";
+import { LoadingIndicator } from "./LoadingIndicator.js";
+import { TaskList } from "./TaskList.js";
+import { ConfirmationDetails } from "./ConfirmationDetails.js";
+import { ConfirmationSelector } from "./ConfirmationSelector.js";
+
 import { useChat } from "../contexts/useChat.js";
 
 export const ChatInterface: React.FC = () => {
+  const { stdout } = useStdout();
+  const [isDetailsTooTall, setIsDetailsTooTall] = useState(false);
+
+  const handleHeightMeasured = useCallback(
+    (height: number) => {
+      const terminalHeight = stdout?.rows || 24;
+      if (height > terminalHeight - 10) {
+        setIsDetailsTooTall(true);
+      } else {
+        setIsDetailsTooTall(false);
+      }
+    },
+    [stdout?.rows],
+  );
+
   const {
     messages,
     isLoading,
@@ -32,28 +51,47 @@ export const ChatInterface: React.FC = () => {
   if (!sessionId) return null;
 
   return (
-    <Box flexDirection="column" height="100%" paddingY={1} paddingRight={1}>
+    <Box flexDirection="column" height="100%" paddingY={1}>
       <MessageList
         messages={messages}
         isLoading={isLoading}
         isCommandRunning={isCommandRunning}
-        isCompressing={isCompressing}
         isExpanded={isExpanded}
-        latestTotalTokens={latestTotalTokens}
+        forceStaticLastMessage={isDetailsTooTall}
         key={String(isExpanded) + sessionId + rewindId}
       />
 
+      {(isLoading || isCommandRunning || isCompressing) &&
+        !isConfirmationVisible && (
+          <LoadingIndicator
+            isLoading={isLoading}
+            isCommandRunning={isCommandRunning}
+            isCompressing={isCompressing}
+            latestTotalTokens={latestTotalTokens}
+          />
+        )}
+
+      {!isConfirmationVisible && <TaskList />}
+
       {isConfirmationVisible && (
-        <Confirmation
-          toolName={confirmingTool!.name}
-          toolInput={confirmingTool!.input}
-          suggestedPrefix={confirmingTool!.suggestedPrefix}
-          hidePersistentOption={confirmingTool!.hidePersistentOption}
-          isExpanded={isExpanded}
-          onDecision={handleConfirmationDecision}
-          onCancel={handleConfirmationCancel}
-          onAbort={abortMessage}
-        />
+        <>
+          <ConfirmationDetails
+            toolName={confirmingTool!.name}
+            toolInput={confirmingTool!.input}
+            isExpanded={isExpanded}
+            onHeightMeasured={handleHeightMeasured}
+          />
+          <ConfirmationSelector
+            toolName={confirmingTool!.name}
+            toolInput={confirmingTool!.input}
+            suggestedPrefix={confirmingTool!.suggestedPrefix}
+            hidePersistentOption={confirmingTool!.hidePersistentOption}
+            isExpanded={isExpanded}
+            onDecision={handleConfirmationDecision}
+            onCancel={handleConfirmationCancel}
+            onAbort={abortMessage}
+          />
+        </>
       )}
 
       {!isConfirmationVisible && !isExpanded && (
