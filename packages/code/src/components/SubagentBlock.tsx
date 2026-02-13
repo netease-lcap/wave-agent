@@ -3,7 +3,6 @@ import { Box, Text } from "ink";
 import type { SubagentBlock as SubagentBlockType } from "wave-agent-sdk";
 import { useChat } from "../contexts/useChat.js";
 import { Markdown } from "./Markdown.js";
-import { calculateComprehensiveTotalTokens } from "wave-agent-sdk";
 
 interface SubagentBlockProps {
   block: SubagentBlockType;
@@ -20,16 +19,6 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
 
   // Get latest turn tokens for this subagent
   const latestTurnTokens = subagentLatestTokens[block.subagentId] || 0;
-
-  // Calculate total tokens for this subagent
-  const totalTokens = useMemo(() => {
-    return messages.reduce((acc, msg) => {
-      if (msg.role === "assistant" && msg.usage) {
-        return acc + calculateComprehensiveTotalTokens(msg.usage);
-      }
-      return acc;
-    }, 0);
-  }, [messages]);
 
   // If the subagent is running in the background, don't show the block
   if (block.runInBackground) {
@@ -130,15 +119,6 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
                   {latestTurnTokens.toLocaleString()}
                 </Text>
                 {" tokens"}
-              </>
-            )}
-            {totalTokens > 0 && (
-              <>
-                {" | "}
-                <Text color="blue" bold>
-                  {totalTokens.toLocaleString()}
-                </Text>
-                {" total tokens"}
               </>
             )}
             )
