@@ -2,10 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { Message } from "@/types/index.js";
-import {
-  DEFAULT_WAVE_MAX_INPUT_TOKENS,
-  DEFAULT_KEEP_LAST_MESSAGES_COUNT,
-} from "@/utils/constants.js";
+import { DEFAULT_WAVE_MAX_INPUT_TOKENS } from "@/utils/constants.js";
 import { ChatCompletionMessageParam } from "openai/resources.js";
 import { MessageManager } from "@/managers/messageManager.js";
 
@@ -259,8 +256,8 @@ describe("Agent Message Compression Tests", () => {
     // If no exception thrown here, error handling is correct
   });
 
-  it("should compress messages from 7th last to previous compressed message when session already contains compression", async () => {
-    // Test scenario: When session already contains compression message, new compression should only compress content between previous compression point and 8th to last message
+  it("should compress all messages when session already contains compression", async () => {
+    // Test scenario: When session already contains compression message, new compression should compress all content including previous compression point
 
     // Create initial 15 pairs of messages (30 messages)
     const initialMessages = generateMessages(15);
@@ -339,16 +336,14 @@ describe("Agent Message Compression Tests", () => {
     expect(Array.isArray(compressCall[0].messages)).toBe(true);
     expect(compressCall[0].messages.length).toBeGreaterThan(0);
 
-    // Verify compressCall messages should be from 7th to last to previous compression message
+    // Verify compressCall messages should include all messages
     const messagesToCompress = compressCall[0].messages;
 
-    // Check compressed message range: should be from after compression message to the message before the kept ones
     const userMessages = messagesToCompress.filter(
       (msg) => msg.role === "user",
     );
 
-    // Verify the included message content (should include some user messages after the compressed message)
-    // According to our settings, the compressed message is at the 9th position, so it should start from "User message 5" afterwards
+    // Verify the included message content
     const hasUser5 = userMessages.some((msg) => {
       const content = Array.isArray(msg.content)
         ? msg.content
@@ -362,7 +357,6 @@ describe("Agent Message Compression Tests", () => {
     });
     expect(hasUser5).toBe(true);
 
-    // Verify that the message includes up to the 7th to last message (should include User message 13, because the last message is the one we just sent)
     const hasUser13 = userMessages.some((msg) => {
       const content = Array.isArray(msg.content)
         ? msg.content
@@ -376,8 +370,7 @@ describe("Agent Message Compression Tests", () => {
     });
     expect(hasUser13).toBe(true);
 
-    // Verify that the previous compressed message should be included as context (this is the expected behavior)
-    // convertMessagesForAPI will convert compressed messages to system message format
+    // Verify that the previous compressed message should be included as context
     const hasCompressedMessage = compressCall[0].messages.some(
       (msg) =>
         msg.role === "system" &&
@@ -388,8 +381,7 @@ describe("Agent Message Compression Tests", () => {
     );
     expect(hasCompressedMessage).toBe(true);
 
-    // Verify that the latest messages should not be included (the latest messages should be kept uncompressed)
-    // The latest user message should be User message 15, which should not be in the compressed message
+    // Verify that the latest messages ARE included (since we now compact everything)
     const hasLatestUser = userMessages.some((msg) => {
       const content = Array.isArray(msg.content)
         ? msg.content
@@ -398,10 +390,10 @@ describe("Agent Message Compression Tests", () => {
         : msg.content;
       return content && content.includes("User message 15");
     });
-    expect(hasLatestUser).toBe(false);
+    expect(hasLatestUser).toBe(true);
   });
 
-  it("should send compressed message plus all messages after compression point to callAgent", async () => {
+  it("should send compressed message plus subsequent messages to callAgent", async () => {
     // Create 10 pairs of messages (20 messages) to trigger compression
     const messages = generateMessages(10);
 
@@ -478,10 +470,9 @@ describe("Agent Message Compression Tests", () => {
     // Get compressed message list
     const messagesAfterCompression = agent.messages;
 
-    // Verify that the message at the compression point becomes a compressed message
-    const compressedMessageIndex =
-      messagesAfterCompression.length - (DEFAULT_KEEP_LAST_MESSAGES_COUNT + 1);
-    const compressedMessage = messagesAfterCompression[compressedMessageIndex];
+    // Verify that the message list now only contains the compressed message
+    expect(messagesAfterCompression.length).toBe(1);
+    const compressedMessage = messagesAfterCompression[0];
     expect(compressedMessage.role).toBe("assistant");
     expect(compressedMessage.blocks[0].type).toBe("compress");
     // Type assertion to access the content property of CompressBlock
@@ -503,8 +494,8 @@ describe("Agent Message Compression Tests", () => {
     // Verify parameters of the second call
     expect(callAgentCallCount).toBe(2);
 
-    // Verify that messages passed to callAgent include the compressed message plus all messages after the compression point
-    expect(messagesPassedToCallAgent.length).toBeGreaterThan(1); // At least one compressed message and some recent messages
+    // Verify that messages passed to callAgent include the compressed message plus the new message
+    expect(messagesPassedToCallAgent.length).toBe(2);
 
     // Verify the structure of messages passed to callAgent
     // The first message should be the compressed system message
@@ -512,16 +503,6 @@ describe("Agent Message Compression Tests", () => {
     expect(messagesPassedToCallAgent[0].content).toContain(
       "[Compressed Message Summary]",
     );
-
-    // Verify that the second message is the first user message retained after compression
-    const secondMessage = messagesPassedToCallAgent[1];
-    expect(secondMessage.role).toBe("user");
-
-    // Verify that the expected assistant reply is included
-    const assistantMessages = messagesPassedToCallAgent.filter(
-      (m) => m.role === "assistant",
-    );
-    expect(assistantMessages.length).toBeGreaterThan(0);
 
     // The last message should be the second user message we added
     const lastMessage =

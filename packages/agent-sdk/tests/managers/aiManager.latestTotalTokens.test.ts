@@ -8,6 +8,7 @@ import type {
   GatewayConfig,
   ModelConfig,
   Usage,
+  Message,
 } from "../../src/types/index.js";
 import * as aiService from "../../src/services/aiService.js";
 
@@ -22,12 +23,7 @@ vi.mock("../../src/services/memory.js", () => ({
   getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
 }));
 
-// Mock utility modules
-vi.mock("../../src/utils/messageOperations.js", () => ({
-  getMessagesToCompress: vi
-    .fn()
-    .mockReturnValue({ messagesToCompress: [], insertIndex: 0 }),
-}));
+vi.mock("../../src/utils/messageOperations.js", () => ({}));
 
 vi.mock("../../src/utils/convertMessagesForAPI.js", () => ({
   convertMessagesForAPI: vi.fn().mockReturnValue([]),
@@ -299,21 +295,13 @@ describe("AIManager - latestTotalTokens calculation", () => {
         operation_type: "agent",
       };
 
-      // Mock getMessagesToCompress to return messages for compression
-      const { getMessagesToCompress } = await import(
-        "../../src/utils/messageOperations.js"
-      );
-      vi.mocked(getMessagesToCompress).mockReturnValue({
-        messagesToCompress: [
-          {
-            role: "user",
-            blocks: [{ type: "text", content: "test" }],
-          },
-        ] as unknown as Awaited<
-          ReturnType<typeof getMessagesToCompress>
-        >["messagesToCompress"],
-        insertIndex: 0,
-      });
+      // Mock getMessages to return messages for compression
+      vi.mocked(mockMessageManager.getMessages).mockReturnValue([
+        {
+          role: "user",
+          blocks: [{ type: "text", content: "test" }],
+        },
+      ] as unknown as Message[]);
 
       // Mock compressMessages to return successful compression
       vi.mocked(aiService.compressMessages).mockResolvedValue({

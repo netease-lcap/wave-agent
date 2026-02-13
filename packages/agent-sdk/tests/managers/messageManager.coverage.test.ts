@@ -104,13 +104,14 @@ describe("MessageManager Coverage Improvements", () => {
     messageManager.addAssistantMessage("msg2");
     messageManager.addUserMessage({ content: "msg3" });
 
-    messageManager.compressMessagesAndUpdateSession(1, "compressed content");
+    messageManager.compressMessagesAndUpdateSession("compressed content");
 
     const messages = messageManager.getMessages();
-    expect(messages.length).toBe(3); // [compress, msg2, msg3]
+    expect(messages.length).toBe(1); // only [compress]
     expect(messages[0].blocks[0].type).toBe("compress");
-    expect(messages[1].blocks[0].type).toBe("text");
-    expect((messages[1].blocks[0] as { content: string }).content).toBe("msg2");
+    expect((messages[0].blocks[0] as { content: string }).content).toBe(
+      "compressed content",
+    );
   });
 
   it("should handle addFileHistoryBlock", () => {

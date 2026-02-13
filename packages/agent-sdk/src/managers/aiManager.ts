@@ -3,7 +3,6 @@ import {
   compressMessages,
   type CallAgentOptions,
 } from "../services/aiService.js";
-import { getMessagesToCompress } from "../utils/messageOperations.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
 import * as fs from "node:fs/promises";
@@ -209,9 +208,7 @@ export class AIManager {
       );
 
       // Check if messages need compression
-      const { messagesToCompress, insertIndex } = getMessagesToCompress(
-        this.messageManager.getMessages(),
-      );
+      const messagesToCompress = this.messageManager.getMessages();
 
       // If there are messages to compress, perform compression
       if (messagesToCompress.length > 0) {
@@ -244,7 +241,6 @@ export class AIManager {
 
           // Execute message reconstruction and sessionId update after compression
           this.messageManager.compressMessagesAndUpdateSession(
-            insertIndex,
             compressionResult.content,
             compressionUsage,
           );

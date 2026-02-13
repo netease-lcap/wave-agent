@@ -45,7 +45,7 @@ export interface MessageManagerCallbacks {
   onAssistantReasoningUpdated?: (chunk: string, accumulated: string) => void;
   onToolBlockUpdated?: (params: AgentToolBlockUpdateParams) => void;
   onErrorBlockAdded?: (error: string) => void;
-  onCompressBlockAdded?: (insertIndex: number, content: string) => void;
+  onCompressBlockAdded?: (content: string) => void;
   onCompressionStateChange?: (isCompressing: boolean) => void;
   onMemoryBlockAdded?: (
     content: string,
@@ -432,15 +432,12 @@ export class MessageManager {
   }
 
   /**
-   * Compress messages and update session, delete compressed messages, only keep compressed messages and subsequent messages
+   * Compress messages and update session, delete compressed messages, only keep compressed messages
    */
   public compressMessagesAndUpdateSession(
-    insertIndex: number,
     compressedContent: string,
     usage?: Usage,
   ): void {
-    const currentMessages = this.messages;
-
     // Create compressed message
     const compressMessage: Message = {
       role: "assistant",
@@ -454,15 +451,8 @@ export class MessageManager {
       ...(usage && { usage }),
     };
 
-    // Convert negative index to positive index
-    const actualIndex =
-      insertIndex < 0 ? currentMessages.length + insertIndex : insertIndex;
-
-    // Build new message array: keep compressed message and all messages from actualIndex onwards
-    const newMessages: Message[] = [
-      compressMessage,
-      ...currentMessages.slice(actualIndex),
-    ];
+    // Build new message array: only keep the compressed message
+    const newMessages: Message[] = [compressMessage];
 
     // Update sessionId
     this.setSessionId(generateSessionId());
@@ -470,8 +460,8 @@ export class MessageManager {
     // Set new message list
     this.setMessages(newMessages);
 
-    // Trigger compression callback, insertIndex remains unchanged
-    this.callbacks.onCompressBlockAdded?.(insertIndex, compressedContent);
+    // Trigger compression callback
+    this.callbacks.onCompressBlockAdded?.(compressedContent);
   }
 
   public addFileHistoryBlock(
