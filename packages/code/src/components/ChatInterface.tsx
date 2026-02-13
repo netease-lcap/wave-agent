@@ -61,6 +61,7 @@ export const ChatInterface: React.FC = () => {
         key={String(isExpanded) + sessionId + rewindId}
       />
 
+      {!isConfirmationVisible && <TaskList />}
       {(isLoading || isCommandRunning || isCompressing) &&
         !isConfirmationVisible && (
           <LoadingIndicator
@@ -70,8 +71,6 @@ export const ChatInterface: React.FC = () => {
             latestTotalTokens={latestTotalTokens}
           />
         )}
-
-      {!isConfirmationVisible && <TaskList />}
 
       {isConfirmationVisible && (
         <>
