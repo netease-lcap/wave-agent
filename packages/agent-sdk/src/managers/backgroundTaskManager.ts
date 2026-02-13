@@ -283,6 +283,16 @@ export class BackgroundTaskManager {
       // Subagent termination logic will be handled by aborting the AI loop
       // which is already managed by the SubagentManager and AIManager.
       // Here we just update the status.
+      const subagentId = task.subagentId;
+      if (subagentId) {
+        const subagentManager = task.subagentManager;
+        if (subagentManager) {
+          const instance = subagentManager.getInstance(subagentId);
+          if (instance) {
+            instance.aiManager.abortAIMessage();
+          }
+        }
+      }
       task.status = "killed";
       task.endTime = Date.now();
       task.runtime = task.endTime - task.startTime;

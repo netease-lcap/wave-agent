@@ -238,14 +238,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onSessionTasksChange: (tasks) => {
           setSessionTasks([...tasks]);
         },
-        onSubagentMessagesChange: (subagentId, messages) => {
+        onSubagentMessagesChange: (subagentId: string, messages: Message[]) => {
           logger.debug("onSubagentMessagesChange", subagentId, messages.length);
           setSubagentMessages((prev) => ({
             ...prev,
             [subagentId]: [...messages],
           }));
         },
-        onSubagentLatestTotalTokensChange: (subagentId, tokens) => {
+        onSubagentLatestTotalTokensChange: (
+          subagentId: string,
+          tokens: number,
+        ) => {
           setSubagentLatestTokens((prev) => ({
             ...prev,
             [subagentId]: tokens,

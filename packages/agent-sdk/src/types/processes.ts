@@ -12,7 +12,7 @@ export type BackgroundTaskStatus =
   | "killed";
 export type BackgroundTaskType = "shell" | "subagent";
 
-export interface BackgroundTask {
+export interface BackgroundTaskBase {
   id: string;
   type: BackgroundTaskType;
   status: BackgroundTaskStatus;
@@ -26,19 +26,28 @@ export interface BackgroundTask {
   runtime?: number;
 }
 
-export interface BackgroundShell extends BackgroundTask {
+export interface BackgroundShell extends BackgroundTaskBase {
   type: "shell";
   process: ChildProcess;
 }
 
+export interface BackgroundSubagent extends BackgroundTaskBase {
+  type: "subagent";
+  subagentId: string;
+  subagentManager: {
+    getInstance: (subagentId: string) => {
+      aiManager: {
+        abortAIMessage: () => void;
+      };
+    } | null;
+  };
+}
+
+export type BackgroundTask = BackgroundShell | BackgroundSubagent;
+
 export interface ForegroundTask {
   id: string;
   backgroundHandler: () => Promise<void>;
-}
-
-export interface IForegroundTaskManager {
-  registerForegroundTask(task: ForegroundTask): void;
-  unregisterForegroundTask(id: string): void;
 }
 
 export interface IForegroundTaskManager {

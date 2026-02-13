@@ -6,7 +6,7 @@ import {
   useChat,
   ChatContextType,
 } from "../../src/contexts/useChat.js";
-import { Agent } from "wave-agent-sdk";
+import { Agent, BackgroundShell } from "wave-agent-sdk";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import { useInput } from "ink";
 
@@ -203,6 +203,7 @@ describe("ChatProvider", () => {
         stdout: "",
         stderr: "",
         startTime: 0,
+        process: {} as unknown as BackgroundShell["process"],
       },
     ];
     callbacks.onTasksChange!(newTasks);
