@@ -16,7 +16,7 @@ Implement a two-tier compression system: history compression in `agent-sdk` to m
 **Target Platform**: CLI (Node.js)
 **Project Type**: Monorepo (agent-sdk + code)
 **Performance Goals**: Efficient summarization and responsive UI during paste
-**Constraints**: 200-character threshold for input compression; 20-block retention for history
+**Constraints**: 200-character threshold for input compression; full history replacement for history compression
 **Scale/Scope**: Core resource management for all agent sessions
 
 ## Constitution Check

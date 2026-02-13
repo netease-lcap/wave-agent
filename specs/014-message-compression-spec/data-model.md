@@ -22,9 +22,9 @@ Used in `InputManager` to track compressed user inputs.
 
 ### History Compression
 1. **Monitoring**: `AIManager` checks token usage after each response.
-2. **Triggered**: Usage exceeds threshold; `getMessagesToCompress` is called.
-3. **Summarizing**: AI generates a summary of the selected messages.
-4. **Compressed**: Original messages are replaced by a `CompressBlock`.
+2. **Triggered**: Usage exceeds threshold; all current messages are selected for compression.
+3. **Summarizing**: AI generates a continuation summary of the conversation.
+4. **Compressed**: Entire history is replaced by a single `CompressBlock` and a new session ID is generated.
 
 ### Input Compression
 1. **Pasting**: User pastes text > 200 characters.

@@ -18,7 +18,7 @@ This feature manages conversation history and user input size through automatic 
 ### Unit Tests
 Run tests for history compression and input placeholders:
 ```bash
-pnpm -F agent-sdk test tests/utils/messageOperations.test.ts
+pnpm -F agent-sdk test tests/agent/agent.compression.test.ts
 pnpm -F code test tests/managers/InputManager.test.ts
 ```
 
@@ -27,7 +27,7 @@ pnpm -F code test tests/managers/InputManager.test.ts
 #### History Compression
 1. Set a low `maxInputTokens` in the agent config or mock token usage.
 2. Engage in a long conversation.
-3. Verify that older messages are replaced by a summary block.
+3. Verify that the entire conversation history is replaced by a single continuation summary block.
 4. Verify the agent still remembers the general context of the summarized messages.
 
 #### Input Compression

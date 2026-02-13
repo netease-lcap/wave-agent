@@ -27,7 +27,7 @@
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
-- [ ] T005 [P] Create unit test file for `getMessagesToCompress` in `packages/agent-sdk/tests/utils/messageOperations.test.ts`
+- [X] T005 [P] Create unit test file for compression logic in `packages/agent-sdk/tests/agent/agent.compression.test.ts`
 - [ ] T006 [P] Create unit test file for `InputManager` paste handling in `packages/code/tests/managers/InputManager.test.ts`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
@@ -42,8 +42,8 @@
 
 ### Tests for User Story 1 (REQUIRED) ⚠️
 
-- [ ] T007 [US1] Write failing tests for `AIManager` triggering compression
-- [ ] T008 [US1] Write failing tests for `compress` block conversion to API format
+- [X] T007 [US1] Write tests for `AIManager` triggering compression
+- [X] T008 [US1] Write tests for `compress` block conversion to API format
 
 ### Implementation for User Story 1
 
