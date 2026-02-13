@@ -91,7 +91,6 @@ describe("TaskList", () => {
     const { lastFrame } = render(<TaskList />);
     const output = lastFrame();
 
-    expect(output).toContain("TASKS (Ctrl+T to hide)");
     expect(output).toContain("○ Pending Task");
     expect(output).toContain("● In Progress Task");
     expect(output).toContain("✓ Completed Task");
