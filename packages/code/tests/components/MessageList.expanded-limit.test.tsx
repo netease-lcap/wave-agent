@@ -222,13 +222,13 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={true} isLoading={true} />,
+        <MessageList messages={messages} isExpanded={true} />,
       );
 
       const output = lastFrame();
 
-      // Should show loading indicator
-      expect(output).toContain("💭 AI is thinking...");
+      // Should NOT show loading indicator in MessageList anymore
+      expect(output).not.toContain("💭 AI is thinking...");
 
       // Should show message limiting
       expect(output).toContain("5 earlier messages omitted");

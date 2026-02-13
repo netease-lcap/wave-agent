@@ -20,6 +20,14 @@ export const PlanDisplay: React.FC<PlanDisplayProps> = ({
   const lines = useMemo(() => plan.split("\n"), [plan]);
   const isOverflowing = !isExpanded && lines.length > maxHeight;
 
+  if (isExpanded) {
+    return (
+      <Box flexDirection="column" marginTop={1}>
+        <Markdown>{plan}</Markdown>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box
