@@ -24,6 +24,11 @@ export interface BackgroundTaskBase {
   stderr: string;
   exitCode?: number;
   runtime?: number;
+  /**
+   * Optional callback to be executed when the task is stopped.
+   * This allows tasks to define their own cleanup/abortion logic.
+   */
+  onStop?: () => void | Promise<void>;
 }
 
 export interface BackgroundShell extends BackgroundTaskBase {
@@ -33,14 +38,6 @@ export interface BackgroundShell extends BackgroundTaskBase {
 
 export interface BackgroundSubagent extends BackgroundTaskBase {
   type: "subagent";
-  subagentId: string;
-  subagentManager: {
-    getInstance: (subagentId: string) => {
-      aiManager: {
-        abortAIMessage: () => void;
-      };
-    } | null;
-  };
 }
 
 export type BackgroundTask = BackgroundShell | BackgroundSubagent;

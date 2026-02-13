@@ -303,8 +303,7 @@ export class SubagentManager {
           description: instance.configuration.description,
           stdout: "",
           stderr: "",
-          subagentId: instance.subagentId,
-          subagentManager: this,
+          onStop: () => instance.aiManager.abortAIMessage(),
         });
 
         instance.backgroundTaskId = taskId;
@@ -370,8 +369,7 @@ export class SubagentManager {
       description: instance.configuration.description,
       stdout: "",
       stderr: "",
-      subagentId: instance.subagentId,
-      subagentManager: this,
+      onStop: () => instance.aiManager.abortAIMessage(),
     });
 
     instance.backgroundTaskId = taskId;

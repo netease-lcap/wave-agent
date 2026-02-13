@@ -29,8 +29,6 @@ describe("BackgroundTaskManager", () => {
       startTime: Date.now(),
       stdout: "",
       stderr: "",
-      subagentId: "sub_1",
-      subagentManager: { getInstance: vi.fn() },
     };
     manager.addTask(task);
     expect(manager.getTask("task_1")).toEqual(task);
@@ -54,8 +52,6 @@ describe("BackgroundTaskManager", () => {
       startTime: Date.now(),
       stdout: "",
       stderr: "",
-      subagentId: "sub_1",
-      subagentManager: { getInstance: vi.fn() },
     };
     manager.addTask(task);
     const result = manager.stopTask("task_1");
@@ -71,8 +67,6 @@ describe("BackgroundTaskManager", () => {
       startTime: Date.now(),
       stdout: "line1\nline2\nmatch",
       stderr: "error1\nerror2",
-      subagentId: "sub_1",
-      subagentManager: { getInstance: vi.fn() },
     };
     manager.addTask(task);
     const output = manager.getOutput("task_1", "match");
@@ -88,8 +82,6 @@ describe("BackgroundTaskManager", () => {
       startTime: Date.now(),
       stdout: "",
       stderr: "",
-      subagentId: "sub_1",
-      subagentManager: { getInstance: vi.fn() },
     };
     manager.addTask(task);
     manager.cleanup();
@@ -105,8 +97,6 @@ describe("BackgroundTaskManager", () => {
       startTime: Date.now(),
       stdout: "test",
       stderr: "",
-      subagentId: "sub_1",
-      subagentManager: { getInstance: vi.fn() },
     };
     manager.addTask(task);
     const output = manager.getOutput("task_1", "["); // Invalid regex
@@ -129,8 +119,6 @@ describe("BackgroundTaskManager", () => {
       startTime: Date.now(),
       stdout: "",
       stderr: "",
-      subagentId: "sub_1",
-      subagentManager: { getInstance: vi.fn() },
     };
     manager.addTask(task);
     expect(manager.stopTask("task_1")).toBe(false);
