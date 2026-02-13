@@ -57,7 +57,7 @@ export function convertMessagesForAPI(
       );
       if (compressBlock && compressBlock.type === "compress") {
         recentMessages.unshift({
-          role: "system",
+          role: "assistant",
           content: `[Compressed Message Summary] ${compressBlock.content}`,
         });
       }
