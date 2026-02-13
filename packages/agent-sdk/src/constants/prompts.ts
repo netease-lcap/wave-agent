@@ -12,6 +12,7 @@ import {
   TASK_GET_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
+  TASK_STOP_TOOL_NAME,
   WRITE_TOOL_NAME,
 } from "./tools.js";
 
@@ -37,6 +38,13 @@ export const TASK_MANAGEMENT_POLICY = `
 You have access to the ${TASK_CREATE_TOOL_NAME}, ${TASK_GET_TOOL_NAME}, ${TASK_UPDATE_TOOL_NAME}, and ${TASK_LIST_TOOL_NAME} tools to help you manage and plan tasks. Use these tools VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress.
 These tools are also EXTREMELY helpful for planning tasks, and for breaking down larger complex tasks into smaller steps. If you do not use this tool when planning, you may forget to do important tasks - and that is unacceptable.
 It is critical that you mark tasks as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.`;
+
+export const TASK_STOP_POLICY = `
+- Stops a running background task by its ID
+- Takes a task_id parameter identifying the task to stop
+- Returns a success or failure status
+- Use this tool when you need to terminate a long-running task
+`;
 
 export const ASK_USER_POLICY = `
 # Asking questions as you work
@@ -218,6 +226,9 @@ export function buildSystemPrompt(
     toolNames.has(TASK_LIST_TOOL_NAME)
   ) {
     prompt += TASK_MANAGEMENT_POLICY;
+  }
+  if (toolNames.has(TASK_STOP_TOOL_NAME)) {
+    prompt += TASK_STOP_POLICY;
   }
   if (toolNames.has(ASK_USER_QUESTION_TOOL_NAME)) {
     prompt += ASK_USER_POLICY;
