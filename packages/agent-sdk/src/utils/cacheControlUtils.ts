@@ -316,14 +316,8 @@ export function transformMessagesForClaudeCache(
   // Find the latest interval message index (20th, 40th, 60th, etc.)
   const intervalMessageIndex = findIntervalMessageIndex(messages);
 
-  // Find last system message index
-  let lastSystemIndex = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "system") {
-      lastSystemIndex = i;
-      break;
-    }
-  }
+  // Find first system message index
+  const firstSystemIndex = messages.findIndex((m) => m.role === "system");
 
   const result = messages.map((message, index) => {
     // Validate message structure
@@ -332,14 +326,27 @@ export function transformMessagesForClaudeCache(
       return message; // Return as-is to avoid breaking the flow
     }
 
-    // Last system message: always cached (hardcoded)
-    if (message.role === "system" && index === lastSystemIndex) {
+    // First system message: always cached (hardcoded)
+    if (message.role === "system" && index === firstSystemIndex) {
+      const content =
+        (message.content as string | ChatCompletionContentPart[]) || "";
+      // If content is already an array, check if it already has cache control
+      if (Array.isArray(content)) {
+        const hasCacheControl = content.some(
+          (part) =>
+            part.type === "text" &&
+            (part as ClaudeChatCompletionContentPartText).cache_control,
+        );
+        if (hasCacheControl) {
+          return message;
+        }
+      }
+
+      const transformedContent = addCacheControlToContent(content, true);
+
       return {
         ...message,
-        content: addCacheControlToContent(
-          (message.content as string | ChatCompletionContentPart[]) || "",
-          true,
-        ),
+        content: transformedContent,
       } as ChatCompletionMessageParam;
     }
 
@@ -364,12 +371,13 @@ export function transformMessagesForClaudeCache(
         } as ChatCompletionMessageParam;
       } else {
         // For other message types without tool calls, cache the content
+        const content =
+          (message.content as string | ChatCompletionContentPart[]) || "";
+        const transformedContent = addCacheControlToContent(content, true);
+
         return {
           ...message,
-          content: addCacheControlToContent(
-            (message.content as string | ChatCompletionContentPart[]) || "",
-            true,
-          ),
+          content: transformedContent,
         } as ChatCompletionMessageParam;
       }
     }

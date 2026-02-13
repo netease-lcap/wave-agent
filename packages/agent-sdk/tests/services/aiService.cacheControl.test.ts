@@ -474,7 +474,7 @@ describe("AI Service - Claude Cache Control", () => {
         });
       });
 
-      it("should always cache last system message", async () => {
+      it("should only cache first system message", async () => {
         const messages = [
           { role: "user" as const, content: "First user message" },
           { role: "system" as const, content: "System message in middle" },
@@ -488,17 +488,18 @@ describe("AI Service - Claude Cache Control", () => {
           "claude-3-sonnet",
         );
 
-        // Last system message (index 4) should have cache control
-        expect(Array.isArray(result[4].content)).toBe(true);
-        const systemContent = result[4].content as Array<{
+        // First system message (index 1) should have cache control
+        expect(Array.isArray(result[1].content)).toBe(true);
+        const firstSystemContent = result[1].content as Array<{
           cache_control?: { type: string };
         }>;
-        expect(systemContent[0]).toHaveProperty("cache_control", {
+        expect(firstSystemContent[0]).toHaveProperty("cache_control", {
           type: "ephemeral",
         });
 
-        // Middle system message (index 1) should NOT have cache control
-        expect(typeof result[1].content).toBe("string");
+        // Last system message (index 4) should NOT have cache control
+        expect(typeof result[4].content).toBe("string");
+        expect(result[4].content).toBe("Last system message");
       });
 
       it("should not cache assistant messages with tool calls", async () => {
