@@ -47,7 +47,7 @@
     "diff": "^8.0.2",
     "glob": "^13.0.0",
     "ink": "^6.5.1",
-    "marked": "^11.2.0",
+    "marked": "^17.0.2",
     "react": "^19.2.4",
     "react-dom": "19.2.4",
     "wave-agent-sdk": "workspace:*",
