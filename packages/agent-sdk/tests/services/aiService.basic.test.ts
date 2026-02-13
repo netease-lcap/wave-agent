@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  DEFAULT_SYSTEM_PROMPT,
+  buildSystemPrompt,
+} from "@/constants/prompts.js";
 import type { CallAgentOptions } from "@/services/aiService.js";
 import type { GatewayConfig, ModelConfig } from "@/types/index.js";
 
@@ -154,7 +158,9 @@ describe("AI Service - Basic CallAgent", () => {
         modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
-        memory: memoryContent,
+        systemPrompt: buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+          memory: memoryContent,
+        }),
       });
 
       const callArgs = mockCreate.mock.calls[0][0];

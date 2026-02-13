@@ -224,10 +224,23 @@ Be concise but complete—err on the side of including information that would pr
 Wrap your summary in <summary></summary> tags.`;
 
 export function buildSystemPrompt(
-  basePrompt: string,
+  basePrompt: string | undefined,
   tools: { name?: string; function?: { name: string } }[],
+  options: {
+    workdir?: string;
+    isGitRepo?: string;
+    platform?: string;
+    osVersion?: string;
+    today?: string;
+    memory?: string;
+    language?: string;
+    planMode?: {
+      planFilePath: string;
+      planExists: boolean;
+    };
+  } = {},
 ): string {
-  let prompt = basePrompt;
+  let prompt = basePrompt || DEFAULT_SYSTEM_PROMPT;
   const toolNames = new Set(
     tools.map((t) => t.function?.name || t.name).filter(Boolean),
   );
@@ -285,6 +298,32 @@ export function buildSystemPrompt(
 
   if (toolNames.has(BASH_TOOL_NAME)) {
     prompt += BASH_POLICY;
+  }
+
+  if (options.language) {
+    prompt += `\n\n# Language\nAlways respond in ${options.language}. Technical terms (e.g., code, tool names, file paths) should remain in their original language or English where appropriate.`;
+  }
+
+  if (options.planMode) {
+    prompt += `\n\n${buildPlanModePrompt(options.planMode.planFilePath, options.planMode.planExists)}`;
+  }
+
+  if (options.workdir) {
+    prompt += `
+
+Here is useful information about the environment you are running in:
+<env>
+Working directory: ${options.workdir}
+Is directory a git repo: ${options.isGitRepo || "No"}
+Platform: ${options.platform || ""}
+OS Version: ${options.osVersion || ""}
+Today's date: ${options.today || new Date().toISOString().split("T")[0]}
+</env>
+`;
+  }
+
+  if (options.memory && options.memory.trim()) {
+    prompt += `\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${options.memory}`;
   }
 
   return prompt;
