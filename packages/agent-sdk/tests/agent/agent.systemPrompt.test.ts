@@ -71,7 +71,7 @@ describe("Agent - System Prompt", () => {
     // Verify that callAgent was called with the custom systemPrompt
     expect(mockCallAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemPrompt: customSystemPrompt,
+        systemPrompt: expect.stringContaining(customSystemPrompt),
       }),
     );
   });
@@ -96,7 +96,7 @@ describe("Agent - System Prompt", () => {
     // Verify that callAgent was called with the default systemPrompt
     expect(mockCallAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemPrompt: DEFAULT_SYSTEM_PROMPT,
+        systemPrompt: expect.stringContaining(DEFAULT_SYSTEM_PROMPT),
       }),
     );
   });

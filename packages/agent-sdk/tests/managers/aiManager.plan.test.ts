@@ -63,7 +63,7 @@ describe("AIManager Plan Mode Prompt", () => {
 
     expect(callAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        systemPrompt: DEFAULT_SYSTEM_PROMPT,
+        systemPrompt: expect.stringContaining(DEFAULT_SYSTEM_PROMPT),
       }),
     );
   });

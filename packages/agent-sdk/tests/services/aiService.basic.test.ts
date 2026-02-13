@@ -107,7 +107,7 @@ describe("AI Service - Basic CallAgent", () => {
       callAgent = aiService.callAgent;
     });
 
-    it("should use default system prompt when no custom systemPrompt provided", async () => {
+    it("should use empty system prompt when no custom systemPrompt provided", async () => {
       await callAgent({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: TEST_MODEL_CONFIG,
@@ -122,8 +122,7 @@ describe("AI Service - Basic CallAgent", () => {
       const systemContent = getSystemMessageContent(
         callArgs.messages[0].content,
       );
-      expect(systemContent).toContain("You are an interactive CLI tool");
-      expect(systemContent).toContain("Working directory: /test/workdir");
+      expect(systemContent).toBe("");
     });
 
     it("should use custom systemPrompt when provided", async () => {
@@ -150,17 +149,18 @@ describe("AI Service - Basic CallAgent", () => {
       expect(systemContent).not.toContain("You are an interactive CLI tool");
     });
 
-    it("should add memory to default system prompt when no custom systemPrompt provided", async () => {
+    it("should use provided system prompt with memory", async () => {
       const memoryContent = "Important previous context and memory.";
+      const systemPrompt = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
+        memory: memoryContent,
+      });
 
       await callAgent({
         gatewayConfig: TEST_GATEWAY_CONFIG,
         modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
-        systemPrompt: buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], {
-          memory: memoryContent,
-        }),
+        systemPrompt,
       });
 
       const callArgs = mockCreate.mock.calls[0][0];
