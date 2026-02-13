@@ -3,7 +3,10 @@ import { taskOutputTool } from "../../src/tools/taskOutputTool.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
-import type { BackgroundTask } from "../../src/types/processes.js";
+import type {
+  BackgroundTask,
+  BackgroundShell,
+} from "../../src/types/processes.js";
 
 describe("TaskOutput Tool Abort Handling", () => {
   let backgroundTaskManager: BackgroundTaskManager;
@@ -38,6 +41,7 @@ describe("TaskOutput Tool Abort Handling", () => {
       command: "sleep 100",
       stdout: "",
       stderr: "",
+      process: { kill: vi.fn() } as unknown as BackgroundShell["process"],
     });
 
     const executePromise = taskOutputTool.execute(
@@ -70,6 +74,7 @@ describe("TaskOutput Tool Abort Handling", () => {
       command: "sleep 100",
       stdout: "",
       stderr: "",
+      process: { kill: vi.fn() } as unknown as BackgroundShell["process"],
     });
 
     abortController.abort();
@@ -96,6 +101,7 @@ describe("TaskOutput Tool Abort Handling", () => {
       command: "echo hello",
       stdout: "hello",
       stderr: "",
+      process: { kill: vi.fn() } as unknown as BackgroundShell["process"],
     };
     backgroundTaskManager.addTask(task);
 
@@ -136,6 +142,7 @@ describe("TaskOutput Tool Abort Handling", () => {
       command: "sleep 100",
       stdout: "",
       stderr: "",
+      process: { kill: vi.fn() } as unknown as BackgroundShell["process"],
     });
 
     const removeEventListenerSpy = vi.spyOn(

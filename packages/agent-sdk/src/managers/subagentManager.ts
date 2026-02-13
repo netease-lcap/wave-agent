@@ -303,6 +303,8 @@ export class SubagentManager {
           description: instance.configuration.description,
           stdout: "",
           stderr: "",
+          subagentId: instance.subagentId,
+          subagentManager: this,
         });
 
         instance.backgroundTaskId = taskId;
@@ -368,6 +370,8 @@ export class SubagentManager {
       description: instance.configuration.description,
       stdout: "",
       stderr: "",
+      subagentId: instance.subagentId,
+      subagentManager: this,
     });
 
     instance.backgroundTaskId = taskId;
@@ -387,7 +391,8 @@ export class SubagentManager {
   ): Promise<string> {
     // Set up consolidated abort handler to prevent listener accumulation
     let abortCleanup: (() => void) | undefined;
-    if (abortSignal) {
+    // Only link to parent abort signal if NOT running in background
+    if (abortSignal && !instance.backgroundTaskId) {
       abortCleanup = addConsolidatedAbortListener(abortSignal, [
         () => {
           // Update status to aborted
@@ -444,7 +449,7 @@ export class SubagentManager {
       });
 
       // If we have an abort signal, race against it using utilities to prevent listener accumulation
-      if (abortSignal) {
+      if (abortSignal && !instance.backgroundTaskId) {
         await Promise.race([
           executeAI,
           createAbortPromise(abortSignal, "Task was aborted"),
