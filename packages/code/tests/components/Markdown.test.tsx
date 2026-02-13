@@ -63,7 +63,7 @@ describe("Markdown Component - Code Blocks", () => {
     const output = lastFrame();
 
     expect(output).toContain(chalk.gray("```ts"));
-    expect(output).toContain("line 1\n line 2"); // Note the space from paddingX={1}
+    expect(output).toContain("line 1\nline 2");
     expect(output).toContain(chalk.gray("```"));
   });
 
