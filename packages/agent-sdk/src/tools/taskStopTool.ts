@@ -7,7 +7,7 @@ export const taskStopTool: ToolPlugin = {
     type: "function",
     function: {
       name: TASK_STOP_TOOL_NAME,
-      description: "Stops a running background task",
+      description: "Stop a running background task by ID",
       parameters: {
         type: "object",
         properties: {
