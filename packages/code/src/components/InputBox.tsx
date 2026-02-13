@@ -23,6 +23,8 @@ export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
 export interface InputBoxProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
+  isCompressing?: boolean;
+  latestTotalTokens?: number;
   workdir?: string;
   userInputHistory?: string[];
   sendMessage?: (
@@ -42,6 +44,8 @@ export interface InputBoxProps {
 export const InputBox: React.FC<InputBoxProps> = ({
   isLoading = false,
   isCommandRunning = false,
+  isCompressing = false,
+  latestTotalTokens = 0,
   userInputHistory = [],
   sendMessage = () => {},
   abortMessage = () => {},
@@ -218,6 +222,45 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
       {showBackgroundTaskManager || showMcpManager || showRewindManager || (
         <Box flexDirection="column">
+          {(isLoading || isCommandRunning || isCompressing) && (
+            <Box flexDirection="column" gap={1} marginBottom={1}>
+              {isLoading && (
+                <Box>
+                  <Text color="yellow">💭 AI is thinking... </Text>
+                  {latestTotalTokens > 0 && (
+                    <>
+                      <Text color="gray" dimColor>
+                        |{" "}
+                      </Text>
+                      <Text color="blue" bold>
+                        {latestTotalTokens.toLocaleString()}
+                      </Text>
+                      <Text color="gray" dimColor>
+                        {" "}
+                        tokens{" "}
+                      </Text>
+                    </>
+                  )}
+                  <Text color="gray" dimColor>
+                    |{" "}
+                  </Text>
+                  <Text color="red" bold>
+                    Esc
+                  </Text>
+                  <Text color="gray" dimColor>
+                    {" "}
+                    to abort
+                  </Text>
+                </Box>
+              )}
+              {isCommandRunning && (
+                <Text color="blue">🚀 Command is running...</Text>
+              )}
+              {isCompressing && (
+                <Text color="magenta">🗜️ Compressing message history...</Text>
+              )}
+            </Box>
+          )}
           <Box
             borderStyle="single"
             borderColor="gray"
