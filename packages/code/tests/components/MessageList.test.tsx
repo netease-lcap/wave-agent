@@ -54,7 +54,12 @@ describe("MessageList Component", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList messages={messages} isExpanded={false} />,
+        <MessageList
+          messages={messages}
+          isLoading={false}
+          isCommandRunning={false}
+          isExpanded={false}
+        />,
       );
 
       const output = lastFrame();
@@ -118,34 +123,40 @@ describe("MessageList Component", () => {
     it("should work correctly when component is loading", () => {
       const messages = [createMessage("user", "Loading test", 1)];
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList messages={messages} isLoading={true} />,
+      );
 
       const output = lastFrame();
 
-      // Should NOT show loading state in MessageList anymore
-      expect(output).not.toContain("💭 AI is thinking...");
+      // Should show loading state
+      expect(output).toContain("💭 AI is thinking...");
     });
 
     it("should work correctly when command is running", () => {
       const messages = [createMessage("user", "Command test", 1)];
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList messages={messages} isCommandRunning={true} />,
+      );
 
       const output = lastFrame();
 
-      // Should NOT show command running state in MessageList anymore
-      expect(output).not.toContain("🚀 Command is running...");
+      // Should show command running state
+      expect(output).toContain("🚀 Command is running...");
     });
 
     it("should work correctly when compressing", () => {
       const messages = [createMessage("user", "Compress test", 1)];
 
-      const { lastFrame } = render(<MessageList messages={messages} />);
+      const { lastFrame } = render(
+        <MessageList messages={messages} isCompressing={true} />,
+      );
 
       const output = lastFrame();
 
-      // Should NOT show compressing state in MessageList anymore
-      expect(output).not.toContain("🗜️ Compressing message history...");
+      // Should show compressing state
+      expect(output).toContain("🗜️ Compressing message history...");
     });
 
     it("should show welcome message in empty state", () => {

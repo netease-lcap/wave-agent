@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Box, Text, useInput, Static } from "ink";
+import { Box, Text, useInput } from "ink";
 import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
 import {
   BASH_TOOL_NAME,
@@ -385,30 +385,21 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
     state.selectedOption === "alternative" && !state.hasUserInput;
 
   return (
-    <Box flexDirection="column">
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      borderColor="yellow"
+      borderBottom={false}
+      borderLeft={false}
+      borderRight={false}
+      paddingTop={1}
+    >
       <Text color="yellow" bold>
         Tool: {toolName}
       </Text>
       <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
 
-      <Static
-        items={[
-          {
-            toolName,
-            toolInput,
-            id: `diff-${toolName}-${JSON.stringify(toolInput)}`,
-          },
-        ]}
-        key={`static-diff-${toolName}`}
-      >
-        {({ toolName, toolInput }) => (
-          <DiffDisplay
-            key={`diff-display-${toolName}`}
-            toolName={toolName}
-            parameters={JSON.stringify(toolInput)}
-          />
-        )}
-      </Static>
+      <DiffDisplay toolName={toolName} parameters={JSON.stringify(toolInput)} />
 
       {toolName === ASK_USER_QUESTION_TOOL_NAME &&
         currentQuestion &&
@@ -494,16 +485,10 @@ export const Confirmation: React.FC<ConfirmationProps> = ({
       {toolName !== ASK_USER_QUESTION_TOOL_NAME &&
         toolName === EXIT_PLAN_MODE_TOOL_NAME &&
         !!toolInput?.plan_content && (
-          <Static
-            items={[
-              { plan: toolInput.plan_content as string, id: "plan-static" },
-            ]}
-            key="static-plan"
-          >
-            {({ plan }) => (
-              <PlanDisplay key="plan-display" plan={plan} isExpanded={true} />
-            )}
-          </Static>
+          <PlanDisplay
+            plan={toolInput.plan_content as string}
+            isExpanded={isExpanded}
+          />
         )}
 
       {toolName !== ASK_USER_QUESTION_TOOL_NAME && !isExpanded && (

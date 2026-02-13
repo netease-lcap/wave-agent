@@ -35,7 +35,11 @@ export const ChatInterface: React.FC = () => {
     <Box flexDirection="column" height="100%" paddingY={1} paddingRight={1}>
       <MessageList
         messages={messages}
+        isLoading={isLoading}
+        isCommandRunning={isCommandRunning}
+        isCompressing={isCompressing}
         isExpanded={isExpanded}
+        latestTotalTokens={latestTotalTokens}
         key={String(isExpanded) + sessionId + rewindId}
       />
 
@@ -56,8 +60,6 @@ export const ChatInterface: React.FC = () => {
         <InputBox
           isLoading={isLoading}
           isCommandRunning={isCommandRunning}
-          isCompressing={isCompressing}
-          latestTotalTokens={latestTotalTokens}
           userInputHistory={userInputHistory}
           sendMessage={sendMessage}
           abortMessage={abortMessage}

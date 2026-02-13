@@ -107,47 +107,6 @@ describe("InputBox Smoke Tests", () => {
     });
   });
 
-  describe("Status Indicators", () => {
-    it("should show AI is thinking when isLoading is true", async () => {
-      const { lastFrame } = render(<InputBox isLoading={true} />);
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain(
-          "💭 AI is thinking...",
-        );
-      });
-    });
-
-    it("should show command is running when isCommandRunning is true", async () => {
-      const { lastFrame } = render(<InputBox isCommandRunning={true} />);
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain(
-          "🚀 Command is running...",
-        );
-      });
-    });
-
-    it("should show compressing when isCompressing is true", async () => {
-      const { lastFrame } = render(<InputBox isCompressing={true} />);
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain(
-          "🗜️ Compressing message history...",
-        );
-      });
-    });
-
-    it("should show token count when isLoading is true and latestTotalTokens > 0", async () => {
-      const { lastFrame } = render(
-        <InputBox isLoading={true} latestTotalTokens={1234} />,
-      );
-      await vi.waitFor(() => {
-        const output = stripAnsiColors(lastFrame() || "");
-        expect(output).toContain("💭 AI is thinking...");
-        expect(output).toContain("1,234");
-        expect(output).toContain("tokens");
-      });
-    });
-  });
-
   describe("Loading State", () => {
     it("should show normal placeholder when loading", async () => {
       const { lastFrame } = render(<InputBox isLoading={true} />);
