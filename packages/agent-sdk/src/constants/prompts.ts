@@ -13,6 +13,7 @@ import {
   TASK_UPDATE_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
   TASK_STOP_TOOL_NAME,
+  EXIT_PLAN_MODE_TOOL_NAME,
   WRITE_TOOL_NAME,
 } from "./tools.js";
 
@@ -48,7 +49,19 @@ export const TASK_STOP_POLICY = `
 
 export const ASK_USER_POLICY = `
 # Asking questions as you work
-You have access to the ${ASK_USER_QUESTION_TOOL_NAME} tool to ask the user questions when you need clarification, want to validate assumptions, or need to make a decision you're unsure about. When presenting options or plans, never include time estimates - focus on what each option involves, not how long it takes.`;
+You have access to the ${ASK_USER_QUESTION_TOOL_NAME} tool to ask the user questions when you need clarification, want to validate assumptions, or need to make a decision you're unsure about. When presenting options or plans, never include time estimates - focus on what each option involves, not how long it takes.
+Use this tool when you need to ask the user questions during execution. This allows you to:
+1. Gather user preferences or requirements
+2. Clarify ambiguous instructions
+3. Get decisions on implementation choices as you work
+4. Offer choices to the user about what direction to take.
+
+Usage notes:
+- Users will always be able to select "Other" to provide custom text input
+- Use multiSelect: true to allow multiple answers to be selected for a question
+- If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+
+Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ${EXIT_PLAN_MODE_TOOL_NAME} for plan approval.`;
 
 export const SUBAGENT_POLICY = `
 - When doing file search, prefer to use the ${TASK_TOOL_NAME} tool in order to reduce context usage.
