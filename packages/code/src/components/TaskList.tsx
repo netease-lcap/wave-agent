@@ -41,12 +41,6 @@ export const TaskList: React.FC = () => {
 
   return (
     <Box flexDirection="column">
-      <Box>
-        <Text bold color="cyan">
-          TASKS
-        </Text>
-        <Text color="gray">(Ctrl+T to hide)</Text>
-      </Box>
       {tasks.map((task) => {
         const isDimmed =
           task.status === "completed" || task.status === "deleted";
