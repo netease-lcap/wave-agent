@@ -18,4 +18,3 @@ export const TASK_GET_TOOL_NAME = "TaskGet";
 export const TASK_UPDATE_TOOL_NAME = "TaskUpdate";
 export const TASK_LIST_TOOL_NAME = "TaskList";
 export const WRITE_TOOL_NAME = "Write";
-export const ENTER_PLAN_MODE_TOOL_NAME = "EnterPlanMode";
