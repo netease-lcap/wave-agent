@@ -68,7 +68,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   const shortResult = getShortResult();
 
   return (
-    <Box flexDirection="column" gap={1}>
+    <Box flexDirection="column">
       <Box>
         <Text color="magenta">🔧 </Text>
         <Text color="white">{toolName}</Text>

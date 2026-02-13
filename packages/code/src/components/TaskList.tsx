@@ -41,7 +41,7 @@ export const TaskList: React.FC = () => {
 
   return (
     <Box flexDirection="column">
-      <Box marginBottom={1} gap={1}>
+      <Box>
         <Text bold color="cyan">
           TASKS
         </Text>
