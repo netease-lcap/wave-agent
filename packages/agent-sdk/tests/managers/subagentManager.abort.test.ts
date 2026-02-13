@@ -175,12 +175,9 @@ describe("SubagentManager - Abort Logic", () => {
     // Adopt the mock's behavior for stopTask
     vi.mocked(mockBackgroundTaskManager.stopTask).mockImplementation((id) => {
       const task = tasks.get(id);
-      if (task && task.type === "subagent") {
-        const subagentId = task.subagentId;
-        const subagentManager = task.subagentManager;
-        const instance = subagentManager.getInstance(subagentId);
-        if (instance) {
-          instance.aiManager.abortAIMessage();
+      if (task) {
+        if (task.onStop) {
+          task.onStop();
         }
         task.status = "killed";
         return true;

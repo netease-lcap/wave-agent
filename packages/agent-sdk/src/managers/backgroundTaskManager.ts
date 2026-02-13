@@ -279,18 +279,18 @@ export class BackgroundTaskManager {
           return false;
         }
       }
-    } else if (task.type === "subagent") {
-      // Subagent termination logic will be handled by aborting the AI loop
-      // which is already managed by the SubagentManager and AIManager.
-      // Here we just update the status.
-      const subagentId = task.subagentId;
-      if (subagentId) {
-        const subagentManager = task.subagentManager;
-        if (subagentManager) {
-          const instance = subagentManager.getInstance(subagentId);
-          if (instance) {
-            instance.aiManager.abortAIMessage();
+    } else {
+      // For other task types (like subagent), use the onStop callback if provided
+      if (task.onStop) {
+        try {
+          const result = task.onStop();
+          if (result instanceof Promise) {
+            result.catch((error) => {
+              logger.error("Error in background task onStop callback:", error);
+            });
           }
+        } catch (error) {
+          logger.error("Error in background task onStop callback:", error);
         }
       }
       task.status = "killed";
