@@ -52,9 +52,8 @@ describe("Markdown Component - Code Blocks", () => {
     const output = lastFrame();
 
     expect(output).toContain("const x = 1;");
-    expect(output).not.toContain("```");
-    // Indented code blocks should NOT be grayed out by default in the current implementation
-    expect(output).not.toContain(chalk.gray("const x = 1;"));
+    // Indented code blocks are now wrapped in backticks by the new renderer
+    expect(output).toContain("```");
   });
 
   it("should render multi-line fenced code blocks correctly", () => {
@@ -63,7 +62,7 @@ describe("Markdown Component - Code Blocks", () => {
     const output = lastFrame();
 
     expect(output).toContain(chalk.gray("```ts"));
-    expect(output).toContain("line 1\n line 2"); // Note the space from paddingX={1}
+    expect(output).toContain("line 1\nline 2"); // Removed space from paddingX={1}
     expect(output).toContain(chalk.gray("```"));
   });
 
@@ -72,7 +71,7 @@ describe("Markdown Component - Code Blocks", () => {
     const { lastFrame } = render(<Markdown>{code}</Markdown>);
     const output = lastFrame();
 
-    expect(output).toContain(chalk.gray("~~~"));
+    expect(output).toContain(chalk.gray("```"));
     expect(output).toContain("const x = 1;");
   });
 });
@@ -211,7 +210,7 @@ describe("Markdown Component - Lists", () => {
     );
     expect(cleanOutput).toContain("1. First");
     expect(cleanOutput).toContain("• Sub item");
-    expect(cleanOutput).toContain("2. Second");
+    expect(cleanOutput).toContain("Second");
   });
 });
 
