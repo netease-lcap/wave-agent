@@ -373,7 +373,7 @@ describe("Agent Message Compression Tests", () => {
     // Verify that the previous compressed message should be included as context
     const hasCompressedMessage = compressCall[0].messages.some(
       (msg) =>
-        msg.role === "system" &&
+        msg.role === "assistant" &&
         typeof msg.content === "string" &&
         msg.content.includes(
           "Compressed content: Contains summary of first 6 messages",
@@ -498,8 +498,8 @@ describe("Agent Message Compression Tests", () => {
     expect(messagesPassedToCallAgent.length).toBe(2);
 
     // Verify the structure of messages passed to callAgent
-    // The first message should be the compressed system message
-    expect(messagesPassedToCallAgent[0].role).toBe("system");
+    // The first message should be the compressed assistant message
+    expect(messagesPassedToCallAgent[0].role).toBe("assistant");
     expect(messagesPassedToCallAgent[0].content).toContain(
       "[Compressed Message Summary]",
     );
