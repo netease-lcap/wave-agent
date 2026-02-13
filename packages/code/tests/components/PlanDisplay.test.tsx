@@ -22,15 +22,15 @@ describe("PlanDisplay", () => {
     expect(lastFrame()).toContain("2. Step two");
   });
 
-  it("should truncate long plans when not expanded", () => {
+  it("should not truncate long plans even when not expanded", () => {
     const longPlan = Array.from({ length: 30 }, (_, i) => `Step ${i + 1}`).join(
       "\n",
     );
     const { lastFrame } = render(
       <PlanDisplay plan={longPlan} isExpanded={false} />,
     );
-    expect(lastFrame()).toContain("plan truncated");
-    expect(lastFrame()).toContain("30 lines total");
+    expect(lastFrame()).not.toContain("plan truncated");
+    expect(lastFrame()).toContain("Step 30");
   });
 
   it("should not truncate when expanded", () => {
