@@ -70,7 +70,7 @@ describe("PermissionManager Safe Zone", () => {
           expect(result.behavior).toBe("allow");
         });
 
-        it("should deny operation outside Safe Zone even if acceptEdits is ON", async () => {
+        it("should NOT auto-allow operation outside Safe Zone even if acceptEdits is ON", async () => {
           const filePath = "/tmp/test.txt";
           const context: ToolPermissionContext = {
             toolName,
@@ -82,8 +82,9 @@ describe("PermissionManager Safe Zone", () => {
           };
 
           const result = await permissionManager.checkPermission(context);
+          // It should fall through to default behavior which is deny without callback
           expect(result.behavior).toBe("deny");
-          expect(result.message).toContain("outside the Safe Zone");
+          expect(result.message).toContain("requires permission approval");
         });
 
         it("should deny operation inside Safe Zone if acceptEdits is OFF", async () => {
@@ -131,7 +132,7 @@ describe("PermissionManager Safe Zone", () => {
 
       const result = await permissionManager.checkPermission(context);
       expect(result.behavior).toBe("deny");
-      expect(result.message).toContain("outside the Safe Zone");
+      expect(result.message).toContain("requires permission approval");
     });
   });
 
@@ -190,6 +191,33 @@ describe("PermissionManager Safe Zone", () => {
       );
 
       expect(context.hidePersistentOption).toBe(true);
+    });
+    it("should set hidePersistentOption for file operations outside Safe Zone", () => {
+      const context = permissionManager.createContext(
+        "Write",
+        "acceptEdits",
+        undefined,
+        {
+          file_path: "/tmp/test.txt",
+          workdir,
+        },
+      );
+
+      expect(context.hidePersistentOption).toBe(true);
+    });
+
+    it("should NOT set hidePersistentOption for file operations inside Safe Zone", () => {
+      const context = permissionManager.createContext(
+        "Write",
+        "acceptEdits",
+        undefined,
+        {
+          file_path: path.join(workdir, "test.txt"),
+          workdir,
+        },
+      );
+
+      expect(context.hidePersistentOption).toBeFalsy();
     });
   });
 });

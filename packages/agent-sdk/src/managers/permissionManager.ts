@@ -323,28 +323,25 @@ export class PermissionManager {
             workdir,
           );
           if (!isInside) {
-            this.logger?.warn(
-              "File operation outside the Safe Zone in acceptEdits mode",
+            this.logger?.info(
+              "File operation outside the Safe Zone in acceptEdits mode, falling back to manual confirmation",
               {
                 toolName: context.toolName,
                 targetPath,
                 resolvedPath,
               },
             );
-            return {
-              behavior: "deny",
-              message: `Tool '${context.toolName}' attempted to modify a file outside the Safe Zone: ${targetPath}. Operations outside the Safe Zone always require manual confirmation.`,
-            };
+            // Fall through to normal permission check flow to trigger confirmation prompt
+          } else {
+            this.logger?.debug(
+              "Permission automatically accepted for tool in acceptEdits mode",
+              {
+                toolName: context.toolName,
+              },
+            );
+            return { behavior: "allow" };
           }
         }
-
-        this.logger?.debug(
-          "Permission automatically accepted for tool in acceptEdits mode",
-          {
-            toolName: context.toolName,
-          },
-        );
-        return { behavior: "allow" };
       }
     }
 
@@ -484,6 +481,27 @@ export class PermissionManager {
       toolInput,
       suggestedPrefix,
     };
+
+    // Set hidePersistentOption for out-of-bounds file operations
+    const fileTools = [
+      EDIT_TOOL_NAME,
+      MULTI_EDIT_TOOL_NAME,
+      DELETE_FILE_TOOL_NAME,
+      WRITE_TOOL_NAME,
+    ];
+    if (fileTools.includes(toolName)) {
+      const targetPath = (toolInput?.file_path || toolInput?.target_file) as
+        | string
+        | undefined;
+      const workdir = toolInput?.workdir as string | undefined;
+
+      if (targetPath) {
+        const { isInside } = this.isInsideSafeZone(targetPath, workdir);
+        if (!isInside) {
+          context.hidePersistentOption = true;
+        }
+      }
+    }
 
     // Set hidePersistentOption for dangerous or out-of-bounds bash commands
     if (toolName === BASH_TOOL_NAME && toolInput?.command) {
