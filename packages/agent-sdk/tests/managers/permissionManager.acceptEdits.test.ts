@@ -24,16 +24,22 @@ describe("PermissionManager - acceptEdits mode", () => {
   });
 
   describe("checkPermission with acceptEdits mode", () => {
-    it("should automatically allow 'Edit', 'MultiEdit', 'Delete', 'Write' tools", async () => {
+    it("should automatically allow 'Edit', 'MultiEdit', 'Delete', 'Write' tools inside Safe Zone", async () => {
       const autoAcceptedTools = ["Edit", "MultiEdit", "Delete", "Write"];
+      const workdir = "/home/user/project";
+      const manager = new PermissionManager({
+        logger: mockLogger,
+        workdir,
+      });
 
       for (const toolName of autoAcceptedTools) {
         const context: ToolPermissionContext = {
           toolName,
           permissionMode: "acceptEdits",
+          toolInput: { file_path: "/home/user/project/test.txt" },
         };
 
-        const result = await permissionManager.checkPermission(context);
+        const result = await manager.checkPermission(context);
 
         expect(result).toEqual({ behavior: "allow" });
         expect(mockLogger.debug).toHaveBeenCalledWith(

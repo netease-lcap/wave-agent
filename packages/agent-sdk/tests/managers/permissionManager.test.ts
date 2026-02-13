@@ -233,16 +233,22 @@ describe("PermissionManager", () => {
     });
 
     describe("acceptEdits mode", () => {
-      it("should allow file tools in acceptEdits mode", async () => {
+      it("should allow file tools in acceptEdits mode inside Safe Zone", async () => {
         const fileTools = ["Edit", "MultiEdit", "Delete", "Write"];
+        const workdir = "/home/user/project";
+        const manager = new PermissionManager({
+          logger: mockLogger,
+          workdir,
+        });
 
         for (const toolName of fileTools) {
           const context: ToolPermissionContext = {
             toolName,
             permissionMode: "acceptEdits",
+            toolInput: { file_path: "/home/user/project/test.txt" },
           };
 
-          const result = await permissionManager.checkPermission(context);
+          const result = await manager.checkPermission(context);
 
           expect(result).toEqual({ behavior: "allow" });
           expect(mockLogger.debug).toHaveBeenCalledWith(
@@ -996,13 +1002,14 @@ describe("PermissionManager", () => {
         expect(context.hidePersistentOption).toBeFalsy();
       });
 
-      it("should NOT set hidePersistentOption for non-Bash tools", () => {
+      it("should NOT set hidePersistentOption for non-Bash tools inside Safe Zone", () => {
         const context = permissionManager.createContext(
           "Edit",
           "default",
           undefined,
           {
             file_path: "src/index.ts",
+            workdir,
           },
         );
 
