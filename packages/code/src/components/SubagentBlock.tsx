@@ -10,13 +10,16 @@ interface SubagentBlockProps {
 }
 
 export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
-  const { subagentMessages } = useChat();
+  const { subagentMessages, subagentLatestTokens } = useChat();
 
   // Get messages for this subagent from context
   const messages = useMemo(
     () => subagentMessages[block.subagentId] || [],
     [subagentMessages, block.subagentId],
   );
+
+  // Get latest turn tokens for this subagent
+  const latestTurnTokens = subagentLatestTokens[block.subagentId] || 0;
 
   // Calculate total tokens for this subagent
   const totalTokens = useMemo(() => {
@@ -120,13 +123,22 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
           <Text color="gray" dimColor>
             {" "}
             ({messages.length} messages
+            {latestTurnTokens > 0 && (
+              <>
+                {" | "}
+                <Text color="blue" bold>
+                  {latestTurnTokens.toLocaleString()}
+                </Text>
+                {" tokens"}
+              </>
+            )}
             {totalTokens > 0 && (
               <>
                 {" | "}
                 <Text color="blue" bold>
                   {totalTokens.toLocaleString()}
                 </Text>
-                {" tokens"}
+                {" total tokens"}
               </>
             )}
             )

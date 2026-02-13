@@ -24,6 +24,7 @@ const mockSubagentMessages = {
 vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: () => ({
     subagentMessages: mockSubagentMessages,
+    subagentLatestTokens: {},
   }),
 }));
 

@@ -51,6 +51,11 @@ export interface SubagentManagerCallbacks {
   ) => void;
   /** Triggered when subagent messages change */
   onSubagentMessagesChange?: (subagentId: string, messages: Message[]) => void;
+  /** Triggered when subagent latest total tokens change */
+  onSubagentLatestTotalTokensChange?: (
+    subagentId: string,
+    tokens: number,
+  ) => void;
 }
 
 export interface SubagentInstance {
@@ -730,6 +735,13 @@ export class SubagentManager {
         this.parentMessageManager.updateSubagentBlock(subagentId, {
           sessionId: newSessionId,
         });
+      },
+
+      onLatestTotalTokensChange: (tokens: number) => {
+        // Forward latest total tokens to parent via SubagentManager callbacks
+        if (this.callbacks?.onSubagentLatestTotalTokensChange) {
+          this.callbacks.onSubagentLatestTotalTokensChange(subagentId, tokens);
+        }
       },
     };
   }
