@@ -15,7 +15,7 @@ export const LoadingIndicator = ({
   latestTotalTokens = 0,
 }: LoadingIndicatorProps) => {
   return (
-    <Box flexDirection="column" paddingY={1}>
+    <Box flexDirection="column">
       {isLoading && (
         <Box>
           <Text color="yellow">💭 AI is thinking... </Text>
