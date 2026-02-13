@@ -100,8 +100,8 @@ importers:
         specifier: ^6.5.1
         version: 6.5.1(@types/react@19.2.2)(react@19.2.4)
       marked:
-        specifier: ^11.2.0
-        version: 11.2.0
+        specifier: ^17.0.2
+        version: 17.0.2
       react:
         specifier: ^19.2.4
         version: 19.2.4
@@ -1840,9 +1840,9 @@ packages:
     resolution: {integrity: sha512-hXdUTZYIVOt1Ex//jAQi+wTZZpUpwBj/0QsOzqegb3rGMMeJiSEu5xLHnYfBrRV4RH2+OCSOO95Is/7x1WJ4bw==}
     engines: {node: '>=10'}
 
-  marked@11.2.0:
-    resolution: {integrity: sha512-HR0m3bvu0jAPYiIvLUUQtdg1g6D247//lvcekpHO1WMvbwDlwSkZAX9Lw4F4YHE1T0HaaNve0tuAWuV1UJ6vtw==}
-    engines: {node: '>= 18'}
+  marked@17.0.2:
+    resolution: {integrity: sha512-s5HZGFQea7Huv5zZcAGhJLT3qLpAfnY7v7GWkICUr0+Wd5TFEtdlRR2XUL5Gg+RH7u2Df595ifrxR03mBaw7gA==}
+    engines: {node: '>= 20'}
     hasBin: true
 
   math-intrinsics@1.1.0:
@@ -4507,7 +4507,7 @@ snapshots:
     dependencies:
       semver: 7.7.2
 
-  marked@11.2.0: {}
+  marked@17.0.2: {}
 
   math-intrinsics@1.1.0: {}
 
