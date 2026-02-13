@@ -85,7 +85,7 @@ When using Claude models with cache control, developers need accurate token trac
 ### Functional Requirements
 
 - **FR-001**: System MUST detect Claude models by checking if the model name contains "claude" (case-insensitive)
-- **FR-002**: System MUST add cache_control markers with type "ephemeral" to system messages when using Claude models
+- **FR-002**: System MUST add cache_control markers with type "ephemeral" to the first system message when using Claude models. This ensures core instructions are always cached even if reminders are added later.
 - **FR-003**: System MUST add cache_control markers to the last two user messages in the conversation when using Claude models
 - **FR-004**: System MUST add cache_control markers to the last tool definition when tools are available for Claude models
 - **FR-005**: System MUST transform string content to structured content arrays when adding cache_control markers
