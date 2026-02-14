@@ -7,25 +7,16 @@ interface CompressDisplayProps {
   isExpanded?: boolean;
 }
 
-export const CompressDisplay: React.FC<CompressDisplayProps> = ({
-  block,
-  isExpanded = false,
-}) => {
+export const CompressDisplay: React.FC<CompressDisplayProps> = ({ block }) => {
   const { content } = block;
-  const MAX_LINES = 3; // Set maximum display lines for compressed content
 
-  const { displayContent, isOverflowing } = useMemo(() => {
+  const { displayContent } = useMemo(() => {
     if (!content) {
-      return { displayContent: "", isOverflowing: false };
+      return { displayContent: "" };
     }
 
-    const lines = content.split("\n");
-    const overflow = !isExpanded && lines.length > MAX_LINES;
-
-    const display = overflow ? lines.slice(0, MAX_LINES).join("\n") : content;
-
-    return { displayContent: display, isOverflowing: overflow };
-  }, [content, isExpanded]);
+    return { displayContent: content };
+  }, [content]);
 
   return (
     <Box flexDirection="column">
@@ -43,14 +34,6 @@ export const CompressDisplay: React.FC<CompressDisplayProps> = ({
           >
             <Text color="white">{displayContent}</Text>
           </Box>
-          {isOverflowing && (
-            <Box paddingLeft={2} marginTop={1}>
-              <Text color="yellow" dimColor>
-                Content truncated ({content.split("\n").length} lines total,
-                showing first {MAX_LINES} lines. Press Ctrl+O to expand.
-              </Text>
-            </Box>
-          )}
         </Box>
       )}
     </Box>

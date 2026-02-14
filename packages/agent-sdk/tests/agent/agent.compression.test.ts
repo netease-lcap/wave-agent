@@ -501,7 +501,7 @@ describe("Agent Message Compression Tests", () => {
     // The first message should be the compressed assistant message
     expect(messagesPassedToCallAgent[0].role).toBe("assistant");
     expect(messagesPassedToCallAgent[0].content).toContain(
-      "[Compressed Message Summary]",
+      "Compressed content: This contains summary information of previous multi-round conversations.",
     );
 
     // The last message should be the second user message we added
