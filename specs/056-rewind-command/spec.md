@@ -37,9 +37,23 @@ As a user, I want file changes made by the agent in the messages being deleted t
 
 ---
 
+### User Story 3 - Rewind with Subagent Support (Priority: P2)
+
+As a user, I want file changes made by subagents to be automatically reverted when I rewind the main conversation, and any running background subagent tasks to be terminated if their context is removed.
+
+**Why this priority**: This ensures that the rewind functionality is consistent across the entire agent ecosystem, including modular subagents and background tasks.
+
+**Acceptance Scenarios**:
+
+1. **Given** a subagent modified a file, **When** the user rewinds the main conversation to a point before the subagent was invoked, **Then** the file changes made by the subagent are reverted.
+2. **Given** a subagent is running a long-running task in the background, **When** the user rewinds the main conversation to a point before the subagent task was started, **Then** the background subagent task is automatically terminated.
+
+---
+
 ### Edge Cases
 
-- **What happens when the user rewinds to the very first message?** The entire conversation history should be cleared, and any file changes made during the session should be reverted.
+- **What happens when the user rewinds to the very first message?** The entire conversation history should be cleared, and any file changes made during the session (including those by subagents) should be reverted.
+- **What happens if a subagent task is running when a rewind is triggered?** If the message that initiated the subagent is removed, the task MUST be stopped immediately to prevent inconsistent states.
 - **What happens if a file to be reverted has been modified externally after the agent changed them?** The system MUST overwrite any external changes and restore the file to its exact state prior to the agent's operation at that checkpoint.
 - **What happens if a file to be reverted has been deleted manually by the user?** The system should attempt to restore it if the previous content is available, or handle the missing file gracefully without crashing.
 
@@ -55,6 +69,8 @@ As a user, I want file changes made by the agent in the messages being deleted t
 - **FR-006**: System MUST revert all file operations associated with the messages being deleted during a rewind.
 - **FR-007**: System MUST perform sequential reversion of file operations in reverse order to ensure the filesystem returns to the exact state corresponding to the selected checkpoint.
 - **FR-008**: System MUST handle `/rewind` as a built-in command within the `InputManager` for consistent UI state management.
+- **FR-009**: System MUST forward file history snapshots from subagents to the parent agent's history.
+- **FR-010**: System MUST terminate background subagent tasks if the message that initiated them is removed during a rewind.
 
 ### Key Entities *(include if feature involves data)*
 

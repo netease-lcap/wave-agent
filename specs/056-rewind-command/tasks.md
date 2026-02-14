@@ -85,7 +85,25 @@
 
 ---
 
-## Phase 5: Polish & Cross-Cutting Concerns
+## Phase 5: User Story 3 - Subagent Support (Priority: P2)
+
+**Goal**: Ensure rewind works correctly with subagents and background tasks.
+
+**Independent Test**: Subagent modifies a file, user rewinds main conversation, verify file is reverted. Background subagent task is running, user rewinds, verify task is stopped.
+
+### Tests for User Story 3 (REQUIRED) ⚠️
+
+- [X] T028 [P] [US3] Integration test for subagent rewind support in `packages/agent-sdk/tests/integration/subagent_rewind.test.ts`
+
+### Implementation for User Story 3
+
+- [X] T029 [US3] Forward `file_history` blocks from subagents to parent in `packages/agent-sdk/src/managers/subagentManager.ts`
+- [X] T030 [US3] Implement `onSubagentTaskStopRequested` callback in `MessageManager` constructor and trigger it in `truncateHistory` in `packages/agent-sdk/src/managers/messageManager.ts`
+- [X] T031 [US3] Wire up subagent task termination in `Agent` constructor in `packages/agent-sdk/src/agent.ts`
+
+---
+
+## Phase 6: Polish & Cross-Cutting Concerns
 
 **Purpose**: Improvements that affect multiple user stories
 
@@ -104,6 +122,7 @@
 - **Foundational (Phase 2)**: Depends on Setup (Phase 1).
 - **User Story 1 (Phase 3)**: Depends on Foundational (Phase 2).
 - **User Story 2 (Phase 4)**: Depends on Foundational (Phase 2) and User Story 1 (Phase 3) for the trigger mechanism.
+- **User Story 3 (Phase 5)**: Depends on Foundational (Phase 2) and User Story 1 (Phase 3).
 - **Polish (Final Phase)**: Depends on all user stories.
 
 ### Parallel Opportunities
