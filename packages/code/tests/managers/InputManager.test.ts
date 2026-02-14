@@ -431,7 +431,7 @@ describe("InputManager", () => {
 
     it("should consume input when background task manager is active", async () => {
       manager.setShowBackgroundTaskManager(true);
-      const mockKey: Key = {
+      const mockKey = {
         return: false,
         upArrow: false,
         downArrow: false,
@@ -446,7 +446,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       const handled = await manager.handleInput("k", mockKey, [], false, false);
 
@@ -468,7 +468,7 @@ describe("InputManager", () => {
         expect(manager.getShowBackgroundTaskManager()).toBe(true),
       );
 
-      const mockKey: Key = {
+      const mockKey = {
         return: false,
         upArrow: false,
         downArrow: false,
@@ -483,7 +483,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       const handled = await manager.handleInput("k", mockKey, [], false, false);
       expect(handled).toBe(true);
@@ -493,7 +493,7 @@ describe("InputManager", () => {
 
   describe("Handle Input Integration", () => {
     it("should handle normal character input", async () => {
-      const mockKey: Key = {
+      const mockKey = {
         upArrow: false,
         downArrow: false,
         leftArrow: false,
@@ -508,7 +508,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       await manager.handleInput("a", mockKey, [], false, false);
 
@@ -518,7 +518,7 @@ describe("InputManager", () => {
     it("should handle Enter key for submission", async () => {
       manager.insertTextAtCursor("test message");
 
-      const mockKey: Key = {
+      const mockKey = {
         return: true,
         upArrow: false,
         downArrow: false,
@@ -533,7 +533,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       await manager.handleInput("", mockKey, [], false, false);
 
@@ -551,7 +551,7 @@ describe("InputManager", () => {
         mimeType: "image/png",
       });
 
-      const mockKey: Key = {
+      const mockKey = {
         ctrl: true,
         return: false,
         upArrow: false,
@@ -566,7 +566,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       await manager.handleInput("v", mockKey, [], false, false);
 
@@ -574,7 +574,7 @@ describe("InputManager", () => {
     });
 
     it("should handle Ctrl+R for history search", async () => {
-      const mockKey: Key = {
+      const mockKey = {
         ctrl: true,
         return: false,
         upArrow: false,
@@ -589,7 +589,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       await manager.handleInput("r", mockKey, [], false, false);
 
@@ -600,7 +600,7 @@ describe("InputManager", () => {
     });
 
     it("should handle escape to abort during loading", async () => {
-      const mockKey: Key = {
+      const mockKey = {
         escape: true,
         return: false,
         upArrow: false,
@@ -615,7 +615,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       await manager.handleInput("", mockKey, [], true, false); // isLoading = true
 
@@ -624,7 +624,7 @@ describe("InputManager", () => {
 
     it("should NOT handle escape to abort during loading if background task manager is active", async () => {
       manager.setShowBackgroundTaskManager(true);
-      const mockKey: Key = {
+      const mockKey = {
         escape: true,
         return: false,
         upArrow: false,
@@ -639,7 +639,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       await manager.handleInput("", mockKey, [], true, false); // isLoading = true
 
@@ -648,7 +648,7 @@ describe("InputManager", () => {
 
     it("should NOT handle escape to abort during loading if MCP manager is active", async () => {
       manager.setShowMcpManager(true);
-      const mockKey: Key = {
+      const mockKey = {
         escape: true,
         return: false,
         upArrow: false,
@@ -663,7 +663,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       await manager.handleInput("", mockKey, [], true, false); // isLoading = true
 
@@ -672,7 +672,7 @@ describe("InputManager", () => {
 
     it("should NOT handle escape to abort during loading if Rewind manager is active", async () => {
       manager.setShowRewindManager(true);
-      const mockKey: Key = {
+      const mockKey = {
         escape: true,
         return: false,
         upArrow: false,
@@ -687,7 +687,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       await manager.handleInput("", mockKey, [], true, false); // isLoading = true
 
@@ -697,7 +697,7 @@ describe("InputManager", () => {
     it("should prevent submission when loading", async () => {
       manager.insertTextAtCursor("test");
 
-      const mockKey: Key = {
+      const mockKey = {
         return: true,
         upArrow: false,
         downArrow: false,
@@ -712,7 +712,7 @@ describe("InputManager", () => {
         shift: false,
         tab: false,
         meta: false,
-      };
+      } as Key;
 
       await manager.handleInput("", mockKey, [], true, false); // isLoading = true
 
