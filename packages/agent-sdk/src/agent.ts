@@ -239,6 +239,7 @@ export class Agent {
       this.options.callbacks?.onSessionTasksChange?.(tasks);
     });
 
+    // Initialize BackgroundTaskManager
     this.backgroundTaskManager = new BackgroundTaskManager({
       callbacks: {
         ...callbacks,
@@ -247,6 +248,11 @@ export class Agent {
         },
       },
       workdir: this.workdir,
+    });
+
+    // Set up subagent task stop callback
+    this.messageManager.setSubagentTaskStopRequestedCallback((subagentId) => {
+      this.backgroundTaskManager.stopTask(subagentId);
     });
     this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
     this.lspManager =

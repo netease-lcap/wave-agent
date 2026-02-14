@@ -74,6 +74,10 @@ export interface MessageManagerCallbacks {
     subagentId: string,
     status: "active" | "completed" | "error" | "aborted",
   ) => void;
+  onFileHistoryBlockAdded?: (
+    snapshots: import("../types/reversion.js").FileSnapshot[],
+  ) => void;
+  onSubagentTaskStopRequested?: (subagentId: string) => void;
 }
 
 export interface MessageManagerOptions {
@@ -476,6 +480,7 @@ export class MessageManager {
         snapshots,
       } as unknown as import("../types/index.js").MessageBlock);
       this.setMessages([...this.messages]);
+      this.callbacks.onFileHistoryBlockAdded?.(snapshots);
     }
   }
 
@@ -684,6 +689,15 @@ export class MessageManager {
   }
 
   /**
+   * Set the callback for when a subagent task stop is requested during truncation.
+   */
+  public setSubagentTaskStopRequestedCallback(
+    callback: (subagentId: string) => void,
+  ): void {
+    this.callbacks.onSubagentTaskStopRequested = callback;
+  }
+
+  /**
    * Truncate history to a specific index and revert file changes.
    * @param index - The index of the user message to truncate to.
    * @param reversionManager - Optional ReversionManager to handle file rollbacks.
@@ -709,6 +723,16 @@ export class MessageManager {
 
     // Truncate messages in memory
     const newMessages = this.messages.slice(0, index);
+
+    // Identify subagent tasks to stop
+    for (const message of messagesToRemove) {
+      for (const block of message.blocks) {
+        if (block.type === "subagent" && block.subagentId) {
+          this.callbacks.onSubagentTaskStopRequested?.(block.subagentId);
+        }
+      }
+    }
+
     this.setMessages(newMessages);
 
     // Update persistence: rewrite the session file

@@ -746,6 +746,13 @@ export class SubagentManager {
           this.callbacks.onSubagentLatestTotalTokensChange(subagentId, tokens);
         }
       },
+
+      onFileHistoryBlockAdded: (
+        snapshots: import("../types/reversion.js").FileSnapshot[],
+      ) => {
+        // Forward file history blocks to parent MessageManager
+        this.parentMessageManager.addFileHistoryBlock(snapshots);
+      },
     };
   }
 }
