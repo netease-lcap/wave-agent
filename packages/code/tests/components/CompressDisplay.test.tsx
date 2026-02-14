@@ -11,38 +11,19 @@ describe("CompressDisplay", () => {
       sessionId: "test-session",
     };
     const { lastFrame } = render(<CompressDisplay block={block} />);
-    expect(lastFrame()).toContain("📦 Compressed Messages");
-    expect(lastFrame()).toContain("Compressed content");
-  });
-
-  it("should truncate content when not expanded", () => {
-    const longContent = "line 1\nline 2\nline 3\nline 4\nline 5";
-    const block = {
-      type: "compress" as const,
-      content: longContent,
-      sessionId: "test-session",
-    };
-    const { lastFrame } = render(
-      <CompressDisplay block={block} isExpanded={false} />,
-    );
     const frame = lastFrame();
-    expect(frame).toContain("Content truncated");
-    expect(frame).toContain("5 lines total");
-    expect(frame).toContain("showing first 3 lines");
-    expect(frame).toContain("line 1");
-    expect(frame).not.toContain("line 4");
+    expect(frame).toContain("📦 Compressed Messages");
+    expect(frame).toContain("Compressed content");
   });
 
-  it("should not truncate when expanded", () => {
+  it("should show full content and not truncate", () => {
     const longContent = "line 1\nline 2\nline 3\nline 4\nline 5";
     const block = {
       type: "compress" as const,
       content: longContent,
       sessionId: "test-session",
     };
-    const { lastFrame } = render(
-      <CompressDisplay block={block} isExpanded={true} />,
-    );
+    const { lastFrame } = render(<CompressDisplay block={block} />);
     const frame = lastFrame();
     expect(frame).not.toContain("Content truncated");
     expect(frame).toContain("line 1");
