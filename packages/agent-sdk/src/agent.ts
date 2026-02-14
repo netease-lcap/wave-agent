@@ -221,7 +221,12 @@ export class Agent {
 
     // Initialize MessageManager
     this.messageManager = new MessageManager({
-      callbacks,
+      callbacks: {
+        ...callbacks,
+        onSubagentTaskStopRequested: (subagentId) => {
+          this.backgroundTaskManager.stopTask(subagentId);
+        },
+      },
       workdir: this.workdir,
       logger: this.logger,
       memoryRuleManager: this.memoryRuleManager,
@@ -248,11 +253,6 @@ export class Agent {
         },
       },
       workdir: this.workdir,
-    });
-
-    // Set up subagent task stop callback
-    this.messageManager.setSubagentTaskStopRequestedCallback((subagentId) => {
-      this.backgroundTaskManager.stopTask(subagentId);
     });
     this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
     this.lspManager =

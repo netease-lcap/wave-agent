@@ -689,15 +689,6 @@ export class MessageManager {
   }
 
   /**
-   * Set the callback for when a subagent task stop is requested during truncation.
-   */
-  public setSubagentTaskStopRequestedCallback(
-    callback: (subagentId: string) => void,
-  ): void {
-    this.callbacks.onSubagentTaskStopRequested = callback;
-  }
-
-  /**
    * Truncate history to a specific index and revert file changes.
    * @param index - The index of the user message to truncate to.
    * @param reversionManager - Optional ReversionManager to handle file rollbacks.

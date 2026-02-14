@@ -26,13 +26,12 @@ describe("Subagent Rewind Support", () => {
     backgroundTaskManager = new BackgroundTaskManager({ workdir });
 
     parentMessageManager = new MessageManager({
-      callbacks: {},
+      callbacks: {
+        onSubagentTaskStopRequested: (subagentId) => {
+          backgroundTaskManager.stopTask(subagentId);
+        },
+      },
       workdir,
-    });
-
-    // Wire up the stop callback like in Agent.ts
-    parentMessageManager.setSubagentTaskStopRequestedCallback((subagentId) => {
-      backgroundTaskManager.stopTask(subagentId);
     });
 
     subagentManager = new SubagentManager({
