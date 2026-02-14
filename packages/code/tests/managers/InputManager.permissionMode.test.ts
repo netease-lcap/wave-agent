@@ -26,7 +26,7 @@ describe("InputManager Permission Mode", () => {
   });
 
   it("should cycle through permission modes when Shift+Tab is pressed", async () => {
-    const shiftTabKey: Key = {
+    const shiftTabKey = {
       tab: true,
       shift: true,
       upArrow: false,
@@ -41,7 +41,7 @@ describe("InputManager Permission Mode", () => {
       pageDown: false,
       pageUp: false,
       meta: false,
-    };
+    } as Key;
 
     // First Shift+Tab: default -> acceptEdits
     await manager.handleInput("", shiftTabKey, []);
@@ -71,7 +71,7 @@ describe("InputManager Permission Mode", () => {
   });
 
   it("should transition from 'bypassPermissions' to 'default' when Shift+Tab is pressed", async () => {
-    const shiftTabKey: Key = {
+    const shiftTabKey = {
       tab: true,
       shift: true,
       upArrow: false,
@@ -86,7 +86,7 @@ describe("InputManager Permission Mode", () => {
       pageDown: false,
       pageUp: false,
       meta: false,
-    };
+    } as Key;
 
     manager.setPermissionMode("bypassPermissions");
     expect(manager.getPermissionMode()).toBe("bypassPermissions");
