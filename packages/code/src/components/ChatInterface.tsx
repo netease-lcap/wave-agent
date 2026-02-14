@@ -8,10 +8,12 @@ import { ConfirmationDetails } from "./ConfirmationDetails.js";
 import { ConfirmationSelector } from "./ConfirmationSelector.js";
 
 import { useChat } from "../contexts/useChat.js";
+import type { PermissionDecision } from "wave-agent-sdk";
 
 export const ChatInterface: React.FC = () => {
   const { stdout } = useStdout();
   const [isDetailsTooTall, setIsDetailsTooTall] = useState(false);
+  const [wasLastDetailsTooTall, setWasLastDetailsTooTall] = useState(0);
 
   const handleHeightMeasured = useCallback(
     (height: number) => {
@@ -44,9 +46,28 @@ export const ChatInterface: React.FC = () => {
     isConfirmationVisible,
     confirmingTool,
     handleConfirmationDecision,
-    handleConfirmationCancel,
+    handleConfirmationCancel: originalHandleConfirmationCancel,
     rewindId,
   } = useChat();
+
+  const handleConfirmationCancel = useCallback(() => {
+    if (isDetailsTooTall) {
+      setWasLastDetailsTooTall((prev) => prev + 1);
+      setIsDetailsTooTall(false);
+    }
+    originalHandleConfirmationCancel();
+  }, [isDetailsTooTall, originalHandleConfirmationCancel]);
+
+  const wrappedHandleConfirmationDecision = useCallback(
+    (decision: PermissionDecision) => {
+      if (isDetailsTooTall) {
+        setWasLastDetailsTooTall((prev) => prev + 1);
+        setIsDetailsTooTall(false);
+      }
+      handleConfirmationDecision(decision);
+    },
+    [isDetailsTooTall, handleConfirmationDecision],
+  );
 
   if (!sessionId) return null;
 
@@ -58,7 +79,7 @@ export const ChatInterface: React.FC = () => {
         isCommandRunning={isCommandRunning}
         isExpanded={isExpanded}
         forceStaticLastMessage={isDetailsTooTall}
-        key={String(isExpanded) + sessionId + rewindId}
+        key={String(isExpanded) + sessionId + rewindId + wasLastDetailsTooTall}
       />
 
       {(isLoading || isCommandRunning || isCompressing) &&
@@ -86,7 +107,7 @@ export const ChatInterface: React.FC = () => {
             suggestedPrefix={confirmingTool!.suggestedPrefix}
             hidePersistentOption={confirmingTool!.hidePersistentOption}
             isExpanded={isExpanded}
-            onDecision={handleConfirmationDecision}
+            onDecision={wrappedHandleConfirmationDecision}
             onCancel={handleConfirmationCancel}
             onAbort={abortMessage}
           />
