@@ -112,7 +112,7 @@ describe("Task Management Tools", () => {
       };
       mockTaskManager.getTask.mockResolvedValue(task);
 
-      const result = await taskGetTool.execute({ id: "1" }, context);
+      const result = await taskGetTool.execute({ taskId: "1" }, context);
 
       expect(mockTaskManager.getTask).toHaveBeenCalledWith("1");
       expect(result.success).toBe(true);
@@ -122,7 +122,10 @@ describe("Task Management Tools", () => {
     it("should return error if task is not found", async () => {
       mockTaskManager.getTask.mockResolvedValue(null);
 
-      const result = await taskGetTool.execute({ id: "non-existent" }, context);
+      const result = await taskGetTool.execute(
+        { taskId: "non-existent" },
+        context,
+      );
 
       expect(result.success).toBe(false);
       expect(result.content).toBe("Task with ID non-existent not found.");

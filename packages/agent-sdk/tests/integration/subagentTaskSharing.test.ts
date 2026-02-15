@@ -90,7 +90,10 @@ describe("Subagent Task Sharing Integration Tests", () => {
     expect(createResult.content).toContain("Task created with ID: 1");
 
     // 2. Subagent should be able to get the task using mainSessionId
-    const getResult = await taskGetTool.execute({ id: "1" }, subagentContext);
+    const getResult = await taskGetTool.execute(
+      { taskId: "1" },
+      subagentContext,
+    );
     expect(getResult.success).toBe(true);
     const task = JSON.parse(getResult.content as string);
     expect(task.subject).toBe("Main Task");
@@ -107,7 +110,10 @@ describe("Subagent Task Sharing Integration Tests", () => {
     expect(subCreateResult.content).toContain("Task created with ID: 2");
 
     // 4. Main agent should be able to get the subagent's task
-    const mainGetResult = await taskGetTool.execute({ id: "2" }, mainContext);
+    const mainGetResult = await taskGetTool.execute(
+      { taskId: "2" },
+      mainContext,
+    );
     expect(mainGetResult.success).toBe(true);
     const subTask = JSON.parse(mainGetResult.content as string);
     expect(subTask.subject).toBe("Subagent Task");
@@ -136,7 +142,7 @@ describe("Subagent Task Sharing Integration Tests", () => {
     );
 
     // 2. Session B should NOT find Task A
-    const getResult = await taskGetTool.execute({ id: "1" }, contextB);
+    const getResult = await taskGetTool.execute({ taskId: "1" }, contextB);
     expect(getResult.success).toBe(false);
     expect(getResult.content).toContain("Task with ID 1 not found");
   });
