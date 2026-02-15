@@ -1,3 +1,4 @@
+import { ToolPlugin, ToolContext } from "../tools/types.js";
 import {
   ASK_USER_QUESTION_TOOL_NAME,
   BASH_TOOL_NAME,
@@ -225,7 +226,7 @@ Wrap your summary in <summary></summary> tags.`;
 
 export function buildSystemPrompt(
   basePrompt: string | undefined,
-  tools: { name?: string; function?: { name: string } }[],
+  tools: ToolPlugin[],
   options: {
     workdir?: string;
     isGitRepo?: string;
@@ -241,9 +242,7 @@ export function buildSystemPrompt(
   } = {},
 ): string {
   let prompt = basePrompt || DEFAULT_SYSTEM_PROMPT;
-  const toolNames = new Set(
-    tools.map((t) => t.function?.name || t.name).filter(Boolean),
-  );
+  const toolNames = new Set(tools.map((t) => t.name));
 
   if (
     toolNames.has(TASK_CREATE_TOOL_NAME) ||
@@ -256,12 +255,16 @@ export function buildSystemPrompt(
   if (toolNames.has(TASK_STOP_TOOL_NAME)) {
     prompt += TASK_STOP_POLICY;
   }
-  if (toolNames.has(ASK_USER_QUESTION_TOOL_NAME)) {
-    prompt += ASK_USER_POLICY;
-  }
 
-  if (toolNames.has(TASK_TOOL_NAME)) {
-    prompt += SUBAGENT_POLICY;
+  for (const tool of tools) {
+    if (tool.prompt) {
+      const toolContext: ToolContext = {
+        workdir: options.workdir || "",
+        taskManager:
+          undefined as unknown as import("../services/taskManager.js").TaskManager, // Context might not be fully available here
+      };
+      prompt += tool.prompt(toolContext);
+    }
   }
 
   if (

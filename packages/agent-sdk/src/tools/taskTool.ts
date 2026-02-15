@@ -1,6 +1,7 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import type { SubagentManager } from "../managers/subagentManager.js";
 import { TASK_TOOL_NAME } from "../constants/tools.js";
+import { SUBAGENT_POLICY } from "../constants/prompts.js";
 
 /**
  * Create a task tool plugin that uses the provided SubagentManager
@@ -57,6 +58,8 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
         },
       };
     },
+
+    prompt: () => SUBAGENT_POLICY,
 
     execute: async (
       args: Record<string, unknown>,

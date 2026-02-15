@@ -6,6 +6,7 @@ import type { TaskManager } from "../../src/services/taskManager.js";
 interface MockToolManager {
   execute: Mock<ToolManager["execute"]>;
   list: Mock<ToolManager["list"]>;
+  getTools: Mock<ToolManager["getTools"]>;
   getToolsConfig: Mock<ToolManager["getToolsConfig"]>;
   getPermissionMode: Mock<ToolManager["getPermissionMode"]>;
   setPermissionMode: Mock<ToolManager["setPermissionMode"]>;
@@ -35,6 +36,7 @@ export const createMockTaskManager = (): TaskManager => {
 export const createMockToolManager = (): MockToolManager => {
   const execute = vi.fn();
   const list = vi.fn(() => []);
+  const getTools = vi.fn(() => []);
   const getToolsConfig = vi.fn(() => []);
   const getPermissionMode = vi.fn(() => "default" as PermissionMode);
   const setPermissionMode = vi.fn();
@@ -45,6 +47,7 @@ export const createMockToolManager = (): MockToolManager => {
     // Individual mocks for control and assertions
     execute,
     list,
+    getTools,
     getToolsConfig,
     getPermissionMode,
     setPermissionMode,
@@ -55,6 +58,7 @@ export const createMockToolManager = (): MockToolManager => {
     instance: {
       execute,
       list,
+      getTools,
       getToolsConfig,
       getPermissionMode,
       setPermissionMode,

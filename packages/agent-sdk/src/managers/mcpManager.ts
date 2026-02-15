@@ -3,7 +3,7 @@ import { join } from "path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
-import { createMcpToolPlugin, findToolServer } from "@/utils/mcpUtils.js";
+import { createMcpToolPlugin, findToolServer } from "../utils/mcpUtils.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import type {
   Logger,
@@ -476,8 +476,11 @@ export class McpManager {
       const server = findToolServer(tool.name, servers);
 
       if (server) {
-        const plugin = createMcpToolPlugin(tool, server.name, (name, args) =>
-          this.executeMcpTool(name, args),
+        const plugin = createMcpToolPlugin(
+          tool,
+          server.name,
+          (name: string, args: Record<string, unknown>) =>
+            this.executeMcpTool(name, args),
         );
         mcpTools.set(plugin.name, plugin);
       }
