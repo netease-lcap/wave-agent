@@ -7,7 +7,7 @@ Represents a single unit of work within a session.
 
 | Field | Type | Description | Validation |
 |-------|------|-------------|------------|
-| `id` | `string` | Unique identifier (UUID) | Required, unique |
+| `taskId` | `string` | Unique identifier (UUID) | Required, unique |
 | `subject` | `string` | Brief, actionable title | Required, non-empty |
 | `description` | `string` | Detailed requirements | Required |
 | `status` | `enum` | `pending`, `in_progress`, `completed`, `deleted` | Required |
@@ -18,9 +18,9 @@ Represents a single unit of work within a session.
 | `metadata` | `Record<string, any>` | Arbitrary metadata | Optional |
 
 ### Session
-A logical grouping of tasks, identified by `sessionId`.
+A logical grouping of tasks, identified by `taskListId`.
 
-- **Storage Path**: `~/.wave/tasks/{sessionId}/`
+- **Storage Path**: `~/.wave/tasks/{taskListId}/`
 - **Relationship**: One Session has many Tasks.
 
 ## State Transitions
@@ -40,5 +40,6 @@ stateDiagram-v2
 ## Validation Rules
 1. **Subject**: Must be in imperative form (e.g., "Fix bug").
 2. **ActiveForm**: Should be in present continuous form (e.g., "Fixing bug").
-3. **Dependencies**: A task cannot be blocked by itself.
-4. **Status**: Only valid transitions are allowed (though the storage layer will be permissive, tools should enforce logic).
+3. **Dependencies**: A task cannot be blocked by itself. Updating a task to block another task (or be blocked by another) MUST automatically update the reciprocal relationship on the other task.
+4. **Metadata**: Metadata updates should merge with existing metadata. Setting a key to `null` in `TaskUpdate` should delete that key.
+5. **Status**: Only valid transitions are allowed (though the storage layer will be permissive, tools should enforce logic).
