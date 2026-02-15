@@ -44,7 +44,7 @@ describe("exitPlanModeTool", () => {
     expect(exitPlanModeTool.name).toBe("ExitPlanMode");
     expect(exitPlanModeTool.config.function.name).toBe("ExitPlanMode");
     expect(exitPlanModeTool.config.function.description).toContain(
-      "Use this tool when you are in plan mode",
+      "Prompts the user to exit plan mode and start coding",
     );
     expect(exitPlanModeTool.config.type).toBe("function");
   });
