@@ -153,7 +153,60 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
               const lines = part.value
                 .split("\n")
                 .filter((line) => line !== "");
-              lines.forEach((line, lineIndex) => {
+
+              const isFirstBlock = partIndex === 0;
+              const isLastBlock = partIndex === lineDiffs.length - 1;
+
+              let linesToDisplay = lines;
+              let showEllipsisTop = false;
+              let showEllipsisBottom = false;
+
+              if (isFirstBlock && !isLastBlock) {
+                // First block: keep last 3
+                if (lines.length > 3) {
+                  linesToDisplay = lines.slice(-3);
+                  showEllipsisTop = true;
+                }
+              } else if (isLastBlock && !isFirstBlock) {
+                // Last block: keep first 3
+                if (lines.length > 3) {
+                  linesToDisplay = lines.slice(0, 3);
+                  showEllipsisBottom = true;
+                }
+              } else if (!isFirstBlock && !isLastBlock) {
+                // Middle block: keep first 3 and last 3
+                if (lines.length > 6) {
+                  linesToDisplay = [...lines.slice(0, 3), ...lines.slice(-3)];
+                  showEllipsisTop = false; // We'll put ellipsis in the middle
+                }
+              } else if (isFirstBlock && isLastBlock) {
+                // Only one block (no changes?) - keep all or apply a general limit
+                // For now, let's keep all if it's the only block
+              }
+
+              if (showEllipsisTop) {
+                diffElements.push(
+                  <Box key={`ellipsis-top-${changeIndex}-${partIndex}`}>
+                    <Text color="gray"> ...</Text>
+                  </Box>,
+                );
+              }
+
+              linesToDisplay.forEach((line, lineIndex) => {
+                // If it's a middle block and we are at the split point
+                if (
+                  !isFirstBlock &&
+                  !isLastBlock &&
+                  lines.length > 6 &&
+                  lineIndex === 3
+                ) {
+                  diffElements.push(
+                    <Box key={`ellipsis-mid-${changeIndex}-${partIndex}`}>
+                      <Text color="gray"> ...</Text>
+                    </Box>,
+                  );
+                }
+
                 diffElements.push(
                   <Box
                     key={`context-${changeIndex}-${partIndex}-${lineIndex}`}
@@ -164,6 +217,14 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
                   </Box>,
                 );
               });
+
+              if (showEllipsisBottom) {
+                diffElements.push(
+                  <Box key={`ellipsis-bottom-${changeIndex}-${partIndex}`}>
+                    <Text color="gray"> ...</Text>
+                  </Box>,
+                );
+              }
             }
           });
 
