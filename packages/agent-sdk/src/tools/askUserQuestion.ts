@@ -9,7 +9,8 @@ export const askUserQuestionTool: ToolPlugin = {
     type: "function",
     function: {
       name: ASK_USER_QUESTION_TOOL_NAME,
-      description: `Asks the user multiple choice questions to gather information, clarify ambiguity, understand preferences, make decisions or offer them choices.`,
+      description:
+        "Asks the user multiple choice questions to gather information, clarify ambiguity, understand preferences, make decisions or offer them choices.",
       parameters: {
         type: "object",
         properties: {
@@ -17,33 +18,38 @@ export const askUserQuestionTool: ToolPlugin = {
             type: "array",
             minItems: 1,
             maxItems: 4,
+            description: "Questions to ask the user (1-4 questions)",
             items: {
               type: "object",
               properties: {
                 question: {
                   type: "string",
-                  description: "The complete question to ask the user.",
+                  description:
+                    'The complete question to ask the user. Should be clear, specific, and end with a question mark. Example: "Which library should we use for date formatting?" If multiSelect is true, phrase it accordingly, e.g. "Which features do you want to enable?"',
                 },
                 header: {
                   type: "string",
                   maxLength: 12,
-                  description:
-                    "Very short label displayed as a chip/tag (max 12 chars).",
+                  description: `Very short label displayed as a chip/tag (max 12 chars). Examples: "Auth method", "Library", "Approach".`,
                 },
                 options: {
                   type: "array",
                   minItems: 2,
                   maxItems: 4,
+                  description:
+                    "The available choices for this question. Must have 2-4 options. Each option should be a distinct, mutually exclusive choice (unless multiSelect is enabled). There should be no 'Other' option, that will be provided automatically.",
                   items: {
                     type: "object",
                     properties: {
                       label: {
                         type: "string",
-                        description: "The display text for this option.",
+                        description:
+                          "The display text for this option that the user will see and select. Should be concise (1-5 words) and clearly describe the choice.",
                       },
                       description: {
                         type: "string",
-                        description: "Explanation of what this option means.",
+                        description:
+                          "Explanation of what this option means or what will happen if chosen. Useful for providing context about trade-offs or implications.",
                       },
                       isRecommended: {
                         type: "boolean",
@@ -56,7 +62,8 @@ export const askUserQuestionTool: ToolPlugin = {
                 multiSelect: {
                   type: "boolean",
                   default: false,
-                  description: "Allow multiple answers to be selected.",
+                  description:
+                    "Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.",
                 },
               },
               required: ["question", "header", "options"],
