@@ -19,6 +19,10 @@ export interface ToolPlugin {
     params: Record<string, unknown>,
     context: ToolContext,
   ) => string;
+  /**
+   * Optional function to provide a prompt to be added to the system prompt
+   */
+  prompt?: (context: ToolContext) => string;
 }
 
 export interface ToolResult {

@@ -361,6 +361,10 @@ export class AIManager {
         this.getModelConfig().permissionMode,
       );
       const toolsConfig = this.getFilteredToolsConfig(tools);
+      const toolNames = new Set(toolsConfig.map((t) => t.function.name));
+      const filteredToolPlugins = this.toolManager
+        .getTools()
+        .filter((t) => toolNames.has(t.name));
 
       let planModeOptions:
         | { planFilePath: string; planExists: boolean }
@@ -390,16 +394,20 @@ export class AIManager {
         workdir: this.workdir, // Pass working directory
         tools: toolsConfig, // Pass filtered tool configuration
         model: model, // Use passed model
-        systemPrompt: buildSystemPrompt(this.systemPrompt, toolsConfig, {
-          workdir: this.workdir,
-          isGitRepo: isGitRepository(this.workdir),
-          platform: os.platform(),
-          osVersion: `${os.type()} ${os.release()}`,
-          today: new Date().toISOString().split("T")[0],
-          memory: combinedMemory,
-          language: this.getLanguage(),
-          planMode: planModeOptions,
-        }), // Pass custom system prompt
+        systemPrompt: buildSystemPrompt(
+          this.systemPrompt,
+          filteredToolPlugins,
+          {
+            workdir: this.workdir,
+            isGitRepo: isGitRepository(this.workdir),
+            platform: os.platform(),
+            osVersion: `${os.type()} ${os.release()}`,
+            today: new Date().toISOString().split("T")[0],
+            memory: combinedMemory,
+            language: this.getLanguage(),
+            planMode: planModeOptions,
+          },
+        ), // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override
       };
 

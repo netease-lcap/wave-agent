@@ -67,6 +67,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
     // Create mock ToolManager
     mockToolManager = {
       getToolsConfig: vi.fn().mockReturnValue([]),
+      getTools: vi.fn().mockReturnValue([]),
       list: vi.fn().mockReturnValue([]),
       execute: vi
         .fn()

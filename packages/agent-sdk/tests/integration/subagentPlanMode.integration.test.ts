@@ -69,6 +69,7 @@ describe("Subagent Plan Mode Integration", () => {
       getPermissionManager: vi.fn().mockReturnValue(mockPermissionManager),
       getPermissionMode: vi.fn().mockReturnValue("plan"),
       list: vi.fn().mockReturnValue([{ name: "Read" }]),
+      getTools: vi.fn().mockReturnValue([]),
       getToolsConfig: vi.fn().mockReturnValue([]),
     } as unknown as ToolManager;
 

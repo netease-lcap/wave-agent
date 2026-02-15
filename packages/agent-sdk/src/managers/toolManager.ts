@@ -267,6 +267,13 @@ class ToolManager {
   }
 
   /**
+   * Get the list of registered tool plugins
+   */
+  public getTools(): ToolPlugin[] {
+    return Array.from(this.tools.values());
+  }
+
+  /**
    * Get the current permission mode
    */
   public getPermissionMode(): PermissionMode {

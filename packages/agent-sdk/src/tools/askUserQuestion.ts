@@ -1,6 +1,7 @@
 import { ToolPlugin } from "./types.js";
 import { AskUserQuestionInput } from "../types/tools.js";
 import { ASK_USER_QUESTION_TOOL_NAME } from "../constants/tools.js";
+import { ASK_USER_POLICY } from "../constants/prompts.js";
 
 export const askUserQuestionTool: ToolPlugin = {
   name: ASK_USER_QUESTION_TOOL_NAME,
@@ -66,6 +67,7 @@ export const askUserQuestionTool: ToolPlugin = {
       },
     },
   },
+  prompt: () => ASK_USER_POLICY,
   execute: async (args, context) => {
     const { questions } = args as unknown as AskUserQuestionInput;
 
