@@ -98,7 +98,7 @@ describe("Task Management Integration Tests", () => {
     expect(createResult.content).toContain("Task created with ID: 1");
 
     // 2. Get the task
-    const getResult = await taskGetTool.execute({ id: "1" }, context);
+    const getResult = await taskGetTool.execute({ taskId: "1" }, context);
     expect(getResult.success).toBe(true);
     const task = JSON.parse(getResult.content as string);
     expect(task).toMatchObject({
@@ -127,7 +127,7 @@ describe("Task Management Integration Tests", () => {
     expect(updateResult.success).toBe(true);
 
     // 3. Get and verify
-    const getResult = await taskGetTool.execute({ id: "1" }, context);
+    const getResult = await taskGetTool.execute({ taskId: "1" }, context);
     expect(getResult.success).toBe(true);
     const task = JSON.parse(getResult.content as string);
     expect(task.status).toBe("in_progress");
@@ -169,7 +169,7 @@ describe("Task Management Integration Tests", () => {
 
   it("Flow 4: Error cases", async () => {
     // 1. Get non-existent task
-    const getResult = await taskGetTool.execute({ id: "999" }, context);
+    const getResult = await taskGetTool.execute({ taskId: "999" }, context);
     expect(getResult.success).toBe(false);
     expect(getResult.content).toContain("Task with ID 999 not found");
 
