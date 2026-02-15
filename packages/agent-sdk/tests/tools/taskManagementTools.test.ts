@@ -143,7 +143,7 @@ describe("Task Management Tools", () => {
       mockTaskManager.getTask.mockResolvedValue(existingTask);
 
       const args = {
-        id: "1",
+        taskId: "1",
         subject: "New Subject",
         status: "completed",
       };
@@ -157,13 +157,14 @@ describe("Task Management Tools", () => {
         status: "completed",
       });
       expect(result.success).toBe(true);
-      expect(result.content).toBe("Task 1 updated successfully.");
+      expect(result.content).toContain("Updated task #1 subject, status");
+      expect(result.content).toContain("Task completed");
     });
 
     it("should return error if task to update is not found", async () => {
       mockTaskManager.getTask.mockResolvedValue(null);
 
-      const result = await taskUpdateTool.execute({ id: "2" }, context);
+      const result = await taskUpdateTool.execute({ taskId: "2" }, context);
 
       expect(result.success).toBe(false);
       expect(result.content).toBe("Task with ID 2 not found.");

@@ -124,84 +124,244 @@ export const taskUpdateTool: ToolPlugin = {
     type: "function",
     function: {
       name: TASK_UPDATE_TOOL_NAME,
-      description: "Update an existing task.",
+      description: "Update a task in the task list",
       parameters: {
         type: "object",
         properties: {
-          id: {
+          taskId: {
             type: "string",
-            description: "The ID of the task to update.",
+            description: "The ID of the task to update",
           },
           subject: {
             type: "string",
-            description: "Updated subject.",
+            description: "New subject for the task",
           },
           description: {
             type: "string",
-            description: "Updated description.",
+            description: "New description for the task",
+          },
+          activeForm: {
+            type: "string",
+            description:
+              'Present continuous form shown in spinner when in_progress (e.g., "Running tests")',
           },
           status: {
             type: "string",
             enum: ["pending", "in_progress", "completed", "deleted"],
-            description: "Updated status.",
+            description: "New status for the task",
           },
-          activeForm: {
-            type: "string",
-            description: "Updated active form.",
+          addBlocks: {
+            type: "array",
+            items: { type: "string" },
+            description: "Task IDs that this task blocks",
+          },
+          addBlockedBy: {
+            type: "array",
+            items: { type: "string" },
+            description: "Task IDs that block this task",
           },
           owner: {
             type: "string",
-            description: "Updated owner.",
-          },
-          blocks: {
-            type: "array",
-            items: { type: "string" },
-            description: "Updated list of blocked task IDs.",
-          },
-          blockedBy: {
-            type: "array",
-            items: { type: "string" },
-            description: "Updated list of blocking task IDs.",
+            description: "New owner for the task",
           },
           metadata: {
             type: "object",
-            description: "Updated metadata.",
+            description:
+              "Metadata keys to merge into the task. Set a key to null to delete it.",
           },
         },
-        required: ["id"],
+        required: ["taskId"],
       },
     },
   },
+  prompt: () => `Use this tool to update a task in the task list.
+
+## When to Use This Tool
+
+**Mark tasks as resolved:**
+- When you have completed the work described in a task
+- When a task is no longer needed or has been superseded
+- IMPORTANT: Always mark your assigned tasks as resolved when you finish them
+- After resolving, call TaskList to find your next task
+
+- ONLY mark a task as completed when you have FULLY accomplished it
+- If you encounter errors, blockers, or cannot finish, keep the task as in_progress
+- When blocked, create a new task describing what needs to be resolved
+- Never mark a task as completed if:
+  - Tests are failing
+  - Implementation is partial
+  - You encountered unresolved errors
+  - You couldn't find necessary files or dependencies
+
+**Delete tasks:**
+- When a task is no longer relevant or was created in error
+- Setting status to \`deleted\` permanently removes the task
+
+**Update task details:**
+- When requirements change or become clearer
+- When establishing dependencies between tasks
+
+## Fields You Can Update
+
+- **status**: The task status (see Status Workflow below)
+- **subject**: Change the task title (imperative form, e.g., "Run tests")
+- **description**: Change the task description
+- **activeForm**: Present continuous form shown in spinner when in_progress (e.g., "Running tests")
+- **owner**: Change the task owner (agent name)
+- **metadata**: Merge metadata keys into the task (set a key to null to delete it)
+- **addBlocks**: Mark tasks that cannot start until this one completes
+- **addBlockedBy**: Mark tasks that must complete before this one can start
+
+## Status Workflow
+
+Status progresses: \`pending\` → \`in_progress\` → \`completed\`
+
+Use \`deleted\` to permanently remove a task.
+
+## Staleness
+
+Make sure to read a task's latest state using \`TaskGet\` before updating it.
+
+## Examples
+
+Mark task as in progress when starting work:
+\`\`\`json
+{"taskId": "1", "status": "in_progress"}
+\`\`\`
+
+Mark task as completed after finishing work:
+\`\`\`json
+{"taskId": "1", "status": "completed"}
+\`\`\`
+
+Delete a task:
+\`\`\`json
+{"taskId": "1", "status": "deleted"}
+\`\`\`
+
+Claim a task by setting owner:
+\`\`\`json
+{"taskId": "1", "owner": "my-name"}
+\`\`\`
+
+Set up task dependencies:
+\`\`\`json
+{"taskId": "2", "addBlockedBy": ["1"]}
+\`\`\`
+`,
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
     const taskManager = context.taskManager;
+    const taskId = args.taskId as string;
 
-    const existingTask = await taskManager.getTask(args.id as string);
+    const existingTask = await taskManager.getTask(taskId);
     if (!existingTask) {
       return {
         success: false,
-        content: `Task with ID ${args.id} not found.`,
+        content: `Task with ID ${taskId} not found.`,
       };
     }
 
+    const updatedFields: string[] = [];
+
     const updatedTask: Task = {
       ...existingTask,
-      subject: (args.subject as string) ?? existingTask.subject,
-      description: (args.description as string) ?? existingTask.description,
-      status: (args.status as TaskStatus) ?? existingTask.status,
-      activeForm: (args.activeForm as string) ?? existingTask.activeForm,
-      owner: (args.owner as string) ?? existingTask.owner,
-      blocks: (args.blocks as string[]) ?? existingTask.blocks,
-      blockedBy: (args.blockedBy as string[]) ?? existingTask.blockedBy,
-      metadata:
-        (args.metadata as Record<string, unknown>) ?? existingTask.metadata,
     };
+
+    if (args.subject !== undefined && args.subject !== existingTask.subject) {
+      updatedTask.subject = args.subject as string;
+      updatedFields.push("subject");
+    }
+    if (
+      args.description !== undefined &&
+      args.description !== existingTask.description
+    ) {
+      updatedTask.description = args.description as string;
+      updatedFields.push("description");
+    }
+    if (args.status !== undefined && args.status !== existingTask.status) {
+      updatedTask.status = args.status as TaskStatus;
+      updatedFields.push("status");
+    }
+    if (
+      args.activeForm !== undefined &&
+      args.activeForm !== existingTask.activeForm
+    ) {
+      updatedTask.activeForm = args.activeForm as string;
+      updatedFields.push("activeForm");
+    }
+    if (args.owner !== undefined && args.owner !== existingTask.owner) {
+      updatedTask.owner = args.owner as string;
+      updatedFields.push("owner");
+    }
+
+    if (args.metadata !== undefined) {
+      const newMetadata = { ...(existingTask.metadata || {}) };
+      for (const [key, value] of Object.entries(
+        args.metadata as Record<string, unknown>,
+      )) {
+        if (value === null) {
+          delete newMetadata[key];
+        } else {
+          newMetadata[key] = value;
+        }
+      }
+      updatedTask.metadata = newMetadata;
+      updatedFields.push("metadata");
+    }
+
+    if (args.addBlocks !== undefined) {
+      const blocksToAdd = (args.addBlocks as string[]).filter(
+        (id) => !updatedTask.blocks.includes(id),
+      );
+      if (blocksToAdd.length > 0) {
+        updatedTask.blocks = [...updatedTask.blocks, ...blocksToAdd];
+        updatedFields.push("blocks");
+
+        // Also update the blockedBy of the target tasks
+        for (const targetId of blocksToAdd) {
+          const targetTask = await taskManager.getTask(targetId);
+          if (targetTask && !targetTask.blockedBy.includes(taskId)) {
+            await taskManager.updateTask({
+              ...targetTask,
+              blockedBy: [...targetTask.blockedBy, taskId],
+            });
+          }
+        }
+      }
+    }
+
+    if (args.addBlockedBy !== undefined) {
+      const blockedByToAdd = (args.addBlockedBy as string[]).filter(
+        (id) => !updatedTask.blockedBy.includes(id),
+      );
+      if (blockedByToAdd.length > 0) {
+        updatedTask.blockedBy = [...updatedTask.blockedBy, ...blockedByToAdd];
+        updatedFields.push("blockedBy");
+
+        // Also update the blocks of the target tasks
+        for (const targetId of blockedByToAdd) {
+          const targetTask = await taskManager.getTask(targetId);
+          if (targetTask && !targetTask.blocks.includes(taskId)) {
+            await taskManager.updateTask({
+              ...targetTask,
+              blocks: [...targetTask.blocks, taskId],
+            });
+          }
+        }
+      }
+    }
 
     await taskManager.updateTask(updatedTask);
 
+    let content = `Updated task #${taskId} ${updatedFields.join(", ")}`;
+    if (updatedTask.status === "completed") {
+      content += `\n\nTask completed. Call TaskList now to find your next available task or see if your work unblocked others.`;
+    }
+
     return {
       success: true,
-      content: `Task ${args.id} updated successfully.`,
-      shortResult: `Updated task ${args.id}`,
+      content,
+      shortResult: `Updated task ${taskId}`,
     };
   },
 };

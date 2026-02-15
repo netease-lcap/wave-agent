@@ -119,7 +119,7 @@ describe("Task Management Integration Tests", () => {
 
     // 2. Update
     const updateArgs = {
-      id: "1",
+      taskId: "1",
       status: "in_progress",
       metadata: { progress: 50 },
     };
@@ -175,7 +175,7 @@ describe("Task Management Integration Tests", () => {
 
     // 2. Update non-existent task
     const updateResult = await taskUpdateTool.execute(
-      { id: "999", subject: "New" },
+      { taskId: "999", subject: "New" },
       context,
     );
     expect(updateResult.success).toBe(false);
