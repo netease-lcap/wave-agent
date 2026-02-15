@@ -81,10 +81,10 @@ As a system maintainer, I want to remove the legacy TodoWrite tool so that the a
 - **FR-001**: System MUST provide a `TaskCreate` tool that accepts `subject`, `description`, `activeForm`, and optional `metadata`.
 - **FR-002**: System MUST store tasks as JSON files in `~/.wave/tasks/{taskListId}/{taskId}.json`.
 - **FR-003**: System MUST provide a `TaskGet` tool that retrieves all information for a specific `taskId`.
-- **FR-004**: System MUST provide a `TaskUpdate` tool that allows updating `status`, `subject`, `description`, `activeForm`, `owner`, and `metadata`.
-- **FR-005**: System MUST allow managing task dependencies via `addBlocks` and `addBlockedBy` in `TaskUpdate`.
+- **FR-004**: System MUST provide a `TaskUpdate` tool that allows updating `status`, `subject`, `description`, `activeForm`, `owner`, and `metadata` using `taskId`.
+- **FR-005**: System MUST allow managing task dependencies via `addBlocks` and `addBlockedBy` in `TaskUpdate`. Adding a dependency MUST automatically update the reciprocal relationship on the target task.
 - **FR-006**: System MUST provide a `TaskList` tool that returns all tasks associated with the current `taskListId`.
-- **FR-007**: Tasks MUST include fields: `id`, `subject`, `description`, `status`, `activeForm`, `owner`, `blocks`, `blockedBy`, and `metadata`.
+- **FR-007**: Tasks MUST include fields: `taskId`, `subject`, `description`, `status`, `activeForm`, `owner`, `blocks`, `blockedBy`, and `metadata`.
 - **FR-008**: The system MUST automatically create the necessary directory structure if it does not exist.
 - **FR-009**: The system MUST remove the `TodoWrite` tool definition from the agent's tool registry.
 - **FR-010**: The system MUST remove any code implementation specifically tied to the `TodoWrite` tool.
@@ -93,11 +93,14 @@ As a system maintainer, I want to remove the legacy TodoWrite tool so that the a
   1. Value of `WAVE_TASK_LIST_ID` environment variable.
   2. Fallback to the initial `sessionId` provided by the `MessageManager` at agent initialization.
 - **FR-013**: The `taskListId` MUST remain stable for the lifetime of the agent instance. Even if the `sessionId` changes (e.g., due to message compression), the `taskListId` MUST NOT change.
+- **FR-014**: The `ToolPlugin` interface MUST support a `prompt` function to allow tools to contribute dynamically to the system prompt.
+- **FR-015**: Task management tools MUST provide detailed behavioral instructions via the `ToolPlugin.prompt` property.
+- **FR-016**: `TaskUpdate` MUST support merging metadata, where setting a key to `null` deletes it.
 
 ### Key Entities *(include if feature involves data)*
 
 - **Task**: Represents a single unit of work.
-  - **id**: Unique identifier (string).
+  - **taskId**: Unique identifier (string).
   - **subject**: Brief title (string).
   - **description**: Detailed requirements (string).
   - **status**: Current state (enum: `pending`, `in_progress`, `completed`, `deleted`).
