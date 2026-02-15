@@ -10,38 +10,47 @@ export const taskOutputTool: ToolPlugin = {
     type: "function",
     function: {
       name: TASK_OUTPUT_TOOL_NAME,
-      description:
-        "Retrieves output from a running or completed background task",
+      description: "Retrieves output from a running or completed task",
       parameters: {
         type: "object",
         properties: {
           task_id: {
             type: "string",
-            description:
-              "The ID of the background task to retrieve output from",
-          },
-          filter: {
-            type: "string",
-            description:
-              "Optional regular expression to filter the output lines.",
+            description: "The task ID to get output from",
           },
           block: {
             type: "boolean",
-            description:
-              "If true, wait for the task to complete before returning output. If false, return current output immediately.",
+            default: true,
+            description: "Whether to wait for completion",
+          },
+          timeout: {
+            type: "number",
+            minimum: 0,
+            maximum: 600000,
+            default: 30000,
+            description: "Max wait time in ms",
           },
         },
         required: ["task_id"],
       },
     },
   },
+  prompt:
+    () => `- Retrieves output from a running or completed task (background shell, agent, or remote session)
+- Takes a task_id parameter identifying the task
+- Returns the task output along with status information
+- Use block=true (default) to wait for task completion
+- Use block=false for non-blocking check of current status
+- Task IDs can be found using the /tasks command
+- Works with all task types: background shells, async agents, and remote sessions`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
   ): Promise<ToolResult> => {
     const taskId = args.task_id as string;
     const filter = args.filter as string | undefined;
-    const block = args.block as boolean | undefined;
+    const block = (args.block as boolean | undefined) ?? true;
+    const timeout = (args.timeout as number | undefined) ?? 30000;
 
     if (!taskId || typeof taskId !== "string") {
       return {
@@ -91,6 +100,7 @@ export const taskOutputTool: ToolPlugin = {
       return new Promise((resolve) => {
         let timeoutHandle: NodeJS.Timeout | null = null;
         let isAborted = false;
+        const startTime = Date.now();
 
         const cleanup = () => {
           if (timeoutHandle) {
@@ -121,6 +131,18 @@ export const taskOutputTool: ToolPlugin = {
 
         const check = () => {
           if (isAborted) return;
+
+          if (Date.now() - startTime > timeout) {
+            if (context.abortSignal) {
+              context.abortSignal.removeEventListener("abort", onAbort);
+            }
+            resolve({
+              success: true,
+              content: "Retrieval timed out",
+              shortResult: `${taskId}: timeout`,
+            });
+            return;
+          }
 
           const task = backgroundTaskManager.getTask(taskId);
           if (!task) {
