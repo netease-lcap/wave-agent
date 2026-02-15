@@ -13,6 +13,12 @@ describe("TaskOutput Tool Abort Handling", () => {
   let context: ToolContext;
   let abortController: AbortController;
 
+  it("should have correct tool configuration and prompt", () => {
+    expect(taskOutputTool.name).toBe("TaskOutput");
+    expect(taskOutputTool.prompt?.(context)).toBeDefined();
+    expect(typeof taskOutputTool.prompt?.(context)).toBe("string");
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     backgroundTaskManager = new BackgroundTaskManager({
@@ -170,5 +176,35 @@ describe("TaskOutput Tool Abort Handling", () => {
       "abort",
       expect.any(Function),
     );
+  });
+
+  it("should timeout when task takes too long", async () => {
+    const taskId = "test_task";
+    backgroundTaskManager.addTask({
+      id: taskId,
+      type: "shell",
+      status: "running",
+      startTime: Date.now(),
+      command: "sleep 100",
+      stdout: "",
+      stderr: "",
+      process: { kill: vi.fn() } as unknown as BackgroundShell["process"],
+    });
+
+    const executePromise = taskOutputTool.execute(
+      {
+        task_id: taskId,
+        block: true,
+        timeout: 1000,
+      },
+      context,
+    );
+
+    await vi.advanceTimersByTimeAsync(1500);
+    const result = await executePromise;
+
+    expect(result.success).toBe(true);
+    expect(result.content).toBe("Retrieval timed out");
+    expect(result.shortResult).toBe(`${taskId}: timeout`);
   });
 });

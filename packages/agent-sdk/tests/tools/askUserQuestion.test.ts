@@ -3,6 +3,15 @@ import { askUserQuestionTool } from "../../src/tools/askUserQuestion.js";
 import { ToolContext } from "../../src/tools/types.js";
 
 describe("AskUserQuestion Tool", () => {
+  it("should have correct tool configuration", () => {
+    expect(askUserQuestionTool.name).toBe("AskUserQuestion");
+    expect(askUserQuestionTool.config.function.name).toBe("AskUserQuestion");
+    expect(askUserQuestionTool.prompt?.({} as ToolContext)).toBeDefined();
+    expect(typeof askUserQuestionTool.prompt?.({} as ToolContext)).toBe(
+      "string",
+    );
+  });
+
   it("should execute successfully when user provides answers", async () => {
     const mockPermissionManager = {
       createContext: vi.fn().mockReturnValue({}),

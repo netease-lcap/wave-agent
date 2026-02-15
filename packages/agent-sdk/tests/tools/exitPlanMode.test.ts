@@ -47,6 +47,9 @@ describe("exitPlanModeTool", () => {
       "Prompts the user to exit plan mode and start coding",
     );
     expect(exitPlanModeTool.config.type).toBe("function");
+    expect(exitPlanModeTool.prompt?.(mockContext)).toContain(
+      "Use this tool when you are in plan mode",
+    );
   });
 
   it("should fail if permission manager is not available", async () => {
@@ -132,5 +135,16 @@ describe("exitPlanModeTool", () => {
     expect(result.success).toBe(false);
     expect(result.content).toBe("Plan rejected by user");
     expect(result.error).toBe("Plan rejected by user");
+  });
+
+  it("should handle unexpected errors in execute", async () => {
+    mockPermissionManager.getPlanFilePath.mockImplementation(() => {
+      throw new Error("Unexpected error");
+    });
+
+    const result = await exitPlanModeTool.execute({}, mockContext);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Unexpected error");
   });
 });
