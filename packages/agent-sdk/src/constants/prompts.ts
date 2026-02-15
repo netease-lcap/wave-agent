@@ -92,7 +92,7 @@ export function buildPlanModePrompt(
 ## Plan File Info:
 ${planFileInfo}
 You should build your plan incrementally by writing to or editing this file. NOTE that this is the only file you are allowed to edit - other than this you are only allowed to take READ-ONLY actions.
-Answer the user's query comprehensively, using the ${ASK_USER_QUESTION_TOOL_NAME} tool if you need to ask the user clarifying questions. If you do use the ${ASK_USER_QUESTION_TOOL_NAME}, make sure to ask all clarifying questions you need to fully understand the user's intent before proceeding.`;
+Answer the user's query comprehensively. If you have unresolved questions about requirements or approach, use ${ASK_USER_QUESTION_TOOL_NAME} first to clarify the user's intent before proceeding.`;
 }
 
 export const DEFAULT_SYSTEM_PROMPT = BASE_SYSTEM_PROMPT;
