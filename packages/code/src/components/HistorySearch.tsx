@@ -30,8 +30,8 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
   useEffect(() => {
     const fetchHistory = async () => {
       const results = await PromptHistoryManager.searchHistory(searchQuery);
-      const limitedResults = results.slice(0, 10);
-      setEntries(limitedResults); // Limit to 10 results
+      const limitedResults = results.slice(0, 5);
+      setEntries(limitedResults); // Limit to 5 results
       setSelectedIndex(0);
     };
     fetchHistory();
@@ -75,7 +75,6 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
         borderBottom={false}
         borderLeft={false}
         borderRight={false}
-        paddingTop={1}
       >
         <Text color="yellow">
           No history found {searchQuery && `for "${searchQuery}"`}
@@ -110,7 +109,6 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
       borderBottom={false}
       borderLeft={false}
       borderRight={false}
-      paddingTop={1}
       gap={1}
     >
       <Box>
@@ -119,24 +117,28 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
         </Text>
       </Box>
 
-      {entries.map((entry, index) => (
-        <Box key={index} flexDirection="column">
-          <Text
-            color={index === selectedIndex ? "black" : "white"}
-            backgroundColor={index === selectedIndex ? "blue" : undefined}
-            wrap="truncate-end"
-          >
-            {entry.prompt.replace(/\n/g, " ")}
-          </Text>
-          {index === selectedIndex && (
-            <Box marginLeft={4}>
-              <Text color="gray" dimColor>
-                {formatTimestamp(entry.timestamp)}
+      <Box flexDirection="column">
+        {entries.map((entry, index) => (
+          <Box key={index} flexDirection="row" justifyContent="space-between">
+            <Box flexShrink={1}>
+              <Text
+                color={index === selectedIndex ? "black" : "white"}
+                backgroundColor={index === selectedIndex ? "blue" : undefined}
+                wrap="truncate-end"
+              >
+                {entry.prompt.replace(/\n/g, " ")}
               </Text>
             </Box>
-          )}
-        </Box>
-      ))}
+            {index === selectedIndex && (
+              <Box marginLeft={2} flexShrink={0}>
+                <Text color="gray" dimColor>
+                  {formatTimestamp(entry.timestamp)}
+                </Text>
+              </Box>
+            )}
+          </Box>
+        ))}
+      </Box>
 
       <Box>
         <Text dimColor>
