@@ -13,6 +13,7 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
   onSelect,
   onCancel,
 }) => {
+  const MAX_VISIBLE_ITEMS = 5;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [entries, setEntries] = useState<PromptEntry[]>([]);
 
@@ -30,8 +31,8 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
   useEffect(() => {
     const fetchHistory = async () => {
       const results = await PromptHistoryManager.searchHistory(searchQuery);
-      const limitedResults = results.slice(0, 5);
-      setEntries(limitedResults); // Limit to 5 results
+      const limitedResults = results.slice(0, 20);
+      setEntries(limitedResults); // Limit to 20 results
       setSelectedIndex(0);
     };
     fetchHistory();
@@ -101,6 +102,19 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
     }
   };
 
+  // Calculate visible window
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, entries.length - MAX_VISIBLE_ITEMS),
+    ),
+  );
+  const visibleEntries = entries.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_ITEMS,
+  );
+
   return (
     <Box
       flexDirection="column"
@@ -118,26 +132,34 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
       </Box>
 
       <Box flexDirection="column">
-        {entries.map((entry, index) => (
-          <Box key={index} flexDirection="row" justifyContent="space-between">
-            <Box flexShrink={1}>
-              <Text
-                color={index === selectedIndex ? "black" : "white"}
-                backgroundColor={index === selectedIndex ? "blue" : undefined}
-                wrap="truncate-end"
-              >
-                {entry.prompt.replace(/\n/g, " ")}
-              </Text>
-            </Box>
-            {index === selectedIndex && (
-              <Box marginLeft={2} flexShrink={0}>
-                <Text color="gray" dimColor>
-                  {formatTimestamp(entry.timestamp)}
+        {visibleEntries.map((entry, index) => {
+          const actualIndex = startIndex + index;
+          const isSelected = actualIndex === selectedIndex;
+          return (
+            <Box
+              key={actualIndex}
+              flexDirection="row"
+              justifyContent="space-between"
+            >
+              <Box flexShrink={1}>
+                <Text
+                  color={isSelected ? "black" : "white"}
+                  backgroundColor={isSelected ? "blue" : undefined}
+                  wrap="truncate-end"
+                >
+                  {entry.prompt.replace(/\n/g, " ")}
                 </Text>
               </Box>
-            )}
-          </Box>
-        ))}
+              {isSelected && (
+                <Box marginLeft={2} flexShrink={0}>
+                  <Text color="gray" dimColor>
+                    {formatTimestamp(entry.timestamp)}
+                  </Text>
+                </Box>
+              )}
+            </Box>
+          );
+        })}
       </Box>
 
       <Box>
