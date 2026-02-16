@@ -39,6 +39,7 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
   onCancel,
   commands = [], // Default to empty array
 }) => {
+  const MAX_VISIBLE_ITEMS = 3;
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Merge agent commands and local commands
@@ -49,6 +50,19 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
     (command) =>
       !searchQuery ||
       command.id.toLowerCase().includes(searchQuery.toLowerCase()),
+  );
+
+  // Calculate visible window
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, filteredCommands.length - MAX_VISIBLE_ITEMS),
+    ),
+  );
+  const visibleCommands = filteredCommands.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_ITEMS,
   );
 
   useInput((input, key) => {
@@ -101,7 +115,6 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
         borderBottom={false}
         borderLeft={false}
         borderRight={false}
-        paddingTop={1}
       >
         <Text color="yellow">No commands found for "{searchQuery}"</Text>
         <Text dimColor>Press Escape to cancel</Text>
@@ -117,7 +130,6 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
       borderBottom={false}
       borderLeft={false}
       borderRight={false}
-      paddingTop={1}
       gap={1}
     >
       <Box>
@@ -126,23 +138,29 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
         </Text>
       </Box>
 
-      {filteredCommands.map((command, index) => (
-        <Box key={command.id} flexDirection="column">
-          <Text
-            color={index === selectedIndex ? "black" : "white"}
-            backgroundColor={index === selectedIndex ? "magenta" : undefined}
-          >
-            {index === selectedIndex ? "▶ " : "  "}/{command.id}
-          </Text>
-          {index === selectedIndex && (
-            <Box marginLeft={4}>
-              <Text color="gray" dimColor>
-                {command.description}
+      <Box flexDirection="column">
+        {visibleCommands.map((command, index) => {
+          const actualIndex = startIndex + index;
+          const isSelected = actualIndex === selectedIndex;
+          return (
+            <Box key={command.id} flexDirection="column">
+              <Text
+                color={isSelected ? "black" : "white"}
+                backgroundColor={isSelected ? "magenta" : undefined}
+              >
+                {isSelected ? "▶ " : "  "}/{command.id}
               </Text>
+              {isSelected && (
+                <Box marginLeft={4}>
+                  <Text color="gray" dimColor>
+                    {command.description}
+                  </Text>
+                </Box>
+              )}
             </Box>
-          )}
-        </Box>
-      ))}
+          );
+        })}
+      </Box>
 
       <Box>
         <Text dimColor>
