@@ -17,6 +17,7 @@
     "test:coverage": "pnpm -r test:coverage",
     "lint": "pnpm -r lint",
     "format": "prettier --write .",
+    "ci": "pnpm type-check && pnpm lint && pnpm test:coverage",
     "version:patch": "node scripts/version.js patch all",
     "version:minor": "node scripts/version.js minor all",
     "version:major": "node scripts/version.js major all",
