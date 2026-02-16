@@ -36,13 +36,7 @@ jobs:
         env:
           WAVE_BASE_URL: https://mock-api.test.com
       
-      - name: Type check
-        run: pnpm type-check
-      
-      - name: Lint
-        run: pnpm lint
-      
-      - name: Test
-        run: pnpm test:coverage
+      - name: CI
+        run: pnpm ci
         env:
           WAVE_BASE_URL: https://mock-api.test.com
