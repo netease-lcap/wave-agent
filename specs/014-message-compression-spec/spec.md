@@ -18,7 +18,7 @@ As an AI agent, when the conversation history becomes too long, I want to automa
 **Acceptance Scenarios**:
 
 1. **Given** the total token count exceeds `getMaxInputTokens()`, **When** the next message is processed, **Then** the agent MUST identify messages to compress.
-2. **Given** messages are identified for compression, **When** the summarization is complete, **Then** the original messages MUST be replaced by a `compress` block in the session.
+2. **Given** messages are identified for compression, **When** the summarization is complete, **Then** the original messages MUST be replaced by a `compress` block followed by the last 3 messages of the old message list in the session.
 3. **Given** a `compress` block exists, **When** sending messages to the API, **Then** it MUST be converted to a system message with the prefix `[Compressed Message Summary]`.
 
 ---
@@ -50,7 +50,7 @@ As a user, when I paste a large block of text into the input field, I want it to
 ### Functional Requirements
 
 - **FR-001**: System MUST monitor token usage after each AI response.
-- **FR-002**: System MUST replace the entire conversation history with a single continuation summary when token limits are reached.
+- **FR-002**: System MUST replace the conversation history with a single continuation summary and the last 3 messages of the old message list when token limits are reached.
 - **FR-003**: System MUST use the AI to generate a summary of messages identified for compression.
 - **FR-004**: System MUST replace compressed messages with a `compress` block in the session history.
 - **FR-005**: System MUST convert `compress` blocks to system messages for API calls.
