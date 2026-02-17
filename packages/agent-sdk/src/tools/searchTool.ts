@@ -4,21 +4,30 @@ import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
 import { rgPath } from "@vscode/ripgrep";
 import { getDisplayPath } from "../utils/path.js";
 import {
-  GREP_TOOL_NAME,
+  SEARCH_TOOL_NAME,
   BASH_TOOL_NAME,
   TASK_TOOL_NAME,
 } from "../constants/tools.js";
 
 /**
- * Grep tool plugin - powerful search tool based on ripgrep
+ * Search tool plugin - powerful search tool based on ripgrep
  */
-export const grepTool: ToolPlugin = {
-  name: GREP_TOOL_NAME,
+export const searchTool: ToolPlugin = {
+  name: SEARCH_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: GREP_TOOL_NAME,
-      description: `A powerful search tool built on ripgrep\n\n  Usage:\n  - ALWAYS use ${GREP_TOOL_NAME} for search tasks. NEVER invoke \`grep\` or \`rg\` as a ${BASH_TOOL_NAME} command. The ${GREP_TOOL_NAME} tool has been optimized for correct permissions and access.\n  - Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")\n  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")\n  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts\n  - Use ${TASK_TOOL_NAME} tool for open-ended searches requiring multiple rounds\n  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\` in Go code)\n  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like \`struct \\{[\\s\\S]*?field\`, use \`multiline: true\``,
+      name: SEARCH_TOOL_NAME,
+      description: `A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use ${SEARCH_TOOL_NAME} for search tasks. NEVER invoke \`grep\` or \`rg\` as a ${BASH_TOOL_NAME} command. The ${SEARCH_TOOL_NAME} tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use ${TASK_TOOL_NAME} tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like \`struct \\{[\\s\\S]*?field\`, use \`multiline: true\``,
       parameters: {
         type: "object",
         properties: {
@@ -61,7 +70,7 @@ export const grepTool: ToolPlugin = {
           "-n": {
             type: "boolean",
             description:
-              'Show line numbers in output (rg -n). Requires output_mode: "content", ignored otherwise.',
+              'Show line numbers in output (rg -n). Requires output_mode: "content", ignored otherwise. Defaults to true.',
           },
           "-i": {
             type: "boolean",
@@ -75,7 +84,7 @@ export const grepTool: ToolPlugin = {
           head_limit: {
             type: "number",
             description:
-              'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults to 100 to prevent excessive token usage.',
+              'Limit output to first N lines/entries, equivalent to "| head -N". Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count (limits count entries). Defaults to 0 (unlimited).',
           },
           multiline: {
             type: "boolean",
@@ -87,6 +96,17 @@ export const grepTool: ToolPlugin = {
       },
     },
   },
+  prompt: () => `A powerful search tool built on ripgrep
+
+  Usage:
+  - ALWAYS use ${SEARCH_TOOL_NAME} for search tasks. NEVER invoke \`grep\` or \`rg\` as a ${BASH_TOOL_NAME} command. The ${SEARCH_TOOL_NAME} tool has been optimized for correct permissions and access.
+  - Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")
+  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
+  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
+  - Use ${TASK_TOOL_NAME} tool for open-ended searches requiring multiple rounds
+  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\` in Go code)
+  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like \`struct \\{[\\s\\S]*?field\`, use \`multiline: true\`
+`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
@@ -98,7 +118,7 @@ export const grepTool: ToolPlugin = {
     const contextBefore = args["-B"] as number;
     const contextAfter = args["-A"] as number;
     const contextAround = args["-C"] as number;
-    const showLineNumbers = args["-n"] as boolean;
+    const showLineNumbers = args["-n"] !== false;
     const caseInsensitive = args["-i"] as boolean;
     const fileType = args.type as string;
     const headLimit = args.head_limit as number;
@@ -218,9 +238,9 @@ export const grepTool: ToolPlugin = {
       let lines = output.split("\n");
 
       // Set default head_limit if not specified to prevent excessive token usage
-      const effectiveHeadLimit = headLimit || 100;
+      const effectiveHeadLimit = headLimit || 0;
 
-      if (lines.length > effectiveHeadLimit) {
+      if (effectiveHeadLimit > 0 && lines.length > effectiveHeadLimit) {
         lines = lines.slice(0, effectiveHeadLimit);
         finalOutput = lines.join("\n");
       }
