@@ -1,7 +1,6 @@
 import { ToolPlugin } from "./types.js";
 import { AskUserQuestionInput } from "../types/tools.js";
 import { ASK_USER_QUESTION_TOOL_NAME } from "../constants/tools.js";
-import { ASK_USER_POLICY } from "../constants/prompts.js";
 
 export const askUserQuestionTool: ToolPlugin = {
   name: ASK_USER_QUESTION_TOOL_NAME,
@@ -51,10 +50,6 @@ export const askUserQuestionTool: ToolPlugin = {
                         description:
                           "Explanation of what this option means or what will happen if chosen. Useful for providing context about trade-offs or implications.",
                       },
-                      isRecommended: {
-                        type: "boolean",
-                        description: "Whether this option is recommended.",
-                      },
                     },
                     required: ["label"],
                   },
@@ -69,14 +64,47 @@ export const askUserQuestionTool: ToolPlugin = {
               required: ["question", "header", "options"],
             },
           },
+          answers: {
+            type: "object",
+            additionalProperties: { type: "string" },
+            description: "User answers collected by the permission component",
+          },
+          metadata: {
+            type: "object",
+            properties: {
+              source: {
+                type: "string",
+                description:
+                  'Optional identifier for the source of this question (e.g., "remember" for /remember command). Used for analytics tracking.',
+              },
+            },
+            description: "Optional metadata for the question",
+          },
         },
         required: ["questions"],
       },
     },
   },
-  prompt: () => ASK_USER_POLICY,
+  prompt:
+    () => `Use this tool when you need to ask the user questions during execution. This allows you to:
+1. Gather user preferences or requirements
+2. Clarify ambiguous instructions
+3. Get decisions on implementation choices as you work
+4. Offer choices to the user about what direction to take.
+
+Usage notes:
+- Users will always be able to select "Other" to provide custom text input
+- Use multiSelect: true to allow multiple answers to be selected for a question
+- If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label
+
+Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval.
+`,
   execute: async (args, context) => {
-    const { questions } = args as unknown as AskUserQuestionInput;
+    const {
+      questions,
+      answers: existingAnswers,
+      metadata,
+    } = args as unknown as AskUserQuestionInput;
 
     if (!context.permissionManager) {
       throw new Error(
@@ -88,7 +116,7 @@ export const askUserQuestionTool: ToolPlugin = {
       ASK_USER_QUESTION_TOOL_NAME,
       context.permissionMode || "default",
       context.canUseToolCallback,
-      { questions },
+      { questions, answers: existingAnswers, metadata },
     );
     permissionContext.hidePersistentOption = true; // Always hide persistent option for questions
 
