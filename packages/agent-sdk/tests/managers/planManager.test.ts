@@ -35,9 +35,28 @@ describe("PlanManager", () => {
 
   it("should throw error if mkdir fails", async () => {
     const planManager = new PlanManager();
-    vi.mocked(fs.mkdir).mockRejectedValue(new Error("mkdir failed"));
+    vi.mocked(fs.mkdir).mockRejectedValueOnce(new Error("mkdir failed"));
     await expect(planManager.getOrGeneratePlanFilePath()).rejects.toThrow(
       "mkdir failed",
     );
+  });
+
+  it("should return the same path when called with the same seed", async () => {
+    const planManager = new PlanManager();
+    const seed = "test-seed";
+    const result1 = await planManager.getOrGeneratePlanFilePath(seed);
+    const result2 = await planManager.getOrGeneratePlanFilePath(seed);
+
+    expect(result1.path).toBe(result2.path);
+    expect(result1.name).toBe(result2.name);
+  });
+
+  it("should return different paths when called with different seeds", async () => {
+    const planManager = new PlanManager();
+    const result1 = await planManager.getOrGeneratePlanFilePath("seed-1");
+    const result2 = await planManager.getOrGeneratePlanFilePath("seed-2");
+
+    expect(result1.path).not.toBe(result2.path);
+    expect(result1.name).not.toBe(result2.name);
   });
 });

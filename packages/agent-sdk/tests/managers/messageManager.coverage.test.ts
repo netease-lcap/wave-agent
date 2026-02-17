@@ -99,7 +99,8 @@ describe("MessageManager Coverage Improvements", () => {
     );
   });
 
-  it("should handle compressMessagesAndUpdateSession", () => {
+  it("should handle compressMessagesAndUpdateSession and preserve rootSessionId", () => {
+    const initialRootSessionId = messageManager.getRootSessionId();
     messageManager.addUserMessage({ content: "msg1" });
     messageManager.addAssistantMessage("msg2");
     messageManager.addUserMessage({ content: "msg3" });
@@ -112,6 +113,8 @@ describe("MessageManager Coverage Improvements", () => {
     expect((messages[0].blocks[0] as { content: string }).content).toBe(
       "compressed content",
     );
+    expect(messageManager.getRootSessionId()).toBe(initialRootSessionId);
+    expect(messageManager.getSessionId()).not.toBe(initialRootSessionId);
   });
 
   it("should handle addFileHistoryBlock", () => {
