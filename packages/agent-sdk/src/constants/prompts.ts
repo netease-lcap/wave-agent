@@ -5,7 +5,6 @@ import {
   EDIT_TOOL_NAME,
   GLOB_TOOL_NAME,
   GREP_TOOL_NAME,
-  LS_TOOL_NAME,
   MULTI_EDIT_TOOL_NAME,
   READ_TOOL_NAME,
   TASK_TOOL_NAME,
@@ -48,7 +47,6 @@ export const FILE_TOOL_POLICY_PREFIX = `\n- Use specialized tools instead of bas
 export const READ_FILE_POLICY = ` ${READ_TOOL_NAME} for reading files instead of cat/head/tail`;
 export const EDIT_FILE_POLICY = ` ${EDIT_TOOL_NAME}/${MULTI_EDIT_TOOL_NAME} for editing instead of sed/awk`;
 export const WRITE_FILE_POLICY = ` ${WRITE_TOOL_NAME} for creating files instead of cat with heredoc or echo redirection`;
-export const SEARCH_FILE_POLICY = ` ${LS_TOOL_NAME}/${GLOB_TOOL_NAME}/${GREP_TOOL_NAME} for searching and listing files instead of find/ls/grep`;
 
 export const BASH_POLICY = `
 - Reserve bash tools exclusively for actual system commands and terminal operations that require shell execution. NEVER use bash echo or other command-line tools to communicate thoughts, explanations, or instructions to the user. Output all communication directly in your response text instead.
@@ -243,10 +241,7 @@ export function buildSystemPrompt(
     toolNames.has(READ_TOOL_NAME) ||
     toolNames.has(EDIT_TOOL_NAME) ||
     toolNames.has(MULTI_EDIT_TOOL_NAME) ||
-    toolNames.has(WRITE_TOOL_NAME) ||
-    toolNames.has(LS_TOOL_NAME) ||
-    toolNames.has(GLOB_TOOL_NAME) ||
-    toolNames.has(GREP_TOOL_NAME)
+    toolNames.has(WRITE_TOOL_NAME)
   ) {
     const parts: string[] = [];
     if (toolNames.has(READ_TOOL_NAME)) {
@@ -257,13 +252,6 @@ export function buildSystemPrompt(
     }
     if (toolNames.has(WRITE_TOOL_NAME)) {
       parts.push(WRITE_FILE_POLICY);
-    }
-    if (
-      toolNames.has(LS_TOOL_NAME) ||
-      toolNames.has(GLOB_TOOL_NAME) ||
-      toolNames.has(GREP_TOOL_NAME)
-    ) {
-      parts.push(SEARCH_FILE_POLICY);
     }
 
     if (parts.length > 0) {
