@@ -236,7 +236,7 @@ export class Agent {
     const resolvedTaskListId =
       this.configurationService.getEnvironmentVars().WAVE_TASK_LIST_ID ||
       process.env.WAVE_TASK_LIST_ID ||
-      this.messageManager.getSessionId();
+      this.messageManager.getRootSessionId();
 
     this.taskManager = new TaskManager(resolvedTaskListId);
     this.taskManager.on("tasksChange", async () => {
@@ -1308,7 +1308,7 @@ export class Agent {
   private handlePlanModeTransition(mode: PermissionMode): void {
     if (mode === "plan") {
       this.planManager
-        .getOrGeneratePlanFilePath()
+        .getOrGeneratePlanFilePath(this.messageManager.getRootSessionId())
         .then(({ path }) => {
           this.logger?.debug("Plan file path generated", { path });
           this.permissionManager.setPlanFilePath(path);

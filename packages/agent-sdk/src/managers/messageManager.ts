@@ -92,6 +92,7 @@ export interface MessageManagerOptions {
 export class MessageManager {
   // Private state properties
   private sessionId: string;
+  private rootSessionId: string;
   private messages: Message[];
   private latestTotalTokens: number;
   private userInputHistory: string[];
@@ -108,6 +109,7 @@ export class MessageManager {
 
   constructor(options: MessageManagerOptions) {
     this.sessionId = generateSessionId();
+    this.rootSessionId = this.sessionId;
     this.messages = [];
     this.latestTotalTokens = 0;
     this.userInputHistory = [];
@@ -127,6 +129,10 @@ export class MessageManager {
   // Getter methods
   public getSessionId(): string {
     return this.sessionId;
+  }
+
+  public getRootSessionId(): string {
+    return this.rootSessionId;
   }
 
   public getMessages(): Message[] {
@@ -251,6 +257,7 @@ export class MessageManager {
         unsavedMessages, // Only append new messages
         this.workdir,
         this.sessionType,
+        this.rootSessionId,
       );
 
       // Update the saved message count
@@ -301,6 +308,7 @@ export class MessageManager {
   // Initialize state from session data
   public initializeFromSession(sessionData: SessionData): void {
     this.setSessionId(sessionData.id);
+    this.rootSessionId = sessionData.rootSessionId || sessionData.id;
     this.setMessages([...sessionData.messages]);
     this.updateFilesInContext(sessionData.messages);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);

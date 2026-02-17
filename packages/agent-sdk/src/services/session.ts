@@ -28,6 +28,7 @@ import { logger } from "../utils/globalLogger.js";
 
 export interface SessionData {
   id: string;
+  rootSessionId?: string;
   messages: Message[];
   metadata: {
     workdir: string;
@@ -38,6 +39,7 @@ export interface SessionData {
 
 export interface SessionMetadata {
   id: string;
+  rootSessionId?: string;
   sessionType: "main" | "subagent";
   subagentType?: string;
   workdir: string;
@@ -191,6 +193,7 @@ export async function appendMessages(
   newMessages: Message[],
   workdir: string,
   sessionType: "main" | "subagent" = "main",
+  rootSessionId?: string,
 ): Promise<void> {
   // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
@@ -252,6 +255,7 @@ export async function appendMessages(
 
   await updateSessionIndex(projectDir.encodedPath, {
     id: sessionId,
+    rootSessionId,
     sessionType,
     workdir,
     lastActiveAt: new Date(lastMessage.timestamp),
@@ -294,8 +298,25 @@ export async function loadSessionFromJsonl(
     // Extract metadata from messages
     const lastMessage = messages[messages.length - 1];
 
+    // Try to get rootSessionId from index
+    let rootSessionId: string | undefined;
+    try {
+      const encoder = new PathEncoder();
+      const projectDir = await encoder.getProjectDirectory(
+        workdir,
+        SESSION_DIR,
+      );
+      const indexPath = join(projectDir.encodedPath, SESSION_INDEX_FILENAME);
+      const indexContent = await fs.readFile(indexPath, "utf8");
+      const index = JSON.parse(indexContent) as SessionIndex;
+      rootSessionId = index.sessions[sessionId]?.rootSessionId;
+    } catch {
+      // Ignore index errors
+    }
+
     const sessionData: SessionData = {
       id: sessionId,
+      rootSessionId: rootSessionId || sessionId,
       messages: messages.map((msg) => {
         // Remove timestamp property for backward compatibility
         const { timestamp: _ignored, ...messageWithoutTimestamp } = msg;

@@ -17,7 +17,7 @@ export class PlanManager {
   /**
    * Ensures the plan directory exists and generates a new plan file path with a random name
    */
-  public async getOrGeneratePlanFilePath(): Promise<{
+  public async getOrGeneratePlanFilePath(seed?: string): Promise<{
     path: string;
     name: string;
   }> {
@@ -30,7 +30,7 @@ export class PlanManager {
       );
       throw error;
     }
-    const name = generateRandomName();
+    const name = generateRandomName(seed);
     const filePath = path.join(this.planDir, `${name}.md`);
     this.logger?.info(`Generated plan file path: ${filePath}`);
     return { path: filePath, name };
