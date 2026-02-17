@@ -99,20 +99,25 @@ describe("MessageManager Coverage Improvements", () => {
     );
   });
 
-  it("should handle compressMessagesAndUpdateSession and preserve rootSessionId", () => {
+  it("should handle compressMessagesAndUpdateSession and preserve rootSessionId and last 3 messages", () => {
     const initialRootSessionId = messageManager.getRootSessionId();
     messageManager.addUserMessage({ content: "msg1" });
     messageManager.addAssistantMessage("msg2");
     messageManager.addUserMessage({ content: "msg3" });
+    messageManager.addAssistantMessage("msg4");
+    messageManager.addUserMessage({ content: "msg5" });
 
     messageManager.compressMessagesAndUpdateSession("compressed content");
 
     const messages = messageManager.getMessages();
-    expect(messages.length).toBe(1); // only [compress]
+    expect(messages.length).toBe(4); // [compress] + msg3, msg4, msg5
     expect(messages[0].blocks[0].type).toBe("compress");
     expect((messages[0].blocks[0] as { content: string }).content).toBe(
       "compressed content",
     );
+    expect((messages[1].blocks[0] as { content: string }).content).toBe("msg3");
+    expect((messages[2].blocks[0] as { content: string }).content).toBe("msg4");
+    expect((messages[3].blocks[0] as { content: string }).content).toBe("msg5");
     expect(messageManager.getRootSessionId()).toBe(initialRootSessionId);
     expect(messageManager.getSessionId()).not.toBe(initialRootSessionId);
   });

@@ -444,12 +444,15 @@ export class MessageManager {
   }
 
   /**
-   * Compress messages and update session, delete compressed messages, only keep compressed messages
+   * Compress messages and update session, delete compressed messages, only keep compressed messages and last 3 messages
    */
   public compressMessagesAndUpdateSession(
     compressedContent: string,
     usage?: Usage,
   ): void {
+    // Get last 3 messages to preserve
+    const lastThreeMessages = this.messages.slice(-3);
+
     // Create compressed message
     const compressMessage: Message = {
       role: "assistant",
@@ -463,8 +466,8 @@ export class MessageManager {
       ...(usage && { usage }),
     };
 
-    // Build new message array: only keep the compressed message
-    const newMessages: Message[] = [compressMessage];
+    // Build new message array: keep the compressed message and last 3 messages
+    const newMessages: Message[] = [compressMessage, ...lastThreeMessages];
 
     // Update sessionId
     this.setSessionId(generateSessionId());

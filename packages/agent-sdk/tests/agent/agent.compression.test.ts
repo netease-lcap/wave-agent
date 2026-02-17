@@ -470,8 +470,8 @@ describe("Agent Message Compression Tests", () => {
     // Get compressed message list
     const messagesAfterCompression = agent.messages;
 
-    // Verify that the message list now only contains the compressed message
-    expect(messagesAfterCompression.length).toBe(1);
+    // Verify that the message list now contains the compressed message plus the last 3 messages
+    expect(messagesAfterCompression.length).toBe(4);
     const compressedMessage = messagesAfterCompression[0];
     expect(compressedMessage.role).toBe("assistant");
     expect(compressedMessage.blocks[0].type).toBe("compress");
@@ -494,8 +494,8 @@ describe("Agent Message Compression Tests", () => {
     // Verify parameters of the second call
     expect(callAgentCallCount).toBe(2);
 
-    // Verify that messages passed to callAgent include the compressed message plus the new message
-    expect(messagesPassedToCallAgent.length).toBe(2);
+    // Verify that messages passed to callAgent include the compressed message plus the 3 preserved messages plus the new message
+    expect(messagesPassedToCallAgent.length).toBe(5);
 
     // Verify the structure of messages passed to callAgent
     // The first message should be the compressed assistant message
