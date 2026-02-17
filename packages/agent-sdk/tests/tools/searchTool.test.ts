@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { grepTool } from "@/tools/grepTool.js";
+import { searchTool } from "@/tools/searchTool.js";
 import type { ToolContext } from "@/tools/types.js";
 import { TaskManager } from "@/services/taskManager.js";
 import type { ChildProcess } from "child_process";
@@ -29,7 +29,7 @@ vi.mock("../utils/path.js", () => ({
 // Import the mocked modules
 import { spawn } from "child_process";
 
-describe("grepTool", () => {
+describe("searchTool", () => {
   const mockSpawn = vi.mocked(spawn);
   // Helper to create a mock spawn process
   const createMockProcess = (
@@ -102,14 +102,16 @@ describe("grepTool", () => {
   });
 
   it("should be properly configured", () => {
-    expect(grepTool.name).toBe("Grep");
-    expect(grepTool.config.type).toBe("function");
+    expect(searchTool.name).toBe("Search");
+    expect(searchTool.config.type).toBe("function");
     if (
-      grepTool.config.type === "function" &&
-      grepTool.config.function.parameters
+      searchTool.config.type === "function" &&
+      searchTool.config.function.parameters
     ) {
-      expect(grepTool.config.function.name).toBe("Grep");
-      expect(grepTool.config.function.parameters.required).toEqual(["pattern"]);
+      expect(searchTool.config.function.name).toBe("Search");
+      expect(searchTool.config.function.parameters.required).toEqual([
+        "pattern",
+      ]);
     }
   });
 
@@ -117,7 +119,7 @@ describe("grepTool", () => {
     const stdout = "src/index.ts\nsrc/utils.ts\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "export",
         output_mode: "files_with_matches",
@@ -137,7 +139,7 @@ src/utils.ts:1:export const logger = {};
 `;
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "export const",
         output_mode: "content",
@@ -158,7 +160,7 @@ src/utils.ts:3
 `;
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "export",
         output_mode: "count",
@@ -178,7 +180,7 @@ src/utils.ts:1:export const logger = {};
 `;
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "export const",
         output_mode: "content",
@@ -196,7 +198,7 @@ src/utils.ts:1:export const logger = {};
     const stdout = "src/index.ts\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "APPLICATION",
         "-i": true,
@@ -220,7 +222,7 @@ src/utils.ts:1:export const logger = {};
     const stdout = "src/index.ts\nsrc/utils.ts\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "export",
         type: "ts",
@@ -246,7 +248,7 @@ src/utils.ts:1:export const logger = {};
     const stdout = "src/index.ts\nsrc/utils.ts\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "export",
         glob: "*.ts",
@@ -275,7 +277,7 @@ src/index.ts-3-  return new Application();
 `;
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "createApp",
         output_mode: "content",
@@ -303,7 +305,7 @@ src/index.ts:2:export function createApp() {
 `;
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "createApp",
         output_mode: "content",
@@ -323,7 +325,7 @@ src/index.ts-3-  return new Application();
 `;
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "createApp",
         output_mode: "content",
@@ -341,7 +343,7 @@ src/index.ts-3-  return new Application();
     const stdout = "src/index.ts\nsrc/utils.ts\nsrc/other.ts\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "export",
         output_mode: "files_with_matches",
@@ -360,7 +362,7 @@ src/index.ts-3-  return new Application();
     const stdout = "multiline.txt\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "struct.*name",
         multiline: true,
@@ -386,7 +388,7 @@ src/index.ts-3-  return new Application();
     const stdout = "src/index.ts\nsrc/utils.ts\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "export",
         path: "src",
@@ -411,7 +413,7 @@ src/index.ts-3-  return new Application();
     // Mock empty output with exit code 1 (no matches found)
     mockSpawn.mockReturnValueOnce(createMockProcess("", "", 1) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "NONEXISTENT_PATTERN_12345",
       },
@@ -424,14 +426,14 @@ src/index.ts-3-  return new Application();
   });
 
   it("should return error for missing pattern", async () => {
-    const result = await grepTool.execute({}, testContext);
+    const result = await searchTool.execute({}, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("pattern parameter is required");
   });
 
   it("should return error for invalid pattern type", async () => {
-    const result = await grepTool.execute({ pattern: 123 }, testContext);
+    const result = await searchTool.execute({ pattern: 123 }, testContext);
 
     expect(result.success).toBe(false);
     expect(result.error).toContain(
@@ -441,20 +443,22 @@ src/index.ts-3-  return new Application();
 
   it("should format compact parameters correctly", () => {
     const params1 = { pattern: "export" };
-    expect(grepTool.formatCompactParams?.(params1, testContext)).toBe("export");
+    expect(searchTool.formatCompactParams?.(params1, testContext)).toBe(
+      "export",
+    );
 
     const params2 = { pattern: "import", type: "ts" };
-    expect(grepTool.formatCompactParams?.(params2, testContext)).toBe(
+    expect(searchTool.formatCompactParams?.(params2, testContext)).toBe(
       "import ts",
     );
 
     const params3 = { pattern: "console", output_mode: "count" };
-    expect(grepTool.formatCompactParams?.(params3, testContext)).toBe(
+    expect(searchTool.formatCompactParams?.(params3, testContext)).toBe(
       "console [count]",
     );
 
     const params4 = { pattern: "test", type: "js", output_mode: "content" };
-    expect(grepTool.formatCompactParams?.(params4, testContext)).toBe(
+    expect(searchTool.formatCompactParams?.(params4, testContext)).toBe(
       "test js [content]",
     );
   });
@@ -463,7 +467,7 @@ src/index.ts-3-  return new Application();
     const stdout = "src/index.ts\nsrc/utils.ts\nsrc/component.jsx\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "export",
         glob: "**/*.{ts,tsx,js,jsx}",
@@ -482,7 +486,7 @@ src/index.ts-3-  return new Application();
     const stdout = "src/index.ts\nsrc/utils.ts\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "function\\s+\\w+",
         output_mode: "files_with_matches",
@@ -501,7 +505,7 @@ tasks.md:4:- [ ] Create API endpoints
 `;
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "- \\[ \\]",
         output_mode: "content",
@@ -521,7 +525,7 @@ tasks.md:4:- [ ] Create API endpoints
     const stdout = "tasks.md\n";
     mockSpawn.mockReturnValueOnce(createMockProcess(stdout) as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "--verbose",
         output_mode: "files_with_matches",
@@ -553,7 +557,7 @@ tasks.md:4:- [ ] Create API endpoints
 
     mockSpawn.mockReturnValueOnce(mockErrorProcess as ChildProcess);
 
-    const result = await grepTool.execute(
+    const result = await searchTool.execute(
       {
         pattern: "test",
       },

@@ -4,7 +4,7 @@ import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
   GLOB_TOOL_NAME,
-  GREP_TOOL_NAME,
+  SEARCH_TOOL_NAME,
   MULTI_EDIT_TOOL_NAME,
   READ_TOOL_NAME,
   TASK_TOOL_NAME,
@@ -92,7 +92,7 @@ Your strengths:
 - Performing multi-step research tasks
 
 Guidelines:
-- For file searches: Use Grep or Glob when you need to search broadly. Use Read when you know the specific file path.
+- For file searches: Use ${SEARCH_TOOL_NAME} or ${GLOB_TOOL_NAME} when you need to search broadly. Use ${READ_TOOL_NAME} when you know the specific file path.
 - For analysis: Start broad and narrow down. Use multiple search strategies if the first doesn't yield results.
 - Be thorough: Check multiple locations, consider different naming conventions, look for related files.
 - NEVER create files unless they're absolutely necessary for achieving your goal. ALWAYS prefer editing an existing file to creating a new one.
@@ -122,7 +122,7 @@ You will be provided with a set of requirements and optionally a perspective on 
 
 2. **Explore Thoroughly**:
    - Read any files provided to you in the initial prompt
-   - Find existing patterns and conventions using ${GLOB_TOOL_NAME}, ${GREP_TOOL_NAME}, and ${READ_TOOL_NAME}
+   - Find existing patterns and conventions using ${GLOB_TOOL_NAME}, ${SEARCH_TOOL_NAME}, and ${READ_TOOL_NAME}
    - Understand the current architecture
    - Identify similar features as reference
    - Trace through relevant code paths

@@ -10,7 +10,7 @@ import { exitPlanModeTool } from "../tools/exitPlanMode.js";
 import { askUserQuestionTool } from "../tools/askUserQuestion.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
-import { grepTool } from "../tools/grepTool.js";
+import { searchTool } from "../tools/searchTool.js";
 import { lsTool } from "../tools/lsTool.js";
 import { readTool } from "../tools/readTool.js";
 import { lspTool } from "../tools/lspTool.js";
@@ -134,7 +134,7 @@ class ToolManager {
       exitPlanModeTool,
       askUserQuestionTool,
       globTool,
-      grepTool,
+      searchTool,
       lsTool,
       readTool,
       lspTool,

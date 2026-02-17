@@ -6,7 +6,7 @@ import { isBinary, getDisplayPath } from "@/utils/path.js";
 import {
   LS_TOOL_NAME,
   GLOB_TOOL_NAME,
-  GREP_TOOL_NAME,
+  SEARCH_TOOL_NAME,
 } from "../constants/tools.js";
 
 /**
@@ -18,7 +18,7 @@ export const lsTool: ToolPlugin = {
     type: "function",
     function: {
       name: LS_TOOL_NAME,
-      description: `Lists files and directories in a given path. The path parameter must be an absolute path, not a relative path. You can optionally provide an array of glob patterns to ignore with the ignore parameter. You should generally prefer the ${GLOB_TOOL_NAME} and ${GREP_TOOL_NAME} tools, if you know which directories to search.`,
+      description: `Lists files and directories in a given path. The path parameter must be an absolute path, not a relative path. You can optionally provide an array of glob patterns to ignore with the ignore parameter. You should generally prefer the ${GLOB_TOOL_NAME} and ${SEARCH_TOOL_NAME} tools, if you know which directories to search.`,
       parameters: {
         type: "object",
         properties: {
