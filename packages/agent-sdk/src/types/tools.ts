@@ -8,7 +8,6 @@
 export interface AskUserQuestionOption {
   label: string;
   description?: string;
-  isRecommended?: boolean;
 }
 
 export interface AskUserQuestion {
@@ -20,6 +19,10 @@ export interface AskUserQuestion {
 
 export interface AskUserQuestionInput {
   questions: AskUserQuestion[];
+  answers?: Record<string, string>;
+  metadata?: {
+    source?: string;
+  };
 }
 
 /**

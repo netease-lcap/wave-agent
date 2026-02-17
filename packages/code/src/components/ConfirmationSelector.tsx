@@ -346,12 +346,6 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                             : "[ ] "
                           : ""}
                         {option.label}
-                        {!isOther && option.isRecommended && (
-                          <Text color="green" bold>
-                            {" "}
-                            (Recommended)
-                          </Text>
-                        )}
                         {option.description ? ` - ${option.description}` : ""}
                         {isOther && isSelected && (
                           <Text>
