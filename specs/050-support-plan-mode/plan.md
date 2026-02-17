@@ -28,6 +28,7 @@ Implement a "Plan Mode" permission state that allows the LLM to analyze the code
 - [x] Documentation Minimalism: No extra MD docs beyond specs.
 - [x] Quality Gates: `pnpm run type-check` and `pnpm run lint` will be run.
 - [x] Data Model Minimalism: Simple `PlanFile` entity and extended `PermissionMode`.
+- [x] Deterministic Naming: Plan file names are stable within a session chain using `rootSessionId`.
 
 ## Project Structure
 
@@ -58,7 +59,7 @@ packages/
 │   │   ├── types/
 │   │   │   └── permissions.ts        # Add "plan" mode
 │   │   └── utils/
-│   │       └── nameGenerator.ts      # New utility for random names
+│   │       └── nameGenerator.ts      # New utility for deterministic names
 │   └── tests/
 │       └── managers/
 │           ├── permissionManager.plan.test.ts

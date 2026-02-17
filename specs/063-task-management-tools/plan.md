@@ -5,7 +5,7 @@
 
 ## Summary
 
-The primary requirement is to implement a new set of task management tools (`TaskCreate`, `TaskGet`, `TaskUpdate`, `TaskList`) that persist tasks as JSON files in a task-list-specific directory (`~/.wave/tasks/{taskListId}/{taskId}.json`). The `taskListId` is determined by the `WAVE_TASK_LIST_ID` environment variable or a default session ID. Additionally, the legacy `TodoWrite` tool will be decommissioned and removed from the agent's toolset. The technical approach involves creating a new task manager service in `agent-sdk` to handle file-based persistence and updating the tool registry to expose the new tools while removing the old one.
+The primary requirement is to implement a new set of task management tools (`TaskCreate`, `TaskGet`, `TaskUpdate`, `TaskList`) that persist tasks as JSON files in a task-list-specific directory (`~/.wave/tasks/{taskListId}/{taskId}.json`). The `taskListId` is determined by the `WAVE_TASK_LIST_ID` environment variable or the `rootSessionId` of the session chain. Additionally, the legacy `TodoWrite` tool will be decommissioned and removed from the agent's toolset. The technical approach involves creating a new task manager service in `agent-sdk` to handle file-based persistence and updating the tool registry to expose the new tools while removing the old one.
 
 ## Technical Context
 
@@ -88,7 +88,7 @@ packages/agent-sdk/
 ### Step 1: Update TaskManager initialization
 - Modify `Agent` class in `packages/agent-sdk/src/agent.ts` to resolve the `taskListId` during construction:
   1. Check `process.env.WAVE_TASK_LIST_ID`.
-  2. If not set, use `this.messageManager.getSessionId()` as the default.
+  2. If not set, use `this.messageManager.getRootSessionId()` as the default.
 - Initialize `TaskManager` using this resolved `taskListId`.
 - Ensure that the `TaskManager` instance is created only once with this ID, so it remains stable even if `messageManager.getSessionId()` changes later (e.g., during compression).
 

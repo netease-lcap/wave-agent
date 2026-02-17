@@ -14,5 +14,7 @@
 - [x] Add timestamp to each message line in JSONL
 - [x] Implement `handleSessionRestoration` logic
 - [x] Implement `sessions-index.json` for O(1) session listing performance
+- [x] Persist `rootSessionId` in `sessions-index.json` and `SessionMetadata`
+- [x] Ensure `rootSessionId` is preserved across message compressions
 - [x] Cache `firstMessage` content in session index for instant UI display
 - [x] Remove redundant `getFirstMessageContent` calls from CLI to fully leverage index

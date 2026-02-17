@@ -41,6 +41,7 @@ The full data structure returned when loading a session.
 ```typescript
 export interface SessionData {
   id: string;
+  rootSessionId: string; // The ID of the first session in the chain
   messages: Message[];
   metadata: {
     workdir: string;
@@ -56,6 +57,7 @@ The lightweight structure used for listing sessions.
 ```typescript
 export interface SessionMetadata {
   id: string;
+  rootSessionId?: string; // Persisted in the session index
   sessionType: "main" | "subagent";
   subagentType?: string;
   workdir: string;

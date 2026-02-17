@@ -13,10 +13,10 @@ Represents the current restriction level of the system.
 Represents a plan file created during Plan Mode.
 - **Fields**:
   - `path`: Absolute path to the plan file (e.g., `~/.wave/plans/gentle-breeze.md`).
-  - `name`: Random English name of the file.
+  - `name`: Human-readable name (adjective-noun). This name is deterministic within a session chain, generated using the `rootSessionId` as a seed.
   - `createdAt`: Timestamp of creation.
 
 ## State Transitions
 - **default -> acceptEdits**: Triggered by Shift+Tab.
-- **acceptEdits -> plan**: Triggered by Shift+Tab. Creates a new `PlanFile`.
+- **acceptEdits -> plan**: Triggered by Shift+Tab. Determines or reuses a `PlanFile` based on the `rootSessionId`.
 - **plan -> default**: Triggered by Shift+Tab.

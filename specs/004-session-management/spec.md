@@ -67,8 +67,9 @@ As a developer using subagents, I want subagent sessions to be clearly identifie
 - **FR-003**: Working directory paths MUST be encoded to be filesystem-safe, resolving symbolic links and handling special characters.
 - **FR-004**: Encoded directory names MUST be limited to 200 characters, using a hash suffix for longer paths.
 - **FR-005**: Sessions MUST be stored in JSONL (JSON Lines) format, with one JSON object per line representing a message.
-- **FR-006**: Main session files MUST be named using a UUID.
-- **FR-007**: Subagent session files MUST be prefixed with `subagent-`.
+- **FR-006**: Main session files MUST be named using a UUID. The first session ID in a chain MUST be designated as the `rootSessionId` and persisted in the `SessionIndex`.
+- **FR-007**: The `rootSessionId` MUST be preserved across message compressions and session restorations to provide a stable identifier for session-scoped resources (like plan files and task lists).
+- **FR-008**: Subagent session files MUST be prefixed with `subagent-`.
 - **FR-008**: Each message line MUST include a `timestamp` field in ISO 8601 format.
 - **FR-009**: Session metadata MUST be derived from the filename, directory structure, and the last message line.
 - **FR-010**: Session listing MUST be optimized to use `sessions-index.json` to achieve O(1) performance, minimizing I/O.
@@ -81,7 +82,8 @@ As a developer using subagents, I want subagent sessions to be clearly identifie
 ### Key Entities *(include if feature involves data)*
 
 - **Session**: A record of a conversation between a user and an agent.
-    - `id`: UUID of the session.
+    - `id`: UUID of the current session.
+    - `rootSessionId`: UUID of the first session in the chain (persisted across compressions).
     - `type`: 'main' or 'subagent'.
     - `workdir`: The project directory associated with the session.
     - `lastActiveAt`: Timestamp of the last message.
