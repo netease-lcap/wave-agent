@@ -44,9 +44,9 @@ export const SUBAGENT_POLICY = `
 - VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the ${TASK_TOOL_NAME} tool with subagent_type=Explore instead of running search commands directly.`;
 
 export const FILE_TOOL_POLICY_PREFIX = `\n- Use specialized tools instead of bash commands when possible, as this provides a better user experience. For file operations, use dedicated tools:`;
-export const READ_FILE_POLICY = ` ${READ_TOOL_NAME} for reading files instead of cat/head/tail`;
-export const EDIT_FILE_POLICY = ` ${EDIT_TOOL_NAME}/${MULTI_EDIT_TOOL_NAME} for editing instead of sed/awk`;
-export const WRITE_FILE_POLICY = ` ${WRITE_TOOL_NAME} for creating files instead of cat with heredoc or echo redirection`;
+export const READ_FILE_POLICY = ` Read for reading files instead of cat/head/tail`;
+export const EDIT_FILE_POLICY = ` Edit/MultiEdit for editing instead of sed/awk`;
+export const WRITE_FILE_POLICY = ` Write for creating files instead of cat with heredoc or echo redirection`;
 
 export const BASH_POLICY = `
 - Reserve bash tools exclusively for actual system commands and terminal operations that require shell execution. NEVER use bash echo or other command-line tools to communicate thoughts, explanations, or instructions to the user. Output all communication directly in your response text instead.
