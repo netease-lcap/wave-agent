@@ -11,10 +11,10 @@
 - `Bash` and other restricted tools are denied.
 
 ## Decision: Plan File Management
-**Rationale**: A new `PlanManager` in `agent-sdk` will handle the creation of the `~/.wave/plans` directory and the generation of random plan files. This keeps the logic separate from the UI (`InputManager`).
+**Rationale**: A new `PlanManager` in `agent-sdk` will handle the creation of the `~/.wave/plans` directory and the generation of plan files. This keeps the logic separate from the UI (`InputManager`). The plan file name is deterministic within a session chain, using the `rootSessionId` as a seed.
 
-## Decision: Random Name Generator
-**Rationale**: A new utility `packages/agent-sdk/src/utils/nameGenerator.ts` will be implemented using a list of adjectives and nouns to generate random English names like `gentle-breeze.md`.
+## Decision: Deterministic Name Generator
+**Rationale**: A new utility `packages/agent-sdk/src/utils/nameGenerator.ts` will be implemented using a list of adjectives and nouns. It supports seeded generation to ensure the same name is returned for the same `rootSessionId`, providing stability across message compressions.
 
 ## Alternatives Considered
 - **Enforcing read-only in each tool**: Too fragmented and error-prone. Centralizing in `PermissionManager` is cleaner.

@@ -17,7 +17,7 @@
 **Purpose**: Project initialization and basic structure
 
 - [X] T001 [P] Add `plan` to `PermissionMode` type in `packages/agent-sdk/src/types/permissions.ts`
-- [X] T002 [P] Implement random name generator utility in `packages/agent-sdk/src/utils/nameGenerator.ts`
+- [X] T002 [P] Implement deterministic name generator utility in `packages/agent-sdk/src/utils/nameGenerator.ts`
 - [X] T003 [P] Create `PlanManager` to handle directory creation and path generation in `packages/agent-sdk/src/managers/planManager.ts`
 
 ---

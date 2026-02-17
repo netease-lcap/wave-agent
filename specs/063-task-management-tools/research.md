@@ -3,8 +3,8 @@
 ## Decision: Task Persistence and Tool Integration
 
 ### Chosen Approach
-- **Storage**: Use `fs/promises` directly for atomic JSON file operations in `~/.wave/tasks/{sessionId}/{taskId}.json`. This matches the structure found in `~/.claude/tasks/{sessionId}/{taskId}.json`.
-- **Session ID**: Retrieve `sessionId` from the `ToolContext`. In `~/.claude/tasks`, the session ID is a UUID (e.g., `90fccee6-f11e-429f-97ae-b6443e05650f`).
+- **Storage**: Use `fs/promises` directly for atomic JSON file operations in `~/.wave/tasks/{taskListId}/{taskId}.json`. This matches the structure found in `~/.claude/tasks/{sessionId}/{taskId}.json`.
+- **Task List ID**: Retrieve `taskListId` from the `Agent` configuration. It defaults to the `rootSessionId` of the session chain to ensure stability across message compressions.
 - **Task ID**: Use simple numeric strings (e.g., `"1"`, `"2"`) for task IDs within a session, as observed in the Claude implementation.
 - **Tool Registration**: Modify `packages/agent-sdk/src/managers/toolManager.ts` to remove `todoWriteTool` and add the new task tools.
 

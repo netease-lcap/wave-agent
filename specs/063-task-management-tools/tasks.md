@@ -29,7 +29,7 @@
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
 - [X] T004 Implement `TaskManager` service for file-based persistence in `packages/agent-sdk/src/services/taskManager.ts`
-- [X] T005 [P] Add `sessionId` retrieval logic to `ToolContext` in `packages/agent-sdk/src/types.ts`
+- [X] T005 [P] Add `rootSessionId` retrieval logic to `MessageManager` and `Agent` in `packages/agent-sdk/src/`
 - [ ] T006 [P] Create base tool class or helper for task tools in `packages/agent-sdk/src/tools/taskBase.ts`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel

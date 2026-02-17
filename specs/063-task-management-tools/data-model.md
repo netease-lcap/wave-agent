@@ -20,6 +20,7 @@ Represents a single unit of work within a session.
 ### Session
 A logical grouping of tasks, identified by `taskListId`.
 
+- **taskListId**: Defaults to the `rootSessionId` of the session chain to ensure stability across message compressions.
 - **Storage Path**: `~/.wave/tasks/{taskListId}/`
 - **Relationship**: One Session has many Tasks.
 

@@ -66,7 +66,7 @@ As a user, I want the LLM to be explicitly told how to behave in plan mode, so t
 
 - **Directory Creation**: If `~/.wave/plans` does not exist, the system should create it automatically.
 - **Name Collisions**: The random English name generator should minimize the chance of collisions, but if a file already exists, it should handle it (e.g., by generating a new name).
-- **Session Persistence**: If the session is restarted, the system should ideally remember the current plan file if it was in Plan Mode, or start a new one if appropriate.
+- **Session Persistence**: If the session is restarted or messages are compressed, the system MUST reuse the existing plan file path. This is achieved by using a `rootSessionId` (the ID of the first session in the chain) as a seed for deterministic name generation.
 
 ## Requirements *(mandatory)*
 
@@ -76,7 +76,7 @@ As a user, I want the LLM to be explicitly told how to behave in plan mode, so t
 - **FR-002**: Users MUST be able to cycle through permission modes in the following order: default -> acceptEdits -> plan -> default, using the Shift+Tab keyboard shortcut.
 - **FR-003**: When in plan mode, the system MUST restrict the LLM to read-only actions for all files except the designated plan file.
 - **FR-004**: When in plan mode, the system MUST allow the LLM to execute commands.
-- **FR-005**: When plan mode is activated, the system MUST determine a plan file path in `~/.wave/plans/` with a random English name (e.g., `gentle-breeze.md`). The LLM MUST use the `Write` and `Edit` tools to manage the content of this file.
+- **FR-005**: When plan mode is activated, the system MUST determine a plan file path in `~/.wave/plans/` with a human-readable name (adjective-noun format). This name MUST be deterministic within a session chain by using the `rootSessionId` as a seed, ensuring the same plan file is reused even after message compression or session restoration.
 - **FR-006**: When plan mode is active, the system MUST append a specific reminder to the LLM's system prompt:
   ```text
   Plan mode is active. The user indicated that they do not want you to execute yet -- you MUST NOT make any edits, run any non-readonly tools (including changing configs or making commits), or otherwise make any changes to the system. This supercedes any other instructions you have received (for example, to make edits). Instead, you should:
