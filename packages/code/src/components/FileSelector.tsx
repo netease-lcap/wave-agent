@@ -52,7 +52,6 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
         borderBottom={false}
         borderLeft={false}
         borderRight={false}
-        paddingTop={1}
       >
         <Text color="yellow">📁 No files found for "{searchQuery}"</Text>
         <Text dimColor>Press Escape to cancel</Text>
@@ -91,7 +90,6 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
       borderBottom={false}
       borderLeft={false}
       borderRight={false}
-      paddingTop={1}
     >
       <Text color="cyan" bold>
         📁 Select File/Directory{" "}
