@@ -93,9 +93,8 @@ describe("TaskList", () => {
 
     expect(output).toContain("○ Pending Task");
     expect(output).toContain("● In Progress Task");
-    expect(output).toContain("✓ 2 completed tasks");
-    expect(output).not.toContain("Completed Task");
-    expect(output).not.toContain("Deleted Task");
+    expect(output).toContain("✓ Completed Task");
+    expect(output).toContain("✕ Deleted Task");
   });
 
   it("should truncate long task subjects", () => {

@@ -39,14 +39,9 @@ export const TaskList: React.FC = () => {
     return text.slice(0, maxWidth - 3) + "...";
   };
 
-  const visibleTasks = tasks.filter(
-    (task) => task.status !== "completed" && task.status !== "deleted",
-  );
-  const completedCount = tasks.length - visibleTasks.length;
-
   return (
     <Box flexDirection="column">
-      {visibleTasks.map((task) => {
+      {tasks.map((task) => {
         const isDimmed =
           task.status === "completed" || task.status === "deleted";
         const isBlocked = task.blockedBy && task.blockedBy.length > 0;
@@ -70,14 +65,6 @@ export const TaskList: React.FC = () => {
           </Box>
         );
       })}
-      {completedCount > 0 && (
-        <Box gap={1}>
-          <Text color="green">✓</Text>
-          <Text dimColor color="gray">
-            {completedCount} completed {completedCount === 1 ? "task" : "tasks"}
-          </Text>
-        </Box>
-      )}
     </Box>
   );
 };
