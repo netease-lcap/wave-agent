@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Box, useStdout } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
@@ -14,18 +14,6 @@ export const ChatInterface: React.FC = () => {
   const { stdout } = useStdout();
   const [isDetailsTooTall, setIsDetailsTooTall] = useState(false);
   const [wasLastDetailsTooTall, setWasLastDetailsTooTall] = useState(0);
-
-  const handleHeightMeasured = useCallback(
-    (height: number) => {
-      const terminalHeight = stdout?.rows || 24;
-      if (height > terminalHeight - 10) {
-        setIsDetailsTooTall(true);
-      } else {
-        setIsDetailsTooTall(false);
-      }
-    },
-    [stdout?.rows],
-  );
 
   const {
     messages,
@@ -49,6 +37,42 @@ export const ChatInterface: React.FC = () => {
     handleConfirmationCancel: originalHandleConfirmationCancel,
     rewindId,
   } = useChat();
+
+  const [remountKey, setRemountKey] = useState(
+    String(isExpanded) + sessionId + rewindId + wasLastDetailsTooTall,
+  );
+
+  useEffect(() => {
+    const newKey =
+      String(isExpanded) + sessionId + rewindId + wasLastDetailsTooTall;
+    if (newKey !== remountKey) {
+      stdout?.write("\u001b[2J\u001b[0;0H", (err?: Error | null) => {
+        if (err) {
+          console.error("Failed to clear terminal:", err);
+        }
+        setRemountKey(newKey);
+      });
+    }
+  }, [
+    isExpanded,
+    sessionId,
+    rewindId,
+    wasLastDetailsTooTall,
+    remountKey,
+    stdout,
+  ]);
+
+  const handleHeightMeasured = useCallback(
+    (height: number) => {
+      const terminalHeight = stdout?.rows || 24;
+      if (height > terminalHeight - 10) {
+        setIsDetailsTooTall(true);
+      } else {
+        setIsDetailsTooTall(false);
+      }
+    },
+    [stdout?.rows],
+  );
 
   const handleConfirmationCancel = useCallback(() => {
     if (isDetailsTooTall) {
@@ -79,7 +103,7 @@ export const ChatInterface: React.FC = () => {
         isCommandRunning={isCommandRunning}
         isExpanded={isExpanded}
         forceStaticLastMessage={isDetailsTooTall}
-        key={String(isExpanded) + sessionId + rewindId + wasLastDetailsTooTall}
+        key={remountKey}
       />
 
       {(isLoading || isCommandRunning || isCompressing) &&
