@@ -53,7 +53,7 @@ export const MessageList = React.memo(
         : [];
 
     return (
-      <Box flexDirection="column" gap={1}>
+      <Box flexDirection="column" gap={1} paddingBottom={1}>
         {/* Show omitted message count when limiting */}
         {omittedCount > 0 && (
           <Box>
