@@ -102,7 +102,8 @@ describe("TaskList Integration", () => {
       const output = stripAnsiColors(lastFrame() || "");
       expect(output).toContain("○ First Task");
       expect(output).toContain("● Second Task");
-      expect(output).toContain("✓ Third Task");
+      expect(output).toContain("✓ 1 completed task");
+      expect(output).not.toContain("Third Task");
     });
   });
 
@@ -135,7 +136,10 @@ describe("TaskList Integration", () => {
     // Update task status
     onSessionTasksChangeCallback([{ ...mockTasks[0], status: "completed" }]);
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("✓ First Task");
+      expect(stripAnsiColors(lastFrame() || "")).toContain(
+        "✓ 1 completed task",
+      );
+      expect(stripAnsiColors(lastFrame() || "")).not.toContain("First Task");
     });
 
     // Remove all tasks
