@@ -83,6 +83,9 @@ describe("lsTool", () => {
       lsTool.config.function.parameters
     ) {
       expect(lsTool.config.function.name).toBe("LS");
+      expect(lsTool.config.function.description).toBe(
+        "Lists files and directories in a given path.",
+      );
       expect(lsTool.config.function.parameters.required).toEqual(["path"]);
     }
   });

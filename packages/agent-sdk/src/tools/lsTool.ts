@@ -18,7 +18,7 @@ export const lsTool: ToolPlugin = {
     type: "function",
     function: {
       name: LS_TOOL_NAME,
-      description: `Lists files and directories in a given path. The path parameter must be an absolute path, not a relative path. You can optionally provide an array of glob patterns to ignore with the ignore parameter. You should generally prefer the ${GLOB_TOOL_NAME} and ${GREP_TOOL_NAME} tools, if you know which directories to search.`,
+      description: "Lists files and directories in a given path.",
       parameters: {
         type: "object",
         properties: {
@@ -39,6 +39,8 @@ export const lsTool: ToolPlugin = {
       },
     },
   },
+  prompt: () => `
+Lists files and directories in a given path. The path parameter must be an absolute path, not a relative path. You can optionally provide an array of glob patterns to ignore with the ignore parameter. You should generally prefer the ${GLOB_TOOL_NAME} and ${GREP_TOOL_NAME} tools, if you know which directories to search.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,

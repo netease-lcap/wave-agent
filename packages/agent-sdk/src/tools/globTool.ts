@@ -15,7 +15,7 @@ export const globTool: ToolPlugin = {
     function: {
       name: GLOB_TOOL_NAME,
       description:
-        '- Fast file pattern matching tool that works with any codebase size\n- Supports glob patterns like "**/*.js" or "src/**/*.ts"\n- Returns matching file paths sorted by modification time\n- Use this tool when you need to find files by name patterns\n- When you are doing an open ended search that may require multiple rounds of globbing and grepping, use the Agent tool instead\n- You can call multiple tools in a single response. It is always better to speculatively perform multiple searches in parallel if they are potentially useful.',
+        "Fast file pattern matching tool that works with any codebase size",
       parameters: {
         type: "object",
         properties: {

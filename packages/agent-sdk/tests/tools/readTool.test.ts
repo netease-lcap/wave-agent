@@ -93,6 +93,9 @@ describe("readTool", () => {
       readTool.config.function.parameters
     ) {
       expect(readTool.config.function.name).toBe("Read");
+      expect(readTool.config.function.description).toBe(
+        "Read a file from the local filesystem.",
+      );
       expect(readTool.config.function.parameters.required).toEqual([
         "file_path",
       ]);
