@@ -22,7 +22,7 @@ export interface ToolPlugin {
   /**
    * Optional function to provide a prompt to be added to the system prompt
    */
-  prompt?: (context: ToolContext) => string;
+  prompt?: () => string;
 }
 
 export interface ToolResult {

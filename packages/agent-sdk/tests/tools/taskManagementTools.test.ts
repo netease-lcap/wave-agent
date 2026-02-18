@@ -30,19 +30,19 @@ describe("Task Management Tools", () => {
   let context: ToolContext;
 
   it("should have correct tool configurations and prompts", () => {
-    expect(taskCreateTool.prompt?.(context)).toContain(
+    expect(taskCreateTool.prompt?.()).toContain(
       "Use this tool to create a structured task list",
     );
 
-    expect(taskGetTool.prompt?.(context)).toContain(
+    expect(taskGetTool.prompt?.()).toContain(
       "Use this tool to retrieve a task by its ID",
     );
 
-    expect(taskUpdateTool.prompt?.(context)).toContain(
+    expect(taskUpdateTool.prompt?.()).toContain(
       "Use this tool to update a task in the task list",
     );
 
-    expect(taskListTool.prompt?.(context)).toContain(
+    expect(taskListTool.prompt?.()).toContain(
       "Use this tool to list all tasks in the task list",
     );
   });

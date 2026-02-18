@@ -1,4 +1,4 @@
-import { ToolPlugin, ToolContext } from "../tools/types.js";
+import { ToolPlugin } from "../tools/types.js";
 import {
   ASK_USER_QUESTION_TOOL_NAME,
   BASH_TOOL_NAME,
@@ -212,12 +212,7 @@ export function buildSystemPrompt(
 
   for (const tool of tools) {
     if (tool.prompt) {
-      const toolContext: ToolContext = {
-        workdir: options.workdir || "",
-        taskManager:
-          undefined as unknown as import("../services/taskManager.js").TaskManager, // Context might not be fully available here
-      };
-      prompt += tool.prompt(toolContext);
+      prompt += tool.prompt();
     }
   }
 
