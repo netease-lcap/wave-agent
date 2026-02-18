@@ -4,30 +4,21 @@ import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
 import { rgPath } from "@vscode/ripgrep";
 import { getDisplayPath } from "../utils/path.js";
 import {
-  SEARCH_TOOL_NAME,
+  GREP_TOOL_NAME,
   BASH_TOOL_NAME,
   TASK_TOOL_NAME,
 } from "../constants/tools.js";
 
 /**
- * Search tool plugin - powerful search tool based on ripgrep
+ * Grep tool plugin - powerful search tool based on ripgrep
  */
-export const searchTool: ToolPlugin = {
-  name: SEARCH_TOOL_NAME,
+export const grepTool: ToolPlugin = {
+  name: GREP_TOOL_NAME,
   config: {
     type: "function",
     function: {
-      name: SEARCH_TOOL_NAME,
-      description: `A powerful search tool built on ripgrep
-
-  Usage:
-  - ALWAYS use ${SEARCH_TOOL_NAME} for search tasks. NEVER invoke \`grep\` or \`rg\` as a ${BASH_TOOL_NAME} command. The ${SEARCH_TOOL_NAME} tool has been optimized for correct permissions and access.
-  - Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")
-  - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
-  - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts
-  - Use ${TASK_TOOL_NAME} tool for open-ended searches requiring multiple rounds
-  - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\` in Go code)
-  - Multiline matching: By default patterns match within single lines only. For cross-line patterns like \`struct \\{[\\s\\S]*?field\`, use \`multiline: true\``,
+      name: GREP_TOOL_NAME,
+      description: "A powerful search tool built on ripgrep",
       parameters: {
         type: "object",
         properties: {
@@ -99,7 +90,7 @@ export const searchTool: ToolPlugin = {
   prompt: () => `A powerful search tool built on ripgrep
 
   Usage:
-  - ALWAYS use ${SEARCH_TOOL_NAME} for search tasks. NEVER invoke \`grep\` or \`rg\` as a ${BASH_TOOL_NAME} command. The ${SEARCH_TOOL_NAME} tool has been optimized for correct permissions and access.
+  - ALWAYS use ${GREP_TOOL_NAME} for search tasks. NEVER invoke \`grep\` or \`rg\` as a ${BASH_TOOL_NAME} command. The ${GREP_TOOL_NAME} tool has been optimized for correct permissions and access.
   - Supports full regex syntax (e.g., "log.*Error", "function\\s+\\w+")
   - Filter files with glob parameter (e.g., "*.js", "**/*.tsx") or type parameter (e.g., "js", "py", "rust")
   - Output modes: "content" shows matching lines, "files_with_matches" shows only file paths (default), "count" shows match counts

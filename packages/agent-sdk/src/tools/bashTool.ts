@@ -6,7 +6,7 @@ import {
   BASH_TOOL_NAME,
   TASK_OUTPUT_TOOL_NAME,
   GLOB_TOOL_NAME,
-  SEARCH_TOOL_NAME,
+  GREP_TOOL_NAME,
   READ_TOOL_NAME,
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
@@ -52,7 +52,7 @@ Usage notes:
   - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${BASH_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
   - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
-    - Content search: Use ${SEARCH_TOOL_NAME} (NOT grep or rg)
+    - Content search: Use ${GREP_TOOL_NAME} (NOT grep or rg)
     - Read files: Use ${READ_TOOL_NAME} (NOT cat/head/tail)
     - Edit files: Use ${EDIT_TOOL_NAME} (NOT sed/awk)
     - Write files: Use ${WRITE_TOOL_NAME} (NOT echo >/cat <<EOF)
