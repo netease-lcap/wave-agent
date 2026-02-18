@@ -86,6 +86,10 @@ export interface ChatContextType {
   // Rewind functionality
   rewindId: number;
   handleRewindSelect: (index: number) => Promise<void>;
+  getFullMessageThread: () => Promise<{
+    messages: Message[];
+    sessionIds: string[];
+  }>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -495,6 +499,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     }
   }, []);
 
+  const getFullMessageThread = useCallback(async () => {
+    if (agentRef.current) {
+      return await agentRef.current.getFullMessageThread();
+    }
+    return { messages: [], sessionIds: [] };
+  }, []);
+
   // Listen for Ctrl+O hotkey to toggle collapse/expand state and ESC to cancel confirmation
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
@@ -549,6 +560,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     backgroundCurrentTask,
     rewindId,
     handleRewindSelect,
+    getFullMessageThread,
   };
 
   return (

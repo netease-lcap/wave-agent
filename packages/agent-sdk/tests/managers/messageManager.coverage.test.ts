@@ -13,6 +13,19 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
     ...actual,
     createSession: vi.fn().mockResolvedValue(undefined),
     appendMessages: vi.fn().mockResolvedValue(undefined),
+    loadFullMessageThread: vi.fn().mockImplementation(async (sessionId) => ({
+      messages: [],
+      sessionIds: [sessionId],
+    })),
+    loadSessionFromJsonl: vi.fn().mockImplementation(async (sessionId) => ({
+      id: sessionId,
+      messages: [],
+      metadata: {
+        workdir: "/test/workdir",
+        lastActiveAt: new Date().toISOString(),
+        latestTotalTokens: 0,
+      },
+    })),
   };
 });
 
@@ -177,6 +190,21 @@ describe("MessageManager Coverage Improvements", () => {
     messageManager.addUserMessage({ content: "msg1" });
     messageManager.addAssistantMessage("msg2");
     messageManager.addUserMessage({ content: "msg3" });
+
+    const messages = messageManager.getMessages();
+    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValueOnce({
+      messages,
+      sessionIds: [messageManager.getSessionId()],
+    });
+    vi.mocked(sessionService.loadSessionFromJsonl).mockResolvedValue({
+      id: messageManager.getSessionId(),
+      messages,
+      metadata: {
+        workdir: "/test/workdir",
+        lastActiveAt: new Date().toISOString(),
+        latestTotalTokens: 0,
+      },
+    });
 
     await messageManager.truncateHistory(1);
     expect(messageManager.getMessages().length).toBe(1);

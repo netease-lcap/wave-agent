@@ -8,11 +8,21 @@ import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { McpManager } from "../../src/managers/mcpManager.js";
 import type { FileSnapshot } from "../../src/types/reversion.js";
 import type { BackgroundTask } from "../../src/types/processes.js";
+import * as sessionService from "../../src/services/session.js";
 
 vi.mock("../../src/utils/subagentParser.js", () => ({
   loadSubagentConfigurations: vi.fn().mockResolvedValue([]),
   findSubagentByName: vi.fn().mockResolvedValue(null),
 }));
+
+vi.mock("../../src/services/session.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    loadFullMessageThread: vi.fn(),
+    loadSessionFromJsonl: vi.fn(),
+  };
+});
 
 describe("Subagent Rewind Support", () => {
   let parentMessageManager: MessageManager;
@@ -135,6 +145,21 @@ describe("Subagent Rewind Support", () => {
 
     // 3. Truncate history to before the subagent block (index 0 is the assistant message)
     // The subagent block is in the last message (index 0)
+    const messages = parentMessageManager.getMessages();
+    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
+      messages,
+      sessionIds: [parentMessageManager.getSessionId()],
+    });
+    vi.mocked(sessionService.loadSessionFromJsonl).mockResolvedValue({
+      id: parentMessageManager.getSessionId(),
+      messages,
+      metadata: {
+        workdir,
+        lastActiveAt: new Date().toISOString(),
+        latestTotalTokens: 0,
+      },
+    } as sessionService.SessionData);
+
     await parentMessageManager.truncateHistory(0);
 
     // 4. Verify task was stopped
