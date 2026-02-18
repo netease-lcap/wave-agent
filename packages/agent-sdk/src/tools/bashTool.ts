@@ -95,6 +95,9 @@ Usage notes:
       },
     },
   },
+  prompt: () => `
+- Reserve bash tools exclusively for actual system commands and terminal operations that require shell execution. NEVER use bash echo or other command-line tools to communicate thoughts, explanations, or instructions to the user. Output all communication directly in your response text instead.
+- When making multiple bash tool calls, you MUST send a single message with multiple tools calls to run the calls in parallel. For example, if you need to run "git status" and "git diff", send a single message with two tool calls in parallel.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
