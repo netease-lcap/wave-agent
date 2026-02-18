@@ -15,8 +15,8 @@ describe("TaskOutput Tool Abort Handling", () => {
 
   it("should have correct tool configuration and prompt", () => {
     expect(taskOutputTool.name).toBe("TaskOutput");
-    expect(taskOutputTool.prompt?.(context)).toBeDefined();
-    expect(typeof taskOutputTool.prompt?.(context)).toBe("string");
+    expect(taskOutputTool.prompt?.()).toBeDefined();
+    expect(typeof taskOutputTool.prompt?.()).toBe("string");
   });
 
   beforeEach(() => {

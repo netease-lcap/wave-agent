@@ -46,8 +46,8 @@ describe("Task Tool Background Execution", () => {
   });
 
   it("should support run_in_background parameter", async () => {
-    expect(taskTool.prompt?.(mockToolContext)).toBeDefined();
-    expect(typeof taskTool.prompt?.(mockToolContext)).toBe("string");
+    expect(taskTool.prompt?.()).toBeDefined();
+    expect(typeof taskTool.prompt?.()).toBe("string");
     const mockInstance = { subagentId: "gp-test-id" };
 
     vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);

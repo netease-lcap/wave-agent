@@ -47,7 +47,7 @@ describe("exitPlanModeTool", () => {
       "Prompts the user to exit plan mode and start coding",
     );
     expect(exitPlanModeTool.config.type).toBe("function");
-    expect(exitPlanModeTool.prompt?.(mockContext)).toContain(
+    expect(exitPlanModeTool.prompt?.()).toContain(
       "Use this tool when you are in plan mode",
     );
   });
