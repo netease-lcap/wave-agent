@@ -40,6 +40,7 @@ vi.mock("../../src/services/taskManager.js", () => {
         metadata: {},
       },
     ]),
+    setTaskListId: vi.fn(),
   };
   return {
     TaskManager: vi.fn(function () {

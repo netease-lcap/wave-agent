@@ -223,6 +223,15 @@ export class Agent {
     this.messageManager = new MessageManager({
       callbacks: {
         ...callbacks,
+        onSessionIdChange: (sessionId) => {
+          // When session ID changes (e.g. due to compression),
+          // we update the task manager to use the root session ID
+          // to ensure the task list remains consistent.
+          this.taskManager.setTaskListId(
+            this.messageManager.getRootSessionId(),
+          );
+          callbacks.onSessionIdChange?.(sessionId);
+        },
         onSubagentTaskStopRequested: (subagentId) => {
           this.backgroundTaskManager.stopTask(subagentId);
         },
@@ -811,6 +820,12 @@ export class Agent {
 
       if (sessionToRestore) {
         this.messageManager.initializeFromSession(sessionToRestore);
+
+        // Update task manager with the root session ID to ensure continuity across compressions
+        this.taskManager.setTaskListId(
+          sessionToRestore.rootSessionId || sessionToRestore.id,
+        );
+
         // After session is initialized, load tasks for the session
         const tasks = await this.taskManager.listTasks();
         this.options.callbacks?.onSessionTasksChange?.(tasks);
@@ -937,6 +952,9 @@ export class Agent {
 
     // 6. Initialize session state last
     this.messageManager.initializeFromSession(sessionData);
+
+    // Update task manager with the root session ID to ensure continuity across compressions
+    this.taskManager.setTaskListId(sessionData.rootSessionId || sessionData.id);
 
     // 7. Load tasks for the restored session
     const tasks = await this.taskManager.listTasks();

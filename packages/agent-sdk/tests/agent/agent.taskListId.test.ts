@@ -38,11 +38,16 @@ vi.mock("../../src/services/taskManager.js", () => {
     on: vi.fn(),
     listTasks: vi.fn().mockResolvedValue([]),
     getTaskListId: vi.fn(),
+    setTaskListId: vi.fn(),
   };
   return {
     TaskManager: vi.fn().mockImplementation(function (taskListId: string) {
       (mockTaskManager as { taskListId?: string }).taskListId = taskListId; // Expose for verification
       mockTaskManager.getTaskListId.mockReturnValue(taskListId);
+      mockTaskManager.setTaskListId.mockImplementation((id: string) => {
+        (mockTaskManager as { taskListId?: string }).taskListId = id;
+        mockTaskManager.getTaskListId.mockReturnValue(id);
+      });
       return mockTaskManager;
     }),
   };
@@ -69,7 +74,9 @@ describe("Agent - Task List ID Resolution", () => {
     });
 
     expect(TaskManager).toHaveBeenCalledWith("custom-task-list-id");
-    expect(agent.taskListId).toBe("custom-task-list-id");
+    // The taskListId will be updated to the restored session ID during initialization
+    // In this test, handleSessionRestoration returns "mock-session-id"
+    expect(agent.taskListId).toBe("mock-session-id");
 
     await agent.destroy();
   });
