@@ -5,9 +5,7 @@ import {
   EDIT_TOOL_NAME,
   GLOB_TOOL_NAME,
   SEARCH_TOOL_NAME,
-  MULTI_EDIT_TOOL_NAME,
   READ_TOOL_NAME,
-  TASK_TOOL_NAME,
   TASK_CREATE_TOOL_NAME,
   TASK_GET_TOOL_NAME,
   TASK_UPDATE_TOOL_NAME,
@@ -37,20 +35,6 @@ export const TASK_MANAGEMENT_POLICY = `
 You have access to the ${TASK_CREATE_TOOL_NAME}, ${TASK_GET_TOOL_NAME}, ${TASK_UPDATE_TOOL_NAME}, and ${TASK_LIST_TOOL_NAME} tools to help you manage and plan tasks. Use these tools VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress.
 These tools are also EXTREMELY helpful for planning tasks, and for breaking down larger complex tasks into smaller steps. If you do not use this tool when planning, you may forget to do important tasks - and that is unacceptable.
 It is critical that you mark tasks as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.`;
-
-export const SUBAGENT_POLICY = `
-- When doing file search, prefer to use the ${TASK_TOOL_NAME} tool in order to reduce context usage.
-- You should proactively use the ${TASK_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description.
-- VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the ${TASK_TOOL_NAME} tool with subagent_type=Explore instead of running search commands directly.`;
-
-export const FILE_TOOL_POLICY_PREFIX = `\n- Use specialized tools instead of bash commands when possible, as this provides a better user experience. For file operations, use dedicated tools:`;
-export const READ_FILE_POLICY = ` Read for reading files instead of cat/head/tail`;
-export const EDIT_FILE_POLICY = ` Edit/MultiEdit for editing instead of sed/awk`;
-export const WRITE_FILE_POLICY = ` Write for creating files instead of cat with heredoc or echo redirection`;
-
-export const BASH_POLICY = `
-- Reserve bash tools exclusively for actual system commands and terminal operations that require shell execution. NEVER use bash echo or other command-line tools to communicate thoughts, explanations, or instructions to the user. Output all communication directly in your response text instead.
-- When making multiple bash tool calls, you MUST send a single message with multiple tools calls to run the calls in parallel. For example, if you need to run "git status" and "git diff", send a single message with two tool calls to run the calls in parallel.`;
 
 export function buildPlanModePrompt(
   planFilePath: string,
@@ -235,32 +219,6 @@ export function buildSystemPrompt(
       };
       prompt += tool.prompt(toolContext);
     }
-  }
-
-  if (
-    toolNames.has(READ_TOOL_NAME) ||
-    toolNames.has(EDIT_TOOL_NAME) ||
-    toolNames.has(MULTI_EDIT_TOOL_NAME) ||
-    toolNames.has(WRITE_TOOL_NAME)
-  ) {
-    const parts: string[] = [];
-    if (toolNames.has(READ_TOOL_NAME)) {
-      parts.push(READ_FILE_POLICY);
-    }
-    if (toolNames.has(EDIT_TOOL_NAME) || toolNames.has(MULTI_EDIT_TOOL_NAME)) {
-      parts.push(EDIT_FILE_POLICY);
-    }
-    if (toolNames.has(WRITE_TOOL_NAME)) {
-      parts.push(WRITE_FILE_POLICY);
-    }
-
-    if (parts.length > 0) {
-      prompt += FILE_TOOL_POLICY_PREFIX + parts.join(",") + ".";
-    }
-  }
-
-  if (toolNames.has(BASH_TOOL_NAME)) {
-    prompt += BASH_POLICY;
   }
 
   if (options.language) {
