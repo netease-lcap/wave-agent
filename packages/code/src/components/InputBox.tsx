@@ -57,6 +57,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     handleRewindSelect,
     backgroundCurrentTask,
     messages,
+    getFullMessageThread,
   } = useChat();
 
   // Input manager with all input state and functionality (including images)
@@ -168,6 +169,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         messages={messages}
         onSelect={handleRewindSelectWithClose}
         onCancel={handleRewindCancel}
+        getFullMessageThread={getFullMessageThread}
       />
     );
   }

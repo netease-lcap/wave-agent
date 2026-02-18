@@ -29,6 +29,7 @@ import { logger } from "../utils/globalLogger.js";
 export interface SessionData {
   id: string;
   rootSessionId?: string;
+  parentSessionId?: string;
   messages: Message[];
   metadata: {
     workdir: string;
@@ -40,6 +41,7 @@ export interface SessionData {
 export interface SessionMetadata {
   id: string;
   rootSessionId?: string;
+  parentSessionId?: string;
   sessionType: "main" | "subagent";
   subagentType?: string;
   workdir: string;
@@ -103,6 +105,7 @@ async function updateSessionIndex(
     ...rest,
     lastActiveAt: metadata.lastActiveAt.toISOString(),
     firstMessage: metadata.firstMessage || index.sessions[id]?.firstMessage,
+    parentSessionId: metadata.parentSessionId,
   };
   index.lastUpdated = new Date().toISOString();
 
@@ -194,6 +197,7 @@ export async function appendMessages(
   workdir: string,
   sessionType: "main" | "subagent" = "main",
   rootSessionId?: string,
+  parentSessionId?: string,
 ): Promise<void> {
   // Do not save session files in test environment
   if (process.env.NODE_ENV === "test") {
@@ -256,6 +260,7 @@ export async function appendMessages(
   await updateSessionIndex(projectDir.encodedPath, {
     id: sessionId,
     rootSessionId,
+    parentSessionId,
     sessionType,
     workdir,
     lastActiveAt: new Date(lastMessage.timestamp),
@@ -298,8 +303,9 @@ export async function loadSessionFromJsonl(
     // Extract metadata from messages
     const lastMessage = messages[messages.length - 1];
 
-    // Try to get rootSessionId from index
+    // Try to get rootSessionId and parentSessionId from index
     let rootSessionId: string | undefined;
+    let parentSessionId: string | undefined;
     try {
       const encoder = new PathEncoder();
       const projectDir = await encoder.getProjectDirectory(
@@ -310,6 +316,7 @@ export async function loadSessionFromJsonl(
       const indexContent = await fs.readFile(indexPath, "utf8");
       const index = JSON.parse(indexContent) as SessionIndex;
       rootSessionId = index.sessions[sessionId]?.rootSessionId;
+      parentSessionId = index.sessions[sessionId]?.parentSessionId;
     } catch {
       // Ignore index errors
     }
@@ -317,6 +324,7 @@ export async function loadSessionFromJsonl(
     const sessionData: SessionData = {
       id: sessionId,
       rootSessionId: rootSessionId || sessionId,
+      parentSessionId,
       messages: messages.map((msg) => {
         // Remove timestamp property for backward compatibility
         const { timestamp: _ignored, ...messageWithoutTimestamp } = msg;
@@ -861,4 +869,48 @@ export async function handleSessionRestoration(
     console.error("Failed to restore session:", error);
     process.exit(1);
   }
+}
+
+/**
+ * Load the full message thread by following parentSessionId links
+ * @param currentSessionId - The ID of the current session
+ * @param workdir - Working directory for the session
+ * @returns Promise that resolves to an array of all messages in the thread
+ */
+export async function loadFullMessageThread(
+  currentSessionId: string,
+  workdir: string,
+): Promise<{ messages: Message[]; sessionIds: string[] }> {
+  const sessionIds: string[] = [];
+  let currentId: string | undefined = currentSessionId;
+  const allMessages: Message[] = [];
+
+  while (currentId) {
+    const sessionData = await loadSessionFromJsonl(currentId, workdir);
+    if (!sessionData) break;
+
+    sessionIds.unshift(currentId);
+    // Add messages from this session to the beginning of the list
+    // But skip the "compress" block if it's not the first session in our traversal (which is the latest)
+    // Actually, we should probably keep all messages and let the UI/logic handle it.
+    // But wait, if we are concatenating, the "compress" block in session N summarizes session N-1.
+    // So if we have session N-1 and session N, we should probably skip the compress block in session N.
+
+    const messages = sessionData.messages;
+    if (allMessages.length > 0) {
+      // If we already have messages (from "later" sessions),
+      // we are now adding messages from an "earlier" session.
+      // The later session's first message might be a "compress" block.
+      if (allMessages[0].blocks.some((b) => b.type === "compress")) {
+        // Remove the compress block from the later session's messages
+        // because we are now providing the actual messages it summarized.
+        allMessages.shift();
+      }
+    }
+
+    allMessages.unshift(...messages);
+    currentId = sessionData.parentSessionId;
+  }
+
+  return { messages: allMessages, sessionIds };
 }

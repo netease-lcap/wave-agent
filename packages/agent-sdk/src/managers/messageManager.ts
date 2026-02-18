@@ -93,6 +93,7 @@ export class MessageManager {
   // Private state properties
   private sessionId: string;
   private rootSessionId: string;
+  private parentSessionId?: string;
   private messages: Message[];
   private latestTotalTokens: number;
   private userInputHistory: string[];
@@ -133,6 +134,10 @@ export class MessageManager {
 
   public getRootSessionId(): string {
     return this.rootSessionId;
+  }
+
+  public getParentSessionId(): string | undefined {
+    return this.parentSessionId;
   }
 
   public getMessages(): Message[] {
@@ -258,6 +263,7 @@ export class MessageManager {
         this.workdir,
         this.sessionType,
         this.rootSessionId,
+        this.parentSessionId,
       );
 
       // Update the saved message count
@@ -309,6 +315,7 @@ export class MessageManager {
   public initializeFromSession(sessionData: SessionData): void {
     this.setSessionId(sessionData.id);
     this.rootSessionId = sessionData.rootSessionId || sessionData.id;
+    this.parentSessionId = sessionData.parentSessionId;
     this.setMessages([...sessionData.messages]);
     this.updateFilesInContext(sessionData.messages);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
@@ -469,8 +476,10 @@ export class MessageManager {
     // Build new message array: keep the compressed message and last 3 messages
     const newMessages: Message[] = [compressMessage, ...lastThreeMessages];
 
-    // Update sessionId
+    // Update sessionId and parentSessionId
+    const oldSessionId = this.sessionId;
     this.setSessionId(generateSessionId());
+    this.parentSessionId = oldSessionId;
 
     // Set new message list
     this.setMessages(newMessages);
@@ -699,6 +708,14 @@ export class MessageManager {
     this.setMessages(newMessages);
   }
 
+  public async getFullMessageThread(): Promise<{
+    messages: Message[];
+    sessionIds: string[];
+  }> {
+    const { loadFullMessageThread } = await import("../services/session.js");
+    return loadFullMessageThread(this.sessionId, this.workdir);
+  }
+
   /**
    * Truncate history to a specific index and revert file changes.
    * @param index - The index of the user message to truncate to.
@@ -708,23 +725,82 @@ export class MessageManager {
     index: number,
     reversionManager?: import("./reversionManager.js").ReversionManager,
   ): Promise<void> {
-    if (index < 0 || index >= this.messages.length) {
+    const { messages, sessionIds } = await this.getFullMessageThread();
+
+    if (index < 0 || index >= messages.length) {
       throw new Error(`Invalid message index: ${index}`);
     }
 
-    // Identify messages to be removed
-    const messagesToRemove = this.messages.slice(index);
+    // Find which session the index belongs to
+    let targetSessionId = this.sessionId;
+    let targetIndexInSession = index;
+
+    // We need to be careful here because loadFullMessageThread might have removed "compress" blocks
+    // Let's re-calculate based on the actual messages returned.
+    // Actually, it's easier to just load sessions one by one again or keep track of counts.
+
+    // For simplicity, let's assume we want to truncate the WHOLE thread.
+    // If the index is in a previous session, we need to:
+    // 1. Load that session.
+    // 2. Truncate it.
+    // 3. Make it the current session.
+    // 4. Delete/Invalidate subsequent sessions.
+
+    // To correctly map 'index' to a session, we need to know the message count of each session
+    // as they appear in the concatenated 'messages' array.
+
+    let remainingIndex = index;
+    const { loadSessionFromJsonl } = await import("../services/session.js");
+
+    for (const sid of sessionIds) {
+      const sessionData = await loadSessionFromJsonl(sid, this.workdir);
+      if (!sessionData) continue;
+
+      const sessionMessages = sessionData.messages;
+      // If this is not the first session in the thread, it might have a compress block at the start
+      // that was removed in getFullMessageThread.
+      const hasCompressBlock = sessionMessages[0]?.blocks.some(
+        (b) => b.type === "compress",
+      );
+      const effectiveMessages =
+        hasCompressBlock && sid !== sessionIds[0]
+          ? sessionMessages.slice(1)
+          : sessionMessages;
+
+      if (remainingIndex < effectiveMessages.length) {
+        targetSessionId = sid;
+        targetIndexInSession = hasCompressBlock
+          ? remainingIndex + 1
+          : remainingIndex;
+        break;
+      }
+      remainingIndex -= effectiveMessages.length;
+    }
+
+    // Load the target session to perform truncation
+    const targetSessionData = await loadSessionFromJsonl(
+      targetSessionId,
+      this.workdir,
+    );
+    if (!targetSessionData)
+      throw new Error(`Target session ${targetSessionId} not found`);
+
+    // Identify messages to be removed (from the whole thread)
+    const messagesToRemove = messages.slice(index);
     const messageIdsToRemove = messagesToRemove
       .map((m) => m.id as string)
       .filter((id) => !!id);
 
     // Revert file changes if manager is provided
     if (reversionManager && messageIdsToRemove.length > 0) {
-      await reversionManager.revertTo(messageIdsToRemove, this.messages);
+      await reversionManager.revertTo(messageIdsToRemove, messages);
     }
 
-    // Truncate messages in memory
-    const newMessages = this.messages.slice(0, index);
+    // Truncate messages in the target session
+    const newMessagesInSession = targetSessionData.messages.slice(
+      0,
+      targetIndexInSession,
+    );
 
     // Identify subagent tasks to stop
     for (const message of messagesToRemove) {
@@ -735,13 +811,24 @@ export class MessageManager {
       }
     }
 
-    this.setMessages(newMessages);
+    // Update target session file
+    this.sessionId = targetSessionId;
+    this.rootSessionId = targetSessionData.rootSessionId || targetSessionId;
+    this.parentSessionId = targetSessionData.parentSessionId;
+    this.transcriptPath = this.computeTranscriptPath();
 
-    // Update persistence: rewrite the session file
-    await this.rewriteSessionFile(newMessages);
+    await this.rewriteSessionFile(newMessagesInSession);
+
+    // Update in-memory messages to the truncated session messages
+    // We do NOT include ancestor messages here to avoid exceeding context limits.
+    // The 'compress' block at the start of the session (if any) already summarizes them.
+    this.setMessages(newMessagesInSession);
 
     // Update saved message count
-    this.savedMessageCount = newMessages.length;
+    this.savedMessageCount = newMessagesInSession.length;
+
+    // Notify session ID change if it changed
+    this.callbacks.onSessionIdChange?.(this.sessionId);
   }
 
   /**

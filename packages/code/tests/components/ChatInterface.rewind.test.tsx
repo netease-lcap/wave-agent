@@ -58,7 +58,10 @@ describe("ChatInterface Rewind Visibility", () => {
       sessionTasks: [],
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
-    } as ChatContextType);
+      getFullMessageThread: vi
+        .fn()
+        .mockResolvedValue({ messages: [], sessionIds: [] }),
+    } as unknown as ChatContextType);
 
     vi.mocked(useInputManager).mockReturnValue({
       inputText: "",
@@ -129,7 +132,10 @@ describe("ChatInterface Rewind Visibility", () => {
       sessionTasks: [],
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
-    } as ChatContextType);
+      getFullMessageThread: vi
+        .fn()
+        .mockResolvedValue({ messages: [], sessionIds: [] }),
+    } as unknown as ChatContextType);
 
     vi.mocked(useInputManager).mockReturnValue({
       inputText: "",

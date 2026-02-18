@@ -4,9 +4,18 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import { ReversionManager } from "../../src/managers/reversionManager.js";
 import fs from "fs/promises";
 import { Message } from "../../src/types/messaging.js";
+import * as sessionService from "../../src/services/session.js";
 
 vi.mock("fs/promises");
 vi.mock("../../src/managers/reversionManager.js");
+vi.mock("../../src/services/session.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    loadFullMessageThread: vi.fn(),
+    loadSessionFromJsonl: vi.fn(),
+  };
+});
 
 describe("MessageManager History Truncation Integration", () => {
   let messageManager: MessageManager;
@@ -47,6 +56,20 @@ describe("MessageManager History Truncation Integration", () => {
     ];
     messageManager.setMessages(messages as Message[]);
 
+    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
+      messages: messages as Message[],
+      sessionIds: [messageManager.getSessionId()],
+    });
+    vi.mocked(sessionService.loadSessionFromJsonl).mockResolvedValue({
+      id: messageManager.getSessionId(),
+      messages: messages as Message[],
+      metadata: {
+        workdir: "/test/workdir",
+        lastActiveAt: new Date().toISOString(),
+        latestTotalTokens: 0,
+      },
+    } as sessionService.SessionData);
+
     // Truncate from index 1 (removes msg2 and msg3)
     await messageManager.truncateHistory(1, mockReversionManager);
 
@@ -60,6 +83,18 @@ describe("MessageManager History Truncation Integration", () => {
   });
 
   it("should throw error for invalid index", async () => {
+    const messages = [
+      {
+        id: "msg1",
+        role: "user",
+        blocks: [{ type: "text", content: "u1" }],
+      },
+    ];
+    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
+      messages: messages as Message[],
+      sessionIds: [messageManager.getSessionId()],
+    });
+
     await expect(messageManager.truncateHistory(-1)).rejects.toThrow(
       "Invalid message index",
     );

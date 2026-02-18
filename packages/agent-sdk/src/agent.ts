@@ -1241,6 +1241,16 @@ export class Agent {
   }
 
   /**
+   * Get the full message thread including parent sessions
+   */
+  public async getFullMessageThread(): Promise<{
+    messages: Message[];
+    sessionIds: string[];
+  }> {
+    return this.messageManager.getFullMessageThread();
+  }
+
+  /**
    * Get the current plan file path (for testing and UI)
    */
   public getPlanFilePath(): string | undefined {

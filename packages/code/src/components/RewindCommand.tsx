@@ -6,19 +6,41 @@ export interface RewindCommandProps {
   messages: Message[];
   onSelect: (index: number) => void;
   onCancel: () => void;
+  getFullMessageThread?: () => Promise<{
+    messages: Message[];
+    sessionIds: string[];
+  }>;
 }
 
 export const RewindCommand: React.FC<RewindCommandProps> = ({
-  messages,
+  messages: initialMessages,
   onSelect,
   onCancel,
+  getFullMessageThread,
 }) => {
+  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const [isLoading, setIsLoading] = useState(!!getFullMessageThread);
+
+  React.useEffect(() => {
+    if (getFullMessageThread) {
+      getFullMessageThread().then(({ messages: fullMessages }) => {
+        setMessages(fullMessages);
+        setIsLoading(false);
+      });
+    }
+  }, [getFullMessageThread]);
+
   // Filter user messages as checkpoints
   const checkpoints = messages
     .map((msg, index) => ({ msg, index }))
     .filter(({ msg }) => msg.role === "user");
 
   const [selectedIndex, setSelectedIndex] = useState(checkpoints.length - 1);
+
+  // Update selectedIndex when checkpoints change (after loading full thread)
+  React.useEffect(() => {
+    setSelectedIndex(checkpoints.length - 1);
+  }, [checkpoints.length]);
 
   useInput((input, key) => {
     if (key.return) {
@@ -43,6 +65,21 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
       return;
     }
   });
+
+  if (isLoading) {
+    return (
+      <Box
+        flexDirection="column"
+        paddingX={1}
+        borderStyle="single"
+        borderColor="cyan"
+        borderLeft={false}
+        borderRight={false}
+      >
+        <Text color="cyan">Loading full message thread...</Text>
+      </Box>
+    );
+  }
 
   if (checkpoints.length === 0) {
     return (
