@@ -69,7 +69,7 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
     return { tools: tools.reverse(), totalToolCount }; // Reverse to show oldest first, newest last
   };
 
-  const { tools: lastTwoTools, totalToolCount } = getLastTwoTools();
+  const { tools: lastTwoTools } = getLastTwoTools();
 
   // Get the last text message content if completed
   const getLastTextMessage = () => {
@@ -128,19 +128,14 @@ export const SubagentBlock: React.FC<SubagentBlockProps> = ({ block }) => {
 
       {/* Last Text Message Section */}
       {lastTextMessage && (
-        <Box marginTop={1}>
+        <Box>
           <Markdown>{lastTextMessage}</Markdown>
         </Box>
       )}
 
       {/* Tool Names Section - Vertical List */}
       {block.status !== "completed" && lastTwoTools.length > 0 && (
-        <Box flexDirection="column" marginTop={1} gap={1}>
-          {totalToolCount > 2 && (
-            <Text color="gray" dimColor>
-              ...
-            </Text>
-          )}
+        <Box flexDirection="column">
           {lastTwoTools.map((tool, index) => (
             <Box key={index} flexDirection="row">
               <Text color="magenta">🔧 </Text>
