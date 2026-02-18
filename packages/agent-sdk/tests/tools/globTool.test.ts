@@ -60,6 +60,9 @@ describe("globTool", () => {
       globTool.config.function.parameters
     ) {
       expect(globTool.config.function.name).toBe("Glob");
+      expect(globTool.config.function.description).toBe(
+        "Fast file pattern matching tool that works with any codebase size",
+      );
       expect(globTool.config.function.parameters.required).toEqual(["pattern"]);
     }
   });
