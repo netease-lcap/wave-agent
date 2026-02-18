@@ -472,6 +472,11 @@ export class MessageManager {
     // Update sessionId
     this.setSessionId(generateSessionId());
 
+    // Trigger task list update if this is the main session to ensure continuity
+    if (this.sessionType === "main") {
+      this.callbacks.onSessionIdChange?.(this.sessionId);
+    }
+
     // Set new message list
     this.setMessages(newMessages);
 

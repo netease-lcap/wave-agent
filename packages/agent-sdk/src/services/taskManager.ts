@@ -7,7 +7,7 @@ import { logger } from "../utils/globalLogger.js";
 
 export class TaskManager extends EventEmitter {
   private readonly baseDir: string;
-  private readonly taskListId: string;
+  private taskListId: string;
 
   constructor(taskListId: string) {
     super();
@@ -17,6 +17,10 @@ export class TaskManager extends EventEmitter {
 
   public getTaskListId(): string {
     return this.taskListId;
+  }
+
+  public setTaskListId(taskListId: string): void {
+    this.taskListId = taskListId;
   }
 
   private getSessionDir(): string {
