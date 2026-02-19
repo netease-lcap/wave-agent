@@ -80,7 +80,6 @@ export const ChatInterface: React.FC = () => {
         isLoading={isLoading}
         isCommandRunning={isCommandRunning}
         isExpanded={isExpanded}
-        forceStaticLastMessage={isDetailsTooTall}
       />
 
       {(isLoading || isCommandRunning || isCompressing) &&
