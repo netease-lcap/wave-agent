@@ -1,17 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
 import { ToolResultDisplay } from "../../src/components/ToolResultDisplay.js";
 import type { ToolBlock } from "wave-agent-sdk";
-import { ChatContextType, useChat } from "../../src/contexts/useChat.js";
-
-vi.mock("../../src/contexts/useChat.js", () => ({
-  useChat: vi.fn(),
-}));
 
 describe("ToolResultDisplay - CompactParams from Attributes", () => {
-  vi.mocked(useChat).mockReturnValue({
-    isConfirmationVisible: false,
-  } as unknown as ChatContextType);
   it("should display compactParams from attributes when available", () => {
     const block: ToolBlock = {
       type: "tool",

@@ -4,12 +4,6 @@ import { describe, it, expect, vi } from "vitest";
 import { ToolResultDisplay } from "../../src/components/ToolResultDisplay.js";
 
 import { Box, Text } from "ink";
-import { ChatContextType, useChat } from "../../src/contexts/useChat.js";
-
-// Mock useChat
-vi.mock("../../src/contexts/useChat.js", () => ({
-  useChat: vi.fn(),
-}));
 
 // Mock DiffDisplay
 vi.mock("../../src/components/DiffDisplay.js", () => ({
@@ -21,9 +15,6 @@ vi.mock("../../src/components/DiffDisplay.js", () => ({
 }));
 
 describe("ToolResultDisplay", () => {
-  vi.mocked(useChat).mockReturnValue({
-    isConfirmationVisible: false,
-  } as unknown as ChatContextType);
   const mockBlock = {
     type: "tool" as const,
     name: "test_tool",
