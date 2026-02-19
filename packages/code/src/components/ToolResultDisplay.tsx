@@ -3,8 +3,6 @@ import { Box, Text } from "ink";
 import type { ToolBlock } from "wave-agent-sdk";
 import { DiffDisplay } from "./DiffDisplay.js";
 
-import { useChat } from "../contexts/useChat.js";
-
 interface ToolResultDisplayProps {
   block: ToolBlock;
   isExpanded?: boolean;
@@ -14,13 +12,8 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   block,
   isExpanded = false,
 }) => {
-  const { isConfirmationVisible } = useChat();
   const { parameters, result, compactParams, stage, success, error, name } =
     block;
-
-  if (stage === "running" && isConfirmationVisible) {
-    return null;
-  }
 
   // Directly use compactParams
   // (no change needed as we destructured it above)
