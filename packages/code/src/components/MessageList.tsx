@@ -8,17 +8,10 @@ export interface MessageListProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
   isExpanded?: boolean;
-  forceStaticLastMessage?: boolean;
 }
 
 export const MessageList = React.memo(
-  ({
-    messages,
-    isLoading = false,
-    isCommandRunning = false,
-    isExpanded = false,
-    forceStaticLastMessage = false,
-  }: MessageListProps) => {
+  ({ messages, isExpanded = false }: MessageListProps) => {
     // Empty message state
     if (messages.length === 0) {
       return (
@@ -43,14 +36,17 @@ export const MessageList = React.memo(
 
     // Compute which messages to render statically vs dynamically
     const shouldRenderLastDynamic =
-      !forceStaticLastMessage && (isLoading || isCommandRunning);
+      displayMessages.length > 0 &&
+      displayMessages[displayMessages.length - 1].blocks.some(
+        (block) => block.type === "tool" && block.stage !== "end",
+      );
+
     const staticMessages = shouldRenderLastDynamic
       ? displayMessages.slice(0, -1)
       : displayMessages;
-    const dynamicMessages =
-      shouldRenderLastDynamic && displayMessages.length > 0
-        ? [displayMessages[displayMessages.length - 1]]
-        : [];
+    const dynamicMessages = shouldRenderLastDynamic
+      ? [displayMessages[displayMessages.length - 1]]
+      : [];
 
     return (
       <Box flexDirection="column" gap={1} paddingBottom={1}>
