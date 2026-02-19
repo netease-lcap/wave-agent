@@ -120,6 +120,17 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
               });
             }
 
+            // Set up callback to update shortResult with message count and tokens
+            const updateShortResult = () => {
+              const messages = instance.messageManager.getMessages();
+              const tokens = instance.messageManager.getlatestTotalTokens();
+              let shortResult = `${messages.length} msgs`;
+              if (tokens > 0) {
+                shortResult += ` | ${tokens.toLocaleString()} tokens`;
+              }
+              context.onShortResultUpdate?.(shortResult);
+            };
+
             // Create subagent instance and execute task
             const instance = await subagentManager.createInstance(
               configuration,
@@ -129,7 +140,11 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
                 subagent_type,
               },
               run_in_background,
+              updateShortResult,
             );
+
+            // Initial update
+            updateShortResult();
 
             let isBackgrounded = false;
 

@@ -643,6 +643,13 @@ export class AIManager {
                 messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
                 sessionId: this.messageManager.getSessionId(),
                 taskManager: this.taskManager,
+                onShortResultUpdate: (shortResult: string) => {
+                  this.messageManager.updateToolBlock({
+                    id: toolId,
+                    shortResult,
+                    stage: "running", // Keep it in running stage while updating shortResult
+                  });
+                },
               };
 
               // Execute tool

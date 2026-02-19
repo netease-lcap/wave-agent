@@ -67,4 +67,6 @@ export interface ToolContext {
   taskManager: import("../services/taskManager.js").TaskManager;
   /** Current session ID */
   sessionId?: string;
+  /** Callback to update the short result of the current tool block */
+  onShortResultUpdate?: (shortResult: string) => void;
 }

@@ -66,6 +66,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       findSubagent: vi.fn(),
       createInstance: vi.fn(),
       executeTask: vi.fn(),
+      backgroundInstance: vi.fn(),
     } as unknown as SubagentManager;
 
     // Create task tool with mock manager
@@ -99,13 +100,19 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     });
 
     it("should find and execute Explore subagent successfully", async () => {
-      const mockInstance = { subagentId: "test-id" };
+      const mockInstance = {
+        subagentId: "test-id",
+        messageManager: {
+          getMessages: vi.fn(() => []),
+          getlatestTotalTokens: vi.fn(() => 0),
+        },
+      };
 
       vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(
         exploreConfig,
       );
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
-        mockInstance as SubagentInstance,
+        mockInstance as unknown as SubagentInstance,
       );
       vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
         "Search completed successfully",
@@ -129,6 +136,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
           subagent_type: "Explore",
         },
         undefined,
+        expect.any(Function),
       );
       expect(mockSubagentManager.executeTask).toHaveBeenCalledWith(
         mockInstance,
@@ -166,11 +174,17 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     });
 
     it("should find and execute general-purpose subagent successfully", async () => {
-      const mockInstance = { subagentId: "gp-test-id" };
+      const mockInstance = {
+        subagentId: "gp-test-id",
+        messageManager: {
+          getMessages: vi.fn(() => []),
+          getlatestTotalTokens: vi.fn(() => 0),
+        },
+      };
 
       vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
-        mockInstance as SubagentInstance,
+        mockInstance as unknown as SubagentInstance,
       );
       vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
         "Research completed",
@@ -194,13 +208,19 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     });
 
     it("should handle fastModel configuration correctly", async () => {
-      const mockInstance = { subagentId: "test-id" };
+      const mockInstance = {
+        subagentId: "test-id",
+        messageManager: {
+          getMessages: vi.fn(() => []),
+          getlatestTotalTokens: vi.fn(() => 0),
+        },
+      };
 
       vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(
         exploreConfig,
       );
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
-        mockInstance as SubagentInstance,
+        mockInstance as unknown as SubagentInstance,
       );
       vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
         "Task completed",
@@ -248,11 +268,17 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     });
 
     it("should find and execute Plan subagent successfully", async () => {
-      const mockInstance = { subagentId: "plan-test-id" };
+      const mockInstance = {
+        subagentId: "plan-test-id",
+        messageManager: {
+          getMessages: vi.fn(() => []),
+          getlatestTotalTokens: vi.fn(() => 0),
+        },
+      };
 
       vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(planConfig);
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
-        mockInstance as SubagentInstance,
+        mockInstance as unknown as SubagentInstance,
       );
       vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
         "Plan completed successfully\n\n### Critical Files for Implementation\n- src/main.ts",
@@ -276,6 +302,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
           subagent_type: "Plan",
         },
         undefined,
+        expect.any(Function),
       );
       expect(mockSubagentManager.executeTask).toHaveBeenCalledWith(
         mockInstance,
@@ -293,11 +320,17 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     });
 
     it("should handle inherit model configuration correctly", async () => {
-      const mockInstance = { subagentId: "plan-test-id" };
+      const mockInstance = {
+        subagentId: "plan-test-id",
+        messageManager: {
+          getMessages: vi.fn(() => []),
+          getlatestTotalTokens: vi.fn(() => 0),
+        },
+      };
 
       vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(planConfig);
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
-        mockInstance as SubagentInstance,
+        mockInstance as unknown as SubagentInstance,
       );
       vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
         "Plan completed",
@@ -319,11 +352,17 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     });
 
     it("should verify Plan subagent has read-only tools", async () => {
-      const mockInstance = { subagentId: "plan-test-id" };
+      const mockInstance = {
+        subagentId: "plan-test-id",
+        messageManager: {
+          getMessages: vi.fn(() => []),
+          getlatestTotalTokens: vi.fn(() => 0),
+        },
+      };
 
       vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(planConfig);
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
-        mockInstance as SubagentInstance,
+        mockInstance as unknown as SubagentInstance,
       );
       vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
         "Plan completed",
