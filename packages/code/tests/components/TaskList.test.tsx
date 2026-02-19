@@ -97,9 +97,9 @@ describe("TaskList", () => {
     expect(output).toContain("✕ Deleted Task");
   });
 
-  it("should truncate long task subjects", () => {
+  it("should not truncate long task subjects by default", () => {
     const longSubject =
-      "This is a very long task subject that should be truncated because it exceeds the terminal width";
+      "This is a very long task subject that should not be truncated by default";
     const mockTasks: Task[] = [
       {
         id: "1",
@@ -119,9 +119,7 @@ describe("TaskList", () => {
     const { lastFrame } = render(<TaskList />);
     const output = lastFrame();
 
-    expect(output).toContain("...");
-    // The truncated text should be present
-    expect(output).toContain(longSubject.slice(0, 10));
+    expect(output).toContain(longSubject);
   });
 
   it("should render blocked tasks with lock icon and blocking subjects", () => {

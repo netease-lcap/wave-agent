@@ -1,14 +1,11 @@
 import React from "react";
 import { useChat } from "../contexts/useChat.js";
-import { Box, Text, useStdout } from "ink";
+import { Box, Text } from "ink";
 import { useTasks } from "../hooks/useTasks.js";
 
 export const TaskList: React.FC = () => {
   const tasks = useTasks();
   const { isTaskListVisible } = useChat();
-  const { stdout } = useStdout();
-  const terminalWidth = stdout?.columns ?? 80;
-  const maxSubjectWidth = Math.max(20, terminalWidth - 10);
 
   if (tasks.length === 0 || !isTaskListVisible) {
     return null;
@@ -32,13 +29,6 @@ export const TaskList: React.FC = () => {
     }
   };
 
-  const truncate = (text: string, maxWidth: number) => {
-    if (text.length <= maxWidth) {
-      return text;
-    }
-    return text.slice(0, maxWidth - 3) + "...";
-  };
-
   return (
     <Box flexDirection="column">
       {tasks.map((task) => {
@@ -59,9 +49,7 @@ export const TaskList: React.FC = () => {
         return (
           <Box key={task.id} gap={1}>
             {getStatusIcon(task.status, isBlocked)}
-            <Text dimColor={isDimmed}>
-              {truncate(fullText, maxSubjectWidth)}
-            </Text>
+            <Text dimColor={isDimmed}>{fullText}</Text>
           </Box>
         );
       })}
