@@ -90,6 +90,8 @@ export interface ChatContextType {
     messages: Message[];
     sessionIds: string[];
   }>;
+  wasLastDetailsTooTall: number;
+  setWasLastDetailsTooTall: React.Dispatch<React.SetStateAction<number>>;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -182,6 +184,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Rewind state
   const [rewindId, setRewindId] = useState(0);
+
+  // Confirmation too tall state
+  const [wasLastDetailsTooTall, setWasLastDetailsTooTall] = useState(0);
 
   const agentRef = useRef<Agent | null>(null);
 
@@ -561,6 +566,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     rewindId,
     handleRewindSelect,
     getFullMessageThread,
+    wasLastDetailsTooTall,
+    setWasLastDetailsTooTall,
   };
 
   return (
