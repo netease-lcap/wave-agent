@@ -51,7 +51,6 @@ describe("InputManager", () => {
       onSendMessage: vi.fn(),
       onHasSlashCommand: vi.fn(),
       onAbortMessage: vi.fn(),
-      onResetHistoryNavigation: vi.fn(),
     };
 
     // Setup file search mock
@@ -340,47 +339,6 @@ describe("InputManager", () => {
 
       expect(result).toBe(false);
       expect(manager.getInputText()).toBe("");
-    });
-  });
-
-  describe("Input History", () => {
-    beforeEach(() => {
-      manager.setUserInputHistory(["first", "second", "third"]);
-    });
-
-    it("should navigate up in history", () => {
-      const result = manager.navigateHistory("up", "current");
-
-      expect(result.newInput).toBe("third");
-      expect(result.newCursorPosition).toBe(5);
-    });
-
-    it("should navigate down in history", () => {
-      manager.navigateHistory("up", "current");
-      manager.navigateHistory("up", "third");
-
-      const result = manager.navigateHistory("down", "second");
-
-      expect(result.newInput).toBe("third");
-      expect(result.newCursorPosition).toBe(5);
-    });
-
-    it("should restore current input when navigating down from start", () => {
-      manager.navigateHistory("up", "current");
-
-      const result = manager.navigateHistory("down", "third");
-
-      expect(result.newInput).toBe("current");
-      expect(result.newCursorPosition).toBe(7);
-    });
-
-    it("should reset history navigation", () => {
-      manager.navigateHistory("up", "current");
-      manager.resetHistoryNavigation();
-
-      // Should start fresh
-      const result = manager.navigateHistory("up", "new");
-      expect(result.newInput).toBe("third");
     });
   });
 
@@ -787,21 +745,6 @@ describe("InputManager", () => {
       manager.deleteCharAtCursor();
       expect(manager.getInputText()).toBe("test");
       expect(manager.getCursorPosition()).toBe(0);
-    });
-
-    it("should handle navigateHistory down to -2", () => {
-      manager.setUserInputHistory(["one"]);
-      manager.navigateHistory("up", "current"); // index 0, text "one"
-      manager.navigateHistory("down", "one"); // index -1, text "current"
-      const result = manager.navigateHistory("down", "current"); // index -2, text ""
-      expect(result.newInput).toBe("");
-      expect(manager.getCursorPosition()).toBe(0);
-    });
-
-    it("should handle navigateHistory with empty history", () => {
-      manager.setUserInputHistory([]);
-      const result = manager.navigateHistory("up", "");
-      expect(result.newInput).toBe("");
     });
 
     it("should handle handleFileSelect when atPosition is -1", () => {

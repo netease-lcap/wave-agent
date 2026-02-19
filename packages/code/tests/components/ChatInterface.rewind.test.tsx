@@ -67,7 +67,6 @@ describe("ChatInterface Rewind Visibility", () => {
       clearImages: vi.fn(),
       handleInput: mockHandleInput,
       setPermissionMode: vi.fn(),
-      setUserInputHistory: vi.fn(),
       isManagerReady: true,
       showRewindManager: true, // Rewind is visible
     } as unknown as ReturnType<typeof useInputManager>);
@@ -138,7 +137,6 @@ describe("ChatInterface Rewind Visibility", () => {
       clearImages: vi.fn(),
       handleInput: mockHandleInput,
       setPermissionMode: vi.fn(),
-      setUserInputHistory: vi.fn(),
       isManagerReady: true,
       showRewindManager: false, // Rewind is NOT visible
     } as unknown as ReturnType<typeof useInputManager>);

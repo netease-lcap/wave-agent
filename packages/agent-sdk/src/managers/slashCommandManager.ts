@@ -61,8 +61,6 @@ export class SlashCommandManager {
       handler: () => {
         // Clear chat messages
         this.messageManager.clearMessages();
-        // Clear terminal screen
-        process.stdout.write("\x1Bc");
       },
     });
 

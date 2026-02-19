@@ -88,7 +88,6 @@ async function runTest() {
   console.log(`   Messages: ${agent.messages.length}`);
   console.log(`   Total tokens: ${agent.latestTotalTokens}`);
   console.log(`   Is loading: ${agent.isLoading}`);
-  console.log(`   Input history: ${agent.userInputHistory.length} entries`);
 }
 
 async function cleanup() {

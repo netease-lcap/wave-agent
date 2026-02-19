@@ -237,27 +237,6 @@ export const useInputManager = (
     managerRef.current?.handleCancelHistorySearch();
   }, []);
 
-  // Input history methods
-  const setUserInputHistory = useCallback((history: string[]) => {
-    managerRef.current?.setUserInputHistory(history);
-  }, []);
-
-  const navigateHistory = useCallback(
-    (direction: "up" | "down", currentInput: string) => {
-      return (
-        managerRef.current?.navigateHistory(direction, currentInput) || {
-          newInput: currentInput,
-          newCursorPosition: currentInput.length,
-        }
-      );
-    },
-    [],
-  );
-
-  const resetHistoryNavigation = useCallback(() => {
-    managerRef.current?.resetHistoryNavigation();
-  }, []);
-
   // Special character handling
   const handleSpecialCharInput = useCallback((char: string) => {
     managerRef.current?.handleSpecialCharInput(char);
@@ -320,11 +299,6 @@ export const useInputManager = (
     // History search
     handleHistorySearchSelect,
     handleCancelHistorySearch,
-
-    // Input history
-    setUserInputHistory,
-    navigateHistory,
-    resetHistoryNavigation,
 
     // Special handling
     handleSpecialCharInput,

@@ -66,11 +66,6 @@ export class InputManager {
   private showHistorySearch: boolean = false;
   private historySearchQuery: string = "";
 
-  // Input history state
-  private userInputHistory: string[] = [];
-  private historyIndex: number = -1;
-  private historyBuffer: string = "";
-
   // Paste debounce state
   private pasteDebounceTimer: NodeJS.Timeout | null = null;
   private pasteBuffer: string = "";
@@ -425,66 +420,6 @@ export class InputManager {
       return true;
     }
     return false;
-  }
-
-  // Input history methods
-  setUserInputHistory(history: string[]): void {
-    this.userInputHistory = history;
-  }
-
-  navigateHistory(
-    direction: "up" | "down",
-    currentInput: string,
-  ): { newInput: string; newCursorPosition: number } {
-    if (this.historyIndex === -1) {
-      this.historyBuffer = currentInput;
-    }
-
-    if (direction === "up") {
-      if (this.historyIndex < this.userInputHistory.length - 1) {
-        this.historyIndex++;
-      }
-    } else {
-      // Down direction
-      if (this.historyIndex > 0) {
-        this.historyIndex--;
-      } else if (this.historyIndex === 0) {
-        // Go from first history item to draft
-        this.historyIndex = -1;
-      } else if (this.historyIndex === -1) {
-        // Go from draft to empty (beyond history bottom)
-        this.historyIndex = -2;
-      }
-    }
-
-    let newInput: string;
-    if (this.historyIndex === -1) {
-      newInput = this.historyBuffer;
-    } else if (this.historyIndex === -2) {
-      // Beyond history bottom, clear input
-      newInput = "";
-    } else {
-      const historyItem =
-        this.userInputHistory[
-          this.userInputHistory.length - 1 - this.historyIndex
-        ];
-      newInput = historyItem || "";
-    }
-
-    const newCursorPosition = newInput.length;
-
-    this.inputText = newInput;
-    this.cursorPosition = newCursorPosition;
-
-    this.callbacks.onInputTextChange?.(newInput);
-    this.callbacks.onCursorPositionChange?.(newCursorPosition);
-
-    return { newInput, newCursorPosition };
-  }
-
-  resetHistoryNavigation(): void {
-    this.historyIndex = -1;
-    this.historyBuffer = "";
   }
 
   // Getter methods for state
@@ -946,17 +881,6 @@ export class InputManager {
     // Handle Ctrl+B for backgrounding current task
     if (key.ctrl && input === "b") {
       this.callbacks.onBackgroundCurrentTask?.();
-      return true;
-    }
-
-    // Handle up/down keys for history navigation (only when no selector is active)
-    if (key.upArrow && !this.showFileSelector && !this.showCommandSelector) {
-      this.navigateHistory("up", this.inputText);
-      return true;
-    }
-
-    if (key.downArrow && !this.showFileSelector && !this.showCommandSelector) {
-      this.navigateHistory("down", this.inputText);
       return true;
     }
 
