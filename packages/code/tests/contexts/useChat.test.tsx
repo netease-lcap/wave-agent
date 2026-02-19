@@ -182,12 +182,6 @@ describe("ChatProvider", () => {
       expect(lastValue?.latestTotalTokens).toBe(100);
     });
 
-    // Test onUserInputHistoryChange
-    callbacks.onUserInputHistoryChange!(["cmd1"]);
-    await vi.waitFor(() => {
-      expect(lastValue?.userInputHistory).toEqual(["cmd1"]);
-    });
-
     // Test onCompressionStateChange
     callbacks.onCompressionStateChange!(true);
     await vi.waitFor(() => {

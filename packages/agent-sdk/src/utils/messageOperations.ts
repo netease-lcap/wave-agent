@@ -71,26 +71,6 @@ export interface CompleteCommandParams {
 }
 
 /**
- * Extract text content from user messages in the messages array
- * Excludes messages with source HOOK to prevent hook-generated content from entering user history
- */
-export const extractUserInputHistory = (messages: Message[]): string[] => {
-  return messages
-    .filter((message) => message.role === "user")
-    .map((message) => {
-      // Extract text block content, excluding HOOK-sourced blocks
-      const textBlocks = message.blocks.filter(
-        (block) => block.type === "text" && block.source !== MessageSource.HOOK,
-      );
-      return textBlocks
-        .map((block) => (block as { content: string }).content)
-        .join(" ")
-        .trim();
-    })
-    .filter((text) => text.length > 0); // Filter out empty text
-};
-
-/**
  * Convert image file path to base64 format
  * @param imagePath Image file path
  * @returns base64 format image data URL

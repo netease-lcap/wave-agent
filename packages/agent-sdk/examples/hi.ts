@@ -69,7 +69,6 @@ async function main() {
     console.log(`   Messages: ${agent.messages.length}`);
     console.log(`   Total tokens: ${agent.latestTotalTokens}`);
     console.log(`   Is loading: ${agent.isLoading}`);
-    console.log(`   Input history: ${agent.userInputHistory.length} entries`);
   } catch (error) {
     console.error("❌ Error occurred:", error);
   } finally {

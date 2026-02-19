@@ -24,7 +24,6 @@ export interface InputBoxProps {
   isLoading?: boolean;
   isCommandRunning?: boolean;
   workdir?: string;
-  userInputHistory?: string[];
   sendMessage?: (
     message: string,
     images?: Array<{ path: string; mimeType: string }>,
@@ -42,7 +41,6 @@ export interface InputBoxProps {
 export const InputBox: React.FC<InputBoxProps> = ({
   isLoading = false,
   isCommandRunning = false,
-  userInputHistory = [],
   sendMessage = () => {},
   abortMessage = () => {},
   mcpServers = [],
@@ -93,8 +91,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     // Permission mode
     permissionMode,
     setPermissionMode,
-    // Input history
-    setUserInputHistory,
     // Main handler
     handleInput,
     // Manager ready state
@@ -111,11 +107,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
   useEffect(() => {
     setPermissionMode(chatPermissionMode);
   }, [chatPermissionMode, setPermissionMode]);
-
-  // Set user input history when it changes
-  useEffect(() => {
-    setUserInputHistory(userInputHistory);
-  }, [userInputHistory, setUserInputHistory]);
 
   // Use the InputManager's unified input handler
   useInput(async (input, key) => {

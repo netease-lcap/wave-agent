@@ -3,7 +3,6 @@ import {
   updateToolBlockInMessage,
   addErrorBlockToMessage,
   addUserMessageToMessages,
-  extractUserInputHistory,
   addCommandOutputMessage,
   updateCommandOutputInMessage,
   completeCommandInMessage,
@@ -33,7 +32,6 @@ export interface MessageManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
   onSessionIdChange?: (sessionId: string) => void;
   onLatestTotalTokensChange?: (latestTotalTokens: number) => void;
-  onUserInputHistoryChange?: (history: string[]) => void;
   onUsagesChange?: (usages: Usage[]) => void;
   // Incremental callback
   onUserMessageAdded?: (params: UserMessageParams) => void;
@@ -95,7 +93,6 @@ export class MessageManager {
   private rootSessionId: string;
   private messages: Message[];
   private latestTotalTokens: number;
-  private userInputHistory: string[];
   private workdir: string;
   private encodedWorkdir: string; // Cached encoded workdir
   private logger?: Logger; // Add optional logger property
@@ -112,7 +109,6 @@ export class MessageManager {
     this.rootSessionId = this.sessionId;
     this.messages = [];
     this.latestTotalTokens = 0;
-    this.userInputHistory = [];
     this.workdir = options.workdir;
     this.encodedWorkdir = pathEncoder.encodeSync(this.workdir); // Cache encoded workdir
     this.callbacks = options.callbacks;
@@ -141,10 +137,6 @@ export class MessageManager {
 
   public getlatestTotalTokens(): number {
     return this.latestTotalTokens;
-  }
-
-  public getUserInputHistory(): string[] {
-    return [...this.userInputHistory];
   }
 
   public getWorkdir(): string {
@@ -275,17 +267,11 @@ export class MessageManager {
     }
   }
 
-  public setUserInputHistory(userInputHistory: string[]): void {
-    this.userInputHistory = [...userInputHistory];
-    this.callbacks.onUserInputHistoryChange?.(this.userInputHistory);
-  }
-
   /**
-   * Clear messages and input history
+   * Clear messages
    */
   public clearMessages(): void {
     this.setMessages([]);
-    this.setUserInputHistory([]);
     this.setSessionId(generateSessionId());
     this.setlatestTotalTokens(0);
     this.savedMessageCount = 0; // Reset saved message count
@@ -313,30 +299,9 @@ export class MessageManager {
     this.updateFilesInContext(sessionData.messages);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
 
-    // Extract user input history from session messages
-    this.setUserInputHistory(extractUserInputHistory(sessionData.messages));
-
     // Set saved message count to the number of loaded messages since they're already saved
     // This must be done after setSessionId which resets it to 0
     this.savedMessageCount = sessionData.messages.length;
-  }
-
-  // Add to input history
-  public addToInputHistory(input: string): void {
-    // Avoid adding duplicate inputs
-    if (
-      this.userInputHistory.length > 0 &&
-      this.userInputHistory[this.userInputHistory.length - 1] === input
-    ) {
-      return;
-    }
-    // Limit history records, keep the latest 100
-    this.setUserInputHistory([...this.userInputHistory, input].slice(-100));
-  }
-
-  // Clear input history
-  public clearInputHistory(): void {
-    this.setUserInputHistory([]);
   }
 
   // Encapsulated message operation functions

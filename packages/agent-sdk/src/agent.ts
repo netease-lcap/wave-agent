@@ -493,10 +493,6 @@ export class Agent {
     return this.messageManager.getlatestTotalTokens();
   }
 
-  public get userInputHistory(): string[] {
-    return this.messageManager.getUserInputHistory();
-  }
-
   /** Get working directory */
   public get workingDirectory(): string {
     return this.workdir;
@@ -967,12 +963,9 @@ export class Agent {
 
   /** Execute bash command */
   public async executeBashCommand(command: string): Promise<void> {
-    // Add user message to history (but not displayed in UI)
-    this.addToInputHistory(`!${command}`);
     await this.bashManager?.executeCommand(command);
   }
 
-  /** Clear messages and input history */
   public clearMessages(): void {
     this.messageManager.clearMessages();
   }
@@ -982,11 +975,6 @@ export class Agent {
     this.abortAIMessage(); // This will abort tools including Task tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
-  }
-
-  /** Add to input history */
-  private addToInputHistory(input: string): void {
-    this.messageManager.addToInputHistory(input);
   }
 
   /** Interrupt bash command execution */
@@ -1110,8 +1098,6 @@ export class Agent {
           // Execute valid slash command
           await this.slashCommandManager.executeCommand(commandId, args);
 
-          // Add slash command to history
-          this.addToInputHistory(command);
           return;
         }
 
@@ -1120,9 +1106,6 @@ export class Agent {
       }
 
       // Handle normal AI message
-      // Add user message to history
-      this.addToInputHistory(content);
-
       // Add user message first, will automatically sync to UI
       this.messageManager.addUserMessage({
         content,

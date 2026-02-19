@@ -15,7 +15,6 @@ export function createMockCallbacks(): MessageManagerCallbacks {
     onMessagesChange: vi.fn(),
     onSessionIdChange: vi.fn(),
     onLatestTotalTokensChange: vi.fn(),
-    onUserInputHistoryChange: vi.fn(),
     onUsagesChange: vi.fn(),
     onUserMessageAdded: vi.fn(),
     onAssistantMessageAdded: vi.fn(),

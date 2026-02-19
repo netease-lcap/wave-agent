@@ -7,10 +7,8 @@ import {
   completeCommandInMessage,
   addUserMessageToMessages,
   addErrorBlockToMessage,
-  extractUserInputHistory,
 } from "@/utils/messageOperations.js";
 import type { Message } from "@/types/index.js";
-import { MessageSource } from "@/types/index.js";
 
 // Mock fs
 vi.mock("fs", () => ({
@@ -715,98 +713,5 @@ describe("addErrorBlockToMessage", () => {
       type: "text",
       content: "Original",
     });
-  });
-});
-
-describe("extractUserInputHistory", () => {
-  it("should extract text content from user messages", () => {
-    const messages: Message[] = [
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "Hello world" }],
-      },
-      {
-        role: "assistant",
-        blocks: [{ type: "text", content: "Assistant response" }],
-      },
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "Second user message" }],
-      },
-    ];
-
-    const result = extractUserInputHistory(messages);
-
-    expect(result).toEqual(["Hello world", "Second user message"]);
-  });
-
-  it("should exclude text blocks with HOOK source from user history", () => {
-    const messages: Message[] = [
-      {
-        role: "user",
-        blocks: [
-          { type: "text", content: "User input", source: MessageSource.USER },
-        ],
-      },
-      {
-        role: "user",
-        blocks: [
-          { type: "text", content: "Hook message", source: MessageSource.HOOK },
-        ],
-      },
-      {
-        role: "user",
-        blocks: [
-          { type: "text", content: "Regular message" }, // No source specified
-          {
-            type: "text",
-            content: "Another hook message",
-            source: MessageSource.HOOK,
-          },
-        ],
-      },
-    ];
-
-    const result = extractUserInputHistory(messages);
-
-    expect(result).toEqual(["User input", "Regular message"]);
-  });
-
-  it("should filter out empty text content", () => {
-    const messages: Message[] = [
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "" }],
-      },
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "   " }], // Whitespace only
-      },
-      {
-        role: "user",
-        blocks: [{ type: "text", content: "Valid content" }],
-      },
-    ];
-
-    const result = extractUserInputHistory(messages);
-
-    expect(result).toEqual(["Valid content"]);
-  });
-
-  it("should handle mixed block types and extract only text blocks", () => {
-    const messages: Message[] = [
-      {
-        role: "user",
-        blocks: [
-          { type: "text", content: "Text content" },
-          { type: "error", content: "Error content" },
-          { type: "text", content: "More text" },
-        ],
-      },
-    ];
-
-    const result = extractUserInputHistory(messages);
-
-    expect(result).toEqual(["Text content More text"]);
   });
 });

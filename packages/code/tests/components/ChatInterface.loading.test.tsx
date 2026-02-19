@@ -45,7 +45,6 @@ describe("ChatInterface Loading State", () => {
     isManagerReady: true,
     showRewindManager: false,
     setPermissionMode: vi.fn(),
-    setUserInputHistory: vi.fn(),
   };
 
   it("should show loading indicator when isLoading is true", () => {

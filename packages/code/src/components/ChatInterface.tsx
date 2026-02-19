@@ -19,7 +19,6 @@ export const ChatInterface: React.FC = () => {
     messages,
     isLoading,
     isCommandRunning,
-    userInputHistory,
     isCompressing,
     sendMessage,
     abortMessage,
@@ -142,7 +141,6 @@ export const ChatInterface: React.FC = () => {
         <InputBox
           isLoading={isLoading}
           isCommandRunning={isCommandRunning}
-          userInputHistory={userInputHistory}
           sendMessage={sendMessage}
           abortMessage={abortMessage}
           mcpServers={mcpServers}

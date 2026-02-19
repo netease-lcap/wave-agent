@@ -31,7 +31,6 @@ export interface ChatContextType {
   isLoading: boolean;
   isCommandRunning: boolean;
   isCompressing: boolean;
-  userInputHistory: string[];
   // Message display state
   isExpanded: boolean;
   isTaskListVisible: boolean;
@@ -123,7 +122,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [sessionId, setSessionId] = useState("");
   const [isCommandRunning, setIsCommandRunning] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
-  const [userInputHistory, setUserInputHistory] = useState<string[]>([]);
 
   // MCP State
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
@@ -224,9 +222,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onLatestTotalTokensChange: (tokens) => {
           setlatestTotalTokens(tokens);
         },
-        onUserInputHistoryChange: (history) => {
-          setUserInputHistory([...history]);
-        },
         onCompressionStateChange: (isCompressingState) => {
           setIsCompressing(isCompressingState);
         },
@@ -303,7 +298,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setlatestTotalTokens(agent.latestTotalTokens);
         setIsCommandRunning(agent.isCommandRunning);
         setIsCompressing(agent.isCompressing);
-        setUserInputHistory(agent.userInputHistory);
         setPermissionModeState(agent.getPermissionMode());
 
         // Get initial MCP servers state
@@ -525,7 +519,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     messages,
     isLoading,
     isCommandRunning,
-    userInputHistory,
     isExpanded,
     isTaskListVisible,
     setIsTaskListVisible,
