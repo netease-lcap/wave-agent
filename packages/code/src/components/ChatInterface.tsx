@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import { Box, useStdout } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
@@ -13,7 +13,6 @@ import type { PermissionDecision } from "wave-agent-sdk";
 export const ChatInterface: React.FC = () => {
   const { stdout } = useStdout();
   const [isDetailsTooTall, setIsDetailsTooTall] = useState(false);
-  const [wasLastDetailsTooTall, setWasLastDetailsTooTall] = useState(0);
 
   const {
     messages,
@@ -34,32 +33,8 @@ export const ChatInterface: React.FC = () => {
     confirmingTool,
     handleConfirmationDecision,
     handleConfirmationCancel: originalHandleConfirmationCancel,
-    rewindId,
+    setWasLastDetailsTooTall,
   } = useChat();
-
-  const [remountKey, setRemountKey] = useState(
-    String(isExpanded) + sessionId + rewindId + wasLastDetailsTooTall,
-  );
-
-  useEffect(() => {
-    const newKey =
-      String(isExpanded) + sessionId + rewindId + wasLastDetailsTooTall;
-    if (newKey !== remountKey) {
-      stdout?.write("\u001b[2J\u001b[0;0H", (err?: Error | null) => {
-        if (err) {
-          console.error("Failed to clear terminal:", err);
-        }
-        setRemountKey(newKey);
-      });
-    }
-  }, [
-    isExpanded,
-    sessionId,
-    rewindId,
-    wasLastDetailsTooTall,
-    remountKey,
-    stdout,
-  ]);
 
   const handleHeightMeasured = useCallback(
     (height: number) => {
@@ -79,7 +54,11 @@ export const ChatInterface: React.FC = () => {
       setIsDetailsTooTall(false);
     }
     originalHandleConfirmationCancel();
-  }, [isDetailsTooTall, originalHandleConfirmationCancel]);
+  }, [
+    isDetailsTooTall,
+    originalHandleConfirmationCancel,
+    setWasLastDetailsTooTall,
+  ]);
 
   const wrappedHandleConfirmationDecision = useCallback(
     (decision: PermissionDecision) => {
@@ -89,7 +68,7 @@ export const ChatInterface: React.FC = () => {
       }
       handleConfirmationDecision(decision);
     },
-    [isDetailsTooTall, handleConfirmationDecision],
+    [isDetailsTooTall, handleConfirmationDecision, setWasLastDetailsTooTall],
   );
 
   if (!sessionId) return null;
@@ -102,7 +81,6 @@ export const ChatInterface: React.FC = () => {
         isCommandRunning={isCommandRunning}
         isExpanded={isExpanded}
         forceStaticLastMessage={isDetailsTooTall}
-        key={remountKey}
       />
 
       {(isLoading || isCommandRunning || isCompressing) &&

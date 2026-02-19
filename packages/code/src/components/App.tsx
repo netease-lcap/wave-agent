@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { useStdout } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
-import { ChatProvider } from "../contexts/useChat.js";
+import { ChatProvider, useChat } from "../contexts/useChat.js";
 import { AppProvider } from "../contexts/useAppConfig.js";
 
 interface AppProps {
@@ -16,9 +17,32 @@ const AppWithProviders: React.FC<{
 }> = ({ bypassPermissions, pluginDirs }) => {
   return (
     <ChatProvider bypassPermissions={bypassPermissions} pluginDirs={pluginDirs}>
-      <ChatInterface />
+      <ChatInterfaceWithRemount />
     </ChatProvider>
   );
+};
+
+const ChatInterfaceWithRemount: React.FC = () => {
+  const { stdout } = useStdout();
+  const { isExpanded, rewindId, wasLastDetailsTooTall } = useChat();
+
+  const [remountKey, setRemountKey] = useState(
+    String(isExpanded) + rewindId + wasLastDetailsTooTall,
+  );
+
+  useEffect(() => {
+    const newKey = String(isExpanded) + rewindId + wasLastDetailsTooTall;
+    if (newKey !== remountKey) {
+      stdout?.write("\u001b[2J\u001b[0;0H", (err?: Error | null) => {
+        if (err) {
+          console.error("Failed to clear terminal:", err);
+        }
+        setRemountKey(newKey);
+      });
+    }
+  }, [isExpanded, rewindId, wasLastDetailsTooTall, remountKey, stdout]);
+
+  return <ChatInterface key={remountKey} />;
 };
 
 export const App: React.FC<AppProps> = ({
