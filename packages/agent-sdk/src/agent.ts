@@ -419,6 +419,7 @@ export class Agent {
       messageManager: this.messageManager,
       aiManager: this.aiManager,
       backgroundTaskManager: this.backgroundTaskManager,
+      taskManager: this.taskManager,
       workdir: this.workdir,
       logger: this.logger,
     });

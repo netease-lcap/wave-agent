@@ -4,6 +4,7 @@ import { HookManager } from "../src/managers/hookManager.js";
 import { LspManager } from "../src/managers/lspManager.js";
 import { McpManager } from "../src/managers/mcpManager.js";
 import { SlashCommandManager } from "../src/managers/slashCommandManager.js";
+import { TaskManager } from "../src/services/taskManager.js";
 import { MessageManager } from "../src/managers/messageManager.js";
 import { AIManager } from "../src/managers/aiManager.js";
 import { Logger, LspConfig, McpServerStatus } from "../src/types/index.js";
@@ -35,6 +36,7 @@ async function verify() {
     backgroundTaskManager: {
       getAllTasks: () => [],
     } as unknown as BackgroundTaskManager,
+    taskManager: new TaskManager("test-task-list"),
     workdir,
     logger,
   });

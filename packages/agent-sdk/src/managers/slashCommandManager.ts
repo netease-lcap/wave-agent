@@ -1,6 +1,7 @@
 import type { MessageManager } from "./messageManager.js";
 import type { AIManager } from "./aiManager.js";
 import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
+import type { TaskManager } from "../services/taskManager.js";
 import type {
   SlashCommand,
   CustomSlashCommand,
@@ -28,6 +29,7 @@ export interface SlashCommandManagerOptions {
   messageManager: MessageManager;
   aiManager: AIManager;
   backgroundTaskManager: BackgroundTaskManager;
+  taskManager: TaskManager;
   workdir: string;
   logger?: Logger;
 }
@@ -38,6 +40,7 @@ export class SlashCommandManager {
   private messageManager: MessageManager;
   private aiManager: AIManager;
   private backgroundTaskManager: BackgroundTaskManager;
+  private taskManager: TaskManager;
   private workdir: string;
   private logger?: Logger;
 
@@ -45,6 +48,7 @@ export class SlashCommandManager {
     this.messageManager = options.messageManager;
     this.aiManager = options.aiManager;
     this.backgroundTaskManager = options.backgroundTaskManager;
+    this.taskManager = options.taskManager;
     this.workdir = options.workdir;
     this.logger = options.logger;
 
@@ -61,6 +65,13 @@ export class SlashCommandManager {
       handler: () => {
         // Clear chat messages
         this.messageManager.clearMessages();
+
+        // Reset task list if WAVE_TASK_LIST_ID is not set
+        if (!process.env.WAVE_TASK_LIST_ID) {
+          const newTaskListId = this.messageManager.getRootSessionId();
+          this.taskManager.setTaskListId(newTaskListId);
+          this.taskManager.emit("tasksChange", newTaskListId);
+        }
       },
     });
 
