@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useStdout } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
 import { ChatProvider, useChat } from "../contexts/useChat.js";
@@ -24,23 +24,46 @@ const AppWithProviders: React.FC<{
 
 const ChatInterfaceWithRemount: React.FC = () => {
   const { stdout } = useStdout();
-  const { isExpanded, rewindId, wasLastDetailsTooTall } = useChat();
+  const { isExpanded, rewindId, wasLastDetailsTooTall, sessionId } = useChat();
 
   const [remountKey, setRemountKey] = useState(
     String(isExpanded) + rewindId + wasLastDetailsTooTall,
   );
 
+  const prevSessionId = useRef(sessionId);
+
   useEffect(() => {
-    const newKey = String(isExpanded) + rewindId + wasLastDetailsTooTall;
+    let newKey = String(isExpanded) + rewindId + wasLastDetailsTooTall;
+
+    const isSessionChanged =
+      prevSessionId.current && sessionId && prevSessionId.current !== sessionId;
+
+    if (isSessionChanged) {
+      newKey += sessionId;
+    }
+
     if (newKey !== remountKey) {
       stdout?.write("\u001b[2J\u001b[0;0H", (err?: Error | null) => {
         if (err) {
           console.error("Failed to clear terminal:", err);
         }
-        setRemountKey(newKey);
+        setTimeout(() => {
+          setRemountKey(newKey);
+        }, 100);
       });
     }
-  }, [isExpanded, rewindId, wasLastDetailsTooTall, remountKey, stdout]);
+
+    if (sessionId) {
+      prevSessionId.current = sessionId;
+    }
+  }, [
+    isExpanded,
+    rewindId,
+    wasLastDetailsTooTall,
+    sessionId,
+    remountKey,
+    stdout,
+  ]);
 
   return <ChatInterface key={remountKey} />;
 };
