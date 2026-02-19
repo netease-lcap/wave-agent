@@ -91,8 +91,11 @@ As a system maintainer, I want to remove the legacy TodoWrite tool so that the a
 - **FR-011**: The system MUST update internal documentation and system prompts to remove references to `TodoWrite`.
 - **FR-012**: The system MUST determine `taskListId` using the following priority:
   1. Value of `WAVE_TASK_LIST_ID` environment variable.
-  2. Fallback to the initial `sessionId` provided by the `MessageManager` at agent initialization.
+  2. Fallback to the `rootSessionId` provided by the `MessageManager`.
 - **FR-013**: The `taskListId` MUST remain stable for the lifetime of the session chain. This is achieved by using the `rootSessionId` (the ID of the first session in the chain) as the default `taskListId`. Even if the `sessionId` changes (e.g., due to message compression), the `taskListId` MUST NOT change.
+- **FR-017**: When the `/clear` command is executed:
+  - If `WAVE_TASK_LIST_ID` is NOT set, the `rootSessionId` MUST be reset to the new `sessionId`, and the `taskListId` MUST be updated to this new `rootSessionId`. This effectively starts a fresh task list for the new session.
+  - If `WAVE_TASK_LIST_ID` IS set, the `taskListId` MUST NOT be changed, and the existing task list MUST be preserved.
 - **FR-014**: The `ToolPlugin` interface MUST support a `prompt` function to allow tools to contribute dynamically to the system prompt.
 - **FR-015**: Task management tools MUST provide detailed behavioral instructions via the `ToolPlugin.prompt` property.
 - **FR-016**: `TaskUpdate` MUST support merging metadata, where setting a key to `null` deletes it.

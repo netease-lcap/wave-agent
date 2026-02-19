@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { existsSync, readdirSync, statSync } from "fs";
@@ -167,6 +168,7 @@ describe("SlashCommandManager Nested Command Integration", () => {
       aiManager,
       backgroundTaskManager:
         backgroundTaskManager as unknown as BackgroundTaskManager,
+      taskManager: new TaskManager("test-task-list"),
       workdir: mockWorkdir,
     });
   }

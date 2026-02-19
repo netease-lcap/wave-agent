@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
+import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { CustomSlashCommand, TextBlock } from "../../src/types/index.js";
@@ -47,6 +48,7 @@ describe("SlashCommandManager", () => {
       aiManager,
       backgroundTaskManager:
         backgroundTaskManager as unknown as BackgroundTaskManager,
+      taskManager: new TaskManager("test-task-list"),
       workdir: "/test/workdir",
     });
   });
