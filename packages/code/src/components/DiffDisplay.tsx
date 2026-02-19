@@ -109,6 +109,15 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
 
       changes.forEach((change, changeIndex) => {
         try {
+          // Add ellipsis between non-contiguous edits in MultiEdit
+          if (toolName === MULTI_EDIT_TOOL_NAME && changeIndex > 0) {
+            allElements.push(
+              <Box key={`multi-edit-separator-${changeIndex}`}>
+                <Text color="gray">...</Text>
+              </Box>,
+            );
+          }
+
           // Get line-level diff to understand the structure
           const lineDiffs = diffLines(
             change.oldContent || "",
