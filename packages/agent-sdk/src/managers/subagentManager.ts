@@ -68,6 +68,7 @@ export interface SubagentInstance {
   messages: Message[];
   subagentType: string; // Store the subagent type for hook context
   backgroundTaskId?: string; // ID of the background task if transitioned
+  onUpdate?: () => void; // Optional callback for real-time updates
 }
 
 export interface SubagentManagerOptions {
@@ -176,6 +177,7 @@ export class SubagentManager {
       subagent_type: string;
     },
     runInBackground?: boolean,
+    onUpdate?: () => void,
   ): Promise<SubagentInstance> {
     if (!this.parentToolManager) {
       throw new Error(
@@ -249,6 +251,7 @@ export class SubagentManager {
       status: "initializing",
       messages: [],
       subagentType: parameters.subagent_type, // Store the subagent type
+      onUpdate,
     };
 
     this.instances.set(subagentId, instance);
@@ -726,6 +729,8 @@ export class SubagentManager {
         const instance = this.instances.get(subagentId);
         if (instance) {
           instance.messages = messages;
+          // Trigger the onUpdate callback if provided
+          instance.onUpdate?.();
           // Forward subagent message changes to parent via callbacks
           if (this.callbacks?.onSubagentMessagesChange) {
             this.callbacks.onSubagentMessagesChange(subagentId, messages);
@@ -741,6 +746,11 @@ export class SubagentManager {
       },
 
       onLatestTotalTokensChange: (tokens: number) => {
+        const instance = this.instances.get(subagentId);
+        if (instance) {
+          // Trigger the onUpdate callback if provided
+          instance.onUpdate?.();
+        }
         // Forward latest total tokens to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentLatestTotalTokensChange) {
           this.callbacks.onSubagentLatestTotalTokensChange(subagentId, tokens);

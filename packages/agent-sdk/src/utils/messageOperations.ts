@@ -22,7 +22,7 @@ export interface AddUserMessageParams extends UserMessageParams {
 export interface UpdateToolBlockParams {
   messages: Message[];
   id: string;
-  parameters: string;
+  parameters?: string;
   result?: string;
   success?: boolean;
   error?: string;

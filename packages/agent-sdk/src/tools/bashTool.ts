@@ -306,13 +306,17 @@ Usage notes:
 
       child.stdout?.on("data", (data) => {
         if (!isAborted && !isBackgrounded) {
-          outputBuffer += stripAnsiColors(data.toString());
+          const chunk = stripAnsiColors(data.toString());
+          outputBuffer += chunk;
+          context.onShortResultUpdate?.(chunk.trim().split("\n").pop() || "");
         }
       });
 
       child.stderr?.on("data", (data) => {
         if (!isAborted && !isBackgrounded) {
-          errorBuffer += stripAnsiColors(data.toString());
+          const chunk = stripAnsiColors(data.toString());
+          errorBuffer += chunk;
+          context.onShortResultUpdate?.(chunk.trim().split("\n").pop() || "");
         }
       });
 

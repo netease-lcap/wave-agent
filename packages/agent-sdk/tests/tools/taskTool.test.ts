@@ -39,6 +39,7 @@ describe("Task Tool Background Execution", () => {
       findSubagent: vi.fn(),
       createInstance: vi.fn(),
       executeTask: vi.fn(),
+      backgroundInstance: vi.fn(),
     } as unknown as SubagentManager;
 
     // Create task tool with mock manager
@@ -48,11 +49,17 @@ describe("Task Tool Background Execution", () => {
   it("should support run_in_background parameter", async () => {
     expect(taskTool.prompt?.()).toBeDefined();
     expect(typeof taskTool.prompt?.()).toBe("string");
-    const mockInstance = { subagentId: "gp-test-id" };
+    const mockInstance = {
+      subagentId: "gp-test-id",
+      messageManager: {
+        getMessages: vi.fn(() => []),
+        getlatestTotalTokens: vi.fn(() => 0),
+      },
+    };
 
     vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
     vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
-      mockInstance as SubagentInstance,
+      mockInstance as unknown as SubagentInstance,
     );
     vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
       "task_12345", // Returns task ID when background is true
