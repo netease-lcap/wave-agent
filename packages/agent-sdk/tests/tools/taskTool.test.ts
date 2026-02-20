@@ -51,6 +51,7 @@ describe("Task Tool Background Execution", () => {
     expect(typeof taskTool.prompt?.()).toBe("string");
     const mockInstance = {
       subagentId: "gp-test-id",
+      lastTools: [],
       messageManager: {
         getMessages: vi.fn(() => []),
         getlatestTotalTokens: vi.fn(() => 0),
