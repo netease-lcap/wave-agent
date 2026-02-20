@@ -49,17 +49,9 @@ export const MessageList = React.memo(
     const hasRunningCommand = lastMessage?.blocks.some(
       (block) => block.type === "command_output" && block.isRunning,
     );
-    const hasActiveSubagent = lastMessage?.blocks.some(
-      (block) => block.type === "subagent" && block.status === "active",
-    );
-
     const shouldRenderLastDynamic =
       !forceStaticLastMessage &&
-      (isLoading ||
-        isCommandRunning ||
-        hasNonEndTool ||
-        hasRunningCommand ||
-        hasActiveSubagent);
+      (isLoading || isCommandRunning || hasNonEndTool || hasRunningCommand);
     const staticMessages = shouldRenderLastDynamic
       ? displayMessages.slice(0, -1)
       : displayMessages;

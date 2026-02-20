@@ -120,14 +120,33 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
               });
             }
 
-            // Set up callback to update shortResult with message count and tokens
+            // Set up callback to update shortResult with tool names, tool count and tokens
             const updateShortResult = () => {
               const messages = instance.messageManager.getMessages();
               const tokens = instance.messageManager.getlatestTotalTokens();
-              let shortResult = `${messages.length} msgs`;
+              const lastTools = instance.lastTools;
+
+              // Count tool blocks in messages
+              let toolCount = 0;
+              messages.forEach((msg) => {
+                msg.blocks.forEach((block) => {
+                  if (block.type === "tool") {
+                    toolCount++;
+                  }
+                });
+              });
+
+              let shortResult = "";
+              if (lastTools.length > 0) {
+                shortResult += `${lastTools.join(", ")} `;
+              }
+
+              shortResult += `(${toolCount} tools`;
               if (tokens > 0) {
                 shortResult += ` | ${tokens.toLocaleString()} tokens`;
               }
+              shortResult += ")";
+
               context.onShortResultUpdate?.(shortResult);
             };
 

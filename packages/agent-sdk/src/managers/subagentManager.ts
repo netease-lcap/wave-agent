@@ -65,6 +65,7 @@ export interface SubagentInstance {
   toolManager: ToolManager;
   status: "initializing" | "active" | "completed" | "error" | "aborted";
   messages: Message[];
+  lastTools: string[]; // Track last two tool names
   subagentType: string; // Store the subagent type for hook context
   backgroundTaskId?: string; // ID of the background task if transitioned
   onUpdate?: () => void; // Optional callback for real-time updates
@@ -246,6 +247,7 @@ export class SubagentManager {
       toolManager,
       status: "initializing",
       messages: [],
+      lastTools: [], // Initialize lastTools
       subagentType: parameters.subagent_type, // Store the subagent type
       onUpdate,
     };
@@ -603,6 +605,20 @@ export class SubagentManager {
       },
 
       onToolBlockUpdated: (params: AgentToolBlockUpdateParams) => {
+        // Track last two tool names when a tool starts running
+        if (params.stage === "running" && params.name) {
+          const instance = this.instances.get(subagentId);
+          if (instance) {
+            // Add to lastTools if it's different from the last one or we want to show duplicates
+            // Based on "ToolA, ToolB" requirement, we'll just keep the last two
+            instance.lastTools.push(params.name);
+            if (instance.lastTools.length > 2) {
+              instance.lastTools.shift();
+            }
+            instance.onUpdate?.();
+          }
+        }
+
         // Forward tool block updates to parent via SubagentManager callbacks
         if (this.callbacks?.onSubagentToolBlockUpdated) {
           this.callbacks.onSubagentToolBlockUpdated(subagentId, params);
