@@ -288,7 +288,11 @@ export class SubagentManager {
           description: instance.configuration.description,
           stdout: "",
           stderr: "",
-          onStop: () => instance.aiManager.abortAIMessage(),
+          subagentId: instance.subagentId,
+          onStop: () => {
+            instance.aiManager.abortAIMessage();
+            this.cleanupInstance(instance.subagentId);
+          },
         });
 
         instance.backgroundTaskId = taskId;
@@ -351,7 +355,11 @@ export class SubagentManager {
       description: instance.configuration.description,
       stdout: "",
       stderr: "",
-      onStop: () => instance.aiManager.abortAIMessage(),
+      subagentId: instance.subagentId,
+      onStop: () => {
+        instance.aiManager.abortAIMessage();
+        this.cleanupInstance(instance.subagentId);
+      },
     });
 
     instance.backgroundTaskId = taskId;
@@ -372,6 +380,8 @@ export class SubagentManager {
         () => {
           // Update status to aborted
           this.updateInstanceStatus(instance.subagentId, "aborted");
+          // Cleanup instance immediately on abort
+          this.cleanupInstance(instance.subagentId);
         },
         () => {
           // Abort the AI execution

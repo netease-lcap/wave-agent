@@ -67,6 +67,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       createInstance: vi.fn(),
       executeTask: vi.fn(),
       backgroundInstance: vi.fn(),
+      cleanupInstance: vi.fn(),
     } as unknown as SubagentManager;
 
     // Create task tool with mock manager

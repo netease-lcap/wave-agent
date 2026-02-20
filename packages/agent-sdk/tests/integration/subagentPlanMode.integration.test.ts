@@ -26,13 +26,17 @@ vi.mock("../../src/managers/aiManager.js", async () => {
 });
 
 // Mock callAgent to capture the final system prompt sent to the AI
-vi.mock("../../src/services/aiService.js", () => ({
-  callAgent: vi.fn().mockResolvedValue({
-    content: "Subagent response",
-    toolCalls: [],
-    usage: { promptTokens: 10, completionTokens: 10, totalTokens: 20 },
-  }),
-}));
+vi.mock("../../src/services/aiService.js", async () => {
+  const actual = await vi.importActual("../../src/services/aiService.js");
+  return {
+    ...actual,
+    callAgent: vi.fn().mockResolvedValue({
+      content: "Subagent response",
+      toolCalls: [],
+      usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 },
+    }),
+  };
+});
 
 describe("Subagent Plan Mode Integration", () => {
   let subagentManager: SubagentManager;
@@ -65,6 +69,9 @@ describe("Subagent Plan Mode Integration", () => {
     // Mock ToolManager
     mockToolManager = {
       getPermissionManager: vi.fn().mockReturnValue(mockPermissionManager),
+      list: vi.fn().mockReturnValue([]),
+      getToolsConfig: vi.fn().mockReturnValue([]),
+      getTools: vi.fn().mockReturnValue([]),
     } as unknown as ToolManager;
 
     subagentManager = new SubagentManager({

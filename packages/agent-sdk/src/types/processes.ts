@@ -29,6 +29,11 @@ export interface BackgroundTaskBase {
    * This allows tasks to define their own cleanup/abortion logic.
    */
   onStop?: () => void | Promise<void>;
+  /**
+   * Optional subagent ID associated with this task.
+   * Used for cleanup when the task is stopped.
+   */
+  subagentId?: string;
 }
 
 export interface BackgroundShell extends BackgroundTaskBase {
