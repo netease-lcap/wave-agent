@@ -8,20 +8,19 @@ import type {
   ModelConfig,
   Usage,
 } from "../types/index.js";
-import type { SessionData } from "../services/session.js";
 import { AIManager } from "./aiManager.js";
 import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
 import { HookManager } from "./hookManager.js";
 import {
-  UserMessageParams,
-  type AgentToolBlockUpdateParams,
-} from "../utils/messageOperations.js";
-import {
   addConsolidatedAbortListener,
   createAbortPromise,
 } from "../utils/abortUtils.js";
 import { BackgroundTaskManager } from "./backgroundTaskManager.js";
+import {
+  UserMessageParams,
+  type AgentToolBlockUpdateParams,
+} from "../utils/messageOperations.js";
 
 export interface SubagentManagerCallbacks {
   // Granular subagent message callbacks (015-subagent-message-callbacks)
@@ -74,7 +73,6 @@ export interface SubagentInstance {
 export interface SubagentManagerOptions {
   workdir: string;
   parentToolManager: ToolManager;
-  parentMessageManager: MessageManager;
   taskManager: import("../services/taskManager.js").TaskManager;
   callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
   logger?: Logger;
@@ -94,7 +92,6 @@ export class SubagentManager {
 
   private workdir: string;
   private parentToolManager: ToolManager;
-  private parentMessageManager: MessageManager;
   private taskManager: import("../services/taskManager.js").TaskManager;
   private callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
   private logger?: Logger;
@@ -110,7 +107,6 @@ export class SubagentManager {
   constructor(options: SubagentManagerOptions) {
     this.workdir = options.workdir;
     this.parentToolManager = options.parentToolManager;
-    this.parentMessageManager = options.parentMessageManager;
     this.taskManager = options.taskManager;
     this.callbacks = options.callbacks; // Store SubagentManagerCallbacks
     this.logger = options.logger;
@@ -256,17 +252,6 @@ export class SubagentManager {
 
     this.instances.set(subagentId, instance);
 
-    // Create subagent block in parent message manager
-    this.parentMessageManager.addSubagentBlock(
-      subagentId,
-      configuration.name,
-      messageManager.getSessionId(),
-      configuration,
-      "active",
-      parameters,
-      runInBackground,
-    );
-
     return instance;
   }
 
@@ -290,9 +275,6 @@ export class SubagentManager {
 
       // Set status to active and update parent
       this.updateInstanceStatus(instance.subagentId, "active");
-      this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
-        status: "active",
-      });
 
       if (runInBackground && this.backgroundTaskManager) {
         const taskId = this.backgroundTaskManager.generateId();
@@ -344,9 +326,6 @@ export class SubagentManager {
       return await this.internalExecute(instance, prompt, abortSignal);
     } catch (error) {
       this.updateInstanceStatus(instance.subagentId, "error");
-      this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
-        status: "error",
-      });
       throw error;
     }
   }
@@ -377,11 +356,6 @@ export class SubagentManager {
 
     instance.backgroundTaskId = taskId;
 
-    // Update parent message manager to reflect background status
-    this.parentMessageManager.updateSubagentBlock(subagentId, {
-      runInBackground: true,
-    });
-
     return taskId;
   }
 
@@ -398,9 +372,6 @@ export class SubagentManager {
         () => {
           // Update status to aborted
           this.updateInstanceStatus(instance.subagentId, "aborted");
-          this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
-            status: "aborted",
-          });
         },
         () => {
           // Abort the AI execution
@@ -477,9 +448,6 @@ export class SubagentManager {
 
       // Update status to completed and update parent
       this.updateInstanceStatus(instance.subagentId, "completed");
-      this.parentMessageManager.updateSubagentBlock(instance.subagentId, {
-        status: "completed",
-      });
 
       // If this was transitioned to background, update the background task
       if (instance.backgroundTaskId && this.backgroundTaskManager) {
@@ -584,99 +552,6 @@ export class SubagentManager {
   }
 
   /**
-   * Restore subagent instances from saved session data
-   * This method is called during agent initialization to restore previous subagent states
-   */
-  async restoreSubagentSessions(
-    subagentSessions: Array<{
-      sessionData: SessionData;
-      subagentId: string;
-      configuration: SubagentConfiguration;
-    }>,
-  ): Promise<void> {
-    for (const { sessionData, subagentId, configuration } of subagentSessions) {
-      try {
-        // Use the configuration from the SubagentBlock
-
-        // Create the subagent instance without executing - just restore the state
-
-        // Create MessageManager for the restored subagent
-        const subagentCallbacks = this.createSubagentCallbacks(subagentId);
-        const messageManager = new MessageManager({
-          callbacks: subagentCallbacks,
-          workdir: this.workdir,
-          logger: this.logger,
-          sessionType: "subagent",
-          subagentType: configuration.name, // Use configuration name for restored sessions
-          memoryRuleManager: this.memoryRuleManager,
-        });
-
-        // Use the parent tool manager
-        const toolManager = this.parentToolManager;
-
-        // Determine model to use
-        let modelToUse: string;
-        const parentModelConfig = this.getModelConfig();
-
-        if (!configuration.model || configuration.model === "inherit") {
-          modelToUse = parentModelConfig.agentModel;
-        } else if (configuration.model === "fastModel") {
-          modelToUse = parentModelConfig.fastModel;
-        } else {
-          modelToUse = configuration.model;
-        }
-
-        // Create AIManager for the restored subagent
-        const aiManager = new AIManager({
-          messageManager,
-          toolManager,
-          taskManager: this.taskManager,
-          logger: this.logger,
-          workdir: this.workdir,
-          systemPrompt: configuration.systemPrompt,
-          subagentType: configuration.name, // Use configuration name as subagent type for restored instances
-          hookManager: this.hookManager,
-          permissionManager: this.parentToolManager.getPermissionManager(),
-          getGatewayConfig: this.getGatewayConfig,
-          getModelConfig: () => ({
-            ...parentModelConfig,
-            agentModel: modelToUse,
-          }),
-          getMaxInputTokens: this.getMaxInputTokens,
-          getLanguage: this.getLanguage,
-          callbacks: {
-            onUsageAdded: this.onUsageAdded,
-          },
-        });
-
-        // Create restored instance
-        const instance: SubagentInstance = {
-          subagentId,
-          configuration,
-          aiManager,
-          messageManager,
-          toolManager,
-          status: "completed", // Restored sessions are considered completed
-          messages: sessionData.messages,
-          subagentType: configuration.name, // Use configuration name as subagent type for restored instances
-        };
-
-        // IMPORTANT: Store instance in map BEFORE calling setMessages
-        // This ensures the callback can find the instance
-        this.instances.set(subagentId, instance);
-
-        messageManager.initializeFromSession(sessionData);
-      } catch (error) {
-        this.logger?.warn(
-          `Failed to restore subagent session ${subagentId}:`,
-          error,
-        );
-        // Continue with other sessions even if one fails
-      }
-    }
-  }
-
-  /**
    * Create subagent callbacks for a specific subagent ID
    * Extracted to reuse in both create and restore flows
    */
@@ -738,13 +613,6 @@ export class SubagentManager {
         }
       },
 
-      onSessionIdChange: (newSessionId: string) => {
-        // Update the subagent block with the new session ID
-        this.parentMessageManager.updateSubagentBlock(subagentId, {
-          sessionId: newSessionId,
-        });
-      },
-
       onLatestTotalTokensChange: (tokens: number) => {
         const instance = this.instances.get(subagentId);
         if (instance) {
@@ -755,13 +623,6 @@ export class SubagentManager {
         if (this.callbacks?.onSubagentLatestTotalTokensChange) {
           this.callbacks.onSubagentLatestTotalTokensChange(subagentId, tokens);
         }
-      },
-
-      onFileHistoryBlockAdded: (
-        snapshots: import("../types/reversion.js").FileSnapshot[],
-      ) => {
-        // Forward file history blocks to parent MessageManager
-        this.parentMessageManager.addFileHistoryBlock(snapshots);
       },
     };
   }

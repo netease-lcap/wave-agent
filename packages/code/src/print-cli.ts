@@ -76,42 +76,10 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       process.stdout.write(chunk);
     },
 
-    // Tool block callback - display tool name when tool starts
-    onToolBlockUpdated: (params) => {
-      // Print tool name only during 'running' stage (happens once per tool call)
-      if (params.stage === "running" && params.name) {
-        process.stdout.write(`\n🔧 ${params.name}`);
-        if (params.compactParams) {
-          process.stdout.write(` ${params.compactParams}`);
-        }
-        process.stdout.write(`\n`);
-      }
-    },
-
-    // Subagent block callbacks
-    onSubAgentBlockAdded: (subagentId: string, parameters) => {
-      // Display subagent creation with indentation
-      process.stdout.write(
-        `\n🤖 Subagent [${parameters.subagent_type}]: ${parameters.description}\n`,
-      );
-    },
-    onSubAgentBlockUpdated: (subagentId: string, status) => {
-      // Display subagent status updates
-      const statusIconMap = {
-        active: "🔄",
-        completed: "✅",
-        error: "❌",
-        aborted: "⚠️",
-      } as const;
-
-      const statusIcon = statusIconMap[status] ?? "🔄";
-      process.stdout.write(`   ${statusIcon} Subagent status: ${status}\n`);
-    },
     // Subagent message callbacks
     onSubagentAssistantMessageAdded: (subagentId: string) => {
       subagentReasoningStates.set(subagentId, false);
       subagentContentStates.set(subagentId, false);
-      // Subagent assistant message started - add indentation
       process.stdout.write("\n   ");
     },
     onSubagentAssistantReasoningUpdated: (
@@ -132,13 +100,27 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
         process.stdout.write("\n   📝 Response: ");
         subagentContentStates.set(subagentId, true);
       }
-      // Stream subagent content with indentation - output only the new chunk
       process.stdout.write(chunk);
     },
-    onSubagentUserMessageAdded: (_subagentId: string, params) => {
-      // Display subagent user messages with indentation
+    onSubagentUserMessageAdded: (
+      _subagentId: string,
+      params: { content: string },
+    ) => {
       process.stdout.write(`\n   👤 User: ${params.content}\n`);
     },
+
+    // Tool block callback - display tool name when tool starts
+    onToolBlockUpdated: (params) => {
+      // Print tool name only during 'running' stage (happens once per tool call)
+      if (params.stage === "running" && params.name) {
+        process.stdout.write(`\n🔧 ${params.name}`);
+        if (params.compactParams) {
+          process.stdout.write(` ${params.compactParams}`);
+        }
+        process.stdout.write(`\n`);
+      }
+    },
+
     // Error block callback
     onErrorBlockAdded: (error: string) => {
       // Display error blocks with distinct formatting

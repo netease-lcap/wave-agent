@@ -5,7 +5,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
-import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
@@ -66,18 +65,11 @@ vi.mock("../../src/services/session.js", () => ({
 
 describe("SubagentManager - Session Functionality", () => {
   let subagentManager: SubagentManager;
-  let parentMessageManager: MessageManager;
   let parentToolManager: ToolManager;
   let mockGatewayConfig: GatewayConfig;
   let mockModelConfig: ModelConfig;
 
   beforeEach(async () => {
-    // Create parent MessageManager
-    parentMessageManager = new MessageManager({
-      callbacks: {},
-      workdir: "/tmp/test",
-    });
-
     // Create mock MCP manager
     const mockMcpManager = {
       listTools: vi.fn().mockReturnValue([]),
@@ -105,7 +97,6 @@ describe("SubagentManager - Session Functionality", () => {
     subagentManager = new SubagentManager({
       workdir: "/tmp/test",
       parentToolManager,
-      parentMessageManager,
       taskManager: new TaskManager("test-session"),
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,

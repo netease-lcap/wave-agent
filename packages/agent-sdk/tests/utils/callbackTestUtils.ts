@@ -27,8 +27,6 @@ export function createMockCallbacks(): MessageManagerCallbacks {
     onAddCommandOutputMessage: vi.fn(),
     onUpdateCommandOutputMessage: vi.fn(),
     onCompleteCommandMessage: vi.fn(),
-    onSubAgentBlockAdded: vi.fn(),
-    onSubAgentBlockUpdated: vi.fn(),
     // Note: Subagent-specific callbacks have been moved to SubagentManagerCallbacks
   };
 }

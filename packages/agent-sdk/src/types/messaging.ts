@@ -4,7 +4,6 @@
  */
 
 import type { Usage } from "./core.js";
-import type { SubagentConfiguration } from "../utils/subagentParser.js";
 
 export enum MessageSource {
   USER = "user",
@@ -26,7 +25,6 @@ export type MessageBlock =
   | ImageBlock
   | CommandOutputBlock
   | CompressBlock
-  | SubagentBlock
   | ReasoningBlock
   | FileHistoryBlock;
 
@@ -86,16 +84,6 @@ export interface CompressBlock {
   type: "compress";
   content: string;
   sessionId: string;
-}
-
-export interface SubagentBlock {
-  type: "subagent";
-  subagentId: string;
-  subagentName: string;
-  status: "active" | "completed" | "error" | "aborted";
-  sessionId: string;
-  configuration: SubagentConfiguration;
-  runInBackground?: boolean;
 }
 
 export interface ReasoningBlock {

@@ -1,6 +1,5 @@
 import type { Message, Usage } from "../types/index.js";
 import { MessageSource } from "../types/index.js";
-import type { SubagentConfiguration } from "./subagentParser.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
@@ -362,97 +361,6 @@ export const completeCommandInMessage = ({
       }
     }
   }
-  return newMessages;
-};
-
-// Subagent block message operations
-export interface AddSubagentBlockParams {
-  messages: Message[];
-  subagentId: string;
-  subagentName: string;
-  status: "active" | "completed" | "error" | "aborted";
-  sessionId: string;
-  configuration: SubagentConfiguration;
-  runInBackground?: boolean;
-}
-
-export interface UpdateSubagentBlockParams {
-  messages: Message[];
-  subagentId: string;
-  status: "active" | "completed" | "error" | "aborted";
-  sessionId?: string;
-}
-
-export const addSubagentBlockToMessage = ({
-  messages,
-  subagentId,
-  subagentName,
-  status,
-  sessionId,
-  configuration,
-  runInBackground,
-}: AddSubagentBlockParams): Message[] => {
-  const newMessages = [...messages];
-
-  // Find the last assistant message or create one
-  let lastAssistantMessage = newMessages[newMessages.length - 1];
-
-  if (!lastAssistantMessage || lastAssistantMessage.role !== "assistant") {
-    // Create new assistant message if the last message is not from assistant
-    lastAssistantMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-      role: "assistant",
-      blocks: [],
-    };
-    newMessages.push(lastAssistantMessage);
-  }
-
-  // Add subagent block
-  lastAssistantMessage.blocks.push({
-    type: "subagent",
-    subagentId,
-    subagentName,
-    status,
-    sessionId,
-    configuration,
-    runInBackground,
-  });
-
-  return newMessages;
-};
-
-export const updateSubagentBlockInMessage = (
-  messages: Message[],
-  subagentId: string,
-  updates: Partial<{
-    status: "active" | "completed" | "error" | "aborted";
-    sessionId: string;
-    runInBackground: boolean;
-  }>,
-): Message[] => {
-  const newMessages = [...messages];
-
-  // Find and update the subagent block
-  for (let i = newMessages.length - 1; i >= 0; i--) {
-    const message = newMessages[i];
-    if (message.role === "assistant") {
-      for (const block of message.blocks) {
-        if (block.type === "subagent" && block.subagentId === subagentId) {
-          if (updates.status !== undefined) {
-            block.status = updates.status;
-          }
-          if (updates.sessionId !== undefined) {
-            block.sessionId = updates.sessionId;
-          }
-          if (updates.runInBackground !== undefined) {
-            block.runInBackground = updates.runInBackground;
-          }
-          return newMessages;
-        }
-      }
-    }
-  }
-
   return newMessages;
 };
 

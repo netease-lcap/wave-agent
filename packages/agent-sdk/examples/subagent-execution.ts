@@ -14,7 +14,7 @@ import { Message } from "../src/types/messaging.js";
  * Features demonstrated:
  * - Subagent creation and configuration loading
  * - Real subagent execution through Task tool with multi-step workflow
- * - Subagent lifecycle callbacks (onSubAgentBlockAdded, onSubAgentBlockUpdated)
+ * - Subagent message callbacks
  * - Proper cleanup and error handling
  */
 
@@ -77,19 +77,6 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
       },
       onMessagesChange: (messages) => {
         console.log(`📝 Messages updated! Total: ${messages.length}`);
-        // Check for subagent blocks in messages
-        messages.forEach((message, msgIndex) => {
-          message.blocks.forEach((block, blockIndex) => {
-            if (block.type === "subagent") {
-              console.log(
-                `🤖💎 Found subagent block in message ${msgIndex}, block ${blockIndex}:`,
-              );
-              console.log(`   - Subagent ID: ${block.subagentId}`);
-              console.log(`   - Subagent Name: ${block.subagentName}`);
-              console.log(`   - Status: ${block.status}`);
-            }
-          });
-        });
       },
       onUserMessageAdded: (params) => {
         console.log(`👤 User: "${params.content}"`);
@@ -121,33 +108,7 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
           console.log(`🚨 Error: ${params.error}`);
         }
       },
-      // Subagent-specific callbacks to monitor subagent lifecycle
-      // These callbacks are triggered when subagents are created and their state changes
-      onSubAgentBlockAdded: (
-        subagentId: string,
-        parameters: {
-          description: string;
-          prompt: string;
-          subagent_type: string;
-        },
-      ) => {
-        console.log(`\n🤖➕ CALLBACK: Subagent created with ID: ${subagentId}`);
-        console.log(`    ⏰ Timestamp: ${new Date().toISOString()}`);
-        console.log(`    📋 Task Description: ${parameters.description}`);
-        console.log(`    💬 Prompt: ${parameters.prompt}`);
-        console.log(`    🤖 Subagent Type: ${parameters.subagent_type}`);
-      },
-      onSubAgentBlockUpdated: (
-        subagentId: string,
-        status: "active" | "completed" | "error" | "aborted",
-      ) => {
-        console.log(
-          `\n🤖🔄 CALLBACK: Subagent ${subagentId} updated (Status: ${status})`,
-        );
-        console.log(`    ⏰ Timestamp: ${new Date().toISOString()}`);
-        console.log(""); // Add spacing
-      },
-      // This is the critical callback that should be called when subagent messages change
+      // Subagent message callbacks
       onSubagentMessagesChange: (subagentId: string, messages: Message[]) => {
         console.log(
           `\n🤖💬 CALLBACK: Subagent ${subagentId} messages updated! Count: ${messages.length}`,
@@ -211,9 +172,7 @@ async function main() {
 
     console.log("\n🎉 SUBAGENT FUNCTIONALITY TEST SUMMARY:");
     console.log("✅ Real subagent execution tested through Task tool");
-    console.log(
-      "✅ Subagent callbacks tested (onSubAgentBlockAdded, onSubAgentBlockUpdated)",
-    );
+    console.log("✅ Subagent message callbacks tested");
     console.log("✅ Multi-step subagent workflow demonstrated");
     console.log("✅ Proper agent.sendMessage() interface used");
     console.log(

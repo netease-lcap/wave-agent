@@ -5,9 +5,7 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
-import type { Logger } from "../../src/types/index.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
-import type { SessionData } from "../../src/services/session.js";
 
 // Mock dependencies
 vi.mock("../../src/managers/messageManager.js");
@@ -24,7 +22,6 @@ vi.mock("../../src/managers/aiManager.js", () => ({
 
 describe("SubagentManager - Backgrounding Coverage", () => {
   let subagentManager: SubagentManager;
-  let mockMessageManager: MessageManager;
   let mockToolManager: ToolManager;
   let mockBackgroundTaskManager: BackgroundTaskManager;
 
@@ -41,12 +38,6 @@ describe("SubagentManager - Backgrounding Coverage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockMessageManager = {
-      addSubagentBlock: vi.fn(),
-      updateSubagentBlock: vi.fn(),
-      getSessionId: vi.fn().mockReturnValue("parent-session-id"),
-    } as unknown as MessageManager;
 
     mockToolManager = {
       list: vi.fn(() => [{ name: "Read" }]),
@@ -67,7 +58,6 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     subagentManager = new SubagentManager({
       workdir: "/test",
       parentToolManager: mockToolManager,
-      parentMessageManager: mockMessageManager,
       taskManager,
       backgroundTaskManager: mockBackgroundTaskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
@@ -95,7 +85,6 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const managerNoBG = new SubagentManager({
       workdir: "/test",
       parentToolManager: mockToolManager,
-      parentMessageManager: mockMessageManager,
       taskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({ agentModel: "m", fastModel: "f" }),
@@ -188,49 +177,6 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     expect(mockTask.stderr).toBe("AI Error");
   });
 
-  it("should cover restoreSubagentSessions error path", async () => {
-    const logger = {
-      error: vi.fn(),
-      warn: vi.fn(),
-      info: vi.fn(),
-      debug: vi.fn(),
-    } as unknown as Logger;
-    const taskManager = {
-      on: vi.fn(),
-      listTasks: vi.fn().mockResolvedValue([]),
-    } as unknown as TaskManager;
-
-    const manager = new SubagentManager({
-      workdir: "/test",
-      parentToolManager: mockToolManager,
-      parentMessageManager: mockMessageManager,
-      taskManager,
-      getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
-      getModelConfig: () => ({ agentModel: "m", fastModel: "f" }),
-      getMaxInputTokens: () => 1000,
-      getLanguage: () => "en",
-      logger: logger,
-    });
-
-    // Trigger error by passing invalid session data (e.g. missing configuration)
-    await manager.restoreSubagentSessions([
-      {
-        subagentId: "sub_1",
-        sessionData: {
-          id: "s1",
-          messages: [],
-          metadata: {},
-        } as unknown as SessionData,
-        configuration: null as unknown as SubagentConfiguration, // This will cause error when accessing configuration.name
-      },
-    ]);
-
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to restore subagent session sub_1"),
-      expect.any(Error),
-    );
-  });
-
   it("should cover createSubagentCallbacks reasoning update", async () => {
     const onSubagentAssistantReasoningUpdated = vi.fn();
     const taskManager = {
@@ -241,7 +187,6 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const manager = new SubagentManager({
       workdir: "/test",
       parentToolManager: mockToolManager,
-      parentMessageManager: mockMessageManager,
       taskManager,
       callbacks: { onSubagentAssistantReasoningUpdated },
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),

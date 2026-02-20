@@ -272,36 +272,6 @@ test("subagent content callbacks output correctly", async () => {
   );
   expect(stdoutSpy).toHaveBeenCalledWith("Hello from subagent");
 
-  // Test onSubAgentBlockAdded callback
-  capturedCallbacks?.onSubAgentBlockAdded?.("test-subagent-123", {
-    subagent_type: "typescript-expert",
-    description: "Fix TypeScript errors",
-  });
-  expect(stdoutSpy).toHaveBeenCalledWith(
-    "\n🤖 Subagent [typescript-expert]: Fix TypeScript errors\n",
-  );
-
-  // Test onSubAgentBlockUpdated callback with different statuses
-  capturedCallbacks?.onSubAgentBlockUpdated?.("test-subagent-123", "active");
-  expect(stdoutSpy).toHaveBeenCalledWith("   🔄 Subagent status: active\n");
-
-  capturedCallbacks?.onSubAgentBlockUpdated?.("test-subagent-123", "completed");
-  expect(stdoutSpy).toHaveBeenCalledWith("   ✅ Subagent status: completed\n");
-
-  capturedCallbacks?.onSubAgentBlockUpdated?.("test-subagent-123", "error");
-  expect(stdoutSpy).toHaveBeenCalledWith("   ❌ Subagent status: error\n");
-
-  capturedCallbacks?.onSubAgentBlockUpdated?.("test-subagent-123", "aborted");
-  expect(stdoutSpy).toHaveBeenCalledWith("   ⚠️ Subagent status: aborted\n");
-
-  // Test onSubagentUserMessageAdded callback
-  capturedCallbacks?.onSubagentUserMessageAdded?.("test-subagent-123", {
-    content: "Please fix this code",
-  });
-  expect(stdoutSpy).toHaveBeenCalledWith(
-    "\n   👤 User: Please fix this code\n",
-  );
-
   // Test onErrorBlockAdded callback
   capturedCallbacks?.onErrorBlockAdded?.("Something went wrong");
   expect(stdoutSpy).toHaveBeenCalledWith("\n❌ Error: Something went wrong\n");

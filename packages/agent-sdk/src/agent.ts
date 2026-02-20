@@ -50,7 +50,6 @@ import {
   loadSessionFromJsonl,
   handleSessionRestoration,
 } from "./services/session.js";
-import type { SubagentConfiguration } from "./utils/subagentParser.js";
 import { setGlobalLogger } from "./utils/globalLogger.js";
 import { ConfigurationService } from "./services/configurationService.js";
 import * as fs from "fs/promises";
@@ -232,9 +231,6 @@ export class Agent {
           );
           callbacks.onSessionIdChange?.(sessionId);
         },
-        onSubagentTaskStopRequested: (subagentId) => {
-          this.backgroundTaskManager.stopTask(subagentId);
-        },
       },
       workdir: this.workdir,
       logger: this.logger,
@@ -362,7 +358,6 @@ export class Agent {
     this.subagentManager = new SubagentManager({
       workdir: this.workdir,
       parentToolManager: this.toolManager,
-      parentMessageManager: this.messageManager,
       callbacks: {
         onSubagentUserMessageAdded: callbacks.onSubagentUserMessageAdded,
         onSubagentAssistantMessageAdded:
@@ -812,9 +807,6 @@ export class Agent {
       // Rebuild usage array from restored messages
       this.rebuildUsageFromMessages(sessionToRestore?.messages || []);
 
-      // After main session is restored, restore any associated subagent sessions
-      await this.restoreSubagentSessions(sessionToRestore?.messages || []);
-
       if (sessionToRestore) {
         this.messageManager.initializeFromSession(sessionToRestore);
 
@@ -827,85 +819,6 @@ export class Agent {
         const tasks = await this.taskManager.listTasks();
         this.options.callbacks?.onSessionTasksChange?.(tasks);
       }
-    }
-  }
-
-  /**
-   * Restore subagent sessions associated with the current main session
-   * This method is called after the main session is restored to load any subagent sessions
-   */
-  private async restoreSubagentSessions(messages: Message[]): Promise<void> {
-    try {
-      // Only attempt to restore subagent sessions if we have messages (session was restored)
-      if (messages.length === 0) {
-        return;
-      }
-
-      // Extract sessionId -> subagentId mapping from SubagentBlocks
-      const subagentBlockMap = new Map<
-        string,
-        { subagentId: string; configuration: SubagentConfiguration }
-      >(); // sessionId -> { subagentId, configuration }
-
-      for (const message of messages) {
-        if (message.role === "assistant" && message.blocks) {
-          for (const block of message.blocks) {
-            if (
-              block.type === "subagent" &&
-              block.sessionId &&
-              block.subagentId &&
-              block.configuration
-            ) {
-              subagentBlockMap.set(block.sessionId, {
-                subagentId: block.subagentId,
-                configuration: block.configuration,
-              });
-            }
-          }
-        }
-      }
-
-      if (subagentBlockMap.size === 0) {
-        return; // No subagent blocks found
-      }
-
-      // Load subagent sessions using sessionIds
-      const subagentSessions = [];
-      for (const [sessionId, blockData] of subagentBlockMap) {
-        try {
-          const sessionData = await loadSessionFromJsonl(
-            sessionId,
-            this.messageManager.getWorkdir(),
-            "subagent",
-          );
-          if (sessionData) {
-            subagentSessions.push({
-              sessionData,
-              subagentId: blockData.subagentId, // Use the subagentId from SubagentBlock
-              configuration: blockData.configuration, // Include configuration
-            });
-          }
-        } catch (error) {
-          this.logger?.warn(
-            `Failed to load subagent session ${sessionId}:`,
-            error,
-          );
-        }
-      }
-
-      if (subagentSessions.length > 0) {
-        this.logger?.debug(
-          `Found ${subagentSessions.length} subagent sessions to restore`,
-        );
-
-        // Restore subagent sessions through the SubagentManager
-        await this.subagentManager.restoreSubagentSessions(subagentSessions);
-
-        this.logger?.debug("Subagent sessions restored successfully");
-      }
-    } catch (error) {
-      this.logger?.warn("Failed to restore subagent sessions:", error);
-      // Don't throw error to prevent app startup failure
     }
   }
 
@@ -943,9 +856,8 @@ export class Agent {
     this.abortMessage(); // Abort any running operations
     this.subagentManager.cleanup(); // Clean up active subagents
 
-    // 5. Rebuild usage and restore subagents (in correct order)
+    // 5. Rebuild usage (in correct order)
     this.rebuildUsageFromMessages(sessionData.messages);
-    await this.restoreSubagentSessions(sessionData.messages);
 
     // 6. Initialize session state last
     this.messageManager.initializeFromSession(sessionData);

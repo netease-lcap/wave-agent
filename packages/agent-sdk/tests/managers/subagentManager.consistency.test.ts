@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
-import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
@@ -19,7 +18,6 @@ vi.mock("../../src/managers/aiManager.js", () => ({
 
 describe("SubagentManager Consistency", () => {
   let subagentManager: SubagentManager;
-  let mockMessageManager: MessageManager;
   let mockToolManager: ToolManager;
 
   const builtinConfig: SubagentConfiguration = {
@@ -47,13 +45,6 @@ describe("SubagentManager Consistency", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Mock MessageManager
-    mockMessageManager = {
-      addSubagentBlock: vi.fn(),
-      updateSubagentBlock: vi.fn(),
-      getSessionId: vi.fn().mockReturnValue("parent-session-id"),
-    } as unknown as MessageManager;
-
     // Mock ToolManager
     mockToolManager = {
       list: vi.fn(() => [
@@ -69,7 +60,6 @@ describe("SubagentManager Consistency", () => {
     subagentManager = new SubagentManager({
       workdir: "/test",
       parentToolManager: mockToolManager,
-      parentMessageManager: mockMessageManager,
       taskManager: {} as unknown as TaskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
@@ -88,7 +78,7 @@ describe("SubagentManager Consistency", () => {
   });
 
   describe("Consistent SubagentBlock Creation", () => {
-    it("should create identical SubagentBlock structure for built-in and user subagents", async () => {
+    it("should create identical SubagentInstance structure for built-in and user subagents", async () => {
       const builtinInstance = await subagentManager.createInstance(
         builtinConfig,
         {
@@ -104,33 +94,17 @@ describe("SubagentManager Consistency", () => {
         subagent_type: "UserAgent",
       });
 
-      // Both should call addSubagentBlock with similar structure
-      expect(mockMessageManager.addSubagentBlock).toHaveBeenCalledTimes(2);
-
-      const builtinCall = vi.mocked(mockMessageManager.addSubagentBlock).mock
-        .calls[0];
-      const userCall = vi.mocked(mockMessageManager.addSubagentBlock).mock
-        .calls[1];
-
-      // Both should have similar call structure (same number of parameters)
-      expect(builtinCall.length).toBe(userCall.length);
-
-      // Parameters: [subagentId, name, sessionId, configuration, "active", parameters]
-      // Both should have status "active" (index 4)
-      expect(builtinCall[4]).toBe("active");
-      expect(userCall[4]).toBe("active");
-
-      // Both should have configuration objects (index 3)
-      expect(typeof builtinCall[3]).toBe("object");
-      expect(typeof userCall[3]).toBe("object");
-      expect(builtinCall[3].name).toBe("Explore");
-      expect(userCall[3].name).toBe("UserAgent");
-
       // Both should have subagent instances with same structure
       expect(builtinInstance.status).toBe("initializing");
       expect(userInstance.status).toBe("initializing");
       expect(typeof builtinInstance.subagentId).toBe("string");
       expect(typeof userInstance.subagentId).toBe("string");
+
+      // Both should have configuration objects
+      expect(typeof builtinInstance.configuration).toBe("object");
+      expect(typeof userInstance.configuration).toBe("object");
+      expect(builtinInstance.configuration.name).toBe("Explore");
+      expect(userInstance.configuration.name).toBe("UserAgent");
     });
 
     it("should handle model configuration consistently", async () => {

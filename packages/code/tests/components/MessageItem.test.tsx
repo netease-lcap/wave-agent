@@ -15,9 +15,6 @@ vi.mock("../../src/components/ToolResultDisplay.js", () => ({
 vi.mock("../../src/components/CompressDisplay.js", () => ({
   CompressDisplay: () => <Text>MOCKED_COMPRESS</Text>,
 }));
-vi.mock("../../src/components/SubagentBlock.js", () => ({
-  SubagentBlock: () => <Text>MOCKED_SUBAGENT</Text>,
-}));
 vi.mock("../../src/components/ReasoningDisplay.js", () => ({
   ReasoningDisplay: () => <Text>MOCKED_REASONING</Text>,
 }));
@@ -255,37 +252,6 @@ describe("MessageItem Component", () => {
         />,
       );
       expect(lastFrame()).toContain("MOCKED_COMPRESS");
-    });
-
-    it("should render subagent block", () => {
-      const message: Message = {
-        role: "assistant",
-        blocks: [
-          {
-            type: "subagent",
-            subagentId: "sub1",
-            subagentName: "Sub",
-            status: "completed",
-            sessionId: "s1",
-            configuration: {
-              name: "Sub",
-              description: "desc",
-              systemPrompt: "hi",
-              filePath: "path",
-              scope: "builtin",
-              priority: 0,
-            },
-          },
-        ],
-      };
-      const { lastFrame } = render(
-        <MessageItem
-          message={message}
-          isExpanded={false}
-          shouldShowHeader={false}
-        />,
-      );
-      expect(lastFrame()).toContain("MOCKED_SUBAGENT");
     });
 
     it("should render reasoning block", () => {

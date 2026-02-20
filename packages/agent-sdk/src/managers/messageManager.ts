@@ -6,15 +6,10 @@ import {
   addCommandOutputMessage,
   updateCommandOutputInMessage,
   completeCommandInMessage,
-  addSubagentBlockToMessage,
-  updateSubagentBlockInMessage,
   removeLastUserMessage,
   UserMessageParams,
-  type AddSubagentBlockParams,
-  type UpdateSubagentBlockParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { Logger, Message, Usage, SlashCommand } from "../types/index.js";
 import { join } from "path";
 import {
@@ -59,23 +54,9 @@ export interface MessageManagerCallbacks {
   onInfoBlockAdded?: (content: string) => void;
   // Rewind callbacks
   onShowRewind?: () => void;
-  // Subagent callbacks
-  onSubAgentBlockAdded?: (
-    subagentId: string,
-    parameters: {
-      description: string;
-      prompt: string;
-      subagent_type: string;
-    },
-  ) => void;
-  onSubAgentBlockUpdated?: (
-    subagentId: string,
-    status: "active" | "completed" | "error" | "aborted",
-  ) => void;
   onFileHistoryBlockAdded?: (
     snapshots: import("../types/reversion.js").FileSnapshot[],
   ) => void;
-  onSubagentTaskStopRequested?: (subagentId: string) => void;
 }
 
 export interface MessageManagerOptions {
@@ -505,58 +486,6 @@ export class MessageManager {
     this.callbacks.onCompleteCommandMessage?.(command, exitCode);
   }
 
-  // Subagent block methods
-  public addSubagentBlock(
-    subagentId: string,
-    subagentName: string,
-    sessionId: string,
-    configuration: SubagentConfiguration,
-    status: "active" | "completed" | "error" | "aborted" = "active",
-    parameters: {
-      description: string;
-      prompt: string;
-      subagent_type: string;
-    },
-    runInBackground?: boolean,
-  ): void {
-    const params: AddSubagentBlockParams = {
-      messages: this.messages,
-      subagentId,
-      subagentName,
-      sessionId,
-      status,
-      configuration,
-      runInBackground,
-    };
-    const updatedMessages = addSubagentBlockToMessage(params);
-    this.setMessages(updatedMessages);
-    this.callbacks.onSubAgentBlockAdded?.(params.subagentId, parameters);
-  }
-
-  public updateSubagentBlock(
-    subagentId: string,
-    updates: Partial<{
-      status: "active" | "completed" | "error" | "aborted";
-      sessionId: string;
-      runInBackground: boolean;
-    }>,
-  ): void {
-    const updatedMessages = updateSubagentBlockInMessage(
-      this.messages,
-      subagentId,
-      updates,
-    );
-    this.setMessages(updatedMessages);
-    const params: UpdateSubagentBlockParams = {
-      messages: this.messages,
-      subagentId,
-      status: updates.status || "active",
-    };
-    if (updates.status) {
-      this.callbacks.onSubAgentBlockUpdated?.(params.subagentId, params.status);
-    }
-  }
-
   /**
    * Trigger usage change callback with all usage data from assistant messages
    */
@@ -772,15 +701,6 @@ export class MessageManager {
       0,
       targetIndexInSession,
     );
-
-    // Identify subagent tasks to stop
-    for (const message of messagesToRemove) {
-      for (const block of message.blocks) {
-        if (block.type === "subagent" && block.subagentId) {
-          this.callbacks.onSubagentTaskStopRequested?.(block.subagentId);
-        }
-      }
-    }
 
     // Update target session file
     this.sessionId = targetSessionId;

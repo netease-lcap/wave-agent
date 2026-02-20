@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
-import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
@@ -37,7 +36,6 @@ vi.mock("../../src/services/aiService.js", () => ({
 
 describe("Subagent Plan Mode Integration", () => {
   let subagentManager: SubagentManager;
-  let mockMessageManager: MessageManager;
   let mockToolManager: ToolManager;
   let mockPermissionManager: PermissionManager;
 
@@ -67,32 +65,11 @@ describe("Subagent Plan Mode Integration", () => {
     // Mock ToolManager
     mockToolManager = {
       getPermissionManager: vi.fn().mockReturnValue(mockPermissionManager),
-      getPermissionMode: vi.fn().mockReturnValue("plan"),
-      list: vi.fn().mockReturnValue([{ name: "Read" }]),
-      getTools: vi.fn().mockReturnValue([]),
-      getToolsConfig: vi.fn().mockReturnValue([]),
     } as unknown as ToolManager;
-
-    // Mock MessageManager
-    mockMessageManager = {
-      addSubagentBlock: vi.fn(),
-      updateSubagentBlock: vi.fn(),
-      addUserMessage: vi.fn(),
-      addAssistantMessage: vi.fn(),
-      getMessages: vi.fn().mockReturnValue([
-        { role: "user", blocks: [{ type: "text", content: "Task prompt" }] },
-        {
-          role: "assistant",
-          blocks: [{ type: "text", content: "Subagent response" }],
-        },
-      ]),
-      getSessionId: vi.fn().mockReturnValue("test-session"),
-    } as unknown as MessageManager;
 
     subagentManager = new SubagentManager({
       workdir: "/test/project",
       parentToolManager: mockToolManager,
-      parentMessageManager: mockMessageManager,
       taskManager: {
         listTasks: vi.fn().mockResolvedValue([]),
       } as unknown as TaskManager,
