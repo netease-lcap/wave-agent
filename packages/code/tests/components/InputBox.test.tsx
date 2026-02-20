@@ -44,7 +44,9 @@ describe("InputBox Smoke Tests", () => {
       });
 
       // Verify placeholder text is displayed (may be wrapped)
-      expect(lastFrame()).toMatch(/Type your message[\s\S]*use @ to reference/);
+      expect(lastFrame()).toMatch(
+        /Type your message[\s\S]*use \/help for more info/,
+      );
     });
 
     it("should handle basic text input", async () => {
@@ -63,7 +65,7 @@ describe("InputBox Smoke Tests", () => {
 
       // Verify placeholder text is no longer displayed
       expect(lastFrame()).not.toContain(
-        "Type your message (use @ to reference files",
+        "Type your message (use /help for more info",
       );
     });
 
@@ -84,7 +86,7 @@ describe("InputBox Smoke Tests", () => {
       expect(output).toContain("This is line 1");
       expect(output).toContain("This is line 2");
       expect(output).not.toContain(
-        "Type your message (use @ to reference files",
+        "Type your message (use /help for more info",
       );
     });
 
@@ -346,20 +348,35 @@ describe("InputBox Smoke Tests", () => {
       // but we can verify it doesn't crash and handles the key.
     });
 
-    it("should handle home and end keys", async () => {
+    it("should render HelpView when help command is executed", async () => {
       const { stdin, lastFrame } = render(<InputBox />);
       await vi.waitFor(() =>
         expect(lastFrame()).toContain("Type your message"),
       );
 
-      stdin.write("abc");
-      stdin.write("\u001b[H"); // Home
-      stdin.write("x");
-      await vi.waitFor(() => expect(lastFrame()).toContain("xabc"));
+      // Trigger Help via command
+      stdin.write("/");
+      await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
+      stdin.write("h");
+      stdin.write("e");
+      stdin.write("l");
+      stdin.write("p");
+      await vi.waitFor(() => expect(lastFrame()).toContain("/help"));
+      stdin.write("\r");
 
-      stdin.write("\u001b[F"); // End
-      stdin.write("y");
-      await vi.waitFor(() => expect(lastFrame()).toContain("xabcy"));
+      await vi.waitFor(
+        () => {
+          const output = stripAnsiColors(lastFrame() || "");
+          expect(output).toContain("Help & Key Bindings");
+        },
+        { timeout: 2000 },
+      );
+
+      // Close help
+      stdin.write("\u001b"); // Escape
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Type your message");
+      });
     });
   });
 });

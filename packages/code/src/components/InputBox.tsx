@@ -7,13 +7,14 @@ import { HistorySearch } from "./HistorySearch.js";
 import { BackgroundTaskManager } from "./BackgroundTaskManager.js";
 import { McpManager } from "./McpManager.js";
 import { RewindCommand } from "./RewindCommand.js";
+import { HelpView } from "./HelpView.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
 
 import type { McpServerStatus, SlashCommand } from "wave-agent-sdk";
 
 export const INPUT_PLACEHOLDER_TEXT =
-  "Type your message (use @ to reference files, / for commands, Ctrl+R to search history, Ctrl+O to expand messages, Ctrl+T to toggle tasks)...";
+  "Type your message (use /help for more info)...";
 
 export const INPUT_PLACEHOLDER_TEXT_PREFIX = INPUT_PLACEHOLDER_TEXT.substring(
   0,
@@ -86,9 +87,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showBackgroundTaskManager,
     showMcpManager,
     showRewindManager,
+    showHelp,
     setShowBackgroundTaskManager,
     setShowMcpManager,
     setShowRewindManager,
+    setShowHelp,
     // Permission mode
     permissionMode,
     setPermissionMode,
@@ -165,6 +168,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
     );
   }
 
+  if (showHelp) {
+    return <HelpView onCancel={() => setShowHelp(false)} />;
+  }
+
   return (
     <Box flexDirection="column">
       {showFileSelector && (
@@ -209,39 +216,42 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
-      {showBackgroundTaskManager || showMcpManager || showRewindManager || (
-        <Box flexDirection="column">
-          <Box
-            borderStyle="single"
-            borderColor="gray"
-            borderLeft={false}
-            borderRight={false}
-          >
-            <Text color={isPlaceholder ? "gray" : "white"}>
-              {shouldShowCursor ? (
-                <>
-                  {beforeCursor}
-                  <Text backgroundColor="white" color="black">
-                    {atCursor}
-                  </Text>
-                  {afterCursor}
-                </>
-              ) : (
-                displayText
-              )}
-            </Text>
+      {showBackgroundTaskManager ||
+        showMcpManager ||
+        showRewindManager ||
+        showHelp || (
+          <Box flexDirection="column">
+            <Box
+              borderStyle="single"
+              borderColor="gray"
+              borderLeft={false}
+              borderRight={false}
+            >
+              <Text color={isPlaceholder ? "gray" : "white"}>
+                {shouldShowCursor ? (
+                  <>
+                    {beforeCursor}
+                    <Text backgroundColor="white" color="black">
+                      {atCursor}
+                    </Text>
+                    {afterCursor}
+                  </>
+                ) : (
+                  displayText
+                )}
+              </Text>
+            </Box>
+            <Box paddingRight={1} justifyContent="space-between" width="100%">
+              <Text color="gray">
+                Mode:{" "}
+                <Text color={permissionMode === "plan" ? "yellow" : "cyan"}>
+                  {permissionMode}
+                </Text>{" "}
+                (Shift+Tab to cycle)
+              </Text>
+            </Box>
           </Box>
-          <Box paddingRight={1} justifyContent="space-between" width="100%">
-            <Text color="gray">
-              Mode:{" "}
-              <Text color={permissionMode === "plan" ? "yellow" : "cyan"}>
-                {permissionMode}
-              </Text>{" "}
-              (Shift+Tab to cycle)
-            </Text>
-          </Box>
-        </Box>
-      )}
+        )}
     </Box>
   );
 };

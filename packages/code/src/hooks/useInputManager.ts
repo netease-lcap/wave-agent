@@ -37,6 +37,7 @@ export const useInputManager = (
     useState(false);
   const [showMcpManager, setShowMcpManager] = useState(false);
   const [showRewindManager, setShowRewindManager] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [permissionMode, setPermissionModeState] =
     useState<PermissionMode>("default");
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
@@ -66,6 +67,9 @@ export const useInputManager = (
         },
         onRewindManagerStateChange: (show) => {
           setShowRewindManager(show);
+        },
+        onHelpStateChange: (show) => {
+          setShowHelp(show);
         },
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
@@ -100,6 +104,9 @@ export const useInputManager = (
         },
         onRewindManagerStateChange: (show) => {
           setShowRewindManager(show);
+        },
+        onHelpStateChange: (show) => {
+          setShowHelp(show);
         },
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
@@ -148,14 +155,6 @@ export const useInputManager = (
 
   const moveCursorRight = useCallback(() => {
     managerRef.current?.moveCursorRight();
-  }, []);
-
-  const moveCursorToStart = useCallback(() => {
-    managerRef.current?.moveCursorToStart();
-  }, []);
-
-  const moveCursorToEnd = useCallback(() => {
-    managerRef.current?.moveCursorToEnd();
   }, []);
 
   // File selector methods
@@ -268,6 +267,7 @@ export const useInputManager = (
     showBackgroundTaskManager,
     showMcpManager,
     showRewindManager,
+    showHelp,
     permissionMode,
     attachedImages,
     isManagerReady,
@@ -278,8 +278,6 @@ export const useInputManager = (
     clearInput,
     moveCursorLeft,
     moveCursorRight,
-    moveCursorToStart,
-    moveCursorToEnd,
 
     // File selector
     activateFileSelector,
@@ -313,6 +311,10 @@ export const useInputManager = (
     setShowRewindManager: useCallback((show: boolean) => {
       managerRef.current?.setShowRewindManager(show);
       setShowRewindManager(show);
+    }, []),
+    setShowHelp: useCallback((show: boolean) => {
+      managerRef.current?.setShowHelp(show);
+      setShowHelp(show);
     }, []),
     setPermissionMode: useCallback((mode: PermissionMode) => {
       setPermissionModeState(mode);
