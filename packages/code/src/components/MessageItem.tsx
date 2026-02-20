@@ -5,7 +5,6 @@ import { MessageSource } from "wave-agent-sdk";
 import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
 import { ToolResultDisplay } from "./ToolResultDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
-import { SubagentBlock } from "./SubagentBlock.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
 import { Markdown } from "./Markdown.js";
 
@@ -82,8 +81,6 @@ export const MessageItem = ({
             {block.type === "compress" && (
               <CompressDisplay block={block} isExpanded={isExpanded} />
             )}
-
-            {block.type === "subagent" && <SubagentBlock block={block} />}
 
             {block.type === "reasoning" && <ReasoningDisplay block={block} />}
           </Box>

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
-import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
@@ -25,7 +24,6 @@ vi.mock("../../src/managers/aiManager.js", () => ({
 
 describe("SubagentManager - Abort Logic", () => {
   let subagentManager: SubagentManager;
-  let mockMessageManager: MessageManager;
   let mockToolManager: ToolManager;
   let mockBackgroundTaskManager: BackgroundTaskManager;
 
@@ -42,18 +40,6 @@ describe("SubagentManager - Abort Logic", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockMessageManager = {
-      addSubagentBlock: vi.fn(),
-      updateSubagentBlock: vi.fn(),
-      getSessionId: vi.fn().mockReturnValue("parent-session-id"),
-      addUserMessage: vi.fn(),
-      getMessages: vi
-        .fn()
-        .mockReturnValue([
-          { role: "assistant", blocks: [{ type: "text", content: "Done" }] },
-        ]),
-    } as unknown as MessageManager;
 
     mockToolManager = {
       list: vi.fn(() => [{ name: "Read" }]),
@@ -75,7 +61,6 @@ describe("SubagentManager - Abort Logic", () => {
     subagentManager = new SubagentManager({
       workdir: "/test",
       parentToolManager: mockToolManager,
-      parentMessageManager: mockMessageManager,
       taskManager,
       backgroundTaskManager: mockBackgroundTaskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
@@ -111,12 +96,6 @@ describe("SubagentManager - Abort Logic", () => {
 
     const aiManager = instance.aiManager;
     expect(aiManager.abortAIMessage).toHaveBeenCalled();
-    expect(mockMessageManager.updateSubagentBlock).toHaveBeenCalledWith(
-      instance.subagentId,
-      {
-        status: "aborted",
-      },
-    );
   });
 
   it("should NOT abort subagent when in background and parent aborts", async () => {
@@ -146,13 +125,6 @@ describe("SubagentManager - Abort Logic", () => {
     const aiManager = instance.aiManager;
     // Should NOT have been called because it's in background
     expect(aiManager.abortAIMessage).not.toHaveBeenCalled();
-
-    // Status should NOT be aborted in parent block
-    // Note: updateSubagentBlock might have been called with status: 'active' earlier
-    const abortedCalls = vi
-      .mocked(mockMessageManager.updateSubagentBlock)
-      .mock.calls.filter((call) => call[1].status === "aborted");
-    expect(abortedCalls.length).toBe(0);
   });
 
   it("should abort subagent when stopTask is called on background task", async () => {

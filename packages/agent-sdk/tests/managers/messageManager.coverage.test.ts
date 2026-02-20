@@ -150,30 +150,6 @@ describe("MessageManager Coverage Improvements", () => {
     );
   });
 
-  it("should handle subagent blocks", () => {
-    messageManager.addAssistantMessage("starting subagent");
-    messageManager.addSubagentBlock(
-      "sub1",
-      "SubAgent",
-      "session1",
-      {} as unknown as Parameters<MessageManager["addSubagentBlock"]>[3],
-      "active",
-      { description: "desc", prompt: "prompt", subagent_type: "type" },
-    );
-
-    let messages = messageManager.getMessages();
-    expect(messages[0].blocks).toContainEqual(
-      expect.objectContaining({ type: "subagent", subagentId: "sub1" }),
-    );
-
-    messageManager.updateSubagentBlock("sub1", { status: "completed" });
-    messages = messageManager.getMessages();
-    const subagentBlock = messages[0].blocks.find(
-      (b) => b.type === "subagent",
-    ) as { status: string };
-    expect(subagentBlock.status).toBe("completed");
-  });
-
   it("should handle updateCurrentMessageReasoning", () => {
     messageManager.addAssistantMessage("hello");
     messageManager.updateCurrentMessageReasoning("thinking...");

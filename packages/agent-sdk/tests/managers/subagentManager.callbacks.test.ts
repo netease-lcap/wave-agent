@@ -6,7 +6,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
-import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import type { SubagentManagerCallbacks } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
@@ -29,7 +28,6 @@ vi.mock("../../src/services/aiService.js", () => ({
 
 describe("SubagentManager - Callback Integration", () => {
   let subagentManager: SubagentManager;
-  let parentMessageManager: MessageManager;
   let parentToolManager: ToolManager;
   let callbacks: SubagentManagerCallbacks;
   let mockGatewayConfig: GatewayConfig;
@@ -43,12 +41,6 @@ describe("SubagentManager - Callback Integration", () => {
       onSubagentAssistantContentUpdated: vi.fn(),
       onSubagentToolBlockUpdated: vi.fn(),
     };
-
-    // Create parent MessageManager (minimal callbacks needed for this test)
-    parentMessageManager = new MessageManager({
-      callbacks: {},
-      workdir: "/tmp/test",
-    });
 
     // Create parent ToolManager (simplified for testing)
     const mockMcpManager = {
@@ -76,7 +68,6 @@ describe("SubagentManager - Callback Integration", () => {
     subagentManager = new SubagentManager({
       workdir: "/tmp/test",
       parentToolManager,
-      parentMessageManager,
       taskManager: {} as unknown as TaskManager,
       callbacks,
       getGatewayConfig: () => mockGatewayConfig,
@@ -455,7 +446,6 @@ describe("SubagentManager - Callback Integration", () => {
       const errorSubagentManager = new SubagentManager({
         workdir: "/tmp/test",
         parentToolManager,
-        parentMessageManager,
         taskManager: {} as unknown as TaskManager,
         callbacks: errorCallbacks,
         getGatewayConfig: () => mockGatewayConfig,
@@ -502,7 +492,6 @@ describe("SubagentManager - Callback Integration", () => {
       const noCallbackManager = new SubagentManager({
         workdir: "/tmp/test",
         parentToolManager,
-        parentMessageManager,
         taskManager: {} as unknown as TaskManager,
         // No callbacks provided
         getGatewayConfig: () => mockGatewayConfig,
@@ -623,7 +612,6 @@ describe("SubagentManager - Callback Integration", () => {
       const bgSubagentManager = new SubagentManager({
         workdir: "/tmp/test",
         parentToolManager,
-        parentMessageManager,
         taskManager: {} as unknown as TaskManager,
         backgroundTaskManager,
         getGatewayConfig: () => mockGatewayConfig,

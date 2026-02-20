@@ -10,7 +10,6 @@ import type {
   ModelConfig,
 } from "../../src/types/index.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
-import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
 describe("Dynamic Tool Definitions", () => {
@@ -77,7 +76,6 @@ describe("Dynamic Tool Definitions", () => {
         workdir: "/test/workdir",
         taskManager: new TaskManager("test-session"),
         parentToolManager: {} as unknown as ToolManager,
-        parentMessageManager: {} as unknown as MessageManager,
         logger: mockLogger,
         getGatewayConfig: () => ({}) as unknown as GatewayConfig,
         getModelConfig: () => ({}) as unknown as ModelConfig,
