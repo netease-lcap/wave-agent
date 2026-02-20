@@ -119,6 +119,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Message Display State
   const [isExpanded, setIsExpanded] = useState(false);
+  const isExpandedRef = useRef(isExpanded);
+  const frozenMessagesRef = useRef<Message[] | null>(null);
+
+  useEffect(() => {
+    isExpandedRef.current = isExpanded;
+  }, [isExpanded]);
+
   const [isTaskListVisible, setIsTaskListVisible] = useState(true);
 
   // AI State
@@ -220,7 +227,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     const initializeAgent = async () => {
       const callbacks: AgentCallbacks = {
         onMessagesChange: (newMessages) => {
-          setMessages([...newMessages]);
+          if (isExpandedRef.current) {
+            frozenMessagesRef.current = [...newMessages];
+          } else {
+            setMessages([...newMessages]);
+          }
         },
         onServersChange: (servers) => {
           setMcpServers([...servers]);
@@ -517,6 +528,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       // Clear terminal screen when expanded state changes
       setIsExpanded((prev) => {
         const newExpanded = !prev;
+        if (!newExpanded && frozenMessagesRef.current) {
+          setMessages(frozenMessagesRef.current);
+          frozenMessagesRef.current = null;
+        }
         return newExpanded;
       });
     }
