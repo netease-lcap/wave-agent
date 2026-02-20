@@ -186,6 +186,9 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
                 });
               }
 
+              // Cleanup subagent instance after task completion
+              subagentManager.cleanupInstance(instance.subagentId);
+
               return resolve({
                 success: true,
                 content: result,

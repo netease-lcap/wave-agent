@@ -285,6 +285,11 @@ export class BackgroundTaskManager {
       }
     }
 
+    // If it's a subagent task, we should also notify the subagent manager to cleanup
+    // However, to avoid circular dependency, we rely on the onStop callback
+    // which is already set to instance.aiManager.abortAIMessage()
+    // The subagentManager.cleanupInstance will be called by the tool or by status change.
+
     task.status = "killed";
     task.endTime = Date.now();
     task.runtime = task.endTime - task.startTime;
