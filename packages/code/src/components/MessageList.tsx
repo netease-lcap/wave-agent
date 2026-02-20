@@ -42,8 +42,24 @@ export const MessageList = React.memo(
       : 0;
 
     // Compute which messages to render statically vs dynamically
+    const lastMessage = displayMessages[displayMessages.length - 1];
+    const hasNonEndTool = lastMessage?.blocks.some(
+      (block) => block.type === "tool" && block.stage !== "end",
+    );
+    const hasRunningCommand = lastMessage?.blocks.some(
+      (block) => block.type === "command_output" && block.isRunning,
+    );
+    const hasActiveSubagent = lastMessage?.blocks.some(
+      (block) => block.type === "subagent" && block.status === "active",
+    );
+
     const shouldRenderLastDynamic =
-      !forceStaticLastMessage && (isLoading || isCommandRunning);
+      !forceStaticLastMessage &&
+      (isLoading ||
+        isCommandRunning ||
+        hasNonEndTool ||
+        hasRunningCommand ||
+        hasActiveSubagent);
     const staticMessages = shouldRenderLastDynamic
       ? displayMessages.slice(0, -1)
       : displayMessages;
