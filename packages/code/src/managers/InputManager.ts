@@ -32,6 +32,7 @@ export interface InputManagerCallbacks {
   onBackgroundTaskManagerStateChange?: (show: boolean) => void;
   onMcpManagerStateChange?: (show: boolean) => void;
   onRewindManagerStateChange?: (show: boolean) => void;
+  onHelpStateChange?: (show: boolean) => void;
   onImagesStateChange?: (images: AttachedImage[]) => void;
   onSendMessage?: (
     content: string,
@@ -84,6 +85,7 @@ export class InputManager {
   private showBackgroundTaskManager: boolean = false;
   private showMcpManager: boolean = false;
   private showRewindManager: boolean = false;
+  private showHelp: boolean = false;
 
   // Permission mode state
   private permissionMode: PermissionMode = "default";
@@ -179,14 +181,6 @@ export class InputManager {
 
   moveCursorRight(): void {
     this.setCursorPosition(this.cursorPosition + 1);
-  }
-
-  moveCursorToStart(): void {
-    this.setCursorPosition(0);
-  }
-
-  moveCursorToEnd(): void {
-    this.setCursorPosition(this.inputText.length);
   }
 
   // File selector methods
@@ -356,6 +350,9 @@ export class InputManager {
             commandExecuted = true;
           } else if (command === "rewind") {
             this.setShowRewindManager(true);
+            commandExecuted = true;
+          } else if (command === "help") {
+            this.setShowHelp(true);
             commandExecuted = true;
           }
         }
@@ -661,6 +658,15 @@ export class InputManager {
     this.callbacks.onRewindManagerStateChange?.(show);
   }
 
+  getShowHelp(): boolean {
+    return this.showHelp;
+  }
+
+  setShowHelp(show: boolean): void {
+    this.showHelp = show;
+    this.callbacks.onHelpStateChange?.(show);
+  }
+
   // Permission mode methods
   getPermissionMode(): PermissionMode {
     return this.permissionMode;
@@ -854,16 +860,6 @@ export class InputManager {
       return true;
     }
 
-    if (("home" in key && key.home) || (key.ctrl && input === "a")) {
-      this.moveCursorToStart();
-      return true;
-    }
-
-    if (("end" in key && key.end) || (key.ctrl && input === "e")) {
-      this.moveCursorToEnd();
-      return true;
-    }
-
     // Handle Ctrl+V for pasting images
     if (key.ctrl && input === "v") {
       this.handlePasteImage().catch((error) => {
@@ -947,14 +943,16 @@ export class InputManager {
       this.showHistorySearch ||
       this.showBackgroundTaskManager ||
       this.showMcpManager ||
-      this.showRewindManager
+      this.showRewindManager ||
+      this.showHelp
     ) {
       if (
         this.showBackgroundTaskManager ||
         this.showMcpManager ||
-        this.showRewindManager
+        this.showRewindManager ||
+        this.showHelp
       ) {
-        // Task manager, MCP manager and Rewind don't need to handle input, handled by component itself
+        // Task manager, MCP manager, Rewind and Help don't need to handle input, handled by component itself
         // Return true to indicate we've "handled" it (by ignoring it) so it doesn't leak to normal input
         return true;
       }

@@ -138,17 +138,6 @@ describe("InputManager", () => {
       manager.moveCursorRight();
       expect(manager.getCursorPosition()).toBe(5);
     });
-
-    it("should move cursor to start", () => {
-      manager.moveCursorToStart();
-      expect(manager.getCursorPosition()).toBe(0);
-    });
-
-    it("should move cursor to end", () => {
-      manager.setCursorPosition(2);
-      manager.moveCursorToEnd();
-      expect(manager.getCursorPosition()).toBe(5);
-    });
   });
 
   describe("File Selector", () => {

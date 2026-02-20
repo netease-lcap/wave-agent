@@ -22,6 +22,12 @@ const AVAILABLE_COMMANDS: SlashCommand[] = [
       "Revert conversation and file changes to a previous checkpoint",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "help",
+    name: "help",
+    description: "Show help and key bindings",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];
 
 export interface CommandSelectorProps {
