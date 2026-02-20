@@ -314,16 +314,12 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
         !isExpanded && (
           <Box flexDirection="column" marginTop={1}>
             <Box marginBottom={1}>
-              <Box
-                backgroundColor={getHeaderColor(currentQuestion.header)}
-                paddingX={1}
-                marginRight={1}
-              >
-                <Text color="black" bold>
-                  {currentQuestion.header.slice(0, 12).toUpperCase()}
-                </Text>
+              <Text color={getHeaderColor(currentQuestion.header)} bold>
+                {currentQuestion.header.slice(0, 12).toUpperCase()}
+              </Text>
+              <Box marginLeft={1}>
+                <Text bold>{currentQuestion.question}</Text>
               </Box>
-              <Text bold>{currentQuestion.question}</Text>
             </Box>
             <Box flexDirection="column">
               {[...currentQuestion.options, { label: "Other" }].map(
