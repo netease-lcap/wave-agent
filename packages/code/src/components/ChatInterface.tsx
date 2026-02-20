@@ -84,7 +84,8 @@ export const ChatInterface: React.FC = () => {
       />
 
       {(isLoading || isCommandRunning || isCompressing) &&
-        !isConfirmationVisible && (
+        !isConfirmationVisible &&
+        !isExpanded && (
           <LoadingIndicator
             isLoading={isLoading}
             isCommandRunning={isCommandRunning}
@@ -92,7 +93,7 @@ export const ChatInterface: React.FC = () => {
             latestTotalTokens={latestTotalTokens}
           />
         )}
-      {!isConfirmationVisible && <TaskList />}
+      {!isConfirmationVisible && !isExpanded && <TaskList />}
 
       {isConfirmationVisible && (
         <>
