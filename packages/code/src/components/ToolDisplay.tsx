@@ -60,8 +60,10 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
   return (
     <Box flexDirection="column">
       <Box>
-        <Text color={getStatusColor()}>● </Text>
-        <Text color="white">{toolName}</Text>
+        <Box flexShrink={0}>
+          <Text color={getStatusColor()}>● </Text>
+          <Text color="white">{toolName}</Text>
+        </Box>
         {/* Display compactParams in collapsed state */}
         {!isExpanded && compactParams && (
           <Text color="gray"> {compactParams}</Text>
