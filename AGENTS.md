@@ -29,7 +29,7 @@ Always use `pnpm` as the package manager.
     - **Run tests for a package**: `pnpm -F <package-name> test` (e.g., `pnpm -F wave-agent-sdk test`)
     - **Run a single test file**: `pnpm -F <package-name> test <path/to/test>` (e.g., `pnpm -F wave-agent-sdk test tests/agent.test.ts`)
 - **Testing Framework**: Vitest.
-- **Important**: ALWAYS use the **Bash subagent** to run `pnpm test`. This reduces context usage for the main agent and keeps the conversation focused.
+- **Important**: ALWAYS use the **Bash subagent** to run tests. This reduces context usage for the main agent and keeps the conversation focused.
 
 ### Linting
 - **Lint all**: `pnpm lint`
