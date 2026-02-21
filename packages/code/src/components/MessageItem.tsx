@@ -26,12 +26,12 @@ export const MessageItem = ({ message, isExpanded }: MessageItemProps) => {
               <Box>
                 {block.customCommandContent && (
                   <Text color="cyan" bold>
-                    ⚡{" "}
+                    ⚡
                   </Text>
                 )}
                 {block.source === MessageSource.HOOK && (
                   <Text color="magenta" bold>
-                    🔗{" "}
+                    🔗
                   </Text>
                 )}
                 {message.role === "user" ? (
