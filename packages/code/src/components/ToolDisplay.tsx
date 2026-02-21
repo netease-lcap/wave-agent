@@ -3,12 +3,12 @@ import { Box, Text } from "ink";
 import type { ToolBlock } from "wave-agent-sdk";
 import { DiffDisplay } from "./DiffDisplay.js";
 
-interface ToolResultDisplayProps {
+interface ToolDisplayProps {
   block: ToolBlock;
   isExpanded?: boolean;
 }
 
-export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
+export const ToolDisplay: React.FC<ToolDisplayProps> = ({
   block,
   isExpanded = false,
 }) => {

@@ -3,7 +3,7 @@ import { Box, Text } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { MessageSource } from "wave-agent-sdk";
 import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
-import { ToolResultDisplay } from "./ToolResultDisplay.js";
+import { ToolDisplay } from "./ToolDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
 import { Markdown } from "./Markdown.js";
@@ -55,7 +55,7 @@ export const MessageItem = ({ message, isExpanded }: MessageItemProps) => {
             )}
 
             {block.type === "tool" && (
-              <ToolResultDisplay block={block} isExpanded={isExpanded} />
+              <ToolDisplay block={block} isExpanded={isExpanded} />
             )}
 
             {block.type === "image" && (

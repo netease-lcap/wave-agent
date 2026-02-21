@@ -9,8 +9,8 @@ import { MessageSource, type Message } from "wave-agent-sdk";
 vi.mock("../../src/components/CommandOutputDisplay.js", () => ({
   CommandOutputDisplay: () => <Text>MOCKED_COMMAND_OUTPUT</Text>,
 }));
-vi.mock("../../src/components/ToolResultDisplay.js", () => ({
-  ToolResultDisplay: () => <Text>MOCKED_TOOL_RESULT</Text>,
+vi.mock("../../src/components/ToolDisplay.js", () => ({
+  ToolDisplay: () => <Text>MOCKED_TOOL_RESULT</Text>,
 }));
 vi.mock("../../src/components/CompressDisplay.js", () => ({
   CompressDisplay: () => <Text>MOCKED_COMPRESS</Text>,
