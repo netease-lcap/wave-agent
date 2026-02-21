@@ -33,24 +33,25 @@ const ChatInterfaceWithRemount: React.FC = () => {
   const prevSessionId = useRef(sessionId);
 
   useEffect(() => {
-    let newKey = String(isExpanded) + rewindId + wasLastDetailsTooTall;
-
-    const isSessionChanged =
-      prevSessionId.current && sessionId && prevSessionId.current !== sessionId;
-
-    if (isSessionChanged) {
-      newKey += sessionId;
-    }
+    const newKey =
+      String(isExpanded) +
+      rewindId +
+      wasLastDetailsTooTall +
+      (prevSessionId.current && sessionId && prevSessionId.current !== sessionId
+        ? sessionId
+        : "");
 
     if (newKey !== remountKey) {
-      stdout?.write("\u001b[2J\u001b[0;0H", (err?: Error | null) => {
-        if (err) {
-          console.error("Failed to clear terminal:", err);
-        }
-        setTimeout(() => {
+      const timeout = setTimeout(() => {
+        stdout?.write("\u001b[2J\u001b[0;0H", (err?: Error | null) => {
+          if (err) {
+            console.error("Failed to clear terminal:", err);
+          }
           setRemountKey(newKey);
-        }, 100);
-      });
+        });
+      }, 100);
+
+      return () => clearTimeout(timeout);
     }
 
     if (sessionId) {
