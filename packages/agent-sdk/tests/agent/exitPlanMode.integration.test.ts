@@ -200,7 +200,9 @@ describe("ExitPlanMode Integration", () => {
     ).toolManager.execute("ExitPlanMode", {}, { workdir, taskManager });
 
     expect(result.success).toBe(false);
-    expect(result.content).toBe(feedback);
+    expect(result.content).toBe(
+      `User feedback: ${feedback}. Please update your proposal accordingly.`,
+    );
     expect(agent.getPermissionMode()).toBe("plan");
   });
 });
