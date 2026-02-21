@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi } from "vitest";
-import { ToolResultDisplay } from "../../src/components/ToolResultDisplay.js";
+import { ToolDisplay } from "../../src/components/ToolDisplay.js";
 
 import { Box, Text } from "ink";
 
@@ -14,7 +14,7 @@ vi.mock("../../src/components/DiffDisplay.js", () => ({
   ),
 }));
 
-describe("ToolResultDisplay", () => {
+describe("ToolDisplay", () => {
   const mockBlock = {
     type: "tool" as const,
     name: "test_tool",
@@ -27,7 +27,7 @@ describe("ToolResultDisplay", () => {
 
   it("should render tool name and compact params when collapsed", () => {
     const { lastFrame } = render(
-      <ToolResultDisplay block={mockBlock} isExpanded={false} />,
+      <ToolDisplay block={mockBlock} isExpanded={false} />,
     );
     const frame = lastFrame();
     expect(frame).toContain("● test_tool");
@@ -37,7 +37,7 @@ describe("ToolResultDisplay", () => {
 
   it("should render full parameters and result when expanded", () => {
     const { lastFrame } = render(
-      <ToolResultDisplay block={mockBlock} isExpanded={true} />,
+      <ToolDisplay block={mockBlock} isExpanded={true} />,
     );
     const frame = lastFrame();
     expect(frame).toContain("Parameters:");
@@ -53,7 +53,7 @@ describe("ToolResultDisplay", () => {
       stage: "running" as const,
       success: undefined,
     };
-    const { lastFrame } = render(<ToolResultDisplay block={runningBlock} />);
+    const { lastFrame } = render(<ToolDisplay block={runningBlock} />);
     expect(lastFrame()).toContain("●");
   });
 
@@ -63,7 +63,7 @@ describe("ToolResultDisplay", () => {
       success: false,
       error: "Something went wrong",
     };
-    const { lastFrame } = render(<ToolResultDisplay block={errorBlock} />);
+    const { lastFrame } = render(<ToolDisplay block={errorBlock} />);
     const frame = lastFrame();
     expect(frame).toContain("●");
     expect(frame).toContain("Error: Something went wrong");
@@ -74,7 +74,7 @@ describe("ToolResultDisplay", () => {
       ...mockBlock,
       images: [{ data: "base64data", mediaType: "image/png" }],
     };
-    const { lastFrame } = render(<ToolResultDisplay block={imageBlock} />);
+    const { lastFrame } = render(<ToolDisplay block={imageBlock} />);
     expect(lastFrame()).toContain("🖼️");
   });
 
@@ -86,12 +86,12 @@ describe("ToolResultDisplay", () => {
         { data: "base64data2", mediaType: "image/png" },
       ],
     };
-    const { lastFrame } = render(<ToolResultDisplay block={imageBlock} />);
+    const { lastFrame } = render(<ToolDisplay block={imageBlock} />);
     expect(lastFrame()).toContain("🖼️×2");
   });
 
   it("should show DiffDisplay when successful and stage is end", () => {
-    const { lastFrame } = render(<ToolResultDisplay block={mockBlock} />);
+    const { lastFrame } = render(<ToolDisplay block={mockBlock} />);
     expect(lastFrame()).toContain("Diff for test_tool");
   });
 
@@ -99,7 +99,7 @@ describe("ToolResultDisplay", () => {
     const longResult = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6";
     const longBlock = { ...mockBlock, result: longResult };
     const { lastFrame } = render(
-      <ToolResultDisplay block={longBlock} isExpanded={false} />,
+      <ToolDisplay block={longBlock} isExpanded={false} />,
     );
     const frame = lastFrame();
     expect(frame).not.toContain("line 1");

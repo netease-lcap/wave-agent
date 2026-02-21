@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { render } from "ink-testing-library";
-import { ToolResultDisplay } from "../../src/components/ToolResultDisplay.js";
+import { ToolDisplay } from "../../src/components/ToolDisplay.js";
 import type { ToolBlock } from "wave-agent-sdk";
 
-describe("ToolResultDisplay - CompactParams from Attributes", () => {
+describe("ToolDisplay - CompactParams from Attributes", () => {
   it("should display compactParams from attributes when available", () => {
     const block: ToolBlock = {
       type: "tool",
@@ -17,7 +17,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     };
 
     const { lastFrame } = render(
-      <ToolResultDisplay block={block} isExpanded={false} />,
+      <ToolDisplay block={block} isExpanded={false} />,
     );
 
     const output = lastFrame();
@@ -36,7 +36,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     };
 
     const { lastFrame } = render(
-      <ToolResultDisplay block={block} isExpanded={false} />,
+      <ToolDisplay block={block} isExpanded={false} />,
     );
 
     const output = lastFrame();
@@ -58,7 +58,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     };
 
     const { lastFrame } = render(
-      <ToolResultDisplay block={block} isExpanded={false} />,
+      <ToolDisplay block={block} isExpanded={false} />,
     );
 
     const output = lastFrame();
@@ -80,7 +80,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     };
 
     const { lastFrame } = render(
-      <ToolResultDisplay block={block} isExpanded={true} />,
+      <ToolDisplay block={block} isExpanded={true} />,
     );
 
     const output = lastFrame();
@@ -105,7 +105,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     };
 
     const { lastFrame } = render(
-      <ToolResultDisplay block={block} isExpanded={false} />,
+      <ToolDisplay block={block} isExpanded={false} />,
     );
 
     const output = lastFrame();
