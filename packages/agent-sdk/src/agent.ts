@@ -1152,6 +1152,8 @@ export class Agent {
    */
   public async truncateHistory(index: number): Promise<void> {
     await this.messageManager.truncateHistory(index, this.reversionManager);
+    // After truncating history, the task list might have changed, so refresh it.
+    await this.taskManager.refreshTasks();
   }
 
   /**

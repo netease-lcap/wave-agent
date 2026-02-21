@@ -185,4 +185,11 @@ export class TaskManager extends EventEmitter {
 
     return (Math.max(...ids) + 1).toString();
   }
+
+  /**
+   * Refreshes the task list by re-reading tasks from disk and emitting a change event.
+   */
+  public async refreshTasks(): Promise<void> {
+    this.emit("tasksChange", this.taskListId);
+  }
 }
