@@ -25,10 +25,6 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
     return "gray"; // Unknown state or no state information
   };
 
-  const getStatusText = () => {
-    return ""; // Don't display text for unknown state
-  };
-
   const hasImages = () => {
     return block.images && block.images.length > 0;
   };
@@ -70,7 +66,6 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
         {!isExpanded && compactParams && (
           <Text color="gray"> {compactParams}</Text>
         )}
-        <Text color={getStatusColor()}> {getStatusText()}</Text>
         {/* Display image indicator */}
         {hasImages() && <Text color="blue"> {getImageIndicator()}</Text>}
       </Box>
