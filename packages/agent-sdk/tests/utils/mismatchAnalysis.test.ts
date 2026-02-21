@@ -18,8 +18,8 @@ describe("analyzeEditMismatch", () => {
 
     expect(result).toContain("Best partial match found at line 1:");
     expect(result).toContain("   1 | const x = 1;");
-    expect(result).toContain("   2 | - const y = 2; (expected)");
-    expect(result).toContain("   2 | + const y = 3; (actual)");
+    expect(result).toContain("   2 | - const y = 2;");
+    expect(result).toContain("   2 | + const y = 3;");
     expect(result).toContain("   3 | return x + y;");
   });
 
@@ -38,7 +38,7 @@ describe("analyzeEditMismatch", () => {
     const search = "const x = 1;";
     const result = analyzeEditMismatch(content, search);
 
-    expect(result).toContain("- const x = 1; (expected)");
-    expect(result).toContain("+   const x = 1; (actual)");
+    expect(result).toContain("- const x = 1;");
+    expect(result).toContain("+   const x = 1;");
   });
 });

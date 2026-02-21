@@ -77,12 +77,8 @@ export function analyzeEditMismatch(
     if (actualLine === expectedLine) {
       reportLines.push(`${lineNum.toString().padStart(4)} | ${actualLine}`);
     } else {
-      reportLines.push(
-        `${lineNum.toString().padStart(4)} | - ${expectedLine} (expected)`,
-      );
-      reportLines.push(
-        `${lineNum.toString().padStart(4)} | + ${actualLine} (actual)`,
-      );
+      reportLines.push(`${lineNum.toString().padStart(4)} | - ${expectedLine}`);
+      reportLines.push(`${lineNum.toString().padStart(4)} | + ${actualLine}`);
     }
   }
 
