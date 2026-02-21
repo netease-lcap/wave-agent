@@ -9,11 +9,14 @@ import type {
   GatewayConfig,
   ModelConfig,
 } from "../../src/types/index.js";
-import * as fsSync from "node:fs";
-
 // Mock node:fs
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
+}));
+
+// Mock gitUtils
+vi.mock("../../src/utils/gitUtils.js", () => ({
+  isGitRepository: vi.fn(),
 }));
 
 // Mock the aiService module
@@ -469,7 +472,8 @@ describe("AIManager", () => {
 
   describe("isGitRepository", () => {
     it("should include 'Is directory a git repo: Yes' in system prompt if .git exists", async () => {
-      vi.mocked(fsSync.existsSync).mockReturnValue(true);
+      const { isGitRepository } = await import("../../src/utils/gitUtils.js");
+      vi.mocked(isGitRepository).mockReturnValue("Yes");
       const { callAgent } = await import("../../src/services/aiService.js");
       vi.mocked(callAgent).mockResolvedValue({
         content: "hi",
@@ -486,7 +490,8 @@ describe("AIManager", () => {
     });
 
     it("should include 'Is directory a git repo: No' in system prompt if .git does not exist", async () => {
-      vi.mocked(fsSync.existsSync).mockReturnValue(false);
+      const { isGitRepository } = await import("../../src/utils/gitUtils.js");
+      vi.mocked(isGitRepository).mockReturnValue("No");
       const { callAgent } = await import("../../src/services/aiService.js");
       vi.mocked(callAgent).mockResolvedValue({
         content: "hi",

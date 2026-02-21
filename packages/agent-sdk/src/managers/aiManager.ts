@@ -1,5 +1,3 @@
-import * as os from "node:os";
-import * as path from "node:path";
 import {
   callAgent,
   compressMessages,
@@ -7,7 +5,6 @@ import {
 } from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
-import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import type {
   Logger,
@@ -23,24 +20,7 @@ import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
-import { buildSystemPrompt } from "../constants/prompts.js";
-
-function isGitRepository(dirPath: string): string {
-  try {
-    // Check if .git directory exists in current directory or any parent directory
-    let currentPath = path.resolve(dirPath);
-    while (currentPath !== path.dirname(currentPath)) {
-      const gitPath = path.join(currentPath, ".git");
-      if (fsSync.existsSync(gitPath)) {
-        return "Yes";
-      }
-      currentPath = path.dirname(currentPath);
-    }
-    return "No";
-  } catch {
-    return "No";
-  }
-}
+import { buildSystemPrompt } from "../prompts/index.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -399,10 +379,6 @@ export class AIManager {
           filteredToolPlugins,
           {
             workdir: this.workdir,
-            isGitRepo: isGitRepository(this.workdir),
-            platform: os.platform(),
-            osVersion: `${os.type()} ${os.release()}`,
-            today: new Date().toISOString().split("T")[0],
             memory: combinedMemory,
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
