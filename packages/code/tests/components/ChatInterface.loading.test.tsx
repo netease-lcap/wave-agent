@@ -63,7 +63,7 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).toContain("💭 AI is thinking...");
+    expect(output).toContain("✻ AI is thinking...");
     expect(output).toContain("1,234");
     expect(output).toContain("tokens");
     expect(output).toContain("Esc to abort");
@@ -84,7 +84,7 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).not.toContain("💭 AI is thinking...");
+    expect(output).not.toContain("✻ AI is thinking...");
   });
 
   it("should not show loading indicator when confirmation is visible", () => {
@@ -104,7 +104,7 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).not.toContain("💭 AI is thinking...");
+    expect(output).not.toContain("✻ AI is thinking...");
     expect(output).toContain("Tool: test_tool");
   });
 

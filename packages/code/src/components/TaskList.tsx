@@ -17,9 +17,9 @@ export const TaskList: React.FC = () => {
     }
     switch (status) {
       case "pending":
-        return <Text color="gray">○</Text>;
+        return <Text color="gray">□</Text>;
       case "in_progress":
-        return <Text color="yellow">●</Text>;
+        return <Text color="yellow">■</Text>;
       case "completed":
         return <Text color="green">✓</Text>;
       case "deleted":

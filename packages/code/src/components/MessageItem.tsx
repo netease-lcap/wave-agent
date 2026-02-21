@@ -14,23 +14,11 @@ export interface MessageItemProps {
   shouldShowHeader: boolean;
 }
 
-export const MessageItem = ({
-  message,
-  isExpanded,
-  shouldShowHeader,
-}: MessageItemProps) => {
+export const MessageItem = ({ message, isExpanded }: MessageItemProps) => {
   if (message.blocks.length === 0) return null;
 
   return (
     <Box flexDirection="column" gap={1} marginTop={1}>
-      {shouldShowHeader && (
-        <Box>
-          <Text color={message.role === "user" ? "cyan" : "green"} bold>
-            {message.role === "user" ? "👤 You" : "🤖 Assistant"}
-          </Text>
-        </Box>
-      )}
-
       <Box flexDirection="column" gap={1}>
         {message.blocks.map((block, blockIndex) => (
           <Box key={blockIndex}>
@@ -46,7 +34,13 @@ export const MessageItem = ({
                     🔗{" "}
                   </Text>
                 )}
-                <Markdown>{block.content}</Markdown>
+                {message.role === "user" ? (
+                  <Text backgroundColor="gray" color="white">
+                    {block.content}
+                  </Text>
+                ) : (
+                  <Markdown>{block.content}</Markdown>
+                )}
               </Box>
             )}
 

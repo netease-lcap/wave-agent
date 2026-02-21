@@ -38,53 +38,6 @@ describe("MessageItem Component", () => {
     expect(lastFrame()).toBe("");
   });
 
-  describe("Headers and Roles", () => {
-    it("should show '👤 You' for user role when shouldShowHeader is true", () => {
-      const message: Message = {
-        role: "user",
-        blocks: [{ type: "text", content: "hello" }],
-      };
-      const { lastFrame } = render(
-        <MessageItem
-          message={message}
-          isExpanded={false}
-          shouldShowHeader={true}
-        />,
-      );
-      expect(lastFrame()).toContain("👤 You");
-    });
-
-    it("should show '🤖 Assistant' for assistant role when shouldShowHeader is true", () => {
-      const message: Message = {
-        role: "assistant",
-        blocks: [{ type: "text", content: "hello" }],
-      };
-      const { lastFrame } = render(
-        <MessageItem
-          message={message}
-          isExpanded={false}
-          shouldShowHeader={true}
-        />,
-      );
-      expect(lastFrame()).toContain("🤖 Assistant");
-    });
-
-    it("should not show header when shouldShowHeader is false", () => {
-      const message: Message = {
-        role: "user",
-        blocks: [{ type: "text", content: "hello" }],
-      };
-      const { lastFrame } = render(
-        <MessageItem
-          message={message}
-          isExpanded={false}
-          shouldShowHeader={false}
-        />,
-      );
-      expect(lastFrame()).not.toContain("👤 You");
-    });
-  });
-
   describe("Block Types", () => {
     it("should render text block", () => {
       const message: Message = {

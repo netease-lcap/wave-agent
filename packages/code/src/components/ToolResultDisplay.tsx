@@ -26,9 +26,6 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   };
 
   const getStatusText = () => {
-    if (stage === "running") return "🔄";
-    if (success) return "";
-    if (error || success === false) return "❌";
     return ""; // Don't display text for unknown state
   };
 
@@ -43,9 +40,6 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   };
 
   const toolName = name ? String(name) : "Tool";
-
-  const isBackgroundable =
-    stage === "running" && (toolName === "Bash" || toolName === "Task");
 
   // Get shortResult, if not available show last 5 lines of result
   const getShortResult = () => {
@@ -70,7 +64,7 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
   return (
     <Box flexDirection="column">
       <Box>
-        <Text color="magenta">🔧 </Text>
+        <Text color={getStatusColor()}>● </Text>
         <Text color="white">{toolName}</Text>
         {/* Display compactParams in collapsed state */}
         {!isExpanded && compactParams && (
@@ -79,7 +73,6 @@ export const ToolResultDisplay: React.FC<ToolResultDisplayProps> = ({
         <Text color={getStatusColor()}> {getStatusText()}</Text>
         {/* Display image indicator */}
         {hasImages() && <Text color="blue"> {getImageIndicator()}</Text>}
-        {isBackgroundable && <Text color="gray"> [Ctrl-B] Background</Text>}
       </Box>
 
       {/* Display shortResult in collapsed state */}

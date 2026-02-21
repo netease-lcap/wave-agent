@@ -13,7 +13,7 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
 }) => {
   const { command, output, isRunning, exitCode } = block;
   const [isOverflowing, setIsOverflowing] = useState(false);
-  const MAX_LINES = 10; // Set maximum display lines
+  const MAX_LINES = 3; // Set maximum display lines
 
   // Detect if content is overflowing
   useEffect(() => {
@@ -30,20 +30,11 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
     return "gray"; // Unknown state
   };
 
-  const getStatusText = () => {
-    if (isRunning) return "🔄";
-    if (exitCode === 0) return "✅";
-    if (exitCode === 130) return "⚠️"; // SIGINT (Ctrl+C)
-    if (exitCode !== null && exitCode !== 0) return "❌";
-    return ""; // Don't display text for unknown state
-  };
-
   return (
     <Box flexDirection="column">
       <Box>
-        <Text color="cyan">$ </Text>
+        <Text color={getStatusColor()}>$ </Text>
         <Text color="white">{command}</Text>
-        <Text color={getStatusColor()}> {getStatusText()}</Text>
       </Box>
 
       {output && (
@@ -66,14 +57,6 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
                 : output}
             </Text>
           </Box>
-          {isOverflowing && (
-            <Box paddingLeft={2} marginTop={1}>
-              <Text color="yellow" dimColor>
-                Content truncated ({output.split("\n").length} lines total,
-                showing last {MAX_LINES} lines)
-              </Text>
-            </Box>
-          )}
         </Box>
       )}
     </Box>
