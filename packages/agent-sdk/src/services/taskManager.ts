@@ -27,7 +27,7 @@ export class TaskManager extends EventEmitter {
     return join(this.baseDir, this.taskListId);
   }
 
-  private getTaskPath(taskId: string): string {
+  public getTaskPath(taskId: string): string {
     return join(this.getSessionDir(), `${taskId}.json`);
   }
 
