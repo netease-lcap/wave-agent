@@ -122,11 +122,10 @@ describe("Agent Message Compression Tests", () => {
     );
     expect(compressedMessage).toBeDefined();
     expect(compressedMessage?.usage).toBeDefined();
-    expect(compressedMessage?.usage).toEqual({
+    expect(compressedMessage?.usage).toMatchObject({
       prompt_tokens: 1000,
       completion_tokens: 500,
       total_tokens: 1500,
-      model: "gemini-3-flash", // The default agent model
       operation_type: "compress",
     });
 

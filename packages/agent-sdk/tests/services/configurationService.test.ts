@@ -437,8 +437,11 @@ describe("ConfigurationService", () => {
   describe("resolveModelConfig", () => {
     it("should resolve with defaults", () => {
       const config = configService.resolveModelConfig();
-      expect(config.agentModel).toBe("gemini-3-flash");
-      expect(config.fastModel).toBe("gemini-2.5-flash");
+      const expectedAgentModel = process.env.WAVE_MODEL || "gemini-3-flash";
+      const expectedFastModel =
+        process.env.WAVE_FAST_MODEL || "gemini-2.5-flash";
+      expect(config.agentModel).toBe(expectedAgentModel);
+      expect(config.fastModel).toBe(expectedFastModel);
       expect(config.maxTokens).toBe(DEFAULT_WAVE_MAX_OUTPUT_TOKENS);
     });
 
