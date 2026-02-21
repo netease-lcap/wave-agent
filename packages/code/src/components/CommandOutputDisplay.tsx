@@ -38,25 +38,20 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
       </Box>
 
       {output && (
-        <Box marginTop={1} flexDirection="column">
-          <Box
-            paddingLeft={2}
-            borderLeft
-            borderColor="gray"
-            flexDirection="column"
-            height={
-              isExpanded
-                ? undefined
-                : Math.min(output.split("\n").length, MAX_LINES)
-            }
-            overflow="hidden"
-          >
-            <Text color="gray">
-              {isOverflowing
-                ? output.split("\n").slice(-MAX_LINES).join("\n")
-                : output}
-            </Text>
-          </Box>
+        <Box
+          paddingLeft={2}
+          height={
+            isExpanded
+              ? undefined
+              : Math.min(output.split("\n").length, MAX_LINES)
+          }
+          overflow="hidden"
+        >
+          <Text color="gray">
+            {isOverflowing
+              ? output.split("\n").slice(-MAX_LINES).join("\n")
+              : output}
+          </Text>
         </Box>
       )}
     </Box>
