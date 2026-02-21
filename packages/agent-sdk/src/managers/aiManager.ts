@@ -405,6 +405,7 @@ export class AIManager {
             today: new Date().toISOString().split("T")[0],
             memory: combinedMemory,
             language: this.getLanguage(),
+            isSubagent: !!this.subagentType,
             planMode: planModeOptions,
           },
         ), // Pass custom system prompt

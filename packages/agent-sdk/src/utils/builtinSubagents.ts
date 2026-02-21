@@ -1,4 +1,10 @@
 import {
+  BASH_SUBAGENT_TYPE,
+  EXPLORE_SUBAGENT_TYPE,
+  PLAN_SUBAGENT_TYPE,
+  GENERAL_PURPOSE_SUBAGENT_TYPE,
+} from "../constants/subagents.js";
+import {
   BASH_SUBAGENT_SYSTEM_PROMPT,
   GENERAL_PURPOSE_SYSTEM_PROMPT,
   PLAN_SUBAGENT_SYSTEM_PROMPT,
@@ -26,13 +32,13 @@ export function getBuiltinSubagents(): SubagentConfiguration[] {
  */
 function createBashSubagent(): SubagentConfiguration {
   return {
-    name: "Bash",
+    name: BASH_SUBAGENT_TYPE,
     description:
       "Command execution specialist for running bash commands. Use this for git operations, command execution, and other terminal tasks.",
     systemPrompt: BASH_SUBAGENT_SYSTEM_PROMPT,
     tools: [BASH_TOOL_NAME],
     model: "inherit",
-    filePath: "<builtin:Bash>",
+    filePath: `<builtin:${BASH_SUBAGENT_TYPE}>`,
     scope: "builtin",
     priority: 3,
   };
@@ -44,11 +50,11 @@ function createBashSubagent(): SubagentConfiguration {
  */
 function createGeneralPurposeSubagent(): SubagentConfiguration {
   return {
-    name: "general-purpose",
+    name: GENERAL_PURPOSE_SUBAGENT_TYPE,
     description:
       "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you.",
     systemPrompt: GENERAL_PURPOSE_SYSTEM_PROMPT,
-    filePath: "<builtin:general-purpose>",
+    filePath: `<builtin:${GENERAL_PURPOSE_SUBAGENT_TYPE}>`,
     scope: "builtin",
     priority: 3,
   };
@@ -101,13 +107,13 @@ Complete the user's search request efficiently and report your findings clearly.
   const allowedTools = ["Glob", "Grep", "Read", "Bash", "LS", "LSP"];
 
   return {
-    name: "Explore",
+    name: EXPLORE_SUBAGENT_TYPE,
     description:
       'Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.',
     systemPrompt,
     tools: allowedTools,
     model: "fastModel", // Special value that will use parent's fastModel
-    filePath: "<builtin:Explore>",
+    filePath: `<builtin:${EXPLORE_SUBAGENT_TYPE}>`,
     scope: "builtin",
     priority: 3, // Lowest priority - can be overridden by user configs
   };
@@ -122,13 +128,13 @@ function createPlanSubagent(): SubagentConfiguration {
   const allowedTools = ["Glob", "Grep", "Read", "Bash", "LS", "LSP"];
 
   return {
-    name: "Plan",
+    name: PLAN_SUBAGENT_TYPE,
     description:
       "Software architect agent for designing implementation plans. Use this when you need to plan the implementation strategy for a task. Returns step-by-step plans, identifies critical files, and considers architectural trade-offs.",
     systemPrompt: PLAN_SUBAGENT_SYSTEM_PROMPT,
     tools: allowedTools,
     model: "inherit", // Uses parent agent's model
-    filePath: "<builtin:Plan>",
+    filePath: `<builtin:${PLAN_SUBAGENT_TYPE}>`,
     scope: "builtin",
     priority: 3, // Lowest priority - can be overridden by user configs
   };

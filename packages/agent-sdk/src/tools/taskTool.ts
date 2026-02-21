@@ -1,5 +1,6 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import type { SubagentManager } from "../managers/subagentManager.js";
+import { EXPLORE_SUBAGENT_TYPE } from "../constants/subagents.js";
 import { TASK_TOOL_NAME } from "../constants/tools.js";
 
 /**
@@ -61,7 +62,7 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
     prompt: () => `
 - When doing file search, prefer to use the ${TASK_TOOL_NAME} tool in order to reduce context usage.
 - You should proactively use the ${TASK_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description.
-- VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the ${TASK_TOOL_NAME} tool with subagent_type=Explore instead of running search commands directly.`,
+- VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the ${TASK_TOOL_NAME} tool with subagent_type=${EXPLORE_SUBAGENT_TYPE} instead of running search commands directly.`,
 
     execute: async (
       args: Record<string, unknown>,
