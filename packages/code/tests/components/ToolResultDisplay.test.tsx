@@ -30,7 +30,7 @@ describe("ToolResultDisplay", () => {
       <ToolResultDisplay block={mockBlock} isExpanded={false} />,
     );
     const frame = lastFrame();
-    expect(frame).toContain("🔧 test_tool");
+    expect(frame).toContain("● test_tool");
     expect(frame).toContain("(arg=val)");
     expect(frame).toContain("Full result content");
   });
@@ -54,7 +54,7 @@ describe("ToolResultDisplay", () => {
       success: undefined,
     };
     const { lastFrame } = render(<ToolResultDisplay block={runningBlock} />);
-    expect(lastFrame()).toContain("🔄");
+    expect(lastFrame()).toContain("●");
   });
 
   it("should show error status", () => {
@@ -65,7 +65,7 @@ describe("ToolResultDisplay", () => {
     };
     const { lastFrame } = render(<ToolResultDisplay block={errorBlock} />);
     const frame = lastFrame();
-    expect(frame).toContain("❌");
+    expect(frame).toContain("●");
     expect(frame).toContain("Error: Something went wrong");
   });
 

@@ -18,7 +18,7 @@ export const LoadingIndicator = ({
     <Box flexDirection="column">
       {isLoading && (
         <Box>
-          <Text color="yellow">💭 AI is thinking... </Text>
+          <Text color="yellow">✻ AI is thinking... </Text>
           {latestTotalTokens > 0 && (
             <>
               <Text color="gray" dimColor>

@@ -100,8 +100,8 @@ describe("TaskList Integration", () => {
     // Verify tasks are rendered
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
-      expect(output).toContain("○ First Task");
-      expect(output).toContain("● Second Task");
+      expect(output).toContain("□ First Task");
+      expect(output).toContain("■ Second Task");
       expect(output).toContain("✓ Third Task");
     });
   });

@@ -41,7 +41,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
 
     const output = lastFrame();
     // Should not display compactParams
-    expect(output).toContain("🔧 test_tool");
+    expect(output).toContain("● test_tool");
     expect(output).not.toContain('"some"');
   });
 
@@ -88,7 +88,7 @@ describe("ToolResultDisplay - CompactParams from Attributes", () => {
     expect(output).toContain("Parameters:");
     // CompactParams should not be shown in expanded mode
     const lines = output?.split("\n") || [];
-    const toolLine = lines.find((line) => line.includes("🔧"));
+    const toolLine = lines.find((line) => line.includes("●"));
     expect(toolLine).not.toContain('test.ts: "function"');
   });
 

@@ -85,10 +85,6 @@ describe("MessageList Component - Expanded Mode Limit", () => {
 
       const output = lastFrame();
 
-      // Should show omitted message indicator
-      expect(output).toContain("5 earlier messages omitted");
-      expect(output).toContain("showing latest 20");
-
       // Should show only the latest 20 messages (messages 6-25)
       expect(output).not.toContain("Test 1 - Message 1");
       expect(output).not.toContain("Test 5 - Message 5");
@@ -158,37 +154,10 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       const output = lastFrame();
 
       // Should limit to 20 messages
-      expect(output).toContain("1 earlier message omitted");
-      expect(output).toContain("showing latest 20");
-
       // Should not show the first message
       expect(output).not.toContain("Test 1 - Message 1");
       expect(output).toContain("Test 2 - Message 2");
       expect(output).toContain("Test 21 - Message 21");
-    });
-
-    it("should handle singular vs plural in omitted message text", () => {
-      // Test singular
-      const messages21 = Array.from({ length: 21 }, (_, i) =>
-        createMessage("user", `Test ${i + 1}`, i + 1),
-      );
-
-      const { lastFrame: frame21 } = render(
-        <MessageList messages={messages21} isExpanded={true} />,
-      );
-
-      expect(frame21()).toContain("1 earlier message omitted");
-
-      // Test plural
-      const messages25 = Array.from({ length: 25 }, (_, i) =>
-        createMessage("user", `Test ${i + 1}`, i + 1),
-      );
-
-      const { lastFrame: frame25 } = render(
-        <MessageList messages={messages25} isExpanded={true} />,
-      );
-
-      expect(frame25()).toContain("5 earlier messages omitted");
     });
   });
 
@@ -208,8 +177,10 @@ describe("MessageList Component - Expanded Mode Limit", () => {
 
       const output = lastFrame();
 
-      // Should show message limiting
-      expect(output).toContain("5 earlier messages omitted");
+      // Should show only the latest 20 messages
+      expect(output).not.toContain("Test 1 - Message 1");
+      expect(output).toContain("Test 6 - Message 6");
+      expect(output).toContain("Test 25 - Message 25");
     });
 
     it("should work with loading state and message limiting (moved to ChatInterface)", () => {
@@ -230,8 +201,10 @@ describe("MessageList Component - Expanded Mode Limit", () => {
       // Should NOT show loading indicator
       expect(output).not.toContain("💭 AI is thinking...");
 
-      // Should show message limiting
-      expect(output).toContain("5 earlier messages omitted");
+      // Should show only the latest 20 messages
+      expect(output).not.toContain("Test 1 - Message 1");
+      expect(output).toContain("Test 6 - Message 6");
+      expect(output).toContain("Test 25 - Message 25");
     });
   });
 });

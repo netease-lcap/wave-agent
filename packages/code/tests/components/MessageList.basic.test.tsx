@@ -73,7 +73,6 @@ describe("MessageList Component", () => {
         />,
       );
 
-      expect(lastFrame()).toContain("👤 You");
       expect(lastFrame()).toContain("Hello - Message 1");
     });
 
@@ -91,8 +90,6 @@ describe("MessageList Component", () => {
         />,
       );
 
-      expect(lastFrame()).toContain("👤 You");
-      expect(lastFrame()).toContain("🤖 Assistant");
       expect(lastFrame()).toContain("Hello - Message 1");
       expect(lastFrame()).toContain("Hi there - Message 2");
     });
@@ -116,7 +113,7 @@ describe("MessageList Component", () => {
       expect(lastFrame()).toContain("❌ Error: Something went wrong");
     });
 
-    it("should render role headers correctly", () => {
+    it("should render messages correctly", () => {
       const messages = [
         createMessage("user", "First", 1),
         createMessage("assistant", "Second", 2),
@@ -130,8 +127,6 @@ describe("MessageList Component", () => {
         />,
       );
 
-      expect(lastFrame()).toContain("👤 You");
-      expect(lastFrame()).toContain("🤖 Assistant");
       expect(lastFrame()).toContain("First - Message 1");
       expect(lastFrame()).toContain("Second - Message 2");
     });
@@ -254,8 +249,6 @@ describe("MessageList Component", () => {
 
       // Should display the image indicator
       expect(output).toContain("📷 Image (1)");
-      // Should show user header
-      expect(output).toContain("👤 You");
     });
   });
 
@@ -295,9 +288,6 @@ describe("MessageList Component", () => {
       // Should display reasoning content
       expect(output).toContain("Analyzing the Request");
       expect(output).toContain("The user is asking for help");
-
-      // Should show assistant header
-      expect(output).toContain("🤖 Assistant");
     });
 
     it("should not display empty reasoning blocks", () => {

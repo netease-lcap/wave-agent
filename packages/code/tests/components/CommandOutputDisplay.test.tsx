@@ -18,26 +18,25 @@ describe("CommandOutputDisplay", () => {
     const { lastFrame } = render(<CommandOutputDisplay block={mockBlock} />);
     const frame = lastFrame();
     expect(frame).toContain("$ ls -la");
-    expect(frame).toContain("✅");
     expect(frame).toContain("total 0");
   });
 
-  it("should show running status", () => {
+  it("should render command when running", () => {
     const runningBlock = { ...mockBlock, isRunning: true, exitCode: null };
     const { lastFrame } = render(<CommandOutputDisplay block={runningBlock} />);
-    expect(lastFrame()).toContain("🔄");
+    expect(lastFrame()).toContain("$ ls -la");
   });
 
-  it("should show error status for non-zero exit code", () => {
+  it("should render command when error occurs", () => {
     const errorBlock = { ...mockBlock, exitCode: 1 };
     const { lastFrame } = render(<CommandOutputDisplay block={errorBlock} />);
-    expect(lastFrame()).toContain("❌");
+    expect(lastFrame()).toContain("$ ls -la");
   });
 
-  it("should show warning status for SIGINT (130)", () => {
+  it("should render command when SIGINT occurs", () => {
     const sigintBlock = { ...mockBlock, exitCode: 130 };
     const { lastFrame } = render(<CommandOutputDisplay block={sigintBlock} />);
-    expect(lastFrame()).toContain("⚠️");
+    expect(lastFrame()).toContain("$ ls -la");
   });
 
   it("should truncate output when not expanded and exceeding MAX_LINES", async () => {
@@ -54,9 +53,7 @@ describe("CommandOutputDisplay", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const frame = lastFrame();
-    expect(frame).toContain("Content truncated");
-    expect(frame).toContain("20 lines total");
-    expect(frame).toContain("showing last 10 lines");
+    expect(frame).not.toContain("Content truncated");
     expect(frame).not.toContain("line 1\n");
     expect(frame).toContain("line 20");
   });

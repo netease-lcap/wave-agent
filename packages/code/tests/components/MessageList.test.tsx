@@ -60,8 +60,6 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should render messages normally
-      expect(output).toContain("👤 You");
-      expect(output).toContain("🤖 Assistant");
       expect(output).toContain("Hello - Message 1");
       expect(output).toContain("Hi there - Message 2");
     });
@@ -77,8 +75,6 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should render messages normally
-      expect(output).toContain("👤 You");
-      expect(output).toContain("🤖 Assistant");
       expect(output).toContain("Hello - Message 1");
       expect(output).toContain("Hi there - Message 2");
     });

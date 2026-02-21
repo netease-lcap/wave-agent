@@ -37,9 +37,6 @@ export const MessageList = React.memo(
     const displayMessages = shouldLimitMessages
       ? messages.slice(-maxExpandedMessages)
       : messages;
-    const omittedCount = shouldLimitMessages
-      ? messages.length - maxExpandedMessages
-      : 0;
 
     // Compute which messages to render statically vs dynamically
     const lastMessage = displayMessages[displayMessages.length - 1];
@@ -61,17 +58,7 @@ export const MessageList = React.memo(
         : [];
 
     return (
-      <Box flexDirection="column" gap={1} paddingBottom={1}>
-        {/* Show omitted message count when limiting */}
-        {omittedCount > 0 && (
-          <Box>
-            <Text color="gray" dimColor>
-              ... {omittedCount} earlier message{omittedCount !== 1 ? "s" : ""}{" "}
-              omitted (showing latest {maxExpandedMessages})
-            </Text>
-          </Box>
-        )}
-
+      <Box flexDirection="column" paddingBottom={1}>
         {/* Static messages */}
         <Static items={staticMessages}>
           {(message, key) => {

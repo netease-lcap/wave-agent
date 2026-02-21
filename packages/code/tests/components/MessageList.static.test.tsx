@@ -68,9 +68,6 @@ describe("MessageList Static Rendering", () => {
 
       // Should not show page info
       expect(lastFrame()).not.toContain("Page");
-
-      // For same-role consecutive messages, only the very first message shows header
-      expect(lastFrame()).toContain("👤 You");
     });
 
     it("should render all messages without pagination (15 messages)", () => {
@@ -94,9 +91,6 @@ describe("MessageList Static Rendering", () => {
 
       // Should not show page info
       expect(lastFrame()).not.toContain("Page");
-
-      // For same-role consecutive messages, only the first one shows header
-      expect(lastFrame()).toContain("👤 You");
     });
 
     it("should handle large number of messages and show all (47 messages)", () => {
@@ -142,8 +136,6 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("Short 1 - Message 1");
       expect(lastFrame()).toContain("Short 3 - Message 3");
       expect(lastFrame()).not.toContain("Page");
-      expect(lastFrame()).toContain("👤 You");
-      // For same-role consecutive messages, only the first one shows header
     });
 
     it("should handle single message", () => {
@@ -159,7 +151,6 @@ describe("MessageList Static Rendering", () => {
 
       expect(lastFrame()).toContain("Only - Message 1");
       expect(lastFrame()).not.toContain("Page");
-      expect(lastFrame()).toContain("👤 You");
     });
 
     it("should handle empty message list", () => {
@@ -291,10 +282,8 @@ describe("MessageList Static Rendering", () => {
       );
 
       // All messages should be visible
-      expect(lastFrame()).toContain("👤 You"); // User messages
-      expect(lastFrame()).toContain("🤖 Assistant"); // Assistant messages
-
-      // Should have proper role headers for ALL messages
+      expect(lastFrame()).toContain("Test 1 - Message 1");
+      expect(lastFrame()).toContain("Test 12 - Message 12");
     });
 
     it("should handle complex message types with mixed blocks", () => {
@@ -326,7 +315,7 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("❌ Error:");
     });
 
-    it("should correctly show headers for alternating message roles", () => {
+    it("should correctly show alternating message roles", () => {
       const messages = [
         createMessage("user", "Question 1", 1),
         createMessage("assistant", "Answer 1", 2),
@@ -342,10 +331,6 @@ describe("MessageList Static Rendering", () => {
           isExpanded={false}
         />,
       );
-
-      // All role headers should be visible
-      expect(lastFrame()).toContain("👤 You");
-      expect(lastFrame()).toContain("🤖 Assistant");
 
       // All message content should be visible
       expect(lastFrame()).toContain("Question 1 - Message 1");
@@ -369,9 +354,6 @@ describe("MessageList Static Rendering", () => {
           isExpanded={false}
         />,
       );
-
-      // Only the first message should have a header
-      expect(lastFrame()).toContain("👤 You");
 
       // All message content should still be visible
       expect(lastFrame()).toContain("First user message - Message 1");
@@ -401,10 +383,6 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).toContain("Static message 1 - Message 1");
       expect(lastFrame()).toContain("Static message 2 - Message 2");
       expect(lastFrame()).toContain("Dynamic last message - Message 3");
-
-      // Proper role headers for role changes
-      expect(lastFrame()).toContain("👤 You");
-      expect(lastFrame()).toContain("🤖 Assistant");
     });
 
     it("should handle single message (all dynamic, no static)", () => {
@@ -420,7 +398,6 @@ describe("MessageList Static Rendering", () => {
       );
 
       expect(lastFrame()).toContain("Only message - Message 1");
-      expect(lastFrame()).toContain("👤 You");
     });
   });
 });

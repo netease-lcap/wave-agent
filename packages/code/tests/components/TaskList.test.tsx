@@ -91,8 +91,8 @@ describe("TaskList", () => {
     const { lastFrame } = render(<TaskList />);
     const output = lastFrame();
 
-    expect(output).toContain("○ Pending Task");
-    expect(output).toContain("● In Progress Task");
+    expect(output).toContain("□ Pending Task");
+    expect(output).toContain("■ In Progress Task");
     expect(output).toContain("✓ Completed Task");
     expect(output).toContain("✕ Deleted Task");
   });
