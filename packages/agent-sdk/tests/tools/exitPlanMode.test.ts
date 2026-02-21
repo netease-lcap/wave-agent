@@ -116,7 +116,9 @@ describe("exitPlanModeTool", () => {
     const result = await exitPlanModeTool.execute({}, mockContext);
 
     expect(result.success).toBe(false);
-    expect(result.content).toBe(feedback);
+    expect(result.content).toBe(
+      `User feedback: ${feedback}. Please update your proposal accordingly.`,
+    );
     expect(result.error).toBeUndefined();
   });
 
@@ -133,7 +135,9 @@ describe("exitPlanModeTool", () => {
     const result = await exitPlanModeTool.execute({}, mockContext);
 
     expect(result.success).toBe(false);
-    expect(result.content).toBe("Plan rejected by user");
+    expect(result.content).toBe(
+      "User feedback: Plan rejected by user. Please update your proposal accordingly.",
+    );
     expect(result.error).toBe("Plan rejected by user");
   });
 
