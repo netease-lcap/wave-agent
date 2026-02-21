@@ -143,7 +143,7 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
       <Box>
         <Text color="red" dimColor>
           ⚠️ Warning: This will delete all subsequent messages and revert file
-          changes.
+          and task list changes.
         </Text>
       </Box>
     </Box>

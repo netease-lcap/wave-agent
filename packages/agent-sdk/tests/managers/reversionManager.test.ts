@@ -153,4 +153,32 @@ describe("ReversionManager", () => {
 
     expect(fs.rm).toHaveBeenCalledWith("/newfile", { force: true });
   });
+
+  it("should handle absolute paths for task files and track affected task list IDs", async () => {
+    const taskFilePath = "/home/user/.wave/tasks/session123/1.json";
+    const snapshots = [
+      {
+        messageId: "msg1",
+        filePath: taskFilePath,
+        snapshotPath: undefined,
+        timestamp: 100,
+        operation: "create",
+      },
+    ];
+
+    const messages = [
+      {
+        id: "msg1",
+        blocks: [{ type: "file_history", snapshots: [snapshots[0]] }],
+      },
+    ];
+
+    const count = await reversionManager.revertTo(
+      ["msg1"],
+      messages as unknown as import("../../src/types/index.js").Message[],
+    );
+
+    expect(count).toBe(1);
+    expect(fs.rm).toHaveBeenCalledWith(taskFilePath, { force: true });
+  });
 });

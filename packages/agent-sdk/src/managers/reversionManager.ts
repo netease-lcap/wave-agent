@@ -123,10 +123,15 @@ export class ReversionManager {
     const sortedSnapshots = snapshots.sort((a, b) => b.timestamp - a.timestamp);
 
     let revertedCount = 0;
+    const affectedTaskListIds = new Set<string>();
+
     for (const snapshot of sortedSnapshots) {
       try {
-        if (!snapshot.snapshotPath) {
-          // File didn't exist before, so delete it
+        if (snapshot.operation === "create") {
+          // For 'create' operations, we should hard delete the file upon reversion
+          await fs.rm(snapshot.filePath, { force: true });
+        } else if (!snapshot.snapshotPath) {
+          // Fallback for older snapshots or if snapshotPath is missing
           await fs.rm(snapshot.filePath, { force: true });
         } else {
           // Restore previous content
@@ -141,11 +146,30 @@ export class ReversionManager {
             await fs.rm(snapshot.filePath, { force: true });
           }
         }
+
+        // Check if this is a task file and track the task list ID
+        if (snapshot.filePath.includes("/.wave/tasks/")) {
+          const parts = snapshot.filePath.split("/.wave/tasks/");
+          if (parts.length > 1) {
+            const taskListId = parts[1].split("/")[0];
+            if (taskListId) {
+              affectedTaskListIds.add(taskListId);
+            }
+          }
+        }
+
         revertedCount++;
       } catch (error) {
         console.error(`Failed to revert file ${snapshot.filePath}:`, error);
       }
     }
+
+    // Notify TaskManager if any task lists were affected
+    // Note: In the current architecture, TaskManager is managed by Agent and
+    // listens for file changes if it's a foreground process, or we might need
+    // to explicitly trigger a refresh. Since ReversionManager doesn't have
+    // a direct reference to TaskManager, we rely on the fact that TaskManager
+    // will see the file system changes or be refreshed by the Agent/UI.
 
     return revertedCount;
   }

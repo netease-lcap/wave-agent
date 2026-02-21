@@ -114,6 +114,15 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 
     const taskId = await taskManager.createTask(task);
 
+    if (context.reversionManager && context.messageId) {
+      const taskPath = taskManager.getTaskPath(taskId);
+      await context.reversionManager.recordSnapshot(
+        context.messageId,
+        taskPath,
+        "create",
+      );
+    }
+
     return {
       success: true,
       content: `Task created with ID: ${taskId}`,
@@ -322,6 +331,15 @@ Set up task dependencies:
         success: false,
         content: `Task with ID ${taskId} not found.`,
       };
+    }
+
+    if (context.reversionManager && context.messageId) {
+      const taskPath = taskManager.getTaskPath(taskId);
+      await context.reversionManager.recordSnapshot(
+        context.messageId,
+        taskPath,
+        "modify",
+      );
     }
 
     const updatedFields: string[] = [];
