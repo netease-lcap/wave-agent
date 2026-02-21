@@ -21,7 +21,7 @@ import {
 } from "../utils/markdownParser.js";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { INIT_PROMPT } from "../constants/prompts.js";
+import { INIT_PROMPT } from "../prompts/index.js";
 
 const execAsync = promisify(exec);
 

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
-import { DEFAULT_SYSTEM_PROMPT } from "@/constants/prompts.js";
+import { DEFAULT_SYSTEM_PROMPT } from "@/prompts/index.js";
 
 // Mock the aiService module
 vi.mock("@/services/aiService");

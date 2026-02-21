@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildSystemPrompt,
   DEFAULT_SYSTEM_PROMPT,
-} from "../../src/constants/prompts.js";
+} from "../../src/prompts/index.js";
 import { READ_TOOL_NAME, WRITE_TOOL_NAME } from "../../src/constants/tools.js";
 import { ToolPlugin } from "../../src/tools/types.js";
 

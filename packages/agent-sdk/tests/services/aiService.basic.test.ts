@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import {
-  DEFAULT_SYSTEM_PROMPT,
-  buildSystemPrompt,
-} from "@/constants/prompts.js";
+import { DEFAULT_SYSTEM_PROMPT, buildSystemPrompt } from "@/prompts/index.js";
 import type { CallAgentOptions } from "@/services/aiService.js";
 import type { GatewayConfig, ModelConfig } from "@/types/index.js";
 

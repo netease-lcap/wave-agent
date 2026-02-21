@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { INIT_PROMPT } from "../../src/constants/prompts.js";
+import { INIT_PROMPT } from "../../src/prompts/index.js";
 
 describe("INIT_PROMPT", () => {
   it("should contain the mandatory AGENTS.md prefix", () => {

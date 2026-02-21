@@ -21,7 +21,7 @@ import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
 
-import { COMPRESS_MESSAGES_SYSTEM_PROMPT } from "../constants/prompts.js";
+import { COMPRESS_MESSAGES_SYSTEM_PROMPT } from "../prompts/index.js";
 
 /**
  * Interface for debug data saved during 400 errors
