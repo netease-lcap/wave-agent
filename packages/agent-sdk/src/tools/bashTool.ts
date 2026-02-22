@@ -24,7 +24,34 @@ export const bashTool: ToolPlugin = {
     type: "function",
     function: {
       name: BASH_TOOL_NAME,
-      description: `Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
+      description: "Run shell command",
+      parameters: {
+        type: "object",
+        properties: {
+          command: {
+            type: "string",
+            description: "The command to execute",
+          },
+          timeout: {
+            type: "number",
+            description: "Optional timeout in milliseconds (max 600000)",
+          },
+          description: {
+            type: "string",
+            description:
+              "Clear, concise description of what this command does in 5-10 words.",
+          },
+          run_in_background: {
+            type: "boolean",
+            description: `Set to true to run this command in the background. Use ${TASK_OUTPUT_TOOL_NAME} to read the output later.`,
+          },
+        },
+        required: ["command"],
+      },
+    },
+  },
+  prompt: () => `
+Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
 
 IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
 
@@ -69,33 +96,7 @@ Usage notes:
     <bad-example>
     cd /foo/bar && pytest tests
     </bad-example>
-`,
-      parameters: {
-        type: "object",
-        properties: {
-          command: {
-            type: "string",
-            description: "The command to execute",
-          },
-          timeout: {
-            type: "number",
-            description: "Optional timeout in milliseconds (max 600000)",
-          },
-          description: {
-            type: "string",
-            description:
-              "Clear, concise description of what this command does in 5-10 words.",
-          },
-          run_in_background: {
-            type: "boolean",
-            description: `Set to true to run this command in the background. Use ${TASK_OUTPUT_TOOL_NAME} to read the output later.`,
-          },
-        },
-        required: ["command"],
-      },
-    },
-  },
-  prompt: () => `
+
 - Reserve bash tools exclusively for actual system commands and terminal operations that require shell execution. NEVER use bash echo or other command-line tools to communicate thoughts, explanations, or instructions to the user. Output all communication directly in your response text instead.
 - When making multiple bash tool calls, you MUST send a single message with multiple tools calls to run the calls in parallel. For example, if you need to run "git status" and "git diff", send a single message with two tool calls in parallel.`,
   execute: async (
