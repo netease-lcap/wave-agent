@@ -18,6 +18,7 @@
     "lint": "pnpm -r lint",
     "format": "prettier --write .",
     "ci": "pnpm type-check && pnpm lint && pnpm test:coverage",
+    "ci:stderr-only": "pnpm type-check > /dev/null && pnpm lint > /dev/null && pnpm test > /dev/null",
     "version:patch": "node scripts/version.js patch all",
     "version:minor": "node scripts/version.js minor all",
     "version:major": "node scripts/version.js major all",
