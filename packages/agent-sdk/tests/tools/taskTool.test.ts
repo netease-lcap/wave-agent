@@ -89,6 +89,96 @@ describe("Task Tool Background Execution", () => {
     expect(result.shortResult).toBe("Task started in background: task_12345");
   });
 
+  it("should add '...' to shortResult when toolCount > 2", async () => {
+    const mockInstance = {
+      subagentId: "gp-test-id",
+      lastTools: ["Read", "Write"],
+      messageManager: {
+        getMessages: vi.fn(() => [
+          { blocks: [{ type: "tool" }, { type: "tool" }] },
+          { blocks: [{ type: "tool" }] },
+        ]),
+        getlatestTotalTokens: vi.fn(() => 1000),
+      },
+    };
+
+    let capturedShortResult = "";
+    const contextWithCallback: ToolContext = {
+      ...mockToolContext,
+      onShortResultUpdate: (sr) => {
+        capturedShortResult = sr;
+      },
+    };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockImplementation(
+      async (config, args, background, updateShortResult) => {
+        // Simulate the callback being called
+        setTimeout(() => updateShortResult?.(), 0);
+        return mockInstance as unknown as SubagentInstance;
+      },
+    );
+    vi.mocked(mockSubagentManager.executeTask).mockResolvedValue("done");
+
+    await taskTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      contextWithCallback,
+    );
+
+    await vi.waitFor(() => {
+      expect(capturedShortResult).toBe(
+        "... Read, Write (3 tools | 1,000 tokens)",
+      );
+    });
+  });
+
+  it("should NOT add '...' to shortResult when toolCount <= 2", async () => {
+    const mockInstance = {
+      subagentId: "gp-test-id",
+      lastTools: ["Read", "Write"],
+      messageManager: {
+        getMessages: vi.fn(() => [
+          { blocks: [{ type: "tool" }, { type: "tool" }] },
+        ]),
+        getlatestTotalTokens: vi.fn(() => 1000),
+      },
+    };
+
+    let capturedShortResult = "";
+    const contextWithCallback: ToolContext = {
+      ...mockToolContext,
+      onShortResultUpdate: (sr) => {
+        capturedShortResult = sr;
+      },
+    };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockImplementation(
+      async (config, args, background, updateShortResult) => {
+        setTimeout(() => updateShortResult?.(), 0);
+        return mockInstance as unknown as SubagentInstance;
+      },
+    );
+    vi.mocked(mockSubagentManager.executeTask).mockResolvedValue("done");
+
+    await taskTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      contextWithCallback,
+    );
+
+    await vi.waitFor(() => {
+      expect(capturedShortResult).toBe("Read, Write (2 tools | 1,000 tokens)");
+    });
+  });
+
   it("should handle missing parameters", async () => {
     const result = await taskTool.execute({}, mockToolContext);
     expect(result.success).toBe(false);
