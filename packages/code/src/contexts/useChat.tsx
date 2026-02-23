@@ -120,7 +120,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Message Display State
   const [isExpanded, setIsExpanded] = useState(false);
   const isExpandedRef = useRef(isExpanded);
-  const frozenMessagesRef = useRef<Message[] | null>(null);
 
   useEffect(() => {
     isExpandedRef.current = isExpanded;
@@ -227,9 +226,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     const initializeAgent = async () => {
       const callbacks: AgentCallbacks = {
         onMessagesChange: (newMessages) => {
-          if (isExpandedRef.current) {
-            frozenMessagesRef.current = [...newMessages];
-          } else {
+          if (!isExpandedRef.current) {
             setMessages([...newMessages]);
           }
         },
@@ -528,9 +525,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       // Clear terminal screen when expanded state changes
       setIsExpanded((prev) => {
         const newExpanded = !prev;
-        if (!newExpanded && frozenMessagesRef.current) {
-          setMessages(frozenMessagesRef.current);
-          frozenMessagesRef.current = null;
+        if (newExpanded) {
+          // Transitioning to EXPANDED: Freeze the current view
+          // Deep copy the last message to ensure it doesn't update if the agent is still writing to it
+          setMessages((currentMessages) => {
+            if (currentMessages.length === 0) return currentMessages;
+            const lastMessage = currentMessages[currentMessages.length - 1];
+            const frozenLastMessage = JSON.parse(JSON.stringify(lastMessage));
+            return [...currentMessages.slice(0, -1), frozenLastMessage];
+          });
+        } else {
+          // Transitioning to COLLAPSED: Restore from agent's actual state
+          if (agentRef.current) {
+            setMessages([...agentRef.current.messages]);
+          }
         }
         return newExpanded;
       });
