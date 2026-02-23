@@ -138,6 +138,9 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
               });
 
               let shortResult = "";
+              if (toolCount > 2) {
+                shortResult += "... ";
+              }
               if (lastTools.length > 0) {
                 shortResult += `${lastTools.join(", ")} `;
               }
