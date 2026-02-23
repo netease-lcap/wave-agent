@@ -6,10 +6,17 @@ import type { FileItem } from "../types/fileSearch.js";
  * Convert Path objects to FileItem objects
  */
 export const convertPathsToFileItems = (paths: Path[]): FileItem[] => {
-  return paths.map((pathObj) => ({
-    path: pathObj.relative(),
-    type: pathObj.isDirectory() ? "directory" : "file",
-  }));
+  return paths.map((pathObj) => {
+    const isDirectory = pathObj.isDirectory();
+    let path = pathObj.relative();
+    if (isDirectory && !path.endsWith("/")) {
+      path += "/";
+    }
+    return {
+      path,
+      type: isDirectory ? "directory" : "file",
+    };
+  });
 };
 
 /**

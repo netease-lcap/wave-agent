@@ -23,7 +23,6 @@ describe("FileSelector", () => {
     expect(output).toContain("Select File/Directory");
     expect(output).toContain("file1.txt");
     expect(output).toContain("file10.txt");
-    expect(output).toContain(", File 1 of 20");
     expect(output).toContain("... 10 more files below");
   });
 
@@ -41,7 +40,6 @@ describe("FileSelector", () => {
 
     const output = lastFrame();
     expect(output).toContain("Select File/Directory");
-    expect(output).toContain(", File 1 of 25");
     expect(output).toContain("... 15 more files below");
   });
 
@@ -102,10 +100,10 @@ describe("FileSelector", () => {
     expect(windowAt19.endIndex).toBe(20);
   });
 
-  it("should display directory icons correctly", () => {
+  it("should display directory paths correctly", () => {
     const mixedFiles: FileItem[] = [
-      { path: "src", type: "directory" },
-      { path: "src/components", type: "directory" },
+      { path: "src/", type: "directory" },
+      { path: "src/components/", type: "directory" },
       { path: "package.json", type: "file" },
       { path: "README.md", type: "file" },
     ];
@@ -114,10 +112,12 @@ describe("FileSelector", () => {
     const { lastFrame } = render(<FileSelector {...propsWithMixed} />);
 
     const output = lastFrame();
-    expect(output).toContain("📁 src");
-    expect(output).toContain("📁 src/components");
-    expect(output).toContain("📄 package.json");
-    expect(output).toContain("📄 README.md");
+    expect(output).toContain("src/");
+    expect(output).toContain("src/components/");
+    expect(output).toContain("package.json");
+    expect(output).toContain("README.md");
+    expect(output).not.toContain("📁");
+    expect(output).not.toContain("📄");
   });
 
   describe("Tab key functionality", () => {
@@ -215,8 +215,8 @@ describe("FileSelector", () => {
 
     it("should handle Tab key correctly with directory files", () => {
       const mixedFiles: FileItem[] = [
-        { path: "src", type: "directory" },
-        { path: "components", type: "directory" },
+        { path: "src/", type: "directory" },
+        { path: "components/", type: "directory" },
         { path: "index.ts", type: "file" },
       ];
 
@@ -231,7 +231,7 @@ describe("FileSelector", () => {
       // Press Tab key (should select first item - directory)
       stdin.write("\t");
 
-      expect(onSelectMock).toHaveBeenCalledWith("src");
+      expect(onSelectMock).toHaveBeenCalledWith("src/");
       expect(onSelectMock).toHaveBeenCalledTimes(1);
     });
   });

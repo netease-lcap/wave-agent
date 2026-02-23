@@ -53,7 +53,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
         borderLeft={false}
         borderRight={false}
       >
-        <Text color="yellow">📁 No files found for "{searchQuery}"</Text>
+        <Text color="yellow">No files found for "{searchQuery}"</Text>
         <Text dimColor>Press Escape to cancel</Text>
       </Box>
     );
@@ -92,8 +92,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
       borderRight={false}
     >
       <Text color="cyan" bold>
-        📁 Select File/Directory{" "}
-        {searchQuery && `(filtering: "${searchQuery}")`}
+        Select File/Directory {searchQuery && `(filtering: "${searchQuery}")`}
       </Text>
 
       {/* Show hint for more files above */}
@@ -104,7 +103,6 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
       {displayFiles.map((fileItem, displayIndex) => {
         const actualIndex = startIndex + displayIndex;
         const isSelected = actualIndex === selectedIndex;
-        const icon = fileItem.type === "directory" ? "📁" : "📄";
 
         return (
           <Box key={fileItem.path}>
@@ -112,8 +110,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
               color={isSelected ? "black" : "white"}
               backgroundColor={isSelected ? "cyan" : undefined}
             >
-              {"  "}
-              {icon} {fileItem.path}
+              {fileItem.path}
             </Text>
           </Box>
         );
@@ -124,12 +121,9 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
         <Text dimColor>... {files.length - endIndex} more files below</Text>
       )}
 
-      <Box marginTop={1}>
+      <Box>
         <Text dimColor>
           Use ↑↓ to navigate, Enter/Tab to select, Escape to cancel
-        </Text>
-        <Text dimColor>
-          , File {selectedIndex + 1} of {files.length}
         </Text>
       </Box>
     </Box>
