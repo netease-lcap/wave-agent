@@ -12,10 +12,6 @@ import {
   GLOB_TOOL_NAME,
   GREP_TOOL_NAME,
   READ_TOOL_NAME,
-  TASK_CREATE_TOOL_NAME,
-  TASK_GET_TOOL_NAME,
-  TASK_UPDATE_TOOL_NAME,
-  TASK_LIST_TOOL_NAME,
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
 } from "../constants/tools.js";
@@ -37,12 +33,6 @@ export const TOOL_POLICY = `
 - You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. Maximize use of parallel tool calls where possible to increase efficiency.
 - However, if some tool calls depend on previous calls to inform dependent values, do NOT call these tools in parallel and instead call them sequentially. For instance, if one operation must complete before another starts, run these operations sequentially instead. Never use placeholders or guess missing parameters in tool calls.
 - If the user specifies that they want you to run tools "in parallel", you MUST send a single message with multiple tool use content blocks.`;
-
-export const TASK_MANAGEMENT_POLICY = `
-# Task Management
-You have access to the ${TASK_CREATE_TOOL_NAME}, ${TASK_GET_TOOL_NAME}, ${TASK_UPDATE_TOOL_NAME}, and ${TASK_LIST_TOOL_NAME} tools to help you manage and plan tasks. Use these tools VERY frequently to ensure that you are tracking your tasks and giving the user visibility into your progress.
-These tools are also EXTREMELY helpful for planning tasks, and for breaking down larger complex tasks into smaller steps. If you do not use this tool when planning, you may forget to do important tasks - and that is unacceptable.
-It is critical that you mark tasks as completed as soon as you are done with a task. Do not batch up multiple tasks before marking them as completed.`;
 
 export function buildPlanModePrompt(
   planFilePath: string,
@@ -315,16 +305,6 @@ export function buildSystemPrompt(
   } = {},
 ): string {
   let prompt = basePrompt || DEFAULT_SYSTEM_PROMPT;
-  const toolNames = new Set(tools.map((t) => t.name));
-
-  if (
-    toolNames.has(TASK_CREATE_TOOL_NAME) ||
-    toolNames.has(TASK_GET_TOOL_NAME) ||
-    toolNames.has(TASK_UPDATE_TOOL_NAME) ||
-    toolNames.has(TASK_LIST_TOOL_NAME)
-  ) {
-    prompt += TASK_MANAGEMENT_POLICY;
-  }
 
   prompt += `\n\n${TOOL_POLICY}`;
 
