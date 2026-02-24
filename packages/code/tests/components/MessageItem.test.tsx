@@ -72,7 +72,7 @@ describe("MessageItem Component", () => {
           shouldShowHeader={false}
         />,
       );
-      expect(lastFrame()).toContain("⚡");
+      expect(lastFrame()).toContain("$");
       expect(lastFrame()).toContain("command text");
     });
 
@@ -94,7 +94,7 @@ describe("MessageItem Component", () => {
           shouldShowHeader={false}
         />,
       );
-      expect(lastFrame()).toContain("🔗");
+      expect(lastFrame()).toContain("~");
       expect(lastFrame()).toContain("hook text");
     });
 
@@ -110,7 +110,7 @@ describe("MessageItem Component", () => {
           shouldShowHeader={false}
         />,
       );
-      expect(lastFrame()).toContain("❌ Error: something failed");
+      expect(lastFrame()).toContain("Error: something failed");
     });
 
     it("should render command_output block", () => {
@@ -172,7 +172,7 @@ describe("MessageItem Component", () => {
           shouldShowHeader={false}
         />,
       );
-      expect(lastFrame()).toContain("📷 Image");
+      expect(lastFrame()).toContain("# Image");
       expect(lastFrame()).not.toContain("(");
     });
 
@@ -188,7 +188,7 @@ describe("MessageItem Component", () => {
           shouldShowHeader={false}
         />,
       );
-      expect(lastFrame()).toContain("📷 Image");
+      expect(lastFrame()).toContain("# Image");
       expect(lastFrame()).toContain("(2)");
     });
 

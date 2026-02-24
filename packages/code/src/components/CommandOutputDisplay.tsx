@@ -33,7 +33,7 @@ export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
   return (
     <Box flexDirection="column">
       <Box>
-        <Text color={getStatusColor()}>$ </Text>
+        <Text color={getStatusColor()}>! </Text>
         <Text color="white">{command}</Text>
       </Box>
 

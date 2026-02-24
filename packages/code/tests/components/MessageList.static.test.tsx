@@ -312,7 +312,7 @@ describe("MessageList Static Rendering", () => {
       expect(lastFrame()).not.toContain("Page");
       expect(lastFrame()).toContain("Solution");
       expect(lastFrame()).toContain("More content here");
-      expect(lastFrame()).toContain("❌ Error:");
+      expect(lastFrame()).toContain("Error:");
     });
 
     it("should correctly show alternating message roles", () => {

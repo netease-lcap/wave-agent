@@ -75,7 +75,7 @@ describe("ToolDisplay", () => {
       images: [{ data: "base64data", mediaType: "image/png" }],
     };
     const { lastFrame } = render(<ToolDisplay block={imageBlock} />);
-    expect(lastFrame()).toContain("🖼️");
+    expect(lastFrame()).toContain("#");
   });
 
   it("should show multiple image indicator", () => {
@@ -87,7 +87,7 @@ describe("ToolDisplay", () => {
       ],
     };
     const { lastFrame } = render(<ToolDisplay block={imageBlock} />);
-    expect(lastFrame()).toContain("🖼️×2");
+    expect(lastFrame()).toContain("#×2");
   });
 
   it("should show DiffDisplay when successful and stage is end", () => {

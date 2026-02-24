@@ -17,26 +17,26 @@ describe("CommandOutputDisplay", () => {
   it("should render command and output correctly", () => {
     const { lastFrame } = render(<CommandOutputDisplay block={mockBlock} />);
     const frame = lastFrame();
-    expect(frame).toContain("$ ls -la");
+    expect(frame).toContain("! ls -la");
     expect(frame).toContain("total 0");
   });
 
   it("should render command when running", () => {
     const runningBlock = { ...mockBlock, isRunning: true, exitCode: null };
     const { lastFrame } = render(<CommandOutputDisplay block={runningBlock} />);
-    expect(lastFrame()).toContain("$ ls -la");
+    expect(lastFrame()).toContain("! ls -la");
   });
 
   it("should render command when error occurs", () => {
     const errorBlock = { ...mockBlock, exitCode: 1 };
     const { lastFrame } = render(<CommandOutputDisplay block={errorBlock} />);
-    expect(lastFrame()).toContain("$ ls -la");
+    expect(lastFrame()).toContain("! ls -la");
   });
 
   it("should render command when SIGINT occurs", () => {
     const sigintBlock = { ...mockBlock, exitCode: 130 };
     const { lastFrame } = render(<CommandOutputDisplay block={sigintBlock} />);
-    expect(lastFrame()).toContain("$ ls -la");
+    expect(lastFrame()).toContain("! ls -la");
   });
 
   it("should truncate output when not expanded and exceeding MAX_LINES", async () => {
@@ -76,7 +76,7 @@ describe("CommandOutputDisplay", () => {
   it("should handle empty output", () => {
     const emptyBlock = { ...mockBlock, output: "" };
     const { lastFrame } = render(<CommandOutputDisplay block={emptyBlock} />);
-    expect(lastFrame()).toContain("$ ls -la");
+    expect(lastFrame()).toContain("! ls -la");
     // Should not have the output box
     expect(lastFrame()).not.toContain("borderLeft");
   });
