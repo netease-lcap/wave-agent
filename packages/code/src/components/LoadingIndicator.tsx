@@ -16,7 +16,7 @@ export const LoadingIndicator = ({
 }: LoadingIndicatorProps) => {
   return (
     <Box flexDirection="column">
-      {isLoading && (
+      {isLoading && !isCompressing && (
         <Box>
           <Text color="yellow">✻ AI is thinking... </Text>
           {latestTotalTokens > 0 && (
@@ -45,9 +45,9 @@ export const LoadingIndicator = ({
           </Text>
         </Box>
       )}
-      {isCommandRunning && <Text color="blue">🚀 Command is running...</Text>}
+      {isCommandRunning && <Text color="blue">✻ Command is running...</Text>}
       {isCompressing && (
-        <Text color="magenta">🗜️ Compressing message history...</Text>
+        <Text color="magenta">✻ Compressing message history...</Text>
       )}
     </Box>
   );
