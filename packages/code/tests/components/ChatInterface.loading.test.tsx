@@ -123,7 +123,7 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).toContain("🚀 Command is running...");
+    expect(output).toContain("✻ Command is running...");
   });
 
   it("should show compressing message when isCompressing is true", () => {
@@ -141,6 +141,26 @@ describe("ChatInterface Loading State", () => {
     const { lastFrame } = render(<ChatInterface />);
     const output = lastFrame();
 
-    expect(output).toContain("🗜️ Compressing message history...");
+    expect(output).toContain("✻ Compressing message history...");
+  });
+
+  it("should not show AI is thinking when isCompressing is true", () => {
+    vi.mocked(useChat).mockReturnValue({
+      ...mockChatContext,
+      isLoading: true,
+      isCompressing: true,
+    } as unknown as ChatContextType);
+    vi.mocked(useInputManager).mockReturnValue(
+      mockInputManager as unknown as ReturnType<typeof useInputManager>,
+    );
+    vi.mocked(useTasks).mockReturnValue(
+      [] as unknown as ReturnType<typeof useTasks>,
+    );
+
+    const { lastFrame } = render(<ChatInterface />);
+    const output = lastFrame();
+
+    expect(output).toContain("✻ Compressing message history...");
+    expect(output).not.toContain("✻ AI is thinking...");
   });
 });
