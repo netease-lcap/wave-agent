@@ -345,6 +345,14 @@ export class PermissionManager {
       }
     }
 
+    // 1.2 Check if tool call is allowed by persistent or temporary rules
+    if (this.isAllowedByRule(context)) {
+      this.logger?.debug("Permission allowed by persistent rule", {
+        toolName: context.toolName,
+      });
+      return { behavior: "allow" };
+    }
+
     // 1.3 If plan mode, allow Read-only tools and Edit/Write for plan file
     if (context.permissionMode === "plan") {
       const writeTools = [
@@ -382,14 +390,6 @@ export class PermissionManager {
           message: `In plan mode, you are only allowed to edit the designated plan file: ${this.planFilePath || "not set"}.`,
         };
       }
-    }
-
-    // 1.2 Check if tool call matches any allowed rule
-    if (this.isAllowedByRule(context)) {
-      this.logger?.debug("Permission allowed by persistent rule", {
-        toolName: context.toolName,
-      });
-      return { behavior: "allow" };
     }
 
     // 2. If not a restricted tool, always allow
