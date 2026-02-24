@@ -362,6 +362,11 @@ export class LiveConfigManager {
             this.currentConfiguration.permissions.allow,
           );
         }
+        if (this.currentConfiguration.permissions?.deny) {
+          this.permissionManager.updateDeniedRules(
+            this.currentConfiguration.permissions.deny,
+          );
+        }
         if (this.currentConfiguration.permissions?.additionalDirectories) {
           this.permissionManager.updateAdditionalDirectories(
             this.currentConfiguration.permissions.additionalDirectories,

@@ -729,6 +729,19 @@ export class Agent {
         );
       }
 
+      // Update permission manager with configuration-based denied rules
+      if (currentConfig?.permissions?.deny) {
+        this.logger?.debug(
+          "Applying configured denied rules to PermissionManager",
+          {
+            count: currentConfig.permissions.deny.length,
+          },
+        );
+        this.permissionManager.updateDeniedRules(
+          currentConfig.permissions.deny,
+        );
+      }
+
       // Update permission manager with configuration-based additionalDirectories
       if (currentConfig?.permissions?.additionalDirectories) {
         this.logger?.debug(
