@@ -9,3 +9,4 @@ paths:
   - use `gemini-2.5-flash` or `gemini-2.0-flash-exp` for cheaper and faster testing (pass as `agentModel` in `Agent.create`)
   - always include a `finally` block that calls `await agent.destroy()` to ensure the process exits
   - never access private properties directly with `(agent as any)`
+  - before running any example, always run type-check for `agent-sdk` to ensure types are valid: `pnpm -F wave-agent-sdk run type-check`
