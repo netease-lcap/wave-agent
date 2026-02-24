@@ -1,12 +1,6 @@
 import React from "react";
 import { Box, Text, Static } from "ink";
 import type { Message } from "wave-agent-sdk";
-import {
-  TASK_CREATE_TOOL_NAME,
-  TASK_GET_TOOL_NAME,
-  TASK_UPDATE_TOOL_NAME,
-  TASK_LIST_TOOL_NAME,
-} from "wave-agent-sdk";
 import { MessageItem } from "./MessageItem.js";
 
 export interface MessageListProps {
@@ -40,31 +34,9 @@ export const MessageList = React.memo(
     const maxExpandedMessages = 20;
     const shouldLimitMessages =
       isExpanded && messages.length > maxExpandedMessages;
-
-    // Filter out task management tools and empty messages
-    const taskMgmtTools = [
-      TASK_CREATE_TOOL_NAME,
-      TASK_GET_TOOL_NAME,
-      TASK_UPDATE_TOOL_NAME,
-      TASK_LIST_TOOL_NAME,
-    ];
-    const filteredMessages = messages
-      .map((message) => ({
-        ...message,
-        blocks: message.blocks.filter(
-          (block) =>
-            !(
-              block.type === "tool" &&
-              typeof block.name === "string" &&
-              taskMgmtTools.includes(block.name)
-            ),
-        ),
-      }))
-      .filter((message) => message.blocks.length > 0);
-
     const displayMessages = shouldLimitMessages
-      ? filteredMessages.slice(-maxExpandedMessages)
-      : filteredMessages;
+      ? messages.slice(-maxExpandedMessages)
+      : messages;
 
     // Compute which messages to render statically vs dynamically
     const lastMessage = displayMessages[displayMessages.length - 1];
