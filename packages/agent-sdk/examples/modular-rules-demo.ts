@@ -175,7 +175,7 @@ async function demoModularRules(): Promise<void> {
 
     agent = await Agent.create({
       workdir: testDir,
-      agentModel: "gemini-2.0-flash-exp",
+      agentModel: "gemini-2.5-flash",
       logger: {
         debug: (...args: unknown[]) => {
           const message = args[0];
