@@ -71,7 +71,7 @@ paths:
 
     agent = await Agent.create({
       workdir: testDir,
-      agentModel: "gemini-2.0-flash-exp",
+      agentModel: "gemini-2.5-flash",
       logger: {
         debug: (...args: unknown[]) => console.log("[DEBUG]", ...args),
         info: (...args: unknown[]) => console.log("[INFO]", ...args),
