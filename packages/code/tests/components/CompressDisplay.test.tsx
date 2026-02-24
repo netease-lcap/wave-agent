@@ -12,7 +12,7 @@ describe("CompressDisplay", () => {
     };
     const { lastFrame } = render(<CompressDisplay block={block} />);
     const frame = lastFrame();
-    expect(frame).toContain("📦 Compressed Messages");
+    expect(frame).toContain("Compressed Messages");
     expect(frame).toContain("Compressed content");
   });
 
@@ -37,7 +37,7 @@ describe("CompressDisplay", () => {
       sessionId: "test-session",
     };
     const { lastFrame } = render(<CompressDisplay block={block} />);
-    expect(lastFrame()).toContain("📦 Compressed Messages");
+    expect(lastFrame()).toContain("Compressed Messages");
     // Should not have the content box
     expect(lastFrame()).not.toContain("borderLeft");
   });

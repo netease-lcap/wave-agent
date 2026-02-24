@@ -26,12 +26,12 @@ export const MessageItem = ({ message, isExpanded }: MessageItemProps) => {
               <Box>
                 {block.customCommandContent && (
                   <Text color="cyan" bold>
-                    ⚡
+                    $
                   </Text>
                 )}
                 {block.source === MessageSource.HOOK && (
                   <Text color="magenta" bold>
-                    🔗
+                    ~
                   </Text>
                 )}
                 {message.role === "user" ? (
@@ -46,7 +46,7 @@ export const MessageItem = ({ message, isExpanded }: MessageItemProps) => {
 
             {block.type === "error" && (
               <Box>
-                <Text color="red">❌ Error: {block.content}</Text>
+                <Text color="red">Error: {block.content}</Text>
               </Box>
             )}
 
@@ -61,7 +61,7 @@ export const MessageItem = ({ message, isExpanded }: MessageItemProps) => {
             {block.type === "image" && (
               <Box>
                 <Text color="magenta" bold>
-                  📷 Image
+                  # Image
                 </Text>
                 {block.imageUrls && block.imageUrls.length > 0 && (
                   <Text color="gray" dimColor>

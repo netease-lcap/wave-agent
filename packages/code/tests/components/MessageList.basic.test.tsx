@@ -110,7 +110,7 @@ describe("MessageList Component", () => {
         />,
       );
 
-      expect(lastFrame()).toContain("❌ Error: Something went wrong");
+      expect(lastFrame()).toContain("Error: Something went wrong");
     });
 
     it("should render messages correctly", () => {
@@ -133,7 +133,7 @@ describe("MessageList Component", () => {
   });
 
   describe("Image display", () => {
-    it("should display '📷 Image (1)' for message with single image", () => {
+    it("should display '# Image (1)' for message with single image", () => {
       // Create a message with single image block
       const messagesWithImage: Message[] = [
         {
@@ -160,11 +160,11 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should display the image indicator with count
-      expect(output).toContain("📷 Image (1)");
+      expect(output).toContain("# Image (1)");
       expect(output).toContain("Look at this image");
     });
 
-    it("should display '📷 Image (2)' for message with multiple images", () => {
+    it("should display '# Image (2)' for message with multiple images", () => {
       // Create a message with multiple image blocks
       const messagesWithImages: Message[] = [
         {
@@ -190,10 +190,10 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should display the image indicator with count of 2
-      expect(output).toContain("📷 Image (2)");
+      expect(output).toContain("# Image (2)");
     });
 
-    it("should display '📷 Image' without count for empty image block", () => {
+    it("should display '# Image' without count for empty image block", () => {
       // Create a message with image block but no imageUrls
       const messagesWithEmptyImage: Message[] = [
         {
@@ -218,8 +218,8 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should display just the image indicator without count
-      expect(output).toContain("📷 Image");
-      expect(output).not.toContain("📷 Image (");
+      expect(output).toContain("# Image");
+      expect(output).not.toContain("# Image (");
     });
 
     it("should display image-only message correctly", () => {
@@ -248,7 +248,7 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should display the image indicator
-      expect(output).toContain("📷 Image (1)");
+      expect(output).toContain("# Image (1)");
     });
   });
 

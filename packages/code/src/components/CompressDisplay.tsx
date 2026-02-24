@@ -21,7 +21,7 @@ export const CompressDisplay: React.FC<CompressDisplayProps> = ({ block }) => {
   return (
     <Box flexDirection="column">
       <Box>
-        <Text>📦 Compressed Messages</Text>
+        <Text>Compressed Messages</Text>
       </Box>
 
       {content && (

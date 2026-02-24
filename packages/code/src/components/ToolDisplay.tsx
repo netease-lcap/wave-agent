@@ -32,7 +32,7 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
   const getImageIndicator = () => {
     if (!hasImages()) return "";
     const imageCount = block.images!.length;
-    return imageCount === 1 ? "🖼️" : `🖼️×${imageCount}`;
+    return imageCount === 1 ? "#" : `#×${imageCount}`;
   };
 
   const toolName = name ? String(name) : "Tool";
