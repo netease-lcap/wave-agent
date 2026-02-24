@@ -25,14 +25,10 @@ export const MessageItem = ({ message, isExpanded }: MessageItemProps) => {
             {block.type === "text" && block.content.trim() && (
               <Box>
                 {block.customCommandContent && (
-                  <Text color="cyan" bold>
-                    $
-                  </Text>
+                  <Text color="cyan" bold>$ </Text>
                 )}
                 {block.source === MessageSource.HOOK && (
-                  <Text color="magenta" bold>
-                    ~
-                  </Text>
+                  <Text color="magenta" bold>~ </Text>
                 )}
                 {message.role === "user" ? (
                   <Text backgroundColor="gray" color="white">
