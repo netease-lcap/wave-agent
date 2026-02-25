@@ -58,6 +58,6 @@ interface BackgroundShell {
 
 ## Execution Flow
 1. **Foreground**: `Bash` tool spawns a process, waits for completion or timeout, and returns the combined output.
-2. **Background**: `Bash` tool registers the command with `BackgroundBashManager`, which spawns the process and returns a `bash_id`.
+2. **Background**: `Bash` tool registers the command with `BackgroundBashManager`, which spawns the process and returns a `bash_id`. Background tasks do not update their `shortResult` while running to avoid UI "unknown" blocks.
 3. **Monitoring**: `BashOutput` tool queries `BackgroundBashManager` for accumulated output of a specific `bash_id`.
 4. **Termination**: `KillBash` tool requests `BackgroundBashManager` to terminate a specific `shell_id`.

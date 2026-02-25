@@ -121,8 +121,13 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
               });
             }
 
+            let isBackgrounded = false;
+
             // Set up callback to update shortResult with tool names, tool count and tokens
             const updateShortResult = () => {
+              // Do not update shortResult if it is running in background
+              if (run_in_background || isBackgrounded) return;
+
               const messages = instance.messageManager.getMessages();
               const tokens = instance.messageManager.getlatestTotalTokens();
               const lastTools = instance.lastTools;
@@ -168,8 +173,6 @@ export function createTaskTool(subagentManager: SubagentManager): ToolPlugin {
 
             // Initial update
             updateShortResult();
-
-            let isBackgrounded = false;
 
             // Register for backgrounding if not already in background
             if (!run_in_background && context.foregroundTaskManager) {

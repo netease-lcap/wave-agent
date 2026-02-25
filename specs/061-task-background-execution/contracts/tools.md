@@ -11,7 +11,7 @@ Delegates a task to a subagent, now with background support.
 
 **Returns:**
 - If `run_in_background: false`: The subagent's text response.
-- If `run_in_background: true`: A message containing the `task_id`.
+- If `run_in_background: true`: A message containing the `task_id`. Background tasks do not update their `shortResult` while running to avoid UI "unknown" blocks.
 
 ---
 
