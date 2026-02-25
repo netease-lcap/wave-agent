@@ -201,7 +201,12 @@ export async function callAgent(
   } = options;
 
   // Apply global 1 QPS rate limit
-  await acquireSlot(abortSignal);
+  if (
+    process.env.NODE_ENV !== "test" ||
+    modelConfig.agentModel === "rate-limit-test"
+  ) {
+    await acquireSlot(abortSignal);
+  }
 
   // Declare variables outside try block for error handling access
   let openaiMessages: ChatCompletionMessageParam[] | undefined;
@@ -753,7 +758,12 @@ export async function compressMessages(
   const { gatewayConfig, modelConfig, messages, abortSignal } = options;
 
   // Apply global 1 QPS rate limit
-  await acquireSlot(abortSignal);
+  if (
+    process.env.NODE_ENV !== "test" ||
+    modelConfig.agentModel === "rate-limit-test"
+  ) {
+    await acquireSlot(abortSignal);
+  }
 
   // Create OpenAI client with injected configuration
   const openai = new OpenAIClient({

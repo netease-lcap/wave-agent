@@ -12,7 +12,7 @@ const TEST_GATEWAY_CONFIG: GatewayConfig = {
 };
 
 const TEST_MODEL_CONFIG: ModelConfig = {
-  agentModel: "gemini-3-flash",
+  agentModel: "rate-limit-test",
   fastModel: "gemini-2.5-flash",
 };
 
@@ -103,12 +103,10 @@ describe("AI Service - Rate Limiting", () => {
     mockCreate.mockImplementation(() => {
       callTimes.push(Date.now());
       return {
-        withResponse: vi
-          .fn()
-          .mockResolvedValue({
-            data: { choices: [] },
-            response: { headers: new Map() },
-          }),
+        withResponse: vi.fn().mockResolvedValue({
+          data: { choices: [] },
+          response: { headers: new Map() },
+        }),
       };
     });
 
