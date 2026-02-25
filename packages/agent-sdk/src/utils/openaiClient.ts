@@ -86,8 +86,8 @@ export class OpenAIClient {
 
     const fetchFn = (customFetch as typeof fetch) || fetch;
     let lastError: (Error & { status?: number; body?: unknown }) | undefined;
-    const maxRetries = 3;
-    const initialDelay = 1000;
+    const maxRetries = 5;
+    const initialDelay = 2000;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       if (attempt > 0) {

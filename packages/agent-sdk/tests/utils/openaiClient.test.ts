@@ -205,22 +205,30 @@ describe("OpenAIClient", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(mockFetch).toHaveBeenCalledTimes(1);
 
-      // First retry after 1000ms
-      await vi.advanceTimersByTimeAsync(1000);
+      // First retry after 2000ms
+      await vi.advanceTimersByTimeAsync(2000);
       expect(mockFetch).toHaveBeenCalledTimes(2);
 
-      // Second retry after 2000ms
-      await vi.advanceTimersByTimeAsync(2000);
+      // Second retry after 4000ms
+      await vi.advanceTimersByTimeAsync(4000);
       expect(mockFetch).toHaveBeenCalledTimes(3);
 
-      // Third retry after 4000ms
-      await vi.advanceTimersByTimeAsync(4000);
+      // Third retry after 8000ms
+      await vi.advanceTimersByTimeAsync(8000);
       expect(mockFetch).toHaveBeenCalledTimes(4);
+
+      // Fourth retry after 16000ms
+      await vi.advanceTimersByTimeAsync(16000);
+      expect(mockFetch).toHaveBeenCalledTimes(5);
+
+      // Fifth retry after 32000ms
+      await vi.advanceTimersByTimeAsync(32000);
+      expect(mockFetch).toHaveBeenCalledTimes(6);
 
       await expect(promise).rejects.toThrow("Rate limit reached");
     });
 
-    it("should eventually fail after max retries (3 retries)", async () => {
+    it("should eventually fail after max retries (5 retries)", async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 429,
@@ -244,7 +252,7 @@ describe("OpenAIClient", () => {
       await vi.runAllTimersAsync();
 
       await expect(promise).rejects.toThrow("Rate limit reached");
-      expect(mockFetch).toHaveBeenCalledTimes(4); // 1 initial + 3 retries
+      expect(mockFetch).toHaveBeenCalledTimes(6); // 1 initial + 5 retries
     });
 
     it("should not retry on other error status codes (e.g., 400)", async () => {
