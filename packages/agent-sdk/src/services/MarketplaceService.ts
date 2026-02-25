@@ -80,6 +80,16 @@ export class MarketplaceService {
     }
     try {
       const content = await fs.readFile(this.knownMarketplacesPath, "utf-8");
+      if (!content.trim()) {
+        return {
+          marketplaces: [
+            {
+              ...MarketplaceService.BUILTIN_MARKETPLACE,
+              isBuiltin: true,
+            },
+          ],
+        };
+      }
       return JSON.parse(content);
     } catch (error) {
       console.error("Failed to load known marketplaces:", error);
@@ -96,6 +106,9 @@ export class MarketplaceService {
     }
     try {
       const content = await fs.readFile(this.installedPluginsPath, "utf-8");
+      if (!content.trim()) {
+        return { plugins: [] };
+      }
       return JSON.parse(content);
     } catch (error) {
       console.error("Failed to load installed plugins:", error);
