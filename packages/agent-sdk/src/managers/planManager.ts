@@ -9,6 +9,7 @@ import type { Logger } from "../types/core.js";
  */
 export class PlanManager {
   private planDir: string;
+  private currentPlanFilePath: string | null = null;
 
   constructor(private logger?: Logger) {
     this.planDir = path.join(os.homedir(), ".wave", "plans");
@@ -32,6 +33,24 @@ export class PlanManager {
     }
     const name = generateRandomName(seed);
     const filePath = path.join(this.planDir, `${name}.md`);
+
+    if (this.currentPlanFilePath !== filePath) {
+      try {
+        await fs.unlink(filePath);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error as Error & { code?: string }).code !== "ENOENT"
+        ) {
+          this.logger?.error(
+            `Failed to remove existing plan file: ${filePath}`,
+            error,
+          );
+        }
+      }
+      this.currentPlanFilePath = filePath;
+    }
+
     this.logger?.info(`Generated plan file path: ${filePath}`);
     return { path: filePath, name };
   }

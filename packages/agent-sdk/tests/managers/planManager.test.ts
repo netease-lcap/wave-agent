@@ -59,4 +59,31 @@ describe("PlanManager", () => {
     expect(result1.path).not.toBe(result2.path);
     expect(result1.name).not.toBe(result2.name);
   });
+
+  it("should remove existing plan file on first generation but not on re-entry", async () => {
+    const planManager = new PlanManager();
+    const seed = "test-seed";
+
+    // First call
+    await planManager.getOrGeneratePlanFilePath(seed);
+    expect(fs.unlink).toHaveBeenCalledTimes(1);
+
+    // Second call (re-entry)
+    await planManager.getOrGeneratePlanFilePath(seed);
+    expect(fs.unlink).toHaveBeenCalledTimes(1); // Still 1
+
+    // Different seed
+    await planManager.getOrGeneratePlanFilePath("different-seed");
+    expect(fs.unlink).toHaveBeenCalledTimes(2);
+  });
+
+  it("should ignore ENOENT when removing existing plan file", async () => {
+    const planManager = new PlanManager();
+    vi.mocked(fs.unlink).mockRejectedValueOnce({ code: "ENOENT" });
+
+    await expect(
+      planManager.getOrGeneratePlanFilePath(),
+    ).resolves.toBeDefined();
+    expect(fs.unlink).toHaveBeenCalledTimes(1);
+  });
 });
