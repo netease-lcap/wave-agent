@@ -36,7 +36,10 @@ import type { SkillManager } from "./skillManager.js";
 
 import { ReversionManager } from "./reversionManager.js";
 
+import { Container } from "../utils/container.js";
+
 export interface ToolManagerOptions {
+  container?: Container;
   mcpManager: McpManager;
   lspManager?: ILspManager;
   logger?: Logger;
@@ -77,10 +80,10 @@ class ToolManager {
   private permissionMode?: PermissionMode;
   private canUseToolCallback?: PermissionCallback;
   private tools?: string[];
-  private subagentManager?: SubagentManager;
-  private skillManager?: SkillManager;
+  private container?: Container;
 
   constructor(options: ToolManagerOptions) {
+    this.container = options.container;
     this.mcpManager = options.mcpManager;
     this.lspManager = options.lspManager;
     this.logger = options.logger;
@@ -125,17 +128,7 @@ class ToolManager {
    * });
    * ```
    */
-  public initializeBuiltInTools(deps?: {
-    subagentManager?: SubagentManager;
-    skillManager?: SkillManager;
-  }): void {
-    if (deps?.subagentManager) {
-      this.subagentManager = deps.subagentManager;
-    }
-    if (deps?.skillManager) {
-      this.skillManager = deps.skillManager;
-    }
-
+  public initializeBuiltInTools(): void {
     const builtInTools = [
       bashTool,
       taskOutputTool,
@@ -213,8 +206,12 @@ class ToolManager {
       foregroundTaskManager: this.foregroundTaskManager,
       mcpManager: this.mcpManager,
       lspManager: this.lspManager,
-      subagentManager: this.subagentManager,
-      skillManager: this.skillManager,
+      subagentManager: this.container?.has("SubagentManager")
+        ? this.container.get<SubagentManager>("SubagentManager")
+        : undefined,
+      skillManager: this.container?.has("SkillManager")
+        ? this.container.get<SkillManager>("SkillManager")
+        : undefined,
       sessionId: context.sessionId,
     };
 
@@ -333,14 +330,18 @@ class ToolManager {
    * Get the subagent manager
    */
   public getSubagentManager(): SubagentManager | undefined {
-    return this.subagentManager;
+    return this.container?.has("SubagentManager")
+      ? this.container.get<SubagentManager>("SubagentManager")
+      : undefined;
   }
 
   /**
    * Get the skill manager
    */
   public getSkillManager(): SkillManager | undefined {
-    return this.skillManager;
+    return this.container?.has("SkillManager")
+      ? this.container.get<SkillManager>("SkillManager")
+      : undefined;
   }
 }
 
