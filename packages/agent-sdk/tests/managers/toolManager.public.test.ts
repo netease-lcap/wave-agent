@@ -9,6 +9,8 @@ import { SubagentManager } from "@/managers/subagentManager.js";
 import { SkillManager } from "@/managers/skillManager.js";
 import { PermissionManager } from "@/managers/permissionManager.js";
 
+import { Container } from "@/utils/container.js";
+
 describe("ToolManager.initializeBuiltInTools", () => {
   it("should be callable as a public method", async () => {
     // Create mock MCP manager
@@ -20,9 +22,13 @@ describe("ToolManager.initializeBuiltInTools", () => {
       getMcpToolPlugins: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
 
+    // Create container
+    const container = new Container();
+
     // Create tool manager
     const toolManager = new ToolManager({
       mcpManager: mockMcpManager,
+      container,
     });
 
     // Should be able to call initializeBuiltInTools without dependencies
@@ -37,13 +43,12 @@ describe("ToolManager.initializeBuiltInTools", () => {
       getAvailableSkills: vi.fn().mockReturnValue([]),
     } as unknown as SkillManager;
 
-    // Should be able to call with dependencies
-    expect(() =>
-      toolManager.initializeBuiltInTools({
-        subagentManager: mockSubagentManager,
-        skillManager: mockSkillManager,
-      }),
-    ).not.toThrow();
+    // Register dependencies in container
+    container.register("SubagentManager", mockSubagentManager);
+    container.register("SkillManager", mockSkillManager);
+
+    // Should be able to call initializeBuiltInTools
+    expect(() => toolManager.initializeBuiltInTools()).not.toThrow();
 
     // Verify basic tools are registered
     const tools = toolManager.list();

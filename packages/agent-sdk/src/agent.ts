@@ -57,6 +57,8 @@ import path from "path";
 import os from "os";
 import { ClientOptions } from "openai";
 
+import { Container } from "./utils/container.js";
+
 /**
  * Configuration options for Agent instances
  *
@@ -144,6 +146,7 @@ export class Agent {
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private taskManager: TaskManager;
   private foregroundTaskManager: ForegroundTaskManager;
+  private container: Container;
   private configurationService: ConfigurationService; // Add configuration service
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
@@ -218,6 +221,7 @@ export class Agent {
     // Store options for dynamic configuration resolution
     this.options = options;
 
+    this.container = new Container();
     this.foregroundTaskManager = new ForegroundTaskManager();
 
     // Initialize memory rule manager
@@ -341,6 +345,7 @@ export class Agent {
 
     // Initialize tool manager with permission context
     this.toolManager = new ToolManager({
+      container: this.container,
       mcpManager: this.mcpManager,
       lspManager: this.lspManager,
       logger: this.logger,
@@ -643,11 +648,12 @@ export class Agent {
       // Initialize SubagentManager (load and cache configurations)
       await this.subagentManager.initialize();
 
-      // Initialize built-in tools with dependencies
-      this.toolManager.initializeBuiltInTools({
-        subagentManager: this.subagentManager,
-        skillManager: this.skillManager,
-      });
+      // Register managers in container for tool access
+      this.container.register("SubagentManager", this.subagentManager);
+      this.container.register("SkillManager", this.skillManager);
+
+      // Initialize built-in tools
+      this.toolManager.initializeBuiltInTools();
 
       // Initialize plugins
       await this.pluginManager.loadPlugins(this.options.plugins || []);
