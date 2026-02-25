@@ -31,6 +31,14 @@ describe("Agent Tool Recursion Tests", () => {
       callbacks: mockCallbacks,
     });
 
+    // Inject mock ToolManager into the container
+    const container = (
+      agent as unknown as {
+        container: { register: (name: string, instance: unknown) => void };
+      }
+    ).container;
+    container.register("ToolManager", mockToolManagerInstance);
+
     // Reset counters
     aiServiceCallCount = 0;
 

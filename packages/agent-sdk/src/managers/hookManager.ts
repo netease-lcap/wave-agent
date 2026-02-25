@@ -22,24 +22,24 @@ import type {
 } from "../types/configuration.js";
 import { HookMatcher } from "../utils/hookMatcher.js";
 import { executeCommand, isCommandSafe } from "../services/hook.js";
-import type { Logger } from "../types/index.js";
 import { MessageSource } from "../types/index.js";
 import type { MessageManager } from "./messageManager.js";
+import { Container } from "../utils/container.js";
+
+import { logger } from "../utils/globalLogger.js";
 
 export class HookManager {
   private configuration: PartialHookConfiguration | undefined;
   private readonly matcher: HookMatcher;
-  private readonly logger?: Logger;
   private readonly workdir: string;
 
   constructor(
+    private container: Container,
     workdir: string,
     matcher: HookMatcher = new HookMatcher(),
-    logger?: Logger,
   ) {
     this.workdir = workdir;
     this.matcher = matcher;
-    this.logger = logger;
   }
 
   /**
@@ -80,7 +80,7 @@ export class HookManager {
    */
   loadConfigurationFromWaveConfig(waveConfig: WaveConfiguration | null): void {
     try {
-      this.logger?.debug(
+      logger?.debug(
         `[HookManager] Loading hooks configuration from pre-loaded config...`,
       );
 
@@ -97,7 +97,7 @@ export class HookManager {
         }
       }
 
-      this.logger?.debug(
+      logger?.debug(
         `[HookManager] Hooks configuration loaded successfully with ${Object.keys(waveConfig?.hooks || {}).length} event types`,
       );
     } catch (error) {
@@ -108,7 +108,7 @@ export class HookManager {
       if (error instanceof HookConfigurationError) {
         throw error;
       } else {
-        this.logger?.warn(
+        logger?.warn(
           `[HookManager] Failed to load configuration, continuing with no hooks: ${(error as Error).message}`,
         );
       }
@@ -125,7 +125,7 @@ export class HookManager {
     // Validate execution context
     const contextValidation = this.validateExecutionContext(event, context);
     if (!contextValidation.valid) {
-      this.logger?.error(
+      logger?.error(
         `[HookManager] Invalid execution context for ${event}: ${contextValidation.errors.join(", ")}`,
       );
       return [
@@ -139,7 +139,7 @@ export class HookManager {
     }
 
     if (!this.configuration) {
-      this.logger?.debug(
+      logger?.debug(
         `[HookManager] No configuration loaded, skipping ${event} hooks`,
       );
       return [];
@@ -147,13 +147,11 @@ export class HookManager {
 
     const eventConfigs = this.configuration[event];
     if (!eventConfigs || eventConfigs.length === 0) {
-      this.logger?.debug(
-        `[HookManager] No hooks configured for ${event} event`,
-      );
+      logger?.debug(`[HookManager] No hooks configured for ${event} event`);
       return [];
     }
 
-    this.logger?.debug(
+    logger?.debug(
       `[HookManager] Starting ${event} hook execution with ${eventConfigs.length} configurations`,
     );
 
@@ -169,13 +167,13 @@ export class HookManager {
 
       // Check if this config applies to the current context
       if (!this.configApplies(config, event, context.toolName)) {
-        this.logger?.debug(
+        logger?.debug(
           `[HookManager] Skipping configuration ${configIndex + 1}: matcher '${config.matcher}' does not match tool '${context.toolName}'`,
         );
         continue;
       }
 
-      this.logger?.debug(
+      logger?.debug(
         `[HookManager] Executing configuration ${configIndex + 1} with ${config.hooks.length} commands (matcher: ${config.matcher || "any"})`,
       );
 
@@ -188,7 +186,7 @@ export class HookManager {
         const hookCommand = config.hooks[commandIndex];
 
         try {
-          this.logger?.debug(
+          logger?.debug(
             `[HookManager] Executing command ${commandIndex + 1}/${config.hooks.length} in configuration ${configIndex + 1}`,
           );
 
@@ -201,11 +199,11 @@ export class HookManager {
 
           // Report individual command result
           if (result.success) {
-            this.logger?.debug(
+            logger?.debug(
               `[HookManager] Command ${commandIndex + 1} completed successfully in ${result.duration}ms`,
             );
           } else {
-            this.logger?.debug(
+            logger?.debug(
               `[HookManager] Command ${commandIndex + 1} failed in ${result.duration}ms (exit code: ${result.exitCode}, timed out: ${result.timedOut})`,
             );
           }
@@ -216,7 +214,7 @@ export class HookManager {
           // This should be rare as executor handles most errors
           const errorMessage =
             error instanceof Error ? error.message : "Unknown execution error";
-          this.logger?.error(
+          logger?.error(
             `[HookManager] Unexpected error in command ${commandIndex + 1}: ${errorMessage}`,
           );
 
@@ -237,7 +235,7 @@ export class HookManager {
       results,
       totalDuration,
     );
-    this.logger?.debug(`[HookManager] ${event} execution summary: ${summary}`);
+    logger?.debug(`[HookManager] ${event} execution summary: ${summary}`);
 
     return results;
   }
@@ -552,7 +550,7 @@ export class HookManager {
 
     // Warn about event mismatch but don't fail validation
     if (context.event !== event) {
-      this.logger?.warn(
+      logger?.warn(
         `[HookManager] Context event '${context.event}' does not match requested event '${event}'`,
       );
     }
@@ -582,7 +580,7 @@ export class HookManager {
         event === "SubagentStop") &&
       context.toolName !== undefined
     ) {
-      this.logger?.warn(
+      logger?.warn(
         `[HookManager] ${event} event has unexpected toolName in context: ${context.toolName}`,
       );
     }
@@ -790,7 +788,7 @@ export class HookManager {
 
     this.mergeHooksConfiguration(this.configuration, hooks);
 
-    this.logger?.debug(
+    logger?.debug(
       `Registered plugin hooks. Total event types: ${Object.keys(this.configuration).length}`,
     );
   }

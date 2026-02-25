@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { Task } from "../../src/types/tasks.js";
 import { promises as fs } from "fs";
+import { Container } from "../../src/utils/container.js";
 
 vi.mock("fs", () => ({
   promises: {
@@ -43,7 +44,8 @@ describe("TaskManager", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    taskManager = new TaskManager(sessionId);
+    const container = new Container();
+    taskManager = new TaskManager(container, sessionId);
   });
 
   describe("Basic CRUD Operations", () => {

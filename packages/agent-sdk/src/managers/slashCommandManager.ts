@@ -2,11 +2,7 @@ import type { MessageManager } from "./messageManager.js";
 import type { AIManager } from "./aiManager.js";
 import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import type { TaskManager } from "../services/taskManager.js";
-import type {
-  SlashCommand,
-  CustomSlashCommand,
-  Logger,
-} from "../types/index.js";
+import type { SlashCommand, CustomSlashCommand } from "../types/index.js";
 import { loadCustomSlashCommands } from "../utils/customCommands.js";
 
 import {
@@ -14,6 +10,7 @@ import {
   parseSlashCommandInput,
   hasParameterPlaceholders,
 } from "../utils/commandArgumentParser.js";
+import { Container } from "../utils/container.js";
 import {
   BashCommandResult,
   parseBashCommands,
@@ -25,35 +22,43 @@ import { INIT_PROMPT } from "../prompts/index.js";
 
 const execAsync = promisify(exec);
 
+import { logger } from "../utils/globalLogger.js";
+
 export interface SlashCommandManagerOptions {
-  messageManager: MessageManager;
-  aiManager: AIManager;
-  backgroundTaskManager: BackgroundTaskManager;
-  taskManager: TaskManager;
   workdir: string;
-  logger?: Logger;
 }
 
 export class SlashCommandManager {
   private commands = new Map<string, SlashCommand>();
   private customCommands = new Map<string, CustomSlashCommand>();
-  private messageManager: MessageManager;
-  private aiManager: AIManager;
-  private backgroundTaskManager: BackgroundTaskManager;
-  private taskManager: TaskManager;
   private workdir: string;
-  private logger?: Logger;
 
-  constructor(options: SlashCommandManagerOptions) {
-    this.messageManager = options.messageManager;
-    this.aiManager = options.aiManager;
-    this.backgroundTaskManager = options.backgroundTaskManager;
-    this.taskManager = options.taskManager;
+  constructor(
+    private container: Container,
+    options: SlashCommandManagerOptions,
+  ) {
     this.workdir = options.workdir;
-    this.logger = options.logger;
+  }
 
+  public initialize(): void {
     this.initializeBuiltinCommands();
     this.loadCustomCommands();
+  }
+
+  private get messageManager(): MessageManager {
+    return this.container.get<MessageManager>("MessageManager")!;
+  }
+
+  private get aiManager(): AIManager {
+    return this.container.get<AIManager>("AIManager")!;
+  }
+
+  private get backgroundTaskManager(): BackgroundTaskManager {
+    return this.container.get<BackgroundTaskManager>("BackgroundTaskManager")!;
+  }
+
+  private get taskManager(): TaskManager {
+    return this.container.get<TaskManager>("TaskManager")!;
   }
 
   private initializeBuiltinCommands(): void {
@@ -148,9 +153,9 @@ export class SlashCommandManager {
         });
       }
 
-      this.logger?.debug(`Loaded ${customCommands.length} custom commands`);
+      logger?.debug(`Loaded ${customCommands.length} custom commands`);
     } catch (error) {
-      this.logger?.warn("Failed to load custom commands:", error);
+      logger?.warn("Failed to load custom commands:", error);
     }
   }
 
@@ -211,7 +216,7 @@ export class SlashCommandManager {
       });
     }
 
-    this.logger?.debug(
+    logger?.debug(
       `Registered ${commands.length} commands from plugin '${pluginName}'`,
     );
   }
@@ -387,7 +392,7 @@ export class SlashCommandManager {
         allowedRules: config?.allowedTools,
       });
     } catch (error) {
-      this.logger?.error(
+      logger?.error(
         `Failed to execute custom command '${commandName}':`,
         error,
       );

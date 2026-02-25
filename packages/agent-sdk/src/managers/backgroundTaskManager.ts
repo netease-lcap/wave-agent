@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { logger } from "../utils/globalLogger.js";
+import { Container } from "../utils/container.js";
 
 export interface BackgroundTaskManagerCallbacks {
   onTasksChange?: (tasks: BackgroundTask[]) => void;
@@ -18,7 +19,10 @@ export class BackgroundTaskManager {
   private callbacks: BackgroundTaskManagerCallbacks;
   private workdir: string;
 
-  constructor(options: BackgroundTaskManagerOptions) {
+  constructor(
+    private container: Container,
+    options: BackgroundTaskManagerOptions,
+  ) {
     this.callbacks = options.callbacks || {};
     this.workdir = options.workdir;
   }

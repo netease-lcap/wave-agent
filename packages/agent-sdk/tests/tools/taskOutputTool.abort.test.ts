@@ -7,11 +7,13 @@ import type {
   BackgroundTask,
   BackgroundShell,
 } from "../../src/types/processes.js";
+import { Container } from "../../src/utils/container.js";
 
 describe("TaskOutput Tool Abort Handling", () => {
   let backgroundTaskManager: BackgroundTaskManager;
   let context: ToolContext;
   let abortController: AbortController;
+  const container = new Container();
 
   it("should have correct tool configuration and prompt", () => {
     expect(taskOutputTool.name).toBe("TaskOutput");
@@ -21,14 +23,14 @@ describe("TaskOutput Tool Abort Handling", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    backgroundTaskManager = new BackgroundTaskManager({
+    backgroundTaskManager = new BackgroundTaskManager(container, {
       workdir: "/test/workdir",
     });
     abortController = new AbortController();
     context = {
       backgroundTaskManager,
       workdir: "/test/workdir",
-      taskManager: new TaskManager("test-session"),
+      taskManager: new TaskManager(container, "test-session"),
       abortSignal: abortController.signal,
     };
   });

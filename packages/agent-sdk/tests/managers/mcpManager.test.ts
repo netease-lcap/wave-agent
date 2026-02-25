@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { McpManager } from "../../src/managers/mcpManager.js";
-import type { McpServerConfig, Logger } from "../../src/types/index.js";
+import { Container } from "../../src/utils/container.js";
+import type { McpServerConfig } from "../../src/types/index.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -41,7 +42,8 @@ describe("McpManager", () => {
     // Mock console.error to prevent stderr output in tests
     vi.spyOn(console, "error").mockImplementation(() => {});
     // Initialize mcpManager with test directory
-    mcpManager = new McpManager();
+    const container = new Container();
+    mcpManager = new McpManager(container);
     mcpManager.initialize("/test/workdir");
   });
 
@@ -52,25 +54,21 @@ describe("McpManager", () => {
 
   describe("constructor", () => {
     it("should accept logger parameter", () => {
-      const mockLogger: Logger = {
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-        debug: vi.fn(),
-      };
-
-      const manager = new McpManager({ logger: mockLogger });
+      const container = new Container();
+      const manager = new McpManager(container);
       expect(manager).toBeInstanceOf(McpManager);
     });
 
     it("should work without logger parameter", () => {
-      const manager = new McpManager();
+      const container = new Container();
+      const manager = new McpManager(container);
       expect(manager).toBeInstanceOf(McpManager);
     });
 
     it("should accept callbacks parameter", () => {
       const mockCallback = vi.fn();
-      const manager = new McpManager({
+      const container = new Container();
+      const manager = new McpManager(container, {
         callbacks: { onServersChange: mockCallback },
       });
       expect(manager).toBeInstanceOf(McpManager);

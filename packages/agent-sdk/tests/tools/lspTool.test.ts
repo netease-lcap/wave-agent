@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { lspTool } from "../../src/tools/lspTool.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { ToolContext } from "../../src/tools/types.js";
+import { Container } from "../../src/utils/container.js";
 
 describe("lspTool", () => {
   const mockLspManager = {
@@ -10,7 +11,7 @@ describe("lspTool", () => {
 
   const context: ToolContext = {
     workdir: "/test/workdir",
-    taskManager: new TaskManager("test-session"),
+    taskManager: new TaskManager(new Container(), "test-session"),
     lspManager: mockLspManager as unknown as ToolContext["lspManager"],
   };
 

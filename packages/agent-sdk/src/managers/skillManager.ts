@@ -9,9 +9,11 @@ import type {
   SkillDiscoveryResult,
   SkillToolArgs,
   SkillInvocationContext,
-  Logger,
 } from "../types/index.js";
 import { parseSkillFile, formatSkillError } from "../utils/skillParser.js";
+
+import { Container } from "../utils/container.js";
+import { logger } from "../utils/globalLogger.js";
 
 /**
  * Manages skill discovery and loading
@@ -19,18 +21,19 @@ import { parseSkillFile, formatSkillError } from "../utils/skillParser.js";
 export class SkillManager {
   private personalSkillsPath: string;
   private scanTimeout: number;
-  private logger?: Logger;
   private workdir: string;
 
   private skillMetadata = new Map<string, SkillMetadata>();
   private skillContent = new Map<string, Skill>();
   private initialized = false;
 
-  constructor(options: SkillManagerOptions = {}) {
+  constructor(
+    private container: Container,
+    options: SkillManagerOptions = {},
+  ) {
     this.personalSkillsPath =
       options.personalSkillsPath || join(homedir(), ".wave", "skills");
     this.scanTimeout = options.scanTimeout || 5000;
-    this.logger = options.logger;
     this.workdir = options.workdir || process.cwd();
   }
 
@@ -38,7 +41,7 @@ export class SkillManager {
    * Initialize the skill manager by discovering available skills
    */
   async initialize(): Promise<void> {
-    this.logger?.debug("Initializing SkillManager...");
+    logger?.debug("Initializing SkillManager...");
 
     try {
       // Clear existing data before discovery
@@ -57,22 +60,18 @@ export class SkillManager {
 
       // Log any discovery errors
       if (discovery.errors.length > 0) {
-        this.logger?.warn(
-          `Found ${discovery.errors.length} skill discovery errors`,
-        );
+        logger?.warn(`Found ${discovery.errors.length} skill discovery errors`);
         discovery.errors.forEach((error) => {
-          this.logger?.warn(
-            `Skill error in ${error.skillPath}: ${error.message}`,
-          );
+          logger?.warn(`Skill error in ${error.skillPath}: ${error.message}`);
         });
       }
 
       this.initialized = true;
-      this.logger?.debug(
+      logger?.debug(
         `SkillManager initialized with ${this.skillMetadata.size} skills`,
       );
     } catch (error) {
-      this.logger?.error("Failed to initialize SkillManager:", error);
+      logger?.error("Failed to initialize SkillManager:", error);
       throw error;
     }
   }
@@ -107,11 +106,11 @@ export class SkillManager {
     // Return skill content that was loaded during initialization
     const skill = this.skillContent.get(skillName);
     if (skill) {
-      this.logger?.debug(`Skill '${skillName}' retrieved from loaded content`);
+      logger?.debug(`Skill '${skillName}' retrieved from loaded content`);
       return skill;
     }
 
-    this.logger?.debug(`Skill '${skillName}' not found`);
+    logger?.debug(`Skill '${skillName}' not found`);
     return null;
   }
 
@@ -155,7 +154,7 @@ export class SkillManager {
 
     try {
       const skillDirs = await this.findSkillDirectories(skillsPath);
-      this.logger?.debug(
+      logger?.debug(
         `Found ${skillDirs.length} potential skill directories in ${skillsPath}`,
       );
 
@@ -211,7 +210,7 @@ export class SkillManager {
         }
       }
     } catch (error) {
-      this.logger?.debug(
+      logger?.debug(
         `Could not scan ${skillsPath}: ${error instanceof Error ? error.message : String(error)}`,
       );
       // Not an error - the directory might not exist yet
@@ -249,7 +248,7 @@ export class SkillManager {
   ): Promise<{ content: string; context?: SkillInvocationContext }> {
     const { skill_name } = args;
 
-    this.logger?.debug(`Invoking skill: ${skill_name}`);
+    logger?.debug(`Invoking skill: ${skill_name}`);
 
     try {
       // Load the skill
@@ -276,7 +275,7 @@ export class SkillManager {
         },
       };
     } catch (error) {
-      this.logger?.error(`Failed to execute skill '${skill_name}':`, error);
+      logger?.error(`Failed to execute skill '${skill_name}':`, error);
       return {
         content: `❌ **Error executing skill**: ${error instanceof Error ? error.message : String(error)}`,
       };
@@ -328,7 +327,7 @@ export class SkillManager {
       });
       this.skillContent.set(skill.name, skill);
     }
-    this.logger?.debug(
+    logger?.debug(
       `Registered ${skills.length} plugin skills. Total skills: ${this.skillMetadata.size}`,
     );
   }

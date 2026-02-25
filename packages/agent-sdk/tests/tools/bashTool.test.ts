@@ -6,6 +6,7 @@ import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.
 import type { ToolContext } from "../../src/tools/types.js";
 import type { ChildProcess } from "child_process";
 import { createMockTaskManager } from "../helpers/mockFactories.js";
+import { Container } from "../../src/utils/container.js";
 
 // Mock child_process
 vi.mock("child_process");
@@ -28,7 +29,8 @@ describe("bashTool", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    backgroundTaskManager = new BackgroundTaskManager({
+    const container = new Container();
+    backgroundTaskManager = new BackgroundTaskManager(container, {
       workdir: "/test/workdir",
     });
     context = {

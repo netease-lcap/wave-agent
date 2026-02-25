@@ -1,0 +1,256 @@
+import { Container } from "./container.js";
+import { ForegroundTaskManager } from "../managers/foregroundTaskManager.js";
+import { BackgroundTaskManager } from "../managers/backgroundTaskManager.js";
+import { TaskManager } from "../services/taskManager.js";
+import { MessageManager } from "../managers/messageManager.js";
+import { AIManager } from "../managers/aiManager.js";
+import { ToolManager } from "../managers/toolManager.js";
+import { McpManager } from "../managers/mcpManager.js";
+import { LspManager } from "../managers/lspManager.js";
+import { PermissionManager } from "../managers/permissionManager.js";
+import { PlanManager } from "../managers/planManager.js";
+import { HookManager } from "../managers/hookManager.js";
+import { SkillManager } from "../managers/skillManager.js";
+import { SlashCommandManager } from "../managers/slashCommandManager.js";
+import { PluginManager } from "../managers/pluginManager.js";
+import { BashManager } from "../managers/bashManager.js";
+import { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
+import { ReversionManager } from "../managers/reversionManager.js";
+import { SubagentManager } from "../managers/subagentManager.js";
+import { LiveConfigManager } from "../managers/liveConfigManager.js";
+import { ConfigurationService } from "../services/configurationService.js";
+import { ReversionService } from "../services/reversionService.js";
+import type { AgentOptions } from "../agent.js";
+import type {
+  PermissionMode,
+  Usage,
+  Task,
+  BackgroundTask,
+  ToolPermissionContext,
+} from "../types/index.js";
+import type { GatewayConfig, ModelConfig } from "../types/config.js";
+
+import { logger } from "./globalLogger.js";
+
+export interface AgentContainerSetupOptions {
+  options: AgentOptions;
+  workdir: string;
+  configurationService: ConfigurationService;
+  systemPrompt?: string;
+  stream: boolean;
+
+  // Callbacks to Agent methods
+  onSessionIdChange: (sessionId: string) => void;
+  onTasksChange: (tasks: BackgroundTask[]) => void;
+  onSessionTasksChange: (tasks: Task[]) => void;
+  onPermissionModeChange: (mode: PermissionMode) => void;
+  handlePlanModeTransition: (mode: PermissionMode) => void;
+  setPermissionMode: (mode: PermissionMode) => void;
+  addPermissionRule: (rule: string) => Promise<void>;
+  addUsage: (usage: Usage) => void;
+
+  // Getters
+  getGatewayConfig: () => GatewayConfig;
+  getModelConfig: () => ModelConfig;
+  getMaxInputTokens: () => number;
+  getLanguage: () => string | undefined;
+}
+
+export function setupAgentContainer(
+  setupOptions: AgentContainerSetupOptions,
+): Container {
+  const {
+    options,
+    workdir,
+    configurationService,
+    systemPrompt,
+    stream,
+    onSessionIdChange,
+    onTasksChange,
+    onSessionTasksChange,
+    onPermissionModeChange,
+    handlePlanModeTransition,
+    setPermissionMode,
+    addPermissionRule,
+    addUsage,
+    getGatewayConfig,
+    getModelConfig,
+    getMaxInputTokens,
+    getLanguage,
+  } = setupOptions;
+
+  const callbacks = options.callbacks || {};
+  const container = new Container();
+
+  const foregroundTaskManager = new ForegroundTaskManager(container);
+  container.register("ForegroundTaskManager", foregroundTaskManager);
+  container.register("ConfigurationService", configurationService);
+
+  const memoryRuleManager = new MemoryRuleManager(container, { workdir });
+  container.register("MemoryRuleManager", memoryRuleManager);
+
+  const messageManager = new MessageManager(container, {
+    callbacks: {
+      ...callbacks,
+      onSessionIdChange: (sessionId) => {
+        onSessionIdChange(sessionId);
+        callbacks.onSessionIdChange?.(sessionId);
+      },
+    },
+    workdir,
+  });
+  container.register("MessageManager", messageManager);
+
+  const resolvedTaskListId =
+    configurationService.getEnvironmentVars().WAVE_TASK_LIST_ID ||
+    process.env.WAVE_TASK_LIST_ID ||
+    messageManager.getRootSessionId();
+
+  const taskManager = new TaskManager(container, resolvedTaskListId);
+  container.register("TaskManager", taskManager);
+  taskManager.on("tasksChange", async () => {
+    const tasks = await taskManager.listTasks();
+    onSessionTasksChange(tasks);
+  });
+
+  const backgroundTaskManager = new BackgroundTaskManager(container, {
+    callbacks: {
+      ...callbacks,
+      onTasksChange: (tasks) => {
+        onTasksChange(tasks);
+        callbacks.onTasksChange?.(tasks);
+      },
+    },
+    workdir,
+  });
+  container.register("BackgroundTaskManager", backgroundTaskManager);
+
+  const mcpManager = new McpManager(container, { callbacks });
+  container.register("McpManager", mcpManager);
+
+  const lspManager = options.lspManager || new LspManager(container);
+  container.register("LspManager", lspManager);
+
+  const permissionManager = new PermissionManager(container, { workdir });
+  container.register("PermissionManager", permissionManager);
+  permissionManager.setOnConfiguredDefaultModeChange((mode) => {
+    handlePlanModeTransition(mode);
+    onPermissionModeChange(mode);
+  });
+
+  const planManager = new PlanManager(container);
+  container.register("PlanManager", planManager);
+
+  const hookManager = new HookManager(container, workdir);
+  container.register("HookManager", hookManager);
+
+  const skillManager = new SkillManager(container, { workdir });
+  container.register("SkillManager", skillManager);
+
+  container.register(
+    "ReversionService",
+    new ReversionService(messageManager.getTranscriptPath()),
+  );
+  const reversionManager = new ReversionManager(container);
+  container.register("ReversionManager", reversionManager);
+
+  const canUseToolWithNotification = options.canUseTool
+    ? async (context: ToolPermissionContext) => {
+        try {
+          const notificationMessage = `Claude needs your permission to use ${context.toolName}`;
+          await hookManager.executeHooks("Notification", {
+            event: "Notification",
+            projectDir: workdir,
+            timestamp: new Date(),
+            sessionId: messageManager.getSessionId(),
+            transcriptPath: messageManager.getTranscriptPath(),
+            cwd: workdir,
+            message: notificationMessage,
+            notificationType: "permission_prompt",
+            env: configurationService.getEnvironmentVars(),
+          });
+        } catch (error) {
+          logger.warn("Failed to execute notification hooks", {
+            toolName: context.toolName,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        const decision = await options.canUseTool!(context);
+
+        if (decision.newPermissionMode) {
+          setPermissionMode(decision.newPermissionMode);
+        }
+
+        if (decision.newPermissionRule) {
+          await addPermissionRule(decision.newPermissionRule);
+        }
+
+        return decision;
+      }
+    : undefined;
+
+  const toolManager = new ToolManager({
+    container,
+    tools: options.tools,
+  });
+  container.register("ToolManager", toolManager);
+
+  container.register("PermissionMode", options.permissionMode);
+  container.register("CanUseToolCallback", canUseToolWithNotification);
+
+  const liveConfigManager = new LiveConfigManager(container, { workdir });
+  container.register("LiveConfigManager", liveConfigManager);
+
+  const subagentManager = new SubagentManager(container, {
+    workdir,
+    callbacks: {
+      onSubagentUserMessageAdded: callbacks.onSubagentUserMessageAdded,
+      onSubagentAssistantMessageAdded:
+        callbacks.onSubagentAssistantMessageAdded,
+      onSubagentAssistantContentUpdated:
+        callbacks.onSubagentAssistantContentUpdated,
+      onSubagentAssistantReasoningUpdated:
+        callbacks.onSubagentAssistantReasoningUpdated,
+      onSubagentToolBlockUpdated: callbacks.onSubagentToolBlockUpdated,
+      onSubagentMessagesChange: callbacks.onSubagentMessagesChange,
+      onSubagentLatestTotalTokensChange:
+        callbacks.onSubagentLatestTotalTokensChange,
+    },
+    getGatewayConfig,
+    getModelConfig,
+    getMaxInputTokens,
+    getLanguage,
+    getEnvironmentVars: () => configurationService.getEnvironmentVars(),
+    onUsageAdded: (usage: Usage) => addUsage(usage),
+  });
+  container.register("SubagentManager", subagentManager);
+
+  const aiManager = new AIManager(container, {
+    callbacks: {
+      ...callbacks,
+      onUsageAdded: (usage: Usage) => addUsage(usage),
+    },
+    workdir,
+    systemPrompt,
+    stream,
+    getGatewayConfig,
+    getModelConfig,
+    getMaxInputTokens,
+    getLanguage,
+    getEnvironmentVars: () => configurationService.getEnvironmentVars(),
+  });
+  container.register("AIManager", aiManager);
+
+  const slashCommandManager = new SlashCommandManager(container, { workdir });
+  container.register("SlashCommandManager", slashCommandManager);
+  slashCommandManager.initialize();
+
+  const pluginManager = new PluginManager(container, { workdir });
+  container.register("PluginManager", pluginManager);
+
+  const bashManager = new BashManager(container, { workdir });
+  container.register("BashManager", bashManager);
+
+  return container;
+}

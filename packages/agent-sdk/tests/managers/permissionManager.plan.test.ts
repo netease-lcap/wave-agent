@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
+import { Container } from "../../src/utils/container.js";
 
 describe("PermissionManager Plan Mode", () => {
   let permissionManager: PermissionManager;
+  let container: Container;
   const planFilePath = "/home/user/.wave/plans/gentle-breeze.md";
 
   beforeEach(() => {
-    permissionManager = new PermissionManager({
+    container = new Container();
+    permissionManager = new PermissionManager(container, {
       planFilePath,
       workdir: "/home/user/project",
     });

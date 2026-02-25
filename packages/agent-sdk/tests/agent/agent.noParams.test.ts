@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
+import { Container } from "@/utils/container.js";
+import { AIManager } from "@/managers/aiManager.js";
 
 // Mock the aiService module
 vi.mock("@/services/aiService");
@@ -9,6 +11,7 @@ vi.mock("@/services/aiService");
 // Mock the toolManager
 const { instance: mockToolManagerInstance, execute: mockToolExecute } =
   createMockToolManager();
+
 vi.mock("@/managers/toolManager", () => ({
   ToolManager: vi.fn().mockImplementation(function () {
     return mockToolManagerInstance;
@@ -43,7 +46,43 @@ describe("Agent - No Parameters Tool Handling", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     agent = await Agent.create({
+      apiKey: "test-key",
+      workdir: "/tmp/test-no-params",
       callbacks: mockCallbacks,
+    });
+
+    // Register mock ToolManager in the agent's container
+    const container = (agent as unknown as { container: Container }).container;
+    container.register("ToolManager", mockToolManagerInstance);
+
+    // Re-initialize AIManager to pick up the mock ToolManager
+    const aiManager = new AIManager(container, {
+      workdir: "/tmp/test-no-params",
+      getGatewayConfig: () => agent.getGatewayConfig(),
+      getModelConfig: () => agent.getModelConfig(),
+      getMaxInputTokens: () => agent.getMaxInputTokens(),
+      getLanguage: () => agent.getLanguage(),
+      getEnvironmentVars: () =>
+        (
+          agent as unknown as {
+            configurationService: {
+              getEnvironmentVars: () => Record<string, string>;
+            };
+          }
+        ).configurationService.getEnvironmentVars(),
+    });
+    container.register("AIManager", aiManager);
+    (agent as unknown as { aiManager: AIManager }).aiManager = aiManager;
+
+    // Mock callAgent on the aiService module
+    vi.spyOn(aiService, "callAgent").mockResolvedValue({
+      content: "Mock response",
+      tool_calls: [],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        total_tokens: 30,
+      },
     });
   });
 

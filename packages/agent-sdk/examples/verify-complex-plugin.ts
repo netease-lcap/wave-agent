@@ -7,48 +7,49 @@ import { SlashCommandManager } from "../src/managers/slashCommandManager.js";
 import { TaskManager } from "../src/services/taskManager.js";
 import { MessageManager } from "../src/managers/messageManager.js";
 import { AIManager } from "../src/managers/aiManager.js";
-import { Logger, LspConfig, McpServerStatus } from "../src/types/index.js";
+import { LspConfig, McpServerStatus } from "../src/types/index.js";
 import { BackgroundTaskManager } from "../src/managers/backgroundTaskManager.js";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { Container } from "../src/utils/container.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function verify() {
   const workdir = path.resolve(__dirname, "complex-plugin");
-  const logger: Logger = {
-    info: console.log,
-    error: console.error,
-    warn: console.warn,
-    debug: console.log,
-  };
 
-  const skillManager = new SkillManager({ workdir, logger });
+  const container = new Container();
+
+  const skillManager = new SkillManager(container, { workdir });
   (skillManager as unknown as { initialized: boolean }).initialized = true; // Force initialized for verification
-  const hookManager = new HookManager(workdir, undefined, logger);
-  const lspManager = new LspManager({ logger });
-  const mcpManager = new McpManager({ logger });
+  const hookManager = new HookManager(container, workdir);
+  const lspManager = new LspManager(container);
+  const mcpManager = new McpManager(container);
+
+  const messageManager = {} as unknown as MessageManager;
+  const aiManager = {} as unknown as AIManager;
+  const backgroundTaskManager = {
+    getAllTasks: () => [],
+  } as unknown as BackgroundTaskManager;
+  const taskManager = new TaskManager(container, "test-task-list");
+
+  container.register("MessageManager", messageManager);
+  container.register("AIManager", aiManager);
+  container.register("BackgroundTaskManager", backgroundTaskManager);
+  container.register("TaskManager", taskManager);
+  container.register("SkillManager", skillManager);
+  container.register("HookManager", hookManager);
+  container.register("LspManager", lspManager);
+  container.register("McpManager", mcpManager);
 
   // Mock managers that are not fully implemented or needed for simple verification
-  const slashCommandManager = new SlashCommandManager({
-    messageManager: {} as unknown as MessageManager,
-    aiManager: {} as unknown as AIManager,
-    backgroundTaskManager: {
-      getAllTasks: () => [],
-    } as unknown as BackgroundTaskManager,
-    taskManager: new TaskManager("test-task-list"),
+  const slashCommandManager = new SlashCommandManager(container, {
     workdir,
-    logger,
   });
+  container.register("SlashCommandManager", slashCommandManager);
 
-  const pluginManager = new PluginManager({
+  const pluginManager = new PluginManager(container, {
     workdir,
-    logger,
-    skillManager,
-    hookManager,
-    lspManager,
-    mcpManager,
-    slashCommandManager,
   });
 
   console.log("Loading complex-plugin...");

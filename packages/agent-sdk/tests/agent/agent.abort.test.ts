@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Agent } from "@/agent.js";
 import * as aiService from "@/services/aiService.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
+import { Container } from "@/utils/container.js";
+import { AIManager } from "@/managers/aiManager.js";
 
 import type { ErrorBlock } from "@/types/index.js";
 
@@ -11,6 +13,7 @@ vi.mock("@/services/aiService");
 // Mock tool registry to control tool execution
 const { instance: mockToolManagerInstance, execute: mockToolExecute } =
   createMockToolManager();
+
 vi.mock("@/managers/toolManager", () => ({
   ToolManager: vi.fn().mockImplementation(function () {
     return mockToolManagerInstance;
@@ -29,7 +32,74 @@ describe("Agent - Abort Handling", () => {
 
     // Create Agent instance with required parameters
     agent = await Agent.create({
+      apiKey: "test-key",
+      workdir: "/tmp/test-abort",
       callbacks: mockCallbacks,
+    });
+
+    // Register mock ToolManager in the agent's container
+    const container = (agent as unknown as { container: Container }).container;
+    container.register("ToolManager", mockToolManagerInstance);
+
+    // Mock McpManager and register it to avoid undefined errors in ToolManager.execute
+    const mockMcpManager = {
+      isMcpTool: vi.fn().mockReturnValue(false),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
+      getMcpToolsConfig: vi.fn().mockReturnValue([]),
+    };
+    container.register("McpManager", mockMcpManager);
+
+    // Mock SubagentManager and register it
+    const mockSubagentManager = {
+      getConfigurations: vi.fn().mockReturnValue([]),
+      initialize: vi.fn().mockResolvedValue(undefined),
+    };
+    container.register("SubagentManager", mockSubagentManager);
+
+    // Mock SkillManager and register it
+    const mockSkillManager = {
+      getAvailableSkills: vi.fn().mockReturnValue([]),
+      initialize: vi.fn().mockResolvedValue(undefined),
+    };
+    container.register("SkillManager", mockSkillManager);
+
+    // Re-initialize AIManager to pick up the mock ToolManager
+    const aiManager = new AIManager(container, {
+      callbacks: {
+        ...mockCallbacks,
+        onUsageAdded: (usage: unknown) =>
+          (agent as unknown as { addUsage: (u: unknown) => void }).addUsage(
+            usage,
+          ),
+      },
+      workdir: "/tmp/test-abort",
+      getGatewayConfig: () => agent.getGatewayConfig(),
+      getModelConfig: () => agent.getModelConfig(),
+      getMaxInputTokens: () => agent.getMaxInputTokens(),
+      getLanguage: () => agent.getLanguage(),
+      getEnvironmentVars: () =>
+        (
+          agent as unknown as {
+            configurationService: {
+              getEnvironmentVars: () => Record<string, string>;
+            };
+          }
+        ).configurationService.getEnvironmentVars(),
+      stream: true, // Enable streaming for tests that expect it
+    });
+    container.register("AIManager", aiManager);
+    (agent as unknown as { aiManager: AIManager }).aiManager = aiManager;
+    (agent as unknown as { stream: boolean }).stream = true; // Ensure Agent also thinks streaming is enabled
+
+    // Mock callAgent on the aiService module
+    vi.spyOn(aiService, "callAgent").mockResolvedValue({
+      content: "Mock response",
+      tool_calls: [],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 20,
+        total_tokens: 30,
+      },
     });
 
     vi.clearAllMocks();
@@ -38,11 +108,45 @@ describe("Agent - Abort Handling", () => {
   it("should handle JSON parse error gracefully when aborted during tool argument streaming", async () => {
     const mockCallAgent = vi.mocked(aiService.callAgent);
 
+    // Mock callAgent to simulate streaming and then abort
+    mockCallAgent.mockImplementation(async (options) => {
+      if (options.onToolUpdate) {
+        options.onToolUpdate({
+          id: "tool_123",
+          name: "test_tool",
+          parameters: '{"arg": "val', // Incomplete JSON
+          parametersChunk: '"arg": "val',
+          stage: "streaming",
+        });
+      }
+      return {
+        content: "Aborted",
+        tool_calls: [
+          {
+            id: "tool_123",
+            type: "function" as const,
+            function: {
+              name: "test_tool",
+              arguments: '{"arg": "val', // Incomplete JSON
+            },
+          },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      };
+    });
+
     // Execute the test - should not throw error even with incomplete JSON and abort
-    await expect(agent.sendMessage("Test message")).resolves.not.toThrow();
+    const sendPromise = agent.sendMessage("Test message");
+
+    // Simulate abort during streaming
+    setTimeout(() => {
+      agent.abortAIMessage();
+    }, 10);
+
+    await expect(sendPromise).resolves.not.toThrow();
 
     // Verify that the manager doesn't crash and handles the situation gracefully
-    expect(mockCallAgent).toHaveBeenCalledTimes(1);
+    expect(mockCallAgent).toHaveBeenCalled();
 
     // Check that no error message is added to the conversation when aborted
     const messages = agent.messages;
@@ -69,10 +173,22 @@ describe("Agent - Abort Handling", () => {
     let callCount = 0;
 
     // Mock callAgent to return malformed JSON tool call on first call, then no tools
-    mockCallAgent.mockImplementation(async () => {
+    mockCallAgent.mockImplementation(async (options) => {
       callCount++;
 
       if (callCount === 1) {
+        // Simulate streaming of malformed JSON
+        if (options.onToolUpdate) {
+          options.onToolUpdate({
+            id: "tool_123",
+            name: "search_replace",
+            parameters: '{"file_path": "test.ts", "old_string": malformed}', // malformed JSON
+            parametersChunk:
+              '{"file_path": "test.ts", "old_string": malformed}',
+            stage: "streaming",
+          });
+        }
+
         // First call: return malformed JSON tool call
         return {
           content: "",

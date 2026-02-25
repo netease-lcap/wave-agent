@@ -3,8 +3,8 @@ import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
-import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { CustomSlashCommand, TextBlock } from "../../src/types/index.js";
+import { Container } from "../../src/utils/container.js";
 
 // Mock child_process for bash command execution tests
 const mockExec = vi.hoisted(() => vi.fn());
@@ -23,8 +23,9 @@ describe("SlashCommandManager", () => {
   beforeEach(() => {
     // Reset mocks
     vi.clearAllMocks();
+    const container = new Container();
     // Create MessageManager with necessary callbacks
-    messageManager = new MessageManager({
+    messageManager = new MessageManager(container, {
       callbacks: {},
       workdir: "/test/workdir",
     });
@@ -43,14 +44,18 @@ describe("SlashCommandManager", () => {
       generateId: vi.fn(),
     };
 
-    slashCommandManager = new SlashCommandManager({
-      messageManager,
-      aiManager,
-      backgroundTaskManager:
-        backgroundTaskManager as unknown as BackgroundTaskManager,
-      taskManager: new TaskManager("test-task-list"),
+    container.register("MessageManager", messageManager);
+    container.register("AIManager", aiManager);
+    container.register("BackgroundTaskManager", backgroundTaskManager);
+    container.register(
+      "TaskManager",
+      new TaskManager(container, "test-task-list"),
+    );
+
+    slashCommandManager = new SlashCommandManager(container, {
       workdir: "/test/workdir",
     });
+    slashCommandManager.initialize();
   });
 
   describe("Basic Command Management", () => {

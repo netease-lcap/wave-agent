@@ -1,14 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Container } from "../../src/utils/container.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
-import type {
-  Logger,
-  GatewayConfig,
-  ModelConfig,
-} from "../../src/types/index.js";
+import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
+import * as aiService from "../../src/services/aiService.js";
+import { logger } from "../../src/utils/globalLogger.js";
+
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 // Mock node:fs
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
@@ -21,8 +30,22 @@ vi.mock("../../src/utils/gitUtils.js", () => ({
 
 // Mock the aiService module
 vi.mock("../../src/services/aiService.js", () => ({
-  callAgent: vi.fn(),
-  compressMessages: vi.fn(),
+  callAgent: vi.fn().mockImplementation(async (options) => {
+    if (options.onContentUpdate) options.onContentUpdate("Test response");
+    return {
+      content: "Test response",
+      usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+      tool_calls: [],
+    };
+  }),
+  compressMessages: vi.fn().mockResolvedValue({
+    content: "Compressed content",
+    usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+  }),
+  isClaudeModel: vi.fn().mockReturnValue(false),
+  transformMessagesForClaudeCache: vi.fn((m) => m),
+  addCacheControlToLastTool: vi.fn((t) => t),
+  extendUsageWithCacheMetrics: vi.fn((u) => u),
 }));
 
 // Mock the memory service
@@ -40,7 +63,6 @@ describe("AIManager", () => {
   let aiManager: AIManager;
   let mockMessageManager: MessageManager;
   let mockToolManager: ToolManager;
-  let mockLogger: Logger;
 
   const mockGatewayConfig: GatewayConfig = {
     apiKey: "test-api-key",
@@ -52,12 +74,13 @@ describe("AIManager", () => {
     fastModel: "test-fast-model",
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Create mock MessageManager
     mockMessageManager = {
       getSessionId: vi.fn().mockReturnValue("test-session-id"),
       getMessages: vi.fn().mockReturnValue([]),
       addAssistantMessage: vi.fn(),
+      addUserMessage: vi.fn(),
       updateCurrentMessageContent: vi.fn(),
       updateToolBlock: vi.fn(),
       mergeAssistantAdditionalFields: vi.fn(),
@@ -82,66 +105,81 @@ describe("AIManager", () => {
     } as unknown as ToolManager;
 
     // Create mock Logger
-    mockLogger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    } as unknown as Logger;
 
     const taskManager = {
       on: vi.fn(),
       listTasks: vi.fn().mockResolvedValue([]),
     } as unknown as TaskManager;
 
+    const container = new Container();
+    container.register("MessageManager", mockMessageManager);
+    container.register("ToolManager", mockToolManager);
+    container.register("TaskManager", taskManager);
+
+    // Mock SubagentManager and register it
+    container.register("SubagentManager", {
+      getConfigurations: vi.fn().mockReturnValue([]),
+    });
+
+    // Mock SkillManager and register it
+    container.register("SkillManager", {
+      getAvailableSkills: vi.fn().mockReturnValue([]),
+    });
+
     // Create AIManager instance
-    aiManager = new AIManager({
-      messageManager: mockMessageManager,
-      toolManager: mockToolManager,
-      taskManager,
-      logger: mockLogger,
+    aiManager = new AIManager(container, {
       workdir: "/test/workdir",
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 96000,
       getLanguage: () => undefined,
+      stream: false,
     });
+
+    // Mock addUserMessage to save session (simulating real behavior)
+    vi.mocked(mockMessageManager.addUserMessage).mockImplementation(() => {
+      mockMessageManager.saveSession();
+    });
+
+    // Reset mocks
+    vi.mocked(aiService.callAgent).mockClear();
+    vi.mocked(aiService.compressMessages).mockClear();
+  });
+
+  it("should call callAgent", async () => {
+    await aiManager.sendAIMessage();
+    expect(aiService.callAgent).toHaveBeenCalled();
   });
 
   describe("Language Prompt Injection", () => {
     it("should inject language prompt when language is set", async () => {
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockResolvedValue({
-        content: "Test response",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        tool_calls: [],
-      });
-
       const taskManager = {
         on: vi.fn(),
         listTasks: vi.fn().mockResolvedValue([]),
       } as unknown as TaskManager;
 
-      const aiManagerWithLanguage = new AIManager({
-        messageManager: mockMessageManager,
-        toolManager: mockToolManager,
-        taskManager,
-        logger: mockLogger,
+      const container = new Container();
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+
+      const aiManagerWithLanguage = new AIManager(container, {
         workdir: "/test/workdir",
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
         getLanguage: () => "Chinese",
+        stream: false,
       });
 
       await aiManagerWithLanguage.sendAIMessage();
 
-      expect(callAgent).toHaveBeenCalledWith(
+      expect(aiService.callAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           systemPrompt: expect.stringContaining("# Language"),
         }),
       );
-      expect(callAgent).toHaveBeenCalledWith(
+      expect(aiService.callAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           systemPrompt: expect.stringContaining("Always respond in Chinese"),
         }),
@@ -149,16 +187,9 @@ describe("AIManager", () => {
     });
 
     it("should NOT inject language prompt when language is undefined", async () => {
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockResolvedValue({
-        content: "Test response",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        tool_calls: [],
-      });
-
       await aiManager.sendAIMessage();
 
-      expect(callAgent).toHaveBeenCalledWith(
+      expect(aiService.callAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           systemPrompt: expect.not.stringContaining("# Language"),
         }),
@@ -166,33 +197,28 @@ describe("AIManager", () => {
     });
 
     it("should preserve technical terms instruction in language prompt", async () => {
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockResolvedValue({
-        content: "Test response",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        tool_calls: [],
-      });
-
       const taskManager = {
         on: vi.fn(),
         listTasks: vi.fn().mockResolvedValue([]),
       } as unknown as TaskManager;
 
-      const aiManagerWithLanguage = new AIManager({
-        messageManager: mockMessageManager,
-        toolManager: mockToolManager,
-        taskManager,
-        logger: mockLogger,
+      const container = new Container();
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+
+      const aiManagerWithLanguage = new AIManager(container, {
         workdir: "/test/workdir",
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
         getLanguage: () => "Spanish",
+        stream: false,
       });
 
       await aiManagerWithLanguage.sendAIMessage();
 
-      expect(callAgent).toHaveBeenCalledWith(
+      expect(aiService.callAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           systemPrompt: expect.stringContaining(
             "Technical terms (e.g., code, tool names, file paths) should remain in their original language or English where appropriate.",
@@ -205,9 +231,9 @@ describe("AIManager", () => {
   describe("Message Persistence During AI Recursion (FR-012)", () => {
     it("should save session after each recursion level in nested calls", async () => {
       // Mock callAgent to return tool calls for the first call, no tool calls for subsequent calls
-      const { callAgent } = await import("../../src/services/aiService.js");
+      const aiService = await import("../../src/services/aiService.js");
       let callCount = 0;
-      vi.mocked(callAgent).mockImplementation(async () => {
+      vi.spyOn(aiService, "callAgent").mockImplementation(async () => {
         callCount++;
         if (callCount === 1) {
           // First call returns tool calls (triggers recursion)
@@ -252,13 +278,15 @@ describe("AIManager", () => {
 
     it("should save session even when AI call fails during recursion", async () => {
       // Mock callAgent to throw an error
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockRejectedValue(new Error("AI service error"));
+      const aiService = await import("../../src/services/aiService.js");
+      vi.spyOn(aiService, "callAgent").mockRejectedValue(
+        new Error("AI service error"),
+      );
 
       // First, call with recursionDepth = 0 to set up abort controllers
       // Then the recursive call will have proper controllers
       let callCount = 0;
-      vi.mocked(callAgent).mockImplementation(async () => {
+      vi.spyOn(aiService, "callAgent").mockImplementation(async () => {
         callCount++;
         if (callCount === 1) {
           // First call succeeds and returns tool calls (triggers recursion)
@@ -296,9 +324,9 @@ describe("AIManager", () => {
     });
 
     it("should log warning when finish reason is length", async () => {
-      const { callAgent } = await import("../../src/services/aiService.js");
+      const aiService = await import("../../src/services/aiService.js");
       const mockHeaders = { "x-test-header": "test-value" };
-      vi.mocked(callAgent).mockResolvedValue({
+      vi.spyOn(aiService, "callAgent").mockResolvedValue({
         content: "Truncated response",
         finish_reason: "length",
         response_headers: mockHeaders,
@@ -308,7 +336,7 @@ describe("AIManager", () => {
 
       await aiManager.sendAIMessage();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         "AI response truncated due to length limit. Response headers:",
         mockHeaders,
       );
@@ -316,8 +344,8 @@ describe("AIManager", () => {
 
     it("should save session during each recursion regardless of tool execution results", async () => {
       // Mock callAgent to return tool calls
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent)
+      const aiService = await import("../../src/services/aiService.js");
+      vi.spyOn(aiService, "callAgent")
         .mockResolvedValueOnce({
           content: "Test response",
           usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
@@ -353,6 +381,7 @@ describe("AIManager", () => {
       const mockPermissionManager = {
         addTemporaryRules: vi.fn(),
         clearTemporaryRules: vi.fn(),
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
       };
 
       const taskManager = {
@@ -360,25 +389,22 @@ describe("AIManager", () => {
         listTasks: vi.fn().mockResolvedValue([]),
       } as unknown as TaskManager;
 
-      const aiManagerWithPermissions = new AIManager({
-        messageManager: mockMessageManager,
-        toolManager: mockToolManager,
-        taskManager,
-        logger: mockLogger,
-        permissionManager:
-          mockPermissionManager as unknown as PermissionManager,
+      const container = new Container();
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register(
+        "PermissionManager",
+        mockPermissionManager as unknown as PermissionManager,
+      );
+
+      const aiManagerWithPermissions = new AIManager(container, {
         workdir: "/test/workdir",
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
         getLanguage: () => undefined,
-      });
-
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockResolvedValue({
-        content: "Test response",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        tool_calls: [],
+        stream: false,
       });
 
       await aiManagerWithPermissions.sendAIMessage({
@@ -396,6 +422,7 @@ describe("AIManager", () => {
       const mockPermissionManager = {
         addTemporaryRules: vi.fn(),
         clearTemporaryRules: vi.fn(),
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
       };
 
       const taskManager = {
@@ -403,25 +430,22 @@ describe("AIManager", () => {
         listTasks: vi.fn().mockResolvedValue([]),
       } as unknown as TaskManager;
 
-      const aiManagerWithPermissions = new AIManager({
-        messageManager: mockMessageManager,
-        toolManager: mockToolManager,
-        taskManager,
-        logger: mockLogger,
-        permissionManager:
-          mockPermissionManager as unknown as PermissionManager,
+      const container = new Container();
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register(
+        "PermissionManager",
+        mockPermissionManager as unknown as PermissionManager,
+      );
+
+      const aiManagerWithPermissions = new AIManager(container, {
         workdir: "/test/workdir",
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
         getLanguage: () => undefined,
-      });
-
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockResolvedValue({
-        content: "Test response",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        tool_calls: [],
+        stream: false,
       });
 
       await aiManagerWithPermissions.sendAIMessage({
@@ -437,6 +461,7 @@ describe("AIManager", () => {
       const mockPermissionManager = {
         addTemporaryRules: vi.fn(),
         clearTemporaryRules: vi.fn(),
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
       };
 
       const taskManager = {
@@ -444,22 +469,27 @@ describe("AIManager", () => {
         listTasks: vi.fn().mockResolvedValue([]),
       } as unknown as TaskManager;
 
-      const aiManagerWithPermissions = new AIManager({
-        messageManager: mockMessageManager,
-        toolManager: mockToolManager,
-        taskManager,
-        logger: mockLogger,
-        permissionManager:
-          mockPermissionManager as unknown as PermissionManager,
+      const container = new Container();
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", taskManager);
+      container.register(
+        "PermissionManager",
+        mockPermissionManager as unknown as PermissionManager,
+      );
+
+      const aiManagerWithPermissions = new AIManager(container, {
         workdir: "/test/workdir",
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
         getLanguage: () => undefined,
+        stream: false,
       });
 
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockRejectedValue(new Error("AI service error"));
+      vi.mocked(aiService.callAgent).mockRejectedValueOnce(
+        new Error("AI service error"),
+      );
 
       await aiManagerWithPermissions.sendAIMessage({
         allowedRules: ["Edit"],
@@ -474,15 +504,9 @@ describe("AIManager", () => {
     it("should include 'Is directory a git repo: Yes' in system prompt if .git exists", async () => {
       const { isGitRepository } = await import("../../src/utils/gitUtils.js");
       vi.mocked(isGitRepository).mockReturnValue("Yes");
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockResolvedValue({
-        content: "hi",
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-      });
-
       await aiManager.sendAIMessage();
 
-      expect(callAgent).toHaveBeenCalledWith(
+      expect(aiService.callAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           systemPrompt: expect.stringContaining("Is directory a git repo: Yes"),
         }),
@@ -492,15 +516,9 @@ describe("AIManager", () => {
     it("should include 'Is directory a git repo: No' in system prompt if .git does not exist", async () => {
       const { isGitRepository } = await import("../../src/utils/gitUtils.js");
       vi.mocked(isGitRepository).mockReturnValue("No");
-      const { callAgent } = await import("../../src/services/aiService.js");
-      vi.mocked(callAgent).mockResolvedValue({
-        content: "hi",
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-      });
-
       await aiManager.sendAIMessage();
 
-      expect(callAgent).toHaveBeenCalledWith(
+      expect(aiService.callAgent).toHaveBeenCalledWith(
         expect.objectContaining({
           systemPrompt: expect.stringContaining("Is directory a git repo: No"),
         }),

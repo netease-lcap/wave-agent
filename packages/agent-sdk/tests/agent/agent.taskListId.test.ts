@@ -73,7 +73,10 @@ describe("Agent - Task List ID Resolution", () => {
       workdir: "/mock",
     });
 
-    expect(TaskManager).toHaveBeenCalledWith("custom-task-list-id");
+    expect(TaskManager).toHaveBeenCalledWith(
+      expect.anything(),
+      "custom-task-list-id",
+    );
     // The taskListId will be updated to the restored session ID during initialization
     // In this test, handleSessionRestoration returns "mock-session-id"
     expect(agent.taskListId).toBe("mock-session-id");
@@ -90,7 +93,10 @@ describe("Agent - Task List ID Resolution", () => {
     });
 
     // The mock session ID is "mock-session-id"
-    expect(TaskManager).toHaveBeenCalledWith("mock-session-id");
+    expect(TaskManager).toHaveBeenCalledWith(
+      expect.anything(),
+      "mock-session-id",
+    );
     expect(agent.taskListId).toBe("mock-session-id");
 
     await agent.destroy();
@@ -112,7 +118,10 @@ describe("Agent - Task List ID Resolution", () => {
     // TaskManager was only initialized once and agent.taskListId returns the stable value.
 
     // We check that TaskManager was called with the initial ID
-    expect(TaskManager).toHaveBeenCalledWith("mock-session-id");
+    expect(TaskManager).toHaveBeenCalledWith(
+      expect.anything(),
+      "mock-session-id",
+    );
 
     // Even if we were to mock messageManager.getSessionId to return something else now,
     // the agent's taskListId logic in constructor has already run.

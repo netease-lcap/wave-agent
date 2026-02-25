@@ -33,8 +33,18 @@ describe("Agent Tool Streaming Tests", () => {
 
     // Create Agent instance with required parameters
     agent = await Agent.create({
+      apiKey: "test-key",
+      workdir: "/tmp/test-streaming-tools",
       callbacks: mockCallbacks,
     });
+
+    // Inject mock ToolManager into the container
+    const container = (
+      agent as unknown as {
+        container: { register: (name: string, instance: unknown) => void };
+      }
+    ).container;
+    container.register("ToolManager", mockToolManagerInstance);
 
     mockCallAgent = vi.mocked(aiService.callAgent);
     vi.clearAllMocks();

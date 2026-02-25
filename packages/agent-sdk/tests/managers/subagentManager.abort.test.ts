@@ -3,6 +3,7 @@ import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
+import { Container } from "../../src/utils/container.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
 // Mock dependencies
@@ -26,6 +27,7 @@ describe("SubagentManager - Abort Logic", () => {
   let subagentManager: SubagentManager;
   let mockToolManager: ToolManager;
   let mockBackgroundTaskManager: BackgroundTaskManager;
+  let container: Container;
 
   const testConfig: SubagentConfiguration = {
     name: "TestAgent",
@@ -58,11 +60,13 @@ describe("SubagentManager - Abort Logic", () => {
       listTasks: vi.fn().mockResolvedValue([]),
     } as unknown as TaskManager;
 
-    subagentManager = new SubagentManager({
+    container = new Container();
+    container.register("ToolManager", mockToolManager);
+    container.register("TaskManager", taskManager);
+    container.register("BackgroundTaskManager", mockBackgroundTaskManager);
+
+    subagentManager = new SubagentManager(container, {
       workdir: "/test",
-      parentToolManager: mockToolManager,
-      taskManager,
-      backgroundTaskManager: mockBackgroundTaskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
         agentModel: "test-model",

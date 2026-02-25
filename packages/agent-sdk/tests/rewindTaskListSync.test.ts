@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { TaskManager } from "../src/services/taskManager.js";
 import { Agent } from "../src/agent.js";
 import { MessageManager } from "../src/managers/messageManager.js";
+import { Container } from "../src/utils/container.js";
 
 // Mock dependencies
 vi.mock("fs", () => ({
@@ -44,7 +45,8 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 describe("Rewind Task List Sync", () => {
   describe("TaskManager.refreshTasks", () => {
     it("should emit tasksChange event", async () => {
-      const taskManager = new TaskManager("test-session");
+      const container = new Container();
+      const taskManager = new TaskManager(container, "test-session");
       const spy = vi.fn();
       taskManager.on("tasksChange", spy);
 

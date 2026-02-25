@@ -2,16 +2,19 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import os from "node:os";
 import { generateRandomName } from "../utils/nameGenerator.js";
-import type { Logger } from "../types/core.js";
+
+import { Container } from "../utils/container.js";
 
 /**
  * Manages plan files for plan mode
  */
+import { logger } from "../utils/globalLogger.js";
+
 export class PlanManager {
   private planDir: string;
   private currentPlanFilePath: string | null = null;
 
-  constructor(private logger?: Logger) {
+  constructor(private container: Container) {
     this.planDir = path.join(os.homedir(), ".wave", "plans");
   }
 
@@ -25,10 +28,7 @@ export class PlanManager {
     try {
       await fs.mkdir(this.planDir, { recursive: true });
     } catch (error) {
-      this.logger?.error(
-        `Failed to create plan directory: ${this.planDir}`,
-        error,
-      );
+      logger?.error(`Failed to create plan directory: ${this.planDir}`, error);
       throw error;
     }
     const name = generateRandomName(seed);
@@ -42,7 +42,7 @@ export class PlanManager {
           error instanceof Error &&
           (error as Error & { code?: string }).code !== "ENOENT"
         ) {
-          this.logger?.error(
+          logger?.error(
             `Failed to remove existing plan file: ${filePath}`,
             error,
           );
@@ -51,7 +51,7 @@ export class PlanManager {
       this.currentPlanFilePath = filePath;
     }
 
-    this.logger?.info(`Generated plan file path: ${filePath}`);
+    logger?.info(`Generated plan file path: ${filePath}`);
     return { path: filePath, name };
   }
 

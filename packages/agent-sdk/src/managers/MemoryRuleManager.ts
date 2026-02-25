@@ -5,6 +5,8 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { logger } from "../utils/globalLogger.js";
 
+import { Container } from "../utils/container.js";
+
 export interface MemoryRuleRegistryState {
   /** All discovered rules, indexed by ID */
   rules: Record<string, MemoryRule>;
@@ -25,7 +27,10 @@ export class MemoryRuleManager {
   private workdir: string;
   private service: MemoryRuleService;
 
-  constructor(options: MemoryRuleManagerOptions) {
+  constructor(
+    private container: Container,
+    options: MemoryRuleManagerOptions,
+  ) {
     this.workdir = options.workdir;
     this.service = new MemoryRuleService();
   }

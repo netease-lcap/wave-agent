@@ -8,7 +8,6 @@
  */
 
 import { existsSync } from "fs";
-import type { Logger } from "../types/index.js";
 import type { PermissionMode } from "../types/permissions.js";
 import type { Scope } from "../types/configuration.js";
 import {
@@ -25,27 +24,22 @@ import type { HookValidationResult } from "../types/hooks.js";
 import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ensureGlobalGitIgnore } from "../utils/fileUtils.js";
+import { Container } from "../utils/container.js";
 
 import type {
   ConfigurationLoadResult,
   WaveConfiguration,
 } from "../types/configuration.js";
 
+import { logger } from "../utils/globalLogger.js";
+
 export interface LiveConfigManagerOptions {
   workdir: string;
-  logger?: Logger;
-  hookManager?: HookManager;
-  permissionManager?: PermissionManager;
-  configurationService?: ConfigurationService;
 }
 
 export class LiveConfigManager {
   private readonly workdir: string;
-  private readonly logger?: Logger;
-  private readonly hookManager?: HookManager;
-  private readonly permissionManager?: PermissionManager;
   private isInitialized: boolean = false;
-  private readonly configurationService: ConfigurationService;
 
   // Configuration state
   private currentConfiguration: WaveConfiguration | null = null;
@@ -58,15 +52,25 @@ export class LiveConfigManager {
   private isWatching: boolean = false;
   private reloadInProgress: boolean = false;
 
-  constructor(options: LiveConfigManagerOptions) {
+  constructor(
+    private container: Container,
+    options: LiveConfigManagerOptions,
+  ) {
     this.workdir = options.workdir;
-    this.logger = options.logger;
-    this.hookManager = options.hookManager;
-    this.permissionManager = options.permissionManager;
-    this.configurationService =
-      options.configurationService || new ConfigurationService();
-    this.fileWatcher = new FileWatcherService(this.logger);
+    this.fileWatcher = new FileWatcherService(logger);
     this.setupFileWatcherEvents();
+  }
+
+  private get hookManager(): HookManager | undefined {
+    return this.container.get<HookManager>("HookManager");
+  }
+
+  private get permissionManager(): PermissionManager | undefined {
+    return this.container.get<PermissionManager>("PermissionManager");
+  }
+
+  private get configurationService(): ConfigurationService {
+    return this.container.get<ConfigurationService>("ConfigurationService")!;
   }
 
   /**
@@ -79,7 +83,7 @@ export class LiveConfigManager {
     projectPaths?: string[],
   ): Promise<void> {
     try {
-      this.logger?.debug("Live Config: Initializing configuration watching...");
+      logger?.debug("Live Config: Initializing configuration watching...");
 
       this.userConfigPaths = userPaths;
       this.projectConfigPaths = projectPaths;
@@ -90,14 +94,14 @@ export class LiveConfigManager {
       // Start watching user configs that exist
       for (const userPath of userPaths) {
         if (existsSync(userPath)) {
-          this.logger?.debug(
+          logger?.debug(
             `Live Config: Starting to watch user config: ${userPath}`,
           );
           await this.fileWatcher.watchFile(userPath, (event) =>
             this.handleFileChange(event, "user"),
           );
         } else {
-          this.logger?.debug(
+          logger?.debug(
             `Live Config: User config file does not exist: ${userPath}`,
           );
         }
@@ -110,14 +114,14 @@ export class LiveConfigManager {
             if (projectPath.endsWith("settings.local.json")) {
               await ensureGlobalGitIgnore("**/.wave/settings.local.json");
             }
-            this.logger?.debug(
+            logger?.debug(
               `Live Config: Starting to watch project config: ${projectPath}`,
             );
             await this.fileWatcher.watchFile(projectPath, (event) =>
               this.handleFileChange(event, "project"),
             );
           } else {
-            this.logger?.debug(
+            logger?.debug(
               `Live Config: Project config file does not exist: ${projectPath}`,
             );
           }
@@ -125,12 +129,12 @@ export class LiveConfigManager {
       }
 
       this.isWatching = true;
-      this.logger?.debug(
+      logger?.debug(
         "Live Config: Configuration watching initialized successfully",
       );
     } catch (error) {
       const errorMessage = `Failed to initialize configuration watching: ${(error as Error).message}`;
-      this.logger?.error(`Live Config: ${errorMessage}`);
+      logger?.error(`Live Config: ${errorMessage}`);
       throw new Error(errorMessage);
     }
   }
@@ -147,7 +151,7 @@ export class LiveConfigManager {
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) {
-      this.logger?.debug("Already initialized");
+      logger?.debug("Already initialized");
       return;
     }
 
@@ -159,11 +163,11 @@ export class LiveConfigManager {
       await this.initializeWatching(userPaths, projectPaths);
 
       this.isInitialized = true;
-      this.logger?.debug(
+      logger?.debug(
         "Live configuration management initialized with file watching",
       );
     } catch (error) {
-      this.logger?.error(`Failed to initialize: ${(error as Error).message}`);
+      logger?.error(`Failed to initialize: ${(error as Error).message}`);
       throw error;
     }
   }
@@ -177,7 +181,7 @@ export class LiveConfigManager {
     }
 
     try {
-      this.logger?.debug("Live Config: Shutting down configuration manager...");
+      logger?.debug("Live Config: Shutting down configuration manager...");
 
       this.isWatching = false;
 
@@ -189,9 +193,9 @@ export class LiveConfigManager {
       this.lastValidConfiguration = null;
 
       this.isInitialized = false;
-      this.logger?.debug("Live configuration management shutdown completed");
+      logger?.debug("Live configuration management shutdown completed");
     } catch (error) {
-      this.logger?.error(`Error during shutdown: ${(error as Error).message}`);
+      logger?.error(`Error during shutdown: ${(error as Error).message}`);
       throw error;
     }
   }
@@ -202,14 +206,14 @@ export class LiveConfigManager {
    */
   private async reloadConfiguration(): Promise<WaveConfiguration> {
     if (this.reloadInProgress) {
-      this.logger?.debug("Live Config: Reload already in progress, skipping");
+      logger?.debug("Live Config: Reload already in progress, skipping");
       return this.currentConfiguration || {};
     }
 
     this.reloadInProgress = true;
 
     try {
-      this.logger?.debug("Live Config: Reloading configuration from files...");
+      logger?.debug("Live Config: Reloading configuration from files...");
 
       // Load merged configuration using ConfigurationService
       const loadResult: ConfigurationLoadResult =
@@ -220,20 +224,20 @@ export class LiveConfigManager {
       if (!loadResult.success) {
         const errorMessage =
           loadResult.error || "Configuration loading failed with unknown error";
-        this.logger?.error(
+        logger?.error(
           `Live Config: Configuration loading failed: ${errorMessage}`,
         );
 
         // Log warnings if any
         if (loadResult.warnings && loadResult.warnings.length > 0) {
-          this.logger?.warn(
+          logger?.warn(
             `Live Config: Configuration warnings: ${loadResult.warnings.join("; ")}`,
           );
         }
 
         // Use fallback configuration if available
         if (this.lastValidConfiguration) {
-          this.logger?.debug(
+          logger?.debug(
             "Live Config: Using previous valid configuration due to loading errors",
           );
           this.currentConfiguration = this.lastValidConfiguration;
@@ -254,7 +258,7 @@ export class LiveConfigManager {
 
           return this.currentConfiguration;
         } else {
-          this.logger?.warn(
+          logger?.warn(
             "Live Config: No previous valid configuration available, using empty config",
           );
           this.currentConfiguration = {};
@@ -264,25 +268,25 @@ export class LiveConfigManager {
 
       // Log success with detailed information
       if (newConfig) {
-        this.logger?.debug(
+        logger?.debug(
           `Live Config: Configuration loaded successfully from ${loadResult.sourcePath || "merged sources"}`,
         );
 
         // Log detailed configuration info
         const hookCount = Object.keys(newConfig.hooks || {}).length;
         const envCount = Object.keys(newConfig.env || {}).length;
-        this.logger?.debug(
+        logger?.debug(
           `Live Config: Loaded ${hookCount} hook events and ${envCount} environment variables`,
         );
       } else {
-        this.logger?.debug(
+        logger?.debug(
           "Live Config: No configuration found (using empty configuration)",
         );
       }
 
       // Log warnings from successful loading
       if (loadResult.warnings && loadResult.warnings.length > 0) {
-        this.logger?.warn(
+        logger?.warn(
           `Live Config: Configuration warnings: ${loadResult.warnings.join("; ")}`,
         );
       }
@@ -292,11 +296,11 @@ export class LiveConfigManager {
         const validation = this.validateConfiguration(newConfig);
         if (!validation.valid) {
           const errorMessage = `Configuration validation failed: ${validation.errors.join(", ")}`;
-          this.logger?.error(`Live Config: ${errorMessage}`);
+          logger?.error(`Live Config: ${errorMessage}`);
 
           // Use previous valid configuration for error recovery
           if (this.lastValidConfiguration) {
-            this.logger?.debug(
+            logger?.debug(
               "Live Config: Using previous valid configuration due to validation errors",
             );
             this.currentConfiguration = this.lastValidConfiguration;
@@ -317,7 +321,7 @@ export class LiveConfigManager {
 
             return this.currentConfiguration;
           } else {
-            this.logger?.warn(
+            logger?.warn(
               "Live Config: No previous valid configuration available, using empty config",
             );
             this.currentConfiguration = {};
@@ -335,7 +339,7 @@ export class LiveConfigManager {
       // Save as last valid configuration if it's valid and not empty
       if (newConfig && (newConfig.hooks || newConfig.env)) {
         this.lastValidConfiguration = { ...newConfig };
-        this.logger?.debug(
+        logger?.debug(
           "Live Config: Saved current configuration as last valid backup",
         );
       }
@@ -374,18 +378,18 @@ export class LiveConfigManager {
         }
       }
 
-      this.logger?.debug(
+      logger?.debug(
         `Live Config: Configuration reload completed successfully with ${Object.keys(newConfig?.hooks || {}).length} event types and ${Object.keys(newConfig?.env || {}).length} environment variables`,
       );
 
       return this.currentConfiguration;
     } catch (error) {
       const errorMessage = `Configuration reload failed with exception: ${(error as Error).message}`;
-      this.logger?.error(`Live Config: ${errorMessage}`);
+      logger?.error(`Live Config: ${errorMessage}`);
 
       // Use previous valid configuration for error recovery
       if (this.lastValidConfiguration) {
-        this.logger?.debug(
+        logger?.debug(
           "Live Config: Using previous valid configuration due to reload exception",
         );
         this.currentConfiguration = this.lastValidConfiguration;
@@ -404,7 +408,7 @@ export class LiveConfigManager {
           );
         }
       } else {
-        this.logger?.warn(
+        logger?.warn(
           "Live Config: No previous valid configuration available, using empty config",
         );
         this.currentConfiguration = {};
@@ -420,7 +424,7 @@ export class LiveConfigManager {
    * Reload configuration from files (public method)
    */
   async reload(): Promise<WaveConfiguration> {
-    this.logger?.debug("Manually reloading configuration...");
+    logger?.debug("Manually reloading configuration...");
     return await this.reloadConfiguration();
   }
 
@@ -452,7 +456,7 @@ export class LiveConfigManager {
 
   private setupFileWatcherEvents(): void {
     this.fileWatcher.on("watcherError", (error: Error) => {
-      this.logger?.error(`Live Config: File watcher error: ${error.message}`);
+      logger?.error(`Live Config: File watcher error: ${error.message}`);
     });
   }
 
@@ -460,14 +464,14 @@ export class LiveConfigManager {
     event: FileWatchEvent,
     source: Scope,
   ): Promise<void> {
-    this.logger?.debug(
+    logger?.debug(
       `Live Config: File ${event.type} detected for ${source} config: ${event.path}`,
     );
 
     try {
       // Handle file deletion
       if (event.type === "delete") {
-        this.logger?.debug(
+        logger?.debug(
           `Live Config: ${source} config file deleted: ${event.path}`,
         );
         // Reload configuration without the deleted file
@@ -477,7 +481,7 @@ export class LiveConfigManager {
 
       // Handle file creation or modification
       if (event.type === "change" || event.type === "create") {
-        this.logger?.debug(
+        logger?.debug(
           `Live Config: ${source} config file ${event.type}: ${event.path}`,
         );
 
@@ -496,7 +500,7 @@ export class LiveConfigManager {
         await this.reloadConfiguration();
       }
     } catch (error) {
-      this.logger?.error(
+      logger?.error(
         `Live Config: Error handling file change for ${source} config: ${(error as Error).message}`,
       );
     }

@@ -10,7 +10,7 @@ import {
   UserMessageParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
-import type { Logger, Message, Usage, SlashCommand } from "../types/index.js";
+import type { Message, Usage, SlashCommand } from "../types/index.js";
 import { join } from "path";
 import {
   appendMessages,
@@ -22,6 +22,8 @@ import {
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { MemoryRuleManager } from "./MemoryRuleManager.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
+
+import { Container } from "../utils/container.js";
 
 export interface MessageManagerCallbacks {
   onMessagesChange?: (messages: Message[]) => void;
@@ -59,13 +61,13 @@ export interface MessageManagerCallbacks {
   ) => void;
 }
 
+import { logger } from "../utils/globalLogger.js";
+
 export interface MessageManagerOptions {
   callbacks: MessageManagerCallbacks;
   workdir: string;
-  logger?: Logger;
   sessionType?: "main" | "subagent";
   subagentType?: string;
-  memoryRuleManager?: MemoryRuleManager;
 }
 
 export class MessageManager {
@@ -77,16 +79,17 @@ export class MessageManager {
   private latestTotalTokens: number;
   private workdir: string;
   private encodedWorkdir: string; // Cached encoded workdir
-  private logger?: Logger; // Add optional logger property
   private callbacks: MessageManagerCallbacks;
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
   private filesInContext: Set<string> = new Set(); // Track files mentioned in the conversation
-  private memoryRuleManager?: MemoryRuleManager;
   private sessionType: "main" | "subagent";
   private subagentType?: string;
 
-  constructor(options: MessageManagerOptions) {
+  constructor(
+    private container: Container,
+    options: MessageManagerOptions,
+  ) {
     this.sessionId = generateSessionId();
     this.rootSessionId = this.sessionId;
     this.messages = [];
@@ -94,14 +97,18 @@ export class MessageManager {
     this.workdir = options.workdir;
     this.encodedWorkdir = pathEncoder.encodeSync(this.workdir); // Cache encoded workdir
     this.callbacks = options.callbacks;
-    this.logger = options.logger;
     this.savedMessageCount = 0; // Initialize saved message count tracker
     this.sessionType = options.sessionType || "main";
     this.subagentType = options.subagentType;
-    this.memoryRuleManager = options.memoryRuleManager;
 
     // Compute and cache the transcript path
     this.transcriptPath = this.computeTranscriptPath();
+  }
+
+  private get memoryRuleManager(): MemoryRuleManager | undefined {
+    return this.container.has("MemoryRuleManager")
+      ? this.container.get<MemoryRuleManager>("MemoryRuleManager")
+      : undefined;
   }
 
   // Getter methods
@@ -155,7 +162,7 @@ export class MessageManager {
       const filesInContext = this.getFilesInContext();
       const activeRules = this.memoryRuleManager.getActiveRules(filesInContext);
       if (activeRules.length > 0) {
-        this.logger?.debug(
+        logger?.debug(
           `Active modular rules (${activeRules.length}): ${activeRules.map((r) => r.id).join(", ")}`,
         );
         if (combined) {
@@ -200,7 +207,7 @@ export class MessageManager {
     try {
       await createSession(this.sessionId, this.workdir, this.sessionType);
     } catch (error) {
-      this.logger?.error("Failed to create session:", error);
+      logger?.error("Failed to create session:", error);
     }
   }
 
@@ -242,7 +249,7 @@ export class MessageManager {
       // Update the saved message count
       this.savedMessageCount = this.messages.length;
     } catch (error) {
-      this.logger?.error("Failed to save session:", error);
+      logger?.error("Failed to save session:", error);
     }
   }
 
@@ -741,7 +748,7 @@ export class MessageManager {
 
       await writeFile(this.transcriptPath, content, "utf8");
     } catch (error) {
-      this.logger?.error("Failed to rewrite session file:", error);
+      logger?.error("Failed to rewrite session file:", error);
     }
   }
 

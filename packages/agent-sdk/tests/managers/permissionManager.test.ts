@@ -8,40 +8,35 @@ import type {
   PermissionCallback,
   PermissionMode,
 } from "../../src/types/permissions.js";
-import type { Logger } from "../../src/types/index.js";
+import { Container } from "../../src/utils/container.js";
+import { logger } from "../../src/utils/globalLogger.js";
+
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 describe("PermissionManager", () => {
   let permissionManager: PermissionManager;
-  let mockLogger: Logger;
+  const container = new Container();
 
   beforeEach(() => {
+    vi.clearAllMocks();
     // Create mock Logger
-    mockLogger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    } as unknown as Logger;
 
-    // Create PermissionManager instance with logger
-    permissionManager = new PermissionManager({
-      logger: mockLogger,
-    });
+    const container = new Container();
+
+    // Create PermissionManager instance
+    permissionManager = new PermissionManager(container);
   });
 
   describe("Constructor and Initialization", () => {
-    it("should create instance with logger", () => {
-      const manager = new PermissionManager({ logger: mockLogger });
-      expect(manager).toBeInstanceOf(PermissionManager);
-    });
-
-    it("should create instance without logger", () => {
-      const manager = new PermissionManager();
-      expect(manager).toBeInstanceOf(PermissionManager);
-    });
-
-    it("should create instance with empty options", () => {
-      const manager = new PermissionManager({});
+    it("should create instance", () => {
+      const manager = new PermissionManager(container);
       expect(manager).toBeInstanceOf(PermissionManager);
     });
   });
@@ -189,7 +184,7 @@ describe("PermissionManager", () => {
         const result = await permissionManager.checkPermission(context);
 
         expect(result).toEqual({ behavior: "allow" });
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Checking permission for tool",
           {
             toolName: "Edit",
@@ -197,7 +192,7 @@ describe("PermissionManager", () => {
             hasCallback: false,
           },
         );
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Permission bypassed for tool",
           { toolName: "Edit" },
         );
@@ -236,8 +231,8 @@ describe("PermissionManager", () => {
       it("should allow file tools in acceptEdits mode inside Safe Zone", async () => {
         const fileTools = ["Edit", "MultiEdit", "Delete", "Write"];
         const workdir = "/home/user/project";
-        const manager = new PermissionManager({
-          logger: mockLogger,
+        const container = new Container();
+        const manager = new PermissionManager(container, {
           workdir,
         });
 
@@ -251,7 +246,7 @@ describe("PermissionManager", () => {
           const result = await manager.checkPermission(context);
 
           expect(result).toEqual({ behavior: "allow" });
-          expect(mockLogger.debug).toHaveBeenCalledWith(
+          expect(logger.debug).toHaveBeenCalledWith(
             "Permission automatically accepted for tool in acceptEdits mode",
             { toolName },
           );
@@ -284,7 +279,7 @@ describe("PermissionManager", () => {
         const result = await permissionManager.checkPermission(context);
 
         expect(result).toEqual({ behavior: "allow" });
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Permission allowed by persistent rule",
           { toolName: "Bash" },
         );
@@ -486,7 +481,7 @@ describe("PermissionManager", () => {
           const result = await permissionManager.checkPermission(context);
 
           expect(result).toEqual({ behavior: "allow" });
-          expect(mockLogger.debug).toHaveBeenCalledWith(
+          expect(logger.debug).toHaveBeenCalledWith(
             "Tool is not restricted, allowing",
             { toolName },
           );
@@ -509,7 +504,7 @@ describe("PermissionManager", () => {
 
         expect(result).toEqual({ behavior: "allow" });
         expect(mockCallback).not.toHaveBeenCalled();
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Tool is not restricted, allowing",
           { toolName: "Read" },
         );
@@ -536,11 +531,11 @@ describe("PermissionManager", () => {
           permissionMode: "default",
           canUseToolCallback: mockCallback,
         });
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Calling custom permission callback for tool",
           { toolName: "Edit" },
         );
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Custom callback returned decision",
           { toolName: "Edit", decision: { behavior: "allow" } },
         );
@@ -569,7 +564,7 @@ describe("PermissionManager", () => {
           permissionMode: "default",
           canUseToolCallback: mockCallback,
         });
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Custom callback returned decision",
           {
             toolName: "Delete",
@@ -600,7 +595,7 @@ describe("PermissionManager", () => {
           permissionMode: "default",
           canUseToolCallback: mockCallback,
         });
-        expect(mockLogger.error).toHaveBeenCalledWith(
+        expect(logger.error).toHaveBeenCalledWith(
           "Error in permission callback",
           { toolName: "Write", error: "Callback failed" },
         );
@@ -623,7 +618,7 @@ describe("PermissionManager", () => {
           behavior: "deny",
           message: "Error in permission callback",
         });
-        expect(mockLogger.error).toHaveBeenCalledWith(
+        expect(logger.error).toHaveBeenCalledWith(
           "Error in permission callback",
           { toolName: "Bash", error: "String error" },
         );
@@ -667,7 +662,7 @@ describe("PermissionManager", () => {
           message:
             "Tool 'Edit' requires permission approval. No permission callback configured.",
         });
-        expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect(logger.warn).toHaveBeenCalledWith(
           "No permission callback provided for restricted tool in default mode",
           { toolName: "Edit" },
         );
@@ -704,7 +699,7 @@ describe("PermissionManager", () => {
 
         await permissionManager.checkPermission(context);
 
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Checking permission for tool",
           {
             toolName: "MultiEdit",
@@ -722,7 +717,7 @@ describe("PermissionManager", () => {
 
         await permissionManager.checkPermission(context);
 
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Checking permission for tool",
           {
             toolName: "Read",
@@ -817,7 +812,7 @@ describe("PermissionManager", () => {
       for (const toolName of RESTRICTED_TOOLS) {
         const result = permissionManager.isRestrictedTool(toolName);
         expect(result).toBe(true);
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Checking if tool is restricted",
           { toolName, isRestricted: true },
         );
@@ -837,7 +832,7 @@ describe("PermissionManager", () => {
       for (const toolName of unrestrictedTools) {
         const result = permissionManager.isRestrictedTool(toolName);
         expect(result).toBe(false);
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Checking if tool is restricted",
           { toolName, isRestricted: false },
         );
@@ -870,15 +865,12 @@ describe("PermissionManager", () => {
         permissionMode: "default",
         canUseToolCallback: undefined,
       });
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        "Created permission context",
-        {
-          toolName: "Edit",
-          permissionMode: "default",
-          hasCallback: false,
-          hasToolInput: false,
-        },
-      );
+      expect(logger.debug).toHaveBeenCalledWith("Created permission context", {
+        toolName: "Edit",
+        permissionMode: "default",
+        hasCallback: false,
+        hasToolInput: false,
+      });
     });
 
     it("should create context with callback", () => {
@@ -897,15 +889,12 @@ describe("PermissionManager", () => {
         permissionMode: "bypassPermissions",
         canUseToolCallback: mockCallback,
       });
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        "Created permission context",
-        {
-          toolName: "Delete",
-          permissionMode: "bypassPermissions",
-          hasCallback: true,
-          hasToolInput: false,
-        },
-      );
+      expect(logger.debug).toHaveBeenCalledWith("Created permission context", {
+        toolName: "Delete",
+        permissionMode: "bypassPermissions",
+        hasCallback: true,
+        hasToolInput: false,
+      });
     });
 
     it("should create context for all permission modes", () => {
@@ -1020,7 +1009,10 @@ describe("PermissionManager", () => {
 
   describe("Logger Integration", () => {
     it("should work without logger", async () => {
-      const managerWithoutLogger = new PermissionManager();
+      const containerWithoutLogger = new Container();
+      const managerWithoutLogger = new PermissionManager(
+        containerWithoutLogger,
+      );
 
       const context: ToolPermissionContext = {
         toolName: "Read",
@@ -1042,9 +1034,9 @@ describe("PermissionManager", () => {
 
       await permissionManager.checkPermission(context);
 
-      expect(mockLogger.debug).toHaveBeenCalled();
-      expect(mockLogger.warn).toHaveBeenCalled();
-      expect(mockLogger.error).not.toHaveBeenCalled();
+      expect(logger.debug).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
     });
 
     it("should log error for callback exceptions", async () => {
@@ -1060,7 +1052,7 @@ describe("PermissionManager", () => {
 
       await permissionManager.checkPermission(context);
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(logger.error).toHaveBeenCalledWith(
         "Error in permission callback",
         { toolName: "Bash", error: "Test error" },
       );

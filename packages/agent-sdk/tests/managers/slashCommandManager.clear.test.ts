@@ -4,34 +4,38 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
+import { Container } from "../../src/utils/container.js";
 
 describe("SlashCommandManager /clear reset", () => {
   let slashCommandManager: SlashCommandManager;
   let messageManager: MessageManager;
   let taskManager: TaskManager;
   let aiManager: AIManager;
+  const container = new Container();
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    messageManager = new MessageManager({
+    messageManager = new MessageManager(container, {
       callbacks: {},
       workdir: "/test/workdir",
     });
 
-    taskManager = new TaskManager("initial-task-list-id");
+    taskManager = new TaskManager(container, "initial-task-list-id");
     vi.spyOn(taskManager, "setTaskListId");
     vi.spyOn(taskManager, "emit");
 
     aiManager = {} as AIManager;
 
-    slashCommandManager = new SlashCommandManager({
-      messageManager,
-      aiManager,
-      backgroundTaskManager: {} as BackgroundTaskManager,
-      taskManager,
+    container.register("MessageManager", messageManager);
+    container.register("AIManager", aiManager);
+    container.register("BackgroundTaskManager", {} as BackgroundTaskManager);
+    container.register("TaskManager", taskManager);
+
+    slashCommandManager = new SlashCommandManager(container, {
       workdir: "/test/workdir",
     });
+    slashCommandManager.initialize();
   });
 
   it("should reset task list ID and emit tasksChange when /clear is called and WAVE_TASK_LIST_ID is not set", async () => {

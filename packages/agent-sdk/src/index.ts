@@ -31,6 +31,7 @@ export * from "./utils/stringUtils.js";
 export * from "./utils/customCommands.js";
 export * from "./utils/hookMatcher.js";
 export * from "./utils/tokenCalculation.js";
+export * from "./utils/container.js";
 
 // Export types
 export * from "./types/index.js";

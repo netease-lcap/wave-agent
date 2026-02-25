@@ -1,13 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Container } from "../../src/utils/container.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
-import type {
-  Logger,
-  GatewayConfig,
-  ModelConfig,
-} from "../../src/types/index.js";
+
+import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 
 // Mock the aiService module
 vi.mock("../../src/services/aiService.js", () => ({
@@ -30,7 +28,6 @@ describe("AIManager finish reason", () => {
   let aiManager: AIManager;
   let mockMessageManager: MessageManager;
   let mockToolManager: ToolManager;
-  let mockLogger: Logger;
 
   const mockGatewayConfig: GatewayConfig = {
     apiKey: "test-api-key",
@@ -72,24 +69,34 @@ describe("AIManager finish reason", () => {
     } as unknown as ToolManager;
 
     // Create mock Logger
-    mockLogger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    } as unknown as Logger;
+
+    const container = new Container();
+    container.register("MessageManager", mockMessageManager);
+    container.register("ToolManager", mockToolManager);
+    container.register("TaskManager", {} as unknown as TaskManager);
+    container.register("PermissionManager", {
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+      clearTemporaryRules: vi.fn(),
+    } as unknown as Record<string, unknown>);
+
+    // Mock SubagentManager and register it
+    container.register("SubagentManager", {
+      getConfigurations: vi.fn().mockReturnValue([]),
+    });
+
+    // Mock SkillManager and register it
+    container.register("SkillManager", {
+      getAvailableSkills: vi.fn().mockReturnValue([]),
+    });
 
     // Create AIManager instance
-    aiManager = new AIManager({
-      messageManager: mockMessageManager,
-      toolManager: mockToolManager,
-      taskManager: {} as unknown as TaskManager,
-      logger: mockLogger,
+    aiManager = new AIManager(container, {
       workdir: "/test/workdir",
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 96000,
       getLanguage: () => undefined,
+      stream: false,
     });
   });
 

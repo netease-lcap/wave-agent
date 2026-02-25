@@ -6,6 +6,7 @@ import type {
   CompressBlock,
   TextBlock,
 } from "../../src/types/index.js";
+import { Container } from "../../src/utils/container.js";
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -26,10 +27,11 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
 describe("MessageManager Context-Safe Rewind", () => {
   let messageManager: MessageManager;
   const workdir = "/test/workdir";
+  const container = new Container();
 
   beforeEach(() => {
     vi.clearAllMocks();
-    messageManager = new MessageManager({
+    messageManager = new MessageManager(container, {
       callbacks: {},
       workdir,
     });

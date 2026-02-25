@@ -1,8 +1,8 @@
 import { spawn, type ChildProcess } from "child_process";
 import type { MessageManager } from "./messageManager.js";
+import { Container } from "../utils/container.js";
 
 export interface BashManagerOptions {
-  messageManager: MessageManager;
   workdir: string;
 }
 
@@ -13,13 +13,18 @@ export interface CommandExecutionResult {
 
 export class BashManager {
   private workdir: string;
-  private messageManager: MessageManager;
   public isCommandRunning = false;
   private currentProcess: ChildProcess | null = null;
 
-  constructor(options: BashManagerOptions) {
+  constructor(
+    private container: Container,
+    options: BashManagerOptions,
+  ) {
     this.workdir = options.workdir;
-    this.messageManager = options.messageManager;
+  }
+
+  private get messageManager(): MessageManager {
+    return this.container.get<MessageManager>("MessageManager")!;
   }
 
   private setCommandRunning(isRunning: boolean): void {

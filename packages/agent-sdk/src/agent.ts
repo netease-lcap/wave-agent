@@ -20,7 +20,6 @@ import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { HookManager } from "./managers/hookManager.js";
 import { ReversionManager } from "./managers/reversionManager.js";
-import { ReversionService } from "./services/reversionService.js";
 import { PermissionManager } from "./managers/permissionManager.js";
 import { PlanManager } from "./managers/planManager.js";
 import type {
@@ -58,6 +57,7 @@ import os from "os";
 import { ClientOptions } from "openai";
 
 import { Container } from "./utils/container.js";
+import { setupAgentContainer } from "./utils/containerSetup.js";
 
 /**
  * Configuration options for Agent instances
@@ -200,13 +200,7 @@ export class Agent {
    * @param options - Configuration options for the Agent instance
    */
   private constructor(options: AgentOptions) {
-    const {
-      callbacks = {},
-      logger,
-      workdir,
-      systemPrompt,
-      stream = true,
-    } = options;
+    const { logger, workdir, systemPrompt, stream = true } = options;
 
     // Set working directory early as we need it for loading configuration
     this.workdir = workdir || process.cwd();
@@ -221,235 +215,58 @@ export class Agent {
     // Store options for dynamic configuration resolution
     this.options = options;
 
-    this.container = new Container();
-    this.foregroundTaskManager = new ForegroundTaskManager();
-
-    // Initialize memory rule manager
-    this.memoryRuleManager = new MemoryRuleManager({
+    this.container = setupAgentContainer({
+      options,
       workdir: this.workdir,
-    });
-
-    // Initialize MessageManager
-    this.messageManager = new MessageManager({
-      callbacks: {
-        ...callbacks,
-        onSessionIdChange: (sessionId) => {
-          // When session ID changes (e.g. due to compression),
-          // we update the task manager to use the root session ID
-          // to ensure the task list remains consistent.
-          this.taskManager.setTaskListId(
-            this.messageManager.getRootSessionId(),
-          );
-          callbacks.onSessionIdChange?.(sessionId);
-        },
-      },
-      workdir: this.workdir,
-      logger: this.logger,
-      memoryRuleManager: this.memoryRuleManager,
-    });
-
-    // Resolve taskListId once during construction to ensure stability
-    const resolvedTaskListId =
-      this.configurationService.getEnvironmentVars().WAVE_TASK_LIST_ID ||
-      process.env.WAVE_TASK_LIST_ID ||
-      this.messageManager.getRootSessionId();
-
-    this.taskManager = new TaskManager(resolvedTaskListId);
-    this.taskManager.on("tasksChange", async () => {
-      const tasks = await this.taskManager.listTasks();
-      this.options.callbacks?.onSessionTasksChange?.(tasks);
-    });
-
-    // Initialize BackgroundTaskManager
-    this.backgroundTaskManager = new BackgroundTaskManager({
-      callbacks: {
-        ...callbacks,
-        onTasksChange: (tasks) => {
-          callbacks.onTasksChange?.(tasks);
-        },
-      },
-      workdir: this.workdir,
-    });
-    this.mcpManager = new McpManager({ callbacks, logger: this.logger }); // Initialize MCP manager
-    this.lspManager =
-      options.lspManager || new LspManager({ logger: this.logger }); // Initialize LSP manager
-
-    // Initialize permission manager
-    this.permissionManager = new PermissionManager({
-      logger: this.logger,
-      workdir: this.workdir,
-    });
-    this.permissionManager.setOnConfiguredDefaultModeChange((mode) => {
-      this.handlePlanModeTransition(mode);
-      this.options.callbacks?.onPermissionModeChange?.(mode);
-    });
-
-    // Initialize plan manager
-    this.planManager = new PlanManager(this.logger);
-
-    // Initialize configuration service and hooks manager
-    this.hookManager = new HookManager(this.workdir, undefined, this.logger); // Initialize hooks manager
-
-    // Initialize skill manager
-    this.skillManager = new SkillManager({
-      logger: this.logger,
-      workdir: this.workdir,
-    });
-
-    // ReversionManager depends on MessageManager
-    this.reversionManager = new ReversionManager(
-      new ReversionService(this.messageManager.getTranscriptPath()),
-    );
-
-    // Create a wrapper for canUseTool that triggers notification hooks
-    const canUseToolWithNotification: PermissionCallback | undefined =
-      options.canUseTool
-        ? async (context) => {
-            try {
-              // Trigger notification hooks before calling the original callback
-              const notificationMessage = `Claude needs your permission to use ${context.toolName}`;
-              await this.hookManager.executeHooks("Notification", {
-                event: "Notification",
-                projectDir: this.workdir,
-                timestamp: new Date(),
-                sessionId: this.sessionId,
-                transcriptPath: this.messageManager.getTranscriptPath(),
-                cwd: this.workdir,
-                message: notificationMessage,
-                notificationType: "permission_prompt",
-                env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
-              });
-            } catch (error) {
-              this.logger?.warn("Failed to execute notification hooks", {
-                toolName: context.toolName,
-                error: error instanceof Error ? error.message : String(error),
-              });
-              // Continue with permission check even if hooks fail
-            }
-
-            // Call the original callback
-            const decision = await options.canUseTool!(context);
-
-            // Handle state changes from decision
-            if (decision.newPermissionMode) {
-              this.setPermissionMode(decision.newPermissionMode);
-            }
-
-            if (decision.newPermissionRule) {
-              await this.addPermissionRule(decision.newPermissionRule);
-            }
-
-            return decision;
-          }
-        : undefined;
-
-    // Initialize tool manager with permission context
-    this.toolManager = new ToolManager({
-      container: this.container,
-      mcpManager: this.mcpManager,
-      lspManager: this.lspManager,
-      logger: this.logger,
-      permissionManager: this.permissionManager,
-      reversionManager: this.reversionManager,
-      permissionMode: options.permissionMode, // Let PermissionManager handle defaultMode resolution
-      canUseToolCallback: canUseToolWithNotification,
-      taskManager: this.taskManager,
-      backgroundTaskManager: this.backgroundTaskManager,
-      foregroundTaskManager: this.foregroundTaskManager,
-      tools: options.tools,
-    }); // Initialize tool registry with permission support
-    this.liveConfigManager = new LiveConfigManager({
-      workdir: this.workdir,
-      logger: this.logger,
-      hookManager: this.hookManager,
-      permissionManager: this.permissionManager,
       configurationService: this.configurationService,
-    }); // Initialize live configuration manager
-
-    // Initialize subagent manager with all dependencies in constructor
-    // IMPORTANT: Must be initialized AFTER MessageManager
-    this.subagentManager = new SubagentManager({
-      workdir: this.workdir,
-      parentToolManager: this.toolManager,
-      callbacks: {
-        onSubagentUserMessageAdded: callbacks.onSubagentUserMessageAdded,
-        onSubagentAssistantMessageAdded:
-          callbacks.onSubagentAssistantMessageAdded,
-        onSubagentAssistantContentUpdated:
-          callbacks.onSubagentAssistantContentUpdated,
-        onSubagentAssistantReasoningUpdated:
-          callbacks.onSubagentAssistantReasoningUpdated,
-        onSubagentToolBlockUpdated: callbacks.onSubagentToolBlockUpdated,
-        onSubagentMessagesChange: callbacks.onSubagentMessagesChange,
-        onSubagentLatestTotalTokensChange:
-          callbacks.onSubagentLatestTotalTokensChange,
-      }, // Pass subagent callbacks for forwarding
-      logger: this.logger,
-      getGatewayConfig: () => this.getGatewayConfig(),
-      getModelConfig: () => this.getModelConfig(),
-      getMaxInputTokens: () => this.getMaxInputTokens(),
-      getLanguage: () => this.getLanguage(),
-      hookManager: this.hookManager,
-      onUsageAdded: (usage) => this.addUsage(usage),
-      backgroundTaskManager: this.backgroundTaskManager,
-      taskManager: this.taskManager,
-      memoryRuleManager: this.memoryRuleManager,
-    });
-
-    // Initialize AI manager with resolved configuration
-    this.aiManager = new AIManager({
-      messageManager: this.messageManager,
-      toolManager: this.toolManager,
-      taskManager: this.taskManager,
-      logger: this.logger,
-      backgroundTaskManager: this.backgroundTaskManager,
-      hookManager: this.hookManager,
-      permissionManager: this.permissionManager,
-      callbacks: {
-        ...callbacks,
-        onUsageAdded: (usage: Usage) => {
-          this.addUsage(usage);
-        },
-      },
-      workdir: this.workdir,
       systemPrompt: this.systemPrompt,
-      stream: this.stream, // Pass streaming mode flag
-      reversionManager: this.reversionManager,
+      stream: this.stream,
+      onSessionIdChange: () => {
+        this.taskManager.setTaskListId(this.messageManager.getRootSessionId());
+      },
+      onSessionTasksChange: (tasks) => {
+        this.options.callbacks?.onSessionTasksChange?.(tasks);
+      },
+      onTasksChange: (tasks) => {
+        this.options.callbacks?.onTasksChange?.(tasks);
+      },
+      onPermissionModeChange: (mode) => {
+        this.options.callbacks?.onPermissionModeChange?.(mode);
+      },
+      handlePlanModeTransition: (mode) => {
+        this.handlePlanModeTransition(mode);
+      },
+      setPermissionMode: (mode) => {
+        this.setPermissionMode(mode);
+      },
+      addPermissionRule: (rule) => this.addPermissionRule(rule),
+      addUsage: (usage) => this.addUsage(usage),
       getGatewayConfig: () => this.getGatewayConfig(),
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),
       getLanguage: () => this.getLanguage(),
-      getEnvironmentVars: () => this.configurationService.getEnvironmentVars(), // Provide access to configuration environment variables
     });
 
-    // Initialize command manager
-    this.slashCommandManager = new SlashCommandManager({
-      messageManager: this.messageManager,
-      aiManager: this.aiManager,
-      backgroundTaskManager: this.backgroundTaskManager,
-      taskManager: this.taskManager,
-      workdir: this.workdir,
-      logger: this.logger,
-    });
-
-    // Initialize plugin manager
-    this.pluginManager = new PluginManager({
-      workdir: this.workdir,
-      logger: this.logger,
-      slashCommandManager: this.slashCommandManager,
-      mcpManager: this.mcpManager,
-      lspManager:
-        this.lspManager instanceof LspManager ? this.lspManager : undefined,
-      hookManager: this.hookManager,
-      skillManager: this.skillManager,
-      configurationService: this.configurationService,
-    });
-
-    // Initialize bash manager
-    this.bashManager = new BashManager({
-      messageManager: this.messageManager,
-      workdir: this.workdir,
-    });
+    // Retrieve managers from container
+    this.foregroundTaskManager = this.container.get("ForegroundTaskManager")!;
+    this.memoryRuleManager = this.container.get("MemoryRuleManager")!;
+    this.messageManager = this.container.get("MessageManager")!;
+    this.taskManager = this.container.get("TaskManager")!;
+    this.backgroundTaskManager = this.container.get("BackgroundTaskManager")!;
+    this.mcpManager = this.container.get("McpManager")!;
+    this.lspManager = this.container.get("LspManager")!;
+    this.permissionManager = this.container.get("PermissionManager")!;
+    this.planManager = this.container.get("PlanManager")!;
+    this.hookManager = this.container.get("HookManager")!;
+    this.skillManager = this.container.get("SkillManager")!;
+    this.reversionManager = this.container.get("ReversionManager")!;
+    this.toolManager = this.container.get("ToolManager")!;
+    this.liveConfigManager = this.container.get("LiveConfigManager")!;
+    this.subagentManager = this.container.get("SubagentManager")!;
+    this.aiManager = this.container.get("AIManager")!;
+    this.slashCommandManager = this.container.get("SlashCommandManager")!;
+    this.pluginManager = this.container.get("PluginManager")!;
+    this.bashManager = this.container.get("BashManager")!;
 
     // Set initial permission mode if provided
     if (options.permissionMode) {

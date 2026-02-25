@@ -3,18 +3,22 @@ import { PlanManager } from "../../src/managers/planManager.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Container } from "../../src/utils/container.js";
 
 vi.mock("node:fs/promises");
 vi.mock("node:os");
 
 describe("PlanManager", () => {
+  let container: Container;
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(os.homedir).mockReturnValue("/home/user");
+    container = new Container();
   });
 
   it("should generate a plan file path with a random name", async () => {
-    const planManager = new PlanManager();
+    const planManager = new PlanManager(container);
     const { path: filePath, name } =
       await planManager.getOrGeneratePlanFilePath();
 
@@ -28,13 +32,13 @@ describe("PlanManager", () => {
   });
 
   it("should return the correct plan directory", () => {
-    const planManager = new PlanManager();
+    const planManager = new PlanManager(container);
     const expectedDir = path.join("/home/user", ".wave", "plans");
     expect(planManager.getPlanDir()).toBe(expectedDir);
   });
 
   it("should throw error if mkdir fails", async () => {
-    const planManager = new PlanManager();
+    const planManager = new PlanManager(container);
     vi.mocked(fs.mkdir).mockRejectedValueOnce(new Error("mkdir failed"));
     await expect(planManager.getOrGeneratePlanFilePath()).rejects.toThrow(
       "mkdir failed",
@@ -42,7 +46,7 @@ describe("PlanManager", () => {
   });
 
   it("should return the same path when called with the same seed", async () => {
-    const planManager = new PlanManager();
+    const planManager = new PlanManager(container);
     const seed = "test-seed";
     const result1 = await planManager.getOrGeneratePlanFilePath(seed);
     const result2 = await planManager.getOrGeneratePlanFilePath(seed);
@@ -52,7 +56,7 @@ describe("PlanManager", () => {
   });
 
   it("should return different paths when called with different seeds", async () => {
-    const planManager = new PlanManager();
+    const planManager = new PlanManager(container);
     const result1 = await planManager.getOrGeneratePlanFilePath("seed-1");
     const result2 = await planManager.getOrGeneratePlanFilePath("seed-2");
 
@@ -61,7 +65,7 @@ describe("PlanManager", () => {
   });
 
   it("should remove existing plan file on first generation but not on re-entry", async () => {
-    const planManager = new PlanManager();
+    const planManager = new PlanManager(container);
     const seed = "test-seed";
 
     // First call
@@ -78,7 +82,7 @@ describe("PlanManager", () => {
   });
 
   it("should ignore ENOENT when removing existing plan file", async () => {
-    const planManager = new PlanManager();
+    const planManager = new PlanManager(container);
     vi.mocked(fs.unlink).mockRejectedValueOnce({ code: "ENOENT" });
 
     await expect(

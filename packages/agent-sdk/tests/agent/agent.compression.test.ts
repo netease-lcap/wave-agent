@@ -14,7 +14,10 @@ describe("Agent Message Compression Tests", () => {
 
   beforeEach(async () => {
     // Create Agent instance with required parameters
-    agent = await Agent.create({});
+    agent = await Agent.create({
+      apiKey: "test-key",
+      workdir: "/tmp/test-compression",
+    });
 
     vi.clearAllMocks();
   });

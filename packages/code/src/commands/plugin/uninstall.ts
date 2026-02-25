@@ -3,6 +3,7 @@ import {
   ConfigurationService,
   PluginManager,
   PluginScopeManager,
+  Container,
 } from "wave-agent-sdk";
 
 export async function uninstallPluginCommand(argv: { plugin: string }) {
@@ -14,7 +15,8 @@ export async function uninstallPluginCommand(argv: { plugin: string }) {
     console.log(`Successfully uninstalled plugin: ${argv.plugin}`);
 
     const configurationService = new ConfigurationService();
-    const pluginManager = new PluginManager({ workdir });
+    const container = new Container();
+    const pluginManager = new PluginManager(container, { workdir });
     const scopeManager = new PluginScopeManager({
       workdir,
       configurationService,

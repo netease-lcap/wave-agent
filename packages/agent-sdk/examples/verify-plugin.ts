@@ -8,52 +8,54 @@ import { TaskManager } from "../src/services/taskManager.js";
 import { MessageManager } from "../src/managers/messageManager.js";
 import { AIManager } from "../src/managers/aiManager.js";
 import { HookMatcher } from "../src/utils/hookMatcher.js";
-import type { Logger } from "../src/types/index.js";
+import type {} from "../src/types/index.js";
 import { BackgroundTaskManager } from "../src/managers/backgroundTaskManager.js";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { Container } from "../src/utils/container.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workdir = path.resolve(__dirname, "complex-plugin");
 
 async function verify() {
-  const logger: Logger = {
-    info: console.log,
-    warn: console.warn,
-    error: console.error,
-    debug: console.log,
-  };
+  const container = new Container();
 
-  const skillManager = new SkillManager({ workdir, logger });
-  const hookManager = new HookManager(workdir, new HookMatcher(), logger);
-  const lspManager = new LspManager({ logger });
-  const mcpManager = new McpManager({ logger });
-  const slashCommandManager = new SlashCommandManager({
-    messageManager: {
-      addUserMessage: console.log,
-      addErrorBlock: console.error,
-      clearMessages: () => {},
-    } as unknown as MessageManager,
-    aiManager: {
-      sendAIMessage: async () => {},
-      abortAIMessage: () => {},
-    } as unknown as AIManager,
-    backgroundTaskManager: {
-      getAllTasks: () => [],
-    } as unknown as BackgroundTaskManager,
-    taskManager: new TaskManager("test-task-list"),
+  const skillManager = new SkillManager(container, { workdir });
+  const hookManager = new HookManager(container, workdir, new HookMatcher());
+  const lspManager = new LspManager(container);
+  const mcpManager = new McpManager(container);
+
+  const messageManager = {
+    addUserMessage: console.log,
+    addErrorBlock: console.error,
+    clearMessages: () => {},
+    triggerSlashCommandsChange: () => {},
+  } as unknown as MessageManager;
+  const aiManager = {
+    sendAIMessage: async () => {},
+    abortAIMessage: () => {},
+  } as unknown as AIManager;
+  const backgroundTaskManager = {
+    getAllTasks: () => [],
+  } as unknown as BackgroundTaskManager;
+  const taskManager = new TaskManager(container, "test-task-list");
+
+  container.register("MessageManager", messageManager);
+  container.register("AIManager", aiManager);
+  container.register("BackgroundTaskManager", backgroundTaskManager);
+  container.register("TaskManager", taskManager);
+  container.register("SkillManager", skillManager);
+  container.register("HookManager", hookManager);
+  container.register("LspManager", lspManager);
+  container.register("McpManager", mcpManager);
+
+  const slashCommandManager = new SlashCommandManager(container, {
     workdir,
-    logger,
   });
+  container.register("SlashCommandManager", slashCommandManager);
 
-  const pluginManager = new PluginManager({
+  const pluginManager = new PluginManager(container, {
     workdir,
-    logger,
-    skillManager,
-    hookManager,
-    lspManager,
-    mcpManager,
-    slashCommandManager,
   });
 
   console.log("Loading complex-plugin...");

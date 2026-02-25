@@ -1,4 +1,5 @@
-import { Plugin, PluginConfig, Logger } from "../types/index.js";
+import { logger } from "../utils/globalLogger.js";
+import { Plugin, PluginConfig } from "../types/index.js";
 import { PluginLoader } from "../services/pluginLoader.js";
 import * as path from "path";
 import { SkillManager } from "./skillManager.js";
@@ -8,41 +9,48 @@ import { McpManager } from "./mcpManager.js";
 import { SlashCommandManager } from "./slashCommandManager.js";
 import { MarketplaceService } from "../services/MarketplaceService.js";
 import { ConfigurationService } from "../services/configurationService.js";
+import { Container } from "../utils/container.js";
 
 export interface PluginManagerOptions {
   workdir: string;
-  logger?: Logger;
-  skillManager?: SkillManager;
-  hookManager?: HookManager;
-  lspManager?: LspManager;
-  mcpManager?: McpManager;
-  slashCommandManager?: SlashCommandManager;
   enabledPlugins?: Record<string, boolean>;
-  configurationService?: ConfigurationService;
 }
 
 export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private workdir: string;
-  private logger?: Logger;
-  private skillManager?: SkillManager;
-  private hookManager?: HookManager;
-  private lspManager?: LspManager;
-  private mcpManager?: McpManager;
-  private slashCommandManager?: SlashCommandManager;
   private enabledPlugins: Record<string, boolean>;
-  private configurationService?: ConfigurationService;
 
-  constructor(options: PluginManagerOptions) {
+  constructor(
+    private container: Container,
+    options: PluginManagerOptions,
+  ) {
     this.workdir = options.workdir;
-    this.logger = options.logger;
-    this.skillManager = options.skillManager;
-    this.hookManager = options.hookManager;
-    this.lspManager = options.lspManager;
-    this.mcpManager = options.mcpManager;
-    this.slashCommandManager = options.slashCommandManager;
     this.enabledPlugins = options.enabledPlugins || {};
-    this.configurationService = options.configurationService;
+  }
+
+  private get skillManager(): SkillManager | undefined {
+    return this.container.get<SkillManager>("SkillManager");
+  }
+
+  private get hookManager(): HookManager | undefined {
+    return this.container.get<HookManager>("HookManager");
+  }
+
+  private get lspManager(): LspManager | undefined {
+    return this.container.get<LspManager>("LspManager");
+  }
+
+  private get mcpManager(): McpManager | undefined {
+    return this.container.get<McpManager>("McpManager");
+  }
+
+  private get slashCommandManager(): SlashCommandManager | undefined {
+    return this.container.get<SlashCommandManager>("SlashCommandManager");
+  }
+
+  private get configurationService(): ConfigurationService | undefined {
+    return this.container.get<ConfigurationService>("ConfigurationService");
   }
 
   /**
@@ -70,15 +78,13 @@ export class PluginManager {
       for (const p of installedRegistry.plugins) {
         const pluginId = `${p.name}@${p.marketplace}`;
         if (this.enabledPlugins[pluginId] !== true) {
-          this.logger?.info(
-            `Plugin ${pluginId} is not enabled via configuration`,
-          );
+          logger?.info(`Plugin ${pluginId} is not enabled via configuration`);
           continue;
         }
         await this.loadSinglePlugin(p.cachePath);
       }
     } catch (error) {
-      this.logger?.error("Failed to load installed plugins:", error);
+      logger?.error("Failed to load installed plugins:", error);
     }
   }
 
@@ -91,9 +97,7 @@ export class PluginManager {
 
       if (this.plugins.has(manifest.name)) {
         // If already loaded (e.g. via explicit config), skip
-        this.logger?.warn(
-          `Plugin with name '${manifest.name}' is already loaded`,
-        );
+        logger?.warn(`Plugin with name '${manifest.name}' is already loaded`);
         return;
       }
 
@@ -138,9 +142,9 @@ export class PluginManager {
       }
 
       this.plugins.set(manifest.name, plugin);
-      this.logger?.info(`Loaded plugin: ${manifest.name} v${manifest.version}`);
+      logger?.info(`Loaded plugin: ${manifest.name} v${manifest.version}`);
     } catch (error) {
-      this.logger?.error(`Failed to load plugin from ${absolutePath}`, error);
+      logger?.error(`Failed to load plugin from ${absolutePath}`, error);
     }
   }
 
@@ -152,7 +156,7 @@ export class PluginManager {
     // Load plugins from configuration (e.g. --plugin-dir) first to give them higher priority
     for (const config of configs) {
       if (config.type !== "local") {
-        this.logger?.warn(`Unsupported plugin type: ${config.type}`);
+        logger?.warn(`Unsupported plugin type: ${config.type}`);
         continue;
       }
 

@@ -7,12 +7,22 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { LiveConfigManager } from "../../src/managers/liveConfigManager.js";
-import type { Logger } from "../../src/types/index.js";
+import { Container } from "../../src/utils/container.js";
 import { ConfigurationService } from "../../src/services/configurationService.js";
 import { FileWatcherService } from "../../src/services/fileWatcher.js";
 import * as configPaths from "../../src/utils/configPaths.js";
 import type { WaveConfiguration } from "../../src/types/configuration.js";
 import type { ConfigurationLoadResult } from "../../src/types/configuration.js";
+import { logger } from "../../src/utils/globalLogger.js";
+
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 // Mock all dependencies
 vi.mock("../../src/services/configurationService.js");
@@ -25,24 +35,22 @@ vi.mock("fs", () => ({
 
 describe("LiveConfigManager - Validation", () => {
   let liveConfigManager: LiveConfigManager;
-  let mockLogger: Logger;
+  let container: Container;
   let mockConfigurationService: ConfigurationService;
   let workdir: string;
 
   beforeEach(() => {
     // Mock logger
-    mockLogger = {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-    };
 
     // Mock configuration service
     mockConfigurationService = {
       loadMergedConfiguration: vi.fn(),
       setEnvironmentVars: vi.fn(),
     } as Partial<ConfigurationService> as ConfigurationService;
+
+    // Setup container
+    container = new Container();
+    container.register("ConfigurationService", mockConfigurationService);
 
     // Mock config paths
     vi.mocked(configPaths.getUserConfigPaths).mockReturnValue([
@@ -66,10 +74,8 @@ describe("LiveConfigManager - Validation", () => {
     });
 
     workdir = "/mock/project";
-    liveConfigManager = new LiveConfigManager({
+    liveConfigManager = new LiveConfigManager(container, {
       workdir,
-      logger: mockLogger,
-      configurationService: mockConfigurationService,
     });
   });
 
@@ -103,16 +109,16 @@ describe("LiveConfigManager - Validation", () => {
 
       if (expectedValid) {
         expect(liveConfigManager.getCurrentConfiguration()).toEqual(mockConfig);
-        expect(mockLogger.error).not.toHaveBeenCalledWith(
+        expect(logger.error).not.toHaveBeenCalledWith(
           expect.stringContaining("Configuration validation failed"),
         );
       } else {
         // If validation fails, it should fallback to empty config (since no last valid config)
         expect(liveConfigManager.getCurrentConfiguration()).toEqual({});
-        expect(mockLogger.error).toHaveBeenCalledWith(
+        expect(logger.error).toHaveBeenCalledWith(
           expect.stringContaining("Configuration validation failed"),
         );
-        expect(mockLogger.error).toHaveBeenCalledWith(
+        expect(logger.error).toHaveBeenCalledWith(
           expect.stringContaining("Invalid defaultMode"),
         );
       }

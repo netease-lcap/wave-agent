@@ -3,6 +3,7 @@ import {
   PluginManager,
   PluginScopeManager,
   Scope,
+  Container,
 } from "wave-agent-sdk";
 
 export async function enablePluginCommand(argv: {
@@ -11,7 +12,8 @@ export async function enablePluginCommand(argv: {
 }) {
   const workdir = process.cwd();
   const configurationService = new ConfigurationService();
-  const pluginManager = new PluginManager({ workdir });
+  const container = new Container();
+  const pluginManager = new PluginManager(container, { workdir });
   const scopeManager = new PluginScopeManager({
     workdir,
     configurationService,

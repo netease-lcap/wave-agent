@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { logger } from "../src/utils/globalLogger.js";
+import { Container } from "../src/utils/container.js";
 
 vi.mock("node:fs/promises");
 vi.mock("node:os");
@@ -13,6 +14,7 @@ describe("MemoryRuleManager", () => {
   const workdir = "/test/workdir";
   const homedir = "/home/user";
   let manager: MemoryRuleManager;
+  let container: Container;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -28,7 +30,8 @@ describe("MemoryRuleManager", () => {
         ReturnType<typeof fs.stat>
       >;
     });
-    manager = new MemoryRuleManager({ workdir });
+    container = new Container();
+    manager = new MemoryRuleManager(container, { workdir });
   });
 
   describe("discoverRules", () => {

@@ -8,6 +8,7 @@ import {
 import { TaskManager } from "../../src/services/taskManager.js";
 import { Task } from "../../src/types/tasks.js";
 import type { ToolContext } from "../../src/tools/types.js";
+import { Container } from "../../src/utils/container.js";
 
 // Mock TaskManager
 vi.mock("../../src/services/taskManager.js", () => {
@@ -22,6 +23,7 @@ vi.mock("../../src/services/taskManager.js", () => {
 
 // Get the mocked instance
 const mockTaskManager = new TaskManager(
+  new Container(),
   "test-session-id",
 ) as Mocked<TaskManager>;
 

@@ -3,10 +3,11 @@ import { writeTool } from "@/tools/writeTool.js";
 import { TaskManager } from "@/services/taskManager.js";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
+import { Container } from "@/utils/container.js";
 
 const testContext: ToolContext = {
   workdir: "/test/workdir",
-  taskManager: new TaskManager("test-session"),
+  taskManager: new TaskManager(new Container(), "test-session"),
 };
 
 // Mock fs/promises
@@ -19,7 +20,7 @@ describe("writeTool", () => {
     mockContext = {
       abortSignal: new AbortController().signal,
       workdir: "/test/workdir",
-      taskManager: new TaskManager("test-session"),
+      taskManager: new TaskManager(new Container(), "test-session"),
     };
   });
 

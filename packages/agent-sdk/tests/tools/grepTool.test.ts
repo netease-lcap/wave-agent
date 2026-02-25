@@ -3,10 +3,11 @@ import { grepTool } from "@/tools/grepTool.js";
 import type { ToolContext } from "@/tools/types.js";
 import { TaskManager } from "@/services/taskManager.js";
 import type { ChildProcess } from "child_process";
+import { Container } from "@/utils/container.js";
 
 const testContext: ToolContext = {
   workdir: "/test/workdir",
-  taskManager: new TaskManager("test-session"),
+  taskManager: new TaskManager(new Container(), "test-session"),
 };
 
 // Mock child_process

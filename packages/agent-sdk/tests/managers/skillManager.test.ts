@@ -1,12 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SkillManager } from "../../src/managers/skillManager.js";
+import { Container } from "../../src/utils/container.js";
 import type {
-  Logger,
   SkillManagerOptions,
   SkillMetadata,
   Skill,
 } from "../../src/types/index.js";
 import { readdir, stat } from "fs/promises";
+import { logger } from "../../src/utils/globalLogger.js";
+
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 import {
   parseSkillFile,
   formatSkillError,
@@ -24,36 +35,29 @@ vi.mock("../../src/utils/skillParser.js", async () => {
 
 describe("SkillManager", () => {
   let skillManager: SkillManager;
-  let mockLogger: Logger;
+  let container: Container;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockLogger = {
-      error: vi.fn(),
-      warn: vi.fn(),
-      info: vi.fn(),
-      debug: vi.fn(),
-    };
 
-    skillManager = new SkillManager({
-      logger: mockLogger,
+    container = new Container();
+    skillManager = new SkillManager(container, {
       workdir: "/test/workdir",
     });
   });
 
   describe("constructor", () => {
     it("should initialize with default options", () => {
-      const manager = new SkillManager({ workdir: "/test/workdir" });
+      const manager = new SkillManager(container, { workdir: "/test/workdir" });
       expect(manager).toBeInstanceOf(SkillManager);
     });
 
     it("should use provided options", () => {
       const options: SkillManagerOptions = {
-        logger: mockLogger,
         scanTimeout: 1000,
       };
 
-      const manager = new SkillManager(options);
+      const manager = new SkillManager(container, options);
       expect(manager).toBeInstanceOf(SkillManager);
     });
   });
@@ -91,7 +95,7 @@ describe("SkillManager", () => {
       const skills = skillManager.getAvailableSkills();
       expect(skills).toHaveLength(1);
       expect(skills[0].name).toBe("skill1");
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining("SkillManager initialized with 1 skills"),
       );
     });
@@ -116,10 +120,10 @@ describe("SkillManager", () => {
 
       await skillManager.initialize();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Found 2 skill discovery errors"),
       );
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Skill error in"),
       );
     });
@@ -139,7 +143,7 @@ describe("SkillManager", () => {
       await expect(skillManager.initialize()).rejects.toThrow(
         "Discovery failed",
       );
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(logger.error).toHaveBeenCalledWith(
         "Failed to initialize SkillManager:",
         expect.any(Error),
       );
@@ -176,7 +180,7 @@ describe("SkillManager", () => {
       await skillManager.initialize();
 
       expect(skillManager.getAvailableSkills()).toHaveLength(0);
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining("Could not scan"),
       );
       spy.mockRestore();
@@ -201,7 +205,7 @@ describe("SkillManager", () => {
 
       await skillManager.initialize();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Found 2 skill discovery errors"),
       );
     });
@@ -228,7 +232,7 @@ describe("SkillManager", () => {
 
       const skills = skillManager.getAvailableSkills();
       expect(skills.find((s) => s.name === "plugin-skill")).toBeDefined();
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining("Registered 1 plugin skills"),
       );
     });
@@ -260,7 +264,7 @@ describe("SkillManager", () => {
 
       expect(skill).toBeDefined();
       expect(skill?.name).toBe("skill1");
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         "Skill 'skill1' retrieved from loaded content",
       );
     });
@@ -271,7 +275,7 @@ describe("SkillManager", () => {
 
       const skill = await skillManager.loadSkill("nonexistent");
       expect(skill).toBeNull();
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         "Skill 'nonexistent' not found",
       );
     });
@@ -427,7 +431,7 @@ describe("SkillManager", () => {
       expect(result.content).toContain(
         "❌ **Error executing skill**: Loading failed",
       );
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(logger.error).toHaveBeenCalledWith(
         "Failed to execute skill 'error-skill':",
         expect.any(Error),
       );
@@ -450,9 +454,7 @@ describe("SkillManager", () => {
 
       await skillManager.executeSkill({ skill_name: "test-skill" });
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        "Invoking skill: test-skill",
-      );
+      expect(logger.debug).toHaveBeenCalledWith("Invoking skill: test-skill");
     });
   });
 

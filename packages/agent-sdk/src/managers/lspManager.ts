@@ -1,6 +1,5 @@
 import { ChildProcess, spawn } from "child_process";
 import {
-  Logger,
   LspConfig,
   LspServerConfig,
   ILspManager,
@@ -8,6 +7,7 @@ import {
 } from "../types/index.js";
 import { join, isAbsolute, extname } from "path";
 import { promises as fs } from "fs";
+import { Container } from "../utils/container.js";
 
 interface LspProcess {
   process: ChildProcess;
@@ -22,15 +22,14 @@ interface LspProcess {
   openedFiles: Set<string>;
 }
 
+import { logger } from "../utils/globalLogger.js";
+
 export class LspManager implements ILspManager {
   private processes: Map<string, LspProcess> = new Map();
   private workdir: string = "";
-  private logger?: Logger;
   private config: LspConfig = {};
 
-  constructor(options: { logger?: Logger } = {}) {
-    this.logger = options.logger;
-  }
+  constructor(private container: Container) {}
 
   async initialize(workdir: string): Promise<void> {
     this.workdir = workdir;
@@ -39,7 +38,7 @@ export class LspManager implements ILspManager {
 
   registerServer(language: string, config: LspServerConfig): void {
     this.config[language] = config;
-    this.logger?.debug(`Registered LSP server for ${language}`);
+    logger?.debug(`Registered LSP server for ${language}`);
   }
 
   private async loadConfig(): Promise<void> {
@@ -48,10 +47,10 @@ export class LspManager implements ILspManager {
       const content = await fs.readFile(lspJsonPath, "utf-8");
       const newConfig = JSON.parse(content);
       this.config = { ...this.config, ...newConfig };
-      this.logger?.debug(`Loaded LSP config from ${lspJsonPath}`);
+      logger?.debug(`Loaded LSP config from ${lspJsonPath}`);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        this.logger?.error(`Failed to load .lsp.json: ${error}`);
+        logger?.error(`Failed to load .lsp.json: ${error}`);
       }
     }
   }
@@ -86,7 +85,7 @@ export class LspManager implements ILspManager {
     language: string,
     config: LspServerConfig,
   ): Promise<LspProcess | null> {
-    this.logger?.info(
+    logger?.info(
       `Starting LSP server for ${language}: ${config.command} ${config.args?.join(" ") || ""}`,
     );
 
@@ -139,7 +138,7 @@ export class LspManager implements ILspManager {
               const message = JSON.parse(content);
               this.handleMessage(lspProc, message);
             } catch (e) {
-              this.logger?.error(`Failed to parse LSP message: ${e}`);
+              logger?.error(`Failed to parse LSP message: ${e}`);
             }
           } else {
             break;
@@ -148,13 +147,11 @@ export class LspManager implements ILspManager {
       });
 
       proc.stderr!.on("data", (data) => {
-        this.logger?.debug(`LSP [${language}] stderr: ${data}`);
+        logger?.debug(`LSP [${language}] stderr: ${data}`);
       });
 
       proc.on("close", (code) => {
-        this.logger?.info(
-          `LSP server for ${language} exited with code ${code}`,
-        );
+        logger?.info(`LSP server for ${language} exited with code ${code}`);
         this.processes.delete(language);
       });
 
@@ -175,9 +172,7 @@ export class LspManager implements ILspManager {
 
       return lspProc;
     } catch (error) {
-      this.logger?.error(
-        `Failed to start LSP server for ${language}: ${error}`,
-      );
+      logger?.error(`Failed to start LSP server for ${language}: ${error}`);
       return null;
     }
   }
@@ -292,7 +287,7 @@ export class LspManager implements ILspManager {
         });
         lspProc.openedFiles.add(absolutePath);
       } catch (error) {
-        this.logger?.error(`Failed to read file for LSP didOpen: ${error}`);
+        logger?.error(`Failed to read file for LSP didOpen: ${error}`);
       }
     }
 
@@ -422,7 +417,7 @@ export class LspManager implements ILspManager {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
       } catch (error) {
-        this.logger?.debug(
+        logger?.debug(
           `Failed to gracefully shutdown LSP for ${language}: ${error}`,
         );
       } finally {

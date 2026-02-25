@@ -1,13 +1,15 @@
 import fs from "fs/promises";
 import { FileSnapshot } from "../types/reversion.js";
 import { ReversionService } from "../services/reversionService.js";
+import { Container } from "../utils/container.js";
 
 export class ReversionManager {
   private buffer: Map<string, FileSnapshot> = new Map();
-  private reversionService: ReversionService;
 
-  constructor(reversionService: ReversionService) {
-    this.reversionService = reversionService;
+  constructor(private container: Container) {}
+
+  private get reversionService(): ReversionService {
+    return this.container.get<ReversionService>("ReversionService")!;
   }
 
   /**

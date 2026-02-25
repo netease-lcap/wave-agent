@@ -23,6 +23,8 @@ describe("Agent Content Streaming Tests", () => {
 
     // Create Agent instance with required parameters
     agent = await Agent.create({
+      apiKey: "test-key",
+      workdir: "/tmp/test-streaming-content",
       callbacks: mockCallbacks,
     });
 

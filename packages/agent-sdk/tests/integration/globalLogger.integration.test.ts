@@ -347,10 +347,11 @@ describe("Agent - Global Logger Integration", () => {
 
       // Attempt to create Agent with invalid configuration
       // This should fail but not affect the global logger
+      // We use a non-existent baseURL to trigger validation failure
       await expect(
         Agent.create({
           apiKey: "test-key",
-          baseURL: "", // Invalid empty baseURL
+          baseURL: "invalid-url", // Invalid URL format
           logger: mockLogger2,
         }),
       ).rejects.toThrow();

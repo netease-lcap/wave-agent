@@ -4,18 +4,37 @@ import { PermissionManager } from "../../src/managers/permissionManager.js";
 import { McpManager } from "../../src/managers/mcpManager.js";
 import { ToolContext } from "../../src/tools/types.js";
 
+import { Container } from "../../src/utils/container.js";
+
 describe("AskUserQuestion Integration", () => {
   it("should flow from ToolManager to PermissionManager and return answers", async () => {
-    const mcpManager = new McpManager();
-    const permissionManager = new PermissionManager();
+    const container = new Container();
+    const mcpManager = new McpManager(container);
+    const permissionManager = new PermissionManager(container);
     vi.spyOn(permissionManager, "checkPermission").mockResolvedValue({
       behavior: "allow",
       message: JSON.stringify({ "Choose approach": "JWT" }),
     });
 
+    container.register("PermissionManager", permissionManager);
+    container.register("McpManager", mcpManager);
+    container.register("TaskManager", {} as unknown as Record<string, unknown>);
+    container.register(
+      "ReversionManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "BackgroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "ForegroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register("LspManager", {} as unknown as Record<string, unknown>);
+
     const toolManager = new ToolManager({
-      mcpManager,
-      permissionManager,
+      container,
     });
     toolManager.initializeBuiltInTools();
 
@@ -43,18 +62,35 @@ describe("AskUserQuestion Integration", () => {
   });
 
   it("should work in plan mode", async () => {
-    const mcpManager = new McpManager();
-    const permissionManager = new PermissionManager();
+    const container = new Container();
+    const mcpManager = new McpManager(container);
+    const permissionManager = new PermissionManager(container);
     permissionManager.setPlanFilePath("/tmp/plan.md");
     vi.spyOn(permissionManager, "checkPermission").mockResolvedValue({
       behavior: "allow",
       message: JSON.stringify({ "Confirm?": "Yes" }),
     });
 
+    container.register("PermissionManager", permissionManager);
+    container.register("McpManager", mcpManager);
+    container.register("PermissionMode", "plan");
+    container.register("TaskManager", {} as unknown as Record<string, unknown>);
+    container.register(
+      "ReversionManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "BackgroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "ForegroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register("LspManager", {} as unknown as Record<string, unknown>);
+
     const toolManager = new ToolManager({
-      mcpManager,
-      permissionManager,
-      permissionMode: "plan",
+      container,
     });
     toolManager.initializeBuiltInTools();
 

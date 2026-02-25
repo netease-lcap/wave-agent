@@ -3,7 +3,7 @@ import type { Stats } from "fs";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { skillTool } from "../../src/tools/skillTool.js";
-import type { Logger } from "../../src/types/index.js";
+import { Container } from "../../src/utils/container.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
@@ -34,17 +34,9 @@ const mockStat = vi.mocked(stat);
 
 describe("skillTool", () => {
   let skillManager: SkillManager;
-  let mockLogger: Logger;
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockLogger = {
-      error: vi.fn(),
-      warn: vi.fn(),
-      info: vi.fn(),
-      debug: vi.fn(),
-    };
 
     // Mock empty directory by default (no skills found)
     mockReaddir.mockResolvedValue([]);
@@ -53,8 +45,9 @@ describe("skillTool", () => {
       isFile: () => true,
     } as Stats);
 
-    skillManager = new SkillManager({
-      logger: mockLogger,
+    const container = new Container();
+
+    skillManager = new SkillManager(container, {
       workdir: "/test/workdir",
     });
   });
@@ -71,7 +64,7 @@ describe("skillTool", () => {
   it("should format compact params correctly", async () => {
     const context = {
       workdir: "/test",
-      taskManager: new TaskManager("test-session"),
+      taskManager: new TaskManager(new Container(), "test-session"),
     };
 
     const params = { skill_name: "test-skill" };
@@ -83,7 +76,7 @@ describe("skillTool", () => {
   it("should handle missing skill_name parameter in formatCompactParams", async () => {
     const context = {
       workdir: "/test",
-      taskManager: new TaskManager("test-session"),
+      taskManager: new TaskManager(new Container(), "test-session"),
     };
 
     const params = {};
@@ -95,7 +88,7 @@ describe("skillTool", () => {
   it("should validate skill_name parameter", async () => {
     const context = {
       workdir: "/test",
-      taskManager: new TaskManager("test-session"),
+      taskManager: new TaskManager(new Container(), "test-session"),
       skillManager,
     };
 
@@ -118,7 +111,7 @@ describe("skillTool", () => {
 
     const context = {
       workdir: "/test",
-      taskManager: new TaskManager("test-session"),
+      taskManager: new TaskManager(new Container(), "test-session"),
       skillManager,
     };
 
@@ -142,7 +135,7 @@ describe("skillTool", () => {
 
     const context = {
       workdir: "/test",
-      taskManager: new TaskManager("test-session"),
+      taskManager: new TaskManager(new Container(), "test-session"),
       skillManager,
     };
 

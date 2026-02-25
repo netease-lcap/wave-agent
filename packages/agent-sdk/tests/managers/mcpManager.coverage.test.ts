@@ -1,9 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { McpManager } from "../../src/managers/mcpManager.js";
+import { Container } from "../../src/utils/container.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { promises as fs } from "fs";
-import { Logger } from "../../src/types/index.js";
+import {} from "../../src/types/index.js";
+import { logger } from "../../src/utils/globalLogger.js";
+
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 // Mock the MCP SDK
 vi.mock("@modelcontextprotocol/sdk/client/index.js");
@@ -12,22 +23,11 @@ vi.mock("fs");
 
 describe("McpManager Coverage", () => {
   let mcpManager: McpManager;
-  let mockLogger: {
-    debug: ReturnType<typeof vi.fn>;
-    info: ReturnType<typeof vi.fn>;
-    warn: ReturnType<typeof vi.fn>;
-    error: ReturnType<typeof vi.fn>;
-  };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockLogger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
-    mcpManager = new McpManager({ logger: mockLogger as unknown as Logger });
+    const container = new Container();
+    mcpManager = new McpManager(container);
   });
 
   afterEach(async () => {
@@ -53,12 +53,12 @@ describe("McpManager Coverage", () => {
       await mcpManager.initialize("/test/workdir", true);
 
       expect(connectSpy).toHaveBeenCalledTimes(2);
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining(
           "Successfully connected to MCP server: server1",
         ),
       );
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Failed to connect to MCP server: server2"),
       );
     });
@@ -75,7 +75,7 @@ describe("McpManager Coverage", () => {
       );
 
       await mcpManager.initialize("/test/workdir", true);
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("Error connecting to MCP server server1"),
       );
     });
@@ -85,7 +85,7 @@ describe("McpManager Coverage", () => {
     it("should warn if config path not set", async () => {
       const config = await mcpManager.loadConfig();
       expect(config).toBeNull();
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("MCP config path not set"),
       );
     });
@@ -119,7 +119,7 @@ describe("McpManager Coverage", () => {
       vi.mocked(fs.readFile).mockRejectedValue(error);
 
       await mcpManager.loadConfig();
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(logger.error).toHaveBeenCalledWith(
         "Failed to load .mcp.json:",
         error,
       );
@@ -165,7 +165,7 @@ describe("McpManager Coverage", () => {
         (transportOnError as (error: Error) => void)(
           new Error("Transport failed"),
         );
-        expect(mockLogger.error).toHaveBeenCalledWith(
+        expect(logger.error).toHaveBeenCalledWith(
           expect.stringContaining("transport error"),
           expect.any(Error),
         );
@@ -174,7 +174,7 @@ describe("McpManager Coverage", () => {
 
       if (typeof transportOnClose === "function") {
         (transportOnClose as () => void)();
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           expect.stringContaining("transport closed"),
         );
         expect(mcpManager.getServer("s1")?.status).toBe("disconnected");

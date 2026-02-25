@@ -7,7 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { LiveConfigManager } from "../../src/managers/liveConfigManager.js";
-import type { Logger } from "../../src/types/index.js";
+import { Container } from "../../src/utils/container.js";
 import type { HookManager } from "../../src/managers/hookManager.js";
 import { ConfigurationService } from "../../src/services/configurationService.js";
 import { FileWatcherService } from "../../src/services/fileWatcher.js";
@@ -16,6 +16,16 @@ import { ensureGlobalGitIgnore } from "../../src/utils/fileUtils.js";
 import type { WaveConfiguration } from "../../src/types/configuration.js";
 import type { ConfigurationLoadResult } from "../../src/types/configuration.js";
 import { existsSync } from "fs";
+import { logger } from "../../src/utils/globalLogger.js";
+
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 // Mock all dependencies
 vi.mock("../../src/services/configurationService.js");
@@ -28,7 +38,7 @@ vi.mock("fs", () => ({
 
 describe("LiveConfigManager - Configuration Management", () => {
   let liveConfigManager: LiveConfigManager;
-  let mockLogger: Logger;
+  let container: Container;
   let mockHookManager: HookManager;
   let mockConfigurationService: ConfigurationService;
   let mockFileWatcherService: FileWatcherService;
@@ -36,12 +46,6 @@ describe("LiveConfigManager - Configuration Management", () => {
 
   beforeEach(() => {
     // Mock logger
-    mockLogger = {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-    };
 
     // Mock hook manager
     mockHookManager = {
@@ -62,6 +66,11 @@ describe("LiveConfigManager - Configuration Management", () => {
       setEnvironmentVars: vi.fn(),
     } as Partial<ConfigurationService> as ConfigurationService;
 
+    // Setup container
+    container = new Container();
+    container.register("HookManager", mockHookManager);
+    container.register("ConfigurationService", mockConfigurationService);
+
     // Mock config paths
     vi.mocked(configPaths.getUserConfigPaths).mockReturnValue([
       "/mock/user/settings.json",
@@ -79,10 +88,8 @@ describe("LiveConfigManager - Configuration Management", () => {
     });
 
     workdir = "/mock/project";
-    liveConfigManager = new LiveConfigManager({
+    liveConfigManager = new LiveConfigManager(container, {
       workdir,
-      logger: mockLogger,
-      hookManager: mockHookManager,
     });
   });
 
@@ -140,7 +147,7 @@ describe("LiveConfigManager - Configuration Management", () => {
 
       await liveConfigManager.initialize();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("No previous valid configuration available"),
       );
       expect(liveConfigManager.getCurrentConfiguration()).toEqual({});
@@ -223,7 +230,7 @@ describe("LiveConfigManager - Configuration Management", () => {
 
       await liveConfigManager.initialize();
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("Configuration reload failed with exception"),
       );
       expect(liveConfigManager.getCurrentConfiguration()).toEqual({});
@@ -317,7 +324,7 @@ describe("LiveConfigManager - Configuration Management", () => {
 
       await liveConfigManager.reload();
       expect(liveConfigManager.getCurrentConfiguration()).toEqual(validConfig);
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining(
           "Using previous valid configuration due to loading errors",
         ),
@@ -341,7 +348,7 @@ describe("LiveConfigManager - Configuration Management", () => {
       await liveConfigManager.reload();
 
       expect(liveConfigManager.getCurrentConfiguration()).toEqual(validConfig);
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("Configuration reload failed with exception"),
       );
     });

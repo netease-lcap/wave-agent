@@ -3,6 +3,7 @@ import { readTool } from "@/tools/readTool.js";
 import { TaskManager } from "@/services/taskManager.js";
 import { readFile, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
+import { Container } from "@/utils/container.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
@@ -34,7 +35,7 @@ vi.mock("@/utils/fileFormat.js", () => ({
 
 const testContext: ToolContext = {
   workdir: "/test/workdir",
-  taskManager: new TaskManager("test-session"),
+  taskManager: new TaskManager(new Container(), "test-session"),
 };
 
 // Mock file contents for different test scenarios
@@ -228,7 +229,7 @@ describe("readTool", () => {
       },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 

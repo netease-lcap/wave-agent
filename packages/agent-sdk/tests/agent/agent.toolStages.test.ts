@@ -52,6 +52,14 @@ describe("Agent Tool Stage Tests", () => {
       callbacks: mockCallbacks,
     });
 
+    // Inject mock ToolManager into the container
+    const container = (
+      agent as unknown as {
+        container: { register: (name: string, instance: unknown) => void };
+      }
+    ).container;
+    container.register("ToolManager", mockToolManagerInstance);
+
     // Setup aiService mock
     mockCallAgent = vi.mocked(aiService.callAgent);
 

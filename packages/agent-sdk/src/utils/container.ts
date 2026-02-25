@@ -5,6 +5,18 @@
 export class Container {
   private services = new Map<string, unknown>();
   private factories = new Map<string, () => unknown>();
+  private parent?: Container;
+
+  constructor(parent?: Container) {
+    this.parent = parent;
+  }
+
+  /**
+   * Create a child container that inherits from this container
+   */
+  createChild(): Container {
+    return new Container(this);
+  }
 
   /**
    * Register a singleton instance
@@ -23,7 +35,7 @@ export class Container {
   /**
    * Resolve a service by token
    */
-  get<T>(token: string): T {
+  get<T>(token: string): T | undefined {
     if (this.services.has(token)) {
       return this.services.get(token) as T;
     }
@@ -35,14 +47,22 @@ export class Container {
       return instance;
     }
 
-    throw new Error(`Service not found: ${token}`);
+    if (this.parent) {
+      return this.parent.get<T>(token);
+    }
+
+    return undefined;
   }
 
   /**
    * Check if a service exists
    */
   has(token: string): boolean {
-    return this.services.has(token) || this.factories.has(token);
+    return (
+      this.services.has(token) ||
+      this.factories.has(token) ||
+      (this.parent ? this.parent.has(token) : false)
+    );
   }
 }
 

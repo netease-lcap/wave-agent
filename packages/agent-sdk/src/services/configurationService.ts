@@ -374,7 +374,7 @@ export class ConfigurationService {
     if (apiKey !== undefined) {
       resolvedApiKey = apiKey;
     } else {
-      resolvedApiKey = this.env.WAVE_API_KEY || process.env.WAVE_API_KEY;
+      resolvedApiKey = this.env.WAVE_API_KEY;
     }
 
     // Resolve base URL: constructor > env (settings.json) > process.env
@@ -383,8 +383,25 @@ export class ConfigurationService {
     if (baseURL !== undefined) {
       resolvedBaseURL = baseURL;
     } else {
-      resolvedBaseURL =
-        this.env.WAVE_BASE_URL || process.env.WAVE_BASE_URL || "";
+      resolvedBaseURL = this.env.WAVE_BASE_URL || "";
+    }
+
+    // If we have a parent configuration, use it as a fallback for API key and base URL
+    if (this.currentConfiguration?.env) {
+      if (resolvedApiKey === undefined) {
+        resolvedApiKey = this.currentConfiguration.env.WAVE_API_KEY;
+      }
+      if (!resolvedBaseURL) {
+        resolvedBaseURL = this.currentConfiguration.env.WAVE_BASE_URL || "";
+      }
+    }
+
+    // Fallback to process.env if still not resolved (for dynamic updates in tests)
+    if (resolvedApiKey === undefined) {
+      resolvedApiKey = process.env.WAVE_API_KEY;
+    }
+    if (!resolvedBaseURL) {
+      resolvedBaseURL = process.env.WAVE_BASE_URL || "";
     }
 
     if (!resolvedBaseURL && baseURL === undefined) {
@@ -443,18 +460,22 @@ export class ConfigurationService {
     const DEFAULT_FAST_MODEL = "gemini-2.5-flash";
 
     // Resolve agent model: constructor > env (settings.json) > process.env > default
-    const resolvedAgentModel =
-      agentModel ||
-      this.env.WAVE_MODEL ||
-      process.env.WAVE_MODEL ||
-      DEFAULT_AGENT_MODEL;
+    let resolvedAgentModel = agentModel || this.env.WAVE_MODEL;
+
+    if (!resolvedAgentModel && this.currentConfiguration?.env?.WAVE_MODEL) {
+      resolvedAgentModel = this.currentConfiguration.env.WAVE_MODEL;
+    }
+    resolvedAgentModel =
+      resolvedAgentModel || process.env.WAVE_MODEL || DEFAULT_AGENT_MODEL;
 
     // Resolve fast model: constructor > env (settings.json) > process.env > default
-    const resolvedFastModel =
-      fastModel ||
-      this.env.WAVE_FAST_MODEL ||
-      process.env.WAVE_FAST_MODEL ||
-      DEFAULT_FAST_MODEL;
+    let resolvedFastModel = fastModel || this.env.WAVE_FAST_MODEL;
+
+    if (!resolvedFastModel && this.currentConfiguration?.env?.WAVE_FAST_MODEL) {
+      resolvedFastModel = this.currentConfiguration.env.WAVE_FAST_MODEL;
+    }
+    resolvedFastModel =
+      resolvedFastModel || process.env.WAVE_FAST_MODEL || DEFAULT_FAST_MODEL;
 
     // Resolve max output tokens
     const resolvedMaxTokens = this.resolveMaxOutputTokens(maxTokens);
