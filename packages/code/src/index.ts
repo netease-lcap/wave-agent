@@ -43,6 +43,12 @@ export async function main() {
         string: true,
         global: false,
       })
+      .option("tools", {
+        description:
+          'Specify a comma-separated list of tools to enable (e.g., \'Bash,Read,Write\'). Use "" to disable all, "default" for all.',
+        type: "string",
+        global: false,
+      })
       .command(
         "plugin",
         "Manage plugins and marketplaces",
@@ -217,6 +223,14 @@ export async function main() {
       .strict()
       .parseAsync();
 
+    const parseTools = (tools: string | undefined): string[] | undefined => {
+      if (tools === undefined || tools === "default") return undefined;
+      if (tools === "") return [];
+      return tools.split(",").map((t) => t.trim());
+    };
+
+    const tools = parseTools(argv.tools as string | undefined);
+
     // Handle restore session command
     if (
       argv.restore === "" ||
@@ -236,6 +250,7 @@ export async function main() {
         restoreSessionId: selectedSessionId,
         bypassPermissions: argv.dangerouslySkipPermissions,
         pluginDirs: argv.pluginDir as string[],
+        tools,
       });
     }
 
@@ -249,6 +264,7 @@ export async function main() {
         showStats: argv.showStats,
         bypassPermissions: argv.dangerouslySkipPermissions,
         pluginDirs: argv.pluginDir as string[],
+        tools,
       });
     }
 
@@ -257,6 +273,7 @@ export async function main() {
       continueLastSession: argv.continue,
       bypassPermissions: argv.dangerouslySkipPermissions,
       pluginDirs: argv.pluginDir as string[],
+      tools,
     });
   } catch (error) {
     console.error("Failed to start WAVE Code:", error);

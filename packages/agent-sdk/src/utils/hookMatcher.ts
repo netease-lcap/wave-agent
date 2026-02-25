@@ -131,8 +131,8 @@ export class HookMatcher {
    * Get all tool names that would match this pattern from a given list
    * Useful for testing and validation
    */
-  getMatches(pattern: string, toolNames: string[]): string[] {
-    return toolNames.filter((toolName) => this.matches(pattern, toolName));
+  getMatches(pattern: string, tools: string[]): string[] {
+    return tools.filter((toolName) => this.matches(pattern, toolName));
   }
 
   /**

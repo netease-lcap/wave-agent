@@ -193,7 +193,7 @@ describe("HookMatcher", () => {
 
   describe("utility methods", () => {
     it("should get all matches from a list", () => {
-      const toolNames = [
+      const tools = [
         "Edit",
         "Write",
         "Delete",
@@ -202,20 +202,14 @@ describe("HookMatcher", () => {
         "WriteText",
       ];
 
-      expect(matcher.getMatches("Edit", toolNames)).toEqual(["Edit"]);
-      expect(matcher.getMatches("Edit|Write", toolNames)).toEqual([
+      expect(matcher.getMatches("Edit", tools)).toEqual(["Edit"]);
+      expect(matcher.getMatches("Edit|Write", tools)).toEqual([
         "Edit",
         "Write",
       ]);
-      expect(matcher.getMatches("Edit*", toolNames)).toEqual([
-        "Edit",
-        "EditFile",
-      ]);
-      expect(matcher.getMatches("*Edit*", toolNames)).toEqual([
-        "Edit",
-        "EditFile",
-      ]);
-      expect(matcher.getMatches("Unknown", toolNames)).toEqual([]);
+      expect(matcher.getMatches("Edit*", tools)).toEqual(["Edit", "EditFile"]);
+      expect(matcher.getMatches("*Edit*", tools)).toEqual(["Edit", "EditFile"]);
+      expect(matcher.getMatches("Unknown", tools)).toEqual([]);
     });
 
     it("should compile patterns for optimized matching", () => {

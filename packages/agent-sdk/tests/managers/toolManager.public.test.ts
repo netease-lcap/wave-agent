@@ -47,17 +47,17 @@ describe("ToolManager.initializeBuiltInTools", () => {
 
     // Verify basic tools are registered
     const tools = toolManager.list();
-    const toolNames = tools.map((t) => t.name);
+    const names = tools.map((t) => t.name);
 
     // Check that basic tools are present
-    expect(toolNames).toContain("Bash");
-    expect(toolNames).toContain("Read");
-    expect(toolNames).toContain("TaskCreate");
-    expect(toolNames).toContain("TaskGet");
-    expect(toolNames).toContain("TaskUpdate");
-    expect(toolNames).toContain("TaskList");
-    expect(toolNames).toContain("Task");
-    expect(toolNames).toContain("Skill");
+    expect(names).toContain("Bash");
+    expect(names).toContain("Read");
+    expect(names).toContain("TaskCreate");
+    expect(names).toContain("TaskGet");
+    expect(names).toContain("TaskUpdate");
+    expect(names).toContain("TaskList");
+    expect(names).toContain("Task");
+    expect(names).toContain("Skill");
   });
 
   it("should allow multiple calls without issues", async () => {
@@ -78,11 +78,11 @@ describe("ToolManager.initializeBuiltInTools", () => {
     toolManager.initializeBuiltInTools();
 
     const tools = toolManager.list();
-    const toolNames = tools.map((t) => t.name);
+    const names = tools.map((t) => t.name);
 
     // Should still have all tools (no duplicates due to Map usage)
-    expect(toolNames).toContain("TaskCreate");
-    expect(toolNames.filter((name) => name === "TaskCreate")).toHaveLength(1);
+    expect(names).toContain("TaskCreate");
+    expect(names.filter((name) => name === "TaskCreate")).toHaveLength(1);
   });
 });
 
@@ -104,12 +104,12 @@ describe("ToolManager bypassPermissions mode", () => {
     toolManager.initializeBuiltInTools();
 
     const toolsConfig = toolManager.getToolsConfig();
-    const toolNames = toolsConfig.map((t) => t.function.name);
+    const names = toolsConfig.map((t) => t.function.name);
 
-    expect(toolNames).not.toContain("ExitPlanMode");
-    expect(toolNames).not.toContain("AskUserQuestion");
-    expect(toolNames).toContain("Bash");
-    expect(toolNames).toContain("Read");
+    expect(names).not.toContain("ExitPlanMode");
+    expect(names).not.toContain("AskUserQuestion");
+    expect(names).toContain("Bash");
+    expect(names).toContain("Read");
   });
 
   it("should include AskUserQuestion in default mode", async () => {
@@ -129,10 +129,10 @@ describe("ToolManager bypassPermissions mode", () => {
     toolManager.initializeBuiltInTools();
 
     const toolsConfig = toolManager.getToolsConfig();
-    const toolNames = toolsConfig.map((t) => t.function.name);
+    const names = toolsConfig.map((t) => t.function.name);
 
-    expect(toolNames).toContain("AskUserQuestion");
-    expect(toolNames).not.toContain("ExitPlanMode"); // ExitPlanMode only in plan mode
+    expect(names).toContain("AskUserQuestion");
+    expect(names).not.toContain("ExitPlanMode"); // ExitPlanMode only in plan mode
   });
 
   it("should include ExitPlanMode and AskUserQuestion in plan mode", async () => {
@@ -152,10 +152,10 @@ describe("ToolManager bypassPermissions mode", () => {
     toolManager.initializeBuiltInTools();
 
     const toolsConfig = toolManager.getToolsConfig();
-    const toolNames = toolsConfig.map((t) => t.function.name);
+    const names = toolsConfig.map((t) => t.function.name);
 
-    expect(toolNames).toContain("ExitPlanMode");
-    expect(toolNames).toContain("AskUserQuestion");
+    expect(names).toContain("ExitPlanMode");
+    expect(names).toContain("AskUserQuestion");
   });
 
   it("should register TaskOutput and TaskStop tools", () => {
@@ -171,9 +171,9 @@ describe("ToolManager bypassPermissions mode", () => {
     toolManager.initializeBuiltInTools();
 
     const tools = toolManager.list();
-    const toolNames = tools.map((t) => t.name);
+    const names = tools.map((t) => t.name);
 
-    expect(toolNames).toContain("TaskOutput");
-    expect(toolNames).toContain("TaskStop");
+    expect(names).toContain("TaskOutput");
+    expect(names).toContain("TaskStop");
   });
 });

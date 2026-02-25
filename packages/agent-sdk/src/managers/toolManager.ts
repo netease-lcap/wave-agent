@@ -54,6 +54,8 @@ export interface ToolManagerOptions {
   permissionMode?: PermissionMode;
   /** Custom permission callback for tool usage */
   canUseToolCallback?: PermissionCallback;
+  /** Optional list of tool names to enable */
+  tools?: string[];
 }
 
 /**
@@ -63,7 +65,7 @@ export interface ToolManagerOptions {
  * Supports both built-in tools and MCP (Model Context Protocol) tools.
  */
 class ToolManager {
-  private tools = new Map<string, ToolPlugin>();
+  private toolsRegistry = new Map<string, ToolPlugin>();
   private mcpManager: McpManager;
   private lspManager?: ILspManager;
   private logger?: Logger;
@@ -74,6 +76,9 @@ class ToolManager {
   private backgroundTaskManager?: import("./backgroundTaskManager.js").BackgroundTaskManager;
   private permissionMode?: PermissionMode;
   private canUseToolCallback?: PermissionCallback;
+  private tools?: string[];
+  private subagentManager?: SubagentManager;
+  private skillManager?: SkillManager;
 
   constructor(options: ToolManagerOptions) {
     this.mcpManager = options.mcpManager;
@@ -87,13 +92,14 @@ class ToolManager {
     // Store CLI permission mode, let PermissionManager resolve effective mode
     this.permissionMode = options.permissionMode;
     this.canUseToolCallback = options.canUseToolCallback;
+    this.tools = options.tools;
   }
 
   /**
    * Register a new tool
    */
   public register(tool: ToolPlugin): void {
-    this.tools.set(tool.name, tool);
+    this.toolsRegistry.set(tool.name, tool);
   }
 
   /**
@@ -123,6 +129,13 @@ class ToolManager {
     subagentManager?: SubagentManager;
     skillManager?: SkillManager;
   }): void {
+    if (deps?.subagentManager) {
+      this.subagentManager = deps.subagentManager;
+    }
+    if (deps?.skillManager) {
+      this.skillManager = deps.skillManager;
+    }
+
     const builtInTools = [
       bashTool,
       taskOutputTool,
@@ -145,19 +158,37 @@ class ToolManager {
     ];
 
     for (const tool of builtInTools) {
-      this.tools.set(tool.name, tool);
+      if (this.shouldEnableTool(tool.name)) {
+        this.toolsRegistry.set(tool.name, tool);
+      }
     }
 
     // Register tools that require dependencies
-    if (deps?.subagentManager) {
-      const taskTool = createTaskTool(deps.subagentManager);
-      this.tools.set(taskTool.name, taskTool);
+    if (this.subagentManager) {
+      const taskTool = createTaskTool(this.subagentManager);
+      if (this.shouldEnableTool(taskTool.name)) {
+        this.toolsRegistry.set(taskTool.name, taskTool);
+      }
     }
 
-    if (deps?.skillManager) {
-      const skillTool = createSkillTool(deps.skillManager);
-      this.tools.set(skillTool.name, skillTool);
+    if (this.skillManager) {
+      const skillTool = createSkillTool(this.skillManager);
+      if (this.shouldEnableTool(skillTool.name)) {
+        this.toolsRegistry.set(skillTool.name, skillTool);
+      }
     }
+  }
+
+  /**
+   * Check if a tool should be enabled based on tools configuration
+   */
+  private shouldEnableTool(name: string): boolean {
+    if (!this.tools) {
+      return true;
+    }
+    return this.tools.some(
+      (toolName) => toolName.toLowerCase() === name.toLowerCase(),
+    );
   }
 
   /**
@@ -216,7 +247,7 @@ class ToolManager {
     }
 
     // Check built-in tools
-    const plugin = this.tools.get(name);
+    const plugin = this.toolsRegistry.get(name);
     if (plugin) {
       try {
         return await plugin.execute(args, enhancedContext);
@@ -242,14 +273,14 @@ class ToolManager {
   }
 
   list(): ToolPlugin[] {
-    const builtInTools = Array.from(this.tools.values());
+    const builtInTools = Array.from(this.toolsRegistry.values());
     const mcpTools = this.mcpManager.getMcpToolPlugins();
     return [...builtInTools, ...mcpTools];
   }
 
   getToolsConfig(): ChatCompletionFunctionTool[] {
     const effectivePermissionMode = this.getPermissionMode();
-    const builtInToolsConfig = Array.from(this.tools.values())
+    const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
         if (effectivePermissionMode === "bypassPermissions") {
           if (tool.name === "ExitPlanMode" || tool.name === "AskUserQuestion") {
@@ -270,7 +301,7 @@ class ToolManager {
    * Get the list of registered tool plugins
    */
   public getTools(): ToolPlugin[] {
-    return Array.from(this.tools.values());
+    return Array.from(this.toolsRegistry.values());
   }
 
   /**
