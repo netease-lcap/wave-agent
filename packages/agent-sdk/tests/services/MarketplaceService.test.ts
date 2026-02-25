@@ -89,4 +89,26 @@ describe("MarketplaceService - Builtin Marketplace", () => {
       existsSync(path.join(mockPluginsDir, "known_marketplaces.json")),
     ).toBe(true);
   });
+
+  it("should handle corrupted known_marketplaces.json", async () => {
+    const knownMarketplacesPath = path.join(
+      mockPluginsDir,
+      "known_marketplaces.json",
+    );
+    await fs.writeFile(knownMarketplacesPath, "invalid json");
+
+    const registry = await service.getKnownMarketplaces();
+    expect(registry.marketplaces).toHaveLength(0);
+  });
+
+  it("should handle corrupted installed_plugins.json", async () => {
+    const installedPluginsPath = path.join(
+      mockPluginsDir,
+      "installed_plugins.json",
+    );
+    await fs.writeFile(installedPluginsPath, "invalid json");
+
+    const registry = await service.getInstalledPlugins();
+    expect(registry.plugins).toHaveLength(0);
+  });
 });

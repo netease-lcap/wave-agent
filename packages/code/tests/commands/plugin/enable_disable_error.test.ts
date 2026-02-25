@@ -23,10 +23,9 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 const mockLog = vi.spyOn(console, "log").mockImplementation(() => {});
 const mockError = vi.spyOn(console, "error").mockImplementation(function () {});
 
-// Mock PluginScopeManager
+// Mock PluginService
 const mockEnablePlugin = vi.fn();
 const mockDisablePlugin = vi.fn();
-const mockFindPluginScope = vi.fn();
 
 vi.mock("wave-agent-sdk", async () => {
   const actual = (await vi.importActual(
@@ -34,11 +33,10 @@ vi.mock("wave-agent-sdk", async () => {
   )) as typeof import("wave-agent-sdk");
   return {
     ...actual,
-    PluginScopeManager: vi.fn(function () {
+    PluginService: vi.fn(function () {
       return {
-        enablePlugin: mockEnablePlugin,
-        disablePlugin: mockDisablePlugin,
-        findPluginScope: mockFindPluginScope,
+        enable: mockEnablePlugin,
+        disable: mockDisablePlugin,
       };
     }),
   };
@@ -62,7 +60,6 @@ describe("Plugin Enable/Disable Command Error Tests", () => {
     mockExit.mockClear();
     mockEnablePlugin.mockReset();
     mockDisablePlugin.mockReset();
-    mockFindPluginScope.mockReset();
   });
 
   afterEach(async () => {
@@ -93,60 +90,29 @@ describe("Plugin Enable/Disable Command Error Tests", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should default to user scope if not provided and not found", async () => {
-    mockFindPluginScope.mockReturnValue(null);
-    mockEnablePlugin.mockResolvedValue(undefined);
-
-    await enablePluginCommand({ plugin: "test-plugin@market" });
-
-    expect(mockEnablePlugin).toHaveBeenCalledWith("user", "test-plugin@market");
-    expect(mockLog).toHaveBeenCalledWith(
-      expect.stringContaining("in user scope"),
-    );
-    expect(mockExit).toHaveBeenCalledWith(0);
-  });
-
-  it("should use found scope if not provided for disable", async () => {
-    mockFindPluginScope.mockReturnValue("project");
-    mockDisablePlugin.mockResolvedValue(undefined);
-
-    await disablePluginCommand({ plugin: "test-plugin@market" });
-
-    expect(mockDisablePlugin).toHaveBeenCalledWith(
-      "project",
-      "test-plugin@market",
-    );
-    expect(mockLog).toHaveBeenCalledWith(
-      expect.stringContaining("in project scope"),
-    );
-    expect(mockExit).toHaveBeenCalledWith(0);
-  });
-
-  it("should use default user scope if findPluginScope returns null for disable", async () => {
-    mockFindPluginScope.mockReturnValue(null);
-    mockDisablePlugin.mockResolvedValue(undefined);
-
-    await disablePluginCommand({ plugin: "test-plugin@market" });
-
-    expect(mockDisablePlugin).toHaveBeenCalledWith(
-      "user",
-      "test-plugin@market",
-    );
-    expect(mockLog).toHaveBeenCalledWith(
-      expect.stringContaining("in user scope"),
-    );
-    expect(mockExit).toHaveBeenCalledWith(0);
-  });
-
-  it("should use found scope if not provided for enable", async () => {
-    mockFindPluginScope.mockReturnValue("project");
-    mockEnablePlugin.mockResolvedValue(undefined);
+  it("should log the returned scope for enable", async () => {
+    mockEnablePlugin.mockResolvedValue("user");
 
     await enablePluginCommand({ plugin: "test-plugin@market" });
 
     expect(mockEnablePlugin).toHaveBeenCalledWith(
-      "project",
       "test-plugin@market",
+      undefined,
+    );
+    expect(mockLog).toHaveBeenCalledWith(
+      expect.stringContaining("in user scope"),
+    );
+    expect(mockExit).toHaveBeenCalledWith(0);
+  });
+
+  it("should log the returned scope for disable", async () => {
+    mockDisablePlugin.mockResolvedValue("project");
+
+    await disablePluginCommand({ plugin: "test-plugin@market" });
+
+    expect(mockDisablePlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      undefined,
     );
     expect(mockLog).toHaveBeenCalledWith(
       expect.stringContaining("in project scope"),

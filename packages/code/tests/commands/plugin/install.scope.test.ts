@@ -14,7 +14,7 @@ vi.mock("os", async () => {
 });
 
 // Mock process.exit
-const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+vi.spyOn(process, "exit").mockImplementation(() => {
   return undefined as never;
 });
 
@@ -22,21 +22,18 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 const mockLog = vi.spyOn(console, "log").mockImplementation(() => {});
 const mockError = vi.spyOn(console, "error").mockImplementation(function () {});
 
-// Mock MarketplaceService
+// Mock PluginService
+const mockInstallPlugin = vi.fn();
+
 vi.mock("wave-agent-sdk", async () => {
   const actual = (await vi.importActual(
     "wave-agent-sdk",
   )) as typeof import("wave-agent-sdk");
   return {
     ...actual,
-    MarketplaceService: vi.fn(function () {
+    PluginService: vi.fn(function () {
       return {
-        installPlugin: vi.fn().mockResolvedValue({
-          name: "test-plugin",
-          marketplace: "market",
-          version: "1.0.0",
-          cachePath: "/fake/cache/path",
-        }),
+        install: mockInstallPlugin,
       };
     }),
   };
@@ -57,7 +54,7 @@ describe("Plugin Install Scope Integration Tests", () => {
 
     mockLog.mockClear();
     mockError.mockClear();
-    mockExit.mockClear();
+    mockInstallPlugin.mockReset();
   });
 
   afterEach(async () => {
@@ -67,8 +64,19 @@ describe("Plugin Install Scope Integration Tests", () => {
   });
 
   it("should install and enable a plugin in user scope", async () => {
+    mockInstallPlugin.mockResolvedValue({
+      name: "test-plugin",
+      marketplace: "market",
+      version: "1.0.0",
+      cachePath: "/fake/cache/path",
+    });
+
     await installPluginCommand({ plugin: "test-plugin@market", scope: "user" });
 
+    expect(mockInstallPlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      "user",
+    );
     expect(mockLog).toHaveBeenCalledWith(
       expect.stringContaining(
         "Successfully installed plugin: test-plugin v1.0.0 from market",
@@ -79,18 +87,25 @@ describe("Plugin Install Scope Integration Tests", () => {
         "Plugin test-plugin@market enabled in user scope",
       ),
     );
-
-    const userConfigPath = path.join(userHome, ".wave", "settings.json");
-    const config = JSON.parse(await fs.readFile(userConfigPath, "utf-8"));
-    expect(config.enabledPlugins["test-plugin@market"]).toBe(true);
   });
 
   it("should install and enable a plugin in project scope", async () => {
+    mockInstallPlugin.mockResolvedValue({
+      name: "test-plugin",
+      marketplace: "market",
+      version: "1.0.0",
+      cachePath: "/fake/cache/path",
+    });
+
     await installPluginCommand({
       plugin: "test-plugin@market",
       scope: "project",
     });
 
+    expect(mockInstallPlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      "project",
+    );
     expect(mockLog).toHaveBeenCalledWith(
       expect.stringContaining(
         "Successfully installed plugin: test-plugin v1.0.0 from market",
@@ -101,15 +116,22 @@ describe("Plugin Install Scope Integration Tests", () => {
         "Plugin test-plugin@market enabled in project scope",
       ),
     );
-
-    const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
-    const config = JSON.parse(await fs.readFile(projectConfigPath, "utf-8"));
-    expect(config.enabledPlugins["test-plugin@market"]).toBe(true);
   });
 
   it("should install without enabling if no scope is provided", async () => {
+    mockInstallPlugin.mockResolvedValue({
+      name: "test-plugin",
+      marketplace: "market",
+      version: "1.0.0",
+      cachePath: "/fake/cache/path",
+    });
+
     await installPluginCommand({ plugin: "test-plugin@market" });
 
+    expect(mockInstallPlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      undefined,
+    );
     expect(mockLog).toHaveBeenCalledWith(
       expect.stringContaining(
         "Successfully installed plugin: test-plugin v1.0.0 from market",
@@ -118,21 +140,5 @@ describe("Plugin Install Scope Integration Tests", () => {
     expect(mockLog).not.toHaveBeenCalledWith(
       expect.stringContaining("enabled in"),
     );
-
-    const userConfigPath = path.join(userHome, ".wave", "settings.json");
-    const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
-
-    expect(
-      await fs
-        .access(userConfigPath)
-        .then(() => true)
-        .catch(() => false),
-    ).toBe(false);
-    expect(
-      await fs
-        .access(projectConfigPath)
-        .then(() => true)
-        .catch(() => false),
-    ).toBe(false);
   });
 });

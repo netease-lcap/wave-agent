@@ -1,32 +1,15 @@
-import {
-  ConfigurationService,
-  PluginManager,
-  PluginScopeManager,
-  Scope,
-  Container,
-} from "wave-agent-sdk";
+import { PluginService, Scope } from "wave-agent-sdk";
 
 export async function enablePluginCommand(argv: {
   plugin: string;
   scope?: Scope;
 }) {
-  const workdir = process.cwd();
-  const configurationService = new ConfigurationService();
-  const container = new Container();
-  const pluginManager = new PluginManager(container, { workdir });
-  const scopeManager = new PluginScopeManager({
-    workdir,
-    configurationService,
-    pluginManager,
-  });
-
-  const scope =
-    argv.scope || scopeManager.findPluginScope(argv.plugin) || "user";
+  const pluginService = new PluginService();
 
   try {
-    await scopeManager.enablePlugin(scope, argv.plugin);
+    const targetScope = await pluginService.enable(argv.plugin, argv.scope);
     console.log(
-      `Successfully enabled plugin: ${argv.plugin} in ${scope} scope`,
+      `Successfully enabled plugin: ${argv.plugin} in ${targetScope} scope`,
     );
     process.exit(0);
   } catch (error) {

@@ -1,36 +1,12 @@
-import {
-  MarketplaceService,
-  ConfigurationService,
-  PluginManager,
-  PluginScopeManager,
-  Container,
-} from "wave-agent-sdk";
+import { PluginService } from "wave-agent-sdk";
 
 export async function uninstallPluginCommand(argv: { plugin: string }) {
-  const marketplaceService = new MarketplaceService();
-  const workdir = process.cwd();
+  const pluginService = new PluginService();
 
   try {
-    await marketplaceService.uninstallPlugin(argv.plugin, workdir);
+    await pluginService.uninstall(argv.plugin);
     console.log(`Successfully uninstalled plugin: ${argv.plugin}`);
-
-    const configurationService = new ConfigurationService();
-    const container = new Container();
-    const pluginManager = new PluginManager(container, { workdir });
-    const scopeManager = new PluginScopeManager({
-      workdir,
-      configurationService,
-      pluginManager,
-    });
-
-    try {
-      await scopeManager.removePluginFromAllScopes(argv.plugin);
-      console.log(`Cleaned up plugin configuration from all scopes`);
-    } catch (error) {
-      console.warn(
-        `Warning: Could not clean up all plugin configurations: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    console.log(`Cleaned up plugin configuration from all scopes`);
 
     process.exit(0);
   } catch (error) {
