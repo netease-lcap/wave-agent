@@ -67,6 +67,7 @@ export interface SubagentInstance {
   messages: Message[];
   lastTools: string[]; // Track last two tool names
   subagentType: string; // Store the subagent type for hook context
+  description: string; // Store the AI-generated description
   backgroundTaskId?: string; // ID of the background task if transitioned
   onUpdate?: () => void; // Optional callback for real-time updates
 }
@@ -249,6 +250,7 @@ export class SubagentManager {
       messages: [],
       lastTools: [], // Initialize lastTools
       subagentType: parameters.subagent_type, // Store the subagent type
+      description: parameters.description, // Store the AI-generated description
       onUpdate,
     };
 
@@ -287,7 +289,7 @@ export class SubagentManager {
           type: "subagent",
           status: "running",
           startTime,
-          description: instance.configuration.description,
+          description: instance.description,
           stdout: "",
           stderr: "",
           subagentId: instance.subagentId,
@@ -354,7 +356,7 @@ export class SubagentManager {
       type: "subagent",
       status: "running",
       startTime,
-      description: instance.configuration.description,
+      description: instance.description,
       stdout: "",
       stderr: "",
       subagentId: instance.subagentId,

@@ -643,7 +643,7 @@ describe("SubagentManager - Callback Integration", () => {
         expect.objectContaining({
           type: "subagent",
           status: "running",
-          description: "Background subagent",
+          description: "Test bg",
         }),
       );
     });
