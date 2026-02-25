@@ -3,10 +3,11 @@ import { lsTool } from "@/tools/lsTool.js";
 import { TaskManager } from "@/services/taskManager.js";
 import type { ToolContext } from "@/tools/types.js";
 import type { Stats, Dirent } from "fs";
+import { Container } from "@/utils/container.js";
 
 const testContext: ToolContext = {
   workdir: "/test/workdir",
-  taskManager: new TaskManager("test-session"),
+  taskManager: new TaskManager(new Container(), "test-session"),
 };
 
 // Mock fs/promises

@@ -1,7 +1,10 @@
 import { ForegroundTask, IForegroundTaskManager } from "../types/processes.js";
+import { Container } from "../utils/container.js";
 
 export class ForegroundTaskManager implements IForegroundTaskManager {
   private activeForegroundTasks: ForegroundTask[] = [];
+
+  constructor(private container: Container) {}
 
   public registerForegroundTask(task: ForegroundTask): void {
     this.activeForegroundTasks.push(task);

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PluginManager } from "../../src/managers/pluginManager.js";
+import { Container } from "../../src/utils/container.js";
 import { PluginLoader } from "../../src/services/pluginLoader.js";
 import {
   PluginConfig,
-  Logger,
   PluginManifest,
   CustomSlashCommand,
   Skill,
@@ -18,13 +18,23 @@ import { LspManager } from "../../src/managers/lspManager.js";
 import { McpManager } from "../../src/managers/mcpManager.js";
 import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MarketplaceService } from "../../src/services/MarketplaceService.js";
+import { logger } from "../../src/utils/globalLogger.js";
+
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 vi.mock("../../src/services/pluginLoader.js");
 vi.mock("../../src/services/MarketplaceService.js");
 
 describe("PluginManager", () => {
   let pluginManager: PluginManager;
-  let mockLogger: Logger;
+  let container: Container;
   let mockSkillManager: SkillManager;
   let mockHookManager: HookManager;
   let mockLspManager: LspManager;
@@ -34,12 +44,6 @@ describe("PluginManager", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockLogger = {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-    } as unknown as Logger;
 
     mockSkillManager = {
       registerPluginSkills: vi.fn(),
@@ -53,21 +57,36 @@ describe("PluginManager", () => {
       registerPluginCommands: vi.fn(),
     } as unknown as SlashCommandManager;
 
+    const mockConfigurationService = {
+      getMergedEnabledPlugins: vi.fn().mockReturnValue({}),
+    };
+
+    container = new Container();
+    container.register("SkillManager", mockSkillManager);
+    container.register("HookManager", mockHookManager);
+    container.register("LspManager", mockLspManager);
+    container.register("McpManager", mockMcpManager);
+    container.register("SlashCommandManager", mockSlashCommandManager);
+    container.register(
+      "ConfigurationService",
+      mockConfigurationService as unknown as Record<string, unknown>,
+    );
+
     vi.mocked(MarketplaceService).mockImplementation(function () {
       return {
         getInstalledPlugins: vi.fn().mockResolvedValue({ plugins: [] }),
       } as unknown as MarketplaceService;
     });
 
-    pluginManager = new PluginManager({
+    pluginManager = new PluginManager(container, {
       workdir,
-      logger: mockLogger,
-      skillManager: mockSkillManager,
-      hookManager: mockHookManager,
-      lspManager: mockLspManager,
-      mcpManager: mockMcpManager,
-      slashCommandManager: mockSlashCommandManager,
     });
+    // Expose mockConfigurationService for tests
+    (
+      pluginManager as unknown as {
+        mockConfigurationService: typeof mockConfigurationService;
+      }
+    ).mockConfigurationService = mockConfigurationService;
   });
 
   describe("loadPlugins", () => {
@@ -139,7 +158,7 @@ describe("PluginManager", () => {
         hooksConfig,
       );
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(logger.info).toHaveBeenCalledWith(
         expect.stringContaining("Loaded plugin: test-plugin"),
       );
     });
@@ -152,7 +171,7 @@ describe("PluginManager", () => {
       await pluginManager.loadPlugins(configs);
 
       expect(pluginManager.getPlugins()).toHaveLength(0);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Unsupported plugin type: remote"),
       );
     });
@@ -177,7 +196,7 @@ describe("PluginManager", () => {
       await pluginManager.loadPlugins(configs);
 
       expect(pluginManager.getPlugins()).toHaveLength(1);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining(
           "Plugin with name 'test-plugin' is already loaded",
         ),
@@ -195,7 +214,7 @@ describe("PluginManager", () => {
       await pluginManager.loadPlugins(configs);
 
       expect(pluginManager.getPlugins()).toHaveLength(0);
-      expect(mockLogger.error).toHaveBeenCalledWith(
+      expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining(
           `Failed to load plugin from ${path.resolve(workdir, configs[0].path)}`,
         ),
@@ -218,11 +237,20 @@ describe("PluginManager", () => {
         } as unknown as MarketplaceService;
       });
 
-      pluginManager.updateEnabledPlugins({
+      const enabledPlugins = {
         "plugin1@m1": true,
         "plugin2@m1": false,
         // plugin3@m1 is not mentioned
-      });
+      };
+      (
+        pluginManager as unknown as {
+          mockConfigurationService: {
+            getMergedEnabledPlugins: ReturnType<typeof vi.fn>;
+          };
+        }
+      ).mockConfigurationService.getMergedEnabledPlugins.mockReturnValue(
+        enabledPlugins,
+      );
 
       vi.mocked(PluginLoader.loadManifest).mockImplementation(
         async function (p) {
@@ -247,12 +275,12 @@ describe("PluginManager", () => {
       expect(pluginManager.getPlugin("plugin1")).toBeDefined();
       expect(pluginManager.getPlugin("plugin2")).toBeUndefined();
       expect(pluginManager.getPlugin("plugin3")).toBeUndefined();
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(logger.info).toHaveBeenCalledWith(
         expect.stringContaining(
           "Plugin plugin2@m1 is not enabled via configuration",
         ),
       );
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(logger.info).toHaveBeenCalledWith(
         expect.stringContaining(
           "Plugin plugin3@m1 is not enabled via configuration",
         ),
@@ -290,9 +318,18 @@ describe("PluginManager", () => {
         } as unknown as MarketplaceService;
       });
 
-      pluginManager.updateEnabledPlugins({
+      const enabledPlugins = {
         "test-plugin@m1": true,
-      });
+      };
+      (
+        pluginManager as unknown as {
+          mockConfigurationService: {
+            getMergedEnabledPlugins: ReturnType<typeof vi.fn>;
+          };
+        }
+      ).mockConfigurationService.getMergedEnabledPlugins.mockReturnValue(
+        enabledPlugins,
+      );
 
       vi.mocked(PluginLoader.loadManifest).mockImplementation(
         async function (p) {
@@ -310,7 +347,7 @@ describe("PluginManager", () => {
       const plugins = pluginManager.getPlugins();
       expect(plugins).toHaveLength(1);
       expect(plugins[0].version).toBe("2.0.0-local");
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining(
           "Plugin with name 'test-plugin' is already loaded",
         ),

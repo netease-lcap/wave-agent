@@ -1,17 +1,9 @@
-import {
-  callAgent,
-  compressMessages,
-  type CallAgentOptions,
-} from "../services/aiService.js";
+import { type CallAgentOptions } from "../services/aiService.js";
+import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
 import * as fs from "node:fs/promises";
-import type {
-  Logger,
-  GatewayConfig,
-  ModelConfig,
-  Usage,
-} from "../types/index.js";
+import type { GatewayConfig, ModelConfig, Usage } from "../types/index.js";
 import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
@@ -20,7 +12,12 @@ import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { HookManager } from "./hookManager.js";
 import type { ExtendedHookExecutionContext } from "../types/hooks.js";
 import type { PermissionManager } from "./permissionManager.js";
+import type { SubagentManager } from "./subagentManager.js";
+import type { SkillManager } from "./skillManager.js";
 import { buildSystemPrompt } from "../prompts/index.js";
+import { Container } from "../utils/container.js";
+
+import { logger } from "../utils/globalLogger.js";
 
 export interface AIManagerCallbacks {
   onCompressionStateChange?: (isCompressing: boolean) => void;
@@ -28,18 +25,10 @@ export interface AIManagerCallbacks {
 }
 
 export interface AIManagerOptions {
-  messageManager: MessageManager;
-  toolManager: ToolManager;
-  taskManager: import("../services/taskManager.js").TaskManager;
-  logger?: Logger;
-  backgroundTaskManager?: BackgroundTaskManager;
-  hookManager?: HookManager;
-  permissionManager?: PermissionManager;
   callbacks?: AIManagerCallbacks;
   workdir: string;
   systemPrompt?: string;
   subagentType?: string; // Optional subagent type for hook context
-  reversionManager?: import("./reversionManager.js").ReversionManager;
   /**Whether to use streaming mode for AI responses - defaults to true */
   stream?: boolean;
   // Dynamic configuration getters
@@ -54,14 +43,6 @@ export class AIManager {
   public isLoading: boolean = false;
   private abortController: AbortController | null = null;
   private toolAbortController: AbortController | null = null;
-  private logger?: Logger;
-  private toolManager: ToolManager;
-  private messageManager: MessageManager;
-  private taskManager: import("../services/taskManager.js").TaskManager;
-  private backgroundTaskManager?: BackgroundTaskManager;
-  private hookManager?: HookManager;
-  private reversionManager?: import("./reversionManager.js").ReversionManager;
-  private permissionManager?: PermissionManager;
   private workdir: string;
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
@@ -74,15 +55,11 @@ export class AIManager {
   private getLanguageFn: () => string | undefined;
   private getEnvironmentVarsFn?: () => Record<string, string>;
 
-  constructor(options: AIManagerOptions) {
-    this.messageManager = options.messageManager;
-    this.toolManager = options.toolManager;
-    this.taskManager = options.taskManager;
-    this.backgroundTaskManager = options.backgroundTaskManager;
-    this.hookManager = options.hookManager;
-    this.reversionManager = options.reversionManager;
-    this.permissionManager = options.permissionManager;
-    this.logger = options.logger;
+  // Service overrides
+  constructor(
+    private container: Container,
+    options: AIManagerOptions,
+  ) {
     this.workdir = options.workdir;
     this.systemPrompt = options.systemPrompt;
     this.subagentType = options.subagentType; // Store subagent type
@@ -95,6 +72,40 @@ export class AIManager {
     this.getMaxInputTokensFn = options.getMaxInputTokens;
     this.getLanguageFn = options.getLanguage;
     this.getEnvironmentVarsFn = options.getEnvironmentVars;
+  }
+
+  private get toolManager(): ToolManager {
+    return this.container.get<ToolManager>("ToolManager")!;
+  }
+
+  private get messageManager(): MessageManager {
+    return this.container.get<MessageManager>("MessageManager")!;
+  }
+
+  private get taskManager(): import("../services/taskManager.js").TaskManager {
+    return this.container.get<import("../services/taskManager.js").TaskManager>(
+      "TaskManager",
+    )!;
+  }
+
+  private get backgroundTaskManager(): BackgroundTaskManager | undefined {
+    return this.container.get<BackgroundTaskManager>("BackgroundTaskManager");
+  }
+
+  private get hookManager(): HookManager | undefined {
+    return this.container.get<HookManager>("HookManager");
+  }
+
+  private get reversionManager():
+    | import("./reversionManager.js").ReversionManager
+    | undefined {
+    return this.container.get<import("./reversionManager.js").ReversionManager>(
+      "ReversionManager",
+    );
+  }
+
+  private get permissionManager(): PermissionManager | undefined {
+    return this.container.get<PermissionManager>("PermissionManager");
   }
 
   // Getter methods for accessing dynamic configuration
@@ -142,7 +153,7 @@ export class AIManager {
       try {
         this.abortController.abort();
       } catch (error) {
-        this.logger?.error("Failed to abort AI service:", error);
+        logger?.error("Failed to abort AI service:", error);
       }
     }
 
@@ -151,7 +162,7 @@ export class AIManager {
       try {
         this.toolAbortController.abort();
       } catch (error) {
-        this.logger?.error("Failed to abort tool execution:", error);
+        logger?.error("Failed to abort tool execution:", error);
       }
     }
 
@@ -175,7 +186,7 @@ export class AIManager {
         return toolPlugin.formatCompactParams(toolArgs, context);
       }
     } catch (error) {
-      this.logger?.warn("Failed to generate compactParams", error);
+      logger?.warn("Failed to generate compactParams", error);
     }
     return "";
   }
@@ -199,7 +210,7 @@ export class AIManager {
         (usage.cache_creation_input_tokens || 0) >
       this.getMaxInputTokens()
     ) {
-      this.logger?.debug(
+      logger?.debug(
         `Token usage exceeded ${this.getMaxInputTokens()}, compressing messages...`,
       );
 
@@ -215,7 +226,7 @@ export class AIManager {
 
         this.setIsCompressing(true);
         try {
-          const compressionResult = await compressMessages({
+          const compressionResult = await aiService.compressMessages({
             gatewayConfig: this.getGatewayConfig(),
             modelConfig: this.getModelConfig(),
             messages: recentChatMessages,
@@ -246,11 +257,11 @@ export class AIManager {
             this.callbacks.onUsageAdded(compressionUsage);
           }
 
-          this.logger?.debug(
+          logger?.debug(
             `Successfully compressed ${messagesToCompress.length} messages and updated session`,
           );
         } catch (compressError) {
-          this.logger?.error("Failed to compress messages:", compressError);
+          logger?.error("Failed to compress messages:", compressError);
         } finally {
           this.setIsCompressing(false);
         }
@@ -267,6 +278,14 @@ export class AIManager {
       this.isCompressing = isCompressing;
       this.callbacks.onCompressionStateChange?.(isCompressing);
     }
+  }
+
+  private get subagentManager(): SubagentManager | undefined {
+    return this.container.get<SubagentManager>("SubagentManager");
+  }
+
+  private get skillManager(): SkillManager | undefined {
+    return this.container.get<SkillManager>("SkillManager");
   }
 
   public async sendAIMessage(
@@ -334,7 +353,7 @@ export class AIManager {
       // Track if assistant message has been created
       let assistantMessageCreated = false;
 
-      this.logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
+      logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
       // Get current permission mode and plan file path
       const currentMode = this.permissionManager?.getCurrentEffectiveMode(
@@ -365,12 +384,8 @@ export class AIManager {
       }
 
       // Get available subagents and skills for dynamic prompts
-      const availableSubagents = this.toolManager
-        .getSubagentManager()
-        ?.getConfigurations();
-      const availableSkills = this.toolManager
-        .getSkillManager()
-        ?.getAvailableSkills();
+      const availableSubagents = this.subagentManager?.getConfigurations();
+      const availableSkills = this.skillManager?.getAvailableSkills();
 
       // Call AI service with streaming callbacks if enabled
       const callAgentOptions: CallAgentOptions = {
@@ -438,7 +453,7 @@ export class AIManager {
         };
       }
 
-      const result = await callAgent(callAgentOptions);
+      const result = await aiService.callAgent(callAgentOptions);
       const createdByStreaming = assistantMessageCreated;
 
       // For non-streaming mode, create assistant message after callAgent returns
@@ -456,7 +471,7 @@ export class AIManager {
       if (result.finish_reason) {
         // Log warning headers when finish reason is length
         if (result.finish_reason === "length") {
-          this.logger?.warn(
+          logger?.warn(
             "AI response truncated due to length limit. Response headers:",
             result.response_headers,
           );
@@ -466,7 +481,7 @@ export class AIManager {
         result.response_headers &&
         Object.keys(result.response_headers).length > 0
       ) {
-        this.logger?.debug("AI response headers:", result.response_headers);
+        logger?.debug("AI response headers:", result.response_headers);
       }
 
       if (
@@ -576,7 +591,7 @@ export class AIManager {
                   errorMessage +=
                     " (output truncated, please reduce your output)";
                 }
-                this.logger?.error(errorMessage, parseError);
+                logger?.error(errorMessage, parseError);
                 this.messageManager.updateToolBlock({
                   id: toolId,
                   parameters: argsString,
@@ -616,7 +631,7 @@ export class AIManager {
 
               // If PreToolUse hooks blocked execution, skip tool execution
               if (!shouldExecuteTool) {
-                this.logger?.info(
+                logger?.info(
                   `Tool ${toolName} execution blocked by PreToolUse hooks`,
                 );
                 return; // Skip this tool and return from this map function
@@ -730,7 +745,7 @@ export class AIManager {
           toolBlocks.some((block) => block.isManuallyBackgrounded);
 
         if (hasBackgrounded) {
-          this.logger?.info(
+          logger?.info(
             "Some tools were manually backgrounded, stopping recursion.",
           );
         } else if (!isCurrentlyAborted) {
@@ -782,7 +797,7 @@ export class AIManager {
           // If Stop/SubagentStop hooks indicate we should continue (due to blocking errors),
           // restart the AI conversation cycle
           if (shouldContinue) {
-            this.logger?.info(
+            logger?.info(
               `${this.subagentType ? "SubagentStop" : "Stop"} hooks indicate issues need fixing, continuing conversation...`,
             );
 
@@ -838,7 +853,7 @@ export class AIManager {
 
         // If hook processing indicates we should block (exit code 2), continue conversation
         if (processResult.shouldBlock) {
-          this.logger?.info(
+          logger?.info(
             `${hookName} hook blocked stopping with error:`,
             processResult.errorMessage,
           );
@@ -848,7 +863,7 @@ export class AIManager {
 
       // Log hook execution results for debugging
       if (results.length > 0) {
-        this.logger?.debug(
+        logger?.debug(
           `Executed ${results.length} ${hookName} hook(s):`,
           results.map((r) => ({
             success: r.success,
@@ -863,7 +878,7 @@ export class AIManager {
       return shouldContinue;
     } catch (error) {
       // Hook execution errors should not interrupt the main workflow
-      this.logger?.error(
+      logger?.error(
         `${this.subagentType ? "SubagentStop" : "Stop"} hook execution failed:`,
         error,
       );
@@ -916,7 +931,7 @@ export class AIManager {
 
       // Log hook execution results for debugging
       if (results.length > 0) {
-        this.logger?.debug(
+        logger?.debug(
           `Executed ${results.length} PreToolUse hook(s) for ${toolName}:`,
           results.map((r) => ({
             success: r.success,
@@ -931,7 +946,7 @@ export class AIManager {
       return shouldContinue;
     } catch (error) {
       // Hook execution errors should not interrupt the main workflow
-      this.logger?.error("PreToolUse hook execution failed:", error);
+      logger?.error("PreToolUse hook execution failed:", error);
       return true; // Allow tool execution on hook errors
     }
   }
@@ -979,7 +994,7 @@ export class AIManager {
 
       // Log hook execution results for debugging
       if (results.length > 0) {
-        this.logger?.debug(
+        logger?.debug(
           `Executed ${results.length} PostToolUse hook(s) for ${toolName}:`,
           results.map((r) => ({
             success: r.success,
@@ -992,7 +1007,7 @@ export class AIManager {
       }
     } catch (error) {
       // Hook execution errors should not interrupt the main workflow
-      this.logger?.error("PostToolUse hook execution failed:", error);
+      logger?.error("PostToolUse hook execution failed:", error);
     }
   }
 }

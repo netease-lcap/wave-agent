@@ -7,6 +7,7 @@ import {
   KnownMarketplace,
   InstalledPlugin,
   MarketplacePluginEntry,
+  Container,
 } from "wave-agent-sdk";
 import {
   PluginManagerState,
@@ -37,14 +38,13 @@ export function usePluginManager(): PluginManagerContextType {
 
   const marketplaceService = useMemo(() => new MarketplaceService(), []);
   const configurationService = useMemo(() => new ConfigurationService(), []);
-  const pluginManager = useMemo(
-    () =>
-      new PluginManager({
-        workdir: process.cwd(),
-        configurationService,
-      }),
-    [configurationService],
-  );
+  const pluginManager = useMemo(() => {
+    const container = new Container();
+    container.register("ConfigurationService", configurationService);
+    return new PluginManager(container, {
+      workdir: process.cwd(),
+    });
+  }, [configurationService]);
   const pluginScopeManager = useMemo(
     () =>
       new PluginScopeManager({

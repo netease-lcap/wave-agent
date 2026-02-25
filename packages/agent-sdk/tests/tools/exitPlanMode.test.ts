@@ -4,6 +4,7 @@ import { TaskManager } from "@/services/taskManager.js";
 import { readFile } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 import { PermissionManager } from "@/managers/permissionManager.js";
+import { Container } from "@/utils/container.js";
 
 // Mock fs/promises
 vi.mock("fs/promises");
@@ -15,6 +16,7 @@ describe("exitPlanModeTool", () => {
     createContext: ReturnType<typeof vi.fn>;
     checkPermission: ReturnType<typeof vi.fn>;
   };
+  const container = new Container();
 
   beforeEach(() => {
     mockPermissionManager = {
@@ -25,7 +27,7 @@ describe("exitPlanModeTool", () => {
 
     mockContext = {
       workdir: "/test/workdir",
-      taskManager: new TaskManager("test-session"),
+      taskManager: new TaskManager(container, "test-session"),
       permissionManager: mockPermissionManager as unknown as PermissionManager,
       permissionMode: "plan",
       canUseToolCallback: vi.fn(),
@@ -55,7 +57,10 @@ describe("exitPlanModeTool", () => {
   it("should fail if permission manager is not available", async () => {
     const result = await exitPlanModeTool.execute(
       {},
-      { workdir: "/test", taskManager: new TaskManager("test-session") },
+      {
+        workdir: "/test",
+        taskManager: new TaskManager(container, "test-session"),
+      },
     );
     expect(result.success).toBe(false);
     expect(result.error).toBe("Permission manager is not available");

@@ -3,10 +3,11 @@ import { globTool } from "@/tools/globTool.js";
 import { TaskManager } from "@/services/taskManager.js";
 import type { ToolContext } from "@/tools/types.js";
 import type { Stats } from "fs";
+import { Container } from "@/utils/container.js";
 
 const testContext: ToolContext = {
   workdir: "/test/workdir",
-  taskManager: new TaskManager("test-session"),
+  taskManager: new TaskManager(new Container(), "test-session"),
 };
 
 // Mock glob
@@ -81,7 +82,7 @@ describe("globTool", () => {
       { pattern: "**/*.ts" },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 
@@ -109,7 +110,7 @@ describe("globTool", () => {
       { pattern: "**/*" },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 
@@ -134,7 +135,7 @@ describe("globTool", () => {
       { pattern: "src/*" },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 
@@ -151,7 +152,7 @@ describe("globTool", () => {
       { pattern: "**/*.nonexistent" },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 
@@ -223,7 +224,7 @@ describe("globTool", () => {
       { pattern: "file*.txt" },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 
@@ -246,7 +247,7 @@ describe("globTool", () => {
       { pattern: "**/*.js" },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 
@@ -272,7 +273,7 @@ describe("globTool", () => {
       { pattern: "file*.txt" },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 
@@ -289,7 +290,7 @@ describe("globTool", () => {
       { pattern: "[invalid" },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 
@@ -313,7 +314,7 @@ describe("globTool", () => {
       { pattern: "**/*.{ts,tsx,js}" },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 
@@ -332,7 +333,7 @@ describe("globTool", () => {
       { pattern: "**/file.ts" },
       {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(new Container(), "test-session"),
       },
     );
 

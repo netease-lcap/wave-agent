@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
+import { Container } from "../../src/utils/container.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
 // Mock dependencies
@@ -19,6 +19,7 @@ vi.mock("../../src/managers/aiManager.js", () => ({
 describe("SubagentManager Consistency", () => {
   let subagentManager: SubagentManager;
   let mockToolManager: ToolManager;
+  let container: Container;
 
   const builtinConfig: SubagentConfiguration = {
     name: "Explore",
@@ -56,11 +57,13 @@ describe("SubagentManager Consistency", () => {
       getPermissionManager: vi.fn(),
     } as unknown as ToolManager;
 
+    container = new Container();
+    container.register("ToolManager", mockToolManager);
+    container.register("TaskManager", {} as unknown as Record<string, unknown>);
+
     // Create SubagentManager with mocks
-    subagentManager = new SubagentManager({
+    subagentManager = new SubagentManager(container, {
       workdir: "/test",
-      parentToolManager: mockToolManager,
-      taskManager: {} as unknown as TaskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
         agentModel: "claude-3-5-sonnet",

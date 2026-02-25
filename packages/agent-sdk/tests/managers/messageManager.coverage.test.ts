@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import * as sessionService from "../../src/services/session.js";
+import { Container } from "../../src/utils/container.js";
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -36,10 +37,11 @@ vi.mock("../../src/services/memory.js", () => ({
 describe("MessageManager Coverage Improvements", () => {
   let messageManager: MessageManager;
   const workdir = "/test/workdir";
+  const container = new Container();
 
   beforeEach(() => {
     vi.clearAllMocks();
-    messageManager = new MessageManager({
+    messageManager = new MessageManager(container, {
       callbacks: {},
       workdir,
     });
@@ -66,11 +68,15 @@ describe("MessageManager Coverage Improvements", () => {
         .mockReturnValue([{ id: "rule1", content: "rule content" }]),
     };
 
-    const mm = new MessageManager({
+    const testContainer = new Container();
+    testContainer.register(
+      "MemoryRuleManager",
+      mockMemoryRuleManager as unknown as Record<string, unknown>,
+    );
+
+    const mm = new MessageManager(testContainer, {
       callbacks: {},
       workdir,
-      memoryRuleManager:
-        mockMemoryRuleManager as unknown as MessageManager["memoryRuleManager"],
     });
 
     const content = await mm.getCombinedMemory();

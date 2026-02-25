@@ -5,6 +5,7 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
+import { Container } from "../../src/utils/container.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
 // Mock dependencies
@@ -24,6 +25,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
   let subagentManager: SubagentManager;
   let mockToolManager: ToolManager;
   let mockBackgroundTaskManager: BackgroundTaskManager;
+  let container: Container;
 
   const testConfig: SubagentConfiguration = {
     name: "TestAgent",
@@ -55,11 +57,13 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       listTasks: vi.fn().mockResolvedValue([]),
     } as unknown as TaskManager;
 
-    subagentManager = new SubagentManager({
+    container = new Container();
+    container.register("ToolManager", mockToolManager);
+    container.register("TaskManager", taskManager);
+    container.register("BackgroundTaskManager", mockBackgroundTaskManager);
+
+    subagentManager = new SubagentManager(container, {
       workdir: "/test",
-      parentToolManager: mockToolManager,
-      taskManager,
-      backgroundTaskManager: mockBackgroundTaskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
         agentModel: "test-model",
@@ -70,27 +74,18 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     });
   });
 
-  it("should handle backgroundInstance error when instance not found", async () => {
-    await expect(
-      subagentManager.backgroundInstance("non-existent"),
-    ).rejects.toThrow("Subagent instance non-existent not found");
-  });
-
   it("should handle backgroundInstance error when backgroundTaskManager is missing", async () => {
-    const taskManager = {
-      on: vi.fn(),
-      listTasks: vi.fn().mockResolvedValue([]),
-    } as unknown as TaskManager;
-
-    const managerNoBG = new SubagentManager({
+    const managerNoBG = new SubagentManager(container, {
       workdir: "/test",
-      parentToolManager: mockToolManager,
-      taskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({ agentModel: "m", fastModel: "f" }),
       getMaxInputTokens: () => 1000,
       getLanguage: () => "en",
     });
+    // Remove BackgroundTaskManager from container for this test
+    (
+      container as unknown as { services: Map<string, unknown> }
+    ).services.delete("BackgroundTaskManager");
 
     const instance = await managerNoBG.createInstance(testConfig, {
       description: "d",
@@ -101,6 +96,12 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     await expect(
       managerNoBG.backgroundInstance(instance.subagentId),
     ).rejects.toThrow("BackgroundTaskManager not available");
+  });
+
+  it("should handle backgroundInstance error when instance not found", async () => {
+    await expect(
+      subagentManager.backgroundInstance("non-existent"),
+    ).rejects.toThrow("Subagent instance non-existent not found");
   });
 
   it("should update background task on completion", async () => {
@@ -179,15 +180,9 @@ describe("SubagentManager - Backgrounding Coverage", () => {
 
   it("should cover createSubagentCallbacks reasoning update", async () => {
     const onSubagentAssistantReasoningUpdated = vi.fn();
-    const taskManager = {
-      on: vi.fn(),
-      listTasks: vi.fn().mockResolvedValue([]),
-    } as unknown as TaskManager;
 
-    const manager = new SubagentManager({
+    const manager = new SubagentManager(container, {
       workdir: "/test",
-      parentToolManager: mockToolManager,
-      taskManager,
       callbacks: { onSubagentAssistantReasoningUpdated },
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({ agentModel: "m", fastModel: "f" }),
@@ -209,7 +204,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const MessageManagerMock = vi.mocked(MessageManager);
     const lastCall =
       MessageManagerMock.mock.calls[MessageManagerMock.mock.calls.length - 1];
-    const passedCallbacks = lastCall[0].callbacks;
+    const passedCallbacks = lastCall[1].callbacks;
     passedCallbacks.onAssistantReasoningUpdated?.("chunk", "accumulated");
 
     expect(onSubagentAssistantReasoningUpdated).toHaveBeenCalledWith(

@@ -1,33 +1,20 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { SkillManager } from "../../src/managers/skillManager.js";
-import { TaskManager } from "../../src/services/taskManager.js";
 import { skillTool } from "../../src/tools/skillTool.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { taskTool } from "../../src/tools/taskTool.js";
-import type {
-  Logger,
-  GatewayConfig,
-  ModelConfig,
-} from "../../src/types/index.js";
-import type { ToolManager } from "../../src/managers/toolManager.js";
+import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
+import { Container } from "../../src/utils/container.js";
 
 describe("Dynamic Tool Definitions", () => {
-  let mockLogger: Logger;
+  const container = new Container();
 
-  beforeEach(() => {
-    mockLogger = {
-      error: vi.fn(),
-      warn: vi.fn(),
-      info: vi.fn(),
-      debug: vi.fn(),
-    };
-  });
+  beforeEach(() => {});
 
   describe("Skill Tool", () => {
     it("should dynamically reflect skills added after tool creation", async () => {
-      const skillManager = new SkillManager({
-        logger: mockLogger,
+      const skillManager = new SkillManager(container, {
         workdir: "/test/workdir",
       });
 
@@ -58,11 +45,8 @@ describe("Dynamic Tool Definitions", () => {
 
   describe("Task Tool", () => {
     it("should dynamically reflect subagents added after tool creation", async () => {
-      const subagentManager = new SubagentManager({
+      const subagentManager = new SubagentManager(container, {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
-        parentToolManager: {} as unknown as ToolManager,
-        logger: mockLogger,
         getGatewayConfig: () => ({}) as unknown as GatewayConfig,
         getModelConfig: () => ({}) as unknown as ModelConfig,
         getMaxInputTokens: () => 1000,

@@ -1,9 +1,7 @@
 import { randomUUID } from "crypto";
-import type { MemoryRuleManager } from "./MemoryRuleManager.js";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type {
   Message,
-  Logger,
   GatewayConfig,
   ModelConfig,
   Usage,
@@ -11,7 +9,6 @@ import type {
 import { AIManager } from "./aiManager.js";
 import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
-import { HookManager } from "./hookManager.js";
 import {
   addConsolidatedAbortListener,
   createAbortPromise,
@@ -21,6 +18,8 @@ import {
   UserMessageParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
+
+import { Container } from "../utils/container.js";
 
 export interface SubagentManagerCallbacks {
   // Granular subagent message callbacks (015-subagent-message-callbacks)
@@ -74,18 +73,13 @@ export interface SubagentInstance {
 
 export interface SubagentManagerOptions {
   workdir: string;
-  parentToolManager: ToolManager;
-  taskManager: import("../services/taskManager.js").TaskManager;
   callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
-  logger?: Logger;
   getGatewayConfig: () => GatewayConfig;
   getModelConfig: () => ModelConfig;
   getMaxInputTokens: () => number;
   getLanguage: () => string | undefined;
-  hookManager?: HookManager;
+  getEnvironmentVars?: () => Record<string, string>;
   onUsageAdded?: (usage: Usage) => void;
-  backgroundTaskManager?: BackgroundTaskManager;
-  memoryRuleManager?: MemoryRuleManager;
 }
 
 export class SubagentManager {
@@ -93,33 +87,25 @@ export class SubagentManager {
   private cachedConfigurations: SubagentConfiguration[] | null = null;
 
   private workdir: string;
-  private parentToolManager: ToolManager;
-  private taskManager: import("../services/taskManager.js").TaskManager;
   private callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
-  private logger?: Logger;
   private getGatewayConfig: () => GatewayConfig;
   private getModelConfig: () => ModelConfig;
   private getMaxInputTokens: () => number;
   private getLanguage: () => string | undefined;
-  private hookManager?: HookManager;
+  private getEnvironmentVars?: () => Record<string, string>;
   private onUsageAdded?: (usage: Usage) => void;
-  private backgroundTaskManager?: BackgroundTaskManager;
-  private memoryRuleManager?: MemoryRuleManager;
+  private container: Container;
 
-  constructor(options: SubagentManagerOptions) {
+  constructor(container: Container, options: SubagentManagerOptions) {
+    this.container = container;
     this.workdir = options.workdir;
-    this.parentToolManager = options.parentToolManager;
-    this.taskManager = options.taskManager;
     this.callbacks = options.callbacks; // Store SubagentManagerCallbacks
-    this.logger = options.logger;
     this.getGatewayConfig = options.getGatewayConfig;
     this.getModelConfig = options.getModelConfig;
     this.getMaxInputTokens = options.getMaxInputTokens;
     this.getLanguage = options.getLanguage;
-    this.hookManager = options.hookManager;
+    this.getEnvironmentVars = options.getEnvironmentVars;
     this.onUsageAdded = options.onUsageAdded;
-    this.backgroundTaskManager = options.backgroundTaskManager;
-    this.memoryRuleManager = options.memoryRuleManager;
   }
 
   /**
@@ -177,40 +163,38 @@ export class SubagentManager {
     runInBackground?: boolean,
     onUpdate?: () => void,
   ): Promise<SubagentInstance> {
-    if (!this.parentToolManager) {
+    const parentToolManager = this.container.get<ToolManager>("ToolManager");
+
+    if (!parentToolManager) {
       throw new Error(
-        "SubagentManager not properly initialized - call initialize() first",
+        "SubagentManager not properly initialized - ToolManager not found in container",
       );
     }
 
     const subagentId = randomUUID();
 
+    // Create a child container for the subagent to isolate its managers
+    const subagentContainer = this.container.createChild();
+
     // Create isolated MessageManager for the subagent
     const subagentCallbacks = this.createSubagentCallbacks(subagentId);
 
-    const messageManager = new MessageManager({
+    const messageManager = new MessageManager(subagentContainer, {
       callbacks: subagentCallbacks,
       workdir: this.workdir,
-      logger: this.logger,
       sessionType: "subagent",
       subagentType: parameters.subagent_type,
-      memoryRuleManager: this.memoryRuleManager,
     });
+    subagentContainer.register("MessageManager", messageManager);
 
     // Use the parent tool manager directly - tool restrictions will be handled by allowedTools parameter
-    const toolManager = this.parentToolManager;
+    const toolManager = parentToolManager;
 
     // Create isolated AIManager for the subagent
-    const aiManager = new AIManager({
-      messageManager,
-      toolManager,
-      taskManager: this.taskManager,
-      logger: this.logger,
+    const aiManager = new AIManager(subagentContainer, {
       workdir: this.workdir,
       systemPrompt: configuration.systemPrompt,
       subagentType: parameters.subagent_type, // Pass subagent type for hook context
-      hookManager: this.hookManager,
-      permissionManager: this.parentToolManager.getPermissionManager(),
       getGatewayConfig: this.getGatewayConfig,
       getModelConfig: () => {
         // Determine model dynamically each time
@@ -235,10 +219,12 @@ export class SubagentManager {
       },
       getMaxInputTokens: this.getMaxInputTokens,
       getLanguage: this.getLanguage,
+      getEnvironmentVars: this.getEnvironmentVars,
       callbacks: {
         onUsageAdded: this.onUsageAdded,
       },
     });
+    subagentContainer.register("AIManager", aiManager);
 
     const instance: SubagentInstance = {
       subagentId,
@@ -280,11 +266,15 @@ export class SubagentManager {
       // Set status to active and update parent
       this.updateInstanceStatus(instance.subagentId, "active");
 
-      if (runInBackground && this.backgroundTaskManager) {
-        const taskId = this.backgroundTaskManager.generateId();
+      const backgroundTaskManager = this.container.has("BackgroundTaskManager")
+        ? this.container.get<BackgroundTaskManager>("BackgroundTaskManager")
+        : undefined;
+
+      if (runInBackground && backgroundTaskManager) {
+        const taskId = backgroundTaskManager.generateId();
         const startTime = Date.now();
 
-        this.backgroundTaskManager.addTask({
+        backgroundTaskManager.addTask({
           id: taskId,
           type: "subagent",
           status: "running",
@@ -309,7 +299,7 @@ export class SubagentManager {
               prompt,
               abortSignal,
             );
-            const task = this.backgroundTaskManager?.getTask(taskId);
+            const task = backgroundTaskManager?.getTask(taskId);
             if (task) {
               task.status = "completed";
               task.stdout = result;
@@ -317,7 +307,7 @@ export class SubagentManager {
               task.runtime = task.endTime - startTime;
             }
           } catch (error) {
-            const task = this.backgroundTaskManager?.getTask(taskId);
+            const task = backgroundTaskManager?.getTask(taskId);
             if (task) {
               task.status = "failed";
               task.stderr =
@@ -344,14 +334,18 @@ export class SubagentManager {
       throw new Error(`Subagent instance ${subagentId} not found`);
     }
 
-    if (!this.backgroundTaskManager) {
+    const backgroundTaskManager = this.container.has("BackgroundTaskManager")
+      ? this.container.get<BackgroundTaskManager>("BackgroundTaskManager")
+      : undefined;
+
+    if (!backgroundTaskManager) {
       throw new Error("BackgroundTaskManager not available");
     }
 
-    const taskId = this.backgroundTaskManager.generateId();
+    const taskId = backgroundTaskManager.generateId();
     const startTime = Date.now();
 
-    this.backgroundTaskManager.addTask({
+    backgroundTaskManager.addTask({
       id: taskId,
       type: "subagent",
       status: "running",
@@ -463,11 +457,13 @@ export class SubagentManager {
       // Update status to completed and update parent
       this.updateInstanceStatus(instance.subagentId, "completed");
 
+      const backgroundTaskManager = this.container.has("BackgroundTaskManager")
+        ? this.container.get<BackgroundTaskManager>("BackgroundTaskManager")
+        : undefined;
+
       // If this was transitioned to background, update the background task
-      if (instance.backgroundTaskId && this.backgroundTaskManager) {
-        const task = this.backgroundTaskManager.getTask(
-          instance.backgroundTaskId,
-        );
+      if (instance.backgroundTaskId && backgroundTaskManager) {
+        const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {
           task.status = "completed";
           task.stdout = response || "Task completed with no text response";
@@ -480,11 +476,13 @@ export class SubagentManager {
 
       return response || "Task completed with no text response";
     } catch (error) {
+      const backgroundTaskManager = this.container.has("BackgroundTaskManager")
+        ? this.container.get<BackgroundTaskManager>("BackgroundTaskManager")
+        : undefined;
+
       // If this was transitioned to background, update the background task with error
-      if (instance.backgroundTaskId && this.backgroundTaskManager) {
-        const task = this.backgroundTaskManager.getTask(
-          instance.backgroundTaskId,
-        );
+      if (instance.backgroundTaskId && backgroundTaskManager) {
+        const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {
           task.status = "failed";
           task.stderr = error instanceof Error ? error.message : String(error);

@@ -6,8 +6,8 @@ import {
 import { TaskManager } from "../../src/services/taskManager.js";
 import { Task } from "../../src/types/tasks.js";
 import type { ToolContext } from "../../src/tools/types.js";
-import { ReversionService } from "../../src/services/reversionService.js";
 import { ReversionManager } from "../../src/managers/reversionManager.js";
+import { Container } from "../../src/utils/container.js";
 
 // Mock TaskManager
 vi.mock("../../src/services/taskManager.js", () => {
@@ -32,16 +32,16 @@ describe("Task Management Tools - Rewind Support", () => {
   let context: ToolContext;
   let mockTaskManager: Mocked<TaskManager>;
   let mockReversionManager: Mocked<ReversionManager>;
-  let mockReversionService: Mocked<ReversionService>;
+  const container = new Container();
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockTaskManager = new TaskManager(sessionId) as Mocked<TaskManager>;
-    mockReversionService = new ReversionService(
+    mockTaskManager = new TaskManager(
+      container,
       sessionId,
-    ) as Mocked<ReversionService>;
+    ) as Mocked<TaskManager>;
     mockReversionManager = new ReversionManager(
-      mockReversionService,
+      container,
     ) as Mocked<ReversionManager>;
 
     context = {

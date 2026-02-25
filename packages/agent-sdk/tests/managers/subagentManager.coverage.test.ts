@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
+import { Container } from "../../src/utils/container.js";
 import type { SubagentManagerCallbacks } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
-import type { McpManager } from "../../src/managers/mcpManager.js";
-import type { TaskManager } from "../../src/services/taskManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
 
 // Mock the subagent parser module
@@ -20,20 +19,49 @@ describe("SubagentManager - Recent Changes Coverage", () => {
   let callbacks: SubagentManagerCallbacks;
   let mockGatewayConfig: GatewayConfig;
   let mockModelConfig: ModelConfig;
+  let container: Container;
 
   beforeEach(async () => {
     callbacks = {
       onSubagentToolBlockUpdated: vi.fn(),
     };
 
+    container = new Container();
+    container.register(
+      "PermissionManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register("TaskManager", {} as unknown as Record<string, unknown>);
+    container.register(
+      "ReversionManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "BackgroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "ForegroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register("LspManager", {} as unknown as Record<string, unknown>);
+
     const mockMcpManager = {
       listTools: vi.fn().mockReturnValue([]),
       callTool: vi.fn().mockResolvedValue({ result: "mock result" }),
+      isMcpTool: vi.fn().mockReturnValue(false),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
+      getMcpToolsConfig: vi.fn().mockReturnValue([]),
     };
+    container.register(
+      "McpManager",
+      mockMcpManager as unknown as Record<string, unknown>,
+    );
 
     parentToolManager = new ToolManager({
-      mcpManager: mockMcpManager as unknown as McpManager,
+      container,
     });
+    container.register("ToolManager", parentToolManager);
 
     mockGatewayConfig = {
       apiKey: "test-key",
@@ -44,10 +72,8 @@ describe("SubagentManager - Recent Changes Coverage", () => {
       fastModel: "claude-3-haiku",
     };
 
-    subagentManager = new SubagentManager({
+    subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
-      parentToolManager,
-      taskManager: {} as unknown as TaskManager,
       callbacks,
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,

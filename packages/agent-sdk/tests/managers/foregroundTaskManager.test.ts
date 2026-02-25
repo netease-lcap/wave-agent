@@ -1,10 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { ForegroundTaskManager } from "../../src/managers/foregroundTaskManager.js";
 import { ForegroundTask } from "../../src/types/processes.js";
+import { Container } from "../../src/utils/container.js";
 
 describe("ForegroundTaskManager", () => {
   it("should register and unregister foreground tasks", () => {
-    const manager = new ForegroundTaskManager();
+    const container = new Container();
+    const manager = new ForegroundTaskManager(container);
     const task: ForegroundTask = {
       id: "test-task",
       backgroundHandler: vi.fn().mockResolvedValue(undefined),
@@ -18,7 +20,8 @@ describe("ForegroundTaskManager", () => {
   });
 
   it("should background the current task and remove it from the stack", async () => {
-    const manager = new ForegroundTaskManager();
+    const container = new Container();
+    const manager = new ForegroundTaskManager(container);
     const backgroundHandler = vi.fn().mockResolvedValue(undefined);
     const task: ForegroundTask = {
       id: "test-task",
@@ -36,7 +39,8 @@ describe("ForegroundTaskManager", () => {
   });
 
   it("should background all tasks in the stack", async () => {
-    const manager = new ForegroundTaskManager();
+    const container = new Container();
+    const manager = new ForegroundTaskManager(container);
     const handler1 = vi.fn().mockResolvedValue(undefined);
     const handler2 = vi.fn().mockResolvedValue(undefined);
 
@@ -60,19 +64,22 @@ describe("ForegroundTaskManager", () => {
   });
 
   it("should do nothing if no tasks are registered", async () => {
-    const manager = new ForegroundTaskManager();
+    const container = new Container();
+    const manager = new ForegroundTaskManager(container);
     await expect(manager.backgroundCurrentTask()).resolves.not.toThrow();
   });
 
   it("should not fail when unregistering non-existent task", () => {
-    const manager = new ForegroundTaskManager();
+    const container = new Container();
+    const manager = new ForegroundTaskManager(container);
     expect(() =>
       manager.unregisterForegroundTask("non-existent"),
     ).not.toThrow();
   });
 
   it("should handle race condition where task is unregistered while backgrounding is requested", async () => {
-    const manager = new ForegroundTaskManager();
+    const container = new Container();
+    const manager = new ForegroundTaskManager(container);
     const handler = vi.fn().mockResolvedValue(undefined);
     const task: ForegroundTask = {
       id: "test-task",

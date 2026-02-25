@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "fs/promises";
 import { ReversionManager } from "../../src/managers/reversionManager.js";
 import { ReversionService } from "../../src/services/reversionService.js";
+import { Container } from "../../src/utils/container.js";
 
 vi.mock("fs/promises");
 vi.mock("../../src/services/reversionService.js");
@@ -10,6 +11,7 @@ vi.mock("../../src/services/reversionService.js");
 describe("ReversionManager", () => {
   let reversionManager: ReversionManager;
   let mockReversionService: Mocked<ReversionService>;
+  let container: Container;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -18,7 +20,10 @@ describe("ReversionManager", () => {
       readSnapshotContent: vi.fn(),
       deleteSessionHistory: vi.fn(),
     } as unknown as Mocked<ReversionService>;
-    reversionManager = new ReversionManager(mockReversionService);
+
+    container = new Container();
+    container.register("ReversionService", mockReversionService);
+    reversionManager = new ReversionManager(container);
   });
 
   it("should record a snapshot and return a snapshotId", async () => {

@@ -8,8 +8,12 @@ import { McpManager } from "@/managers/mcpManager.js";
 import { SubagentManager } from "@/managers/subagentManager.js";
 import { SkillManager } from "@/managers/skillManager.js";
 import { PermissionManager } from "@/managers/permissionManager.js";
-
 import { Container } from "@/utils/container.js";
+import type { TaskManager } from "@/services/taskManager.js";
+import type { ReversionManager } from "@/managers/reversionManager.js";
+import type { BackgroundTaskManager } from "@/managers/backgroundTaskManager.js";
+import type { IForegroundTaskManager } from "@/types/processes.js";
+import type { ILspManager } from "@/types/index.js";
 
 describe("ToolManager.initializeBuiltInTools", () => {
   it("should be callable as a public method", async () => {
@@ -25,15 +29,6 @@ describe("ToolManager.initializeBuiltInTools", () => {
     // Create container
     const container = new Container();
 
-    // Create tool manager
-    const toolManager = new ToolManager({
-      mcpManager: mockMcpManager,
-      container,
-    });
-
-    // Should be able to call initializeBuiltInTools without dependencies
-    expect(() => toolManager.initializeBuiltInTools()).not.toThrow();
-
     // Create mock dependencies
     const mockSubagentManager = {
       getConfigurations: vi.fn().mockReturnValue([]),
@@ -43,9 +38,39 @@ describe("ToolManager.initializeBuiltInTools", () => {
       getAvailableSkills: vi.fn().mockReturnValue([]),
     } as unknown as SkillManager;
 
+    const mockPermissionManager = {
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+    } as unknown as PermissionManager;
+
+    const mockTaskManager = {
+      listTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as import("@/services/taskManager.js").TaskManager;
+
+    const mockReversionManager =
+      {} as unknown as import("@/managers/reversionManager.js").ReversionManager;
+    const mockBackgroundTaskManager =
+      {} as unknown as import("@/managers/backgroundTaskManager.js").BackgroundTaskManager;
+    const mockForegroundTaskManager =
+      {} as unknown as import("@/types/processes.js").IForegroundTaskManager;
+    const mockLspManager =
+      {} as unknown as import("@/types/index.js").ILspManager;
+
     // Register dependencies in container
+    container.register("McpManager", mockMcpManager);
     container.register("SubagentManager", mockSubagentManager);
     container.register("SkillManager", mockSkillManager);
+    container.register("PermissionManager", mockPermissionManager);
+    container.register("TaskManager", mockTaskManager);
+    container.register("ReversionManager", mockReversionManager);
+    container.register("BackgroundTaskManager", mockBackgroundTaskManager);
+    container.register("ForegroundTaskManager", mockForegroundTaskManager);
+    container.register("LspManager", mockLspManager);
+
+    // Create tool manager
+    const toolManager = new ToolManager({ container });
+
+    // Should be able to call initializeBuiltInTools without dependencies
+    expect(() => toolManager.initializeBuiltInTools()).not.toThrow();
 
     // Should be able to call initializeBuiltInTools
     expect(() => toolManager.initializeBuiltInTools()).not.toThrow();
@@ -74,9 +99,9 @@ describe("ToolManager.initializeBuiltInTools", () => {
       getMcpToolPlugins: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
 
-    const toolManager = new ToolManager({
-      mcpManager: mockMcpManager,
-    });
+    const container = new Container();
+    container.register("McpManager", mockMcpManager);
+    const toolManager = new ToolManager({ container });
 
     // Call multiple times - should not cause issues
     toolManager.initializeBuiltInTools();
@@ -101,10 +126,22 @@ describe("ToolManager bypassPermissions mode", () => {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("bypassPermissions"),
     } as unknown as PermissionManager;
 
-    const toolManager = new ToolManager({
-      mcpManager: mockMcpManager,
-      permissionManager: mockPermissionManager,
-    });
+    const container = new Container();
+    container.register("McpManager", mockMcpManager);
+    container.register("PermissionManager", mockPermissionManager);
+    container.register("TaskManager", {} as unknown as TaskManager);
+    container.register("ReversionManager", {} as unknown as ReversionManager);
+    container.register(
+      "BackgroundTaskManager",
+      {} as unknown as BackgroundTaskManager,
+    );
+    container.register(
+      "ForegroundTaskManager",
+      {} as unknown as IForegroundTaskManager,
+    );
+    container.register("LspManager", {} as unknown as ILspManager);
+
+    const toolManager = new ToolManager({ container });
 
     toolManager.initializeBuiltInTools();
 
@@ -126,10 +163,22 @@ describe("ToolManager bypassPermissions mode", () => {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
     } as unknown as PermissionManager;
 
-    const toolManager = new ToolManager({
-      mcpManager: mockMcpManager,
-      permissionManager: mockPermissionManager,
-    });
+    const container = new Container();
+    container.register("McpManager", mockMcpManager);
+    container.register("PermissionManager", mockPermissionManager);
+    container.register("TaskManager", {} as unknown as TaskManager);
+    container.register("ReversionManager", {} as unknown as ReversionManager);
+    container.register(
+      "BackgroundTaskManager",
+      {} as unknown as BackgroundTaskManager,
+    );
+    container.register(
+      "ForegroundTaskManager",
+      {} as unknown as IForegroundTaskManager,
+    );
+    container.register("LspManager", {} as unknown as ILspManager);
+
+    const toolManager = new ToolManager({ container });
 
     toolManager.initializeBuiltInTools();
 
@@ -149,10 +198,22 @@ describe("ToolManager bypassPermissions mode", () => {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("plan"),
     } as unknown as PermissionManager;
 
-    const toolManager = new ToolManager({
-      mcpManager: mockMcpManager,
-      permissionManager: mockPermissionManager,
-    });
+    const container = new Container();
+    container.register("McpManager", mockMcpManager);
+    container.register("PermissionManager", mockPermissionManager);
+    container.register("TaskManager", {} as unknown as TaskManager);
+    container.register("ReversionManager", {} as unknown as ReversionManager);
+    container.register(
+      "BackgroundTaskManager",
+      {} as unknown as BackgroundTaskManager,
+    );
+    container.register(
+      "ForegroundTaskManager",
+      {} as unknown as IForegroundTaskManager,
+    );
+    container.register("LspManager", {} as unknown as ILspManager);
+
+    const toolManager = new ToolManager({ container });
 
     toolManager.initializeBuiltInTools();
 
@@ -169,9 +230,9 @@ describe("ToolManager bypassPermissions mode", () => {
       getMcpToolPlugins: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
 
-    const toolManager = new ToolManager({
-      mcpManager: mockMcpManager,
-    });
+    const container = new Container();
+    container.register("McpManager", mockMcpManager);
+    const toolManager = new ToolManager({ container });
 
     toolManager.initializeBuiltInTools();
 

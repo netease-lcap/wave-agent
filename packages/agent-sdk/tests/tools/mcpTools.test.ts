@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { ToolContext, ToolPlugin } from "../../src/tools/types.js";
 import { ChatCompletionFunctionTool } from "openai/resources.js";
+import { Container } from "../../src/utils/container.js";
 
 // Mock mcpManager
 const mcpManager = {
@@ -181,9 +182,10 @@ describe("McpManager - Tools Registry", () => {
         mockResult,
       );
 
+      const container = new Container();
       const context: ToolContext = {
         workdir: "/test/workdir",
-        taskManager: new TaskManager("test-session"),
+        taskManager: new TaskManager(container, "test-session"),
       };
       const result = await mcpManager.executeMcpToolByRegistry(
         "server1_tool1",

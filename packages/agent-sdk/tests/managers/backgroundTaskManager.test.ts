@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { BackgroundTask, BackgroundShell } from "../../src/types/processes.js";
+import { Container } from "../../src/utils/container.js";
 
 describe("BackgroundTaskManager", () => {
   let manager: BackgroundTaskManager;
@@ -8,7 +9,8 @@ describe("BackgroundTaskManager", () => {
 
   beforeEach(() => {
     mockCallbacks = { onTasksChange: vi.fn() };
-    manager = new BackgroundTaskManager({
+    const container = new Container();
+    manager = new BackgroundTaskManager(container, {
       callbacks: mockCallbacks,
       workdir: process.cwd(),
     });

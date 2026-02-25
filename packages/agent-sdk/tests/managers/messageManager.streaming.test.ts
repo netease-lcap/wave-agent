@@ -1,8 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import type { MessageManagerCallbacks } from "../../src/managers/messageManager.js";
+import { Container } from "../../src/utils/container.js";
 
 describe("MessageManager - Streaming Functionality", () => {
+  const container = new Container();
+
   describe("updateCurrentMessageContent with FR-001 compliance", () => {
     it("should call onAssistantContentUpdated with chunk and accumulated content", () => {
       const mockOnAssistantContentUpdated = vi.fn();
@@ -13,7 +16,7 @@ describe("MessageManager - Streaming Functionality", () => {
         onMessagesChange: mockOnMessagesChange,
       };
 
-      const messageManager = new MessageManager({
+      const messageManager = new MessageManager(container, {
         callbacks,
         workdir: "/test",
       });
@@ -57,7 +60,7 @@ describe("MessageManager - Streaming Functionality", () => {
         onAssistantContentUpdated: mockOnAssistantContentUpdated,
       };
 
-      const messageManager = new MessageManager({
+      const messageManager = new MessageManager(container, {
         callbacks,
         workdir: "/test",
       });
@@ -78,7 +81,7 @@ describe("MessageManager - Streaming Functionality", () => {
         onAssistantContentUpdated: mockOnAssistantContentUpdated,
       };
 
-      const messageManager = new MessageManager({
+      const messageManager = new MessageManager(container, {
         callbacks,
         workdir: "/test",
       });
@@ -111,7 +114,7 @@ describe("MessageManager - Streaming Functionality", () => {
         onAssistantContentUpdated: mockOnAssistantContentUpdated,
       };
 
-      const messageManager = new MessageManager({
+      const messageManager = new MessageManager(container, {
         callbacks,
         workdir: "/test",
       });
@@ -129,7 +132,7 @@ describe("MessageManager - Streaming Functionality", () => {
         onAssistantContentUpdated: mockOnAssistantContentUpdated,
       };
 
-      const messageManager = new MessageManager({
+      const messageManager = new MessageManager(container, {
         callbacks,
         workdir: "/test",
       });

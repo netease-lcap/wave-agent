@@ -3,45 +3,17 @@ import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
-import { AIManager } from "../../src/managers/aiManager.js";
+import { MessageManager } from "../../src/managers/messageManager.js";
+import { Message } from "../../src/types/index.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
-
-// Mock AIManager to capture the system prompt
-vi.mock("../../src/managers/aiManager.js", async () => {
-  const actual = await vi.importActual("../../src/managers/aiManager.js");
-  return {
-    ...actual,
-    AIManager: vi.fn().mockImplementation(function (options) {
-      const ActualAIManager = (actual as { AIManager: typeof AIManager })
-        .AIManager;
-      const aiManager = new ActualAIManager(options);
-      // Spy on sendAIMessage to capture the system prompt
-      const originalSendAIMessage = aiManager.sendAIMessage.bind(aiManager);
-      aiManager.sendAIMessage = vi.fn().mockImplementation(async (params) => {
-        return originalSendAIMessage(params);
-      });
-      return aiManager;
-    }),
-  };
-});
-
-// Mock callAgent to capture the final system prompt sent to the AI
-vi.mock("../../src/services/aiService.js", async () => {
-  const actual = await vi.importActual("../../src/services/aiService.js");
-  return {
-    ...actual,
-    callAgent: vi.fn().mockResolvedValue({
-      content: "Subagent response",
-      toolCalls: [],
-      usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 },
-    }),
-  };
-});
+import { Container } from "../../src/utils/container.js";
+import * as aiService from "../../src/services/aiService.js";
 
 describe("Subagent Plan Mode Integration", () => {
   let subagentManager: SubagentManager;
   let mockToolManager: ToolManager;
   let mockPermissionManager: PermissionManager;
+  let lastSystemPrompt: string | undefined;
 
   const subagentConfig: SubagentConfiguration = {
     name: "TestSubagent",
@@ -56,6 +28,17 @@ describe("Subagent Plan Mode Integration", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    lastSystemPrompt = undefined;
+
+    // Mock callAgent to capture the system prompt
+    vi.spyOn(aiService, "callAgent").mockImplementation(async (options) => {
+      lastSystemPrompt = options.systemPrompt;
+      return {
+        content: "Subagent response",
+        tool_calls: [],
+        usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 },
+      };
+    });
 
     // Mock PermissionManager in plan mode
     mockPermissionManager = {
@@ -74,12 +57,64 @@ describe("Subagent Plan Mode Integration", () => {
       getTools: vi.fn().mockReturnValue([]),
     } as unknown as ToolManager;
 
-    subagentManager = new SubagentManager({
+    const container = new Container();
+    container.register("ToolManager", mockToolManager);
+    container.register("PermissionManager", mockPermissionManager);
+    container.register("TaskManager", {
+      listTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as TaskManager);
+
+    // Mock SubagentManager and register it
+    container.register("SubagentManager", {
+      getConfigurations: vi.fn().mockReturnValue([]),
+    });
+
+    // Mock SkillManager and register it
+    container.register("SkillManager", {
+      getAvailableSkills: vi.fn().mockReturnValue([]),
+    });
+
+    const mockMessages: Message[] = [];
+    const mockMessageManager = {
+      saveSession: vi.fn().mockResolvedValue(undefined),
+      getMessages: vi.fn().mockImplementation(() => [...mockMessages]),
+      getSessionId: vi.fn().mockReturnValue("test-session"),
+      getCombinedMemory: vi.fn().mockResolvedValue(""),
+      addUserMessage: vi.fn().mockImplementation((msg) => {
+        mockMessages.push({
+          role: "user",
+          blocks: [{ type: "text", content: msg.content }],
+        } as Message);
+      }),
+      addAssistantMessage: vi.fn().mockImplementation(() => {
+        const msg = {
+          role: "assistant",
+          blocks: [{ type: "text", content: "Subagent response" }],
+        } as Message;
+        mockMessages.push(msg);
+        return msg;
+      }),
+      updateCurrentMessageContent: vi.fn().mockImplementation((content) => {
+        const last = mockMessages[mockMessages.length - 1];
+        if (last && last.role === "assistant") {
+          last.blocks = [{ type: "text", content }];
+        }
+      }),
+      updateCurrentMessageReasoning: vi.fn(),
+      setlatestTotalTokens: vi.fn(),
+      addErrorBlock: vi.fn(),
+      setMessages: vi.fn().mockImplementation((msgs) => {
+        mockMessages.length = 0;
+        mockMessages.push(...msgs);
+      }),
+      getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.json"),
+      mergeAssistantAdditionalFields: vi.fn(),
+    } as unknown as MessageManager;
+
+    container.register("MessageManager", mockMessageManager);
+
+    subagentManager = new SubagentManager(container, {
       workdir: "/test/project",
-      parentToolManager: mockToolManager,
-      taskManager: {
-        listTasks: vi.fn().mockResolvedValue([]),
-      } as unknown as TaskManager,
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
         agentModel: "test-model",
@@ -89,6 +124,28 @@ describe("Subagent Plan Mode Integration", () => {
       getMaxInputTokens: () => 100000,
       getLanguage: () => undefined,
     });
+
+    // Mock createInstance to return our mockMessageManager
+    const originalCreateInstance =
+      subagentManager.createInstance.bind(subagentManager);
+    subagentManager.createInstance = vi
+      .fn()
+      .mockImplementation(async (config, params, runInBackground, onUpdate) => {
+        const instance = await originalCreateInstance(
+          config,
+          params,
+          runInBackground,
+          onUpdate,
+        );
+        // Override the MessageManager in the subagent's container so AIManager uses the mock
+        (
+          instance.aiManager as unknown as {
+            container: { register: (name: string, instance: unknown) => void };
+          }
+        ).container.register("MessageManager", mockMessageManager);
+        instance.messageManager = mockMessageManager;
+        return instance;
+      });
   });
 
   it("should include plan mode reminder in subagent system prompt when plan mode is active", async () => {
@@ -98,28 +155,18 @@ describe("Subagent Plan Mode Integration", () => {
       subagent_type: "TestSubagent",
     });
 
+    // Force stream to false for easier testing
+    (instance.aiManager as unknown as { stream: boolean }).stream = false;
+
     // Execute task
     await subagentManager.executeTask(instance, "Test prompt");
 
-    // Verify that AIManager was created with the permissionManager
-    expect(AIManager).toHaveBeenCalledWith(
-      expect.objectContaining({
-        permissionManager: mockPermissionManager,
-      }),
-    );
-
     // Verify the system prompt sent to callAgent
-    const { callAgent } = await import("../../src/services/aiService.js");
-    const callAgentMock = vi.mocked(callAgent);
-
-    expect(callAgentMock).toHaveBeenCalled();
-    const lastCall = callAgentMock.mock.calls[0][0];
-    const systemPrompt = lastCall.systemPrompt;
-
-    expect(systemPrompt).toContain("Plan mode is active.");
-    expect(systemPrompt).toContain(
+    expect(lastSystemPrompt).toBeDefined();
+    expect(lastSystemPrompt).toContain("Plan mode is active.");
+    expect(lastSystemPrompt).toContain(
       "The user indicated that they do not want you to execute yet",
     );
-    expect(systemPrompt).toContain("/test/project/plan.md");
+    expect(lastSystemPrompt).toContain("/test/project/plan.md");
   });
 });

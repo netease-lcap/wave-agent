@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HookManager } from "../../src/managers/hookManager.js";
+import { Container } from "../../src/utils/container.js";
 import { HookMatcher } from "../../src/utils/hookMatcher.js";
-import { MessageSource, Logger } from "../../src/types/index.js";
+import { MessageSource } from "../../src/types/index.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import {
   HookConfigurationError,
@@ -9,6 +10,16 @@ import {
   HookEventConfig,
 } from "../../src/types/hooks.js";
 import * as hookService from "../../src/services/hook.js";
+import { logger } from "../../src/utils/globalLogger.js";
+
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 // Mock the hook services
 vi.mock("../../src/services/hook.js", async () => {
@@ -26,26 +37,13 @@ const mockExecuteCommand = vi.mocked(hookService.executeCommand);
 describe("HookManager Coverage", () => {
   let manager: HookManager;
   let mockMatcher: HookMatcher;
-  let mockLogger: {
-    debug: ReturnType<typeof vi.fn>;
-    info: ReturnType<typeof vi.fn>;
-    warn: ReturnType<typeof vi.fn>;
-    error: ReturnType<typeof vi.fn>;
-  };
 
   beforeEach(() => {
     mockMatcher = new HookMatcher();
-    mockLogger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
-    manager = new HookManager(
-      "/test/workdir",
-      mockMatcher,
-      mockLogger as unknown as Logger,
-    );
+
+    const container = new Container();
+
+    manager = new HookManager(container, "/test/workdir", mockMatcher);
     mockExecuteCommand.mockResolvedValue({
       success: true,
       duration: 100,
@@ -121,7 +119,7 @@ describe("HookManager Coverage", () => {
           HookManager["loadConfigurationFromWaveConfig"]
         >[0],
       );
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining("Failed to load configuration"),
       );
       expect(manager.getConfiguration()).toBeUndefined();
@@ -167,7 +165,7 @@ describe("HookManager Coverage", () => {
         context as unknown as Parameters<HookManager["executeHooks"]>[1],
       );
       expect(results).toHaveLength(0);
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         expect.stringContaining(
           "matcher 'other-tool' does not match tool 'my-tool'",
         ),

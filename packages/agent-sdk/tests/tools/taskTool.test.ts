@@ -7,6 +7,7 @@ import {
 } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { ToolContext } from "../../src/tools/types.js";
+import { Container } from "../../src/utils/container.js";
 
 // Mock the subagent manager
 vi.mock("../../src/managers/subagentManager.js");
@@ -16,7 +17,7 @@ describe("Task Tool Background Execution", () => {
   const mockToolContext: ToolContext = {
     abortSignal: new AbortController().signal,
     workdir: "/test/workdir",
-    taskManager: new TaskManager("test-session"),
+    taskManager: new TaskManager(new Container(), "test-session"),
   };
 
   const gpConfig: SubagentConfiguration = {

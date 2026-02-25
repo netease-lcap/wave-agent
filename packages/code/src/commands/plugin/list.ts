@@ -3,15 +3,17 @@ import {
   ConfigurationService,
   PluginScopeManager,
   PluginManager,
+  Container,
 } from "wave-agent-sdk";
 
 export async function listPluginsCommand() {
   const configurationService = new ConfigurationService();
   const marketplaceService = new MarketplaceService();
   const workdir = process.cwd();
-  const pluginManager = new PluginManager({
+  const container = new Container();
+  container.register("ConfigurationService", configurationService);
+  const pluginManager = new PluginManager(container, {
     workdir,
-    configurationService,
   });
   const pluginScopeManager = new PluginScopeManager({
     workdir,

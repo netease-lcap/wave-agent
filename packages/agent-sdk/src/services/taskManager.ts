@@ -4,12 +4,16 @@ import { homedir } from "os";
 import { EventEmitter } from "events";
 import { Task } from "../types/tasks.js";
 import { logger } from "../utils/globalLogger.js";
+import { Container } from "../utils/container.js";
 
 export class TaskManager extends EventEmitter {
   private readonly baseDir: string;
   private taskListId: string;
 
-  constructor(taskListId: string) {
+  constructor(
+    private container: Container,
+    taskListId: string,
+  ) {
     super();
     this.taskListId = taskListId;
     this.baseDir = join(homedir(), ".wave", "tasks");

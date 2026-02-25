@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
-import { TaskManager } from "../../src/services/taskManager.js";
+import { Container } from "../../src/utils/container.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 
@@ -68,19 +68,33 @@ describe("SubagentManager - Session Functionality", () => {
   let parentToolManager: ToolManager;
   let mockGatewayConfig: GatewayConfig;
   let mockModelConfig: ModelConfig;
+  let container: Container;
 
   beforeEach(async () => {
-    // Create mock MCP manager
-    const mockMcpManager = {
-      listTools: vi.fn().mockReturnValue([]),
-      callTool: vi.fn().mockResolvedValue({ result: "mock result" }),
-    };
+    // Create container
+    container = new Container();
+    container.register(
+      "PermissionManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register("TaskManager", {} as unknown as Record<string, unknown>);
+    container.register(
+      "ReversionManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "BackgroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "ForegroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register("LspManager", {} as unknown as Record<string, unknown>);
 
     // Create parent ToolManager
-    parentToolManager = new ToolManager({
-      mcpManager:
-        mockMcpManager as unknown as import("../../src/managers/mcpManager.js").McpManager,
-    });
+    parentToolManager = new ToolManager({ container });
+    container.register("ToolManager", parentToolManager);
 
     // Mock gateway and model configs
     mockGatewayConfig = {
@@ -94,10 +108,8 @@ describe("SubagentManager - Session Functionality", () => {
     };
 
     // Create SubagentManager
-    subagentManager = new SubagentManager({
+    subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
-      parentToolManager,
-      taskManager: new TaskManager("test-session"),
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 1000,

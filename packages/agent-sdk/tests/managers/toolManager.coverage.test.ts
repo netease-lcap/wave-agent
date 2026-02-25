@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { McpManager } from "../../src/managers/mcpManager.js";
-import type { Logger } from "../../src/types/index.js";
+import { Container } from "../../src/utils/container.js";
+
 import type { ToolPlugin, ToolContext } from "../../src/tools/types.js";
 
 describe("ToolManager - Additional Coverage", () => {
   let toolManager: ToolManager;
   let mockMcpManager: McpManager;
+  let container: Container;
 
   beforeEach(() => {
     mockMcpManager = {
@@ -16,15 +18,29 @@ describe("ToolManager - Additional Coverage", () => {
       executeMcpToolByRegistry: vi.fn(),
     } as unknown as McpManager;
 
-    toolManager = new ToolManager({
-      mcpManager: mockMcpManager,
-      logger: {
-        debug: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-      } as unknown as Logger,
-    });
+    container = new Container();
+    container.register("McpManager", mockMcpManager);
+    container.register("PermissionManager", {
+      getCurrentEffectiveMode: vi
+        .fn()
+        .mockImplementation((mode) => mode || "default"),
+    } as unknown as Record<string, unknown>);
+    container.register("TaskManager", {} as unknown as Record<string, unknown>);
+    container.register(
+      "ReversionManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "BackgroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "ForegroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register("LspManager", {} as unknown as Record<string, unknown>);
+
+    toolManager = new ToolManager({ container });
   });
 
   it("should handle tool execution error", async () => {

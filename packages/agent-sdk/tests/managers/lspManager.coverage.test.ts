@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { LspManager } from "../../src/managers/lspManager.js";
+import { Container } from "../../src/utils/container.js";
 import { spawn, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
 import { PassThrough } from "stream";
@@ -24,7 +25,8 @@ describe("LspManager Coverage Improvements", () => {
   let lspManager: LspManager;
 
   beforeEach(() => {
-    lspManager = new LspManager();
+    const container = new Container();
+    lspManager = new LspManager(container);
     vi.clearAllMocks();
     vi.mocked(fs.readFile).mockResolvedValue("mock content");
   });

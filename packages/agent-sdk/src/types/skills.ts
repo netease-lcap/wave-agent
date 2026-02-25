@@ -3,8 +3,6 @@
  * Dependencies: Core (Logger)
  */
 
-import type { Logger } from "./core.js";
-
 export interface SkillMetadata {
   name: string;
   description: string;
@@ -60,7 +58,6 @@ export interface SkillToolArgs {
 export interface SkillManagerOptions {
   personalSkillsPath?: string;
   scanTimeout?: number;
-  logger?: Logger;
   workdir?: string;
 }
 

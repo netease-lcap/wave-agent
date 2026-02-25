@@ -4,12 +4,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import type { SubagentManagerCallbacks } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
+
+import { Container } from "../../src/utils/container.js";
 
 // Mock the subagent parser module
 vi.mock("../../src/utils/subagentParser.js", () => ({
@@ -32,6 +33,7 @@ describe("SubagentManager - Callback Integration", () => {
   let callbacks: SubagentManagerCallbacks;
   let mockGatewayConfig: GatewayConfig;
   let mockModelConfig: ModelConfig;
+  let container: Container;
 
   beforeEach(async () => {
     // Set up subagent callbacks with spies
@@ -42,16 +44,43 @@ describe("SubagentManager - Callback Integration", () => {
       onSubagentToolBlockUpdated: vi.fn(),
     };
 
+    // Create container
+    container = new Container();
+    container.register("PermissionManager", {
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+    } as unknown as Record<string, unknown>);
+    container.register("TaskManager", {} as unknown as Record<string, unknown>);
+    container.register(
+      "ReversionManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "BackgroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register(
+      "ForegroundTaskManager",
+      {} as unknown as Record<string, unknown>,
+    );
+    container.register("LspManager", {} as unknown as Record<string, unknown>);
+
     // Create parent ToolManager (simplified for testing)
     const mockMcpManager = {
       listTools: vi.fn().mockReturnValue([]),
       callTool: vi.fn().mockResolvedValue({ result: "mock result" }),
+      isMcpTool: vi.fn().mockReturnValue(false),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
+      getMcpToolsConfig: vi.fn().mockReturnValue([]),
     };
+    container.register(
+      "McpManager",
+      mockMcpManager as unknown as Record<string, unknown>,
+    );
 
     parentToolManager = new ToolManager({
-      mcpManager:
-        mockMcpManager as unknown as import("../../src/managers/mcpManager.js").McpManager,
+      container,
     });
+    container.register("ToolManager", parentToolManager);
 
     // Mock configurations
     mockGatewayConfig = {
@@ -65,10 +94,8 @@ describe("SubagentManager - Callback Integration", () => {
     };
 
     // Create SubagentManager
-    subagentManager = new SubagentManager({
+    subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
-      parentToolManager,
-      taskManager: {} as unknown as TaskManager,
       callbacks,
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
@@ -443,10 +470,8 @@ describe("SubagentManager - Callback Integration", () => {
         }),
       };
 
-      const errorSubagentManager = new SubagentManager({
+      const errorSubagentManager = new SubagentManager(container, {
         workdir: "/tmp/test",
-        parentToolManager,
-        taskManager: {} as unknown as TaskManager,
         callbacks: errorCallbacks,
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
@@ -489,10 +514,8 @@ describe("SubagentManager - Callback Integration", () => {
     });
 
     it("should work when parent callbacks are not provided", async () => {
-      const noCallbackManager = new SubagentManager({
+      const noCallbackManager = new SubagentManager(container, {
         workdir: "/tmp/test",
-        parentToolManager,
-        taskManager: {} as unknown as TaskManager,
         // No callbacks provided
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
@@ -604,16 +627,15 @@ describe("SubagentManager - Callback Integration", () => {
       const { BackgroundTaskManager } = await import(
         "../../src/managers/backgroundTaskManager.js"
       );
-      const backgroundTaskManager = new BackgroundTaskManager({
+      const backgroundTaskManager = new BackgroundTaskManager(container, {
         workdir: "/tmp/test",
       });
       const addTaskSpy = vi.spyOn(backgroundTaskManager, "addTask");
 
-      const bgSubagentManager = new SubagentManager({
+      container.register("BackgroundTaskManager", backgroundTaskManager);
+
+      const bgSubagentManager = new SubagentManager(container, {
         workdir: "/tmp/test",
-        parentToolManager,
-        taskManager: {} as unknown as TaskManager,
-        backgroundTaskManager,
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 1000,

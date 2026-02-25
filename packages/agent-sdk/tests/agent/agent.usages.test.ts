@@ -44,6 +44,14 @@ describe("Agent Usage Tracking", () => {
       callbacks: mockCallbacks,
     });
 
+    // Inject mock ToolManager into the container
+    const container = (
+      agent as unknown as {
+        container: { register: (name: string, instance: unknown) => void };
+      }
+    ).container;
+    container.register("ToolManager", mockToolManagerInstance);
+
     vi.clearAllMocks();
   });
 
@@ -339,6 +347,14 @@ describe("Agent Usage Tracking", () => {
         },
         messages: initialMessages,
       });
+
+      // Inject mock ToolManager into the container
+      const container = (
+        agent as unknown as {
+          container: { register: (name: string, instance: unknown) => void };
+        }
+      ).container;
+      container.register("ToolManager", mockToolManagerInstance);
 
       vi.clearAllMocks();
 

@@ -8,6 +8,7 @@ import {
 import { promises as fs } from "fs";
 import { TaskManager } from "../../src/services/taskManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
+import { Container } from "../../src/utils/container.js";
 
 // Mock fs/promises
 vi.mock("fs", async (importOriginal) => {
@@ -33,7 +34,8 @@ describe("Task Management Integration Tests", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    taskManager = new TaskManager(sessionId);
+    const container = new Container();
+    taskManager = new TaskManager(container, sessionId);
     context = {
       sessionId,
       taskManager,

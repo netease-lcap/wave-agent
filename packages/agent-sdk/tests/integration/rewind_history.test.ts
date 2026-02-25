@@ -5,6 +5,7 @@ import { ReversionManager } from "../../src/managers/reversionManager.js";
 import fs from "fs/promises";
 import { Message } from "../../src/types/messaging.js";
 import * as sessionService from "../../src/services/session.js";
+import { Container } from "../../src/utils/container.js";
 
 vi.mock("fs/promises");
 vi.mock("../../src/managers/reversionManager.js");
@@ -20,6 +21,7 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
 describe("MessageManager History Truncation Integration", () => {
   let messageManager: MessageManager;
   let mockReversionManager: Mocked<ReversionManager>;
+  const container = new Container();
   const callbacks = {
     onMessagesChange: vi.fn(),
     onSessionIdChange: vi.fn(),
@@ -27,7 +29,7 @@ describe("MessageManager History Truncation Integration", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    messageManager = new MessageManager({
+    messageManager = new MessageManager(container, {
       callbacks,
       workdir: "/test/workdir",
     });

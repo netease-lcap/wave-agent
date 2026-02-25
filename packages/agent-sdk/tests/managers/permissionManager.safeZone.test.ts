@@ -3,24 +3,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
 import type { ToolPermissionContext } from "../../src/types/permissions.js";
-import type { Logger } from "../../src/types/index.js";
+import { Container } from "../../src/utils/container.js";
 
 describe("PermissionManager Safe Zone", () => {
   let permissionManager: PermissionManager;
-  let mockLogger: Logger;
+  let container: Container;
   const workdir = "/home/user/project";
   const additionalDir = "/home/user/other";
 
   beforeEach(() => {
-    mockLogger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    } as unknown as Logger;
+    container = new Container();
 
-    permissionManager = new PermissionManager({
-      logger: mockLogger,
+    permissionManager = new PermissionManager(container, {
       additionalDirectories: [additionalDir],
       workdir,
     });

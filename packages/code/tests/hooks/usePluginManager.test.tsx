@@ -39,6 +39,14 @@ vi.mock("wave-agent-sdk", () => ({
   PluginScopeManager: vi.fn(function () {
     return mockPluginScopeManager;
   }),
+  Container: vi.fn(function () {
+    return {
+      register: vi.fn(),
+      get: vi.fn(),
+      has: vi.fn(),
+      createChild: vi.fn(),
+    };
+  }),
 }));
 
 describe("usePluginManager", () => {

@@ -4,31 +4,33 @@ import type {
   ToolPermissionContext,
   PermissionCallback,
 } from "../../src/types/permissions.js";
-import type { Logger } from "../../src/types/index.js";
+import { Container } from "../../src/utils/container.js";
+import { logger } from "../../src/utils/globalLogger.js";
+
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 describe("PermissionManager - acceptEdits mode", () => {
   let permissionManager: PermissionManager;
-  let mockLogger: Logger;
+  let container: Container;
 
   beforeEach(() => {
-    mockLogger = {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    } as unknown as Logger;
+    container = new Container();
 
-    permissionManager = new PermissionManager({
-      logger: mockLogger,
-    });
+    permissionManager = new PermissionManager(container);
   });
 
   describe("checkPermission with acceptEdits mode", () => {
     it("should automatically allow 'Edit', 'MultiEdit', 'Delete', 'Write' tools inside Safe Zone", async () => {
       const autoAcceptedTools = ["Edit", "MultiEdit", "Delete", "Write"];
       const workdir = "/home/user/project";
-      const manager = new PermissionManager({
-        logger: mockLogger,
+      const manager = new PermissionManager(container, {
         workdir,
       });
 
@@ -42,7 +44,7 @@ describe("PermissionManager - acceptEdits mode", () => {
         const result = await manager.checkPermission(context);
 
         expect(result).toEqual({ behavior: "allow" });
-        expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect(logger.debug).toHaveBeenCalledWith(
           "Permission automatically accepted for tool in acceptEdits mode",
           { toolName },
         );
@@ -88,7 +90,7 @@ describe("PermissionManager - acceptEdits mode", () => {
 
   describe("resolveEffectivePermissionMode with acceptEdits", () => {
     it("should correctly resolve effective mode when acceptEdits is set as configured default", () => {
-      const manager = new PermissionManager({
+      const manager = new PermissionManager(container, {
         configuredDefaultMode: "acceptEdits",
       });
 
@@ -97,7 +99,7 @@ describe("PermissionManager - acceptEdits mode", () => {
     });
 
     it("should correctly resolve effective mode when acceptEdits is set as CLI override", () => {
-      const manager = new PermissionManager({
+      const manager = new PermissionManager(container, {
         configuredDefaultMode: "default",
       });
 
@@ -110,7 +112,7 @@ describe("PermissionManager - acceptEdits mode", () => {
     });
 
     it("should prioritize CLI override over configured default acceptEdits", () => {
-      const manager = new PermissionManager({
+      const manager = new PermissionManager(container, {
         configuredDefaultMode: "acceptEdits",
       });
 

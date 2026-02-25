@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { deleteFileTool } from "@/tools/deleteFileTool.js";
 import type { ToolResult, ToolContext } from "@/tools/types.js";
 import { TaskManager } from "@/services/taskManager.js";
+import { Container } from "@/utils/container.js";
 
 const testContext: ToolContext = {
   workdir: "/test/workdir",
-  taskManager: new TaskManager("test-session"),
+  taskManager: new TaskManager(new Container(), "test-session"),
 };
 
 // Mock fs/promises module

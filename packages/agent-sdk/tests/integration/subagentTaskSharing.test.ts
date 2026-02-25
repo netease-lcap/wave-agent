@@ -6,6 +6,7 @@ import {
 import { promises as fs } from "fs";
 import { TaskManager } from "../../src/services/taskManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
+import { Container } from "../../src/utils/container.js";
 
 // Mock fs/promises
 vi.mock("fs", async (importOriginal) => {
@@ -28,10 +29,11 @@ describe("Subagent Task Sharing Integration Tests", () => {
   const subagentSessionId = "subagent-session-id";
   let taskManager: TaskManager;
   let virtualFs: Map<string, string>;
+  const container = new Container();
 
   beforeEach(() => {
     vi.clearAllMocks();
-    taskManager = new TaskManager(mainSessionId);
+    taskManager = new TaskManager(container, mainSessionId);
     virtualFs = new Map();
 
     vi.mocked(fs.mkdir).mockResolvedValue(undefined);
@@ -120,8 +122,8 @@ describe("Subagent Task Sharing Integration Tests", () => {
   });
 
   it("should NOT share tasks if mainSessionId is not provided (isolation check)", async () => {
-    const taskManagerA = new TaskManager("session-a");
-    const taskManagerB = new TaskManager("session-b");
+    const taskManagerA = new TaskManager(container, "session-a");
+    const taskManagerB = new TaskManager(container, "session-b");
 
     const contextA: ToolContext = {
       sessionId: "session-a",

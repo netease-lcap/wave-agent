@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HookManager } from "../../src/managers/hookManager.js";
+import { Container } from "../../src/utils/container.js";
 import type { HookMatcher } from "../../src/utils/hookMatcher.js";
 import {
   executeCommand,
@@ -47,8 +48,10 @@ describe("HookManager", () => {
     mockExecuteCommands.mockResolvedValue([]);
     mockIsCommandSafe.mockReturnValue(true);
 
+    const container = new Container();
+
     // Create manager with mocks
-    manager = new HookManager("/test/workdir", mockMatcher);
+    manager = new HookManager(container, "/test/workdir", mockMatcher);
   });
 
   describe("Wave Configuration Management", () => {

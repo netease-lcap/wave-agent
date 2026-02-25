@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mocked } from "vitest";
+import { Container } from "../../src/utils/container.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import fs from "node:fs/promises";
@@ -35,22 +36,36 @@ describe("AIManager Plan Mode Prompt", () => {
       getToolsConfig: vi.fn().mockReturnValue([]),
       getTools: vi.fn().mockReturnValue([]),
     } as unknown as Mocked<ToolManager>;
+
     mockPermissionManager = {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
       getPlanFilePath: vi.fn().mockReturnValue("/path/to/plan.md"),
       clearTemporaryRules: vi.fn(),
     } as unknown as Mocked<PermissionManager>;
 
-    aiManager = new AIManager({
-      messageManager: mockMessageManager,
-      toolManager: mockToolManager,
-      taskManager: {} as unknown as TaskManager,
-      permissionManager: mockPermissionManager,
+    const container = new Container();
+    container.register("MessageManager", mockMessageManager);
+    container.register("ToolManager", mockToolManager);
+    container.register("TaskManager", {} as unknown as TaskManager);
+    container.register("PermissionManager", mockPermissionManager);
+
+    // Mock SubagentManager and register it
+    container.register("SubagentManager", {
+      getConfigurations: vi.fn().mockReturnValue([]),
+    });
+
+    // Mock SkillManager and register it
+    container.register("SkillManager", {
+      getAvailableSkills: vi.fn().mockReturnValue([]),
+    });
+
+    aiManager = new AIManager(container, {
       workdir: "/test/workdir",
       getGatewayConfig: () => ({}) as GatewayConfig,
       getModelConfig: () => ({ agentModel: "gpt-4" }) as ModelConfig,
       getMaxInputTokens: () => 1000,
       getLanguage: () => undefined,
+      stream: false,
     });
 
     vi.mocked(callAgent).mockResolvedValue({

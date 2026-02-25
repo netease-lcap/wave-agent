@@ -5,6 +5,7 @@ import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { existsSync, readdirSync, statSync } from "fs";
+import { Container } from "../../src/utils/container.js";
 
 // Mock the fs operations for custom command discovery
 vi.mock("fs", () => ({
@@ -68,7 +69,7 @@ describe("SlashCommandManager Nested Command Integration", () => {
     vi.clearAllMocks();
 
     // Create MessageManager with necessary callbacks
-    messageManager = new MessageManager({
+    messageManager = new MessageManager(new Container(), {
       callbacks: {},
       workdir: mockWorkdir,
     });
@@ -163,14 +164,23 @@ describe("SlashCommandManager Nested Command Integration", () => {
       generateId: vi.fn(),
     };
 
-    return new SlashCommandManager({
-      messageManager,
-      aiManager,
-      backgroundTaskManager:
-        backgroundTaskManager as unknown as BackgroundTaskManager,
-      taskManager: new TaskManager("test-task-list"),
+    const container = new Container();
+    container.register("MessageManager", messageManager);
+    container.register("AIManager", aiManager);
+    container.register(
+      "BackgroundTaskManager",
+      backgroundTaskManager as unknown as BackgroundTaskManager,
+    );
+    container.register(
+      "TaskManager",
+      new TaskManager(container, "test-task-list"),
+    );
+
+    const manager = new SlashCommandManager(container, {
       workdir: mockWorkdir,
     });
+    manager.initialize();
+    return manager;
   }
 
   describe("Mixed Command Discovery Integration", () => {

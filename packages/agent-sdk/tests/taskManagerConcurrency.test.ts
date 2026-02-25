@@ -3,6 +3,7 @@ import { TaskManager } from "../src/services/taskManager.js";
 import { taskCreateTool } from "../src/tools/taskManagementTools.js";
 import { ToolContext } from "../src/tools/types.js";
 import { promises as fs } from "fs";
+import { Container } from "../src/utils/container.js";
 
 vi.mock("fs", () => ({
   promises: {
@@ -34,7 +35,8 @@ describe("TaskCreate Concurrency", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    taskManager = new TaskManager(sessionId);
+    const container = new Container();
+    taskManager = new TaskManager(container, sessionId);
   });
 
   it("should result in unique IDs when TaskCreate is called concurrently", async () => {

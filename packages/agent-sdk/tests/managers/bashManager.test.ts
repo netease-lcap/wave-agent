@@ -10,6 +10,7 @@ vi.mock("@/utils/bashHistory");
 
 import { BashManager } from "@/managers/bashManager.js";
 import type { MessageManager } from "@/managers/messageManager.js";
+import { Container } from "@/utils/container.js";
 
 // Mock MessageManager
 const createMockMessageManager = (): MessageManager => {
@@ -64,9 +65,11 @@ describe("BashManager", () => {
     // Setup spawn mock to return our mock child process
     mockSpawn.mockReturnValue(mockChildProcess as unknown as ChildProcess);
 
-    bashManager = new BashManager({
+    const container = new Container();
+    container.register("MessageManager", mockMessageManager);
+
+    bashManager = new BashManager(container, {
       workdir: testWorkdir,
-      messageManager: mockMessageManager,
     });
   });
 
@@ -81,8 +84,9 @@ describe("BashManager", () => {
     });
 
     it("should create BashManager using factory function", () => {
-      const manager = new BashManager({
-        messageManager: createMockMessageManager(),
+      const container = new Container();
+      container.register("MessageManager", createMockMessageManager());
+      const manager = new BashManager(container, {
         workdir: "/test/workdir",
       });
       expect(manager).toBeInstanceOf(BashManager);

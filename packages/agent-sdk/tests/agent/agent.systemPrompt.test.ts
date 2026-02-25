@@ -56,6 +56,14 @@ describe("Agent - System Prompt", () => {
       systemPrompt: customSystemPrompt,
     });
 
+    // Inject mock ToolManager into the container
+    const container = (
+      agent as unknown as {
+        container: { register: (name: string, instance: unknown) => void };
+      }
+    ).container;
+    container.register("ToolManager", mockToolManagerInstance);
+
     const mockCallAgent = vi.mocked(aiService.callAgent);
     mockCallAgent.mockResolvedValue({
       content: "Test response",
@@ -80,6 +88,14 @@ describe("Agent - System Prompt", () => {
     agent = await Agent.create({
       callbacks: mockCallbacks,
     });
+
+    // Inject mock ToolManager into the container
+    const container = (
+      agent as unknown as {
+        container: { register: (name: string, instance: unknown) => void };
+      }
+    ).container;
+    container.register("ToolManager", mockToolManagerInstance);
 
     const mockCallAgent = vi.mocked(aiService.callAgent);
     mockCallAgent.mockResolvedValue({

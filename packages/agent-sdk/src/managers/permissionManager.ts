@@ -33,12 +33,13 @@ import {
   READ_TOOL_NAME,
   LS_TOOL_NAME,
 } from "../constants/tools.js";
+import { Container } from "../utils/container.js";
 
 const SAFE_COMMANDS = ["cd", "ls", "pwd", "true", "false"];
 
+import { logger } from "../utils/globalLogger.js";
+
 export interface PermissionManagerOptions {
-  /** Logger for debugging permission decisions */
-  logger?: Logger;
   /** Configured default permission mode from settings */
   configuredDefaultMode?: PermissionMode;
   /** Allowed rules from settings */
@@ -51,10 +52,11 @@ export interface PermissionManagerOptions {
   workdir?: string;
   /** Path to the current plan file */
   planFilePath?: string;
+  /** Optional logger */
+  logger?: Logger;
 }
 
 export class PermissionManager {
-  private logger?: Logger;
   private configuredDefaultMode?: PermissionMode;
   private allowedRules: string[] = [];
   private deniedRules: string[] = [];
@@ -63,14 +65,18 @@ export class PermissionManager {
   private workdir?: string;
   private planFilePath?: string;
   private onConfiguredDefaultModeChange?: (mode: PermissionMode) => void;
+  private _logger?: Logger;
 
-  constructor(options: PermissionManagerOptions = {}) {
-    this.logger = options.logger;
+  constructor(
+    private container: Container,
+    options: PermissionManagerOptions = {},
+  ) {
     this.configuredDefaultMode = options.configuredDefaultMode;
     this.allowedRules = options.allowedRules || [];
     this.deniedRules = options.deniedRules || [];
     this.workdir = options.workdir;
     this.planFilePath = options.planFilePath;
+    this._logger = options.logger;
     this.updateAdditionalDirectories(options.additionalDirectories || []);
   }
 
@@ -89,7 +95,7 @@ export class PermissionManager {
   updateConfiguredDefaultMode(defaultMode?: PermissionMode): void {
     const oldEffectiveMode = this.getCurrentEffectiveMode();
 
-    this.logger?.debug("Updating configured default permission mode", {
+    logger?.debug("Updating configured default permission mode", {
       previous: this.configuredDefaultMode,
       new: defaultMode,
     });
@@ -100,7 +106,7 @@ export class PermissionManager {
       oldEffectiveMode !== newEffectiveMode &&
       this.onConfiguredDefaultModeChange
     ) {
-      this.logger?.debug(
+      logger?.debug(
         "Effective permission mode changed due to configuration update",
         {
           oldMode: oldEffectiveMode,
@@ -122,7 +128,7 @@ export class PermissionManager {
    * Update the allowed rules (e.g., when configuration reloads)
    */
   updateAllowedRules(rules: string[]): void {
-    this.logger?.debug("Updating allowed permission rules", {
+    logger?.debug("Updating allowed permission rules", {
       count: rules.length,
     });
     this.allowedRules = rules;
@@ -132,7 +138,7 @@ export class PermissionManager {
    * Update the denied rules (e.g., when configuration reloads)
    */
   updateDeniedRules(rules: string[]): void {
-    this.logger?.debug("Updating denied permission rules", {
+    logger?.debug("Updating denied permission rules", {
       count: rules.length,
     });
     this.deniedRules = rules;
@@ -142,7 +148,7 @@ export class PermissionManager {
    * Add temporary rules for the current session
    */
   public addTemporaryRules(rules: string[]): void {
-    this.logger?.debug("Adding temporary permission rules", {
+    logger?.debug("Adding temporary permission rules", {
       count: rules.length,
       rules,
     });
@@ -153,7 +159,7 @@ export class PermissionManager {
    * Clear all temporary rules
    */
   public clearTemporaryRules(): void {
-    this.logger?.debug("Clearing temporary permission rules");
+    logger?.debug("Clearing temporary permission rules");
     this.temporaryRules = [];
   }
 
@@ -161,7 +167,7 @@ export class PermissionManager {
    * Update the additional directories (e.g., when configuration reloads)
    */
   updateAdditionalDirectories(directories: string[]): void {
-    this.logger?.debug("Updating additional directories", {
+    logger?.debug("Updating additional directories", {
       count: directories.length,
     });
     this.additionalDirectories = directories.map((dir) => {
@@ -176,7 +182,7 @@ export class PermissionManager {
    * Update the working directory
    */
   updateWorkdir(workdir: string): void {
-    this.logger?.debug("Updating working directory", {
+    logger?.debug("Updating working directory", {
       workdir,
     });
     this.workdir = workdir;
@@ -186,7 +192,7 @@ export class PermissionManager {
    * Set the current plan file path
    */
   public setPlanFilePath(path: string | undefined): void {
-    this.logger?.debug("Setting plan file path", { path });
+    logger?.debug("Setting plan file path", { path });
     this.planFilePath = path;
   }
 
@@ -224,7 +230,7 @@ export class PermissionManager {
       }
     }
 
-    this.logger?.debug("Path is outside Safe Zone", {
+    logger?.debug("Path is outside Safe Zone", {
       absolutePath,
       workdir: effectiveWorkdir,
       additionalDirectories: this.additionalDirectories,
@@ -248,7 +254,7 @@ export class PermissionManager {
   ): PermissionMode {
     // CLI override takes highest precedence
     if (cliPermissionMode !== undefined) {
-      this.logger?.debug("Using CLI permission mode override", {
+      logger?.debug("Using CLI permission mode override", {
         cliMode: cliPermissionMode,
         configuredDefault: this.configuredDefaultMode,
       });
@@ -257,14 +263,14 @@ export class PermissionManager {
 
     // Use configured default mode if available
     if (this.configuredDefaultMode !== undefined) {
-      this.logger?.debug("Using configured default permission mode", {
+      logger?.debug("Using configured default permission mode", {
         configuredDefault: this.configuredDefaultMode,
       });
       return this.configuredDefaultMode;
     }
 
     // Fall back to system default
-    this.logger?.debug("Using system default permission mode");
+    logger?.debug("Using system default permission mode");
     return "default";
   }
 
@@ -275,7 +281,7 @@ export class PermissionManager {
   async checkPermission(
     context: ToolPermissionContext,
   ): Promise<PermissionDecision> {
-    this.logger?.debug("Checking permission for tool", {
+    logger?.debug("Checking permission for tool", {
       toolName: context.toolName,
       permissionMode: context.permissionMode,
       hasCallback: !!context.canUseToolCallback,
@@ -284,7 +290,7 @@ export class PermissionManager {
     // 0. Check denied rules first - Deny always takes precedence
     for (const rule of this.deniedRules) {
       if (this.matchesRule(context, rule)) {
-        this.logger?.warn("Permission denied by rule", {
+        logger?.warn("Permission denied by rule", {
           toolName: context.toolName,
           rule,
         });
@@ -297,7 +303,7 @@ export class PermissionManager {
 
     // 1. If bypassPermissions mode, always allow
     if (context.permissionMode === "bypassPermissions") {
-      this.logger?.debug("Permission bypassed for tool", {
+      logger?.debug("Permission bypassed for tool", {
         toolName: context.toolName,
       });
       return { behavior: "allow" };
@@ -323,7 +329,7 @@ export class PermissionManager {
             workdir,
           );
           if (!isInside) {
-            this.logger?.info(
+            logger?.info(
               "File operation outside the Safe Zone in acceptEdits mode, falling back to manual confirmation",
               {
                 toolName: context.toolName,
@@ -333,7 +339,7 @@ export class PermissionManager {
             );
             // Fall through to normal permission check flow to trigger confirmation prompt
           } else {
-            this.logger?.debug(
+            logger?.debug(
               "Permission automatically accepted for tool in acceptEdits mode",
               {
                 toolName: context.toolName,
@@ -347,7 +353,7 @@ export class PermissionManager {
 
     // 1.2 Check if tool call is allowed by persistent or temporary rules
     if (this.isAllowedByRule(context)) {
-      this.logger?.debug("Permission allowed by persistent rule", {
+      logger?.debug("Permission allowed by persistent rule", {
         toolName: context.toolName,
       });
       return { behavior: "allow" };
@@ -377,7 +383,7 @@ export class PermissionManager {
           const absolutePlanPath = path.resolve(this.planFilePath);
 
           if (absoluteTargetPath === absolutePlanPath) {
-            this.logger?.debug("Allowing write to plan file in plan mode", {
+            logger?.debug("Allowing write to plan file in plan mode", {
               toolName: context.toolName,
               targetPath,
             });
@@ -394,7 +400,7 @@ export class PermissionManager {
 
     // 2. If not a restricted tool, always allow
     if (!this.isRestrictedTool(context.toolName)) {
-      this.logger?.debug("Tool is not restricted, allowing", {
+      logger?.debug("Tool is not restricted, allowing", {
         toolName: context.toolName,
       });
       return { behavior: "allow" };
@@ -403,11 +409,11 @@ export class PermissionManager {
     // 3. If custom callback provided, call it and return result
     if (context.canUseToolCallback) {
       try {
-        this.logger?.debug("Calling custom permission callback for tool", {
+        logger?.debug("Calling custom permission callback for tool", {
           toolName: context.toolName,
         });
         const decision = await context.canUseToolCallback(context);
-        this.logger?.debug("Custom callback returned decision", {
+        logger?.debug("Custom callback returned decision", {
           toolName: context.toolName,
           decision,
         });
@@ -415,7 +421,7 @@ export class PermissionManager {
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        this.logger?.error("Error in permission callback", {
+        logger?.error("Error in permission callback", {
           toolName: context.toolName,
           error: errorMessage,
         });
@@ -428,7 +434,7 @@ export class PermissionManager {
 
     // 4. For default mode on restricted tools without callback, integrate with CLI confirmation
     // Note: CLI confirmation integration will be implemented in Phase 2
-    this.logger?.warn(
+    logger?.warn(
       "No permission callback provided for restricted tool in default mode",
       {
         toolName: context.toolName,
@@ -447,7 +453,7 @@ export class PermissionManager {
     const isRestricted = (RESTRICTED_TOOLS as readonly string[]).includes(
       toolName,
     );
-    this.logger?.debug("Checking if tool is restricted", {
+    logger?.debug("Checking if tool is restricted", {
       toolName,
       isRestricted,
     });
@@ -543,7 +549,7 @@ export class PermissionManager {
       }
     }
 
-    this.logger?.debug("Created permission context", {
+    logger?.debug("Created permission context", {
       toolName,
       permissionMode,
       hasCallback: !!callback,
