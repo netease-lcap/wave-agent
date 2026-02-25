@@ -9,14 +9,20 @@ interface AppProps {
   continueLastSession?: boolean;
   bypassPermissions?: boolean;
   pluginDirs?: string[];
+  tools?: string[];
 }
 
 const AppWithProviders: React.FC<{
   bypassPermissions?: boolean;
   pluginDirs?: string[];
-}> = ({ bypassPermissions, pluginDirs }) => {
+  tools?: string[];
+}> = ({ bypassPermissions, pluginDirs, tools }) => {
   return (
-    <ChatProvider bypassPermissions={bypassPermissions} pluginDirs={pluginDirs}>
+    <ChatProvider
+      bypassPermissions={bypassPermissions}
+      pluginDirs={pluginDirs}
+      tools={tools}
+    >
       <ChatInterfaceWithRemount />
     </ChatProvider>
   );
@@ -74,6 +80,7 @@ export const App: React.FC<AppProps> = ({
   continueLastSession,
   bypassPermissions,
   pluginDirs,
+  tools,
 }) => {
   return (
     <AppProvider
@@ -83,6 +90,7 @@ export const App: React.FC<AppProps> = ({
       <AppWithProviders
         bypassPermissions={bypassPermissions}
         pluginDirs={pluginDirs}
+        tools={tools}
       />
     </AppProvider>
   );

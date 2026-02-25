@@ -8,6 +8,7 @@ export interface CliOptions {
   continueLastSession?: boolean;
   bypassPermissions?: boolean;
   pluginDirs?: string[];
+  tools?: string[];
 }
 
 export async function startCli(options: CliOptions): Promise<void> {
@@ -16,6 +17,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     continueLastSession,
     bypassPermissions,
     pluginDirs,
+    tools,
   } = options;
 
   // Continue with ink-based UI for normal mode
@@ -72,6 +74,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       continueLastSession={continueLastSession}
       bypassPermissions={bypassPermissions}
       pluginDirs={pluginDirs}
+      tools={tools}
     />,
   );
 

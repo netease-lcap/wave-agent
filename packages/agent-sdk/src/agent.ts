@@ -98,6 +98,13 @@ export interface AgentOptions {
   lspManager?: ILspManager;
   /**Optional local plugins to load */
   plugins?: PluginConfig[];
+  /**
+   * Optional list of tool names to enable.
+   * - undefined: Enable all built-in tools and plugins (default).
+   * - []: Disable all tools.
+   * - string[]: Enable only the tools with the specified names.
+   */
+  tools?: string[];
 }
 
 export interface AgentCallbacks
@@ -344,6 +351,7 @@ export class Agent {
       taskManager: this.taskManager,
       backgroundTaskManager: this.backgroundTaskManager,
       foregroundTaskManager: this.foregroundTaskManager,
+      tools: options.tools,
     }); // Initialize tool registry with permission support
     this.liveConfigManager = new LiveConfigManager({
       workdir: this.workdir,

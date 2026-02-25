@@ -108,12 +108,14 @@ export interface ChatProviderProps {
   children: React.ReactNode;
   bypassPermissions?: boolean;
   pluginDirs?: string[];
+  tools?: string[];
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   bypassPermissions,
   pluginDirs,
+  tools,
 }) => {
   const { restoreSessionId, continueLastSession } = useAppConfig();
 
@@ -304,6 +306,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           canUseTool: permissionCallback,
           stream: false, // 关闭流式模式
           plugins: pluginDirs?.map((path) => ({ type: "local", path })),
+          tools,
         });
 
         agentRef.current = agent;
@@ -336,6 +339,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     bypassPermissions,
     showConfirmation,
     pluginDirs,
+    tools,
   ]);
 
   // Cleanup on unmount
