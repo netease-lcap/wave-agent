@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { TaskManager } from "../../src/services/taskManager.js";
-import { createSkillTool } from "../../src/tools/skillTool.js";
+import { skillTool } from "../../src/tools/skillTool.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
-import { createTaskTool } from "../../src/tools/taskTool.js";
+import { taskTool } from "../../src/tools/taskTool.js";
 import type {
   Logger,
   GatewayConfig,
@@ -34,19 +34,11 @@ describe("Dynamic Tool Definitions", () => {
       // Mock initialization to avoid fs calls
       (skillManager as unknown as { initialized: boolean }).initialized = true;
 
-      const tool = createSkillTool(skillManager);
+      const tool = skillTool;
 
       // Initially no skills
-      vi.spyOn(skillManager, "getAvailableSkills").mockReturnValue([]);
-      expect(tool.config.function.description).toContain(
-        "No skills are currently available",
-      );
-      const params = tool.config.function.parameters as unknown as {
-        properties: {
-          skill_name: { enum: string[] };
-        };
-      };
-      expect(params.properties.skill_name.enum).toEqual([]);
+      const promptNoSkills = tool.prompt?.({ availableSkills: [] });
+      expect(promptNoSkills).toContain("No skills are currently available");
 
       // Add a skill
       const mockSkills = [
@@ -57,16 +49,10 @@ describe("Dynamic Tool Definitions", () => {
           skillPath: "/path/to/test",
         },
       ];
-      vi.spyOn(skillManager, "getAvailableSkills").mockReturnValue(mockSkills);
 
-      // Tool config should now reflect the new skill
-      expect(tool.config.function.description).toContain("test-skill");
-      const updatedParams = tool.config.function.parameters as unknown as {
-        properties: {
-          skill_name: { enum: string[] };
-        };
-      };
-      expect(updatedParams.properties.skill_name.enum).toEqual(["test-skill"]);
+      // Tool prompt should now reflect the new skill
+      const promptWithSkills = tool.prompt?.({ availableSkills: mockSkills });
+      expect(promptWithSkills).toContain("test-skill");
     });
   });
 
@@ -91,21 +77,11 @@ describe("Dynamic Tool Definitions", () => {
         }
       ).cachedConfigurations = [];
 
-      const tool = createTaskTool(subagentManager);
+      const tool = taskTool;
 
       // Initially no subagents
-      vi.spyOn(subagentManager, "getConfigurations").mockReturnValue([]);
-      expect(tool.config.function.description).toContain(
-        "No subagents configured",
-      );
-      const params = tool.config.function.parameters as unknown as {
-        properties: {
-          subagent_type: { description: string };
-        };
-      };
-      expect(params.properties.subagent_type.description).toContain(
-        "Available options: none",
-      );
+      const promptNoSubagents = tool.prompt?.({ availableSubagents: [] });
+      expect(promptNoSubagents).toContain("No subagents configured");
 
       // Add a subagent
       const mockSubagents: SubagentConfiguration[] = [
@@ -118,20 +94,12 @@ describe("Dynamic Tool Definitions", () => {
           priority: 1,
         },
       ];
-      vi.spyOn(subagentManager, "getConfigurations").mockReturnValue(
-        mockSubagents,
-      );
 
-      // Tool config should now reflect the new subagent
-      expect(tool.config.function.description).toContain("test-subagent");
-      const updatedParams = tool.config.function.parameters as unknown as {
-        properties: {
-          subagent_type: { description: string };
-        };
-      };
-      expect(updatedParams.properties.subagent_type.description).toContain(
-        "Available options: test-subagent",
-      );
+      // Tool prompt should now reflect the new subagent
+      const promptWithSubagents = tool.prompt?.({
+        availableSubagents: mockSubagents,
+      });
+      expect(promptWithSubagents).toContain("test-subagent");
     });
   });
 });

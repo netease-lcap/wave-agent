@@ -290,6 +290,9 @@ Any promises made to the user
 Be concise but complete—err on the side of including information that would prevent duplicate work or repeated mistakes. Write in a way that enables immediate resumption of the task.
 Wrap your summary in <summary></summary> tags.`;
 
+import type { SubagentConfiguration } from "../utils/subagentParser.js";
+import type { SkillMetadata } from "../types/skills.js";
+
 export function buildSystemPrompt(
   basePrompt: string | undefined,
   tools: ToolPlugin[],
@@ -302,6 +305,8 @@ export function buildSystemPrompt(
       planFilePath: string;
       planExists: boolean;
     };
+    availableSubagents?: SubagentConfiguration[];
+    availableSkills?: SkillMetadata[];
   } = {},
 ): string {
   let prompt = basePrompt || DEFAULT_SYSTEM_PROMPT;
@@ -311,7 +316,11 @@ export function buildSystemPrompt(
 
   for (const tool of tools) {
     if (tool.prompt) {
-      prompt += tool.prompt();
+      prompt += tool.prompt({
+        availableSubagents: options.availableSubagents,
+        availableSkills: options.availableSkills,
+        workdir: options.workdir,
+      });
     }
   }
 

@@ -1,19 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createTaskTool } from "../../src/tools/taskTool.js";
+import { taskTool } from "../../src/tools/taskTool.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import {
   SubagentManager,
   type SubagentInstance,
 } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
-import type { ToolContext, ToolPlugin } from "../../src/tools/types.js";
+import type { ToolContext } from "../../src/tools/types.js";
 
 // Mock the subagent manager
 vi.mock("../../src/managers/subagentManager.js");
 
 describe("Task Tool Background Execution", () => {
   let mockSubagentManager: SubagentManager;
-  let taskTool: ToolPlugin;
   const mockToolContext: ToolContext = {
     abortSignal: new AbortController().signal,
     workdir: "/test/workdir",
@@ -42,13 +41,15 @@ describe("Task Tool Background Execution", () => {
       backgroundInstance: vi.fn(),
     } as unknown as SubagentManager;
 
-    // Create task tool with mock manager
-    taskTool = createTaskTool(mockSubagentManager);
+    // Set the mock manager in the context
+    mockToolContext.subagentManager = mockSubagentManager;
   });
 
   it("should support run_in_background parameter", async () => {
-    expect(taskTool.prompt?.()).toBeDefined();
-    expect(typeof taskTool.prompt?.()).toBe("string");
+    expect(taskTool.prompt?.({ availableSubagents: [gpConfig] })).toBeDefined();
+    expect(typeof taskTool.prompt?.({ availableSubagents: [gpConfig] })).toBe(
+      "string",
+    );
     const mockInstance = {
       subagentId: "gp-test-id",
       lastTools: [],

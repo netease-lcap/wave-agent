@@ -1,87 +1,91 @@
-import type { ToolPlugin, ToolResult } from "./types.js";
-import type { SkillManager } from "../managers/skillManager.js";
+import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { SKILL_TOOL_NAME } from "../constants/tools.js";
+import type { SkillMetadata } from "../types/skills.js";
 
 /**
- * Create a skill tool plugin that uses the provided SkillManager
- * Note: SkillManager should be initialized before calling this function
+ * Skill tool plugin for invoking Wave skills
  */
-export function createSkillTool(skillManager: SkillManager): ToolPlugin {
-  // Ensure SkillManager is initialized
-  skillManager.getAvailableSkills();
-
-  return {
-    name: SKILL_TOOL_NAME,
-    get config() {
-      const availableSkills = skillManager.getAvailableSkills();
-
-      const getToolDescription = (): string => {
-        if (availableSkills.length === 0) {
-          return "Invoke a Wave skill by name. Skills are user-defined automation templates that can be personal or project-specific. No skills are currently available.";
-        }
-
-        const skillList = availableSkills
-          .map(
-            (skill) =>
-              `• **${skill.name}** (${skill.type}): ${skill.description}`,
-          )
-          .join("\n");
-
-        return `Invoke a Wave skill by name. Skills are user-defined automation templates that can be personal or project-specific.\n\nAvailable skills:\n${skillList}`;
-      };
-
-      return {
-        type: "function" as const,
-        function: {
-          name: SKILL_TOOL_NAME,
-          description: getToolDescription(),
-          parameters: {
-            type: "object",
-            properties: {
-              skill_name: {
-                type: "string",
-                description: "Name of the skill to invoke",
-                enum: availableSkills.map((skill) => skill.name),
-              },
-            },
-            required: ["skill_name"],
+export const skillTool: ToolPlugin = {
+  name: SKILL_TOOL_NAME,
+  config: {
+    type: "function" as const,
+    function: {
+      name: SKILL_TOOL_NAME,
+      description:
+        "Invoke a Wave skill by name. Skills are user-defined automation templates that can be personal or project-specific.",
+      parameters: {
+        type: "object",
+        properties: {
+          skill_name: {
+            type: "string",
+            description: "Name of the skill to invoke",
           },
         },
-      };
+        required: ["skill_name"],
+      },
     },
-    execute: async (args: Record<string, unknown>): Promise<ToolResult> => {
-      try {
-        // Validate arguments
-        const skillName = args.skill_name as string;
-        if (!skillName || typeof skillName !== "string") {
-          return {
-            success: false,
-            content: "",
-            error: "skill_name parameter is required and must be a string",
-          };
-        }
+  },
 
-        // Execute the skill
-        const result = await skillManager.executeSkill({
-          skill_name: skillName,
-        });
+  prompt: (args?: { availableSkills?: SkillMetadata[] }) => {
+    const availableSkills = args?.availableSkills;
+    if (!availableSkills || availableSkills.length === 0) {
+      return "Invoke a Wave skill by name. Skills are user-defined automation templates that can be personal or project-specific. No skills are currently available.";
+    }
 
-        return {
-          success: true,
-          content: result.content,
-          shortResult: `Invoked skill: ${skillName}`,
-        };
-      } catch (error) {
+    const skillList = availableSkills
+      .map(
+        (skill) => `• **${skill.name}** (${skill.type}): ${skill.description}`,
+      )
+      .join("\n");
+
+    return `Invoke a Wave skill by name. Skills are user-defined automation templates that can be personal or project-specific.\n\nAvailable skills:\n${skillList}`;
+  },
+
+  execute: async (
+    args: Record<string, unknown>,
+    context: ToolContext,
+  ): Promise<ToolResult> => {
+    try {
+      const skillManager = context.skillManager;
+      if (!skillManager) {
         return {
           success: false,
           content: "",
-          error: error instanceof Error ? error.message : String(error),
+          error: "Skill manager not available in tool context",
         };
       }
-    },
-    formatCompactParams: (params: Record<string, unknown>) => {
-      const skillName = params.skill_name as string;
-      return skillName || "unknown-skill";
-    },
-  };
-}
+
+      // Validate arguments
+      const skillName = args.skill_name as string;
+      if (!skillName || typeof skillName !== "string") {
+        return {
+          success: false,
+          content: "",
+          error: "skill_name parameter is required and must be a string",
+        };
+      }
+
+      // Execute the skill
+      const result = await skillManager.executeSkill({
+        skill_name: skillName,
+      });
+
+      return {
+        success: true,
+        content: result.content,
+        shortResult: `Invoked skill: ${skillName}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        content: "",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  },
+
+  formatCompactParams: (params: Record<string, unknown>) => {
+    const skillName = params.skill_name as string;
+    return skillName || "unknown-skill";
+  },
+};
