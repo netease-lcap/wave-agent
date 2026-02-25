@@ -364,6 +364,14 @@ export class AIManager {
         }
       }
 
+      // Get available subagents and skills for dynamic prompts
+      const availableSubagents = this.toolManager
+        .getSubagentManager()
+        ?.getConfigurations();
+      const availableSkills = this.toolManager
+        .getSkillManager()
+        ?.getAvailableSkills();
+
       // Call AI service with streaming callbacks if enabled
       const callAgentOptions: CallAgentOptions = {
         gatewayConfig: this.getGatewayConfig(),
@@ -383,6 +391,8 @@ export class AIManager {
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
             planMode: planModeOptions,
+            availableSubagents,
+            availableSkills,
           },
         ), // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override

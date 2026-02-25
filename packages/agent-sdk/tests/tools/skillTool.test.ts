@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Stats } from "fs";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { SkillManager } from "../../src/managers/skillManager.js";
-import { createSkillTool } from "../../src/tools/skillTool.js";
+import { skillTool } from "../../src/tools/skillTool.js";
 import type { Logger } from "../../src/types/index.js";
 
 // Mock fs/promises
@@ -32,7 +32,7 @@ import { readdir, stat } from "fs/promises";
 const mockReaddir = vi.mocked(readdir);
 const mockStat = vi.mocked(stat);
 
-describe("createSkillTool", () => {
+describe("skillTool", () => {
   let skillManager: SkillManager;
   let mockLogger: Logger;
 
@@ -59,70 +59,47 @@ describe("createSkillTool", () => {
     });
   });
 
-  it("should throw error when created with uninitialized SkillManager", () => {
-    // This should throw because SkillManager is not initialized
-    expect(() => createSkillTool(skillManager)).toThrow(
-      "SkillManager not initialized. Call initialize() first.",
-    );
-  });
-
-  it("should create a tool plugin with correct structure when initialized with no skills", async () => {
-    // Initialize the skill manager first
-    await skillManager.initialize();
-
-    const tool = createSkillTool(skillManager);
-
-    expect(tool.name).toBe("Skill");
-    expect(tool.config).toBeDefined();
-    expect(tool.config.type).toBe("function");
-    expect(tool.config.function.name).toBe("Skill");
-    expect(typeof tool.execute).toBe("function");
-    expect(typeof tool.formatCompactParams).toBe("function");
-
-    // When initialized with no skills, enum should be empty
-    const params = tool.config.function?.parameters as Record<string, unknown>;
-    const properties = params?.properties as Record<string, unknown>;
-    const skillName = properties?.skill_name as Record<string, unknown>;
-    expect(skillName?.enum).toEqual([]);
+  it("should have correct structure", async () => {
+    expect(skillTool.name).toBe("Skill");
+    expect(skillTool.config).toBeDefined();
+    expect(skillTool.config.type).toBe("function");
+    expect(skillTool.config.function.name).toBe("Skill");
+    expect(typeof skillTool.execute).toBe("function");
+    expect(typeof skillTool.formatCompactParams).toBe("function");
   });
 
   it("should format compact params correctly", async () => {
-    await skillManager.initialize();
-    const tool = createSkillTool(skillManager);
     const context = {
       workdir: "/test",
       taskManager: new TaskManager("test-session"),
     };
 
     const params = { skill_name: "test-skill" };
-    const formatted = tool.formatCompactParams?.(params, context);
+    const formatted = skillTool.formatCompactParams?.(params, context);
 
     expect(formatted).toBe("test-skill");
   });
 
   it("should handle missing skill_name parameter in formatCompactParams", async () => {
-    await skillManager.initialize();
-    const tool = createSkillTool(skillManager);
     const context = {
       workdir: "/test",
       taskManager: new TaskManager("test-session"),
     };
 
     const params = {};
-    const formatted = tool.formatCompactParams?.(params, context);
+    const formatted = skillTool.formatCompactParams?.(params, context);
 
     expect(formatted).toBe("unknown-skill");
   });
 
   it("should validate skill_name parameter", async () => {
-    await skillManager.initialize();
-    const tool = createSkillTool(skillManager);
     const context = {
       workdir: "/test",
       taskManager: new TaskManager("test-session"),
+      skillManager,
     };
 
-    const result = await tool.execute({}, context);
+    const result = await skillTool.execute({}, context);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe(
@@ -139,13 +116,16 @@ describe("createSkillTool", () => {
       context: { skillName: "test-skill" },
     });
 
-    const tool = createSkillTool(skillManager);
     const context = {
       workdir: "/test",
       taskManager: new TaskManager("test-session"),
+      skillManager,
     };
 
-    const result = await tool.execute({ skill_name: "test-skill" }, context);
+    const result = await skillTool.execute(
+      { skill_name: "test-skill" },
+      context,
+    );
 
     expect(result.success).toBe(true);
     expect(result.content).toBe("Test result");
@@ -160,23 +140,20 @@ describe("createSkillTool", () => {
       new Error("Test error"),
     );
 
-    const tool = createSkillTool(skillManager);
     const context = {
       workdir: "/test",
       taskManager: new TaskManager("test-session"),
+      skillManager,
     };
 
-    const result = await tool.execute({ skill_name: "test" }, context);
+    const result = await skillTool.execute({ skill_name: "test" }, context);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("Test error");
   });
 
-  it("should create tool with initialized skill manager", async () => {
-    // Initialize with mock skills
-    await skillManager.initialize();
-
-    // Mock some skills for the enum
+  it("should provide dynamic prompt with available skills", async () => {
+    // Mock some skills for the prompt
     const mockSkills = [
       {
         name: "test-skill",
@@ -191,28 +168,17 @@ describe("createSkillTool", () => {
         skillPath: "/path/to/another",
       },
     ];
-    vi.spyOn(skillManager, "getAvailableSkills").mockReturnValue(mockSkills);
 
-    const tool = createSkillTool(skillManager);
+    const prompt = skillTool.prompt?.({ availableSkills: mockSkills });
 
-    expect(tool.name).toBe("Skill");
-    expect(tool.config.function.description).toContain("Available skills:");
-    expect(tool.config.function.description).toContain("test-skill");
-    expect(tool.config.function.description).toContain("another-skill");
-
-    // Check enum contains skill names
-    const params = tool.config.function?.parameters as Record<string, unknown>;
-    const properties = params?.properties as Record<string, unknown>;
-    const skillName = properties?.skill_name as Record<string, unknown>;
-    expect(skillName?.enum).toEqual(["test-skill", "another-skill"]);
+    expect(prompt).toContain("Available skills:");
+    expect(prompt).toContain("test-skill");
+    expect(prompt).toContain("another-skill");
   });
 
-  it("should handle empty skills list when initialized", async () => {
-    await skillManager.initialize();
-    const tool = createSkillTool(skillManager);
+  it("should handle empty skills list in prompt", async () => {
+    const prompt = skillTool.prompt?.({ availableSkills: [] });
 
-    expect(tool.config.function.description).toContain(
-      "No skills are currently available",
-    );
+    expect(prompt).toContain("No skills are currently available");
   });
 });

@@ -8,6 +8,9 @@ import type {
   PermissionCallback,
 } from "../types/permissions.js";
 
+import type { SubagentConfiguration } from "../utils/subagentParser.js";
+import type { SkillMetadata } from "../types/skills.js";
+
 export interface ToolPlugin {
   name: string;
   config: ChatCompletionFunctionTool;
@@ -22,7 +25,11 @@ export interface ToolPlugin {
   /**
    * Optional function to provide a prompt to be added to the system prompt
    */
-  prompt?: () => string;
+  prompt?: (args?: {
+    availableSubagents?: SubagentConfiguration[];
+    availableSkills?: SkillMetadata[];
+    workdir?: string;
+  }) => string;
 }
 
 export interface ToolResult {
@@ -65,6 +72,10 @@ export interface ToolContext {
   foregroundTaskManager?: import("../types/processes.js").IForegroundTaskManager;
   /** Task manager instance for task management */
   taskManager: import("../services/taskManager.js").TaskManager;
+  /** Subagent manager instance for task delegation */
+  subagentManager?: import("../managers/subagentManager.js").SubagentManager;
+  /** Skill manager instance for skill invocation */
+  skillManager?: import("../managers/skillManager.js").SkillManager;
   /** Current session ID */
   sessionId?: string;
   /** Callback to update the short result of the current tool block */

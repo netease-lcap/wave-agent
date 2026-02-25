@@ -1,19 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TaskManager } from "../../src/services/taskManager.js";
-import { createTaskTool } from "../../src/tools/taskTool.js";
+import { taskTool } from "../../src/tools/taskTool.js";
 import {
   SubagentManager,
   type SubagentInstance,
 } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
-import type { ToolContext, ToolPlugin } from "../../src/tools/types.js";
+import type { ToolContext } from "../../src/tools/types.js";
 
 // Mock the subagent manager
 vi.mock("../../src/managers/subagentManager.js");
 
 describe("Task Tool Integration with Built-in Subagents", () => {
   let mockSubagentManager: SubagentManager;
-  let taskTool: ToolPlugin;
   const mockToolContext: ToolContext = {
     abortSignal: new AbortController().signal,
     workdir: "/test/workdir",
@@ -21,6 +20,14 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       on: vi.fn(),
       listTasks: vi.fn().mockResolvedValue([]),
     } as unknown as TaskManager,
+    subagentManager: {
+      getConfigurations: vi.fn(() => [exploreConfig, gpConfig, planConfig]),
+      findSubagent: vi.fn(),
+      createInstance: vi.fn(),
+      executeTask: vi.fn(),
+      backgroundInstance: vi.fn(),
+      cleanupInstance: vi.fn(),
+    } as unknown as SubagentManager,
   };
 
   const exploreConfig: SubagentConfiguration = {
@@ -60,44 +67,27 @@ describe("Task Tool Integration with Built-in Subagents", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Create mock subagent manager
-    mockSubagentManager = {
-      getConfigurations: vi.fn(() => [exploreConfig, gpConfig, planConfig]),
-      findSubagent: vi.fn(),
-      createInstance: vi.fn(),
-      executeTask: vi.fn(),
-      backgroundInstance: vi.fn(),
-      cleanupInstance: vi.fn(),
-    } as unknown as SubagentManager;
-
-    // Create task tool with mock manager
-    taskTool = createTaskTool(mockSubagentManager);
+    // Update mock subagent manager in context
+    mockSubagentManager = mockToolContext.subagentManager!;
   });
 
   describe("Task tool with built-in Explore subagent", () => {
     it("should list Explore subagent in available options", () => {
-      const description = taskTool.config.function.description;
+      const prompt = taskTool.prompt?.({
+        availableSubagents: [exploreConfig, gpConfig, planConfig],
+      });
 
-      expect(description).toContain("Available subagents:");
-      expect(description).toContain(
+      expect(prompt).toContain("Available subagents:");
+      expect(prompt).toContain(
         "- Explore: Fast agent specialized for exploring codebases",
       );
     });
 
     it("should include Explore in subagent_type parameter description", () => {
-      const params = taskTool.config.function.parameters;
-      expect(params).toBeDefined();
-      expect(params).toHaveProperty("properties");
-
-      // Type assertion after validation
-      const properties = (params as Record<string, unknown>)
-        .properties as Record<string, unknown>;
-      expect(properties).toHaveProperty("subagent_type");
-
-      const subagentTypeParam = properties.subagent_type as {
-        description: string;
-      };
-      expect(subagentTypeParam.description).toContain("Explore");
+      const prompt = taskTool.prompt?.({
+        availableSubagents: [exploreConfig, gpConfig, planConfig],
+      });
+      expect(prompt).toContain("Explore");
     });
 
     it("should find and execute Explore subagent successfully", async () => {
@@ -248,27 +238,21 @@ describe("Task Tool Integration with Built-in Subagents", () => {
 
   describe("Task tool with built-in Plan subagent", () => {
     it("should list Plan subagent in available options", () => {
-      const description = taskTool.config.function.description;
+      const prompt = taskTool.prompt?.({
+        availableSubagents: [exploreConfig, gpConfig, planConfig],
+      });
 
-      expect(description).toContain("Available subagents:");
-      expect(description).toContain(
+      expect(prompt).toContain("Available subagents:");
+      expect(prompt).toContain(
         "- Plan: Software architect agent for designing implementation plans",
       );
     });
 
     it("should include Plan in subagent_type parameter description", () => {
-      const params = taskTool.config.function.parameters;
-      expect(params).toBeDefined();
-      expect(params).toHaveProperty("properties");
-
-      const properties = (params as Record<string, unknown>)
-        .properties as Record<string, unknown>;
-      expect(properties).toHaveProperty("subagent_type");
-
-      const subagentTypeParam = properties.subagent_type as {
-        description: string;
-      };
-      expect(subagentTypeParam.description).toContain("Plan");
+      const prompt = taskTool.prompt?.({
+        availableSubagents: [exploreConfig, gpConfig, planConfig],
+      });
+      expect(prompt).toContain("Plan");
     });
 
     it("should find and execute Plan subagent successfully", async () => {

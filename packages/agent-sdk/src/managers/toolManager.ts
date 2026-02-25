@@ -14,8 +14,8 @@ import { grepTool } from "../tools/grepTool.js";
 import { lsTool } from "../tools/lsTool.js";
 import { readTool } from "../tools/readTool.js";
 import { lspTool } from "../tools/lspTool.js";
-import { createTaskTool } from "../tools/taskTool.js";
-import { createSkillTool } from "../tools/skillTool.js";
+import { taskTool } from "../tools/taskTool.js";
+import { skillTool } from "../tools/skillTool.js";
 import {
   taskCreateTool,
   taskGetTool,
@@ -151,6 +151,8 @@ class ToolManager {
       lsTool,
       readTool,
       lspTool,
+      taskTool,
+      skillTool,
       taskCreateTool,
       taskGetTool,
       taskUpdateTool,
@@ -160,21 +162,6 @@ class ToolManager {
     for (const tool of builtInTools) {
       if (this.shouldEnableTool(tool.name)) {
         this.toolsRegistry.set(tool.name, tool);
-      }
-    }
-
-    // Register tools that require dependencies
-    if (this.subagentManager) {
-      const taskTool = createTaskTool(this.subagentManager);
-      if (this.shouldEnableTool(taskTool.name)) {
-        this.toolsRegistry.set(taskTool.name, taskTool);
-      }
-    }
-
-    if (this.skillManager) {
-      const skillTool = createSkillTool(this.skillManager);
-      if (this.shouldEnableTool(skillTool.name)) {
-        this.toolsRegistry.set(skillTool.name, skillTool);
       }
     }
   }
@@ -226,6 +213,8 @@ class ToolManager {
       foregroundTaskManager: this.foregroundTaskManager,
       mcpManager: this.mcpManager,
       lspManager: this.lspManager,
+      subagentManager: this.subagentManager,
+      skillManager: this.skillManager,
       sessionId: context.sessionId,
     };
 
@@ -338,6 +327,20 @@ class ToolManager {
     | import("../services/taskManager.js").TaskManager
     | undefined {
     return this.taskManager;
+  }
+
+  /**
+   * Get the subagent manager
+   */
+  public getSubagentManager(): SubagentManager | undefined {
+    return this.subagentManager;
+  }
+
+  /**
+   * Get the skill manager
+   */
+  public getSkillManager(): SkillManager | undefined {
+    return this.skillManager;
   }
 }
 
