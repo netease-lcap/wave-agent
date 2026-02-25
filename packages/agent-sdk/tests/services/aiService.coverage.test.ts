@@ -90,7 +90,7 @@ describe("AI Service - Branch Coverage", () => {
       });
 
       const callArgs = mockCreate.mock.calls[0][0];
-      expect(callArgs.vertexai.thinking_config.thinking_level).toBe("minimal");
+      expect(callArgs.vertexai).toBeUndefined();
     });
   });
 
