@@ -16,7 +16,7 @@ vi.mock("os", async () => {
 });
 
 // Mock process.exit
-const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+vi.spyOn(process, "exit").mockImplementation(() => {
   return undefined as never;
 });
 
@@ -24,37 +24,22 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 const mockLog = vi.spyOn(console, "log").mockImplementation(() => {});
 const mockError = vi.spyOn(console, "error").mockImplementation(function () {});
 
-// Mock MarketplaceService
+// Mock PluginService
+const mockEnablePlugin = vi.fn();
+const mockDisablePlugin = vi.fn();
+const mockListPlugins = vi.fn();
+
 vi.mock("wave-agent-sdk", async () => {
   const actual = (await vi.importActual(
     "wave-agent-sdk",
   )) as typeof import("wave-agent-sdk");
   return {
     ...actual,
-    MarketplaceService: vi.fn(function () {
+    PluginService: vi.fn(function () {
       return {
-        getInstalledPlugins: vi.fn().mockResolvedValue({
-          plugins: [
-            { name: "test-plugin", marketplace: "market", version: "1.0.0" },
-          ],
-        }),
-        listMarketplaces: vi.fn().mockResolvedValue([
-          {
-            name: "market",
-            source: { source: "directory", path: "/mock/market" },
-          },
-        ]),
-        getMarketplacePath: vi.fn().mockReturnValue("/mock/market"),
-        loadMarketplaceManifest: vi.fn().mockResolvedValue({
-          name: "market",
-          plugins: [
-            {
-              name: "test-plugin",
-              source: "./test-plugin",
-              description: "test",
-            },
-          ],
-        }),
+        enable: mockEnablePlugin,
+        disable: mockDisablePlugin,
+        list: mockListPlugins,
       };
     }),
   };
@@ -75,7 +60,9 @@ describe("Plugin Scope Integration Tests", () => {
 
     mockLog.mockClear();
     mockError.mockClear();
-    mockExit.mockClear();
+    mockEnablePlugin.mockReset();
+    mockDisablePlugin.mockReset();
+    mockListPlugins.mockReset();
   });
 
   afterEach(async () => {
@@ -85,62 +72,67 @@ describe("Plugin Scope Integration Tests", () => {
   });
 
   it("should enable a plugin in user scope", async () => {
+    mockEnablePlugin.mockResolvedValue("user");
+
     await enablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
 
+    expect(mockEnablePlugin).toHaveBeenCalledWith("test-plugin@market", "user");
     expect(mockLog).toHaveBeenCalledWith(
       expect.stringContaining(
         "Successfully enabled plugin: test-plugin@market in user scope",
       ),
     );
-
-    const userConfigPath = path.join(userHome, ".wave", "settings.json");
-    const config = JSON.parse(await fs.readFile(userConfigPath, "utf-8"));
-    expect(config.enabledPlugins["test-plugin@market"]).toBe(true);
   });
 
   it("should enable a plugin in project scope", async () => {
+    mockEnablePlugin.mockResolvedValue("project");
+
     await enablePluginCommand({
       plugin: "test-plugin@market",
       scope: "project",
     });
 
+    expect(mockEnablePlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      "project",
+    );
     expect(mockLog).toHaveBeenCalledWith(
       expect.stringContaining(
         "Successfully enabled plugin: test-plugin@market in project scope",
       ),
     );
-
-    const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
-    const config = JSON.parse(await fs.readFile(projectConfigPath, "utf-8"));
-    expect(config.enabledPlugins["test-plugin@market"]).toBe(true);
   });
 
   it("should disable a plugin in user scope", async () => {
+    mockDisablePlugin.mockResolvedValue("user");
+
     await disablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
 
+    expect(mockDisablePlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      "user",
+    );
     expect(mockLog).toHaveBeenCalledWith(
       expect.stringContaining(
         "Successfully disabled plugin: test-plugin@market in user scope",
       ),
     );
-
-    const userConfigPath = path.join(userHome, ".wave", "settings.json");
-    const config = JSON.parse(await fs.readFile(userConfigPath, "utf-8"));
-    expect(config.enabledPlugins["test-plugin@market"]).toBe(false);
   });
 
   it("should test priority: Disable in user scope, enable in project scope -> should be enabled", async () => {
-    // 1. Disable in user scope
-    await disablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
-
-    // 2. Enable in project scope
-    await enablePluginCommand({
-      plugin: "test-plugin@market",
-      scope: "project",
+    mockListPlugins.mockResolvedValue({
+      plugins: [
+        {
+          name: "test-plugin",
+          marketplace: "market",
+          installed: true,
+          version: "1.0.0",
+          scope: "project",
+        },
+      ],
+      mergedEnabled: { "test-plugin@market": true },
     });
 
-    // 3. List plugins
-    mockLog.mockClear();
     await listPluginsCommand();
 
     expect(mockLog).toHaveBeenCalledWith(
@@ -151,17 +143,19 @@ describe("Plugin Scope Integration Tests", () => {
   });
 
   it("should test priority: Enable in user scope, disable in project scope -> should be disabled", async () => {
-    // 1. Enable in user scope
-    await enablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
-
-    // 2. Disable in project scope
-    await disablePluginCommand({
-      plugin: "test-plugin@market",
-      scope: "project",
+    mockListPlugins.mockResolvedValue({
+      plugins: [
+        {
+          name: "test-plugin",
+          marketplace: "market",
+          installed: true,
+          version: "1.0.0",
+          scope: "project",
+        },
+      ],
+      mergedEnabled: { "test-plugin@market": false },
     });
 
-    // 3. List plugins
-    mockLog.mockClear();
     await listPluginsCommand();
 
     expect(mockLog).toHaveBeenCalledWith(

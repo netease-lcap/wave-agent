@@ -541,4 +541,38 @@ describe("ConfigurationService", () => {
       expect(result.conflicts[0].key).toBe("VAR2");
     });
   });
+
+  describe("updateEnabledPlugin", () => {
+    it("should throw if project scope and workdir does not exist", async () => {
+      await expect(
+        configService.updateEnabledPlugin(
+          "/nonexistent",
+          "project",
+          "p1",
+          true,
+        ),
+      ).rejects.toThrow("Working directory does not exist");
+    });
+  });
+
+  describe("removeEnabledPlugin", () => {
+    it("should throw if project scope and workdir does not exist", async () => {
+      await expect(
+        configService.removeEnabledPlugin("/nonexistent", "project", "p1"),
+      ).rejects.toThrow("Working directory does not exist");
+    });
+
+    it("should return early if config file does not exist", async () => {
+      mockExistsSync.mockReturnValue(false);
+      // Should not throw
+      await configService.removeEnabledPlugin(tempDir, "user", "p1");
+    });
+
+    it("should handle corrupted config file", async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue("invalid json");
+      // Should not throw due to try-catch in implementation
+      await configService.removeEnabledPlugin(tempDir, "user", "p1");
+    });
+  });
 });

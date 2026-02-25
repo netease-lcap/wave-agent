@@ -1,38 +1,20 @@
-import {
-  MarketplaceService,
-  ConfigurationService,
-  PluginManager,
-  PluginScopeManager,
-  Scope,
-  Container,
-} from "wave-agent-sdk";
+import { PluginService, Scope } from "wave-agent-sdk";
 
 export async function installPluginCommand(argv: {
   plugin: string;
   scope?: Scope;
 }) {
-  const marketplaceService = new MarketplaceService();
-  const workdir = process.cwd();
+  const pluginService = new PluginService();
 
   try {
-    const installed = await marketplaceService.installPlugin(argv.plugin);
+    const installed = await pluginService.install(argv.plugin, argv.scope);
     console.log(
       `Successfully installed plugin: ${installed.name} v${installed.version} from ${installed.marketplace}`,
     );
     console.log(`Cache path: ${installed.cachePath}`);
 
     if (argv.scope) {
-      const configurationService = new ConfigurationService();
-      const container = new Container();
-      const pluginManager = new PluginManager(container, { workdir });
-      const scopeManager = new PluginScopeManager({
-        workdir,
-        configurationService,
-        pluginManager,
-      });
-
       const pluginId = `${installed.name}@${installed.marketplace}`;
-      await scopeManager.enablePlugin(argv.scope, pluginId);
       console.log(`Plugin ${pluginId} enabled in ${argv.scope} scope`);
     }
 
