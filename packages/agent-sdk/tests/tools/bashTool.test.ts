@@ -472,11 +472,11 @@ describe("bashTool", () => {
     it("should format compact params correctly", () => {
       const params1 = { task_id: "task_1" };
       const result1 = taskOutputTool.formatCompactParams?.(params1, context);
-      expect(result1).toBe("task_1");
+      expect(result1).toBe("task_1 (blocking)");
 
-      const params2 = { task_id: "task_1", block: true };
+      const params2 = { task_id: "task_1", block: false };
       const result2 = taskOutputTool.formatCompactParams?.(params2, context);
-      expect(result2).toBe("task_1 (blocking)");
+      expect(result2).toBe("task_1");
     });
   });
 
