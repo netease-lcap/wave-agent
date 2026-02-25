@@ -190,7 +190,7 @@ export const taskOutputTool: ToolPlugin = {
   },
   formatCompactParams: (params: Record<string, unknown>) => {
     const taskId = params.task_id as string;
-    const block = params.block as boolean;
+    const block = (params.block as boolean | undefined) ?? true;
     return `${taskId}${block ? " (blocking)" : ""}`;
   },
 };
