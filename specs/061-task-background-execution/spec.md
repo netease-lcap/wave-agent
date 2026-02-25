@@ -87,9 +87,11 @@ As a user, I want to use a `/tasks` command in the CLI to list and manage all ba
 - **FR-008**: `TaskStop` MUST support a `task_id` parameter.
 - **FR-009**: The `BashOutput` and `KillBash` tools MUST be removed/deprecated in favor of the unified `TaskOutput` and `TaskStop` tools.
 - **FR-010**: `TaskOutput` MUST work for both background shell tasks and async agent tasks.
-- **FR-011**: The CLI MUST implement a `/tasks` command to list all active and recently completed tasks.
-- **FR-012**: The legacy `/bashes` command MUST be removed from the CLI.
-- **FR-013**: The `/tasks` command output MUST include task IDs, status, and task type.
+- **FR-011**: Background tasks MUST NOT update their `shortResult` while running to prevent unnecessary message updates and "unknown" tool blocks in the UI.
+- **FR-012**: The CLI MUST implement a `/tasks` command to list all active and recently completed tasks.
+- **FR-012**: The CLI MUST implement a `/tasks` command to list all active and recently completed tasks.
+- **FR-013**: The legacy `/bashes` command MUST be removed from the CLI.
+- **FR-014**: The `/tasks` command output MUST include task IDs, status, and task type.
 
 ### Key Entities *(include if feature involves data)*
 

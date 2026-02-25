@@ -57,7 +57,8 @@ As an AI agent, I want to run long-running commands in the background and retrie
 - **FR-006**: System MUST provide a `KillBash` tool to terminate background processes.
 - **FR-007**: All bash output MUST have ANSI color codes stripped.
 - **FR-008**: Foreground bash output MUST be truncated if it exceeds 30,000 characters.
-- **FR-009**: The system MUST maintain environment variables across sequential `Bash` calls (persistent session behavior).
+- **FR-009**: Background bash tasks MUST NOT update their `shortResult` while running to prevent unnecessary message updates and "unknown" tool blocks in the UI.
+- **FR-010**: The system MUST maintain environment variables across sequential `Bash` calls (persistent session behavior).
 
 ### Key Entities *(include if feature involves data)*
 

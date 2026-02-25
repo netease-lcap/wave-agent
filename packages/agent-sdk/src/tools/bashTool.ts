@@ -306,7 +306,7 @@ Usage notes:
       }
 
       child.stdout?.on("data", (data) => {
-        if (!isAborted && !isBackgrounded) {
+        if (!isAborted && !isBackgrounded && !runInBackground) {
           const chunk = stripAnsiColors(data.toString());
           outputBuffer += chunk;
           context.onShortResultUpdate?.(chunk.trim().split("\n").pop() || "");
@@ -314,7 +314,7 @@ Usage notes:
       });
 
       child.stderr?.on("data", (data) => {
-        if (!isAborted && !isBackgrounded) {
+        if (!isAborted && !isBackgrounded && !runInBackground) {
           const chunk = stripAnsiColors(data.toString());
           errorBuffer += chunk;
           context.onShortResultUpdate?.(chunk.trim().split("\n").pop() || "");
