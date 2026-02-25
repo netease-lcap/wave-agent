@@ -701,59 +701,6 @@ export class Agent {
       this.logger?.debug("Initializing live configuration reload...");
       await this.liveConfigManager.initialize();
       this.logger?.debug("Live configuration reload initialized successfully");
-
-      // Update permission manager with configuration-based defaultMode
-      const currentConfig = this.liveConfigManager.getCurrentConfiguration();
-      if (currentConfig?.permissions?.defaultMode) {
-        this.logger?.debug(
-          "Applying configured defaultMode to PermissionManager",
-          {
-            defaultMode: currentConfig.permissions.defaultMode,
-          },
-        );
-        this.permissionManager.updateConfiguredDefaultMode(
-          currentConfig.permissions.defaultMode,
-        );
-      }
-
-      // Update permission manager with configuration-based allowed rules
-      if (currentConfig?.permissions?.allow) {
-        this.logger?.debug(
-          "Applying configured allowed rules to PermissionManager",
-          {
-            count: currentConfig.permissions.allow.length,
-          },
-        );
-        this.permissionManager.updateAllowedRules(
-          currentConfig.permissions.allow,
-        );
-      }
-
-      // Update permission manager with configuration-based denied rules
-      if (currentConfig?.permissions?.deny) {
-        this.logger?.debug(
-          "Applying configured denied rules to PermissionManager",
-          {
-            count: currentConfig.permissions.deny.length,
-          },
-        );
-        this.permissionManager.updateDeniedRules(
-          currentConfig.permissions.deny,
-        );
-      }
-
-      // Update permission manager with configuration-based additionalDirectories
-      if (currentConfig?.permissions?.additionalDirectories) {
-        this.logger?.debug(
-          "Applying configured additionalDirectories to PermissionManager",
-          {
-            count: currentConfig.permissions.additionalDirectories.length,
-          },
-        );
-        this.permissionManager.updateAdditionalDirectories(
-          currentConfig.permissions.additionalDirectories,
-        );
-      }
     } catch (error) {
       this.logger?.error(
         "Failed to initialize live configuration reload:",
