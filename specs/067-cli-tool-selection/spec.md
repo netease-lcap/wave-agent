@@ -84,6 +84,7 @@ As a user, I want to use the `--tools` flag with the `--print` (or `-p`) option 
 - **FR-005**: The Agent SDK MUST be updated to accept a `tools` argument, which can be a `string[]` or `undefined`.
 - **FR-006**: The CLI MUST parse the `--tools` string into a `string[]` before passing it to the Agent SDK.
 - **FR-007**: If the `--tools` argument is omitted, the system MUST default to the "default" tool set.
+- **FR-008**: If no tools are available (e.g., `--tools ""`), the system prompt MUST NOT include the "Tool usage policy" section.
 
 ### Key Entities *(include if feature involves data)*
 

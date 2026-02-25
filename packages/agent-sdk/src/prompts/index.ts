@@ -305,8 +305,9 @@ export function buildSystemPrompt(
   } = {},
 ): string {
   let prompt = basePrompt || DEFAULT_SYSTEM_PROMPT;
-
-  prompt += `\n\n${TOOL_POLICY}`;
+  if (tools.length > 0) {
+    prompt += `\n\n${TOOL_POLICY}`;
+  }
 
   for (const tool of tools) {
     if (tool.prompt) {
