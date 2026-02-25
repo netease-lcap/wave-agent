@@ -23,6 +23,7 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     useChat();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const MAX_VISIBLE_ITEMS = 3;
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   const [detailOutput, setDetailOutput] = useState<{
@@ -69,6 +70,16 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
   const stopTask = (taskId: string) => {
     stopBackgroundTask(taskId);
   };
+
+  // Calculate visible window
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, tasks.length - MAX_VISIBLE_ITEMS),
+    ),
+  );
+  const visibleTasks = tasks.slice(startIndex, startIndex + MAX_VISIBLE_ITEMS);
 
   useInput((input, key) => {
     if (viewMode === "list") {
@@ -273,40 +284,46 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
       </Box>
       <Text dimColor>Select a task to view details</Text>
 
-      {tasks.map((task, index) => (
-        <Box key={task.id} flexDirection="column">
-          <Text
-            color={index === selectedIndex ? "black" : "white"}
-            backgroundColor={index === selectedIndex ? "cyan" : undefined}
-          >
-            {index === selectedIndex ? "▶ " : "  "}
-            {index + 1}. [{task.id}] {task.type}
-            {task.description ? `: ${task.description}` : ""}
-            <Text
-              color={
-                task.status === "running"
-                  ? "green"
-                  : task.status === "completed"
-                    ? "blue"
-                    : "red"
-              }
-            >
-              {" "}
-              ({task.status})
-            </Text>
-          </Text>
-          {index === selectedIndex && (
-            <Box marginLeft={4} flexDirection="column">
-              <Text color="gray" dimColor>
-                Started: {formatTime(task.startTime)}
-                {task.runtime !== undefined &&
-                  ` | Runtime: ${formatDuration(task.runtime)}`}
-                {task.exitCode !== undefined && ` | Exit: ${task.exitCode}`}
+      <Box flexDirection="column">
+        {visibleTasks.map((task, index) => {
+          const actualIndex = startIndex + index;
+          const isSelected = actualIndex === selectedIndex;
+          return (
+            <Box key={task.id} flexDirection="column">
+              <Text
+                color={isSelected ? "black" : "white"}
+                backgroundColor={isSelected ? "cyan" : undefined}
+              >
+                {isSelected ? "▶ " : "  "}
+                {actualIndex + 1}. [{task.id}] {task.type}
+                {task.description ? `: ${task.description}` : ""}
+                <Text
+                  color={
+                    task.status === "running"
+                      ? "green"
+                      : task.status === "completed"
+                        ? "blue"
+                        : "red"
+                  }
+                >
+                  {" "}
+                  ({task.status})
+                </Text>
               </Text>
+              {isSelected && (
+                <Box marginLeft={4} flexDirection="column">
+                  <Text color="gray" dimColor>
+                    Started: {formatTime(task.startTime)}
+                    {task.runtime !== undefined &&
+                      ` | Runtime: ${formatDuration(task.runtime)}`}
+                    {task.exitCode !== undefined && ` | Exit: ${task.exitCode}`}
+                  </Text>
+                </Box>
+              )}
             </Box>
-          )}
-        </Box>
-      ))}
+          );
+        })}
+      </Box>
 
       <Box marginTop={1}>
         <Text dimColor>
