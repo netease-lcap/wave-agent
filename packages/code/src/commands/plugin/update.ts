@@ -1,10 +1,10 @@
-import { PluginService } from "wave-agent-sdk";
+import { MarketplaceService } from "wave-agent-sdk";
 
 export async function updatePluginCommand(argv: { plugin: string }) {
-  const pluginService = new PluginService();
+  const marketplaceService = new MarketplaceService();
 
   try {
-    const updated = await pluginService.updatePlugin(argv.plugin);
+    const updated = await marketplaceService.updatePlugin(argv.plugin);
     console.log(
       `Successfully updated plugin: ${updated.name} v${updated.version} from ${updated.marketplace}`,
     );
