@@ -1026,10 +1026,6 @@ describe("Confirmation", () => {
 
       // Select "Blue" (Option 2)
       stdin.write("\u001b[B"); // Down arrow
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("> Blue");
-      });
-
       // Press Enter
       stdin.write("\r");
 
@@ -1070,21 +1066,10 @@ describe("Confirmation", () => {
 
       // Toggle TypeScript (Option 1) using Space key (it's focused by default)
       stdin.write(" ");
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("[x] TypeScript");
-      });
-
       // Toggle React (Option 2) using Space key
       // First navigate to it
       stdin.write("\u001b[B"); // Down arrow
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("> [ ] React");
-      });
       stdin.write(" ");
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("[x] React");
-      });
-
       // Confirm
       stdin.write("\r");
 
@@ -1118,24 +1103,17 @@ describe("Confirmation", () => {
       });
 
       // Select "Other" (Option 3) using arrow keys
-      stdin.write("\u001b[B"); // Down to Blue
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("> Blue");
-      });
-      stdin.write("\u001b[B"); // Down to Other
+      stdin.write("\u001b[B");
+      stdin.write("\u001b[B");
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("Other:");
       });
 
       // Type "Green"
       stdin.write("Green");
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("Green");
-      });
-
-      // Confirm
       stdin.write("\r");
 
+      // Should move to next question
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
           "Select your skills",
@@ -1143,9 +1121,6 @@ describe("Confirmation", () => {
       });
       // Select TypeScript (Option 1) using Space
       stdin.write(" ");
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("[x] TypeScript");
-      });
       // Confirm
       stdin.write("\r");
 
@@ -1178,9 +1153,6 @@ describe("Confirmation", () => {
 
       // Select "Other"
       stdin.write("\u001b[B");
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("> Blue");
-      });
       stdin.write("\u001b[B");
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("> Other");
@@ -1194,9 +1166,6 @@ describe("Confirmation", () => {
 
       // Move left and type "X" -> "ABXC"
       stdin.write("\u001b[D"); // Left arrow
-      // Wait for the cursor to move. Since we can't see the cursor in stripAnsiColors,
-      // we just wait for a tick to ensure the input was processed.
-      await new Promise((resolve) => setTimeout(resolve, 50));
       stdin.write("X");
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("ABXC");

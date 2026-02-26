@@ -63,18 +63,18 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     hasUserInput: false,
   });
 
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedOptionIndex, setSelectedOptionIndex] = useState(0);
-  const [selectedOptionIndices, setSelectedOptionIndices] = useState<
-    Set<number>
-  >(new Set());
-  const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
-  const [otherText, setOtherText] = useState("");
-  const [otherCursorPosition, setOtherCursorPosition] = useState(0);
+  const [questionState, setQuestionState] = useState({
+    currentQuestionIndex: 0,
+    selectedOptionIndex: 0,
+    selectedOptionIndices: new Set<number>(),
+    userAnswers: {} as Record<string, string>,
+    otherText: "",
+    otherCursorPosition: 0,
+  });
 
   const questions =
     (toolInput as unknown as AskUserQuestionInput)?.questions || [];
-  const currentQuestion = questions[currentQuestionIndex];
+  const currentQuestion = questions[questionState.currentQuestionIndex];
 
   const getAutoOptionText = () => {
     if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
@@ -100,107 +100,145 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
       if (!currentQuestion) return;
       const options = [...currentQuestion.options, { label: "Other" }];
       const isMultiSelect = currentQuestion.multiSelect;
-      const isOtherFocused = selectedOptionIndex === options.length - 1;
 
       if (key.return) {
-        let answer = "";
-        if (isMultiSelect) {
-          const selectedLabels = Array.from(selectedOptionIndices)
-            .filter((i) => i < currentQuestion.options.length)
-            .map((i) => currentQuestion.options[i].label);
-          const isOtherChecked = selectedOptionIndices.has(options.length - 1);
-          if (isOtherChecked && otherText.trim()) {
-            selectedLabels.push(otherText.trim());
-          }
-          answer = selectedLabels.join(", ");
-        } else {
-          if (isOtherFocused) {
-            answer = otherText.trim();
+        setQuestionState((prev) => {
+          const isOtherFocused =
+            prev.selectedOptionIndex === options.length - 1;
+          let answer = "";
+          if (isMultiSelect) {
+            const selectedLabels = Array.from(prev.selectedOptionIndices)
+              .filter((i) => i < currentQuestion.options.length)
+              .map((i) => currentQuestion.options[i].label);
+            const isOtherChecked = prev.selectedOptionIndices.has(
+              options.length - 1,
+            );
+            if (isOtherChecked && prev.otherText.trim()) {
+              selectedLabels.push(prev.otherText.trim());
+            }
+            answer = selectedLabels.join(", ");
           } else {
-            answer = options[selectedOptionIndex].label;
+            if (isOtherFocused) {
+              answer = prev.otherText.trim();
+            } else {
+              answer = options[prev.selectedOptionIndex].label;
+            }
           }
-        }
-        if (!answer) return;
-        const newAnswers = {
-          ...userAnswers,
-          [currentQuestion.question]: answer,
-        };
-        setUserAnswers(newAnswers);
-        if (currentQuestionIndex < questions.length - 1) {
-          setCurrentQuestionIndex(currentQuestionIndex + 1);
-          setSelectedOptionIndex(0);
-          setSelectedOptionIndices(new Set());
-          setOtherText("");
-          setOtherCursorPosition(0);
-        } else {
-          onDecision({
-            behavior: "allow",
-            message: JSON.stringify(newAnswers),
-          });
-        }
+
+          if (!answer) return prev;
+
+          const newAnswers = {
+            ...prev.userAnswers,
+            [currentQuestion.question]: answer,
+          };
+
+          if (prev.currentQuestionIndex < questions.length - 1) {
+            return {
+              ...prev,
+              currentQuestionIndex: prev.currentQuestionIndex + 1,
+              selectedOptionIndex: 0,
+              selectedOptionIndices: new Set(),
+              userAnswers: newAnswers,
+              otherText: "",
+              otherCursorPosition: 0,
+            };
+          } else {
+            onDecision({
+              behavior: "allow",
+              message: JSON.stringify(newAnswers),
+            });
+            return {
+              ...prev,
+              userAnswers: newAnswers,
+            };
+          }
+        });
         return;
       }
 
       if (input === " ") {
-        if (
-          isMultiSelect &&
-          (!isOtherFocused || !selectedOptionIndices.has(selectedOptionIndex))
-        ) {
-          setSelectedOptionIndices((prev) => {
-            const next = new Set(prev);
-            if (next.has(selectedOptionIndex)) next.delete(selectedOptionIndex);
-            else next.add(selectedOptionIndex);
-            return next;
-          });
-          return;
-        }
-        if (!isOtherFocused) return;
+        setQuestionState((prev) => {
+          const isOtherFocused =
+            prev.selectedOptionIndex === options.length - 1;
+          if (
+            isMultiSelect &&
+            (!isOtherFocused ||
+              !prev.selectedOptionIndices.has(prev.selectedOptionIndex))
+          ) {
+            const nextIndices = new Set(prev.selectedOptionIndices);
+            if (nextIndices.has(prev.selectedOptionIndex))
+              nextIndices.delete(prev.selectedOptionIndex);
+            else nextIndices.add(prev.selectedOptionIndex);
+            return {
+              ...prev,
+              selectedOptionIndices: nextIndices,
+            };
+          }
+          return prev;
+        });
+        // If it's other and focused, we don't return here, allowing the input handler below to handle it
       }
 
       if (key.upArrow) {
-        if (selectedOptionIndex > 0)
-          setSelectedOptionIndex(selectedOptionIndex - 1);
+        setQuestionState((prev) => ({
+          ...prev,
+          selectedOptionIndex: Math.max(0, prev.selectedOptionIndex - 1),
+        }));
         return;
       }
       if (key.downArrow) {
-        if (selectedOptionIndex < options.length - 1)
-          setSelectedOptionIndex(selectedOptionIndex + 1);
+        setQuestionState((prev) => ({
+          ...prev,
+          selectedOptionIndex: Math.min(
+            options.length - 1,
+            prev.selectedOptionIndex + 1,
+          ),
+        }));
         return;
       }
 
-      if (isOtherFocused) {
-        if (key.leftArrow) {
-          setOtherCursorPosition((prev) => Math.max(0, prev - 1));
-          return;
-        }
-        if (key.rightArrow) {
-          setOtherCursorPosition((prev) =>
-            Math.min(otherText.length, prev + 1),
-          );
-          return;
-        }
-        if (key.backspace || key.delete) {
-          if (otherCursorPosition > 0) {
-            setOtherText(
-              (prev) =>
-                prev.slice(0, otherCursorPosition - 1) +
-                prev.slice(otherCursorPosition),
-            );
-            setOtherCursorPosition((prev) => prev - 1);
+      setQuestionState((prev) => {
+        const isOtherFocused = prev.selectedOptionIndex === options.length - 1;
+        if (isOtherFocused) {
+          if (key.leftArrow) {
+            return {
+              ...prev,
+              otherCursorPosition: Math.max(0, prev.otherCursorPosition - 1),
+            };
           }
-          return;
+          if (key.rightArrow) {
+            return {
+              ...prev,
+              otherCursorPosition: Math.min(
+                prev.otherText.length,
+                prev.otherCursorPosition + 1,
+              ),
+            };
+          }
+          if (key.backspace || key.delete) {
+            if (prev.otherCursorPosition > 0) {
+              return {
+                ...prev,
+                otherText:
+                  prev.otherText.slice(0, prev.otherCursorPosition - 1) +
+                  prev.otherText.slice(prev.otherCursorPosition),
+                otherCursorPosition: prev.otherCursorPosition - 1,
+              };
+            }
+          }
+          if (input && !key.ctrl && !key.meta) {
+            return {
+              ...prev,
+              otherText:
+                prev.otherText.slice(0, prev.otherCursorPosition) +
+                input +
+                prev.otherText.slice(prev.otherCursorPosition),
+              otherCursorPosition: prev.otherCursorPosition + input.length,
+            };
+          }
         }
-        if (input && !key.ctrl && !key.meta) {
-          setOtherText(
-            (prev) =>
-              prev.slice(0, otherCursorPosition) +
-              input +
-              prev.slice(otherCursorPosition),
-          );
-          setOtherCursorPosition((prev) => prev + input.length);
-          return;
-        }
-      }
+        return prev;
+      });
       return;
     }
 
@@ -342,9 +380,10 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
             <Box flexDirection="column">
               {[...currentQuestion.options, { label: "Other" }].map(
                 (option, index) => {
-                  const isSelected = selectedOptionIndex === index;
+                  const isSelected =
+                    questionState.selectedOptionIndex === index;
                   const isChecked = currentQuestion.multiSelect
-                    ? selectedOptionIndices.has(index)
+                    ? questionState.selectedOptionIndices.has(index)
                     : isSelected;
                   const isOther = index === currentQuestion.options.length;
                   return (
@@ -364,13 +403,20 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                         {isOther && isSelected && (
                           <Text>
                             :{" "}
-                            {otherText ? (
+                            {questionState.otherText ? (
                               <>
-                                {otherText.slice(0, otherCursorPosition)}
+                                {questionState.otherText.slice(
+                                  0,
+                                  questionState.otherCursorPosition,
+                                )}
                                 <Text backgroundColor="white" color="black">
-                                  {otherText[otherCursorPosition] || " "}
+                                  {questionState.otherText[
+                                    questionState.otherCursorPosition
+                                  ] || " "}
                                 </Text>
-                                {otherText.slice(otherCursorPosition + 1)}
+                                {questionState.otherText.slice(
+                                  questionState.otherCursorPosition + 1,
+                                )}
                               </>
                             ) : (
                               <Text color="gray" dimColor>
@@ -387,7 +433,8 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
             </Box>
             <Box marginTop={1}>
               <Text dimColor>
-                Question {currentQuestionIndex + 1} of {questions.length} •
+                Question {questionState.currentQuestionIndex + 1} of{" "}
+                {questions.length} •
                 {currentQuestion.multiSelect ? " Space to toggle •" : ""} Use ↑↓
                 to navigate • Enter to confirm
               </Text>
