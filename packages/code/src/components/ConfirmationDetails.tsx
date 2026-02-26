@@ -69,7 +69,6 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
       borderBottom={false}
       borderLeft={false}
       borderRight={false}
-      paddingTop={1}
     >
       <Text color="yellow" bold>
         Tool: {toolName}
