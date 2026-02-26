@@ -185,4 +185,81 @@ describe("deleteFileTool", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("Disk full");
   });
+
+  it("should format compact params correctly", () => {
+    const params = { target_file: "src/index.ts" };
+    const result = deleteFileTool.formatCompactParams!(params, testContext);
+    expect(result).toBe("src/index.ts");
+  });
+
+  it("should handle permission denial", async () => {
+    const mockPermissionManager = {
+      createContext: vi.fn().mockReturnValue({}),
+      checkPermission: vi.fn().mockResolvedValue({
+        behavior: "deny",
+        message: "User denied",
+      }),
+    };
+
+    const result = await deleteFileTool.execute(
+      { target_file: "test.js" },
+      {
+        ...testContext,
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain(
+      "Delete operation denied, reason: User denied",
+    );
+  });
+
+  it("should handle permission check failure", async () => {
+    const mockPermissionManager = {
+      createContext: vi.fn().mockReturnValue({}),
+      checkPermission: vi.fn().mockRejectedValue(new Error("Check failed")),
+    };
+
+    const result = await deleteFileTool.execute(
+      { target_file: "test.js" },
+      {
+        ...testContext,
+        permissionManager:
+          mockPermissionManager as unknown as ToolContext["permissionManager"],
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Permission check failed");
+  });
+
+  it("should record and commit snapshot when reversionManager is present", async () => {
+    mockUnlink.mockResolvedValue();
+    const mockReversionManager = {
+      recordSnapshot: vi.fn().mockResolvedValue("snapshot-123"),
+      commitSnapshot: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await deleteFileTool.execute(
+      { target_file: "test.js" },
+      {
+        ...testContext,
+        reversionManager:
+          mockReversionManager as unknown as ToolContext["reversionManager"],
+        messageId: "msg-123",
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockReversionManager.recordSnapshot).toHaveBeenCalledWith(
+      "msg-123",
+      expect.any(String),
+      "delete",
+    );
+    expect(mockReversionManager.commitSnapshot).toHaveBeenCalledWith(
+      "snapshot-123",
+    );
+  });
 });
