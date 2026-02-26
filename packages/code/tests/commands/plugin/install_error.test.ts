@@ -22,8 +22,12 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 const mockLog = vi.spyOn(console, "log").mockImplementation(() => {});
 const mockError = vi.spyOn(console, "error").mockImplementation(function () {});
 
-// Mock MarketplaceService
-const mockInstallPlugin = vi.fn();
+// Mock PluginCore
+const { mockPluginCore } = vi.hoisted(() => ({
+  mockPluginCore: {
+    installPlugin: vi.fn(),
+  },
+}));
 
 vi.mock("wave-agent-sdk", async () => {
   const actual = (await vi.importActual(
@@ -31,10 +35,8 @@ vi.mock("wave-agent-sdk", async () => {
   )) as typeof import("wave-agent-sdk");
   return {
     ...actual,
-    MarketplaceService: vi.fn(function () {
-      return {
-        installPlugin: mockInstallPlugin,
-      };
+    PluginCore: vi.fn().mockImplementation(function () {
+      return mockPluginCore;
     }),
   };
 });
@@ -57,7 +59,7 @@ describe("Plugin Install Command Error Tests", () => {
     mockLog.mockClear();
     mockError.mockClear();
     mockExit.mockClear();
-    mockInstallPlugin.mockReset();
+    mockPluginCore.installPlugin.mockReset();
   });
 
   afterEach(async () => {
@@ -67,7 +69,7 @@ describe("Plugin Install Command Error Tests", () => {
   });
 
   it("should handle install failure", async () => {
-    mockInstallPlugin.mockRejectedValue(new Error("Network error"));
+    mockPluginCore.installPlugin.mockRejectedValue(new Error("Network error"));
 
     await installPluginCommand({ plugin: "test-plugin@market" });
 
@@ -78,7 +80,7 @@ describe("Plugin Install Command Error Tests", () => {
   });
 
   it("should handle non-Error objects in catch block", async () => {
-    mockInstallPlugin.mockRejectedValue("Unknown error");
+    mockPluginCore.installPlugin.mockRejectedValue("Unknown error");
 
     await installPluginCommand({ plugin: "test-plugin@market" });
 

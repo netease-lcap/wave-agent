@@ -1,30 +1,14 @@
-import {
-  ConfigurationService,
-  PluginManager,
-  PluginScopeManager,
-  Scope,
-  Container,
-} from "wave-agent-sdk";
+import { PluginCore, Scope } from "wave-agent-sdk";
 
 export async function disablePluginCommand(argv: {
   plugin: string;
   scope?: Scope;
 }) {
   const workdir = process.cwd();
-  const configurationService = new ConfigurationService();
-  const container = new Container();
-  const pluginManager = new PluginManager(container, { workdir });
-  const scopeManager = new PluginScopeManager({
-    workdir,
-    configurationService,
-    pluginManager,
-  });
-
-  const scope =
-    argv.scope || scopeManager.findPluginScope(argv.plugin) || "user";
+  const pluginCore = new PluginCore(workdir);
 
   try {
-    await scopeManager.disablePlugin(scope, argv.plugin);
+    const scope = await pluginCore.disablePlugin(argv.plugin, argv.scope);
     console.log(
       `Successfully disabled plugin: ${argv.plugin} in ${scope} scope`,
     );

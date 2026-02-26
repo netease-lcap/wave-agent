@@ -22,22 +22,27 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 const mockLog = vi.spyOn(console, "log").mockImplementation(() => {});
 const mockError = vi.spyOn(console, "error").mockImplementation(function () {});
 
-// Mock MarketplaceService
+// Mock PluginCore
+const { mockPluginCore } = vi.hoisted(() => ({
+  mockPluginCore: {
+    installPlugin: vi.fn().mockResolvedValue({
+      name: "test-plugin",
+      marketplace: "market",
+      version: "1.0.0",
+      cachePath: "/fake/cache/path",
+    }),
+    enablePlugin: vi.fn(),
+  },
+}));
+
 vi.mock("wave-agent-sdk", async () => {
   const actual = (await vi.importActual(
     "wave-agent-sdk",
   )) as typeof import("wave-agent-sdk");
   return {
     ...actual,
-    MarketplaceService: vi.fn(function () {
-      return {
-        installPlugin: vi.fn().mockResolvedValue({
-          name: "test-plugin",
-          marketplace: "market",
-          version: "1.0.0",
-          cachePath: "/fake/cache/path",
-        }),
-      };
+    PluginCore: vi.fn().mockImplementation(function () {
+      return mockPluginCore;
     }),
   };
 });
@@ -58,6 +63,8 @@ describe("Plugin Install Scope Integration Tests", () => {
     mockLog.mockClear();
     mockError.mockClear();
     mockExit.mockClear();
+    mockPluginCore.installPlugin.mockClear();
+    mockPluginCore.enablePlugin.mockClear();
   });
 
   afterEach(async () => {
@@ -67,6 +74,7 @@ describe("Plugin Install Scope Integration Tests", () => {
   });
 
   it("should install and enable a plugin in user scope", async () => {
+    mockPluginCore.enablePlugin.mockResolvedValue("user");
     await installPluginCommand({ plugin: "test-plugin@market", scope: "user" });
 
     expect(mockLog).toHaveBeenCalledWith(
@@ -80,12 +88,17 @@ describe("Plugin Install Scope Integration Tests", () => {
       ),
     );
 
-    const userConfigPath = path.join(userHome, ".wave", "settings.json");
-    const config = JSON.parse(await fs.readFile(userConfigPath, "utf-8"));
-    expect(config.enabledPlugins["test-plugin@market"]).toBe(true);
+    expect(mockPluginCore.installPlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+    );
+    expect(mockPluginCore.enablePlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      "user",
+    );
   });
 
   it("should install and enable a plugin in project scope", async () => {
+    mockPluginCore.enablePlugin.mockResolvedValue("project");
     await installPluginCommand({
       plugin: "test-plugin@market",
       scope: "project",
@@ -102,9 +115,13 @@ describe("Plugin Install Scope Integration Tests", () => {
       ),
     );
 
-    const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
-    const config = JSON.parse(await fs.readFile(projectConfigPath, "utf-8"));
-    expect(config.enabledPlugins["test-plugin@market"]).toBe(true);
+    expect(mockPluginCore.installPlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+    );
+    expect(mockPluginCore.enablePlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      "project",
+    );
   });
 
   it("should install without enabling if no scope is provided", async () => {
@@ -119,20 +136,9 @@ describe("Plugin Install Scope Integration Tests", () => {
       expect.stringContaining("enabled in"),
     );
 
-    const userConfigPath = path.join(userHome, ".wave", "settings.json");
-    const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
-
-    expect(
-      await fs
-        .access(userConfigPath)
-        .then(() => true)
-        .catch(() => false),
-    ).toBe(false);
-    expect(
-      await fs
-        .access(projectConfigPath)
-        .then(() => true)
-        .catch(() => false),
-    ).toBe(false);
+    expect(mockPluginCore.installPlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+    );
+    expect(mockPluginCore.enablePlugin).not.toHaveBeenCalled();
   });
 });
