@@ -9,6 +9,7 @@ export interface MessageListProps {
   isCommandRunning?: boolean;
   isExpanded?: boolean;
   forceStaticLastMessage?: boolean;
+  hideLastMessage?: boolean;
 }
 
 export const MessageList = React.memo(
@@ -18,6 +19,7 @@ export const MessageList = React.memo(
     isCommandRunning = false,
     isExpanded = false,
     forceStaticLastMessage = false,
+    hideLastMessage = false,
   }: MessageListProps) => {
     // Empty message state
     if (messages.length === 0) {
@@ -53,7 +55,7 @@ export const MessageList = React.memo(
       ? displayMessages.slice(0, -1)
       : displayMessages;
     const dynamicMessages =
-      shouldRenderLastDynamic && displayMessages.length > 0
+      !hideLastMessage && shouldRenderLastDynamic && displayMessages.length > 0
         ? [displayMessages[displayMessages.length - 1]]
         : [];
 

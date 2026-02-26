@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useLayoutEffect } from "react";
 import { Box, useStdout } from "ink";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
@@ -12,7 +12,9 @@ import type { PermissionDecision } from "wave-agent-sdk";
 
 export const ChatInterface: React.FC = () => {
   const { stdout } = useStdout();
-  const [isDetailsTooTall, setIsDetailsTooTall] = useState(false);
+  const [detailsHeight, setDetailsHeight] = useState(0);
+  const [selectorHeight, setSelectorHeight] = useState(0);
+  const [isConfirmationTooTall, setIsConfirmationTooTall] = useState(false);
 
   const {
     messages,
@@ -36,39 +38,49 @@ export const ChatInterface: React.FC = () => {
     setWasLastDetailsTooTall,
   } = useChat();
 
-  const handleHeightMeasured = useCallback(
-    (height: number) => {
-      const terminalHeight = stdout?.rows || 24;
-      if (height > terminalHeight - 10) {
-        setIsDetailsTooTall(true);
-      } else {
-        setIsDetailsTooTall(false);
-      }
-    },
-    [stdout?.rows],
-  );
+  const handleDetailsHeightMeasured = useCallback((height: number) => {
+    setDetailsHeight(height);
+  }, []);
+
+  const handleSelectorHeightMeasured = useCallback((height: number) => {
+    setSelectorHeight(height);
+  }, []);
+
+  useLayoutEffect(() => {
+    const terminalHeight = stdout?.rows || 24;
+    const totalHeight = detailsHeight + selectorHeight;
+    if (totalHeight > terminalHeight) {
+      setIsConfirmationTooTall(true);
+    } else {
+      setIsConfirmationTooTall(false);
+    }
+  }, [detailsHeight, selectorHeight, stdout?.rows]);
 
   const handleConfirmationCancel = useCallback(() => {
-    if (isDetailsTooTall) {
+    if (isConfirmationTooTall) {
       setWasLastDetailsTooTall((prev) => prev + 1);
-      setIsDetailsTooTall(false);
+      setIsConfirmationTooTall(false);
     }
     originalHandleConfirmationCancel();
   }, [
-    isDetailsTooTall,
+    isConfirmationTooTall,
     originalHandleConfirmationCancel,
     setWasLastDetailsTooTall,
   ]);
 
   const wrappedHandleConfirmationDecision = useCallback(
     (decision: PermissionDecision) => {
-      if (isDetailsTooTall) {
+      if (isConfirmationTooTall) {
         setWasLastDetailsTooTall((prev) => prev + 1);
-        setIsDetailsTooTall(false);
+        setIsConfirmationTooTall(false);
       }
       handleConfirmationDecision(decision);
     },
-    [isDetailsTooTall, handleConfirmationDecision, setWasLastDetailsTooTall],
+    [
+      isConfirmationTooTall,
+      handleConfirmationDecision,
+      setWasLastDetailsTooTall,
+    ],
   );
 
   if (!sessionId) return null;
@@ -80,7 +92,7 @@ export const ChatInterface: React.FC = () => {
         isLoading={isLoading}
         isCommandRunning={isCommandRunning}
         isExpanded={isExpanded}
-        forceStaticLastMessage={isDetailsTooTall}
+        hideLastMessage={isConfirmationVisible}
       />
 
       {(isLoading || isCommandRunning || isCompressing) &&
@@ -101,7 +113,8 @@ export const ChatInterface: React.FC = () => {
             toolName={confirmingTool!.name}
             toolInput={confirmingTool!.input}
             isExpanded={isExpanded}
-            onHeightMeasured={handleHeightMeasured}
+            onHeightMeasured={handleDetailsHeightMeasured}
+            isStatic={isConfirmationTooTall}
           />
           <ConfirmationSelector
             toolName={confirmingTool!.name}
@@ -112,6 +125,7 @@ export const ChatInterface: React.FC = () => {
             onDecision={wrappedHandleConfirmationDecision}
             onCancel={handleConfirmationCancel}
             onAbort={abortMessage}
+            onHeightMeasured={handleSelectorHeightMeasured}
           />
         </>
       )}
