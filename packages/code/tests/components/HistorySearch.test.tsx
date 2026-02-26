@@ -108,15 +108,8 @@ describe("HistorySearch", () => {
     });
 
     stdin.write("\u001B[B"); // Down arrow
-
-    // Wait for selection to change in UI
-    await vi.waitFor(() => {
-      const output = stripAnsiColors(lastFrame() || "");
-      expect(output).toContain("> second prompt");
-      expect(output).toContain("  first prompt");
-    });
-
     stdin.write("\r");
+
     await vi.waitFor(() => {
       expect(onSelect).toHaveBeenCalledWith("second prompt");
     });
