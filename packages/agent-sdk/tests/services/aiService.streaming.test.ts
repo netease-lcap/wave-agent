@@ -310,6 +310,7 @@ describe("AI Service - Streaming", () => {
     });
 
     it("should handle AbortSignal during streaming", async () => {
+      vi.useFakeTimers();
       const abortController = new AbortController();
 
       // Mock streaming response that will be aborted
@@ -356,13 +357,16 @@ describe("AI Service - Streaming", () => {
       });
 
       // Abort after a short delay
-      setTimeout(() => abortController.abort(), 50);
+      vi.advanceTimersByTime(50);
+      abortController.abort();
+      vi.advanceTimersByTime(51);
 
       await expect(requestPromise).rejects.toThrow("Request was aborted");
 
       // Should have passed the abort signal to the API call
       const callOptions = mockCreate.mock.calls[0][1];
       expect(callOptions.signal).toBe(abortController.signal);
+      vi.useRealTimers();
     });
 
     it("should handle empty streaming responses", async () => {

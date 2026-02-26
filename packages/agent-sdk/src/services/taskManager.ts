@@ -47,7 +47,7 @@ export class TaskManager extends EventEmitter {
     const lockPath = this.getLockPath();
     let lockHandle;
     const maxRetries = 100;
-    const retryDelay = process.env.NODE_ENV === "test" ? 10 : 100;
+    const retryDelay = process.env.NODE_ENV === "test" ? 1 : 100;
 
     await this.ensureSessionDir();
 
