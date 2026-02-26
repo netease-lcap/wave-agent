@@ -184,6 +184,7 @@ describe("Hook Services", () => {
 
   describe("timeout handling", () => {
     it("should timeout long-running commands", async () => {
+      vi.useFakeTimers();
       const mockProcess = new MockChildProcess();
       mockProcess.stdin = new MockStdin();
       mockSpawn.mockReturnValue(mockProcess);
@@ -193,29 +194,32 @@ describe("Hook Services", () => {
       });
 
       // Don't emit close event to simulate hanging process
+      vi.advanceTimersByTime(101);
 
       const result = await resultPromise;
 
       expect(result.success).toBe(false);
       expect(result.timedOut).toBe(true);
       expect(mockProcess.killed).toBe(true);
+      vi.useRealTimers();
     });
 
     it("should respect custom timeout values", async () => {
+      vi.useFakeTimers();
       const mockProcess = new MockChildProcess();
       mockProcess.stdin = new MockStdin();
       mockSpawn.mockReturnValue(mockProcess);
 
-      const startTime = Date.now();
       const resultPromise = executeCommand("sleep 1", mockContext, {
         timeout: 50,
       });
 
+      vi.advanceTimersByTime(51);
+
       const result = await resultPromise;
-      const duration = Date.now() - startTime;
 
       expect(result.timedOut).toBe(true);
-      expect(duration).toBeLessThan(100); // Should timeout quickly
+      vi.useRealTimers();
     });
   });
 

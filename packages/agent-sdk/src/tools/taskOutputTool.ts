@@ -170,7 +170,8 @@ export const taskOutputTool: ToolPlugin = {
               },
             );
           } else {
-            timeoutHandle = setTimeout(check, 500);
+            const pollingInterval = process.env.NODE_ENV === "test" ? 10 : 500;
+            timeoutHandle = setTimeout(check, pollingInterval);
           }
         };
         check();
