@@ -201,6 +201,11 @@ describe("Confirmation", () => {
 
       // Press down arrow twice to select alternative option
       stdin.write("\u001b[B"); // Down arrow key
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[B"); // Down arrow key
 
       await vi.waitFor(() => {
@@ -230,6 +235,11 @@ describe("Confirmation", () => {
 
       // Go down then up
       stdin.write("\u001b[B"); // Down arrow
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[B"); // Down arrow
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
@@ -238,6 +248,11 @@ describe("Confirmation", () => {
       });
 
       stdin.write("\u001b[A"); // Up arrow
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[A"); // Up arrow
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
@@ -377,6 +392,11 @@ describe("Confirmation", () => {
 
       // Navigate to alternative option and press Enter without typing
       stdin.write("\u001b[B"); // Down arrow
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[B"); // Down arrow
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
@@ -413,6 +433,11 @@ describe("Confirmation", () => {
 
       // Change to alternative
       stdin.write("\u001b[B");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[B");
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
@@ -423,6 +448,11 @@ describe("Confirmation", () => {
 
       // Back to allow
       stdin.write("\u001b[A");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[A");
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
@@ -513,7 +543,12 @@ describe("Confirmation", () => {
         );
       });
 
-      stdin.write("\u001b[B"); // Go to alternative option
+      stdin.write("\u001b[B"); // Go to auto option
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[B"); // Go to alternative option
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
@@ -526,6 +561,11 @@ describe("Confirmation", () => {
 
       // Switch back to allow option
       stdin.write("\u001b[A");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[A");
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
@@ -670,6 +710,11 @@ describe("Confirmation", () => {
 
       // Navigate to alternative option without typing
       stdin.write("\u001b[B");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[B");
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
@@ -825,7 +870,12 @@ describe("Confirmation", () => {
       });
 
       // Navigate to alternative and try backspace on empty text
-      stdin.write("\u001b[B"); // Go to alternative
+      stdin.write("\u001b[B"); // Go to auto
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[B"); // Go to alternative
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
@@ -928,6 +978,11 @@ describe("Confirmation", () => {
 
       // Change selection and check visual feedback
       stdin.write("\u001b[B");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
+        );
+      });
       stdin.write("\u001b[B");
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
@@ -1264,7 +1319,7 @@ describe("Confirmation", () => {
         );
       });
 
-      // Test auto-accept for ExitPlanMode
+      // Test manually approve for ExitPlanMode
       const { stdin: stdin2, lastFrame: lastFrame2 } = render(
         <Confirmation
           toolName="ExitPlanMode"
@@ -1274,10 +1329,10 @@ describe("Confirmation", () => {
           onAbort={mockOnAbort}
         />,
       );
-      stdin2.write("\u001b[B"); // Down to auto-accept
+      stdin2.write("\u001b[B"); // Down to manually approve
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame2() || "")).toContain(
-          "> Yes, auto-accept edits",
+          "> Yes, manually approve edits",
         );
       });
       stdin2.write("\r");
@@ -1285,12 +1340,12 @@ describe("Confirmation", () => {
         expect(mockOnDecision).toHaveBeenLastCalledWith(
           expect.objectContaining({
             behavior: "allow",
-            newPermissionMode: "acceptEdits",
+            newPermissionMode: "default",
           }),
         );
       });
 
-      // Test manually approve for ExitPlanMode
+      // Test auto-accept for ExitPlanMode
       const { stdin: stdin3, lastFrame: lastFrame3 } = render(
         <Confirmation
           toolName="ExitPlanMode"
@@ -1300,16 +1355,16 @@ describe("Confirmation", () => {
           onAbort={mockOnAbort}
         />,
       );
-      stdin3.write("\u001b[B"); // Down to auto-accept
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame3() || "")).toContain(
-          "> Yes, auto-accept edits",
-        );
-      });
       stdin3.write("\u001b[B"); // Down to manually approve
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame3() || "")).toContain(
           "> Yes, manually approve edits",
+        );
+      });
+      stdin3.write("\u001b[B"); // Down to auto-accept
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame3() || "")).toContain(
+          "> Yes, auto-accept edits",
         );
       });
       stdin3.write("\r");
@@ -1317,7 +1372,7 @@ describe("Confirmation", () => {
         expect(mockOnDecision).toHaveBeenLastCalledWith(
           expect.objectContaining({
             behavior: "allow",
-            newPermissionMode: "default",
+            newPermissionMode: "acceptEdits",
           }),
         );
       });
@@ -1358,7 +1413,7 @@ describe("Confirmation", () => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
       });
 
-      stdin.write("\u001b[A"); // Up to auto
+      stdin.write("\u001b[B"); // Down to auto
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
           "> Yes, and don't ask again for: ls",
@@ -1390,7 +1445,7 @@ describe("Confirmation", () => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
       });
 
-      stdin.write("\u001b[A"); // Up to auto
+      stdin.write("\u001b[B"); // Down to auto
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
           "> Yes, and don't ask again for this command",
@@ -1421,23 +1476,16 @@ describe("Confirmation", () => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
       });
 
-      stdin.write("\u001b[A"); // Up to auto
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain(
-          "> Yes, and auto-accept edits",
-        );
-      });
-
       stdin.write("\u001b[A"); // Up at top
       await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
+      });
+
+      stdin.write("\u001b[B"); // Down to auto
+      await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
           "> Yes, and auto-accept edits",
         );
-      });
-
-      stdin.write("\u001b[B"); // Down to allow
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
       });
 
       stdin.write("\u001b[B"); // Down to alternative
@@ -1451,6 +1499,13 @@ describe("Confirmation", () => {
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
           "> Type here to tell Wave what to change",
+        );
+      });
+
+      stdin.write("\u001b[A"); // Up to auto
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "> Yes, and auto-accept edits",
         );
       });
     });
