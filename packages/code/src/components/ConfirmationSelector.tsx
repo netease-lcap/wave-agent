@@ -295,8 +295,8 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
 
     const availableOptions: ConfirmationState["selectedOption"][] = [];
     if (toolName === EXIT_PLAN_MODE_TOOL_NAME) availableOptions.push("clear");
-    if (!hidePersistentOption) availableOptions.push("auto");
     availableOptions.push("allow");
+    if (!hidePersistentOption) availableOptions.push("auto");
     availableOptions.push("alternative");
 
     if (key.upArrow) {
@@ -462,20 +462,6 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                 </Text>
               </Box>
             )}
-            {!hidePersistentOption && (
-              <Box key="auto-option">
-                <Text
-                  color={state.selectedOption === "auto" ? "black" : "white"}
-                  backgroundColor={
-                    state.selectedOption === "auto" ? "yellow" : undefined
-                  }
-                  bold={state.selectedOption === "auto"}
-                >
-                  {state.selectedOption === "auto" ? "> " : "  "}
-                  {getAutoOptionText()}
-                </Text>
-              </Box>
-            )}
             <Box key="allow-option">
               <Text
                 color={state.selectedOption === "allow" ? "black" : "white"}
@@ -490,6 +476,20 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                   : "Yes, proceed"}
               </Text>
             </Box>
+            {!hidePersistentOption && (
+              <Box key="auto-option">
+                <Text
+                  color={state.selectedOption === "auto" ? "black" : "white"}
+                  backgroundColor={
+                    state.selectedOption === "auto" ? "yellow" : undefined
+                  }
+                  bold={state.selectedOption === "auto"}
+                >
+                  {state.selectedOption === "auto" ? "> " : "  "}
+                  {getAutoOptionText()}
+                </Text>
+              </Box>
+            )}
             <Box key="alternative-option">
               <Text
                 color={

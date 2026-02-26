@@ -17,7 +17,7 @@ As a user, when I am prompted to confirm a file edit, I want to be able to choos
 
 **Acceptance Scenarios**:
 
-1. **Given** the agent is in `default` mode, **When** the agent attempts a `Write` operation, **Then** the confirmation prompt shows three options: "1. Yes", "2. Yes, and auto-accept edits", and "3. [Alternative/Feedback]".
+1. **Given** the agent is in `default` mode, **When** the agent attempts a `Write` operation, **Then** the confirmation prompt shows three options: "1. Yes, proceed", "2. Yes, and auto-accept edits", and "3. [Alternative/Feedback]".
 2. **Given** the confirmation prompt for a `Write` operation is shown, **When** the user selects "Yes, and auto-accept edits", **Then** the current operation is executed, and the agent's permission mode is set to `acceptEdits`.
 3. **Given** the agent's permission mode was set to `acceptEdits` via the prompt, **When** the agent attempts a subsequent `Edit` operation, **Then** it is executed without a prompt.
 
@@ -33,7 +33,7 @@ As a user, when I am prompted to confirm a Bash command, I want to be able to al
 
 **Acceptance Scenarios**:
 
-1. **Given** the agent is in `default` mode, **When** the agent attempts a `Bash` operation with command `ls`, **Then** the confirmation prompt shows three options: "1. Yes", "2. Yes, and don't ask again for this command in this workdir", and "3. [Alternative/Feedback]".
+1. **Given** the agent is in `default` mode, **When** the agent attempts a `Bash` operation with command `ls`, **Then** the confirmation prompt shows three options: "1. Yes, proceed", "2. Yes, and don't ask again for this command in this workdir", and "3. [Alternative/Feedback]".
 2. **Given** the confirmation prompt for `Bash` command `ls` is shown, **When** the user selects "Yes, and don't ask again...", **Then** the command is executed, and `Bash(ls)` is added to the `permissions.allow` array in `.wave/settings.local.json`.
 3. **Given** `Bash(ls)` is in the `permissions.allow` array of the local project settings, **When** the agent attempts a `Bash` operation with command `ls`, **Then** it is executed without a prompt.
 4. **Given** `Bash(ls)` is in the `permissions.allow` array, **When** the agent attempts a `Bash` operation with command `rm -rf /`, **Then** the user is still prompted for permission.
