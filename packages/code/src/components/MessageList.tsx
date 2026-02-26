@@ -68,13 +68,13 @@ export const MessageList = React.memo(
         {/* Static blocks */}
         {staticBlocks.length > 0 && (
           <Static items={staticBlocks}>
-            {(item, index) => (
+            {(item) => (
               <MessageBlockItem
                 key={item.key}
                 block={item.block}
                 message={item.message}
                 isExpanded={isExpanded}
-                paddingTop={index > 0 ? 1 : 0}
+                paddingTop={1}
               />
             )}
           </Static>
@@ -82,17 +82,14 @@ export const MessageList = React.memo(
 
         {/* Dynamic blocks */}
         {dynamicBlocks.length > 0 && (
-          <Box
-            flexDirection="column"
-            gap={1}
-            paddingTop={staticBlocks.length > 0 ? 1 : 0}
-          >
+          <Box flexDirection="column">
             {dynamicBlocks.map((item) => (
               <MessageBlockItem
                 key={item.key}
                 block={item.block}
                 message={item.message}
                 isExpanded={isExpanded}
+                paddingTop={1}
               />
             ))}
           </Box>
