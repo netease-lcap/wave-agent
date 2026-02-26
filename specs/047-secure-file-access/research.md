@@ -13,7 +13,7 @@ We will implement the "Safe Zone" as a union of the current working directory an
 1.  **Configuration**: Add `permissions.additionalDirectories` (array of strings) to `WaveConfiguration`.
 2.  **Path Resolution**: Use `isPathInside` from `packages/agent-sdk/src/utils/pathSafety.ts` which already handles absolute paths and symlinks.
 3.  **Permission Check**:
-    - In `PermissionManager.checkPermission`, if the tool is a file modification tool (`Write`, `Edit`, `MultiEdit`, `Delete`):
+    - In `PermissionManager.checkPermission`, if the tool is a file modification tool (`Write`, `Edit`, ``, `Delete`):
         - Resolve the target file path.
         - Check if it's inside the "Safe Zone" (workdir or any of `additionalDirectories`).
         - If inside Safe Zone AND `acceptEdits` mode is ON, allow.

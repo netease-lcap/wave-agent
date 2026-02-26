@@ -4,7 +4,6 @@ import { taskOutputTool } from "../tools/taskOutputTool.js";
 import { taskStopTool } from "../tools/taskStopTool.js";
 import { deleteFileTool } from "../tools/deleteFileTool.js";
 import { editTool } from "../tools/editTool.js";
-import { multiEditTool } from "../tools/multiEditTool.js";
 import { writeTool } from "../tools/writeTool.js";
 import { exitPlanModeTool } from "../tools/exitPlanMode.js";
 import { askUserQuestionTool } from "../tools/askUserQuestion.js";
@@ -102,7 +101,6 @@ class ToolManager {
       taskStopTool,
       deleteFileTool,
       editTool,
-      multiEditTool,
       writeTool,
       exitPlanModeTool,
       askUserQuestionTool,

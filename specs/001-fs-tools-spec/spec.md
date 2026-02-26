@@ -3,7 +3,7 @@
 **Feature Branch**: `001-fs-tools-spec`  
 **Created**: 2024-12-19  
 **Status**: Implemented  
-**Input**: User description: "Support file system tools: Read, Write, Edit, MultiEdit, Delete, LS, Glob, Grep"
+**Input**: User description: "Support file system tools: Read, Write, Edit, Delete, LS, Glob, Grep"
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -25,16 +25,15 @@ As an AI agent, I want to read the content of files in the local filesystem so t
 
 ### User Story 2 - Precise Code Modification (Priority: P1)
 
-As an AI agent, I want to modify files using exact string replacements or atomic multi-edits so that I can apply changes safely without corrupting the file structure.
+As an AI agent, I want to modify files using exact string replacements so that I can apply changes safely without corrupting the file structure.
 
 **Why this priority**: Essential for performing refactoring and bug fixes reliably.
 
-**Independent Test**: Can be tested by applying an `Edit` or `MultiEdit` to a file and verifying that the content is updated correctly and that indentation is preserved.
+**Independent Test**: Can be tested by applying an `Edit` to a file and verifying that the content is updated correctly and that indentation is preserved.
 
 **Acceptance Scenarios**:
 
 1. **Given** a file has been read, **When** the agent calls `Edit` with a unique `old_string`, **Then** the file MUST be updated with `new_string`.
-2. **Given** multiple changes are needed, **When** the agent calls `MultiEdit`, **Then** all changes MUST be applied atomically.
 3. **Given** the `old_string` is not unique, **When** the agent calls `Edit` without `replace_all`, **Then** the operation MUST fail.
 
 ---
@@ -59,7 +58,6 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 - **Large Files**: Reading files that exceed memory limits or token windows. Handled via `offset` and `limit`.
 - **Binary Documents**: Attempting to read PDF, DOCX, or other unsupported binary formats. The tool MUST prevent this and return an error.
 - **Mismatch Analysis**: `Edit` tool must provide detailed mismatch reports when `old_string` is not found, highlighting exactly which lines differ.
-- **Atomic Failures**: In `MultiEdit`, if one edit fails, none of the previous edits in that call should be persisted.
 - **File Permissions**: Attempting to write to read-only files or directories without proper permissions.
 
 ## Requirements *(mandatory)*
@@ -71,7 +69,6 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 - **FR-003**: System MUST provide a `Write` tool that automatically creates parent directories.
 - **FR-004**: `Write` tool SHOULD verify that the file was read before being overwritten to prevent accidental data loss.
 - **FR-005**: System MUST provide an `Edit` tool for exact string replacement with detailed mismatch analysis.
-- **FR-006**: System MUST provide a `MultiEdit` tool for atomic sequential edits.
 - **FR-007**: System MUST provide a `Delete` tool for removing files.
 - **FR-008**: System MUST provide an `LS` tool to list directory contents with metadata (size, type).
 - **FR-009**: System MUST provide a `Glob` tool for fast pattern matching.

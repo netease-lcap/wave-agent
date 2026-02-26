@@ -13,13 +13,13 @@ As a user, I want the agent to automatically apply file edits without asking for
 
 **Why this priority**: This is the core value of the feature, enabling a "hands-off" editing experience for the most common operations.
 
-**Independent Test**: Can be tested by setting the permission mode to `acceptEdits` and observing that the agent performs `Edit`, `MultiEdit`, `Delete`, and `Write` operations without prompting for confirmation, while still prompting for `Bash`.
+**Independent Test**: Can be tested by setting the permission mode to `acceptEdits` and observing that the agent performs `Edit`, `Delete`, and `Write` operations without prompting for confirmation, while still prompting for `Bash`.
 
 **Acceptance Scenarios**:
 
-1. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use `Edit`, `MultiEdit`, `Delete`, or `Write` tools, **Then** the operation is applied immediately without a permission prompt.
+1. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use `Edit`, `Delete`, or `Write` tools, **Then** the operation is applied immediately without a permission prompt.
 2. **Given** the agent is in `acceptEdits` mode, **When** the agent attempts to use the `Bash` tool, **Then** the user is prompted for permission.
-3. **Given** the agent is in `default` mode, **When** the agent attempts to use any restricted tool (`Edit`, `MultiEdit`, `Delete`, `Bash`, `Write`), **Then** the user is prompted for permission.
+3. **Given** the agent is in `default` mode, **When** the agent attempts to use any restricted tool (`Edit`, `Delete`, `Bash`, `Write`), **Then** the user is prompted for permission.
 4. **Given** the agent is in `bypassPermissions` mode, **When** the agent attempts to use any restricted tool, **Then** the operation is applied immediately without a prompt.
 
 ---
@@ -82,7 +82,7 @@ As a developer using the SDK, I want to programmatically set the permission mode
 ### Functional Requirements
 
 - **FR-001**: The system MUST support a new permission mode named `acceptEdits`.
-- **FR-002**: In `acceptEdits` mode, the system MUST automatically grant permission for `Edit`, `MultiEdit`, `Delete`, and `Write` operations.
+- **FR-002**: In `acceptEdits` mode, the system MUST automatically grant permission for `Edit`, `Delete`, and `Write` operations.
 - **FR-003**: In `acceptEdits` mode, the system MUST still require user permission for the `Bash` tool.
 - **FR-004**: The SDK MUST provide a method or property to get and set the current permission mode.
 - **FR-005**: The CLI MUST listen for the `Shift+Tab` key combination during an active session.

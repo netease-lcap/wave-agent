@@ -3,7 +3,6 @@ import { Box, Text, useStdout, measureElement, Static } from "ink";
 import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
-  MULTI_EDIT_TOOL_NAME,
   DELETE_FILE_TOOL_NAME,
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
@@ -26,8 +25,6 @@ const getActionDescription = (
       return `Execute command: ${toolInput.command || "unknown command"}`;
     case EDIT_TOOL_NAME:
       return `Edit file: ${toolInput.file_path || "unknown file"}`;
-    case MULTI_EDIT_TOOL_NAME:
-      return `Edit multiple sections in: ${toolInput.file_path || "unknown file"}`;
     case DELETE_FILE_TOOL_NAME:
       return `Delete file: ${toolInput.target_file || "unknown file"}`;
     case WRITE_TOOL_NAME:

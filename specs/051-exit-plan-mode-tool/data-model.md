@@ -29,4 +29,4 @@ The result of a user confirmation request.
 
 ## Validation Rules
 - `ExitPlanMode` MUST NOT be called if `PermissionMode` is not `plan`.
-- If `PermissionMode` is `acceptEdits`, tools like `Edit`, `MultiEdit`, and `Write` should skip the `canUseTool` check (or be auto-approved).
+- If `PermissionMode` is `acceptEdits`, tools like `Edit` and `Write` should skip the `canUseTool` check (or be auto-approved).

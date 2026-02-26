@@ -230,7 +230,7 @@ canUseTool: async (toolName) => {
 ### CLI Not Showing Confirmations
 
 - Ensure you're not using `--dangerously-skip-permissions` flag
-- Check that the tool being executed is in the restricted list (Edit, MultiEdit, Delete, Bash, Write)
+- Check that the tool being executed is in the restricted list (Edit, Delete, Bash, Write)
 - Read-only tools (Read, Grep, LS, Glob) never show confirmations
 
 ### Agent SDK Integration Issues

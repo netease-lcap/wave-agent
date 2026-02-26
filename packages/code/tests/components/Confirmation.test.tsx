@@ -554,7 +554,7 @@ describe("Confirmation", () => {
     it("should call onDecision with correct allow PermissionDecision format", async () => {
       const { stdin, lastFrame } = render(
         <Confirmation
-          toolName="MultiEdit"
+          toolName="Edit"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
           onAbort={mockOnAbort}
@@ -1406,34 +1406,6 @@ describe("Confirmation", () => {
           expect.objectContaining({
             behavior: "allow",
             newPermissionRule: "Bash(ls -la)",
-          }),
-        );
-      });
-    });
-
-    it("should handle MultiEdit tool auto-decision", async () => {
-      const { stdin, lastFrame } = render(
-        <Confirmation
-          toolName="MultiEdit"
-          toolInput={{ file_path: "test.ts" }}
-          onDecision={mockOnDecision}
-          onCancel={mockOnCancel}
-          onAbort={mockOnAbort}
-        />,
-      );
-
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes");
-      });
-
-      stdin.write("\u001b[B"); // Down to auto
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      stdin.write("\r");
-      await vi.waitFor(() => {
-        expect(mockOnDecision).toHaveBeenCalledWith(
-          expect.objectContaining({
-            behavior: "allow",
-            newPermissionMode: "acceptEdits",
           }),
         );
       });

@@ -35,12 +35,6 @@
 - `new_string: string`: Replacement text.
 - `replace_all?: boolean`: Whether to replace all occurrences.
 
-### MultiEditArguments
-**Purpose**: Arguments for the `MultiEdit` tool.
-**Fields**:
-- `file_path: string`: Absolute path to the file.
-- `edits: Array<{ old_string: string; new_string: string; replace_all?: boolean }>`: Sequential edit operations.
-
 ### LSArguments
 **Purpose**: Arguments for the `LS` tool.
 **Fields**:

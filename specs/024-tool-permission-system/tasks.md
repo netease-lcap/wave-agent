@@ -42,7 +42,7 @@
 
 ## Phase 3: User Story 1 - Default Safe Mode with Confirmations (Priority: P1) 🎯 MVP
 
-**Goal**: Users run Wave CLI without flags and system prompts for confirmation before executing destructive operations (Edit, MultiEdit, Delete, Bash, Write). **Updated**: System handles multiple tool calls with individual sequential confirmations and batched result return.
+**Goal**: Users run Wave CLI without flags and system prompts for confirmation before executing destructive operations (Edit, Delete, Bash, Write). **Updated**: System handles multiple tool calls with individual sequential confirmations and batched result return.
 
 **Independent Test**: Run any edit/delete/bash command and verify confirmation prompt appears with allow/deny options. Test multiple tool call scenarios to verify sequential confirmation behavior.
 
@@ -57,7 +57,7 @@
 ### Implementation for User Story 1
 
 - [X] T014 [P] [US1] Add permission check to Edit tool after validation/diff in packages/agent-sdk/src/tools/editTool.ts
-- [X] T015 [P] [US1] Add permission check to MultiEdit tool after validation/diff in packages/agent-sdk/src/tools/multiEditTool.ts
+- [X] T015 [P] [US1] Add permission check to  tool after validation/diff in packages/agent-sdk/src/tools/.ts
 - [X] T016 [P] [US1] Add permission check to Delete tool after validation/diff in packages/agent-sdk/src/tools/deleteFileTool.ts
 - [X] T017 [P] [US1] Add permission check to Bash tool after validation/diff in packages/agent-sdk/src/tools/bashTool.ts
 - [X] T018 [P] [US1] Add permission check to Write tool after validation/diff in packages/agent-sdk/src/tools/writeTool.ts
@@ -167,7 +167,7 @@ Task: "Create confirmation component tests in packages/code/tests/components/Con
 
 # Launch all tool modifications for User Story 1 together:
 Task: "Add permission check to Edit tool after validation/diff in packages/agent-sdk/src/tools/editTool.ts"
-Task: "Add permission check to MultiEdit tool after validation/diff in packages/agent-sdk/src/tools/multiEditTool.ts"
+Task: "Add permission check to  tool after validation/diff in packages/agent-sdk/src/tools/.ts"
 Task: "Add permission check to Delete tool after validation/diff in packages/agent-sdk/src/tools/deleteFileTool.ts" 
 Task: "Add permission check to Bash tool after validation/diff in packages/agent-sdk/src/tools/bashTool.ts"
 Task: "Add permission check to Write tool after validation/diff in packages/agent-sdk/src/tools/writeTool.ts"

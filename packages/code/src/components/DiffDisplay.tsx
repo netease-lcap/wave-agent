@@ -1,10 +1,6 @@
 import React, { useMemo } from "react";
 import { Box, Text } from "ink";
-import {
-  WRITE_TOOL_NAME,
-  EDIT_TOOL_NAME,
-  MULTI_EDIT_TOOL_NAME,
-} from "wave-agent-sdk";
+import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from "wave-agent-sdk";
 import { transformToolBlockToChanges } from "../utils/toolParameterTransforms.js";
 import { diffLines, diffWords } from "diff";
 
@@ -18,8 +14,7 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
   parameters,
 }) => {
   const showDiff =
-    toolName &&
-    [WRITE_TOOL_NAME, EDIT_TOOL_NAME, MULTI_EDIT_TOOL_NAME].includes(toolName);
+    toolName && [WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(toolName);
 
   // Diff detection and transformation using typed parameters
   const changes = useMemo(() => {
@@ -109,15 +104,6 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
 
       changes.forEach((change, changeIndex) => {
         try {
-          // Add ellipsis between non-contiguous edits in MultiEdit
-          if (toolName === MULTI_EDIT_TOOL_NAME && changeIndex > 0) {
-            allElements.push(
-              <Box key={`multi-edit-separator-${changeIndex}`}>
-                <Text color="gray">...</Text>
-              </Box>,
-            );
-          }
-
           // Get line-level diff to understand the structure
           const lineDiffs = diffLines(
             change.oldContent || "",

@@ -6,7 +6,7 @@
 ## Decision: Permission Mode Enforcement
 **Rationale**: `PermissionManager.ts` already handles `default` and `acceptEdits` modes. Adding a `plan` mode here allows us to centralize the authorization logic. In `plan` mode:
 - `Read`, `LS`, `Glob`, `Grep` are allowed.
-- `Edit`, `MultiEdit`, `Write` are allowed ONLY for the designated plan file.
+- `Edit`, `Write` are allowed ONLY for the designated plan file.
 - `Delete` is denied (even for the plan file, to ensure it's built incrementally).
 - `Bash` and other restricted tools are denied.
 

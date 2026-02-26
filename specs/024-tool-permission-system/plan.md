@@ -7,7 +7,7 @@
 
 ## Summary
 
-Add permission system to Wave Agent SDK with "default" and "bypassPermissions" modes. In default mode, system prompts for confirmation before executing destructive tools (Edit, MultiEdit, Delete, Bash). Users can bypass with `--dangerously-skip-permissions` CLI flag. System implements `canUseTool` callback in Agent SDK for custom authorization and adds confirmation component to CLI. **Updated**: System supports multiple tool calls with individual sequential confirmations, allowing granular user control per tool while batching results back to AI.
+Add permission system to Wave Agent SDK with "default" and "bypassPermissions" modes. In default mode, system prompts for confirmation before executing destructive tools (Edit, Delete, Bash). Users can bypass with `--dangerously-skip-permissions` CLI flag. System implements `canUseTool` callback in Agent SDK for custom authorization and adds confirmation component to CLI. **Updated**: System supports multiple tool calls with individual sequential confirmations, allowing granular user control per tool while batching results back to AI.
 
 ## Technical Context
 
@@ -90,7 +90,7 @@ packages/
 │   │   │   └── permissionManager.ts   # New: Handle permission logic helpers
 │   │   └── tools/                     # MODIFY: Add permission checks to restricted tools
 │   │       ├── editTool.ts            # Insert permission check after validation/diff
-│   │       ├── multiEditTool.ts       # Insert permission check after validation/diff  
+│   │       ├── .ts       # Insert permission check after validation/diff  
 │   │       ├── deleteFileTool.ts      # Insert permission check after validation/diff
 │   │       ├── bashTool.ts            # Insert permission check after validation/diff
 │   │       └── writeTool.ts           # Insert permission check after validation/diff

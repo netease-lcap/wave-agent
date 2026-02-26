@@ -20,7 +20,7 @@ Add allowed directories to your `.wave/settings.json` or `~/.wave/settings.json`
 ## How it works
 
 1.  **Safe Zone**: The agent considers the current working directory and any paths in `additionalDirectories` as safe.
-2.  **Auto-Accept**: If `acceptEdits` mode is enabled, file operations (Write, Edit, MultiEdit, Delete) within the Safe Zone proceed automatically.
+2.  **Auto-Accept**: If `acceptEdits` mode is enabled, file operations (Write, Edit, Delete) within the Safe Zone proceed automatically.
 3.  **Security**: Any file operation **outside** the Safe Zone will **always** trigger a confirmation prompt, even if `acceptEdits` is enabled.
 4.  **Symlinks**: The system resolves symbolic links to their real paths before checking against the Safe Zone.
 

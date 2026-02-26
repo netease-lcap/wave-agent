@@ -28,7 +28,6 @@ class AuthorizationService {
     // Mock RBAC logic
     const toolPermissions = {
       Edit: ["developer", "admin"],
-      MultiEdit: ["developer", "admin"],
       Delete: ["admin"],
       Bash: ["admin"],
       Write: ["developer", "admin"],

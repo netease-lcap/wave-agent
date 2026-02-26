@@ -77,18 +77,6 @@ interface EditArgs {
 }
 ```
 
-### MultiEdit Tool
-```typescript
-interface MultiEditArgs {
-  file_path: string;
-  edits: Array<{
-    old_string: string;
-    new_string: string;
-    replace_all?: boolean;
-  }>;
-}
-```
-
 ### LS Tool
 ```typescript
 interface LSArgs {

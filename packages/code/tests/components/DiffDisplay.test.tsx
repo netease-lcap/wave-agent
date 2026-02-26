@@ -102,25 +102,6 @@ describe("DiffDisplay", () => {
     expect(lastFrame()).not.toContain("+");
   });
 
-  it("should render diff for MultiEdit tool", () => {
-    const params = JSON.stringify({
-      file_path: "test.txt",
-      edits: [
-        { old_string: "old1", new_string: "new1" },
-        { old_string: "old2", new_string: "new2" },
-      ],
-    });
-    const { lastFrame } = render(
-      <DiffDisplay toolName="MultiEdit" parameters={params} />,
-    );
-    const frame = lastFrame();
-    expect(frame).toContain("Diff:");
-    expect(frame).toContain("-old1");
-    expect(frame).toContain("+new1");
-    expect(frame).toContain("-old2");
-    expect(frame).toContain("+new2");
-  });
-
   it("should handle context lines in diff", () => {
     const params = JSON.stringify({
       old_string: "line1\nline2\nline3",

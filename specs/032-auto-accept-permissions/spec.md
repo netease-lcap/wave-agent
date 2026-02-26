@@ -66,7 +66,7 @@ As a user, I want my allowed command rules to be respected whether they are defi
 
 ### Functional Requirements
 
-- **FR-001**: The confirmation prompt for file system tools (`Write`, `Edit`, `MultiEdit`, `Delete`) MUST include a second option: "Yes, and auto-accept edits".
+- **FR-001**: The confirmation prompt for file system tools (`Write`, `Edit`, `Delete`) MUST include a second option: "Yes, and auto-accept edits".
 - **FR-002**: Selecting "Yes, and auto-accept edits" MUST set the current session's permission mode to `acceptEdits`.
 - **FR-003**: The confirmation prompt for the `Bash` tool MUST include a second option: "Yes, and don't ask again for this command in this workdir".
 - **FR-004**: Selecting the persistent Bash option MUST save the rule `Bash([command])` to the `permissions.allow` array in `.wave/settings.local.json`.

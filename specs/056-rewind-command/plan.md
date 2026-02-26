@@ -60,7 +60,7 @@ packages/
 │   │   └── tools/
 │   │       ├── writeTool.ts
 │   │       ├── editTool.ts
-│   │       ├── multiEditTool.ts
+│   │       ├── .ts
 │   │       └── deleteFileTool.ts
 │   └── tests/
 │       └── managers/
