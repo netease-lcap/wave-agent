@@ -13,7 +13,7 @@ This is a pnpm monorepo focused on AI-powered development tools.
 
 ### Key Dependencies
 - `packages/code` depends on `packages/agent-sdk`.
-- **Important**: After modifying `agent-sdk`, you MUST rebuild it (`pnpm -F wave-agent-sdk build`) before the changes are available to `packages/code`.
+- **Important**: After modifying `agent-sdk`, you MUST rebuild it (`cd packages/agent-sdk && pnpm build`) before the changes are available to `packages/code`.
 
 ## 🛠 Development Commands
 
@@ -21,13 +21,13 @@ Always use `pnpm` as the package manager.
 
 ### Build & Type-Check
 - **Build all**: `pnpm build`
-    - **Build specific package**: `pnpm -F <package-name> build` (e.g., `pnpm -F wave-agent-sdk build` or `pnpm -F wave-code build`)
+    - **Build specific package**: `cd packages/<package-name> && pnpm build` (e.g., `cd packages/agent-sdk && pnpm build` or `cd packages/code && pnpm build`)
 - **Type-check all**: `pnpm run type-check`
 
 ### Testing
 - **Run all tests**: `pnpm test`
-    - **Run tests for a package**: `pnpm -F <package-name> test` (e.g., `pnpm -F wave-agent-sdk test`)
-    - **Run a single test file**: `pnpm -F <package-name> test <path/to/test>` (e.g., `pnpm -F wave-agent-sdk test tests/agent.test.ts`)
+    - **Run tests for a package**: `cd packages/<package-name> && pnpm test` (e.g., `cd packages/agent-sdk && pnpm test`)
+    - **Run a single test file**: `cd packages/<package-name> && pnpm test <path/to/test>` (e.g., `cd packages/agent-sdk && pnpm test tests/agent.test.ts`)
 - **Testing Framework**: Vitest.
 
 ### Linting

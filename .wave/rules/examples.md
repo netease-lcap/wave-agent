@@ -5,8 +5,8 @@ paths:
 - `packages/*/examples` directories contain real test ts or tsx files that are hard to mock:
   - need to create temporary directories
   - test by sending real messages using `agent.sendMessage`
-  - run example like this: `pnpm -F xxx exec tsx examples/hi.ts`
+  - run example like this: `cd packages/xxx && pnpm exec tsx examples/hi.ts`
   - use `gemini-2.5-flash` for cheaper and faster testing (pass as `agentModel` in `Agent.create`)
   - always include a `finally` block that calls `await agent.destroy()` to ensure the process exits
   - never access private properties directly with `(agent as any)`
-  - before running any example, always run type-check for `agent-sdk` to ensure types are valid: `pnpm -F wave-agent-sdk run type-check`
+  - before running any example, always run type-check for `agent-sdk` to ensure types are valid: `cd packages/agent-sdk && pnpm run type-check`

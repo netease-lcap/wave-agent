@@ -152,6 +152,7 @@ describe("ChatProvider", () => {
         blocks: [{ type: "text" as const, content: "test" }],
       },
     ];
+    Object.assign(mockAgent, { messages: newMessages });
     callbacks.onMessagesChange!(newMessages);
     await vi.waitFor(() => {
       expect(lastValue?.messages).toEqual(newMessages);
@@ -762,6 +763,51 @@ describe("ChatProvider", () => {
 
     // Simulate Ctrl+O
     inputCallback("o", { ctrl: true } as Parameters<typeof inputCallback>[1]);
+  });
+
+  it("clears throttle timer when expanding", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    // Trigger onMessagesChange to start a timer
+    const newMessages = [
+      {
+        role: "user" as const,
+        blocks: [{ type: "text" as const, content: "test" }],
+      },
+    ];
+    Object.assign(mockAgent, { messages: newMessages });
+
+    // Use fake timers to control the throttle timer
+    vi.useFakeTimers();
+
+    callbacks.onMessagesChange!(newMessages);
+
+    // Get the useInput callback
+    const useInputMock = vi.mocked(useInput);
+    const inputCallback =
+      useInputMock.mock.calls[useInputMock.mock.calls.length - 1][0];
+
+    // Simulate Ctrl+O to expand
+    inputCallback("o", { ctrl: true } as Parameters<typeof inputCallback>[1]);
+
+    // Advance time - the timer should have been cleared, so messages should NOT be updated to newMessages
+    vi.advanceTimersByTime(100);
+
+    expect(lastValue?.messages).toEqual([]);
+
+    vi.useRealTimers();
   });
 
   it("cancels confirmation with ESC key", async () => {
