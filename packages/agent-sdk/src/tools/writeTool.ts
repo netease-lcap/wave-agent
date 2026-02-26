@@ -173,6 +173,7 @@ Usage:
         content: detailedContent,
         shortResult,
         filePath: resolvedPath,
+        startLineNumber: 1,
       };
     } catch (error) {
       const errorMessage =

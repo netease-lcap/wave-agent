@@ -45,6 +45,7 @@ export interface ToolBlock {
   parameters?: string;
   result?: string;
   shortResult?: string; // Add shortResult field
+  startLineNumber?: number; // Optional starting line number
   images?: Array<{
     // Add image data support
     data: string; // Base64 encoded image data

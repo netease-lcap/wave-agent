@@ -7,11 +7,13 @@ import { diffLines, diffWords } from "diff";
 interface DiffDisplayProps {
   toolName?: string;
   parameters?: string;
+  startLineNumber?: number;
 }
 
 export const DiffDisplay: React.FC<DiffDisplayProps> = ({
   toolName,
   parameters,
+  startLineNumber,
 }) => {
   const showDiff =
     toolName && [WRITE_TOOL_NAME, EDIT_TOOL_NAME].includes(toolName);
@@ -21,12 +23,12 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
     if (!showDiff || !toolName || !parameters) return [];
     try {
       // Use local transformation with JSON parsing and type guards
-      return transformToolBlockToChanges(toolName, parameters);
+      return transformToolBlockToChanges(toolName, parameters, startLineNumber);
     } catch (error) {
       console.warn("Error transforming tool block to changes:", error);
       return [];
     }
-  }, [toolName, parameters, showDiff]);
+  }, [toolName, parameters, showDiff, startLineNumber]);
 
   // Render word-level diff between two lines of text
   const renderWordLevelDiff = (
@@ -100,6 +102,43 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
     try {
       if (changes.length === 0) return null;
 
+      const maxLineNum = changes.reduce((max, change) => {
+        const oldLines = (change.oldContent || "").split("\n").length;
+        const newLines = (change.newContent || "").split("\n").length;
+        const start = change.startLineNumber || 1;
+        // For Edit tool, the diff might show context lines before/after the change.
+        // The startLineNumber is the line where old_string starts.
+        // diffLines will include context lines if they are part of the change object.
+        // However, our transformEditParameters currently only puts old_string/new_string.
+        // If we ever support context lines in the Change object, we need to be careful.
+        return Math.max(max, start + oldLines, start + newLines);
+      }, 0);
+      const maxDigits = Math.max(2, maxLineNum.toString().length);
+
+      const renderLine = (
+        oldLineNum: number | null,
+        newLineNum: number | null,
+        prefix: string,
+        content: React.ReactNode,
+        color: string,
+        key: string,
+      ) => {
+        const formatNum = (num: number | null) =>
+          num === null
+            ? " ".repeat(maxDigits)
+            : num.toString().padStart(maxDigits);
+
+        return (
+          <Box key={key} flexDirection="row">
+            <Text color="gray">{formatNum(oldLineNum)} </Text>
+            <Text color="gray">{formatNum(newLineNum)} </Text>
+            <Text color="gray">| </Text>
+            <Text color={color}>{prefix}</Text>
+            <Text color={color}>{content}</Text>
+          </Box>
+        );
+      };
+
       const allElements: React.ReactNode[] = [];
 
       changes.forEach((change, changeIndex) => {
@@ -110,45 +149,46 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
             change.newContent || "",
           );
 
+          let oldLineNum = change.startLineNumber || 1;
+          let newLineNum = change.startLineNumber || 1;
+
           // Process line diffs
           const diffElements: React.ReactNode[] = [];
           lineDiffs.forEach((part, partIndex) => {
+            const lines = part.value.split("\n");
+            // diffLines might return a trailing empty string if the content ends with a newline
+            if (lines[lines.length - 1] === "") {
+              lines.pop();
+            }
+
             if (part.added) {
-              const lines = part.value
-                .split("\n")
-                .filter((line) => line !== "");
               lines.forEach((line, lineIndex) => {
                 diffElements.push(
-                  <Box
-                    key={`add-${changeIndex}-${partIndex}-${lineIndex}`}
-                    flexDirection="row"
-                  >
-                    <Text color="green">+</Text>
-                    <Text color="green">{line}</Text>
-                  </Box>,
+                  renderLine(
+                    null,
+                    newLineNum++,
+                    "+",
+                    line,
+                    "green",
+                    `add-${changeIndex}-${partIndex}-${lineIndex}`,
+                  ),
                 );
               });
             } else if (part.removed) {
-              const lines = part.value
-                .split("\n")
-                .filter((line) => line !== "");
               lines.forEach((line, lineIndex) => {
                 diffElements.push(
-                  <Box
-                    key={`remove-${changeIndex}-${partIndex}-${lineIndex}`}
-                    flexDirection="row"
-                  >
-                    <Text color="red">-</Text>
-                    <Text color="red">{line}</Text>
-                  </Box>,
+                  renderLine(
+                    oldLineNum++,
+                    null,
+                    "-",
+                    line,
+                    "red",
+                    `remove-${changeIndex}-${partIndex}-${lineIndex}`,
+                  ),
                 );
               });
             } else {
               // Context lines - show unchanged content
-              const lines = part.value
-                .split("\n")
-                .filter((line) => line !== "");
-
               const isFirstBlock = partIndex === 0;
               const isLastBlock = partIndex === lineDiffs.length - 1;
 
@@ -159,6 +199,9 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
               if (isFirstBlock && !isLastBlock) {
                 // First block: keep last 3
                 if (lines.length > 3) {
+                  const skipCount = lines.length - 3;
+                  oldLineNum += skipCount;
+                  newLineNum += skipCount;
                   linesToDisplay = lines.slice(-3);
                   showEllipsisTop = true;
                 }
@@ -174,15 +217,12 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
                   linesToDisplay = [...lines.slice(0, 3), ...lines.slice(-3)];
                   showEllipsisTop = false; // We'll put ellipsis in the middle
                 }
-              } else if (isFirstBlock && isLastBlock) {
-                // Only one block (no changes?) - keep all or apply a general limit
-                // For now, let's keep all if it's the only block
               }
 
               if (showEllipsisTop) {
                 diffElements.push(
                   <Box key={`ellipsis-top-${changeIndex}-${partIndex}`}>
-                    <Text color="gray"> ...</Text>
+                    <Text color="gray">{" ".repeat(maxDigits * 2 + 2)}...</Text>
                   </Box>,
                 );
               }
@@ -195,28 +235,39 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
                   lines.length > 6 &&
                   lineIndex === 3
                 ) {
+                  const skipCount = lines.length - 6;
+                  oldLineNum += skipCount;
+                  newLineNum += skipCount;
                   diffElements.push(
                     <Box key={`ellipsis-mid-${changeIndex}-${partIndex}`}>
-                      <Text color="gray"> ...</Text>
+                      <Text color="gray">
+                        {" ".repeat(maxDigits * 2 + 2)}...
+                      </Text>
                     </Box>,
                   );
                 }
 
                 diffElements.push(
-                  <Box
-                    key={`context-${changeIndex}-${partIndex}-${lineIndex}`}
-                    flexDirection="row"
-                  >
-                    <Text color="white"> </Text>
-                    <Text color="white">{line}</Text>
-                  </Box>,
+                  renderLine(
+                    oldLineNum++,
+                    newLineNum++,
+                    " ",
+                    line,
+                    "white",
+                    `context-${changeIndex}-${partIndex}-${lineIndex}`,
+                  ),
                 );
               });
 
               if (showEllipsisBottom) {
+                const skipCount = lines.length - linesToDisplay.length;
+                // We don't increment oldLineNum/newLineNum here because they are already incremented in the loop
+                // But we need to account for the lines we skipped at the end of this block
+                oldLineNum += skipCount;
+                newLineNum += skipCount;
                 diffElements.push(
                   <Box key={`ellipsis-bottom-${changeIndex}-${partIndex}`}>
-                    <Text color="gray"> ...</Text>
+                    <Text color="gray">{" ".repeat(maxDigits * 2 + 2)}...</Text>
                   </Box>,
                 );
               }
@@ -235,6 +286,8 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
           ) {
             const removedText = extractTextFromElement(diffElements[0]);
             const addedText = extractTextFromElement(diffElements[1]);
+            const oldLineNumVal = extractOldLineNumFromElement(diffElements[0]);
+            const newLineNumVal = extractNewLineNumFromElement(diffElements[1]);
 
             if (removedText && addedText) {
               const { removedParts, addedParts } = renderWordLevelDiff(
@@ -244,19 +297,24 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
               );
 
               allElements.push(
-                <Box
-                  key={`word-diff-removed-${changeIndex}`}
-                  flexDirection="row"
-                >
-                  <Text color="red">-</Text>
-                  {removedParts}
-                </Box>,
+                renderLine(
+                  oldLineNumVal,
+                  null,
+                  "-",
+                  removedParts,
+                  "red",
+                  `word-diff-removed-${changeIndex}`,
+                ),
               );
               allElements.push(
-                <Box key={`word-diff-added-${changeIndex}`} flexDirection="row">
-                  <Text color="green">+</Text>
-                  {addedParts}
-                </Box>,
+                renderLine(
+                  null,
+                  newLineNumVal,
+                  "+",
+                  addedParts,
+                  "green",
+                  `word-diff-added-${changeIndex}`,
+                ),
               );
             } else {
               allElements.push(...diffElements);
@@ -309,16 +367,64 @@ const extractTextFromElement = (element: React.ReactNode): string | null => {
   if (!React.isValidElement(element)) return null;
 
   // Navigate through Box -> Text structure
+  // Our new structure is: Box -> Text (old), Text (new), Text (|), Text (prefix), Text (content)
+  const children = (
+    element.props as unknown as { children?: React.ReactNode[] }
+  ).children;
+  if (Array.isArray(children) && children.length >= 5) {
+    const textElement = children[4]; // Fifth child should be the Text with content
+    if (React.isValidElement(textElement)) {
+      const textChildren = (textElement.props as Record<string, unknown>)
+        .children;
+      return Array.isArray(textChildren)
+        ? textChildren.join("")
+        : String(textChildren || "");
+    }
+  }
+  return null;
+};
+
+const extractOldLineNumFromElement = (
+  element: React.ReactNode,
+): number | null => {
+  if (!React.isValidElement(element)) return null;
+  const children = (
+    element.props as unknown as { children?: React.ReactNode[] }
+  ).children;
+  if (Array.isArray(children) && children.length >= 1) {
+    const textElement = children[0];
+    if (React.isValidElement(textElement)) {
+      const textChildren = (textElement.props as Record<string, unknown>)
+        .children;
+      const val = (
+        Array.isArray(textChildren)
+          ? textChildren.join("")
+          : String(textChildren || "")
+      ).trim();
+      return val ? parseInt(val, 10) : null;
+    }
+  }
+  return null;
+};
+
+const extractNewLineNumFromElement = (
+  element: React.ReactNode,
+): number | null => {
+  if (!React.isValidElement(element)) return null;
   const children = (
     element.props as unknown as { children?: React.ReactNode[] }
   ).children;
   if (Array.isArray(children) && children.length >= 2) {
-    const textElement = children[1]; // Second child should be the Text with content
-    if (
-      React.isValidElement(textElement) &&
-      (textElement.props as unknown as { children?: string }).children
-    ) {
-      return (textElement.props as unknown as { children: string }).children;
+    const textElement = children[1];
+    if (React.isValidElement(textElement)) {
+      const textChildren = (textElement.props as Record<string, unknown>)
+        .children;
+      const val = (
+        Array.isArray(textChildren)
+          ? textChildren.join("")
+          : String(textChildren || "")
+      ).trim();
+      return val ? parseInt(val, 10) : null;
     }
   }
   return null;

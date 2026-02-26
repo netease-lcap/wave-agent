@@ -35,6 +35,7 @@ export interface UpdateToolBlockParams {
   stage: "start" | "streaming" | "running" | "end";
   name?: string;
   shortResult?: string;
+  startLineNumber?: number;
   images?: Array<{ data: string; mediaType?: string }>;
   compactParams?: string;
   parametersChunk?: string; // Incremental parameter updates for streaming
@@ -198,6 +199,7 @@ export const updateToolBlockInMessage = ({
   stage,
   name,
   shortResult,
+  startLineNumber,
   images,
   compactParams,
   parametersChunk,
@@ -217,6 +219,8 @@ export const updateToolBlockInMessage = ({
           toolBlock.parameters = parameters;
           if (result !== undefined) toolBlock.result = result;
           if (shortResult !== undefined) toolBlock.shortResult = shortResult;
+          if (startLineNumber !== undefined)
+            toolBlock.startLineNumber = startLineNumber;
           toolBlock.images = images; // Add image data update
           if (success !== undefined) toolBlock.success = success;
           if (error !== undefined) toolBlock.error = error;
@@ -236,6 +240,7 @@ export const updateToolBlockInMessage = ({
           parameters: parameters,
           result: result || "",
           shortResult: shortResult,
+          startLineNumber: startLineNumber,
           images: images, // Add image data
           id: id,
           name: name || "unknown",

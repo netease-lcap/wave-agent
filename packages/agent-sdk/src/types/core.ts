@@ -79,6 +79,8 @@ export interface Change {
   oldContent: string;
   /** The new content (empty string for deletions) */
   newContent: string;
+  /** Optional starting line number in the original file */
+  startLineNumber?: number;
 }
 
 export class ConfigurationError extends Error {

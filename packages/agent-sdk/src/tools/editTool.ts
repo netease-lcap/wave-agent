@@ -122,9 +122,12 @@ Usage:
       }
 
       // Check if old_string exists
-      const matchedOldString = originalContent.includes(oldString)
-        ? oldString
-        : null;
+      const index = originalContent.indexOf(oldString);
+      const matchedOldString = index !== -1 ? oldString : null;
+      const startLineNumber =
+        index !== -1
+          ? originalContent.substring(0, index).split("\n").length
+          : undefined;
 
       if (!matchedOldString) {
         return {
@@ -169,6 +172,7 @@ Usage:
               old_string: oldString,
               new_string: newString,
               replace_all: replaceAll,
+              startLineNumber,
             },
           );
           const permissionResult =
@@ -226,6 +230,7 @@ Usage:
         content: shortResult,
         shortResult,
         filePath: resolvedPath,
+        startLineNumber,
       };
     } catch (error) {
       const errorMessage =
