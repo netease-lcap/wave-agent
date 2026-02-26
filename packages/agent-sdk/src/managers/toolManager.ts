@@ -164,12 +164,14 @@ class ToolManager {
       : permissionMode || "default";
 
     // Enhance context with permission-related fields
+    const canUseToolCallback = this.container.has("CanUseToolCallback")
+      ? this.container.get<PermissionCallback>("CanUseToolCallback")
+      : undefined;
+
     const enhancedContext: ToolContext = {
       ...context,
       permissionMode: effectivePermissionMode,
-      canUseToolCallback: this.container.has("CanUseToolCallback")
-        ? this.container.get<PermissionCallback>("CanUseToolCallback")
-        : undefined,
+      canUseToolCallback,
       permissionManager,
       taskManager:
         this.container.get<import("../services/taskManager.js").TaskManager>(

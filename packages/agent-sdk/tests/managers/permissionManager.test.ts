@@ -646,6 +646,24 @@ describe("PermissionManager", () => {
           });
         }
       });
+
+      it("should handle clearContext in decision", async () => {
+        const mockCallback: PermissionCallback = vi.fn().mockResolvedValue({
+          behavior: "allow",
+          clearContext: true,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "ExitPlanMode",
+          permissionMode: "default",
+          canUseToolCallback: mockCallback,
+        };
+
+        const result = await permissionManager.checkPermission(context);
+
+        expect(result.behavior).toBe("allow");
+        expect(result.clearContext).toBe(true);
+      });
     });
 
     describe("default mode with restricted tools without callback", () => {

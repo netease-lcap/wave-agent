@@ -131,6 +131,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // AI State
   const [messages, setMessages] = useState<Message[]>([]);
+  const messagesUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const [isLoading, setIsLoading] = useState(false);
   const [latestTotalTokens, setlatestTotalTokens] = useState(0);
   const [sessionId, setSessionId] = useState("");
@@ -229,7 +231,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       const callbacks: AgentCallbacks = {
         onMessagesChange: (newMessages) => {
           if (!isExpandedRef.current) {
-            setMessages([...newMessages]);
+            if (messagesUpdateTimerRef.current) {
+              clearTimeout(messagesUpdateTimerRef.current);
+            }
+            messagesUpdateTimerRef.current = setTimeout(() => {
+              setMessages([...newMessages]);
+              messagesUpdateTimerRef.current = null;
+            }, 50);
           }
         },
         onServersChange: (servers) => {

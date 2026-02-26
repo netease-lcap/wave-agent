@@ -147,6 +147,7 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
                   backgroundColor={isSelected ? "blue" : undefined}
                   wrap="truncate-end"
                 >
+                  {isSelected ? "> " : "  "}
                   {entry.prompt.replace(/\n/g, " ")}
                 </Text>
               </Box>

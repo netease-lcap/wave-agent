@@ -40,8 +40,8 @@ describe("HistorySearch", () => {
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
       expect(output).toContain("Prompt History");
-      expect(output).toContain("first prompt");
-      expect(output).toContain("second prompt");
+      expect(output).toContain("> first prompt");
+      expect(output).toContain("  second prompt");
     });
   });
 
@@ -49,7 +49,7 @@ describe("HistorySearch", () => {
     const { lastFrame, rerender } = render(<HistorySearch {...mockProps} />);
 
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("first prompt");
+      expect(stripAnsiColors(lastFrame() || "")).toContain("> first prompt");
     });
 
     vi.mocked(PromptHistoryManager.searchHistory).mockResolvedValue([
@@ -60,7 +60,7 @@ describe("HistorySearch", () => {
     await vi.waitFor(() => {
       const output = stripAnsiColors(lastFrame() || "");
       expect(output).toContain('filtering: "second"');
-      expect(output).toContain("second prompt");
+      expect(output).toContain("> second prompt");
       expect(output).not.toContain("first prompt");
     });
   });
@@ -72,7 +72,7 @@ describe("HistorySearch", () => {
     );
 
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("first prompt");
+      expect(stripAnsiColors(lastFrame() || "")).toContain("> first prompt");
     });
 
     stdin.write("\r");
@@ -88,7 +88,7 @@ describe("HistorySearch", () => {
     );
 
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("first prompt");
+      expect(stripAnsiColors(lastFrame() || "")).toContain("> first prompt");
     });
 
     stdin.write("\u001B"); // Escape
@@ -104,21 +104,17 @@ describe("HistorySearch", () => {
     );
 
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("first prompt");
+      expect(stripAnsiColors(lastFrame() || "")).toContain("> first prompt");
     });
 
     stdin.write("\u001B[B"); // Down arrow
 
     // Wait for selection to change in UI
     await vi.waitFor(() => {
-      const output = lastFrame() || "";
-      // In Ink, the selected item has a blue background.
-      // We check if the second prompt is rendered (it should be).
-      expect(stripAnsiColors(output)).toContain("second prompt");
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).toContain("> second prompt");
+      expect(output).toContain("  first prompt");
     });
-
-    // Give it a few more ticks to ensure the index state and ref are updated
-    await new Promise((resolve) => setTimeout(resolve, 50));
 
     stdin.write("\r");
     await vi.waitFor(() => {
