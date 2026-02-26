@@ -197,8 +197,23 @@ Usage notes:
 
       let outputBuffer = "";
       let errorBuffer = "";
+      let shortResultBuffer = "";
       let isAborted = false;
       let isBackgrounded = false;
+
+      const updateShortResult = (chunk: string) => {
+        if (!chunk) return;
+        shortResultBuffer += chunk;
+        if (shortResultBuffer.length > MAX_OUTPUT_LENGTH) {
+          shortResultBuffer = shortResultBuffer.slice(-MAX_OUTPUT_LENGTH);
+        }
+        const lastLines = shortResultBuffer
+          .trim()
+          .split("\n")
+          .slice(-3)
+          .join("\n");
+        context.onShortResultUpdate?.(lastLines || "");
+      };
 
       const foregroundTaskId = `bash_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -309,7 +324,7 @@ Usage notes:
         if (!isAborted && !isBackgrounded && !runInBackground) {
           const chunk = stripAnsiColors(data.toString());
           outputBuffer += chunk;
-          context.onShortResultUpdate?.(chunk.trim().split("\n").pop() || "");
+          updateShortResult(chunk);
         }
       });
 
@@ -317,7 +332,7 @@ Usage notes:
         if (!isAborted && !isBackgrounded && !runInBackground) {
           const chunk = stripAnsiColors(data.toString());
           errorBuffer += chunk;
-          context.onShortResultUpdate?.(chunk.trim().split("\n").pop() || "");
+          updateShortResult(chunk);
         }
       });
 
