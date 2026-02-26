@@ -36,42 +36,41 @@ export const PluginDetail: React.FC = () => {
       );
       actions.setView(isFromDiscover ? "DISCOVER" : "INSTALLED");
     } else if (key.upArrow) {
-      if (isInstalledAndEnabled) {
-        setSelectedActionIndex((prev) =>
-          prev > 0 ? prev - 1 : INSTALLED_ACTIONS.length - 1,
-        );
-      } else {
-        setSelectedScopeIndex((prev) =>
-          prev > 0 ? prev - 1 : SCOPES.length - 1,
-        );
-      }
+      setSelectedActionIndex((prev) =>
+        prev > 0 ? prev - 1 : INSTALLED_ACTIONS.length - 1,
+      );
+      setSelectedScopeIndex((prev) =>
+        prev > 0 ? prev - 1 : SCOPES.length - 1,
+      );
     } else if (key.downArrow) {
-      if (isInstalledAndEnabled) {
-        setSelectedActionIndex((prev) =>
-          prev < INSTALLED_ACTIONS.length - 1 ? prev + 1 : 0,
-        );
-      } else {
-        setSelectedScopeIndex((prev) =>
-          prev < SCOPES.length - 1 ? prev + 1 : 0,
-        );
-      }
+      setSelectedActionIndex((prev) =>
+        prev < INSTALLED_ACTIONS.length - 1 ? prev + 1 : 0,
+      );
+      setSelectedScopeIndex((prev) =>
+        prev < SCOPES.length - 1 ? prev + 1 : 0,
+      );
     } else if (key.return && plugin) {
       if (isInstalledAndEnabled) {
-        const action = INSTALLED_ACTIONS[selectedActionIndex].id;
-        if (action === "uninstall") {
-          actions.uninstallPlugin(plugin.name, plugin.marketplace);
-        } else {
-          actions.updatePlugin(plugin.name, plugin.marketplace);
-        }
-        actions.setView("INSTALLED");
+        setSelectedActionIndex((prev) => {
+          const action = INSTALLED_ACTIONS[prev].id;
+          if (action === "uninstall") {
+            actions.uninstallPlugin(plugin.name, plugin.marketplace);
+          } else {
+            actions.updatePlugin(plugin.name, plugin.marketplace);
+          }
+          return prev;
+        });
       } else {
-        actions.installPlugin(
-          plugin.name,
-          plugin.marketplace,
-          SCOPES[selectedScopeIndex].id,
-        );
-        actions.setView("INSTALLED");
+        setSelectedScopeIndex((prev) => {
+          actions.installPlugin(
+            plugin.name,
+            plugin.marketplace,
+            SCOPES[prev].id,
+          );
+          return prev;
+        });
       }
+      actions.setView("INSTALLED");
     }
   });
 

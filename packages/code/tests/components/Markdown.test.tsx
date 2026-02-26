@@ -4,6 +4,15 @@ import { describe, it, expect, beforeAll, vi, afterAll } from "vitest";
 import { Markdown } from "../../src/components/Markdown.js";
 import chalk from "chalk";
 
+vi.mock("../../src/utils/highlightUtils.js", () => ({
+  highlightToAnsi: vi.fn((code, lang) => {
+    if (lang === "ts") {
+      return code.replace("const", chalk.blue("const"));
+    }
+    return code;
+  }),
+}));
+
 const stripAnsi = (str: string) =>
   str.replace(new RegExp("\\x" + "1B\\[[0-9;]*m", "g"), "");
 
@@ -18,7 +27,6 @@ afterAll(() => {
 });
 
 describe("Markdown Component - Code Blocks", () => {
-
   it("should render fenced code blocks with language and include backticks in gray", () => {
     const code = "```ts\nconst x = 1;\n```";
     const { lastFrame } = render(<Markdown>{code}</Markdown>);

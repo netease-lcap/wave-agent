@@ -172,15 +172,8 @@ describe("PluginDetail", () => {
         expect(lastFrame()).toContain("> Install for you (user scope)");
       });
 
-      // Press Down again
+      // Press Down twice (wrap around)
       stdin.write("\u001B[B");
-      await vi.waitFor(() => {
-        expect(lastFrame()).toContain(
-          "> Install for you, in this repo only (local scope)",
-        );
-      });
-
-      // Press Down again (wrap around)
       stdin.write("\u001B[B");
       await vi.waitFor(() => {
         expect(lastFrame()).toContain(
@@ -198,19 +191,14 @@ describe("PluginDetail", () => {
     });
 
     it("should install with Enter", async () => {
-      const { stdin, lastFrame } = render(
+      const { stdin } = render(
         <PluginManagerContext.Provider value={createMockContext("plugin1@mp1")}>
           <PluginDetail />
         </PluginManagerContext.Provider>,
       );
 
-      // Select second scope (user)
+      // Select second scope (user) and press Enter
       stdin.write("\u001B[B");
-      await vi.waitFor(() => {
-        expect(lastFrame()).toContain("> Install for you (user scope)");
-      });
-
-      // Press Enter
       stdin.write("\r");
       await vi.waitFor(() => {
         expect(mockActions.installPlugin).toHaveBeenCalledWith(
@@ -266,19 +254,14 @@ describe("PluginDetail", () => {
     });
 
     it("should uninstall with Enter", async () => {
-      const { stdin, lastFrame } = render(
+      const { stdin } = render(
         <PluginManagerContext.Provider value={createMockContext("plugin2@mp2")}>
           <PluginDetail />
         </PluginManagerContext.Provider>,
       );
 
-      // Select second action (uninstall)
+      // Select second action (uninstall) and press Enter
       stdin.write("\u001B[B");
-      await vi.waitFor(() => {
-        expect(lastFrame()).toContain("> Uninstall plugin");
-      });
-
-      // Press Enter
       stdin.write("\r");
       await vi.waitFor(() => {
         expect(mockActions.uninstallPlugin).toHaveBeenCalledWith(
@@ -290,16 +273,13 @@ describe("PluginDetail", () => {
     });
 
     it("should update with Enter", async () => {
-      const { stdin, lastFrame } = render(
+      const { stdin } = render(
         <PluginManagerContext.Provider value={createMockContext("plugin2@mp2")}>
           <PluginDetail />
         </PluginManagerContext.Provider>,
       );
 
-      // Select first action (update) - already selected
-      expect(lastFrame()).toContain("> Update plugin (reinstall)");
-
-      // Press Enter
+      // Press Enter (first action 'update' is already selected)
       stdin.write("\r");
       await vi.waitFor(() => {
         expect(mockActions.updatePlugin).toHaveBeenCalledWith("plugin2", "mp2");

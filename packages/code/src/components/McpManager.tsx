@@ -65,76 +65,68 @@ export const McpManager: React.FC<McpManagerProps> = ({
   };
 
   useInput((input, key) => {
-    if (viewMode === "list") {
-      // List mode navigation
-      if (key.return) {
-        if (servers.length > 0 && selectedIndex < servers.length) {
-          setViewMode("detail");
+    if (key.return) {
+      setViewMode((prevMode) => {
+        if (prevMode === "list") {
+          setSelectedIndex((prevIndex) => {
+            if (servers.length > 0 && prevIndex < servers.length) {
+              // We can't call setViewMode here because we're already in a setViewMode call
+              // But we can return the new mode from the outer setViewMode
+            }
+            return prevIndex;
+          });
+          return "detail";
         }
-        return;
-      }
+        return prevMode;
+      });
+      return;
+    }
 
-      if (key.escape) {
+    if (key.escape) {
+      setViewMode((prev) => {
+        if (prev === "detail") {
+          return "list";
+        }
         onCancel();
-        return;
-      }
+        return prev;
+      });
+      return;
+    }
 
-      if (key.upArrow) {
-        setSelectedIndex(Math.max(0, selectedIndex - 1));
-        return;
-      }
+    if (key.upArrow) {
+      setSelectedIndex((prev) => Math.max(0, prev - 1));
+      return;
+    }
 
-      if (key.downArrow) {
-        setSelectedIndex(Math.min(servers.length - 1, selectedIndex + 1));
-        return;
-      }
+    if (key.downArrow) {
+      setSelectedIndex((prev) => Math.min(servers.length - 1, prev + 1));
+      return;
+    }
 
-      // Hotkeys for server actions
-      if (
-        input === "c" &&
-        servers.length > 0 &&
-        selectedIndex < servers.length
-      ) {
-        const server = servers[selectedIndex];
-        if (server.status === "disconnected" || server.status === "error") {
+    // Hotkeys for server actions
+    if (input === "c") {
+      setSelectedIndex((prev) => {
+        const server = servers[prev];
+        if (
+          server &&
+          (server.status === "disconnected" || server.status === "error")
+        ) {
           handleConnect(server.name);
         }
-        return;
-      }
+        return prev;
+      });
+      return;
+    }
 
-      if (
-        input === "d" &&
-        servers.length > 0 &&
-        selectedIndex < servers.length
-      ) {
-        const server = servers[selectedIndex];
-        if (server.status === "connected") {
+    if (input === "d") {
+      setSelectedIndex((prev) => {
+        const server = servers[prev];
+        if (server && server.status === "connected") {
           handleDisconnect(server.name);
         }
-        return;
-      }
-    } else if (viewMode === "detail") {
-      // Detail mode navigation
-      if (key.escape) {
-        setViewMode("list");
-        return;
-      }
-
-      if (selectedServer) {
-        if (
-          input === "c" &&
-          (selectedServer.status === "disconnected" ||
-            selectedServer.status === "error")
-        ) {
-          handleConnect(selectedServer.name);
-          return;
-        }
-
-        if (input === "d" && selectedServer.status === "connected") {
-          handleDisconnect(selectedServer.name);
-          return;
-        }
-      }
+        return prev;
+      });
+      return;
     }
   });
 
