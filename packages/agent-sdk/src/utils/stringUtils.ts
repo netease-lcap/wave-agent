@@ -82,3 +82,12 @@ export const stripAnsiColors = (text: string): string => {
   const ansiEscapeRegex = new RegExp(`${escapeChar}\\[[0-9;]*[a-zA-Z]`, "g");
   return text.replace(ansiEscapeRegex, "");
 };
+
+/**
+ * Format a line number prefix in cat -n style (padStart(6) + tab)
+ * @param lineNumber The line number
+ * @returns Formatted line number prefix
+ */
+export function formatLineNumberPrefix(lineNumber: number): string {
+  return `${lineNumber.toString().padStart(6)}\t`;
+}
