@@ -53,6 +53,10 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   const { stdout } = useStdout();
   const boxRef = useRef(null);
 
+  const startLineNumber =
+    (toolInput?.startLineNumber as number | undefined) ??
+    (toolName === WRITE_TOOL_NAME ? 1 : undefined);
+
   useLayoutEffect(() => {
     if (boxRef.current) {
       const { height } = measureElement(boxRef.current);
@@ -75,7 +79,11 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
       </Text>
       <Text color="yellow">{getActionDescription(toolName, toolInput)}</Text>
 
-      <DiffDisplay toolName={toolName} parameters={JSON.stringify(toolInput)} />
+      <DiffDisplay
+        toolName={toolName}
+        parameters={JSON.stringify(toolInput)}
+        startLineNumber={startLineNumber}
+      />
 
       {toolName !== ASK_USER_QUESTION_TOOL_NAME &&
         toolName === EXIT_PLAN_MODE_TOOL_NAME &&

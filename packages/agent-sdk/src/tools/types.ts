@@ -40,6 +40,8 @@ export interface ToolResult {
   shortResult?: string;
   // File path for operations that affect files
   filePath?: string;
+  // Optional starting line number for file operations
+  startLineNumber?: number;
   // Image data, for supporting multimedia content
   images?: Array<{
     data: string; // base64 encoded image data

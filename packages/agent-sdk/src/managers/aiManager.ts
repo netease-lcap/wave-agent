@@ -674,6 +674,7 @@ export class AIManager {
                 name: toolName,
                 shortResult: toolResult.shortResult,
                 isManuallyBackgrounded: toolResult.isManuallyBackgrounded,
+                startLineNumber: toolResult.startLineNumber,
               });
 
               // Execute PostToolUse hooks after successful tool completion

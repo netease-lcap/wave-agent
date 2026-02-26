@@ -61,6 +61,7 @@ export function transformEditParameters(
 export function transformToolBlockToChanges(
   toolName: string,
   parameters: string,
+  startLineNumber?: number,
 ): Change[] {
   try {
     if (!toolName) {
@@ -69,16 +70,24 @@ export function transformToolBlockToChanges(
 
     const parsedParams = parseToolParameters(parameters);
 
+    let changes: Change[] = [];
     switch (toolName) {
       case "Write":
-        return transformWriteParameters(parsedParams as WriteToolParameters);
+        changes = transformWriteParameters(parsedParams as WriteToolParameters);
+        break;
 
       case "Edit":
-        return transformEditParameters(parsedParams as EditToolParameters);
+        changes = transformEditParameters(parsedParams as EditToolParameters);
+        break;
 
       default:
         return [];
     }
+
+    if (changes.length > 0 && startLineNumber !== undefined) {
+      changes[0].startLineNumber = startLineNumber;
+    }
+    return changes;
   } catch (error) {
     logger.warn("Failed to transform tool block to changes:", error);
     return [];
