@@ -6,7 +6,6 @@ export * from "./services/hook.js";
 export * from "./services/jsonlHandler.js";
 export * from "./services/configurationService.js"; // New configuration management service
 export * from "./services/MarketplaceService.js";
-export * from "./services/pluginService.js";
 
 // Export constants
 export * from "./constants/tools.js";

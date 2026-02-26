@@ -5,7 +5,7 @@ import { usePluginManager } from "../../src/hooks/usePluginManager.js";
 import { PluginManagerContextType } from "../../src/components/PluginManagerTypes.js";
 
 // Mock wave-agent-sdk
-const mockPluginService = {
+const mockMarketplaceService = {
   listMarketplaces: vi.fn(),
   getInstalledPlugins: vi.fn(),
   loadMarketplaceManifest: vi.fn(),
@@ -13,27 +13,50 @@ const mockPluginService = {
   addMarketplace: vi.fn(),
   removeMarketplace: vi.fn(),
   updateMarketplace: vi.fn(),
-  install: vi.fn(),
-  uninstall: vi.fn(),
+  installPlugin: vi.fn(),
+  uninstallPlugin: vi.fn(),
   updatePlugin: vi.fn(),
+};
+
+const mockConfigurationService = {
+  removeEnabledPlugin: vi.fn(),
+};
+
+const mockPluginScopeManager = {
   getMergedEnabledPlugins: vi.fn(),
   findPluginScope: vi.fn(),
+  enablePlugin: vi.fn(),
 };
 
 vi.mock("wave-agent-sdk", () => ({
-  PluginService: vi.fn(function () {
-    return mockPluginService;
+  MarketplaceService: vi.fn(function () {
+    return mockMarketplaceService;
+  }),
+  ConfigurationService: vi.fn(function () {
+    return mockConfigurationService;
+  }),
+  PluginManager: vi.fn(),
+  PluginScopeManager: vi.fn(function () {
+    return mockPluginScopeManager;
+  }),
+  Container: vi.fn(function () {
+    return {
+      register: vi.fn(),
+      get: vi.fn(),
+      has: vi.fn(),
+      createChild: vi.fn(),
+    };
   }),
 }));
 
 describe("usePluginManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPluginService.listMarketplaces.mockResolvedValue([]);
-    mockPluginService.getInstalledPlugins.mockResolvedValue({
+    mockMarketplaceService.listMarketplaces.mockResolvedValue([]);
+    mockMarketplaceService.getInstalledPlugins.mockResolvedValue({
       plugins: [],
     });
-    mockPluginService.getMergedEnabledPlugins.mockReturnValue({});
+    mockPluginScopeManager.getMergedEnabledPlugins.mockReturnValue({});
   });
 
   // Helper component to test the hook
@@ -66,13 +89,13 @@ describe("usePluginManager", () => {
       expect(lastValue?.state.isLoading).toBe(false);
     });
 
-    expect(mockPluginService.listMarketplaces).toHaveBeenCalled();
-    expect(mockPluginService.getInstalledPlugins).toHaveBeenCalled();
+    expect(mockMarketplaceService.listMarketplaces).toHaveBeenCalled();
+    expect(mockMarketplaceService.getInstalledPlugins).toHaveBeenCalled();
   });
 
   it("should handle errors during initial data load", async () => {
     const errorMessage = "Failed to load marketplaces";
-    mockPluginService.listMarketplaces.mockRejectedValue(
+    mockMarketplaceService.listMarketplaces.mockRejectedValue(
       new Error(errorMessage),
     );
 
@@ -140,20 +163,22 @@ describe("usePluginManager", () => {
         expect(lastValue?.state.isLoading).toBe(false);
       });
 
-      mockPluginService.addMarketplace.mockResolvedValue(undefined);
+      mockMarketplaceService.addMarketplace.mockResolvedValue(undefined);
       lastValue?.actions.addMarketplace("test/repo");
 
       await vi.waitFor(() => {
-        expect(mockPluginService.addMarketplace).toHaveBeenCalledWith(
+        expect(mockMarketplaceService.addMarketplace).toHaveBeenCalledWith(
           "test/repo",
         );
-        expect(mockPluginService.listMarketplaces).toHaveBeenCalledTimes(2);
+        expect(mockMarketplaceService.listMarketplaces).toHaveBeenCalledTimes(
+          2,
+        );
       });
     });
 
     it("should handle error when adding a marketplace", async () => {
       const errorMessage = "Add failed";
-      mockPluginService.addMarketplace.mockRejectedValue(
+      mockMarketplaceService.addMarketplace.mockRejectedValue(
         new Error(errorMessage),
       );
 
@@ -190,16 +215,23 @@ describe("usePluginManager", () => {
         expect(lastValue?.state.isLoading).toBe(false);
       });
 
-      mockPluginService.install.mockResolvedValue(undefined);
+      mockMarketplaceService.installPlugin.mockResolvedValue(undefined);
+      mockPluginScopeManager.enablePlugin.mockResolvedValue(undefined);
 
       lastValue?.actions.installPlugin("my-plugin", "my-marketplace", "user");
 
       await vi.waitFor(() => {
-        expect(mockPluginService.install).toHaveBeenCalledWith(
+        expect(mockMarketplaceService.installPlugin).toHaveBeenCalledWith(
           "my-plugin@my-marketplace",
-          "user",
+          expect.any(String),
         );
-        expect(mockPluginService.listMarketplaces).toHaveBeenCalledTimes(2);
+        expect(mockPluginScopeManager.enablePlugin).toHaveBeenCalledWith(
+          "user",
+          "my-plugin@my-marketplace",
+        );
+        expect(mockMarketplaceService.listMarketplaces).toHaveBeenCalledTimes(
+          2,
+        );
       });
     });
   });
@@ -217,15 +249,27 @@ describe("usePluginManager", () => {
         expect(lastValue?.state.isLoading).toBe(false);
       });
 
-      mockPluginService.uninstall.mockResolvedValue(undefined);
+      mockMarketplaceService.uninstallPlugin.mockResolvedValue(undefined);
+      mockPluginScopeManager.findPluginScope.mockReturnValue("project");
+      mockConfigurationService.removeEnabledPlugin.mockResolvedValue(undefined);
 
       lastValue?.actions.uninstallPlugin("my-plugin", "my-marketplace");
 
       await vi.waitFor(() => {
-        expect(mockPluginService.uninstall).toHaveBeenCalledWith(
+        expect(mockMarketplaceService.uninstallPlugin).toHaveBeenCalledWith(
+          "my-plugin@my-marketplace",
+          expect.any(String),
+        );
+        expect(
+          mockConfigurationService.removeEnabledPlugin,
+        ).toHaveBeenCalledWith(
+          expect.any(String),
+          "project",
           "my-plugin@my-marketplace",
         );
-        expect(mockPluginService.listMarketplaces).toHaveBeenCalledTimes(2);
+        expect(mockMarketplaceService.listMarketplaces).toHaveBeenCalledTimes(
+          2,
+        );
       });
     });
   });

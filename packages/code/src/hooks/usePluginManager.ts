@@ -1,9 +1,13 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import {
-  PluginService,
+  MarketplaceService,
+  PluginScopeManager,
+  ConfigurationService,
+  PluginManager,
   KnownMarketplace,
   InstalledPlugin,
   MarketplacePluginEntry,
+  Container,
 } from "wave-agent-sdk";
 import {
   PluginManagerState,
@@ -32,7 +36,24 @@ export function usePluginManager(): PluginManagerContextType {
     })[]
   >([]);
 
-  const pluginService = useMemo(() => new PluginService(), []);
+  const marketplaceService = useMemo(() => new MarketplaceService(), []);
+  const configurationService = useMemo(() => new ConfigurationService(), []);
+  const pluginManager = useMemo(() => {
+    const container = new Container();
+    container.register("ConfigurationService", configurationService);
+    return new PluginManager(container, {
+      workdir: process.cwd(),
+    });
+  }, [configurationService]);
+  const pluginScopeManager = useMemo(
+    () =>
+      new PluginScopeManager({
+        workdir: process.cwd(),
+        configurationService,
+        pluginManager,
+      }),
+    [configurationService, pluginManager],
+  );
 
   const refresh = useCallback(async () => {
     setState((prev: PluginManagerState) => ({
@@ -42,9 +63,9 @@ export function usePluginManager(): PluginManagerContextType {
     }));
     try {
       const [mks, installed, enabledMap] = await Promise.all([
-        pluginService.listMarketplaces(),
-        pluginService.getInstalledPlugins(),
-        Promise.resolve(pluginService.getMergedEnabledPlugins()),
+        marketplaceService.listMarketplaces(),
+        marketplaceService.getInstalledPlugins(),
+        Promise.resolve(pluginScopeManager.getMergedEnabledPlugins()),
       ]);
 
       setMarketplaces(mks);
@@ -53,7 +74,7 @@ export function usePluginManager(): PluginManagerContextType {
         return {
           ...p,
           enabled: !!enabledMap[pluginId],
-          scope: pluginService.findPluginScope(pluginId) || undefined,
+          scope: pluginScopeManager.findPluginScope(pluginId) || undefined,
         };
       });
 
@@ -67,8 +88,8 @@ export function usePluginManager(): PluginManagerContextType {
       })[] = [];
       for (const mk of mks) {
         try {
-          const manifest = await pluginService.loadMarketplaceManifest(
-            pluginService.getMarketplacePath(mk),
+          const manifest = await marketplaceService.loadMarketplaceManifest(
+            marketplaceService.getMarketplacePath(mk),
           );
           manifest.plugins.forEach((p) => {
             const pluginId = `${p.name}@${mk.name}`;
@@ -99,7 +120,7 @@ export function usePluginManager(): PluginManagerContextType {
         error: error instanceof Error ? error.message : String(error),
       }));
     }
-  }, [pluginService]);
+  }, [marketplaceService, pluginScopeManager]);
 
   useEffect(() => {
     refresh();
@@ -121,7 +142,7 @@ export function usePluginManager(): PluginManagerContextType {
         error: null,
       }));
       try {
-        await pluginService.addMarketplace(source);
+        await marketplaceService.addMarketplace(source);
         await refresh();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
@@ -131,7 +152,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginService, refresh],
+    [marketplaceService, refresh],
   );
 
   const removeMarketplace = useCallback(
@@ -142,7 +163,7 @@ export function usePluginManager(): PluginManagerContextType {
         error: null,
       }));
       try {
-        await pluginService.removeMarketplace(name);
+        await marketplaceService.removeMarketplace(name);
         await refresh();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
@@ -152,7 +173,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginService, refresh],
+    [marketplaceService, refresh],
   );
 
   const updateMarketplace = useCallback(
@@ -163,7 +184,7 @@ export function usePluginManager(): PluginManagerContextType {
         error: null,
       }));
       try {
-        await pluginService.updateMarketplace(name);
+        await marketplaceService.updateMarketplace(name);
         await refresh();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
@@ -173,7 +194,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginService, refresh],
+    [marketplaceService, refresh],
   );
 
   const installPlugin = useCallback(
@@ -189,7 +210,9 @@ export function usePluginManager(): PluginManagerContextType {
       }));
       try {
         const pluginId = `${name}@${marketplace}`;
-        await pluginService.install(pluginId, scope);
+        const workdir = process.cwd();
+        await marketplaceService.installPlugin(pluginId, workdir);
+        await pluginScopeManager.enablePlugin(scope, pluginId);
         await refresh();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
@@ -199,7 +222,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginService, refresh],
+    [marketplaceService, pluginScopeManager, refresh],
   );
 
   const uninstallPlugin = useCallback(
@@ -211,7 +234,20 @@ export function usePluginManager(): PluginManagerContextType {
       }));
       try {
         const pluginId = `${name}@${marketplace}`;
-        await pluginService.uninstall(pluginId);
+        const workdir = process.cwd();
+
+        // 1. Remove from global registry and potentially clean up cache
+        await marketplaceService.uninstallPlugin(pluginId, workdir);
+
+        // 2. Find the scope where it's currently enabled and remove it from there
+        const scope = pluginScopeManager.findPluginScope(pluginId);
+        if (scope) {
+          await configurationService.removeEnabledPlugin(
+            workdir,
+            scope,
+            pluginId,
+          );
+        }
         await refresh();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
@@ -221,7 +257,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginService, refresh],
+    [configurationService, marketplaceService, pluginScopeManager, refresh],
   );
 
   const updatePlugin = useCallback(
@@ -233,7 +269,7 @@ export function usePluginManager(): PluginManagerContextType {
       }));
       try {
         const pluginId = `${name}@${marketplace}`;
-        await pluginService.updatePlugin(pluginId);
+        await marketplaceService.updatePlugin(pluginId);
         await refresh();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
@@ -243,7 +279,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginService, refresh],
+    [marketplaceService, refresh],
   );
 
   return {

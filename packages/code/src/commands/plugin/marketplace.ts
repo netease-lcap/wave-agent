@@ -1,7 +1,7 @@
-import { PluginService } from "wave-agent-sdk";
+import { MarketplaceService } from "wave-agent-sdk";
 
 export async function addMarketplaceCommand(argv: { input: string }) {
-  const service = new PluginService();
+  const service = new MarketplaceService();
   try {
     const marketplace = await service.addMarketplace(argv.input);
     const source = marketplace.source;
@@ -25,7 +25,7 @@ export async function addMarketplaceCommand(argv: { input: string }) {
 }
 
 export async function listMarketplacesCommand() {
-  const service = new PluginService();
+  const service = new MarketplaceService();
   try {
     const marketplaces = await service.listMarketplaces();
     if (marketplaces.length === 0) {
@@ -57,7 +57,7 @@ export async function listMarketplacesCommand() {
 }
 
 export async function removeMarketplaceCommand(argv: { name: string }) {
-  const service = new PluginService();
+  const service = new MarketplaceService();
   try {
     await service.removeMarketplace(argv.name);
     console.log(`Successfully removed marketplace: ${argv.name}`);
@@ -70,7 +70,7 @@ export async function removeMarketplaceCommand(argv: { name: string }) {
 }
 
 export async function updateMarketplaceCommand(argv: { name?: string }) {
-  const service = new PluginService();
+  const service = new MarketplaceService();
   try {
     console.log(
       argv.name
