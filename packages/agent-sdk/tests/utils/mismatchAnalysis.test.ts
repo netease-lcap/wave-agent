@@ -17,10 +17,10 @@ describe("analyzeEditMismatch", () => {
     const result = analyzeEditMismatch(content, search);
 
     expect(result).toContain("Best partial match found at line 1:");
-    expect(result).toContain("   1 | const x = 1;");
-    expect(result).toContain("   2 | - const y = 2;");
-    expect(result).toContain("   2 | + const y = 3;");
-    expect(result).toContain("   3 | return x + y;");
+    expect(result).toContain("     1\tconst x = 1;");
+    expect(result).toContain("     2\t- const y = 2;");
+    expect(result).toContain("     2\t+ const y = 3;");
+    expect(result).toContain("     3\treturn x + y;");
   });
 
   it("should find the best match among multiple candidates", () => {
@@ -29,8 +29,8 @@ describe("analyzeEditMismatch", () => {
     const result = analyzeEditMismatch(content, search);
 
     expect(result).toContain("Best partial match found at line 2:");
-    expect(result).toContain("   2 | line A");
-    expect(result).toContain("   3 | line B");
+    expect(result).toContain("     2\tline A");
+    expect(result).toContain("     3\tline B");
   });
 
   it("should handle indentation mismatches explicitly", () => {

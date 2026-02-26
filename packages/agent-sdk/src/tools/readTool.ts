@@ -3,6 +3,7 @@ import { extname } from "path";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
+import { formatLineNumberPrefix } from "../utils/stringUtils.js";
 import {
   isBinaryDocument,
   getBinaryDocumentError,
@@ -293,7 +294,7 @@ Usage:
           // Truncate overly long lines
           const truncatedLine =
             line.length > 2000 ? line.substring(0, 2000) + "..." : line;
-          return `${lineNumber.toString().padStart(6)}\t${truncatedLine}`;
+          return `${formatLineNumberPrefix(lineNumber)}${truncatedLine}`;
         })
         .join("\n");
 

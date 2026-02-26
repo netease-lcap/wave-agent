@@ -1,6 +1,7 @@
 /**
  * Utility functions for file editing tools
  */
+import { formatLineNumberPrefix } from "./stringUtils.js";
 
 /**
  * Escape regular expression special characters
@@ -75,10 +76,10 @@ export function analyzeEditMismatch(
     const expectedLine = searchLines[j];
 
     if (actualLine === expectedLine) {
-      reportLines.push(`${lineNum.toString().padStart(6)}\t${actualLine}`);
+      reportLines.push(`${formatLineNumberPrefix(lineNum)}${actualLine}`);
     } else {
-      reportLines.push(`${lineNum.toString().padStart(6)}\t- ${expectedLine}`);
-      reportLines.push(`${lineNum.toString().padStart(6)}\t+ ${actualLine}`);
+      reportLines.push(`${formatLineNumberPrefix(lineNum)}- ${expectedLine}`);
+      reportLines.push(`${formatLineNumberPrefix(lineNum)}+ ${actualLine}`);
     }
   }
 
