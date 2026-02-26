@@ -1,29 +1,42 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi, afterAll } from "vitest";
 import { Markdown } from "../../src/components/Markdown.js";
 import chalk from "chalk";
 
+const stripAnsi = (str: string) =>
+  str.replace(new RegExp("\\x" + "1B\\[[0-9;]*m", "g"), "");
+
+beforeAll(() => {
+  process.env.FORCE_COLOR = "1";
+  chalk.level = 1;
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
+
+afterAll(() => {
+  vi.restoreAllMocks();
+});
+
 describe("Markdown Component - Code Blocks", () => {
-  beforeAll(() => {
-    process.env.FORCE_COLOR = "1";
-    chalk.level = 1;
-  });
 
   it("should render fenced code blocks with language and include backticks in gray", () => {
     const code = "```ts\nconst x = 1;\n```";
     const { lastFrame } = render(<Markdown>{code}</Markdown>);
-    const output = lastFrame();
+    const output = lastFrame() || "";
+    const cleanOutput = stripAnsi(output);
 
     // Check if backticks and language are present
-    expect(output).toContain("```ts");
-    expect(output).toContain("```");
-    expect(output).toContain("const x = 1;");
+    expect(cleanOutput).toContain("```ts");
+    expect(cleanOutput).toContain("```");
+    expect(cleanOutput).toContain("const x = 1;");
 
     // Check for gray color (chalk.gray)
     // chalk.gray("```ts") should be in the output
     expect(output).toContain(chalk.gray("```ts"));
     expect(output).toContain(chalk.gray("```"));
+
+    // Check for highlighting (const should be blue)
+    expect(output).toContain(chalk.blue("const"));
   });
 
   it("should render empty fenced code blocks", () => {
@@ -37,10 +50,11 @@ describe("Markdown Component - Code Blocks", () => {
   it("should render fenced code blocks without language and include backticks in gray", () => {
     const code = "```\nconst x = 1;\n```";
     const { lastFrame } = render(<Markdown>{code}</Markdown>);
-    const output = lastFrame();
+    const output = lastFrame() || "";
+    const cleanOutput = stripAnsi(output);
 
-    expect(output).toContain("```");
-    expect(output).toContain("const x = 1;");
+    expect(cleanOutput).toContain("```");
+    expect(cleanOutput).toContain("const x = 1;");
 
     // It should have two "```" in gray
     expect(output).toContain(chalk.gray("```"));
@@ -49,30 +63,33 @@ describe("Markdown Component - Code Blocks", () => {
   it("should render indented code blocks without backticks", () => {
     const code = "    const x = 1;";
     const { lastFrame } = render(<Markdown>{code}</Markdown>);
-    const output = lastFrame();
+    const output = lastFrame() || "";
+    const cleanOutput = stripAnsi(output);
 
-    expect(output).toContain("const x = 1;");
+    expect(cleanOutput).toContain("const x = 1;");
     // Indented code blocks are now wrapped in backticks by the new renderer
-    expect(output).toContain("```");
+    expect(cleanOutput).toContain("```");
   });
 
   it("should render multi-line fenced code blocks correctly", () => {
     const code = "```ts\nline 1\nline 2\n```";
     const { lastFrame } = render(<Markdown>{code}</Markdown>);
-    const output = lastFrame();
+    const output = lastFrame() || "";
+    const cleanOutput = stripAnsi(output);
 
     expect(output).toContain(chalk.gray("```ts"));
-    expect(output).toContain("line 1\nline 2"); // Removed space from paddingX={1}
+    expect(cleanOutput).toContain("line 1\nline 2"); // Removed space from paddingX={1}
     expect(output).toContain(chalk.gray("```"));
   });
 
   it("should render fenced code blocks with tildes correctly", () => {
     const code = "~~~\nconst x = 1;\n~~~";
     const { lastFrame } = render(<Markdown>{code}</Markdown>);
-    const output = lastFrame();
+    const output = lastFrame() || "";
+    const cleanOutput = stripAnsi(output);
 
     expect(output).toContain(chalk.gray("```"));
-    expect(output).toContain("const x = 1;");
+    expect(cleanOutput).toContain("const x = 1;");
   });
 });
 
@@ -335,8 +352,9 @@ describe("Markdown Component - Additional Branch Coverage", () => {
   it("should render code block without language", () => {
     const markdown = "```\nno language code\n```";
     const { lastFrame } = render(<Markdown>{markdown}</Markdown>);
-    const output = lastFrame();
-    expect(output).toContain("no language code");
+    const output = lastFrame() || "";
+    const cleanOutput = stripAnsi(output);
+    expect(cleanOutput).toContain("no language code");
   });
 
   it("should not crash when an unknown language is specified", () => {

@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { Box, Text } from "ink";
 import { Renderer, marked, type Tokens } from "marked";
 import chalk from "chalk";
+import { highlightToAnsi } from "../utils/highlightUtils.js";
 
 export interface MarkdownProps {
   children: string;
@@ -21,7 +22,8 @@ class AnsiRenderer extends Renderer<string> {
   override code({ text, lang }: Tokens.Code): string {
     const prefix = lang ? `\`\`\`${lang}` : "```";
     const suffix = "```";
-    return `\n${chalk.gray(prefix)}\n${text}\n${chalk.gray(suffix)}\n`;
+    const highlighted = highlightToAnsi(text, lang);
+    return `\n${chalk.gray(prefix)}\n${highlighted}\n${chalk.gray(suffix)}\n`;
   }
 
   override blockquote({ tokens }: Tokens.Blockquote): string {
