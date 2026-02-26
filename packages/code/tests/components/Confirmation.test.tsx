@@ -100,7 +100,7 @@ describe("Confirmation", () => {
     it("should display placeholder text correctly", async () => {
       const { lastFrame } = render(
         <Confirmation
-          toolName="Delete"
+          toolName="Write"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
           onAbort={mockOnAbort}
@@ -577,7 +577,7 @@ describe("Confirmation", () => {
     it("should call onDecision with correct deny + message PermissionDecision format", async () => {
       const { stdin, lastFrame } = render(
         <Confirmation
-          toolName="Delete"
+          toolName="Write"
           onDecision={mockOnDecision}
           onCancel={mockOnCancel}
           onAbort={mockOnAbort}
@@ -590,7 +590,7 @@ describe("Confirmation", () => {
         );
       });
 
-      const message = "Create backup before deletion";
+      const message = "Create backup before writing";
       stdin.write(message);
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(message);

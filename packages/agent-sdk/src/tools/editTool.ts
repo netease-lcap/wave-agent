@@ -56,8 +56,7 @@ Usage:
           replace_all: {
             type: "boolean",
             default: false,
-            description:
-              "Replace all occurrences of old_string (default false)",
+            description: "Replace all occurences of old_string (default false)",
           },
         },
         required: ["file_path", "old_string", "new_string"],

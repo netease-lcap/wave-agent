@@ -32,28 +32,28 @@ describe("HookMatcher", () => {
 
   describe("pipe alternatives matching", () => {
     it("should match any alternative in pipe-separated list", () => {
-      const pattern = "Edit|Write|Delete";
+      const pattern = "Edit|Write|Read";
 
       expect(matcher.matches(pattern, "Edit")).toBe(true);
       expect(matcher.matches(pattern, "Write")).toBe(true);
-      expect(matcher.matches(pattern, "Delete")).toBe(true);
+      expect(matcher.matches(pattern, "Read")).toBe(true);
       expect(matcher.matches(pattern, "edit")).toBe(true); // Case insensitive
     });
 
     it("should not match tools not in alternatives", () => {
       const pattern = "Edit|Write";
 
-      expect(matcher.matches(pattern, "Delete")).toBe(false);
+      expect(matcher.matches(pattern, "Grep")).toBe(false);
       expect(matcher.matches(pattern, "Read")).toBe(false);
       expect(matcher.matches(pattern, "EditWrite")).toBe(false);
     });
 
     it("should handle whitespace in alternatives", () => {
-      const pattern = "Edit | Write | Delete";
+      const pattern = "Edit | Write | Read";
 
       expect(matcher.matches(pattern, "Edit")).toBe(true);
       expect(matcher.matches(pattern, "Write")).toBe(true);
-      expect(matcher.matches(pattern, "Delete")).toBe(true);
+      expect(matcher.matches(pattern, "Read")).toBe(true);
     });
   });
 
@@ -90,23 +90,23 @@ describe("HookMatcher", () => {
 
   describe("complex pattern matching", () => {
     it("should handle pipe-separated glob patterns", () => {
-      const pattern = "Edit*|Write*|Delete*";
+      const pattern = "Edit*|Write*|Read*";
 
       expect(matcher.matches(pattern, "EditFile")).toBe(true);
       expect(matcher.matches(pattern, "WriteText")).toBe(true);
-      expect(matcher.matches(pattern, "DeleteFile")).toBe(true);
-      expect(matcher.matches(pattern, "ReadFile")).toBe(false);
+      expect(matcher.matches(pattern, "ReadFile")).toBe(true);
+      expect(matcher.matches(pattern, "GrepFile")).toBe(false);
     });
 
     it("should handle mixed exact and glob patterns", () => {
-      const pattern = "Edit|Write*|Delete";
+      const pattern = "Edit|Write*|Read";
 
       expect(matcher.matches(pattern, "Edit")).toBe(true);
       expect(matcher.matches(pattern, "WriteFile")).toBe(true);
       expect(matcher.matches(pattern, "WriteText")).toBe(true);
-      expect(matcher.matches(pattern, "Delete")).toBe(true);
+      expect(matcher.matches(pattern, "Read")).toBe(true);
       expect(matcher.matches(pattern, "EditFile")).toBe(false); // Edit is exact match only
-      expect(matcher.matches(pattern, "DeleteFile")).toBe(false); // Delete is exact match only
+      expect(matcher.matches(pattern, "ReadFile")).toBe(false); // Read is exact match only
     });
   });
 
@@ -157,7 +157,7 @@ describe("HookMatcher", () => {
     });
 
     it("should validate pipe alternatives", () => {
-      expect(matcher.isValidPattern("Edit|Write|Delete")).toBe(true);
+      expect(matcher.isValidPattern("Edit|Write|Read")).toBe(true);
       expect(matcher.isValidPattern("|Edit")).toBe(false); // Empty alternative
       expect(matcher.isValidPattern("Edit|")).toBe(false); // Empty alternative
       expect(matcher.isValidPattern("Edit||Write")).toBe(false); // Empty alternative
@@ -173,7 +173,7 @@ describe("HookMatcher", () => {
 
     it("should detect alternative patterns", () => {
       expect(matcher.getPatternType("Edit|Write")).toBe("alternatives");
-      expect(matcher.getPatternType("Edit|Write|Delete")).toBe("alternatives");
+      expect(matcher.getPatternType("Edit|Write|Read")).toBe("alternatives");
       expect(matcher.getPatternType("Edit* | Write*")).toBe("alternatives");
     });
 
@@ -193,14 +193,7 @@ describe("HookMatcher", () => {
 
   describe("utility methods", () => {
     it("should get all matches from a list", () => {
-      const tools = [
-        "Edit",
-        "Write",
-        "Delete",
-        "Read",
-        "EditFile",
-        "WriteText",
-      ];
+      const tools = ["Edit", "Write", "Read", "Grep", "EditFile", "WriteText"];
 
       expect(matcher.getMatches("Edit", tools)).toEqual(["Edit"]);
       expect(matcher.getMatches("Edit|Write", tools)).toEqual([
@@ -226,7 +219,7 @@ describe("HookMatcher", () => {
       const compiledAlternatives = matcher.compile("Edit|Write");
       expect(compiledAlternatives("Edit")).toBe(true);
       expect(compiledAlternatives("Write")).toBe(true);
-      expect(compiledAlternatives("Delete")).toBe(false);
+      expect(compiledAlternatives("Read")).toBe(false);
     });
 
     it("should handle invalid patterns in compile", () => {

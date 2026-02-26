@@ -68,22 +68,6 @@ describe("Confirmation Dynamic Actions", () => {
     expect(frame).toContain("Edit file: /home/user/test.txt");
   });
 
-  it("should display Delete file path in action description", () => {
-    const { lastFrame } = render(
-      <Confirmation
-        toolName="Delete"
-        toolInput={{ target_file: "/home/user/unwanted.log" }}
-        onDecision={mockOnDecision}
-        onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
-      />,
-    );
-
-    const frame = lastFrame();
-    expect(frame).toContain("Tool: Delete");
-    expect(frame).toContain("Delete file: /home/user/unwanted.log");
-  });
-
   it("should display Write file path in action description", () => {
     const { lastFrame } = render(
       <Confirmation

@@ -28,7 +28,6 @@ class AuthorizationService {
     // Mock RBAC logic
     const toolPermissions = {
       Edit: ["developer", "admin"],
-      Delete: ["admin"],
       Bash: ["admin"],
       Write: ["developer", "admin"],
     };
@@ -126,7 +125,7 @@ async function main() {
         }
       } else if (env === "staging") {
         // Moderate staging rules
-        const blockedInStaging = ["Delete"];
+        const blockedInStaging = ["Bash"];
         if (blockedInStaging.includes(context.toolName)) {
           console.log(`   ❌ ${context.toolName} blocked in staging`);
           return {
@@ -174,7 +173,7 @@ async function main() {
       const timestamp = new Date();
 
       // Business logic for permission
-      const restrictedTools = ["Delete", "Bash"];
+      const restrictedTools = ["Bash"];
       const decision = restrictedTools.includes(context.toolName)
         ? "deny"
         : "allow";
