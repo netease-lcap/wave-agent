@@ -53,12 +53,7 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // All messages should be visible (no pagination)
@@ -76,12 +71,7 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // All messages should be visible
@@ -99,12 +89,7 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // All messages should be visible (no pagination limits)
@@ -124,12 +109,7 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // Should show all messages with correct numbering
@@ -141,12 +121,7 @@ describe("MessageList Static Rendering", () => {
     it("should handle single message", () => {
       const messages = [createMessage("user", "Only", 1)];
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       expect(lastFrame()).toContain("Only - Message 1");
@@ -156,12 +131,7 @@ describe("MessageList Static Rendering", () => {
     it("should handle empty message list", () => {
       const messages: Message[] = [];
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // Should show welcome message when no messages
@@ -176,12 +146,7 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // Should not show pagination info
@@ -198,12 +163,7 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // Should NOT show pagination navigation
@@ -219,24 +179,14 @@ describe("MessageList Static Rendering", () => {
 
       // Test collapsed state
       const { lastFrame: collapsedFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       expect(collapsedFrame()).toContain("Test - Message 1");
 
       // Test expanded state
       const { lastFrame: expandedFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={true}
-        />,
+        <MessageList messages={messages} isExpanded={true} />,
       );
 
       expect(expandedFrame()).toContain("Test - Message 1");
@@ -250,12 +200,7 @@ describe("MessageList Static Rendering", () => {
       );
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // ALL messages should be visible (no pagination)
@@ -273,12 +218,7 @@ describe("MessageList Static Rendering", () => {
       });
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // All messages should be visible
@@ -300,12 +240,7 @@ describe("MessageList Static Rendering", () => {
         createComplexMessage(i + 1),
       );
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // Should show message count without pagination and complex content
@@ -324,12 +259,7 @@ describe("MessageList Static Rendering", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // All message content should be visible
@@ -347,12 +277,7 @@ describe("MessageList Static Rendering", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // All message content should still be visible
@@ -371,12 +296,7 @@ describe("MessageList Static Rendering", () => {
       ];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       // All messages should be visible
@@ -389,12 +309,7 @@ describe("MessageList Static Rendering", () => {
       const messages = [createMessage("user", "Only message", 1)];
 
       const { lastFrame } = render(
-        <MessageList
-          messages={messages}
-          isLoading={false}
-          isCommandRunning={false}
-          isExpanded={false}
-        />,
+        <MessageList messages={messages} isExpanded={false} />,
       );
 
       expect(lastFrame()).toContain("Only message - Message 1");

@@ -1,25 +1,19 @@
 import React from "react";
 import { Box, Text, Static } from "ink";
 import type { Message } from "wave-agent-sdk";
-import { MessageItem } from "./MessageItem.js";
+import { MessageBlockItem } from "./MessageBlockItem.js";
 
 export interface MessageListProps {
   messages: Message[];
-  isLoading?: boolean;
-  isCommandRunning?: boolean;
   isExpanded?: boolean;
-  forceStaticLastMessage?: boolean;
-  hideLastMessage?: boolean;
+  hideDynamicBlocks?: boolean;
 }
 
 export const MessageList = React.memo(
   ({
     messages,
-    isLoading = false,
-    isCommandRunning = false,
     isExpanded = false,
-    forceStaticLastMessage = false,
-    hideLastMessage = false,
+    hideDynamicBlocks = false,
   }: MessageListProps) => {
     // Empty message state
     if (messages.length === 0) {
@@ -40,59 +34,69 @@ export const MessageList = React.memo(
       ? messages.slice(-maxExpandedMessages)
       : messages;
 
-    // Compute which messages to render statically vs dynamically
-    const lastMessage = displayMessages[displayMessages.length - 1];
-    const hasNonEndTool = lastMessage?.blocks.some(
-      (block) => block.type === "tool" && block.stage !== "end",
-    );
-    const hasRunningCommand = lastMessage?.blocks.some(
-      (block) => block.type === "command_output" && block.isRunning,
-    );
-    const shouldRenderLastDynamic =
-      !forceStaticLastMessage &&
-      (isLoading || isCommandRunning || hasNonEndTool || hasRunningCommand);
-    const staticMessages = shouldRenderLastDynamic
-      ? displayMessages.slice(0, -1)
-      : displayMessages;
-    const dynamicMessages =
-      !hideLastMessage && shouldRenderLastDynamic && displayMessages.length > 0
-        ? [displayMessages[displayMessages.length - 1]]
-        : [];
+    // Flatten messages into blocks with metadata
+    const allBlocks = displayMessages.flatMap((message, index) => {
+      const messageIndex = shouldLimitMessages
+        ? messages.length - maxExpandedMessages + index
+        : index;
+      return message.blocks.map((block, blockIndex) => ({
+        block,
+        message,
+        isLastMessage: messageIndex === messages.length - 1,
+        // Unique key for each block to help Static component
+        key: `${message.id || messageIndex}-${blockIndex}`,
+      }));
+    });
+
+    // Determine which blocks are static vs dynamic
+    const blocksWithStatus = allBlocks.map((item) => {
+      const { block, isLastMessage } = item;
+      const isDynamic =
+        isLastMessage &&
+        ((block.type === "tool" && block.stage !== "end") ||
+          (block.type === "command_output" && block.isRunning));
+      return { ...item, isDynamic };
+    });
+
+    const staticBlocks = blocksWithStatus.filter((b) => !b.isDynamic);
+    const dynamicBlocks = hideDynamicBlocks
+      ? []
+      : blocksWithStatus.filter((b) => b.isDynamic);
 
     return (
       <Box flexDirection="column" paddingBottom={1}>
-        {/* Static messages */}
-        <Static items={staticMessages}>
-          {(message, key) => {
-            // Get previous message
-            const previousMessage =
-              key > 0 ? staticMessages[key - 1] : undefined;
-            return (
-              <MessageItem
-                key={key}
-                message={message}
-                shouldShowHeader={previousMessage?.role !== message.role}
+        {/* Static blocks */}
+        {staticBlocks.length > 0 && (
+          <Static items={staticBlocks}>
+            {(item, index) => (
+              <MessageBlockItem
+                key={item.key}
+                block={item.block}
+                message={item.message}
                 isExpanded={isExpanded}
+                paddingTop={index > 0 ? 1 : 0}
               />
-            );
-          }}
-        </Static>
+            )}
+          </Static>
+        )}
 
-        {/* Dynamic messages */}
-        {dynamicMessages.map((message, index) => {
-          const messageIndex = staticMessages.length + index;
-          const previousMessage =
-            messageIndex > 0 ? displayMessages[messageIndex - 1] : undefined;
-          return (
-            <Box key={`dynamic-${index}`}>
-              <MessageItem
-                message={message}
-                shouldShowHeader={previousMessage?.role !== message.role}
+        {/* Dynamic blocks */}
+        {dynamicBlocks.length > 0 && (
+          <Box
+            flexDirection="column"
+            gap={1}
+            paddingTop={staticBlocks.length > 0 ? 1 : 0}
+          >
+            {dynamicBlocks.map((item) => (
+              <MessageBlockItem
+                key={item.key}
+                block={item.block}
+                message={item.message}
                 isExpanded={isExpanded}
               />
-            </Box>
-          );
-        })}
+            ))}
+          </Box>
+        )}
       </Box>
     );
   },
