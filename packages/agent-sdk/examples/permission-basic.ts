@@ -27,7 +27,7 @@ async function main() {
   });
   console.log("   ✅ Agent created with default safe mode");
   console.log(
-    "   📝 In CLI, this would prompt before Edit/Delete/Bash/Write operations\n",
+    "   📝 In CLI, this would prompt before Edit/Bash/Write operations\n",
   );
 
   // Example 2: Bypass Mode (Dangerous!)
@@ -62,11 +62,11 @@ async function main() {
         };
       }
 
-      if (context.toolName === "Delete") {
-        console.log("   ❌ Denying Delete operations (safety first)");
+      if (context.toolName === "Write") {
+        console.log("   ❌ Denying Write operations (safety first)");
         return {
           behavior: "deny",
-          message: "File deletion disabled for safety",
+          message: "File writing disabled for safety",
         };
       }
 
@@ -81,7 +81,7 @@ async function main() {
     },
   });
   console.log("   ✅ Agent created with custom permission logic");
-  console.log("   📋 Custom logic: Allow Edit/Write, Deny Bash/Delete\n");
+  console.log("   📋 Custom logic: Allow Edit, Deny Bash/Write\n");
 
   // Cleanup
   defaultAgent.destroy();

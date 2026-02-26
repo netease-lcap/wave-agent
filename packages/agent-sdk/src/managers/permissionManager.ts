@@ -27,7 +27,6 @@ import { isPathInside } from "../utils/pathSafety.js";
 import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
-  DELETE_FILE_TOOL_NAME,
   WRITE_TOOL_NAME,
   READ_TOOL_NAME,
   LS_TOOL_NAME,
@@ -308,17 +307,12 @@ export class PermissionManager {
       return { behavior: "allow" };
     }
 
-    // 1.1 If acceptEdits mode, allow Edit, Delete, Write
+    // 1.1 If acceptEdits mode, allow Edit, Write
     if (context.permissionMode === "acceptEdits") {
-      const autoAcceptedTools = [
-        EDIT_TOOL_NAME,
-        DELETE_FILE_TOOL_NAME,
-        WRITE_TOOL_NAME,
-      ];
+      const autoAcceptedTools = [EDIT_TOOL_NAME, WRITE_TOOL_NAME];
       if (autoAcceptedTools.includes(context.toolName)) {
         // Enforce Safe Zone for file operations
-        const targetPath = (context.toolInput?.file_path ||
-          context.toolInput?.target_file) as string | undefined;
+        const targetPath = context.toolInput?.file_path as string | undefined;
         const workdir = context.toolInput?.workdir as string | undefined;
 
         if (targetPath) {
@@ -359,21 +353,9 @@ export class PermissionManager {
 
     // 1.3 If plan mode, allow Read-only tools and Edit/Write for plan file
     if (context.permissionMode === "plan") {
-      const writeTools = [
-        EDIT_TOOL_NAME,
-        WRITE_TOOL_NAME,
-        DELETE_FILE_TOOL_NAME,
-      ];
-      if (context.toolName === DELETE_FILE_TOOL_NAME) {
-        return {
-          behavior: "deny",
-          message: "Delete operations are not allowed in plan mode.",
-        };
-      }
-
+      const writeTools = [EDIT_TOOL_NAME, WRITE_TOOL_NAME];
       if (writeTools.includes(context.toolName)) {
-        const targetPath = (context.toolInput?.file_path ||
-          context.toolInput?.target_file) as string | undefined;
+        const targetPath = context.toolInput?.file_path as string | undefined;
 
         if (this.planFilePath && targetPath) {
           const absoluteTargetPath = path.resolve(targetPath);
@@ -486,11 +468,9 @@ export class PermissionManager {
     };
 
     // Set hidePersistentOption for out-of-bounds file operations
-    const fileTools = [EDIT_TOOL_NAME, DELETE_FILE_TOOL_NAME, WRITE_TOOL_NAME];
+    const fileTools = [EDIT_TOOL_NAME, WRITE_TOOL_NAME];
     if (fileTools.includes(toolName)) {
-      const targetPath = (toolInput?.file_path || toolInput?.target_file) as
-        | string
-        | undefined;
+      const targetPath = toolInput?.file_path as string | undefined;
       const workdir = toolInput?.workdir as string | undefined;
 
       if (targetPath) {
@@ -591,12 +571,10 @@ export class PermissionManager {
       READ_TOOL_NAME,
       WRITE_TOOL_NAME,
       EDIT_TOOL_NAME,
-      DELETE_FILE_TOOL_NAME,
       LS_TOOL_NAME,
     ];
     if (pathTools.includes(toolName)) {
       const targetPath = (context.toolInput?.file_path ||
-        context.toolInput?.target_file ||
         context.toolInput?.path) as string | undefined;
 
       if (targetPath) {

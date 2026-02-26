@@ -2,7 +2,6 @@ import type { ToolContext, ToolPlugin, ToolResult } from "../tools/types.js";
 import { bashTool } from "../tools/bashTool.js";
 import { taskOutputTool } from "../tools/taskOutputTool.js";
 import { taskStopTool } from "../tools/taskStopTool.js";
-import { deleteFileTool } from "../tools/deleteFileTool.js";
 import { editTool } from "../tools/editTool.js";
 import { writeTool } from "../tools/writeTool.js";
 import { exitPlanModeTool } from "../tools/exitPlanMode.js";
@@ -75,7 +74,7 @@ class ToolManager {
    * Initialize built-in tools. Can be called with dependencies for tools that require them.
    *
    * This method can be called multiple times safely. When called without dependencies,
-   * it registers basic tools (Bash, Read, Write, TodoWrite, etc.). When called with
+   * it registers basic tools (Bash, Read, Write, TaskCreate, etc.). When called with
    * dependencies, it also registers tools that require managers (Task, Skill).
    *
    * @param deps Optional dependencies for advanced tools
@@ -99,7 +98,6 @@ class ToolManager {
       bashTool,
       taskOutputTool,
       taskStopTool,
-      deleteFileTool,
       editTool,
       writeTool,
       exitPlanModeTool,

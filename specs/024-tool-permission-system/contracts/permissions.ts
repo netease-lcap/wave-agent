@@ -93,7 +93,7 @@ export interface ConfirmationState {
 /**
  * List of tools that require permission checks in default mode
  */
-export const RESTRICTED_TOOLS = ["Edit", "Delete", "Bash", "Write"] as const;
+export const RESTRICTED_TOOLS = ["Edit", "Bash", "Write"] as const;
 
 /**
  * Type for restricted tool names

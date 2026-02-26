@@ -33,20 +33,6 @@ describe("PermissionManager Plan Mode", () => {
     expect(decision.message).toContain("requires permission approval");
   });
 
-  it("should block Delete operations in plan mode", async () => {
-    const context = permissionManager.createContext(
-      "Delete",
-      "plan",
-      undefined,
-      {
-        target_file: "/home/user/project/file.txt",
-      },
-    );
-    const decision = await permissionManager.checkPermission(context);
-    expect(decision.behavior).toBe("deny");
-    expect(decision.message).toContain("Delete operations are not allowed");
-  });
-
   it("should allow Edit to the plan file in plan mode", async () => {
     const context = permissionManager.createContext("Edit", "plan", undefined, {
       file_path: planFilePath,

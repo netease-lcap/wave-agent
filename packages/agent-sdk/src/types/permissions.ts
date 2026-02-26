@@ -10,7 +10,6 @@ import {
 } from "./tools.js";
 import {
   EDIT_TOOL_NAME,
-  DELETE_FILE_TOOL_NAME,
   BASH_TOOL_NAME,
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
@@ -60,7 +59,6 @@ export interface ToolPermissionContext {
 /** List of tools that require permission checks in default mode */
 export const RESTRICTED_TOOLS = [
   EDIT_TOOL_NAME,
-  DELETE_FILE_TOOL_NAME,
   BASH_TOOL_NAME,
   WRITE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,

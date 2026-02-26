@@ -9,7 +9,7 @@
 ## Decision: Atomic Snapshots
 - **Rationale**: If a tool fails (e.g., permission error, invalid path), no change was made to the disk. Recording a snapshot for a failed operation would result in an unnecessary (and potentially destructive) "reversion" later. Snapshots will be buffered and only committed to the session log if the tool returns `success: true`.
 - **Alternatives considered**: 
-    - Always record: Rejected because reverting a failed "Delete" might try to restore a file that was never deleted, potentially overwriting newer user changes.
+    - Always record: Rejected because reverting a failed "Write" might try to restore a file that was never written, potentially overwriting newer user changes.
 
 ## Decision: Snapshot before execution
 - **Rationale**: To ensure we can revert to the exact state before the agent's action, we must capture the file content (or non-existence) immediately before the tool performs its operation.

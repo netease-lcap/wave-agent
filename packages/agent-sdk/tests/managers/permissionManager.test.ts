@@ -229,7 +229,7 @@ describe("PermissionManager", () => {
 
     describe("acceptEdits mode", () => {
       it("should allow file tools in acceptEdits mode inside Safe Zone", async () => {
-        const fileTools = ["Edit", "Delete", "Write"];
+        const fileTools = ["Edit", "Write"];
         const workdir = "/home/user/project";
         const container = new Container();
         const manager = new PermissionManager(container, {
@@ -444,7 +444,7 @@ describe("PermissionManager", () => {
         permissionManager.addTemporaryRules(["Edit"]);
 
         const context: ToolPermissionContext = {
-          toolName: "Delete",
+          toolName: "Bash",
           permissionMode: "default",
         };
 
@@ -470,7 +470,7 @@ describe("PermissionManager", () => {
 
     describe("default mode with unrestricted tools", () => {
       it("should allow unrestricted tools without callback", async () => {
-        const unrestrictedTools = ["Read", "Grep", "LS", "Glob", "TodoWrite"];
+        const unrestrictedTools = ["Read", "Grep", "LS", "Glob", "TaskCreate"];
 
         for (const toolName of unrestrictedTools) {
           const context: ToolPermissionContext = {
@@ -548,7 +548,7 @@ describe("PermissionManager", () => {
         });
 
         const context: ToolPermissionContext = {
-          toolName: "Delete",
+          toolName: "Bash",
           permissionMode: "default",
           canUseToolCallback: mockCallback,
         };
@@ -560,14 +560,14 @@ describe("PermissionManager", () => {
           message: "User denied permission",
         });
         expect(mockCallback).toHaveBeenCalledWith({
-          toolName: "Delete",
+          toolName: "Bash",
           permissionMode: "default",
           canUseToolCallback: mockCallback,
         });
         expect(logger.debug).toHaveBeenCalledWith(
           "Custom callback returned decision",
           {
-            toolName: "Delete",
+            toolName: "Bash",
             decision: { behavior: "deny", message: "User denied permission" },
           },
         );
@@ -825,7 +825,7 @@ describe("PermissionManager", () => {
         "Grep",
         "LS",
         "Glob",
-        "TodoWrite",
+        "TaskCreate",
         "Skill",
       ];
 
@@ -879,18 +879,18 @@ describe("PermissionManager", () => {
       });
 
       const context = permissionManager.createContext(
-        "Delete",
+        "Write",
         "bypassPermissions",
         mockCallback,
       );
 
       expect(context).toEqual({
-        toolName: "Delete",
+        toolName: "Write",
         permissionMode: "bypassPermissions",
         canUseToolCallback: mockCallback,
       });
       expect(logger.debug).toHaveBeenCalledWith("Created permission context", {
-        toolName: "Delete",
+        toolName: "Write",
         permissionMode: "bypassPermissions",
         hasCallback: true,
         hasToolInput: false,
@@ -1110,7 +1110,6 @@ describe("PermissionManager", () => {
       // Verify the exact list matches expected tools
       expect(RESTRICTED_TOOLS).toEqual([
         "Edit",
-        "Delete",
         "Bash",
         "Write",
         "ExitPlanMode",

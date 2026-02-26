@@ -23,17 +23,16 @@
 
 ### User Story 1 - Default Safe Mode with Confirmations (Priority: P1)
 
-A user runs Wave CLI without any special flags, and the system prompts for confirmation before executing any potentially destructive operations like file edits, deletions, or bash commands.
+A user runs Wave CLI without any special flags, and the system prompts for confirmation before executing any potentially destructive operations like file edits or bash commands.
 
 **Why this priority**: This provides essential safety for the majority of users by preventing accidental destructive operations. It's the core security feature that protects user systems by default.
 
-**Independent Test**: Can be fully tested by running any edit/delete/bash command and verifying that a confirmation prompt appears, allowing users to approve or deny the operation.
+**Independent Test**: Can be fully tested by running any edit/bash command and verifying that a confirmation prompt appears, allowing users to approve or deny the operation.
 
 **Acceptance Scenarios**:
 
 1. **Given** a user runs Wave CLI without flags, **When** Wave attempts to edit a file, **Then** a confirmation prompt appears asking "Do you want to proceed?" with options to allow or modify the request
-2. **Given** a user runs Wave CLI without flags, **When** Wave attempts to delete a file, **Then** a confirmation prompt appears with allow/deny options
-3. **Given** a user runs Wave CLI without flags, **When** Wave attempts to execute a bash command, **Then** a confirmation prompt appears with allow/deny options
+2. **Given** a user runs Wave CLI without flags, **When** Wave attempts to execute a bash command, **Then** a confirmation prompt appears with allow/deny options
 4. **Given** a confirmation prompt is shown, **When** user selects "Yes", **Then** the operation proceeds normally
 5. **Given** a confirmation prompt is shown, **When** user types alternative instructions, **Then** Wave receives the new instructions through the tool result field instead of executing the original operation
 6. **Given** a confirmation prompt is shown, **When** user presses ESC key, **Then** the confirmation component is hidden and the tool operation is aborted
@@ -54,7 +53,7 @@ An advanced user or automated system runs Wave CLI with a special flag to bypass
 
 **Acceptance Scenarios**:
 
-1. **Given** a user runs Wave CLI with `--dangerously-skip-permissions`, **When** Wave attempts any edit/delete/bash operation, **Then** no confirmation prompts appear and operations execute immediately
+1. **Given** a user runs Wave CLI with `--dangerously-skip-permissions`, **When** Wave attempts any edit/bash operation, **Then** no confirmation prompts appear and operations execute immediately
 2. **Given** bypass mode is enabled, **When** multiple destructive operations are performed, **Then** all execute without user intervention
 
 ---
@@ -87,7 +86,7 @@ A developer integrating Wave's agent SDK can provide custom permission handling 
 
 - **FR-001**: Agent constructor MUST accept a `permissionMode` parameter with values "default" or "bypassPermissions"
 - **FR-002**: Wave CLI MUST support a `--dangerously-skip-permissions` flag that sets permission mode to "bypassPermissions"
-- **FR-003**: When permission mode is "default", system MUST prompt for user confirmation before executing Edit, Delete, Bash, or Write tools
+- **FR-003**: When permission mode is "default", system MUST prompt for user confirmation before executing Edit, Bash, or Write tools
 - **FR-004**: Agent SDK MUST support a `canUseTool` callback that receives tool name and returns Promise of permission decision
 - **FR-005**: Permission callback MUST support response format `{behavior: 'allow'}` or `{behavior: 'deny', message: string}`
 - **FR-006**: Permission checks MUST occur after tool validation and diff generation but before actual operation execution

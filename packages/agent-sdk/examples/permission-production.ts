@@ -18,10 +18,7 @@ import {
 class PermissionDatabase {
   private permissions = new Map([
     ["user123", new Set(["Edit", "Write", "Read", "Grep", "LS"])],
-    [
-      "admin456",
-      new Set(["Edit", "Write", "Read", "Grep", "LS", "Delete", "Bash"]),
-    ],
+    ["admin456", new Set(["Edit", "Write", "Read", "Grep", "LS", "Bash"])],
     ["readonly789", new Set(["Read", "Grep", "LS"])],
   ]);
 
@@ -137,7 +134,7 @@ async function main() {
       context: ToolPermissionContext,
     ): Promise<PermissionDecision> => {
       const userId = "user123";
-      const expensiveTools = ["Bash", "Delete"];
+      const expensiveTools = ["Bash"];
 
       if (expensiveTools.includes(context.toolName)) {
         const rateLimitKey = `${userId}:${context.toolName}`;
@@ -167,7 +164,7 @@ async function main() {
     },
   });
 
-  console.log("   📋 Rate limiting active for Bash and Delete operations\n");
+  console.log("   📋 Rate limiting active for Bash operations\n");
 
   // Example 3: Context-aware permissions
   console.log("3️⃣  Context-Aware Permissions:");
@@ -187,19 +184,16 @@ async function main() {
       );
 
       // Path-based restrictions
-      if (currentPath.includes("production") && context.toolName === "Delete") {
-        console.log(`   🚨 Delete operation blocked in production path`);
+      if (currentPath.includes("production") && context.toolName === "Bash") {
+        console.log(`   🚨 Bash operation blocked in production path`);
         return {
           behavior: "deny",
-          message: "Delete operations not allowed in production directories",
+          message: "Bash operations not allowed in production directories",
         };
       }
 
       // Time-based restrictions
-      if (
-        !isBusinessHours &&
-        (context.toolName === "Bash" || context.toolName === "Delete")
-      ) {
+      if (!isBusinessHours && context.toolName === "Bash") {
         console.log(
           `   🌙 ${context.toolName} operation blocked outside business hours`,
         );
@@ -239,7 +233,7 @@ async function main() {
 
       try {
         // 1. Rate limiting
-        if (["Bash", "Delete"].includes(context.toolName)) {
+        if (["Bash"].includes(context.toolName)) {
           const rateLimitKey = `${userId}:${context.toolName}`;
           if (!rateLimiter.checkRateLimit(rateLimitKey, 60000, 3)) {
             return {
@@ -261,7 +255,7 @@ async function main() {
         // 3. Context checks
         const timeOfDay = new Date().getHours();
         const isBusinessHours = timeOfDay >= 9 && timeOfDay <= 17;
-        if (!isBusinessHours && ["Bash", "Delete"].includes(context.toolName)) {
+        if (!isBusinessHours && ["Bash"].includes(context.toolName)) {
           return {
             behavior: "deny",
             message: `${context.toolName} operations only allowed during business hours`,

@@ -30,7 +30,7 @@ describe("PermissionManager Safe Zone", () => {
   });
 
   describe("checkPermission with Safe Zone", () => {
-    const fileTools = ["Write", "Edit", "Delete"];
+    const fileTools = ["Write", "Edit"];
 
     for (const toolName of fileTools) {
       describe(`${toolName} tool`, () => {
@@ -39,10 +39,7 @@ describe("PermissionManager Safe Zone", () => {
           const context: ToolPermissionContext = {
             toolName,
             permissionMode: "acceptEdits",
-            toolInput:
-              toolName === "Delete"
-                ? { target_file: filePath }
-                : { file_path: filePath },
+            toolInput: { file_path: filePath },
           };
 
           const result = await permissionManager.checkPermission(context);
@@ -54,10 +51,7 @@ describe("PermissionManager Safe Zone", () => {
           const context: ToolPermissionContext = {
             toolName,
             permissionMode: "acceptEdits",
-            toolInput:
-              toolName === "Delete"
-                ? { target_file: filePath }
-                : { file_path: filePath },
+            toolInput: { file_path: filePath },
           };
 
           const result = await permissionManager.checkPermission(context);
@@ -69,10 +63,7 @@ describe("PermissionManager Safe Zone", () => {
           const context: ToolPermissionContext = {
             toolName,
             permissionMode: "acceptEdits",
-            toolInput:
-              toolName === "Delete"
-                ? { target_file: filePath }
-                : { file_path: filePath },
+            toolInput: { file_path: filePath },
           };
 
           const result = await permissionManager.checkPermission(context);
@@ -86,10 +77,7 @@ describe("PermissionManager Safe Zone", () => {
           const context: ToolPermissionContext = {
             toolName,
             permissionMode: "default",
-            toolInput:
-              toolName === "Delete"
-                ? { target_file: filePath }
-                : { file_path: filePath },
+            toolInput: { file_path: filePath },
           };
 
           const result = await permissionManager.checkPermission(context);
