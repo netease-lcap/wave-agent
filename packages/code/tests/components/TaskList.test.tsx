@@ -122,7 +122,7 @@ describe("TaskList", () => {
     expect(output).toContain(longSubject);
   });
 
-  it("should render blocked tasks with lock icon and blocking subjects", () => {
+  it("should render blocked tasks with pending icon and blocking subjects", () => {
     const mockTasks: Task[] = [
       {
         id: "1",
@@ -151,6 +151,6 @@ describe("TaskList", () => {
     const { lastFrame } = render(<TaskList />);
     const output = lastFrame();
 
-    expect(output).toContain("🔒 Blocked Task (Blocked by: #1)");
+    expect(output).toContain("□ Blocked Task (Blocked by: #1)");
   });
 });

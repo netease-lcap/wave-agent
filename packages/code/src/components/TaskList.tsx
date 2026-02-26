@@ -11,10 +11,7 @@ export const TaskList: React.FC = () => {
     return null;
   }
 
-  const getStatusIcon = (status: string, isBlocked: boolean) => {
-    if (isBlocked) {
-      return <Text color="red">🔒</Text>;
-    }
+  const getStatusIcon = (status: string) => {
     switch (status) {
       case "pending":
         return <Text color="gray">□</Text>;
@@ -48,7 +45,7 @@ export const TaskList: React.FC = () => {
 
         return (
           <Box key={task.id} gap={1}>
-            {getStatusIcon(task.status, isBlocked)}
+            {getStatusIcon(task.status)}
             <Text dimColor={isDimmed}>{fullText}</Text>
           </Box>
         );
