@@ -14,10 +14,10 @@ The feature will be implemented as a standalone Ink-based CLI component in the `
 - **Hooks**: Custom hooks in `packages/code/src/hooks/`.
 - **Contexts**: React contexts in `packages/code/src/contexts/`.
 - **CLI Entry Point**: `packages/code/src/plugin-manager-cli.tsx`.
-- **Backend Services**: `MarketplaceService` and `PluginScopeManager` in `packages/agent-sdk`.
+- **Backend Services**: `PluginCore` in `packages/agent-sdk` (encapsulating `MarketplaceService` and `PluginScopeManager`).
 
 ### Dependencies
-- `agent-sdk`: `MarketplaceService`, `PluginScopeManager`, `ConfigurationService`.
+- `agent-sdk`: `PluginCore`.
 - `code`: `ink`, `ink-select-input` (or custom selection logic), `ink-text-input`.
 
 ### Unknowns & Research
@@ -57,7 +57,7 @@ The feature will be implemented as a standalone Ink-based CLI component in the `
 
 ### API Contracts (Internal)
 - `PluginManagerUI`: Main component.
-- `usePluginManager`: Custom hook to wrap `MarketplaceService` and `PluginScopeManager` calls.
+- `usePluginManager`: Custom hook to wrap `PluginCore` calls.
 - `startPluginManagerCli()`: Entry point function.
 
 ## Phase 2: Implementation Strategy
