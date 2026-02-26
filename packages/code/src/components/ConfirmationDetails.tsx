@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { Box, Text, useStdout, measureElement, Static } from "ink";
 import {
   BASH_TOOL_NAME,
@@ -40,6 +40,7 @@ export interface ConfirmationDetailsProps {
   toolInput?: Record<string, unknown>;
   isExpanded?: boolean;
   onHeightMeasured?: (height: number) => void;
+  isStatic?: boolean;
 }
 
 export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
@@ -47,21 +48,17 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   toolInput,
   isExpanded = false,
   onHeightMeasured,
+  isStatic = false,
 }) => {
   const { stdout } = useStdout();
-  const [isStatic, setIsStatic] = useState(false);
   const boxRef = useRef(null);
 
   useLayoutEffect(() => {
     if (boxRef.current) {
       const { height } = measureElement(boxRef.current);
-      const terminalHeight = stdout?.rows || 24;
-      if (height > terminalHeight - 10) {
-        setIsStatic(true);
-      }
       onHeightMeasured?.(height);
     }
-  }, [stdout?.rows, onHeightMeasured]);
+  }, [stdout?.rows, onHeightMeasured, toolInput, isExpanded]);
 
   const content = (
     <Box
