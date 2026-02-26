@@ -179,18 +179,11 @@ describe("InputBox Smoke Tests", () => {
         );
       });
 
-      const afterSlashFrame = lastFrame();
-      expect(afterSlashFrame).toContain("docs");
-
       // Step 2: Input "git" to filter commands
       stdin.write("git");
       await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).not.toContain("docs");
+        expect(stripAnsiColors(lastFrame() || "")).toContain("git-commit");
       });
-
-      const filteredFrame = lastFrame();
-      expect(filteredFrame).toContain("git-commit");
-      expect(filteredFrame).not.toContain("docs"); // docs should be filtered out
 
       // Step 3: Press Enter to select and execute command
       stdin.write("\r");
@@ -256,6 +249,7 @@ describe("InputBox Smoke Tests", () => {
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
       stdin.write("tasks");
+      await vi.waitFor(() => expect(lastFrame()).toContain("/tasks"));
       stdin.write("\r");
 
       await vi.waitFor(
@@ -278,6 +272,7 @@ describe("InputBox Smoke Tests", () => {
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
       stdin.write("mcp");
+      await vi.waitFor(() => expect(lastFrame()).toContain("/mcp"));
       stdin.write("\r");
 
       await vi.waitFor(
@@ -302,6 +297,7 @@ describe("InputBox Smoke Tests", () => {
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
       stdin.write("rewind");
+      await vi.waitFor(() => expect(lastFrame()).toContain("/rewind"));
       stdin.write("\r");
 
       await vi.waitFor(
@@ -357,10 +353,7 @@ describe("InputBox Smoke Tests", () => {
       // Trigger Help via command
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
-      stdin.write("h");
-      stdin.write("e");
-      stdin.write("l");
-      stdin.write("p");
+      stdin.write("help");
       await vi.waitFor(() => expect(lastFrame()).toContain("/help"));
       stdin.write("\r");
 

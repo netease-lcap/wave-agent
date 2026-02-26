@@ -439,10 +439,6 @@ describe("BackgroundTaskManager", () => {
       expect(lastFrame()).toContain("[task-1]");
     });
 
-    // Wait for state update to settle
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain("[task-1]");
-    });
     // Enter detail mode for task-1 (running)
     stdin.write("\r");
 
@@ -478,10 +474,6 @@ describe("BackgroundTaskManager", () => {
       expect(lastFrame()).toContain("[task-1]");
     });
 
-    // Wait for state update to settle
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain("[task-1]");
-    });
     // Down arrow
     stdin.write("\u001B[B");
     await vi.waitFor(() => {
