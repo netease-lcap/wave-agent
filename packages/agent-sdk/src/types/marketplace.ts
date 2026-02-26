@@ -11,6 +11,15 @@ export interface MarketplacePluginEntry {
   description: string;
 }
 
+export interface MarketplacePluginStatus extends MarketplacePluginEntry {
+  marketplace: string;
+  installed: boolean;
+  version?: string;
+  cachePath?: string;
+  projectPath?: string;
+  scope?: Scope;
+}
+
 export interface MarketplaceManifest {
   name: string;
   owner: MarketplaceOwner;

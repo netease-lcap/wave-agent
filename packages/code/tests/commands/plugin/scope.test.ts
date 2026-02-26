@@ -24,38 +24,24 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 const mockLog = vi.spyOn(console, "log").mockImplementation(() => {});
 const mockError = vi.spyOn(console, "error").mockImplementation(function () {});
 
-// Mock MarketplaceService
+// Mock PluginCore
+const { mockPluginCore } = vi.hoisted(() => ({
+  mockPluginCore: {
+    enablePlugin: vi.fn(),
+    disablePlugin: vi.fn(),
+    listPlugins: vi.fn(),
+    findPluginScope: vi.fn(),
+  },
+}));
+
 vi.mock("wave-agent-sdk", async () => {
   const actual = (await vi.importActual(
     "wave-agent-sdk",
   )) as typeof import("wave-agent-sdk");
   return {
     ...actual,
-    MarketplaceService: vi.fn(function () {
-      return {
-        getInstalledPlugins: vi.fn().mockResolvedValue({
-          plugins: [
-            { name: "test-plugin", marketplace: "market", version: "1.0.0" },
-          ],
-        }),
-        listMarketplaces: vi.fn().mockResolvedValue([
-          {
-            name: "market",
-            source: { source: "directory", path: "/mock/market" },
-          },
-        ]),
-        getMarketplacePath: vi.fn().mockReturnValue("/mock/market"),
-        loadMarketplaceManifest: vi.fn().mockResolvedValue({
-          name: "market",
-          plugins: [
-            {
-              name: "test-plugin",
-              source: "./test-plugin",
-              description: "test",
-            },
-          ],
-        }),
-      };
+    PluginCore: vi.fn().mockImplementation(function () {
+      return mockPluginCore;
     }),
   };
 });
@@ -76,6 +62,10 @@ describe("Plugin Scope Integration Tests", () => {
     mockLog.mockClear();
     mockError.mockClear();
     mockExit.mockClear();
+    mockPluginCore.enablePlugin.mockClear();
+    mockPluginCore.disablePlugin.mockClear();
+    mockPluginCore.listPlugins.mockClear();
+    mockPluginCore.findPluginScope.mockClear();
   });
 
   afterEach(async () => {
@@ -85,6 +75,7 @@ describe("Plugin Scope Integration Tests", () => {
   });
 
   it("should enable a plugin in user scope", async () => {
+    mockPluginCore.enablePlugin.mockResolvedValue("user");
     await enablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
 
     expect(mockLog).toHaveBeenCalledWith(
@@ -93,12 +84,14 @@ describe("Plugin Scope Integration Tests", () => {
       ),
     );
 
-    const userConfigPath = path.join(userHome, ".wave", "settings.json");
-    const config = JSON.parse(await fs.readFile(userConfigPath, "utf-8"));
-    expect(config.enabledPlugins["test-plugin@market"]).toBe(true);
+    expect(mockPluginCore.enablePlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      "user",
+    );
   });
 
   it("should enable a plugin in project scope", async () => {
+    mockPluginCore.enablePlugin.mockResolvedValue("project");
     await enablePluginCommand({
       plugin: "test-plugin@market",
       scope: "project",
@@ -110,12 +103,14 @@ describe("Plugin Scope Integration Tests", () => {
       ),
     );
 
-    const projectConfigPath = path.join(tempDir, ".wave", "settings.json");
-    const config = JSON.parse(await fs.readFile(projectConfigPath, "utf-8"));
-    expect(config.enabledPlugins["test-plugin@market"]).toBe(true);
+    expect(mockPluginCore.enablePlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      "project",
+    );
   });
 
   it("should disable a plugin in user scope", async () => {
+    mockPluginCore.disablePlugin.mockResolvedValue("user");
     await disablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
 
     expect(mockLog).toHaveBeenCalledWith(
@@ -124,16 +119,19 @@ describe("Plugin Scope Integration Tests", () => {
       ),
     );
 
-    const userConfigPath = path.join(userHome, ".wave", "settings.json");
-    const config = JSON.parse(await fs.readFile(userConfigPath, "utf-8"));
-    expect(config.enabledPlugins["test-plugin@market"]).toBe(false);
+    expect(mockPluginCore.disablePlugin).toHaveBeenCalledWith(
+      "test-plugin@market",
+      "user",
+    );
   });
 
   it("should test priority: Disable in user scope, enable in project scope -> should be enabled", async () => {
     // 1. Disable in user scope
+    mockPluginCore.disablePlugin.mockResolvedValue("user");
     await disablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
 
     // 2. Enable in project scope
+    mockPluginCore.enablePlugin.mockResolvedValue("project");
     await enablePluginCommand({
       plugin: "test-plugin@market",
       scope: "project",
@@ -141,6 +139,20 @@ describe("Plugin Scope Integration Tests", () => {
 
     // 3. List plugins
     mockLog.mockClear();
+    mockPluginCore.listPlugins.mockResolvedValue({
+      plugins: [
+        {
+          name: "test-plugin",
+          marketplace: "market",
+          version: "1.0.0",
+          installed: true,
+          scope: "project",
+        },
+      ],
+      mergedEnabled: {
+        "test-plugin@market": true,
+      },
+    });
     await listPluginsCommand();
 
     expect(mockLog).toHaveBeenCalledWith(
@@ -152,9 +164,11 @@ describe("Plugin Scope Integration Tests", () => {
 
   it("should test priority: Enable in user scope, disable in project scope -> should be disabled", async () => {
     // 1. Enable in user scope
+    mockPluginCore.enablePlugin.mockResolvedValue("user");
     await enablePluginCommand({ plugin: "test-plugin@market", scope: "user" });
 
     // 2. Disable in project scope
+    mockPluginCore.disablePlugin.mockResolvedValue("project");
     await disablePluginCommand({
       plugin: "test-plugin@market",
       scope: "project",
@@ -162,6 +176,20 @@ describe("Plugin Scope Integration Tests", () => {
 
     // 3. List plugins
     mockLog.mockClear();
+    mockPluginCore.listPlugins.mockResolvedValue({
+      plugins: [
+        {
+          name: "test-plugin",
+          marketplace: "market",
+          version: "1.0.0",
+          installed: true,
+          scope: "project",
+        },
+      ],
+      mergedEnabled: {
+        "test-plugin@market": false,
+      },
+    });
     await listPluginsCommand();
 
     expect(mockLog).toHaveBeenCalledWith(

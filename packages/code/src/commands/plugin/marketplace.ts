@@ -1,9 +1,9 @@
-import { MarketplaceService } from "wave-agent-sdk";
+import { PluginCore } from "wave-agent-sdk";
 
 export async function addMarketplaceCommand(argv: { input: string }) {
-  const service = new MarketplaceService();
+  const pluginCore = new PluginCore(process.cwd());
   try {
-    const marketplace = await service.addMarketplace(argv.input);
+    const marketplace = await pluginCore.addMarketplace(argv.input);
     const source = marketplace.source;
     let sourceInfo = "";
     if (source.source === "directory") {
@@ -25,9 +25,9 @@ export async function addMarketplaceCommand(argv: { input: string }) {
 }
 
 export async function listMarketplacesCommand() {
-  const service = new MarketplaceService();
+  const pluginCore = new PluginCore(process.cwd());
   try {
-    const marketplaces = await service.listMarketplaces();
+    const marketplaces = await pluginCore.listMarketplaces();
     if (marketplaces.length === 0) {
       console.log("No marketplaces registered.");
     } else {
@@ -57,9 +57,9 @@ export async function listMarketplacesCommand() {
 }
 
 export async function removeMarketplaceCommand(argv: { name: string }) {
-  const service = new MarketplaceService();
+  const pluginCore = new PluginCore(process.cwd());
   try {
-    await service.removeMarketplace(argv.name);
+    await pluginCore.removeMarketplace(argv.name);
     console.log(`Successfully removed marketplace: ${argv.name}`);
     process.exit(0);
   } catch (error) {
@@ -70,14 +70,14 @@ export async function removeMarketplaceCommand(argv: { name: string }) {
 }
 
 export async function updateMarketplaceCommand(argv: { name?: string }) {
-  const service = new MarketplaceService();
+  const pluginCore = new PluginCore(process.cwd());
   try {
     console.log(
       argv.name
         ? `Updating marketplace: ${argv.name}...`
         : "Updating all marketplaces...",
     );
-    await service.updateMarketplace(argv.name);
+    await pluginCore.updateMarketplace(argv.name);
     console.log("Successfully updated.");
     process.exit(0);
   } catch (error) {

@@ -4,18 +4,13 @@ export * from "./services/memory.js";
 export * from "./services/session.js";
 export * from "./services/hook.js";
 export * from "./services/jsonlHandler.js";
-export * from "./services/configurationService.js"; // New configuration management service
-export * from "./services/MarketplaceService.js";
 
 // Export constants
 export * from "./constants/tools.js";
 
-// Export managers
-export * from "./managers/pluginManager.js";
-export * from "./managers/pluginScopeManager.js";
-
 // Export main agent
 export * from "./agent.js";
+export * from "./core/plugin.js";
 
 // Export all utilities
 export * from "./utils/bashParser.js";
@@ -31,7 +26,6 @@ export * from "./utils/stringUtils.js";
 export * from "./utils/customCommands.js";
 export * from "./utils/hookMatcher.js";
 export * from "./utils/tokenCalculation.js";
-export * from "./utils/container.js";
 
 // Export types
 export * from "./types/index.js";

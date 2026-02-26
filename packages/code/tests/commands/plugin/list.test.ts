@@ -22,10 +22,16 @@ const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
 const mockLog = vi.spyOn(console, "log").mockImplementation(() => {});
 const mockError = vi.spyOn(console, "error").mockImplementation(function () {});
 
-// Mock MarketplaceService
-const mockGetInstalledPlugins = vi.fn();
-const mockListMarketplaces = vi.fn();
-const mockLoadMarketplaceManifest = vi.fn();
+// Mock PluginCore
+const { mockPluginCore } = vi.hoisted(() => ({
+  mockPluginCore: {
+    getInstalledPlugins: vi.fn(),
+    listMarketplaces: vi.fn(),
+    getMarketplacePath: vi.fn().mockReturnValue("/mock/market"),
+    loadMarketplaceManifest: vi.fn(),
+    listPlugins: vi.fn(),
+  },
+}));
 
 vi.mock("wave-agent-sdk", async () => {
   const actual = (await vi.importActual(
@@ -33,13 +39,8 @@ vi.mock("wave-agent-sdk", async () => {
   )) as typeof import("wave-agent-sdk");
   return {
     ...actual,
-    MarketplaceService: vi.fn(function () {
-      return {
-        getInstalledPlugins: mockGetInstalledPlugins,
-        listMarketplaces: mockListMarketplaces,
-        getMarketplacePath: vi.fn().mockReturnValue("/mock/market"),
-        loadMarketplaceManifest: mockLoadMarketplaceManifest,
-      };
+    PluginCore: vi.fn().mockImplementation(function () {
+      return mockPluginCore;
     }),
   };
 });
@@ -61,9 +62,10 @@ describe("Plugin List Command Tests", () => {
     mockError.mockClear();
     mockExit.mockClear();
 
-    mockGetInstalledPlugins.mockReset();
-    mockListMarketplaces.mockReset();
-    mockLoadMarketplaceManifest.mockReset();
+    mockPluginCore.getInstalledPlugins.mockReset();
+    mockPluginCore.listMarketplaces.mockReset();
+    mockPluginCore.loadMarketplaceManifest.mockReset();
+    mockPluginCore.listPlugins.mockReset();
   });
 
   afterEach(async () => {
@@ -73,8 +75,10 @@ describe("Plugin List Command Tests", () => {
   });
 
   it("should handle empty plugin list", async () => {
-    mockGetInstalledPlugins.mockResolvedValue({ plugins: [] });
-    mockListMarketplaces.mockResolvedValue([]);
+    mockPluginCore.listPlugins.mockResolvedValue({
+      plugins: [],
+      mergedEnabled: {},
+    });
 
     await listPluginsCommand();
 
@@ -85,23 +89,17 @@ describe("Plugin List Command Tests", () => {
   });
 
   it("should handle marketplace load failure", async () => {
-    mockGetInstalledPlugins.mockResolvedValue({ plugins: [] });
-    mockListMarketplaces.mockResolvedValue([
-      {
-        name: "broken-market",
-        source: { source: "directory", path: "/broken" },
-      },
-      { name: "good-market", source: { source: "directory", path: "/good" } },
-    ]);
-
-    mockLoadMarketplaceManifest
-      .mockRejectedValueOnce(new Error("Failed to load"))
-      .mockResolvedValueOnce({
-        name: "good-market",
-        plugins: [
-          { name: "good-plugin", source: "./good", description: "good" },
-        ],
-      });
+    mockPluginCore.listPlugins.mockResolvedValue({
+      plugins: [
+        {
+          name: "good-plugin",
+          marketplace: "good-market",
+          installed: true,
+          version: "1.0.0",
+        },
+      ],
+      mergedEnabled: {},
+    });
 
     await listPluginsCommand();
 
@@ -115,7 +113,7 @@ describe("Plugin List Command Tests", () => {
   });
 
   it("should handle general error in list command", async () => {
-    mockGetInstalledPlugins.mockRejectedValue(new Error("Unexpected error"));
+    mockPluginCore.listPlugins.mockRejectedValue(new Error("Unexpected error"));
 
     await listPluginsCommand();
 
@@ -126,7 +124,7 @@ describe("Plugin List Command Tests", () => {
   });
 
   it("should handle non-Error objects in catch block", async () => {
-    mockGetInstalledPlugins.mockRejectedValue("String error");
+    mockPluginCore.listPlugins.mockRejectedValue("String error");
 
     await listPluginsCommand();
 
