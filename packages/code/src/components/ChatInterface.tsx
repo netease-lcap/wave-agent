@@ -89,10 +89,8 @@ export const ChatInterface: React.FC = () => {
     <Box flexDirection="column">
       <MessageList
         messages={messages}
-        isLoading={isLoading}
-        isCommandRunning={isCommandRunning}
         isExpanded={isExpanded}
-        hideLastMessage={isConfirmationVisible}
+        hideDynamicBlocks={isConfirmationVisible}
       />
 
       {(isLoading || isCommandRunning || isCompressing) &&
