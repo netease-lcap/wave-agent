@@ -75,10 +75,10 @@ export function analyzeEditMismatch(
     const expectedLine = searchLines[j];
 
     if (actualLine === expectedLine) {
-      reportLines.push(`${lineNum.toString().padStart(4)} | ${actualLine}`);
+      reportLines.push(`${lineNum.toString().padStart(6)}\t${actualLine}`);
     } else {
-      reportLines.push(`${lineNum.toString().padStart(4)} | - ${expectedLine}`);
-      reportLines.push(`${lineNum.toString().padStart(4)} | + ${actualLine}`);
+      reportLines.push(`${lineNum.toString().padStart(6)}\t- ${expectedLine}`);
+      reportLines.push(`${lineNum.toString().padStart(6)}\t+ ${actualLine}`);
     }
   }
 
