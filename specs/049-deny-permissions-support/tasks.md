@@ -109,7 +109,7 @@ description: "Task list for implementing permissions.deny support"
 - [X] T021 [P] Run `pnpm build` in `packages/agent-sdk`
 - [X] T022 [P] Run `pnpm run type-check` and `pnpm run lint` in workspace root
 - [X] T023 [P] Verify `quickstart.md` examples work as expected
-- [X] T024 [P] Ensure all restricted tools (`Write`, `Delete`, `Edit`, `MultiEdit`) correctly handle the new deny logic
+- [X] T024 [P] Ensure all restricted tools (`Write`, `Delete`, `Edit`, ``) correctly handle the new deny logic
 
 ---
 

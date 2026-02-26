@@ -30,7 +30,7 @@ describe("PermissionManager Safe Zone", () => {
   });
 
   describe("checkPermission with Safe Zone", () => {
-    const fileTools = ["Write", "Edit", "MultiEdit", "Delete"];
+    const fileTools = ["Write", "Edit", "Delete"];
 
     for (const toolName of fileTools) {
       describe(`${toolName} tool`, () => {

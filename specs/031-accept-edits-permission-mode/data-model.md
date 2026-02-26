@@ -5,8 +5,8 @@
 ### PermissionMode (Type)
 - **Description**: Defines the current level of authorization required for restricted tools.
 - **Values**:
-  - `default`: Requires user confirmation for all restricted tools (`Edit`, `MultiEdit`, `Delete`, `Write`, `Bash`).
-  - `acceptEdits`: Automatically accepts `Edit`, `MultiEdit`, `Delete`, and `Write`. Requires confirmation for `Bash`.
+  - `default`: Requires user confirmation for all restricted tools (`Edit`, ``, `Delete`, `Write`, `Bash`).
+  - `acceptEdits`: Automatically accepts `Edit`, ``, `Delete`, and `Write`. Requires confirmation for `Bash`.
   - `bypassPermissions`: Automatically accepts all restricted tools.
 
 ### Configuration (Entity)

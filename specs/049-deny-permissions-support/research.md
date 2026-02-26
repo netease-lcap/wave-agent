@@ -50,7 +50,7 @@ To ensure maximum security, `permissions.deny` must be checked before any other 
   - `Read`: `file_path`
   - `Write`: `file_path`
   - `Edit`: `file_path`
-  - `MultiEdit`: `file_path`
+  - ``: `file_path`
   - `Delete`: `target_file`
   - `LS`: `path`
   - We can use `isPathInside` or a glob matcher. Since the requirement mentions glob patterns like `**/*.env`, a glob matcher is more appropriate.

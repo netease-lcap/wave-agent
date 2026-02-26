@@ -30,7 +30,7 @@
 
 ## Phase 3: User Story 1 - Automatic File Edits (Priority: P1) 🎯 MVP
 
-**Goal**: Automatically grant permission for `Edit`, `MultiEdit`, `Delete`, and `Write` operations in `acceptEdits` mode.
+**Goal**: Automatically grant permission for `Edit`, ``, `Delete`, and `Write` operations in `acceptEdits` mode.
 
 **Independent Test**: Set permission mode to `acceptEdits` and verify that file operations proceed without prompts while `Bash` still prompts.
 

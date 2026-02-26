@@ -34,15 +34,6 @@ export interface WriteToolParameters {
 }
 
 /**
- * Parameters for a single edit operation in the Edit tool
- */
-export interface EditOperation {
-  old_string: string;
-  new_string: string;
-  replace_all?: boolean;
-}
-
-/**
  * Parameters for the Edit tool
  */
 export interface EditToolParameters {
@@ -50,12 +41,4 @@ export interface EditToolParameters {
   old_string: string;
   new_string: string;
   replace_all?: boolean;
-}
-
-/**
- * Parameters for the MultiEdit tool
- */
-export interface MultiEditToolParameters {
-  file_path: string;
-  edits: EditOperation[];
 }

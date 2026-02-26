@@ -62,7 +62,7 @@
 
 ## Decision: Restricted Tools List
 
-**What was chosen**: Hardcoded list of restricted tools: `Edit`, `MultiEdit`, `Delete`, `Bash`, `Write` based on their write/execute capabilities.
+**What was chosen**: Hardcoded list of restricted tools: `Edit`, ``, `Delete`, `Bash`, `Write` based on their write/execute capabilities.
 
 **Why chosen**:
 - Clear security boundary based on operation type
@@ -135,7 +135,7 @@ const processNextConfirmation = () => {
 
 2. **Permission Context Injection**: ToolContext interface needs extension to include permission-related fields (permissionMode, canUseToolCallback, permissionManager helper).
 
-3. **Individual Tool Updates**: Each restricted tool (Edit, MultiEdit, Delete, Bash, Write) requires modification to insert permission check after validation/diff but before real operation.
+3. **Individual Tool Updates**: Each restricted tool (Edit, Delete, Bash, Write) requires modification to insert permission check after validation/diff but before real operation.
 
 4. **Error Handling**: Permission denials should return standard `ToolResult` with `success: false` to maintain consistent interface.
 

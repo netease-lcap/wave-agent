@@ -17,19 +17,10 @@ import {
 // Mock database service
 class PermissionDatabase {
   private permissions = new Map([
-    ["user123", new Set(["Edit", "MultiEdit", "Write", "Read", "Grep", "LS"])],
+    ["user123", new Set(["Edit", "Write", "Read", "Grep", "LS"])],
     [
       "admin456",
-      new Set([
-        "Edit",
-        "MultiEdit",
-        "Write",
-        "Read",
-        "Grep",
-        "LS",
-        "Delete",
-        "Bash",
-      ]),
+      new Set(["Edit", "Write", "Read", "Grep", "LS", "Delete", "Bash"]),
     ],
     ["readonly789", new Set(["Read", "Grep", "LS"])],
   ]);

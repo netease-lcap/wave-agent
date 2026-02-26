@@ -103,25 +103,6 @@ describe("Confirmation Dynamic Actions", () => {
     expect(frame).toContain("Write to file: /home/user/output.txt");
   });
 
-  it("should display MultiEdit file path in action description", () => {
-    const { lastFrame } = render(
-      <Confirmation
-        toolName="MultiEdit"
-        toolInput={{
-          file_path: "/home/user/config.js",
-          edits: [{ old_string: "old", new_string: "new" }],
-        }}
-        onDecision={mockOnDecision}
-        onCancel={mockOnCancel}
-        onAbort={mockOnAbort}
-      />,
-    );
-
-    const frame = lastFrame();
-    expect(frame).toContain("Tool: MultiEdit");
-    expect(frame).toContain("Edit multiple sections in: /home/user/config.js");
-  });
-
   it("should fall back to generic description for unknown tools", () => {
     const { lastFrame } = render(
       <Confirmation

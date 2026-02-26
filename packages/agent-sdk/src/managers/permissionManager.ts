@@ -27,7 +27,6 @@ import { isPathInside } from "../utils/pathSafety.js";
 import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
-  MULTI_EDIT_TOOL_NAME,
   DELETE_FILE_TOOL_NAME,
   WRITE_TOOL_NAME,
   READ_TOOL_NAME,
@@ -309,11 +308,10 @@ export class PermissionManager {
       return { behavior: "allow" };
     }
 
-    // 1.1 If acceptEdits mode, allow Edit, MultiEdit, Delete, Write
+    // 1.1 If acceptEdits mode, allow Edit, Delete, Write
     if (context.permissionMode === "acceptEdits") {
       const autoAcceptedTools = [
         EDIT_TOOL_NAME,
-        MULTI_EDIT_TOOL_NAME,
         DELETE_FILE_TOOL_NAME,
         WRITE_TOOL_NAME,
       ];
@@ -363,7 +361,6 @@ export class PermissionManager {
     if (context.permissionMode === "plan") {
       const writeTools = [
         EDIT_TOOL_NAME,
-        MULTI_EDIT_TOOL_NAME,
         WRITE_TOOL_NAME,
         DELETE_FILE_TOOL_NAME,
       ];
@@ -489,12 +486,7 @@ export class PermissionManager {
     };
 
     // Set hidePersistentOption for out-of-bounds file operations
-    const fileTools = [
-      EDIT_TOOL_NAME,
-      MULTI_EDIT_TOOL_NAME,
-      DELETE_FILE_TOOL_NAME,
-      WRITE_TOOL_NAME,
-    ];
+    const fileTools = [EDIT_TOOL_NAME, DELETE_FILE_TOOL_NAME, WRITE_TOOL_NAME];
     if (fileTools.includes(toolName)) {
       const targetPath = (toolInput?.file_path || toolInput?.target_file) as
         | string
@@ -599,7 +591,6 @@ export class PermissionManager {
       READ_TOOL_NAME,
       WRITE_TOOL_NAME,
       EDIT_TOOL_NAME,
-      MULTI_EDIT_TOOL_NAME,
       DELETE_FILE_TOOL_NAME,
       LS_TOOL_NAME,
     ];

@@ -66,7 +66,7 @@ As a user, I want to be certain that if I explicitly deny a permission, it canno
 
 - **FR-001**: System MUST support a `permissions.deny` field in `settings.json`.
 - **FR-002**: `permissions.deny` MUST support the same rule types and formats as `permissions.allow` (e.g., tool names, `Bash(cmd)`, `Bash(pattern*)`).
-- **FR-003**: System MUST support path-based permission rules in the format `ToolName(path_pattern)` for both `allow` and `deny` lists. This MUST apply to tools that take a single file or directory path as a primary input (e.g., `Read`, `Write`, `Edit`, `MultiEdit`, `Delete`, `LS`). Tools like `Glob` and `Grep` are excluded from this path-based rule format as their path parameter is optional and they often operate on patterns.
+- **FR-003**: System MUST support path-based permission rules in the format `ToolName(path_pattern)` for both `allow` and `deny` lists. This MUST apply to tools that take a single file or directory path as a primary input (e.g., `Read`, `Write`, `Edit`, ``, `Delete`, `LS`). Tools like `Glob` and `Grep` are excluded from this path-based rule format as their path parameter is optional and they often operate on patterns.
 - **FR-004**: If a permission request matches any rule in `permissions.deny`, the system MUST deny the request immediately, even if the tool is not in the `RESTRICTED_TOOLS` list and even if it would otherwise be allowed by `permissions.allow` or auto-accept logic.
 - **FR-005**: `permissions.deny` MUST take precedence over `permissions.allow`. If a request matches both an allow rule and a deny rule, it MUST be denied.
 - **FR-006**: The system MUST provide a clear and informative error message when a permission is denied due to an explicit deny rule, distinguishing it from a lack of an allow rule.

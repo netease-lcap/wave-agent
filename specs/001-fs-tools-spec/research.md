@@ -5,7 +5,7 @@
 **Rationale**: Specialized tools allow for better validation, permission control, and structured output (e.g., line numbers, image data) that is easier for LLMs to process.
 
 ## Smart Editing
-**Decision**: Implement indentation-insensitive matching for `Edit` and `MultiEdit`.
+**Decision**: Implement indentation-insensitive matching for `Edit`.
 **Rationale**: LLMs often struggle with exact whitespace matching. By ignoring leading indentation differences, we make the tools more resilient to minor formatting variations.
 
 ## Search Performance

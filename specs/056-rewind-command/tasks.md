@@ -76,7 +76,7 @@
 
 - [X] T017 [US2] Update `WriteTool` to record snapshots in `packages/agent-sdk/src/tools/writeTool.ts`
 - [X] T018 [US2] Update `EditTool` to record snapshots in `packages/agent-sdk/src/tools/editTool.ts`
-- [X] T019 [US2] Update `MultiEditTool` to record snapshots in `packages/agent-sdk/src/tools/multiEditTool.ts`
+- [X] T019 [US2] Update `Tool` to record snapshots in `packages/agent-sdk/src/tools/.ts`
 - [X] T020 [US2] Update `DeleteFileTool` to record snapshots in `packages/agent-sdk/src/tools/deleteFileTool.ts`
 - [X] T021 [US2] Implement sequential reverse rollback logic in `ReversionManager.revertTo`
 - [X] T022 [US2] Integrate `reversionManager.revertTo` call into `MessageManager.truncateHistory`
@@ -141,7 +141,7 @@
 # Update all file tools in parallel:
 Task: "Update WriteTool to record snapshots in packages/agent-sdk/src/tools/writeTool.ts"
 Task: "Update EditTool to record snapshots in packages/agent-sdk/src/tools/editTool.ts"
-Task: "Update MultiEditTool to record snapshots in packages/agent-sdk/src/tools/multiEditTool.ts"
+Task: "Update Tool to record snapshots in packages/agent-sdk/src/tools/.ts"
 Task: "Update DeleteFileTool to record snapshots in packages/agent-sdk/src/tools/deleteFileTool.ts"
 ```
 

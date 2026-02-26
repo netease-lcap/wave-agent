@@ -229,7 +229,7 @@ describe("PermissionManager", () => {
 
     describe("acceptEdits mode", () => {
       it("should allow file tools in acceptEdits mode inside Safe Zone", async () => {
-        const fileTools = ["Edit", "MultiEdit", "Delete", "Write"];
+        const fileTools = ["Edit", "Delete", "Write"];
         const workdir = "/home/user/project";
         const container = new Container();
         const manager = new PermissionManager(container, {
@@ -692,7 +692,7 @@ describe("PermissionManager", () => {
         });
 
         const context: ToolPermissionContext = {
-          toolName: "MultiEdit",
+          toolName: "Edit",
           permissionMode: "default",
           canUseToolCallback: mockCallback,
         };
@@ -702,7 +702,7 @@ describe("PermissionManager", () => {
         expect(logger.debug).toHaveBeenCalledWith(
           "Checking permission for tool",
           {
-            toolName: "MultiEdit",
+            toolName: "Edit",
             permissionMode: "default",
             hasCallback: true,
           },
@@ -1110,7 +1110,6 @@ describe("PermissionManager", () => {
       // Verify the exact list matches expected tools
       expect(RESTRICTED_TOOLS).toEqual([
         "Edit",
-        "MultiEdit",
         "Delete",
         "Bash",
         "Write",

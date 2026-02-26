@@ -26,7 +26,7 @@
 5. Perform `Write` operation in `workdir` -> Confirmation prompt displayed.
 
 - [X] T005 [P] [US1] Create unit tests for Safe Zone logic in `packages/agent-sdk/tests/managers/permissionManager.test.ts`
-- [X] T006 [US1] Implement Safe Zone check in `PermissionManager.checkPermission` using `isPathInside` for `Write`, `Edit`, `MultiEdit`, and `Delete` tools
+- [X] T006 [US1] Implement Safe Zone check in `PermissionManager.checkPermission` using `isPathInside` for `Write`, `Edit`, ``, and `Delete` tools
 - [X] T007 [US1] Update `PermissionManager.checkPermission` to return `behavior: "allow"` if target is in Safe Zone and mode is `acceptEdits`
 
 ## Phase 4: User Story 2 - Out-of-Bounds Security Confirmation

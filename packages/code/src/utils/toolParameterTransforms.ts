@@ -7,7 +7,6 @@ import {
   type Change,
   type WriteToolParameters,
   type EditToolParameters,
-  type MultiEditToolParameters,
 } from "wave-agent-sdk";
 import { logger } from "./logger.js";
 
@@ -56,18 +55,6 @@ export function transformEditParameters(
 }
 
 /**
- * Transform MultiEdit tool parameters to changes
- */
-export function transformMultiEditParameters(
-  parameters: MultiEditToolParameters,
-): Change[] {
-  return parameters.edits.map((edit) => ({
-    oldContent: edit.old_string,
-    newContent: edit.new_string,
-  }));
-}
-
-/**
  * Transform tool block parameters into standardized Change[] array for diff display
  * Forces type judgment based on tool name using type assertions
  */
@@ -88,11 +75,6 @@ export function transformToolBlockToChanges(
 
       case "Edit":
         return transformEditParameters(parsedParams as EditToolParameters);
-
-      case "MultiEdit":
-        return transformMultiEditParameters(
-          parsedParams as MultiEditToolParameters,
-        );
 
       default:
         return [];

@@ -17,7 +17,7 @@ Implement a "Safe Zone" for file operations to prevent unauthorized modification
 **Project Type**: Monorepo
 **Performance Goals**: Minimal overhead on file operations
 **Constraints**: Must resolve symlinks to real paths for security checks
-**Scale/Scope**: Intercepts Write, Edit, MultiEdit, and Delete tools
+**Scale/Scope**: Intercepts Write, Edit, and Delete tools
 
 ## Constitution Check
 

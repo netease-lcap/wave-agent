@@ -81,9 +81,7 @@ async function main() {
     },
   });
   console.log("   ✅ Agent created with custom permission logic");
-  console.log(
-    "   📋 Custom logic: Allow Edit/MultiEdit/Write, Deny Bash/Delete\n",
-  );
+  console.log("   📋 Custom logic: Allow Edit/Write, Deny Bash/Delete\n");
 
   // Cleanup
   defaultAgent.destroy();

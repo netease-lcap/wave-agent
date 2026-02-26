@@ -87,7 +87,7 @@ A developer integrating Wave's agent SDK can provide custom permission handling 
 
 - **FR-001**: Agent constructor MUST accept a `permissionMode` parameter with values "default" or "bypassPermissions"
 - **FR-002**: Wave CLI MUST support a `--dangerously-skip-permissions` flag that sets permission mode to "bypassPermissions"
-- **FR-003**: When permission mode is "default", system MUST prompt for user confirmation before executing Edit, MultiEdit, Delete, Bash, or Write tools
+- **FR-003**: When permission mode is "default", system MUST prompt for user confirmation before executing Edit, Delete, Bash, or Write tools
 - **FR-004**: Agent SDK MUST support a `canUseTool` callback that receives tool name and returns Promise of permission decision
 - **FR-005**: Permission callback MUST support response format `{behavior: 'allow'}` or `{behavior: 'deny', message: string}`
 - **FR-006**: Permission checks MUST occur after tool validation and diff generation but before actual operation execution

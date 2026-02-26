@@ -27,8 +27,8 @@ describe("PermissionManager - acceptEdits mode", () => {
   });
 
   describe("checkPermission with acceptEdits mode", () => {
-    it("should automatically allow 'Edit', 'MultiEdit', 'Delete', 'Write' tools inside Safe Zone", async () => {
-      const autoAcceptedTools = ["Edit", "MultiEdit", "Delete", "Write"];
+    it("should automatically allow 'Edit', 'Delete', 'Write' tools inside Safe Zone", async () => {
+      const autoAcceptedTools = ["Edit", "Delete", "Write"];
       const workdir = "/home/user/project";
       const manager = new PermissionManager(container, {
         workdir,
