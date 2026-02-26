@@ -392,6 +392,57 @@ describe("bashTool", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe("Failed to execute command: spawn failed");
     });
+
+    it("should show last 3 lines of interleaved output in onShortResultUpdate", async () => {
+      const onShortResultUpdate = vi.fn();
+      const testContext = { ...context, onShortResultUpdate };
+
+      const mockProcess = {
+        pid: 1234,
+        stdout: {
+          on: vi.fn(),
+        },
+        stderr: {
+          on: vi.fn(),
+        },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(0), 50);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const executePromise = bashTool.execute({ command: "test" }, testContext);
+
+      // Simulate interleaved output
+      const stdoutCallback = vi
+        .mocked(mockProcess.stdout.on)
+        .mock.calls.find((c) => c[0] === "data")![1];
+      const stderrCallback = vi
+        .mocked(mockProcess.stderr.on)
+        .mock.calls.find((c) => c[0] === "data")![1];
+
+      stdoutCallback(Buffer.from("line 1\n"));
+      expect(onShortResultUpdate).toHaveBeenLastCalledWith("line 1");
+
+      stderrCallback(Buffer.from("line 2\n"));
+      expect(onShortResultUpdate).toHaveBeenLastCalledWith("line 1\nline 2");
+
+      stdoutCallback(Buffer.from("line 3\n"));
+      expect(onShortResultUpdate).toHaveBeenLastCalledWith(
+        "line 1\nline 2\nline 3",
+      );
+
+      stderrCallback(Buffer.from("line 4\n"));
+      expect(onShortResultUpdate).toHaveBeenLastCalledWith(
+        "line 2\nline 3\nline 4",
+      );
+
+      await executePromise;
+    });
   });
 
   describe("TaskOutput tool", () => {
