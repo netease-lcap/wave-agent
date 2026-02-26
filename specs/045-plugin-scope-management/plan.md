@@ -6,10 +6,11 @@
 ## Summary
 
 The primary requirement is to support enabling and disabling plugins at different scopes (`user`, `project`, `local`) and to support scoped installation. This will be achieved by:
-    1. Extending `MarketplaceService` to handle `enabledPlugins` in `settings.json` and reference-counted uninstallation via `projectPath`.
-    2. Updating `PluginManager` to respect the `enabledPlugins` configuration across all scopes with proper priority (`local` > `project` > `user`).
-    3. Adding `enable` and `disable` commands to the `wave plugin` CLI.
-    4. Updating the `install` and `uninstall` commands to support the `--scope` option and manage project-specific references.
+    1. Introducing `PluginCore` in `agent-sdk` as a high-level facade to encapsulate `MarketplaceService`, `PluginScopeManager`, `PluginManager`, and `ConfigurationService`.
+    2. Updating `PluginCore` to handle `enabledPlugins` in `settings.json` and reference-counted uninstallation via `projectPath`.
+    3. Updating `PluginManager` to respect the `enabledPlugins` configuration across all scopes with proper priority (`local` > `project` > `user`).
+    4. Adding `enable` and `disable` commands to the `wave plugin` CLI using `PluginCore`.
+    5. Updating the `install` and `uninstall` commands to use `PluginCore` and support the `--scope` option.
 
 ## Technical Context
 
@@ -58,11 +59,13 @@ specs/045-plugin-scope-management/
 packages/
 ├── agent-sdk/
 │   ├── src/
+    │   │   ├── core/
+    │   │   │   └── plugin.ts          # New PluginCore facade encapsulating all plugin logic
     │   │   ├── services/
-    │   │   │   ├── MarketplaceService.ts  # Update to handle enabledPlugins and reference counting
-    │   │   │   └── configurationService.ts # Update to load enabledPlugins
+    │   │   │   ├── MarketplaceService.ts  # Internal service for marketplace operations
+    │   │   │   └── configurationService.ts # Internal service for configuration management
     │   │   ├── managers/
-    │   │   │   └── PluginManager.ts       # Update to filter by enabledPlugins
+    │   │   │   └── PluginManager.ts       # Internal manager for plugin loading
     │   │   └── types/
     │   │       ├── marketplace.ts         # Update types (InstalledPlugin with projectPath)
     │   │       └── hooks.ts               # Update WaveConfiguration type

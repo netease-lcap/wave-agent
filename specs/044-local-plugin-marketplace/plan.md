@@ -53,6 +53,8 @@ specs/044-local-plugin-marketplace/
 packages/
 ├── agent-sdk/
 │   └── src/
+│       ├── core/
+│       │   └── plugin.ts (New: PluginCore facade)
 │       ├── managers/
 │       │   └── PluginManager.ts (Update to handle marketplaces)
 │       ├── services/
