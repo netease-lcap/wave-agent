@@ -21,7 +21,6 @@ describe("DiffDisplay", () => {
       <DiffDisplay toolName={WRITE_TOOL_NAME} parameters={params} />,
     );
     const frame = lastFrame();
-    expect(frame).toContain("Diff:");
     expect(frame).toContain("+new file content");
   });
 
@@ -35,7 +34,6 @@ describe("DiffDisplay", () => {
       <DiffDisplay toolName={EDIT_TOOL_NAME} parameters={params} />,
     );
     const frame = lastFrame();
-    expect(frame).toContain("Diff:");
     expect(frame).toContain("-old content");
     expect(frame).toContain("+new content");
   });
@@ -96,10 +94,8 @@ describe("DiffDisplay", () => {
     const { lastFrame } = render(
       <DiffDisplay toolName={EDIT_TOOL_NAME} parameters="invalid json" />,
     );
-    // It renders the "Diff:" header but no content because transform fails
-    expect(lastFrame()).toContain("Diff:");
-    expect(lastFrame()).not.toContain("-");
-    expect(lastFrame()).not.toContain("+");
+    // It renders nothing because transform fails
+    expect(lastFrame()).toBe("");
   });
 
   it("should handle context lines in diff", () => {
