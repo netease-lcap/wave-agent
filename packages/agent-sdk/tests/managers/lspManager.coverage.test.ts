@@ -87,7 +87,7 @@ describe("LspManager Coverage Improvements", () => {
       const str = data.toString();
       if (str.includes('"method":"initialize"')) {
         process.nextTick(() => {
-          stdout.write("Content-Length: 5\r\n\r\n{not-json}");
+          stdout.write("Content-Length: 10\r\n\r\n{not-json}");
           // Followed by a real response to see if it recovers
           process.nextTick(() => {
             stdout.write(
@@ -95,6 +95,19 @@ describe("LspManager Coverage Improvements", () => {
             );
           });
         });
+      } else if (str.includes('"method":"shutdown"')) {
+        const match = str.match(/"id":(\d+)/);
+        if (match) {
+          const id = match[1];
+          process.nextTick(() => {
+            const res = JSON.stringify({
+              jsonrpc: "2.0",
+              id: parseInt(id),
+              result: null,
+            });
+            stdout.write(`Content-Length: ${res.length}\r\n\r\n${res}`);
+          });
+        }
       }
     });
 
@@ -166,27 +179,22 @@ describe("LspManager Coverage Improvements", () => {
 
     stdin.on("data", (data: Buffer) => {
       const str = data.toString();
-      if (str.includes('"method":"initialize"')) {
-        process.nextTick(() => {
-          stdout.write(
-            'Content-Length: 36\r\n\r\n{"jsonrpc":"2.0","id":0,"result":{}}',
-          );
+      const match = str.match(/"id":(\d+)/);
+      if (!match) return;
+      const id = parseInt(match[1]);
+
+      process.nextTick(() => {
+        const res = JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          result: str.includes('"method":"initialize"')
+            ? {}
+            : str.includes('"method":"shutdown"')
+              ? null
+              : { success: true },
         });
-      } else {
-        // Generic response for any request
-        const match = str.match(/"id":(\d+)/);
-        if (match) {
-          const id = match[1];
-          process.nextTick(() => {
-            const res = JSON.stringify({
-              jsonrpc: "2.0",
-              id: parseInt(id),
-              result: { success: true },
-            });
-            stdout.write(`Content-Length: ${res.length}\r\n\r\n${res}`);
-          });
-        }
-      }
+        stdout.write(`Content-Length: ${res.length}\r\n\r\n${res}`);
+      });
     });
 
     lspManager.registerServer("typescript", {
@@ -219,38 +227,36 @@ describe("LspManager Coverage Improvements", () => {
 
     stdin.on("data", (data: Buffer) => {
       const str = data.toString();
-      if (str.includes('"method":"initialize"')) {
-        process.nextTick(() => {
-          stdout.write(
-            'Content-Length: 36\r\n\r\n{"jsonrpc":"2.0","id":0,"result":{}}',
-          );
+      const match = str.match(/"id":(\d+)/);
+      if (!match) return;
+      const id = parseInt(match[1]);
+
+      process.nextTick(() => {
+        let result: unknown = null;
+        if (str.includes('"method":"initialize"')) {
+          result = {};
+        } else if (
+          str.includes('"method":"textDocument/prepareCallHierarchy"')
+        ) {
+          result = [{ name: "testItem" }];
+        } else if (
+          str.includes('"method":"callHierarchy/incomingCalls"') ||
+          str.includes('"method":"callHierarchy/outgoingCalls"')
+        ) {
+          result = [];
+        } else if (str.includes('"method":"shutdown"')) {
+          result = null;
+        } else {
+          return;
+        }
+
+        const res = JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          result,
         });
-      } else if (str.includes('"method":"textDocument/prepareCallHierarchy"')) {
-        const match = str.match(/"id":(\d+)/);
-        const id = match![1];
-        process.nextTick(() => {
-          const res = JSON.stringify({
-            jsonrpc: "2.0",
-            id: parseInt(id),
-            result: [{ name: "testItem" }],
-          });
-          stdout.write(`Content-Length: ${res.length}\r\n\r\n${res}`);
-        });
-      } else if (
-        str.includes('"method":"callHierarchy/incomingCalls"') ||
-        str.includes('"method":"callHierarchy/outgoingCalls"')
-      ) {
-        const match = str.match(/"id":(\d+)/);
-        const id = match![1];
-        process.nextTick(() => {
-          const res = JSON.stringify({
-            jsonrpc: "2.0",
-            id: parseInt(id),
-            result: [],
-          });
-          stdout.write(`Content-Length: ${res.length}\r\n\r\n${res}`);
-        });
-      }
+        stdout.write(`Content-Length: ${res.length}\r\n\r\n${res}`);
+      });
     });
 
     lspManager.registerServer("typescript", {
@@ -280,24 +286,31 @@ describe("LspManager Coverage Improvements", () => {
 
     stdin.on("data", (data: Buffer) => {
       const str = data.toString();
-      if (str.includes('"method":"initialize"')) {
-        process.nextTick(() => {
-          stdout.write(
-            'Content-Length: 36\r\n\r\n{"jsonrpc":"2.0","id":0,"result":{}}',
-          );
+      const match = str.match(/"id":(\d+)/);
+      if (!match) return;
+      const id = parseInt(match[1]);
+
+      process.nextTick(() => {
+        let result: unknown = null;
+        if (str.includes('"method":"initialize"')) {
+          result = {};
+        } else if (
+          str.includes('"method":"textDocument/prepareCallHierarchy"')
+        ) {
+          result = [];
+        } else if (str.includes('"method":"shutdown"')) {
+          result = null;
+        } else {
+          return;
+        }
+
+        const res = JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          result,
         });
-      } else if (str.includes('"method":"textDocument/prepareCallHierarchy"')) {
-        const match = str.match(/"id":(\d+)/);
-        const id = match![1];
-        process.nextTick(() => {
-          const res = JSON.stringify({
-            jsonrpc: "2.0",
-            id: parseInt(id),
-            result: [],
-          });
-          stdout.write(`Content-Length: ${res.length}\r\n\r\n${res}`);
-        });
-      }
+        stdout.write(`Content-Length: ${res.length}\r\n\r\n${res}`);
+      });
     });
 
     lspManager.registerServer("typescript", {
