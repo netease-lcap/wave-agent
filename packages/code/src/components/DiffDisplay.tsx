@@ -298,9 +298,6 @@ export const DiffDisplay: React.FC<DiffDisplayProps> = ({
   return (
     <Box flexDirection="column">
       <Box paddingLeft={2} borderLeft borderColor="cyan" flexDirection="column">
-        <Text color="cyan" bold>
-          Diff:
-        </Text>
         {renderExpandedDiff()}
       </Box>
     </Box>
