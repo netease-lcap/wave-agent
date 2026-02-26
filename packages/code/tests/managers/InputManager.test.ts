@@ -179,9 +179,9 @@ describe("InputManager", () => {
       manager.updateFileSearchQuery("test");
 
       // Wait for debounced search
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      expect(mockSearchFiles).toHaveBeenCalledWith("test");
+      await vi.waitFor(() =>
+        expect(mockSearchFiles).toHaveBeenCalledWith("test"),
+      );
     });
 
     it("should detect @ deletion", () => {

@@ -15,4 +15,5 @@ paths:
   - MUST not write `mkdtemp` in test, use mocking instead
   - Mock stdout and stderr to suppress output during testing and restore mocks after tests
   - Avoid unnecessary `setTimeout` or `sleep` in tests to keep them fast; prefer awaiting promises or using `vi.waitFor` if needed
+  - Note: `logger` in `packages/code` appends to log files instead of printing to stdout/stderr to avoid interfering with the Ink UI. Do not use `logger` to debug in tests. Use temporary `console.log` to debug and remove them after.
 - While writing tests about `Agent`, always use `await Agent.create` instead of `new Agent`

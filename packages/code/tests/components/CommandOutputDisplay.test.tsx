@@ -1,6 +1,6 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { CommandOutputDisplay } from "../../src/components/CommandOutputDisplay.js";
 import { CommandOutputBlock } from "wave-agent-sdk";
 
@@ -50,12 +50,12 @@ describe("CommandOutputDisplay", () => {
     );
 
     // Wait for useEffect to run and update state
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    const frame = lastFrame();
-    expect(frame).not.toContain("Content truncated");
-    expect(frame).not.toContain("line 1\n");
-    expect(frame).toContain("line 20");
+    await vi.waitFor(() => {
+      const frame = lastFrame();
+      expect(frame).not.toContain("Content truncated");
+      expect(frame).not.toContain("line 1\n");
+      expect(frame).toContain("line 20");
+    });
   });
 
   it("should not truncate output when expanded", () => {

@@ -29,7 +29,7 @@ export interface ConfirmationSelectorProps {
 }
 
 interface ConfirmationState {
-  selectedOption: "allow" | "auto" | "alternative";
+  selectedOption: "clear" | "auto" | "allow" | "alternative";
   alternativeText: string;
   alternativeCursorPosition: number;
   hasUserInput: boolean;
@@ -57,7 +57,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
   }, [stdout?.rows, onHeightMeasured, toolName, toolInput, isExpanded]);
 
   const [state, setState] = useState<ConfirmationState>({
-    selectedOption: "allow",
+    selectedOption: toolName === EXIT_PLAN_MODE_TOOL_NAME ? "clear" : "allow",
     alternativeText: "",
     alternativeCursorPosition: 0,
     hasUserInput: false,
@@ -78,7 +78,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
 
   const getAutoOptionText = () => {
     if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
-      return "Yes, and auto-accept edits";
+      return "Yes, auto-accept edits";
     }
     if (toolName === BASH_TOOL_NAME) {
       if (suggestedPrefix) {
@@ -205,7 +205,13 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     }
 
     if (key.return) {
-      if (state.selectedOption === "allow") {
+      if (state.selectedOption === "clear") {
+        onDecision({
+          behavior: "allow",
+          newPermissionMode: "acceptEdits",
+          clearContext: true,
+        });
+      } else if (state.selectedOption === "allow") {
         if (toolName === EXIT_PLAN_MODE_TOOL_NAME) {
           onDecision({ behavior: "allow", newPermissionMode: "default" });
         } else {
@@ -249,31 +255,31 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
       }
     }
 
+    const availableOptions: ConfirmationState["selectedOption"][] = [];
+    if (toolName === EXIT_PLAN_MODE_TOOL_NAME) availableOptions.push("clear");
+    if (!hidePersistentOption) availableOptions.push("auto");
+    availableOptions.push("allow");
+    availableOptions.push("alternative");
+
     if (key.upArrow) {
-      setState((prev) => {
-        if (prev.selectedOption === "alternative")
-          return {
-            ...prev,
-            selectedOption: hidePersistentOption ? "allow" : "auto",
-          };
-        if (prev.selectedOption === "auto")
-          return { ...prev, selectedOption: "allow" };
-        return prev;
-      });
+      const currentIndex = availableOptions.indexOf(state.selectedOption);
+      if (currentIndex > 0) {
+        setState((prev) => ({
+          ...prev,
+          selectedOption: availableOptions[currentIndex - 1],
+        }));
+      }
       return;
     }
 
     if (key.downArrow) {
-      setState((prev) => {
-        if (prev.selectedOption === "allow")
-          return {
-            ...prev,
-            selectedOption: hidePersistentOption ? "alternative" : "auto",
-          };
-        if (prev.selectedOption === "auto")
-          return { ...prev, selectedOption: "alternative" };
-        return prev;
-      });
+      const currentIndex = availableOptions.indexOf(state.selectedOption);
+      if (currentIndex < availableOptions.length - 1) {
+        setState((prev) => ({
+          ...prev,
+          selectedOption: availableOptions[currentIndex + 1],
+        }));
+      }
       return;
     }
 
@@ -315,7 +321,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     }
   });
 
-  const placeholderText = "Type here to tell Wave what to do differently";
+  const placeholderText = "Type here to tell Wave what to change";
   const showPlaceholder =
     state.selectedOption === "alternative" && !state.hasUserInput;
 
@@ -395,20 +401,20 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
             <Text>Do you want to proceed?</Text>
           </Box>
           <Box marginTop={1} flexDirection="column">
-            <Box key="allow-option">
-              <Text
-                color={state.selectedOption === "allow" ? "black" : "white"}
-                backgroundColor={
-                  state.selectedOption === "allow" ? "yellow" : undefined
-                }
-                bold={state.selectedOption === "allow"}
-              >
-                {state.selectedOption === "allow" ? "> " : "  "}
-                {toolName === EXIT_PLAN_MODE_TOOL_NAME
-                  ? "Yes, proceed with default mode"
-                  : "Yes"}
-              </Text>
-            </Box>
+            {toolName === EXIT_PLAN_MODE_TOOL_NAME && (
+              <Box key="clear-option">
+                <Text
+                  color={state.selectedOption === "clear" ? "black" : "white"}
+                  backgroundColor={
+                    state.selectedOption === "clear" ? "yellow" : undefined
+                  }
+                  bold={state.selectedOption === "clear"}
+                >
+                  {state.selectedOption === "clear" ? "> " : "  "}
+                  Yes, clear context and auto-accept edits
+                </Text>
+              </Box>
+            )}
             {!hidePersistentOption && (
               <Box key="auto-option">
                 <Text
@@ -423,6 +429,20 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                 </Text>
               </Box>
             )}
+            <Box key="allow-option">
+              <Text
+                color={state.selectedOption === "allow" ? "black" : "white"}
+                backgroundColor={
+                  state.selectedOption === "allow" ? "yellow" : undefined
+                }
+                bold={state.selectedOption === "allow"}
+              >
+                {state.selectedOption === "allow" ? "> " : "  "}
+                {toolName === EXIT_PLAN_MODE_TOOL_NAME
+                  ? "Yes, manually approve edits"
+                  : "Yes, proceed"}
+              </Text>
+            </Box>
             <Box key="alternative-option">
               <Text
                 color={
@@ -456,7 +476,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                         )}
                       </>
                     ) : (
-                      "Type here to tell Wave what to do differently"
+                      "Type here to tell Wave what to change"
                     )}
                   </Text>
                 )}
