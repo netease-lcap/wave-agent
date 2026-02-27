@@ -7,6 +7,7 @@ export interface WorktreeSession {
   name: string;
   path: string;
   branch: string;
+  repoRoot: string;
   hasUncommittedChanges: boolean;
   hasNewCommits: boolean;
 }
@@ -38,6 +39,7 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
       name,
       path: worktreePath,
       branch: branchName,
+      repoRoot,
       hasUncommittedChanges: false,
       hasNewCommits: false,
     };
@@ -57,6 +59,7 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
       name,
       path: worktreePath,
       branch: branchName,
+      repoRoot,
       hasUncommittedChanges: false,
       hasNewCommits: false,
     };
@@ -73,6 +76,7 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
           name,
           path: worktreePath,
           branch: branchName,
+          repoRoot,
           hasUncommittedChanges: false,
           hasNewCommits: false,
         };
@@ -91,10 +95,9 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
 /**
  * Remove a git worktree and its associated branch
  * @param session Worktree session details
- * @param cwd Current working directory
  */
-export function removeWorktree(session: WorktreeSession, cwd: string): void {
-  const repoRoot = getGitRepoRoot(cwd);
+export function removeWorktree(session: WorktreeSession): void {
+  const repoRoot = session.repoRoot;
 
   try {
     // Change directory to repo root before removing worktree to avoid "directory in use" errors

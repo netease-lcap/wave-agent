@@ -37,6 +37,7 @@ describe("worktree utils", () => {
         path.join("/repo/root", ".wave/worktrees/my-feat"),
       );
       expect(session.branch).toBe("worktree-my-feat");
+      expect(session.repoRoot).toBe("/repo/root");
       expect(execSync).toHaveBeenCalledWith(
         expect.stringContaining("git worktree add -b worktree-my-feat"),
         expect.any(Object),
@@ -63,6 +64,7 @@ describe("worktree utils", () => {
       const session = createWorktree("my-feat", "/repo/root");
 
       expect(session.name).toBe("my-feat");
+      expect(session.repoRoot).toBe("/repo/root");
       expect(execSync).toHaveBeenCalledTimes(2);
       expect(execSync).toHaveBeenCalledWith(
         expect.stringMatching(/git worktree add "[^"]+" worktree-my-feat/),
@@ -108,7 +110,6 @@ describe("worktree utils", () => {
 
   describe("removeWorktree", () => {
     it("should remove worktree and branch", () => {
-      vi.mocked(getGitRepoRoot).mockReturnValue("/repo/root");
       const chdirSpy = vi.spyOn(process, "chdir").mockImplementation(() => {});
       const cwdSpy = vi
         .spyOn(process, "cwd")
@@ -118,11 +119,12 @@ describe("worktree utils", () => {
         name: "my-feat",
         path: "/repo/root/.wave/worktrees/my-feat",
         branch: "worktree-my-feat",
+        repoRoot: "/repo/root",
         hasUncommittedChanges: false,
         hasNewCommits: false,
       };
 
-      removeWorktree(session, "/repo/root");
+      removeWorktree(session);
 
       expect(chdirSpy).toHaveBeenCalledWith("/repo/root");
       expect(execSync).toHaveBeenCalledWith(
@@ -139,7 +141,6 @@ describe("worktree utils", () => {
     });
 
     it("should log error if removal fails", () => {
-      vi.mocked(getGitRepoRoot).mockReturnValue("/repo/root");
       const consoleSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
@@ -152,11 +153,12 @@ describe("worktree utils", () => {
         name: "my-feat",
         path: "/repo/root/.wave/worktrees/my-feat",
         branch: "worktree-my-feat",
+        repoRoot: "/repo/root",
         hasUncommittedChanges: false,
         hasNewCommits: false,
       };
 
-      removeWorktree(session, "/repo/root");
+      removeWorktree(session);
 
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("Failed to remove worktree or branch"),

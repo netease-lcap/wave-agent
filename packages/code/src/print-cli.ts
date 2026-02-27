@@ -1,4 +1,10 @@
-import { Agent, AgentCallbacks, hasUncommittedChanges, hasNewCommits, getDefaultRemoteBranch } from "wave-agent-sdk";
+import {
+  Agent,
+  AgentCallbacks,
+  hasUncommittedChanges,
+  hasNewCommits,
+  getDefaultRemoteBranch,
+} from "wave-agent-sdk";
 import { displayUsageSummary } from "./utils/usageSummary.js";
 import { type WorktreeSession, removeWorktree } from "./utils/worktree.js";
 
@@ -175,7 +181,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       const hasCommits = hasNewCommits(cwd, baseBranch);
 
       if (!hasChanges && !hasCommits) {
-        removeWorktree(worktreeSession, cwd);
+        removeWorktree(worktreeSession);
       } else {
         process.stdout.write(
           `\n⚠️ Worktree '${worktreeSession.name}' has changes or commits. Keeping it at: ${worktreeSession.path}\n`,
@@ -211,7 +217,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
         const hasCommits = hasNewCommits(cwd, baseBranch);
 
         if (!hasChanges && !hasCommits) {
-          removeWorktree(worktreeSession, cwd);
+          removeWorktree(worktreeSession);
         } else {
           process.stdout.write(
             `\n⚠️ Worktree '${worktreeSession.name}' has changes or commits. Keeping it at: ${worktreeSession.path}\n`,
