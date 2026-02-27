@@ -37,7 +37,7 @@
 - [x] T013 [US3] Update `packages/code/src/App.tsx` to manage exit state and show `WorktreeExitPrompt`
 - [x] T014 [US3] Implement logic to detect uncommitted changes and new commits before exit in `packages/code/src/App.tsx`
 - [x] T015 [US3] Implement "Keep worktree" and "Remove worktree" actions in `WorktreeExitPrompt.tsx`
-- [x] T016 [US5] Ensure immediate exit if no changes or commits are detected in `packages/code/src/App.tsx`
+- [x] T016 [US5] Ensure immediate exit AND delete worktree and branch if no changes or commits are detected in `packages/code/src/App.tsx`
 - [x] T017 [P] [US3] Add tests for `WorktreeExitPrompt` component in `packages/code/tests/components/WorktreeExitPrompt.test.tsx`
 
 ## Phase 5: Polish & Cross-cutting Concerns

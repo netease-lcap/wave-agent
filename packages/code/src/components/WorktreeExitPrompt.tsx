@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import React, { useState } from "react";
+import { Box, Text, useInput } from "ink";
 
 interface WorktreeExitPromptProps {
   name: string;
+  path: string;
   hasUncommittedChanges: boolean;
   hasNewCommits: boolean;
   onKeep: () => void;
@@ -12,6 +13,7 @@ interface WorktreeExitPromptProps {
 
 export const WorktreeExitPrompt: React.FC<WorktreeExitPromptProps> = ({
   name,
+  path: worktreePath,
   hasUncommittedChanges,
   hasNewCommits,
   onKeep,
@@ -40,37 +42,44 @@ export const WorktreeExitPrompt: React.FC<WorktreeExitPromptProps> = ({
   });
 
   return (
-    <Box flexDirection="column" borderStyle="single" borderTop borderBottom borderLeft={false} borderRight={false} paddingX={1} marginY={1}>
+    <Box flexDirection="column" paddingX={1} marginY={1}>
       <Box marginBottom={1}>
-        <Text bold color="yellow">
-          ⚠️ Worktree '{name}' has changes:
-        </Text>
+        <Text bold>Exiting worktree session</Text>
       </Box>
-      {hasUncommittedChanges && (
-        <Box marginLeft={2}>
-          <Text>- Uncommitted changes detected</Text>
-        </Box>
-      )}
-      {hasNewCommits && (
-        <Box marginLeft={2}>
-          <Text>- New commits detected</Text>
-        </Box>
-      )}
-      <Box marginTop={1} flexDirection="column">
-        <Text>What would you like to do?</Text>
-        <Box marginTop={1}>
-          <Text color={selectedIndex === 0 ? 'cyan' : undefined}>
-            {selectedIndex === 0 ? '> ' : '  '}Keep worktree (exit CLI, leave worktree and branch intact)
+      <Box marginBottom={1}>
+        {hasUncommittedChanges && hasNewCommits ? (
+          <Text>
+            You have uncommitted changes and new commits. These will be lost if
+            you remove the worktree.
+          </Text>
+        ) : hasUncommittedChanges ? (
+          <Text>
+            You have uncommitted changes. These will be lost if you remove the
+            worktree.
+          </Text>
+        ) : (
+          <Text>
+            You have new commits on worktree-{name}. The branch will be deleted
+            if you remove the worktree.
+          </Text>
+        )}
+      </Box>
+      <Box flexDirection="column">
+        <Box>
+          <Text color={selectedIndex === 0 ? "cyan" : undefined}>
+            {selectedIndex === 0 ? "❯ " : "  "}Keep worktree Stays at{" "}
+            {worktreePath}
           </Text>
         </Box>
         <Box>
-          <Text color={selectedIndex === 1 ? 'cyan' : undefined}>
-            {selectedIndex === 1 ? '> ' : '  '}Remove worktree (delete worktree and branch - DATA LOSS!)
+          <Text color={selectedIndex === 1 ? "cyan" : undefined}>
+            {selectedIndex === 1 ? "❯ " : "  "}Remove worktree All changes and
+            commits will be lost.
           </Text>
         </Box>
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>(Use arrow keys to select, Enter to confirm, Esc to resume session)</Text>
+        <Text dimColor>Enter to confirm · Esc to cancel</Text>
       </Box>
     </Box>
   );

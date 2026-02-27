@@ -1,10 +1,52 @@
 import React from "react";
 import { render } from "ink-testing-library";
-import { describe, it, expect, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type MockInstance,
+} from "vitest";
 import { App } from "../../src/components/App.js";
-import { stripAnsiColors } from "wave-agent-sdk";
+import {
+  stripAnsiColors,
+  hasUncommittedChanges,
+  hasNewCommits,
+  getDefaultRemoteBranch,
+} from "wave-agent-sdk";
+import { removeWorktree } from "../../src/utils/worktree.js";
+
+vi.mock("wave-agent-sdk", async () => {
+  const actual = await vi.importActual("wave-agent-sdk");
+  return {
+    ...actual,
+    hasUncommittedChanges: vi.fn(),
+    hasNewCommits: vi.fn(),
+    getDefaultRemoteBranch: vi.fn(),
+  };
+});
+
+vi.mock("../../src/utils/worktree.js", () => ({
+  removeWorktree: vi.fn(),
+}));
 
 describe("App Component", () => {
+  let processOnSpy: MockInstance<typeof process.on>;
+  let processOffSpy: MockInstance<typeof process.off>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    processOnSpy = vi.spyOn(process, "on").mockImplementation(() => process);
+    processOffSpy = vi.spyOn(process, "off").mockImplementation(() => process);
+  });
+
+  afterEach(() => {
+    processOnSpy.mockRestore();
+    processOffSpy.mockRestore();
+  });
+
   it("should render the main interface with file count", async () => {
     const { lastFrame } = render(<App onExit={vi.fn()} />);
 
@@ -16,29 +58,69 @@ describe("App Component", () => {
     });
   });
 
-  it("should render the chat interface", async () => {
-    const { lastFrame } = render(<App onExit={vi.fn()} />);
+  it("should handle SIGINT and exit directly if no changes in worktree", async () => {
+    const onExit = vi.fn();
+    const worktreeSession = {
+      name: "test-feat",
+      path: "/repo/test-feat",
+      branch: "worktree-test-feat",
+      hasUncommittedChanges: false,
+      hasNewCommits: false,
+    };
 
-    // Wait for components to initialize and render
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Type your message");
-    });
+    vi.mocked(hasUncommittedChanges).mockReturnValue(false);
+    vi.mocked(hasNewCommits).mockReturnValue(false);
+    vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
 
-    // ChatInterface renders MessageList and InputBox, test overall rendering here
-    expect(lastFrame()).toBeTruthy();
-    // Can test whether it contains UI elements like input box borders
-    expect(lastFrame()).toMatch(/[┌┐└┘│─]/); // Check if there are border characters
+    render(<App onExit={onExit} worktreeSession={worktreeSession} />);
+
+    // Simulate SIGINT
+    const handleSignal = processOnSpy.mock.calls.find(
+      (call) => call[0] === "SIGINT",
+    )![1] as () => Promise<void>;
+    await handleSignal();
+
+    expect(removeWorktree).toHaveBeenCalledWith(
+      worktreeSession,
+      expect.any(String),
+    );
+    expect(onExit).toHaveBeenCalled();
   });
 
-  it("should wrap components with providers", async () => {
-    const { lastFrame } = render(<App onExit={vi.fn()} />);
+  it("should show exit prompt on SIGINT if there are changes in worktree", async () => {
+    const onExit = vi.fn();
+    const worktreeSession = {
+      name: "test-feat",
+      path: "/repo/test-feat",
+      branch: "worktree-test-feat",
+      hasUncommittedChanges: false,
+      hasNewCommits: false,
+    };
 
-    // Wait for the component to initialize and render
+    vi.mocked(hasUncommittedChanges).mockReturnValue(true);
+    vi.mocked(hasNewCommits).mockReturnValue(false);
+    vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+
+    const { lastFrame } = render(
+      <App onExit={onExit} worktreeSession={worktreeSession} />,
+    );
+
+    // Simulate SIGINT
+    const handleSignal = processOnSpy.mock.calls.find(
+      (call) => call[0] === "SIGINT",
+    )![1] as () => Promise<void>;
+    await handleSignal();
+
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Type your message");
+      expect(stripAnsiColors(lastFrame() || "")).toContain(
+        "Exiting worktree session",
+      );
+      expect(stripAnsiColors(lastFrame() || "")).toContain(
+        "You have uncommitted changes",
+      );
     });
 
-    // Verify that the component renders without errors
-    expect(lastFrame()).toBeTruthy();
+    expect(removeWorktree).not.toHaveBeenCalled();
+    expect(onExit).not.toHaveBeenCalled();
   });
 });

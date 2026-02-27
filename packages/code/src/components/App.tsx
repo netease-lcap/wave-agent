@@ -70,6 +70,7 @@ const AppWithProviders: React.FC<{
     return (
       <WorktreeExitPrompt
         name={worktreeSession.name}
+        path={worktreeSession.path}
         hasUncommittedChanges={worktreeStatus.hasUncommittedChanges}
         hasNewCommits={worktreeStatus.hasNewCommits}
         onKeep={() => onExit()}
