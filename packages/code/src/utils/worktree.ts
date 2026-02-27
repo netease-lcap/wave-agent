@@ -10,6 +10,7 @@ export interface WorktreeSession {
   repoRoot: string;
   hasUncommittedChanges: boolean;
   hasNewCommits: boolean;
+  isNew: boolean;
 }
 
 export const WORKTREE_DIR = ".wave/worktrees";
@@ -42,6 +43,7 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
       repoRoot,
       hasUncommittedChanges: false,
       hasNewCommits: false,
+      isNew: false,
     };
   }
 
@@ -62,6 +64,7 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
       repoRoot,
       hasUncommittedChanges: false,
       hasNewCommits: false,
+      isNew: true,
     };
   } catch (error: unknown) {
     const stderr = (error as { stderr?: Buffer }).stderr?.toString() || "";
@@ -79,6 +82,7 @@ export function createWorktree(name: string, cwd: string): WorktreeSession {
           repoRoot,
           hasUncommittedChanges: false,
           hasNewCommits: false,
+          isNew: true,
         };
       } catch (innerError: unknown) {
         throw new Error(

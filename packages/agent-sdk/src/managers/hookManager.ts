@@ -378,6 +378,11 @@ export class HookManager {
         });
         return { shouldBlock: true, errorMessage };
 
+      case "WorktreeCreate":
+        // Non-blocking for now, just show error in error block
+        messageManager.addErrorBlock(errorMessage);
+        return { shouldBlock: false };
+
       default:
         return { shouldBlock: false };
     }
@@ -577,7 +582,8 @@ export class HookManager {
       (event === "UserPromptSubmit" ||
         event === "Stop" ||
         event === "Notification" ||
-        event === "SubagentStop") &&
+        event === "SubagentStop" ||
+        event === "WorktreeCreate") &&
       context.toolName !== undefined
     ) {
       logger?.warn(
@@ -653,7 +659,8 @@ export class HookManager {
       event === "UserPromptSubmit" ||
       event === "Stop" ||
       event === "Notification" ||
-      event === "SubagentStop"
+      event === "SubagentStop" ||
+      event === "WorktreeCreate"
     ) {
       return true;
     }
@@ -704,7 +711,8 @@ export class HookManager {
       (event === "UserPromptSubmit" ||
         event === "Stop" ||
         event === "Notification" ||
-        event === "SubagentStop") &&
+        event === "SubagentStop" ||
+        event === "WorktreeCreate") &&
       config.matcher
     ) {
       errors.push(`${prefix}: Event ${event} should not have a matcher`);
@@ -743,6 +751,7 @@ export class HookManager {
           Stop: 0,
           SubagentStop: 0,
           Notification: 0,
+          WorktreeCreate: 0,
         },
       };
     }
@@ -754,6 +763,7 @@ export class HookManager {
       Stop: 0,
       SubagentStop: 0,
       Notification: 0,
+      WorktreeCreate: 0,
     };
 
     let totalConfigs = 0;

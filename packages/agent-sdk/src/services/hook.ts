@@ -83,6 +83,13 @@ async function buildHookJsonInput(
     }
   }
 
+  // Add name field for WorktreeCreate events
+  if (context.event === "WorktreeCreate") {
+    if (context.worktreeName !== undefined) {
+      jsonInput.name = context.worktreeName;
+    }
+  }
+
   return jsonInput;
 }
 

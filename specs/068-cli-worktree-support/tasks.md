@@ -47,6 +47,7 @@
 - [x] T019 Improve error handling for git commands in `packages/code/src/utils/worktree.ts`
 - [x] T020 Run full integration tests for the worktree flow
 - [x] T021 [P] Run `pnpm run type-check`, `pnpm run lint`, and `pnpm test:coverage`
+- [x] T022 Implement `WorktreeCreate` hook event support in `agent-sdk` and `code` packages.
 
 ## Dependency Graph
 

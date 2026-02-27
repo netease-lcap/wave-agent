@@ -103,6 +103,7 @@ const AppWithProviders: React.FC<{
       pluginDirs={pluginDirs}
       tools={tools}
       workdir={workdir}
+      worktreeSession={worktreeSession}
     >
       <ChatInterfaceWithRemount />
     </ChatProvider>

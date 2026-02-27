@@ -38,10 +38,22 @@ describe("worktree utils", () => {
       );
       expect(session.branch).toBe("worktree-my-feat");
       expect(session.repoRoot).toBe("/repo/root");
+      expect(session.isNew).toBe(true);
       expect(execSync).toHaveBeenCalledWith(
         expect.stringContaining("git worktree add -b worktree-my-feat"),
         expect.any(Object),
       );
+    });
+
+    it("should reuse an existing worktree", () => {
+      vi.mocked(getGitRepoRoot).mockReturnValue("/repo/root");
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      const session = createWorktree("my-feat", "/repo/root");
+
+      expect(session.name).toBe("my-feat");
+      expect(session.isNew).toBe(false);
+      expect(execSync).not.toHaveBeenCalled();
     });
 
     it("should handle branch already exists error by adding worktree without -b", () => {
@@ -65,6 +77,7 @@ describe("worktree utils", () => {
 
       expect(session.name).toBe("my-feat");
       expect(session.repoRoot).toBe("/repo/root");
+      expect(session.isNew).toBe(true);
       expect(execSync).toHaveBeenCalledTimes(2);
       expect(execSync).toHaveBeenCalledWith(
         expect.stringMatching(/git worktree add "[^"]+" worktree-my-feat/),
@@ -117,6 +130,7 @@ describe("worktree utils", () => {
         repoRoot: "/repo/root",
         hasUncommittedChanges: false,
         hasNewCommits: false,
+        isNew: false,
       };
 
       removeWorktree(session);
@@ -146,6 +160,7 @@ describe("worktree utils", () => {
         repoRoot: "/repo/root",
         hasUncommittedChanges: false,
         hasNewCommits: false,
+        isNew: false,
       };
 
       removeWorktree(session);

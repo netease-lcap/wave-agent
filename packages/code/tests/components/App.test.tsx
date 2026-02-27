@@ -66,6 +66,7 @@ describe("App Component", () => {
       repoRoot: "/repo",
       hasUncommittedChanges: false,
       hasNewCommits: false,
+      isNew: false,
     };
 
     vi.mocked(hasUncommittedChanges).mockReturnValue(false);
@@ -92,6 +93,7 @@ describe("App Component", () => {
       repoRoot: "/repo",
       hasUncommittedChanges: false,
       hasNewCommits: false,
+      isNew: false,
     };
 
     vi.mocked(hasUncommittedChanges).mockReturnValue(true);
