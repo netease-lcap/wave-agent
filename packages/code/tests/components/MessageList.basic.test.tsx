@@ -46,13 +46,38 @@ describe("MessageList Component", () => {
     } as unknown as ChatContextType);
   });
 
-  describe("Empty state", () => {
+  describe("Welcome message", () => {
     it("should display welcome message when no messages", () => {
       const { lastFrame } = render(
         <MessageList messages={[]} isExpanded={false} />,
       );
 
       expect(lastFrame()).toContain("Welcome to WAVE Code Assistant!");
+    });
+
+    it("should display welcome message even when messages are present", () => {
+      const messages = [createMessage("user", "Hello", 1)];
+      const { lastFrame } = render(
+        <MessageList messages={messages} isExpanded={false} />,
+      );
+
+      expect(lastFrame()).toContain("Welcome to WAVE Code Assistant!");
+      expect(lastFrame()).toContain("Hello - Message 1");
+    });
+
+    it("should display version and workdir in welcome message", () => {
+      const { lastFrame } = render(
+        <MessageList
+          messages={[]}
+          isExpanded={false}
+          version="1.2.3"
+          workdir="/test/dir"
+        />,
+      );
+
+      const output = lastFrame();
+      expect(output).toContain("Welcome to WAVE Code Assistant! (v1.2.3)");
+      expect(output).toContain("Working directory: /test/dir");
     });
   });
 

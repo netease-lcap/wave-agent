@@ -3,38 +3,31 @@ import { useStdout, useInput } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
 import { ChatProvider, useChat } from "../contexts/useChat.js";
 import { AppProvider } from "../contexts/useAppConfig.js";
-import { type WorktreeSession } from "../utils/worktree.js";
 import { WorktreeExitPrompt } from "./WorktreeExitPrompt.js";
 import {
   hasUncommittedChanges,
   hasNewCommits,
   getDefaultRemoteBranch,
 } from "wave-agent-sdk";
+import { BaseAppProps } from "../types.js";
 
-interface AppProps {
+interface AppProps extends BaseAppProps {
   restoreSessionId?: string;
   continueLastSession?: boolean;
-  bypassPermissions?: boolean;
-  pluginDirs?: string[];
-  tools?: string[];
-  worktreeSession?: WorktreeSession;
-  workdir?: string;
   onExit: (shouldRemove: boolean) => void;
 }
 
-const AppWithProviders: React.FC<{
-  bypassPermissions?: boolean;
-  pluginDirs?: string[];
-  tools?: string[];
-  worktreeSession?: WorktreeSession;
-  workdir?: string;
+interface AppWithProvidersProps extends BaseAppProps {
   onExit: (shouldRemove: boolean) => void;
-}> = ({
+}
+
+const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   bypassPermissions,
   pluginDirs,
   tools,
   worktreeSession,
   workdir,
+  version,
   onExit,
 }) => {
   const [isExiting, setIsExiting] = useState(false);
@@ -104,6 +97,7 @@ const AppWithProviders: React.FC<{
       tools={tools}
       workdir={workdir}
       worktreeSession={worktreeSession}
+      version={version}
     >
       <ChatInterfaceWithRemount />
     </ChatProvider>
@@ -165,6 +159,7 @@ export const App: React.FC<AppProps> = ({
   tools,
   worktreeSession,
   workdir,
+  version,
   onExit,
 }) => {
   return (
@@ -178,6 +173,7 @@ export const App: React.FC<AppProps> = ({
         tools={tools}
         worktreeSession={worktreeSession}
         workdir={workdir}
+        version={version}
         onExit={onExit}
       />
     </AppProvider>

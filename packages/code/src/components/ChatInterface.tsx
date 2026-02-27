@@ -36,6 +36,8 @@ export const ChatInterface: React.FC = () => {
     handleConfirmationDecision,
     handleConfirmationCancel: originalHandleConfirmationCancel,
     setWasLastDetailsTooTall,
+    version,
+    workdir,
   } = useChat();
 
   const handleDetailsHeightMeasured = useCallback((height: number) => {
@@ -91,6 +93,8 @@ export const ChatInterface: React.FC = () => {
         messages={messages}
         isExpanded={isExpanded}
         hideDynamicBlocks={isConfirmationVisible}
+        version={version}
+        workdir={workdir}
       />
 
       {(isLoading || isCommandRunning || isCompressing) &&

@@ -6,18 +6,14 @@ import {
   getDefaultRemoteBranch,
 } from "wave-agent-sdk";
 import { displayUsageSummary } from "./utils/usageSummary.js";
-import { type WorktreeSession, removeWorktree } from "./utils/worktree.js";
+import { removeWorktree } from "./utils/worktree.js";
+import { BaseAppProps } from "./types.js";
 
-export interface PrintCliOptions {
+export interface PrintCliOptions extends BaseAppProps {
   restoreSessionId?: string;
   continueLastSession?: boolean;
   message?: string;
   showStats?: boolean;
-  bypassPermissions?: boolean;
-  pluginDirs?: string[];
-  tools?: string[];
-  worktreeSession?: WorktreeSession;
-  workdir?: string;
 }
 
 function displayTimingInfo(startTime: Date, showStats: boolean): void {
