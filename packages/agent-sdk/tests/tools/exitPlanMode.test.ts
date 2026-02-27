@@ -122,7 +122,7 @@ describe("exitPlanModeTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.content).toBe(
-      `User feedback: ${feedback}. Please update your proposal accordingly.`,
+      `Please update your proposal based on the following user feedback: ${feedback}`,
     );
     expect(result.error).toBeUndefined();
   });
@@ -141,7 +141,7 @@ describe("exitPlanModeTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.content).toBe(
-      "User feedback: Plan rejected by user. Please update your proposal accordingly.",
+      "Please update your proposal based on the following user feedback: Plan rejected by user",
     );
     expect(result.error).toBe("Plan rejected by user");
   });
