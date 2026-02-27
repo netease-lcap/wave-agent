@@ -56,15 +56,18 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
     );
   }
 
-  const maxDisplay = 10;
+  const MAX_VISIBLE_ITEMS = 3;
   const startIndex = Math.max(
     0,
     Math.min(
-      selectedIndex - Math.floor(maxDisplay / 2),
-      sessions.length - maxDisplay,
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, sessions.length - MAX_VISIBLE_ITEMS),
     ),
   );
-  const displaySessions = sessions.slice(startIndex, startIndex + maxDisplay);
+  const displaySessions = sessions.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_ITEMS,
+  );
 
   return (
     <Box
@@ -92,26 +95,40 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
           return (
             <Box key={session.id} flexDirection="column" width="100%">
               <Box width="100%">
-                <Text
-                  color={isSelected ? "black" : "white"}
+                <Box
                   backgroundColor={isSelected ? "cyan" : undefined}
+                  flexShrink={0}
                 >
-                  {isSelected ? "▶ " : "  "}
-                  {session.id} | {lastActiveAt} | {session.latestTotalTokens}{" "}
-                  tokens
-                </Text>
+                  <Text color={isSelected ? "black" : "white"}>
+                    {isSelected ? "▶ " : "  "}
+                  </Text>
+                </Box>
+                <Box
+                  backgroundColor={isSelected ? "cyan" : undefined}
+                  flexGrow={1}
+                >
+                  <Text
+                    color={isSelected ? "black" : "white"}
+                    wrap="truncate-end"
+                  >
+                    {session.id} | {lastActiveAt} | {session.latestTotalTokens}{" "}
+                    tokens
+                  </Text>
+                </Box>
               </Box>
-              <Box marginLeft={4} width="100%">
-                <Text dimColor italic>
-                  {session.firstMessage}
-                </Text>
-              </Box>
+              {isSelected && session.firstMessage && (
+                <Box marginLeft={2} width="100%">
+                  <Text dimColor italic wrap="truncate-end">
+                    {session.firstMessage.replace(/\n/g, "\\n")}
+                  </Text>
+                </Box>
+              )}
             </Box>
           );
         })}
       </Box>
 
-      {sessions.length > maxDisplay && (
+      {sessions.length > MAX_VISIBLE_ITEMS && (
         <Box>
           <Text dimColor>
             ... showing {displaySessions.length} of {sessions.length} sessions
