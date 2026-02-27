@@ -11,9 +11,9 @@
 - **Alternatives**: Using a Node.js git library like `isomorphic-git`, but it might not support all worktree features and adds unnecessary weight.
 
 ## Decision: Working Directory Management
-- **Choice**: Change `process.cwd()` before initializing the React Ink application.
-- **Rationale**: This ensures that the entire application, including the agent and all file-based tools, operates within the worktree directory without needing to modify every file path.
-- **Alternatives**: Passing the worktree path as a variable throughout the app, but this would require extensive refactoring.
+- **Choice**: Pass the worktree path as the working directory to the agent and relevant utilities, instead of using `process.chdir()`.
+- **Rationale**: This avoids issues with relative paths provided as command-line arguments (e.g., `--plugin-dir`) and prevents unintended side effects of changing the global process state. The `agent-sdk` already supports a configurable `workdir`.
+- **Alternatives**: Changing `process.cwd()` before initializing the React Ink application, but this causes issues with relative paths and global state consistency.
 
 ## Decision: Exit Handling and Interactive Prompt
 - **Choice**: Implement a custom exit state in the main React component (`App.tsx`) and a new `WorktreeExitPrompt` component.

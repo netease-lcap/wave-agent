@@ -13,7 +13,7 @@ This will:
 1. Identify the default remote branch.
 2. Create a new git branch named `worktree-my-feature` from that branch.
 3. Create a git worktree at `.wave/worktrees/my-feature`.
-4. Start the Wave CLI in that worktree.
+4. Start the Wave session in that worktree.
 
 ### Start a Worktree Session with an Auto-generated Name
 To quickly start a session without thinking of a name:

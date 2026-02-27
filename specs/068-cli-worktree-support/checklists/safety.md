@@ -18,7 +18,7 @@
 - [x] CHK006 - Is "delete the associated branch" quantified (e.g., `git branch -D` vs `-d`)? [Clarity, Spec §FR-011]
 - [x] CHK007 - Is the "worktree path" defined as absolute or relative to the repo root? [Clarity, Spec §FR-003]
 - [x] CHK008 - Is the "auto-generated name" pattern `adjective-adjective-noun` explicitly documented as the source of truth? [Clarity, Spec §FR-002]
-- [x] CHK009 - Is "change the working directory" clarified as a process-level change (`process.cwd()`)? [Clarity, Spec §FR-005]
+- [x] CHK009 - Is "pass the worktree path" clarified as an explicit parameter to the agent and utilities? [Clarity, Spec §FR-005]
 
 ## Requirement Consistency
 

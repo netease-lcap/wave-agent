@@ -18,6 +18,7 @@ interface AppProps {
   pluginDirs?: string[];
   tools?: string[];
   worktreeSession?: WorktreeSession;
+  workdir?: string;
   onExit: (shouldRemove: boolean) => void;
 }
 
@@ -26,8 +27,16 @@ const AppWithProviders: React.FC<{
   pluginDirs?: string[];
   tools?: string[];
   worktreeSession?: WorktreeSession;
+  workdir?: string;
   onExit: (shouldRemove: boolean) => void;
-}> = ({ bypassPermissions, pluginDirs, tools, worktreeSession, onExit }) => {
+}> = ({
+  bypassPermissions,
+  pluginDirs,
+  tools,
+  worktreeSession,
+  workdir,
+  onExit,
+}) => {
   const [isExiting, setIsExiting] = useState(false);
   const [worktreeStatus, setWorktreeStatus] = useState<{
     hasUncommittedChanges: boolean;
@@ -36,7 +45,7 @@ const AppWithProviders: React.FC<{
 
   const handleSignal = useCallback(async () => {
     if (worktreeSession) {
-      const cwd = process.cwd();
+      const cwd = workdir || worktreeSession.path;
       const baseBranch = getDefaultRemoteBranch(cwd);
       const hasChanges = hasUncommittedChanges(cwd);
       const hasCommits = hasNewCommits(cwd, baseBranch);
@@ -53,7 +62,7 @@ const AppWithProviders: React.FC<{
     } else {
       onExit(false);
     }
-  }, [worktreeSession, onExit]);
+  }, [worktreeSession, workdir, onExit]);
 
   useInput((input, key) => {
     if (input === "c" && key.ctrl) {
@@ -93,6 +102,7 @@ const AppWithProviders: React.FC<{
       bypassPermissions={bypassPermissions}
       pluginDirs={pluginDirs}
       tools={tools}
+      workdir={workdir}
     >
       <ChatInterfaceWithRemount />
     </ChatProvider>
@@ -153,6 +163,7 @@ export const App: React.FC<AppProps> = ({
   pluginDirs,
   tools,
   worktreeSession,
+  workdir,
   onExit,
 }) => {
   return (
@@ -165,6 +176,7 @@ export const App: React.FC<AppProps> = ({
         pluginDirs={pluginDirs}
         tools={tools}
         worktreeSession={worktreeSession}
+        workdir={workdir}
         onExit={onExit}
       />
     </AppProvider>

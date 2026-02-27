@@ -11,6 +11,7 @@ export interface CliOptions {
   pluginDirs?: string[];
   tools?: string[];
   worktreeSession?: WorktreeSession;
+  workdir?: string;
 }
 
 export async function startCli(options: CliOptions): Promise<void> {
@@ -21,6 +22,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     pluginDirs,
     tools,
     worktreeSession,
+    workdir,
   } = options;
 
   // Continue with ink-based UI for normal mode
@@ -40,6 +42,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       pluginDirs={pluginDirs}
       tools={tools}
       worktreeSession={worktreeSession}
+      workdir={workdir}
       onExit={handleExit}
     />,
     { exitOnCtrlC: false },

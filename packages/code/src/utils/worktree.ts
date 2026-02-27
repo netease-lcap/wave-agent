@@ -100,11 +100,6 @@ export function removeWorktree(session: WorktreeSession): void {
   const repoRoot = session.repoRoot;
 
   try {
-    // Change directory to repo root before removing worktree to avoid "directory in use" errors
-    if (process.cwd().startsWith(session.path)) {
-      process.chdir(repoRoot);
-    }
-
     // Remove worktree
     execSync(`git worktree remove --force "${session.path}"`, {
       cwd: repoRoot,

@@ -3,8 +3,12 @@ import { render, Box } from "ink";
 import { listSessions, truncateContent } from "wave-agent-sdk";
 import { SessionSelector } from "./components/SessionSelector.js";
 
-export async function startSessionSelectorCli(): Promise<string | null> {
-  const currentWorkdir = process.cwd();
+export async function startSessionSelectorCli({
+  workdir,
+}: {
+  workdir?: string;
+} = {}): Promise<string | null> {
+  const currentWorkdir = workdir || process.cwd();
   const sessions = await listSessions(currentWorkdir);
 
   if (sessions.length === 0) {
