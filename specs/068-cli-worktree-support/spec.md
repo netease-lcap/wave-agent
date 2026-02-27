@@ -117,7 +117,7 @@ As a developer, I want the CLI to automatically clean up the worktree if I haven
 - **FR-002**: System MUST generate a unique feature name (e.g., `adjective-adjective-noun`) if `<feat-name>` is not provided.
 - **FR-003**: System MUST create a git worktree at `.wave/worktrees/<feat-name>` (absolute path) branching from the default remote branch (identified via `git symbolic-ref refs/remotes/origin/HEAD`).
 - **FR-004**: System MUST name the worktree branch `worktree-<feat-name>`.
-- **FR-005**: System MUST change the process working directory to the worktree path using `process.chdir()` before starting the main CLI loop to ensure global consistency.
+- **FR-005**: System MUST pass the worktree path as the working directory to the agent and relevant utilities, instead of using `process.chdir()`, to avoid issues with relative paths and other side effects.
 - **FR-006**: System MUST detect uncommitted changes (staged or unstaged, identified via `git status --porcelain`) in the worktree upon exit.
 - **FR-007**: System MUST detect commits made in the worktree that are not in the default remote branch (identified via `git log @{u}..HEAD`) upon exit.
 - **FR-008**: System MUST display an interactive prompt if uncommitted changes or new commits exist upon exit.

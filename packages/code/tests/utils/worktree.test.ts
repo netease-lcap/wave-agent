@@ -110,11 +110,6 @@ describe("worktree utils", () => {
 
   describe("removeWorktree", () => {
     it("should remove worktree and branch", () => {
-      const chdirSpy = vi.spyOn(process, "chdir").mockImplementation(() => {});
-      const cwdSpy = vi
-        .spyOn(process, "cwd")
-        .mockReturnValue("/repo/root/.wave/worktrees/my-feat");
-
       const session = {
         name: "my-feat",
         path: "/repo/root/.wave/worktrees/my-feat",
@@ -126,7 +121,6 @@ describe("worktree utils", () => {
 
       removeWorktree(session);
 
-      expect(chdirSpy).toHaveBeenCalledWith("/repo/root");
       expect(execSync).toHaveBeenCalledWith(
         expect.stringContaining("git worktree remove --force"),
         expect.any(Object),
@@ -135,16 +129,12 @@ describe("worktree utils", () => {
         expect.stringContaining("git branch -D worktree-my-feat"),
         expect.any(Object),
       );
-
-      chdirSpy.mockRestore();
-      cwdSpy.mockRestore();
     });
 
     it("should log error if removal fails", () => {
       const consoleSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
-      vi.spyOn(process, "chdir").mockImplementation(() => {});
       vi.mocked(execSync).mockImplementation(() => {
         throw new Error("Removal failed");
       });
@@ -164,7 +154,6 @@ describe("worktree utils", () => {
         expect.stringContaining("Failed to remove worktree or branch"),
       );
       consoleSpy.mockRestore();
-      vi.restoreAllMocks();
     });
   });
 });

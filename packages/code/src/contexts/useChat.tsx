@@ -109,6 +109,7 @@ export interface ChatProviderProps {
   bypassPermissions?: boolean;
   pluginDirs?: string[];
   tools?: string[];
+  workdir?: string;
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({
@@ -116,6 +117,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   bypassPermissions,
   pluginDirs,
   tools,
+  workdir,
 }) => {
   const { restoreSessionId, continueLastSession } = useAppConfig();
 
@@ -316,6 +318,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           stream: false, // 关闭流式模式
           plugins: pluginDirs?.map((path) => ({ type: "local", path })),
           tools,
+          workdir,
         });
 
         agentRef.current = agent;
@@ -349,6 +352,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     showConfirmation,
     pluginDirs,
     tools,
+    workdir,
   ]);
 
   // Cleanup on unmount

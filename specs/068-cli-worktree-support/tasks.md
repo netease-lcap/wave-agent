@@ -25,7 +25,8 @@
 
 - [x] T008 [US1] Update CLI argument parsing in `packages/code/src/index.ts` to support `-w` and `--worktree`
 - [x] T009 [US2] Integrate `generateRandomName` in `packages/code/src/index.ts` for auto-generated worktree names
-- [x] T010 [US1] Implement worktree initialization flow in `packages/code/src/index.ts` (create worktree, change `process.cwd()`)
+- [x] T010 [US1] Implement worktree initialization flow in `packages/code/src/index.ts` (create worktree, pass `workdir` to CLI)
+- [x] T011 [P] Refactor to avoid `process.chdir()` and pass `workdir` explicitly to agent and utilities
 
 ## Phase 4: User Story 3, 4 & 5 - Exit Handling (Priority: P1/P2)
 

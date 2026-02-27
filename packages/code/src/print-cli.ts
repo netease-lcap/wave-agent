@@ -17,6 +17,7 @@ export interface PrintCliOptions {
   pluginDirs?: string[];
   tools?: string[];
   worktreeSession?: WorktreeSession;
+  workdir?: string;
 }
 
 function displayTimingInfo(startTime: Date, showStats: boolean): void {
@@ -44,6 +45,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     pluginDirs,
     tools,
     worktreeSession,
+    workdir,
   } = options;
 
   if (
@@ -148,6 +150,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       permissionMode: bypassPermissions ? "bypassPermissions" : undefined,
       plugins: pluginDirs?.map((path) => ({ type: "local", path })),
       tools,
+      workdir,
       // 保持流式模式以获得更好的命令行用户体验
     });
 
@@ -175,7 +178,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
 
     // Handle worktree cleanup for print mode
     if (worktreeSession) {
-      const cwd = process.cwd();
+      const cwd = workdir || worktreeSession.path;
       const baseBranch = getDefaultRemoteBranch(cwd);
       const hasChanges = hasUncommittedChanges(cwd);
       const hasCommits = hasNewCommits(cwd, baseBranch);
@@ -211,7 +214,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
 
       // Handle worktree cleanup for print mode even on error
       if (worktreeSession) {
-        const cwd = process.cwd();
+        const cwd = workdir || worktreeSession.path;
         const baseBranch = getDefaultRemoteBranch(cwd);
         const hasChanges = hasUncommittedChanges(cwd);
         const hasCommits = hasNewCommits(cwd, baseBranch);

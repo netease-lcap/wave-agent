@@ -5,6 +5,7 @@ import * as cli from "../src/cli.js";
 import * as pluginManagerCli from "../src/plugin-manager-cli.js";
 import * as printCli from "../src/print-cli.js";
 import * as sessionSelectorCli from "../src/session-selector-cli.js";
+import path from "path";
 
 // Mock external modules
 vi.mock("yargs", async () => {
@@ -69,6 +70,9 @@ describe("main", () => {
       continueLastSession: undefined,
       bypassPermissions: false,
       pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -80,6 +84,9 @@ describe("main", () => {
       continueLastSession: undefined,
       bypassPermissions: false,
       pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -91,6 +98,9 @@ describe("main", () => {
       continueLastSession: undefined,
       bypassPermissions: false,
       pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -102,6 +112,9 @@ describe("main", () => {
       continueLastSession: true,
       bypassPermissions: false,
       pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -113,6 +126,9 @@ describe("main", () => {
       continueLastSession: true,
       bypassPermissions: false,
       pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -126,6 +142,9 @@ describe("main", () => {
       showStats: undefined,
       bypassPermissions: false,
       pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -139,6 +158,9 @@ describe("main", () => {
       showStats: undefined,
       bypassPermissions: false,
       pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -152,6 +174,9 @@ describe("main", () => {
       showStats: true,
       bypassPermissions: false,
       pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -165,6 +190,9 @@ describe("main", () => {
       showStats: true,
       bypassPermissions: false,
       pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -176,6 +204,9 @@ describe("main", () => {
       continueLastSession: undefined,
       bypassPermissions: true,
       pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -186,7 +217,24 @@ describe("main", () => {
       restoreSessionId: undefined,
       continueLastSession: undefined,
       bypassPermissions: false,
-      pluginDirs: ["/tmp/plugins"],
+      pluginDirs: [expect.stringContaining("/tmp/plugins")],
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
+    });
+  });
+
+  it("should handle relative --plugin-dir argument", async () => {
+    process.argv = ["node", "index.js", "--plugin-dir", "./my-plugins"];
+    await main();
+    expect(cli.startCli).toHaveBeenCalledWith({
+      restoreSessionId: undefined,
+      continueLastSession: undefined,
+      bypassPermissions: false,
+      pluginDirs: [path.resolve(process.cwd(), "./my-plugins")],
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
     });
   });
 
@@ -204,7 +252,41 @@ describe("main", () => {
       restoreSessionId: undefined,
       continueLastSession: undefined,
       bypassPermissions: false,
-      pluginDirs: ["/tmp/plugins1", "/tmp/plugins2"],
+      pluginDirs: [
+        expect.stringContaining("/tmp/plugins1"),
+        expect.stringContaining("/tmp/plugins2"),
+      ],
+      tools: undefined,
+      worktreeSession: undefined,
+      workdir: process.cwd(),
+    });
+  });
+
+  it("should handle --tools argument", async () => {
+    process.argv = ["node", "index.js", "--tools", "Bash,Read"];
+    await main();
+    expect(cli.startCli).toHaveBeenCalledWith({
+      restoreSessionId: undefined,
+      continueLastSession: undefined,
+      bypassPermissions: false,
+      pluginDirs: undefined,
+      tools: ["Bash", "Read"],
+      worktreeSession: undefined,
+      workdir: process.cwd(),
+    });
+  });
+
+  it("should handle --worktree argument", async () => {
+    process.argv = ["node", "index.js", "--worktree", "test-worktree"];
+    await main();
+    expect(cli.startCli).toHaveBeenCalledWith({
+      restoreSessionId: undefined,
+      continueLastSession: undefined,
+      bypassPermissions: false,
+      pluginDirs: undefined,
+      tools: undefined,
+      worktreeSession: expect.objectContaining({ name: "test-worktree" }),
+      workdir: expect.stringContaining("test-worktree"),
     });
   });
 
@@ -379,11 +461,16 @@ describe("main", () => {
         "selected-session-id",
       );
       await main();
-      expect(sessionSelectorCli.startSessionSelectorCli).toHaveBeenCalled();
+      expect(sessionSelectorCli.startSessionSelectorCli).toHaveBeenCalledWith({
+        workdir: process.cwd(),
+      });
       expect(cli.startCli).toHaveBeenCalledWith({
         restoreSessionId: "selected-session-id",
         bypassPermissions: false,
         pluginDirs: undefined,
+        tools: undefined,
+        worktreeSession: undefined,
+        workdir: process.cwd(),
       });
     });
 
@@ -393,7 +480,9 @@ describe("main", () => {
         null,
       );
       await main();
-      expect(sessionSelectorCli.startSessionSelectorCli).toHaveBeenCalled();
+      expect(sessionSelectorCli.startSessionSelectorCli).toHaveBeenCalledWith({
+        workdir: process.cwd(),
+      });
       expect(cli.startCli).not.toHaveBeenCalled();
     });
   });

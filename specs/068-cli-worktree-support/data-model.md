@@ -30,7 +30,7 @@ Represents a git worktree session created by the CLI.
    - `WorktreeSession` is initialized with `name`, `path`, and `branch`.
 
 2. **Execution**:
-   - CLI runs within the worktree directory.
+   - Agent operates within the worktree directory.
    - User makes changes and/or commits.
 
 3. **Exit Detection**:

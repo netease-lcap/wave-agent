@@ -3,10 +3,12 @@ import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
 import { Scope, generateRandomName } from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
+import path from "path";
 
 // Export main function for external use
 export async function main() {
   try {
+    const originalCwd = process.cwd();
     const argv = await yargs(hideBin(process.argv))
       .option("restore", {
         alias: "r",
@@ -238,6 +240,11 @@ export async function main() {
 
     const tools = parseTools(argv.tools as string | undefined);
 
+    // Resolve plugin directories to absolute paths before any worktree logic
+    const pluginDirs = (argv.pluginDir as string[] | undefined)?.map((dir) =>
+      path.resolve(originalCwd, dir),
+    );
+
     let worktreeSession: WorktreeSession | undefined;
     if (
       argv.worktree !== undefined ||
@@ -248,9 +255,10 @@ export async function main() {
       if (!name || name === "") {
         name = generateRandomName();
       }
-      worktreeSession = createWorktree(name, process.cwd());
-      process.chdir(worktreeSession.path);
+      worktreeSession = createWorktree(name, originalCwd);
     }
+
+    const workdir = worktreeSession?.path || originalCwd;
 
     // Handle restore session command
     if (
@@ -262,7 +270,7 @@ export async function main() {
       const { startSessionSelectorCli } = await import(
         "./session-selector-cli.js"
       );
-      const selectedSessionId = await startSessionSelectorCli();
+      const selectedSessionId = await startSessionSelectorCli({ workdir });
       if (!selectedSessionId) {
         return;
       }
@@ -270,9 +278,10 @@ export async function main() {
       return startCli({
         restoreSessionId: selectedSessionId,
         bypassPermissions: argv.dangerouslySkipPermissions,
-        pluginDirs: argv.pluginDir as string[],
+        pluginDirs,
         tools,
         worktreeSession,
+        workdir,
       });
     }
 
@@ -285,9 +294,10 @@ export async function main() {
         message: argv.print,
         showStats: argv.showStats,
         bypassPermissions: argv.dangerouslySkipPermissions,
-        pluginDirs: argv.pluginDir as string[],
+        pluginDirs,
         tools,
         worktreeSession,
+        workdir,
       });
     }
 
@@ -295,9 +305,10 @@ export async function main() {
       restoreSessionId: argv.restore,
       continueLastSession: argv.continue,
       bypassPermissions: argv.dangerouslySkipPermissions,
-      pluginDirs: argv.pluginDir as string[],
+      pluginDirs,
       tools,
       worktreeSession,
+      workdir,
     });
   } catch (error) {
     console.error("Failed to start WAVE Code:", error);
