@@ -51,8 +51,8 @@ export interface ChatContextType {
   disconnectMcpServer: (serverName: string) => Promise<boolean>;
   // Background tasks
   backgroundTasks: BackgroundTask[];
-  // Session tasks
-  sessionTasks: Task[];
+  // Tasks
+  tasks: Task[];
   getBackgroundTaskOutput: (
     taskId: string,
   ) => { stdout: string; stderr: string; status: string } | null;
@@ -152,8 +152,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Background tasks state
   const [backgroundTasks, setBackgroundTasks] = useState<BackgroundTask[]>([]);
-  // Session tasks state
-  const [sessionTasks, setSessionTasks] = useState<Task[]>([]);
+  // Tasks state
+  const [tasks, setTasks] = useState<Task[]>([]);
 
   // Command state
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
@@ -264,11 +264,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onCompressionStateChange: (isCompressingState) => {
           setIsCompressing(isCompressingState);
         },
-        onTasksChange: (tasks) => {
+        onBackgroundTasksChange: (tasks) => {
           setBackgroundTasks([...tasks]);
         },
-        onSessionTasksChange: (tasks) => {
-          setSessionTasks([...tasks]);
+        onTasksChange: (tasks) => {
+          setTasks([...tasks]);
         },
         onSubagentMessagesChange: (subagentId: string, messages: Message[]) => {
           logger.debug("onSubagentMessagesChange", subagentId, messages.length);
@@ -621,7 +621,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     connectMcpServer,
     disconnectMcpServer,
     backgroundTasks,
-    sessionTasks,
+    tasks,
     getBackgroundTaskOutput,
     stopBackgroundTask,
     slashCommands,

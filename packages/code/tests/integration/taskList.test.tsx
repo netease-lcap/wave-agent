@@ -71,10 +71,10 @@ describe("TaskList Integration", () => {
   });
 
   it("renders tasks from the agent in ChatInterface", async () => {
-    let onSessionTasksChangeCallback: (tasks: Task[]) => void = () => {};
+    let onTasksChangeCallback: (tasks: Task[]) => void = () => {};
 
     vi.mocked(Agent.create).mockImplementation(async (options) => {
-      onSessionTasksChangeCallback = options.callbacks!.onSessionTasksChange!;
+      onTasksChangeCallback = options.callbacks!.onTasksChange!;
       return mockAgent;
     });
 
@@ -95,7 +95,7 @@ describe("TaskList Integration", () => {
     expect(stripAnsiColors(lastFrame() || "")).not.toContain("TASKS");
 
     // Simulate tasks being added/changed in the agent
-    onSessionTasksChangeCallback(mockTasks);
+    onTasksChangeCallback(mockTasks);
 
     // Verify tasks are rendered
     await vi.waitFor(() => {
@@ -107,10 +107,10 @@ describe("TaskList Integration", () => {
   });
 
   it("updates task list when tasks change", async () => {
-    let onSessionTasksChangeCallback: (tasks: Task[]) => void = () => {};
+    let onTasksChangeCallback: (tasks: Task[]) => void = () => {};
 
     vi.mocked(Agent.create).mockImplementation(async (options) => {
-      onSessionTasksChangeCallback = options.callbacks!.onSessionTasksChange!;
+      onTasksChangeCallback = options.callbacks!.onTasksChange!;
       return mockAgent;
     });
 
@@ -127,19 +127,19 @@ describe("TaskList Integration", () => {
     });
 
     // Add initial task
-    onSessionTasksChangeCallback([mockTasks[0]]);
+    onTasksChangeCallback([mockTasks[0]]);
     await vi.waitFor(() => {
       expect(stripAnsiColors(lastFrame() || "")).toContain("First Task");
     });
 
     // Update task status
-    onSessionTasksChangeCallback([{ ...mockTasks[0], status: "completed" }]);
+    onTasksChangeCallback([{ ...mockTasks[0], status: "completed" }]);
     await vi.waitFor(() => {
       expect(stripAnsiColors(lastFrame() || "")).toContain("✓ First Task");
     });
 
     // Remove all tasks
-    onSessionTasksChangeCallback([]);
+    onTasksChangeCallback([]);
     await vi.waitFor(() => {
       expect(stripAnsiColors(lastFrame() || "")).not.toContain("First Task");
     });

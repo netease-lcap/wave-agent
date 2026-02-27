@@ -42,8 +42,8 @@ export interface AgentContainerSetupOptions {
 
   // Callbacks to Agent methods
   onSessionIdChange: (sessionId: string) => void;
-  onTasksChange: (tasks: BackgroundTask[]) => void;
-  onSessionTasksChange: (tasks: Task[]) => void;
+  onBackgroundTasksChange: (tasks: BackgroundTask[]) => void;
+  onTasksChange: (tasks: Task[]) => void;
   onPermissionModeChange: (mode: PermissionMode) => void;
   handlePlanModeTransition: (mode: PermissionMode) => void;
   setPermissionMode: (mode: PermissionMode) => void;
@@ -67,8 +67,8 @@ export function setupAgentContainer(
     systemPrompt,
     stream,
     onSessionIdChange,
+    onBackgroundTasksChange,
     onTasksChange,
-    onSessionTasksChange,
     onPermissionModeChange,
     handlePlanModeTransition,
     setPermissionMode,
@@ -111,15 +111,15 @@ export function setupAgentContainer(
   container.register("TaskManager", taskManager);
   taskManager.on("tasksChange", async () => {
     const tasks = await taskManager.listTasks();
-    onSessionTasksChange(tasks);
+    onTasksChange(tasks);
   });
 
   const backgroundTaskManager = new BackgroundTaskManager(container, {
     callbacks: {
       ...callbacks,
-      onTasksChange: (tasks) => {
-        onTasksChange(tasks);
-        callbacks.onTasksChange?.(tasks);
+      onBackgroundTasksChange: (tasks) => {
+        onBackgroundTasksChange(tasks);
+        callbacks.onBackgroundTasksChange?.(tasks);
       },
     },
     workdir,

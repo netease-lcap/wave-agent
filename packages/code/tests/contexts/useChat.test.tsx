@@ -189,7 +189,7 @@ describe("ChatProvider", () => {
       expect(lastValue?.isCompressing).toBe(true);
     });
 
-    // Test onTasksChange
+    // Test onBackgroundTasksChange
     const newTasks = [
       {
         id: "task1",
@@ -201,7 +201,7 @@ describe("ChatProvider", () => {
         process: {} as unknown as BackgroundShell["process"],
       },
     ];
-    callbacks.onTasksChange!(newTasks);
+    callbacks.onBackgroundTasksChange!(newTasks);
     await vi.waitFor(() => {
       expect(lastValue?.backgroundTasks).toEqual(newTasks);
     });

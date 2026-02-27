@@ -55,7 +55,7 @@ describe("ChatInterface Rewind Visibility", () => {
       handleConfirmationDecision: vi.fn(),
       handleConfirmationCancel: vi.fn(),
       backgroundCurrentTask: vi.fn(),
-      sessionTasks: [],
+      tasks: [],
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
       getFullMessageThread: vi
@@ -128,7 +128,7 @@ describe("ChatInterface Rewind Visibility", () => {
       handleConfirmationDecision: vi.fn(),
       handleConfirmationCancel: vi.fn(),
       backgroundCurrentTask: vi.fn(),
-      sessionTasks: [],
+      tasks: [],
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
       getFullMessageThread: vi

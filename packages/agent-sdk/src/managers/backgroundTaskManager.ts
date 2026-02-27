@@ -5,7 +5,7 @@ import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
 
 export interface BackgroundTaskManagerCallbacks {
-  onTasksChange?: (tasks: BackgroundTask[]) => void;
+  onBackgroundTasksChange?: (tasks: BackgroundTask[]) => void;
 }
 
 export interface BackgroundTaskManagerOptions {
@@ -28,7 +28,7 @@ export class BackgroundTaskManager {
   }
 
   private notifyTasksChange(): void {
-    this.callbacks.onTasksChange?.(Array.from(this.tasks.values()));
+    this.callbacks.onBackgroundTasksChange?.(Array.from(this.tasks.values()));
   }
 
   public generateId(): string {

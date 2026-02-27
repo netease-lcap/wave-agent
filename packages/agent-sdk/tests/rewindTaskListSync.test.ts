@@ -3,6 +3,7 @@ import { TaskManager } from "../src/services/taskManager.js";
 import { Agent } from "../src/agent.js";
 import { MessageManager } from "../src/managers/messageManager.js";
 import { Container } from "../src/utils/container.js";
+import { Task } from "../src/types/tasks.js";
 
 // Mock dependencies
 vi.mock("fs", () => ({
@@ -57,31 +58,34 @@ describe("Rewind Task List Sync", () => {
   });
 
   describe("Agent.truncateHistory", () => {
-    it("should call taskManager.refreshTasks after history truncation", async () => {
+    it("should call onTasksChange after history truncation", async () => {
       // We need to mock MessageManager.prototype.truncateHistory to avoid complex setup
       const truncateHistorySpy = vi
         .spyOn(MessageManager.prototype, "truncateHistory")
         .mockResolvedValue(undefined);
 
-      // Create agent instance
-      // Note: Agent.create is async and does a lot of initialization.
-      // For this test, we can try to mock the necessary parts or use a simplified approach.
+      const onTasksChangeSpy = vi.fn();
 
+      // Create agent instance
       const agent = await Agent.create({
         apiKey: "test-key",
         workdir: "/test/workdir",
+        callbacks: {
+          onTasksChange: onTasksChangeSpy,
+        },
       });
 
-      // Spy on taskManager.refreshTasks
-      const refreshTasksSpy = vi.spyOn(
+      // Mock listTasks to return some tasks
+      const mockTasks = [{ id: "1", subject: "test", status: "pending" }];
+      vi.spyOn(
         (agent as unknown as { taskManager: TaskManager }).taskManager,
-        "refreshTasks",
-      );
+        "listTasks",
+      ).mockResolvedValue(mockTasks as unknown as Task[]);
 
       await agent.truncateHistory(0);
 
       expect(truncateHistorySpy).toHaveBeenCalledWith(0, expect.anything());
-      expect(refreshTasksSpy).toHaveBeenCalled();
+      expect(onTasksChangeSpy).toHaveBeenCalledWith(mockTasks);
     });
   });
 });
