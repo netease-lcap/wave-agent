@@ -27,7 +27,7 @@ describe("PlanManager", () => {
 
     expect(filePath).toContain(expectedDir);
     expect(filePath).toMatch(/\.md$/);
-    expect(name).toMatch(/^[a-z]+-[a-z]+$/);
+    expect(name).toMatch(/^[a-z]+-[a-z]+-[a-z]+$/);
     expect(fs.mkdir).toHaveBeenCalledWith(expectedDir, { recursive: true });
   });
 

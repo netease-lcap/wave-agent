@@ -55,7 +55,7 @@ This command was loaded from a local plugin!
     // 2. Render the App with the plugin directory
     // We use bypassPermissions to simplify the demo
     const { lastFrame, unmount } = render(
-      <App pluginDirs={[pluginDir]} bypassPermissions={true} />,
+      <App pluginDirs={[pluginDir]} bypassPermissions={true} onExit={() => {}} />,
     );
 
     // Give it a moment to initialize the agent and load plugins

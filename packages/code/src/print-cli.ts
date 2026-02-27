@@ -1,5 +1,6 @@
-import { Agent, AgentCallbacks } from "wave-agent-sdk";
+import { Agent, AgentCallbacks, hasUncommittedChanges, hasNewCommits, getDefaultRemoteBranch } from "wave-agent-sdk";
 import { displayUsageSummary } from "./utils/usageSummary.js";
+import { type WorktreeSession, removeWorktree } from "./utils/worktree.js";
 
 export interface PrintCliOptions {
   restoreSessionId?: string;
@@ -9,6 +10,7 @@ export interface PrintCliOptions {
   bypassPermissions?: boolean;
   pluginDirs?: string[];
   tools?: string[];
+  worktreeSession?: WorktreeSession;
 }
 
 function displayTimingInfo(startTime: Date, showStats: boolean): void {
@@ -35,6 +37,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     bypassPermissions,
     pluginDirs,
     tools,
+    worktreeSession,
   } = options;
 
   if (
@@ -163,6 +166,23 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
 
     // Destroy agent and exit after sendMessage completes
     await agent.destroy();
+
+    // Handle worktree cleanup for print mode
+    if (worktreeSession) {
+      const cwd = process.cwd();
+      const baseBranch = getDefaultRemoteBranch(cwd);
+      const hasChanges = hasUncommittedChanges(cwd);
+      const hasCommits = hasNewCommits(cwd, baseBranch);
+
+      if (!hasChanges && !hasCommits) {
+        removeWorktree(worktreeSession, cwd);
+      } else {
+        process.stdout.write(
+          `\n⚠️ Worktree '${worktreeSession.name}' has changes or commits. Keeping it at: ${worktreeSession.path}\n`,
+        );
+      }
+    }
+
     process.exit(0);
   } catch (error) {
     console.error("Failed to send message:", error);
@@ -182,6 +202,22 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       displayTimingInfo(startTime, showStats);
 
       await agent.destroy();
+
+      // Handle worktree cleanup for print mode even on error
+      if (worktreeSession) {
+        const cwd = process.cwd();
+        const baseBranch = getDefaultRemoteBranch(cwd);
+        const hasChanges = hasUncommittedChanges(cwd);
+        const hasCommits = hasNewCommits(cwd, baseBranch);
+
+        if (!hasChanges && !hasCommits) {
+          removeWorktree(worktreeSession, cwd);
+        } else {
+          process.stdout.write(
+            `\n⚠️ Worktree '${worktreeSession.name}' has changes or commits. Keeping it at: ${worktreeSession.path}\n`,
+          );
+        }
+      }
     }
     process.exit(1);
   }

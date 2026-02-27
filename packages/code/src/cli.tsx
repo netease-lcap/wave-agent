@@ -2,6 +2,7 @@ import React from "react";
 import { render } from "ink";
 import { App } from "./components/App.js";
 import { cleanupLogs } from "./utils/logger.js";
+import { type WorktreeSession } from "./utils/worktree.js";
 
 export interface CliOptions {
   restoreSessionId?: string;
@@ -9,6 +10,7 @@ export interface CliOptions {
   bypassPermissions?: boolean;
   pluginDirs?: string[];
   tools?: string[];
+  worktreeSession?: WorktreeSession;
 }
 
 export async function startCli(options: CliOptions): Promise<void> {
@@ -18,6 +20,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     bypassPermissions,
     pluginDirs,
     tools,
+    worktreeSession,
   } = options;
 
   // Continue with ink-based UI for normal mode
@@ -28,8 +31,6 @@ export async function startCli(options: CliOptions): Promise<void> {
   const cleanup = async () => {
     if (isCleaningUp) return;
     isCleaningUp = true;
-
-    console.log("\nShutting down gracefully...");
 
     try {
       // Clean up old log files
@@ -52,21 +53,6 @@ export async function startCli(options: CliOptions): Promise<void> {
     }
   };
 
-  // Handle process signals
-  process.on("SIGINT", cleanup);
-  process.on("SIGTERM", cleanup);
-
-  // Handle uncaught exceptions
-  process.on("uncaughtException", (error) => {
-    console.error("Uncaught exception:", error);
-    cleanup();
-  });
-
-  process.on("unhandledRejection", (reason, promise) => {
-    console.error("Unhandled rejection at:", promise, "reason:", reason);
-    cleanup();
-  });
-
   // Render the application
   const { unmount } = render(
     <App
@@ -75,6 +61,8 @@ export async function startCli(options: CliOptions): Promise<void> {
       bypassPermissions={bypassPermissions}
       pluginDirs={pluginDirs}
       tools={tools}
+      worktreeSession={worktreeSession}
+      onExit={cleanup}
     />,
   );
 

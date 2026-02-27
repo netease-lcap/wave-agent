@@ -4,7 +4,7 @@ import { generateRandomName } from "../../src/utils/nameGenerator.js";
 describe("nameGenerator", () => {
   it("should generate a random name without seed", () => {
     const name = generateRandomName();
-    expect(name).toMatch(/^[a-z]+-[a-z]+$/);
+    expect(name).toMatch(/^[a-z]+-[a-z]+-[a-z]+$/);
   });
 
   it("should generate the same name for the same seed", () => {
@@ -22,6 +22,6 @@ describe("nameGenerator", () => {
 
   it("should generate a name even with empty seed", () => {
     const name = generateRandomName("");
-    expect(name).toMatch(/^[a-z]+-[a-z]+$/);
+    expect(name).toMatch(/^[a-z]+-[a-z]+-[a-z]+$/);
   });
 });

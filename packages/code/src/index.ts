@@ -1,7 +1,8 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { startCli } from "./cli.js";
-import { Scope } from "wave-agent-sdk";
+import { Scope, generateRandomName } from "wave-agent-sdk";
+import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 
 // Export main function for external use
 export async function main() {
@@ -18,6 +19,12 @@ export async function main() {
         alias: "c",
         description: "Continue from last session",
         type: "boolean",
+        global: false,
+      })
+      .option("worktree", {
+        alias: "w",
+        description: "Start session in a git worktree (optional name)",
+        type: "string",
         global: false,
       })
       .option("print", {
@@ -231,6 +238,20 @@ export async function main() {
 
     const tools = parseTools(argv.tools as string | undefined);
 
+    let worktreeSession: WorktreeSession | undefined;
+    if (
+      argv.worktree !== undefined ||
+      process.argv.includes("-w") ||
+      process.argv.includes("--worktree")
+    ) {
+      let name = argv.worktree as string | undefined;
+      if (!name || name === "") {
+        name = generateRandomName();
+      }
+      worktreeSession = createWorktree(name, process.cwd());
+      process.chdir(worktreeSession.path);
+    }
+
     // Handle restore session command
     if (
       argv.restore === "" ||
@@ -251,6 +272,7 @@ export async function main() {
         bypassPermissions: argv.dangerouslySkipPermissions,
         pluginDirs: argv.pluginDir as string[],
         tools,
+        worktreeSession,
       });
     }
 
@@ -265,6 +287,7 @@ export async function main() {
         bypassPermissions: argv.dangerouslySkipPermissions,
         pluginDirs: argv.pluginDir as string[],
         tools,
+        worktreeSession,
       });
     }
 
@@ -274,6 +297,7 @@ export async function main() {
       bypassPermissions: argv.dangerouslySkipPermissions,
       pluginDirs: argv.pluginDir as string[],
       tools,
+      worktreeSession,
     });
   } catch (error) {
     console.error("Failed to start WAVE Code:", error);
