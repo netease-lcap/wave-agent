@@ -38,6 +38,7 @@ export const useInputManager = (
   const [showMcpManager, setShowMcpManager] = useState(false);
   const [showRewindManager, setShowRewindManager] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showStatusCommand, setShowStatusCommand] = useState(false);
   const [permissionMode, setPermissionModeState] =
     useState<PermissionMode>("default");
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
@@ -70,6 +71,9 @@ export const useInputManager = (
         },
         onHelpStateChange: (show) => {
           setShowHelp(show);
+        },
+        onStatusCommandStateChange: (show) => {
+          setShowStatusCommand(show);
         },
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
@@ -107,6 +111,9 @@ export const useInputManager = (
         },
         onHelpStateChange: (show) => {
           setShowHelp(show);
+        },
+        onStatusCommandStateChange: (show) => {
+          setShowStatusCommand(show);
         },
         onPermissionModeChange: (mode) => {
           setPermissionModeState(mode);
@@ -268,6 +275,7 @@ export const useInputManager = (
     showMcpManager,
     showRewindManager,
     showHelp,
+    showStatusCommand,
     permissionMode,
     attachedImages,
     isManagerReady,
@@ -315,6 +323,10 @@ export const useInputManager = (
     setShowHelp: useCallback((show: boolean) => {
       managerRef.current?.setShowHelp(show);
       setShowHelp(show);
+    }, []),
+    setShowStatusCommand: useCallback((show: boolean) => {
+      managerRef.current?.setShowStatusCommand(show);
+      setShowStatusCommand(show);
     }, []),
     setPermissionMode: useCallback((mode: PermissionMode) => {
       setPermissionModeState(mode);

@@ -33,6 +33,7 @@ export interface InputManagerCallbacks {
   onMcpManagerStateChange?: (show: boolean) => void;
   onRewindManagerStateChange?: (show: boolean) => void;
   onHelpStateChange?: (show: boolean) => void;
+  onStatusCommandStateChange?: (show: boolean) => void;
   onImagesStateChange?: (images: AttachedImage[]) => void;
   onSendMessage?: (
     content: string,
@@ -86,6 +87,7 @@ export class InputManager {
   private showMcpManager: boolean = false;
   private showRewindManager: boolean = false;
   private showHelp: boolean = false;
+  private showStatusCommand: boolean = false;
 
   // Permission mode state
   private permissionMode: PermissionMode = "default";
@@ -353,6 +355,9 @@ export class InputManager {
             commandExecuted = true;
           } else if (command === "help") {
             this.setShowHelp(true);
+            commandExecuted = true;
+          } else if (command === "status") {
+            this.setShowStatusCommand(true);
             commandExecuted = true;
           }
         }
@@ -667,6 +672,15 @@ export class InputManager {
     this.callbacks.onHelpStateChange?.(show);
   }
 
+  getShowStatusCommand(): boolean {
+    return this.showStatusCommand;
+  }
+
+  setShowStatusCommand(show: boolean): void {
+    this.showStatusCommand = show;
+    this.callbacks.onStatusCommandStateChange?.(show);
+  }
+
   // Permission mode methods
   getPermissionMode(): PermissionMode {
     return this.permissionMode;
@@ -922,7 +936,8 @@ export class InputManager {
       (isLoading || isCommandRunning) &&
       !this.showBackgroundTaskManager &&
       !this.showMcpManager &&
-      !this.showRewindManager
+      !this.showRewindManager &&
+      !this.showStatusCommand
     ) {
       // Unified interrupt for AI message generation and command execution
       this.callbacks.onAbortMessage?.();
@@ -944,15 +959,17 @@ export class InputManager {
       this.showBackgroundTaskManager ||
       this.showMcpManager ||
       this.showRewindManager ||
-      this.showHelp
+      this.showHelp ||
+      this.showStatusCommand
     ) {
       if (
         this.showBackgroundTaskManager ||
         this.showMcpManager ||
         this.showRewindManager ||
-        this.showHelp
+        this.showHelp ||
+        this.showStatusCommand
       ) {
-        // Task manager, MCP manager, Rewind and Help don't need to handle input, handled by component itself
+        // Task manager, MCP manager, Rewind, Help and Status don't need to handle input, handled by component itself
         // Return true to indicate we've "handled" it (by ignoring it) so it doesn't leak to normal input
         return true;
       }
