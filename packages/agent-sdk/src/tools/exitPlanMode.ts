@@ -93,7 +93,7 @@ Ensure your plan is complete and unambiguous:
       if (permissionResult.behavior === "deny") {
         return {
           success: false,
-          content: `User feedback: ${permissionResult.message || "Plan rejected by user"}. Please update your proposal accordingly.`,
+          content: `Please update your proposal based on the following user feedback: ${permissionResult.message || "Plan rejected by user"}`,
           error: permissionResult.message ? undefined : "Plan rejected by user",
         };
       }

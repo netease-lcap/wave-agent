@@ -201,7 +201,7 @@ describe("ExitPlanMode Integration", () => {
 
     expect(result.success).toBe(false);
     expect(result.content).toBe(
-      `User feedback: ${feedback}. Please update your proposal accordingly.`,
+      `Please update your proposal based on the following user feedback: ${feedback}`,
     );
     expect(agent.getPermissionMode()).toBe("plan");
   });
