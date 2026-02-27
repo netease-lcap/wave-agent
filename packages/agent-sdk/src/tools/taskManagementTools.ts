@@ -116,11 +116,12 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 
     if (context.reversionManager && context.messageId) {
       const taskPath = taskManager.getTaskPath(taskId);
-      await context.reversionManager.recordSnapshot(
+      const snapshotId = await context.reversionManager.recordSnapshot(
         context.messageId,
         taskPath,
         "create",
       );
+      await context.reversionManager.commitSnapshot(snapshotId);
     }
 
     return {
@@ -333,9 +334,10 @@ Set up task dependencies:
       };
     }
 
+    let snapshotId: string | undefined;
     if (context.reversionManager && context.messageId) {
       const taskPath = taskManager.getTaskPath(taskId);
-      await context.reversionManager.recordSnapshot(
+      snapshotId = await context.reversionManager.recordSnapshot(
         context.messageId,
         taskPath,
         "modify",
@@ -402,10 +404,22 @@ Set up task dependencies:
         for (const targetId of blocksToAdd) {
           const targetTask = await taskManager.getTask(targetId);
           if (targetTask && !targetTask.blockedBy.includes(taskId)) {
+            let targetSnapshotId: string | undefined;
+            if (context.reversionManager && context.messageId) {
+              const targetPath = taskManager.getTaskPath(targetId);
+              targetSnapshotId = await context.reversionManager.recordSnapshot(
+                context.messageId,
+                targetPath,
+                "modify",
+              );
+            }
             await taskManager.updateTask({
               ...targetTask,
               blockedBy: [...targetTask.blockedBy, taskId],
             });
+            if (context.reversionManager && targetSnapshotId) {
+              await context.reversionManager.commitSnapshot(targetSnapshotId);
+            }
           }
         }
       }
@@ -423,16 +437,32 @@ Set up task dependencies:
         for (const targetId of blockedByToAdd) {
           const targetTask = await taskManager.getTask(targetId);
           if (targetTask && !targetTask.blocks.includes(taskId)) {
+            let targetSnapshotId: string | undefined;
+            if (context.reversionManager && context.messageId) {
+              const targetPath = taskManager.getTaskPath(targetId);
+              targetSnapshotId = await context.reversionManager.recordSnapshot(
+                context.messageId,
+                targetPath,
+                "modify",
+              );
+            }
             await taskManager.updateTask({
               ...targetTask,
               blocks: [...targetTask.blocks, taskId],
             });
+            if (context.reversionManager && targetSnapshotId) {
+              await context.reversionManager.commitSnapshot(targetSnapshotId);
+            }
           }
         }
       }
     }
 
     await taskManager.updateTask(updatedTask);
+
+    if (context.reversionManager && snapshotId) {
+      await context.reversionManager.commitSnapshot(snapshotId);
+    }
 
     let content = `Updated task #${taskId} ${updatedFields.join(", ")}`;
     if (updatedTask.status === "completed") {
