@@ -85,14 +85,11 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     if (viewMode === "list") {
       // List mode navigation
       if (key.return) {
-        setSelectedIndex((prev) => {
-          if (tasks.length > 0 && prev < tasks.length) {
-            const selectedTask = tasks[prev];
-            setDetailTaskId(selectedTask.id);
-            setViewMode("detail");
-          }
-          return prev;
-        });
+        if (tasks.length > 0 && selectedIndex < tasks.length) {
+          const selectedTask = tasks[selectedIndex];
+          setDetailTaskId(selectedTask.id);
+          setViewMode("detail");
+        }
         return;
       }
 
@@ -102,25 +99,20 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
       }
 
       if (key.upArrow) {
-        setSelectedIndex((prev) => Math.max(0, prev - 1));
+        setSelectedIndex(Math.max(0, selectedIndex - 1));
         return;
       }
 
       if (key.downArrow) {
-        setSelectedIndex((prev) => Math.min(tasks.length - 1, prev + 1));
+        setSelectedIndex(Math.min(tasks.length - 1, selectedIndex + 1));
         return;
       }
 
-      if (input === "k") {
-        setSelectedIndex((prev) => {
-          if (tasks.length > 0 && prev < tasks.length) {
-            const selectedTask = tasks[prev];
-            if (selectedTask.status === "running") {
-              stopTask(selectedTask.id);
-            }
-          }
-          return prev;
-        });
+      if (input === "k" && tasks.length > 0 && selectedIndex < tasks.length) {
+        const selectedTask = tasks[selectedIndex];
+        if (selectedTask.status === "running") {
+          stopTask(selectedTask.id);
+        }
         return;
       }
     } else if (viewMode === "detail") {
