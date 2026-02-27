@@ -55,8 +55,14 @@ describe("SessionSelector", () => {
     // Initially first session is selected
     expect(lastFrame()).toContain("▶ session-1");
 
-    // Press down arrow and up arrow
+    // Press down arrow
     stdin.write("\u001B[B"); // Down arrow
+
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("▶ session-2");
+    });
+
+    // Press up arrow
     stdin.write("\u001B[A"); // Up arrow
 
     await vi.waitFor(() => {
