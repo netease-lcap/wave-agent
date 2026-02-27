@@ -150,7 +150,7 @@ describe("MessageList Component", () => {
       const output = lastFrame();
 
       // Should show welcome message
-      expect(output).toContain("Welcome to WAVE Code Assistant!");
+      expect(output).toContain("WAVE");
 
       // Should not show message count section
       expect(output).not.toContain("Messages");

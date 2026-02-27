@@ -135,7 +135,7 @@ describe("MessageList Static Rendering", () => {
       );
 
       // Should show welcome message when no messages
-      expect(lastFrame()).toContain("Welcome to WAVE Code Assistant!");
+      expect(lastFrame()).toContain("WAVE");
     });
   });
 

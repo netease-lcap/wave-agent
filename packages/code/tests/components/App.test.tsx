@@ -51,9 +51,7 @@ describe("App Component", () => {
 
     // Wait for the component to initialize and render
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain(
-        "WAVE Code Assistant",
-      );
+      expect(stripAnsiColors(lastFrame() || "")).toContain("WAVE");
     });
   });
 

@@ -58,6 +58,12 @@ describe("ChatInterface Rewind Visibility", () => {
       tasks: [],
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
+      getModelConfig: vi
+        .fn()
+        .mockReturnValue({
+          agentModel: "test-model",
+          fastModel: "test-fast-model",
+        }),
       getFullMessageThread: vi
         .fn()
         .mockResolvedValue({ messages: [], sessionIds: [] }),
@@ -131,6 +137,12 @@ describe("ChatInterface Rewind Visibility", () => {
       tasks: [],
       isTaskListVisible: true,
       setIsTaskListVisible: vi.fn(),
+      getModelConfig: vi
+        .fn()
+        .mockReturnValue({
+          agentModel: "test-model",
+          fastModel: "test-fast-model",
+        }),
       getFullMessageThread: vi
         .fn()
         .mockResolvedValue({ messages: [], sessionIds: [] }),

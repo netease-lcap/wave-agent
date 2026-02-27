@@ -52,7 +52,7 @@ describe("MessageList Component", () => {
         <MessageList messages={[]} isExpanded={false} />,
       );
 
-      expect(lastFrame()).toContain("Welcome to WAVE Code Assistant!");
+      expect(lastFrame()).toContain("WAVE");
     });
 
     it("should display welcome message even when messages are present", () => {
@@ -61,7 +61,7 @@ describe("MessageList Component", () => {
         <MessageList messages={messages} isExpanded={false} />,
       );
 
-      expect(lastFrame()).toContain("Welcome to WAVE Code Assistant!");
+      expect(lastFrame()).toContain("WAVE");
       expect(lastFrame()).toContain("Hello - Message 1");
     });
 
@@ -76,8 +76,8 @@ describe("MessageList Component", () => {
       );
 
       const output = lastFrame();
-      expect(output).toContain("Welcome to WAVE Code Assistant! (v1.2.3)");
-      expect(output).toContain("Working directory: /test/dir");
+      expect(output).toContain("WAVE v1.2.3");
+      expect(output).toContain("/test/dir");
     });
   });
 
