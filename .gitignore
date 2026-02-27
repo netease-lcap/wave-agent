@@ -14,3 +14,4 @@ Thumbs.db
 .idea/
 nohup.out
 .wave/settings.local.json
+.wave/worktrees/
