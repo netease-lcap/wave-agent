@@ -14,34 +14,38 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
   onCancel,
 }) => {
   const MAX_VISIBLE_ITEMS = 5;
-  const [state, setState] = useState({
-    selectedIndex: 0,
-    entries: [] as PromptEntry[],
-  });
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [entries, setEntries] = useState<PromptEntry[]>([]);
+
+  const entriesRef = React.useRef<PromptEntry[]>([]);
+  const selectedIndexRef = React.useRef(0);
+
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
+
+  useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
 
   useEffect(() => {
     const fetchHistory = async () => {
       const results = await PromptHistoryManager.searchHistory(searchQuery);
       const limitedResults = results.slice(0, 20);
-      setState({
-        entries: limitedResults,
-        selectedIndex: 0,
-      });
+      setEntries(limitedResults); // Limit to 20 results
+      setSelectedIndex(0);
     };
     fetchHistory();
   }, [searchQuery]);
 
   useInput((input, key) => {
     if (key.return) {
-      setState((prev) => {
-        if (
-          prev.entries.length > 0 &&
-          prev.selectedIndex < prev.entries.length
-        ) {
-          onSelect(prev.entries[prev.selectedIndex].prompt);
-        }
-        return prev;
-      });
+      if (
+        entriesRef.current.length > 0 &&
+        selectedIndexRef.current < entriesRef.current.length
+      ) {
+        onSelect(entriesRef.current[selectedIndexRef.current].prompt);
+      }
       return;
     }
 
@@ -51,26 +55,17 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
     }
 
     if (key.upArrow) {
-      setState((prev) => ({
-        ...prev,
-        selectedIndex: Math.max(0, prev.selectedIndex - 1),
-      }));
+      setSelectedIndex((prev) => Math.max(0, prev - 1));
       return;
     }
 
     if (key.downArrow) {
-      setState((prev) => ({
-        ...prev,
-        selectedIndex: Math.min(
-          prev.entries.length - 1,
-          prev.selectedIndex + 1,
-        ),
-      }));
+      setSelectedIndex((prev) =>
+        Math.min(entriesRef.current.length - 1, prev + 1),
+      );
       return;
     }
   });
-
-  const { entries, selectedIndex } = state;
 
   if (entries.length === 0) {
     return (
