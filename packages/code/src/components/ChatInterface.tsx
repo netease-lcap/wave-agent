@@ -38,7 +38,10 @@ export const ChatInterface: React.FC = () => {
     setWasLastDetailsTooTall,
     version,
     workdir,
+    getModelConfig,
   } = useChat();
+
+  const model = getModelConfig().agentModel;
 
   const handleDetailsHeightMeasured = useCallback((height: number) => {
     setDetailsHeight(height);
@@ -95,6 +98,7 @@ export const ChatInterface: React.FC = () => {
         hideDynamicBlocks={isConfirmationVisible}
         version={version}
         workdir={workdir}
+        model={model}
       />
 
       {(isLoading || isCommandRunning || isCompressing) &&

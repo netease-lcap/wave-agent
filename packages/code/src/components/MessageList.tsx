@@ -10,6 +10,7 @@ export interface MessageListProps {
   hideDynamicBlocks?: boolean;
   version?: string;
   workdir?: string;
+  model?: string;
 }
 
 export const MessageList = React.memo(
@@ -19,15 +20,17 @@ export const MessageList = React.memo(
     hideDynamicBlocks = false,
     version,
     workdir,
+    model,
   }: MessageListProps) => {
     const welcomeMessage = (
-      <Box flexDirection="column">
+      <Box flexDirection="column" paddingTop={1}>
         <Text color="gray">
-          Welcome to WAVE Code Assistant!{version ? ` (v${version})` : ""}
+          WAVE{version ? ` v${version}` : ""}
+          {model ? ` • ${model}` : ""}
         </Text>
         {workdir && (
           <Text color="gray" wrap="truncate-middle">
-            Working directory: {workdir.replace(os.homedir(), "~")}
+            {workdir.replace(os.homedir(), "~")}
           </Text>
         )}
       </Box>
