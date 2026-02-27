@@ -102,57 +102,55 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
       const isMultiSelect = currentQuestion.multiSelect;
 
       if (key.return) {
-        setQuestionState((prev) => {
-          const isOtherFocused =
-            prev.selectedOptionIndex === options.length - 1;
-          let answer = "";
-          if (isMultiSelect) {
-            const selectedLabels = Array.from(prev.selectedOptionIndices)
-              .filter((i) => i < currentQuestion.options.length)
-              .map((i) => currentQuestion.options[i].label);
-            const isOtherChecked = prev.selectedOptionIndices.has(
-              options.length - 1,
-            );
-            if (isOtherChecked && prev.otherText.trim()) {
-              selectedLabels.push(prev.otherText.trim());
-            }
-            answer = selectedLabels.join(", ");
-          } else {
-            if (isOtherFocused) {
-              answer = prev.otherText.trim();
-            } else {
-              answer = options[prev.selectedOptionIndex].label;
-            }
+        const isOtherFocused =
+          questionState.selectedOptionIndex === options.length - 1;
+        let answer = "";
+        if (isMultiSelect) {
+          const selectedLabels = Array.from(questionState.selectedOptionIndices)
+            .filter((i) => i < currentQuestion.options.length)
+            .map((i) => currentQuestion.options[i].label);
+          const isOtherChecked = questionState.selectedOptionIndices.has(
+            options.length - 1,
+          );
+          if (isOtherChecked && questionState.otherText.trim()) {
+            selectedLabels.push(questionState.otherText.trim());
           }
-
-          if (!answer) return prev;
-
-          const newAnswers = {
-            ...prev.userAnswers,
-            [currentQuestion.question]: answer,
-          };
-
-          if (prev.currentQuestionIndex < questions.length - 1) {
-            return {
-              ...prev,
-              currentQuestionIndex: prev.currentQuestionIndex + 1,
-              selectedOptionIndex: 0,
-              selectedOptionIndices: new Set(),
-              userAnswers: newAnswers,
-              otherText: "",
-              otherCursorPosition: 0,
-            };
+          answer = selectedLabels.join(", ");
+        } else {
+          if (isOtherFocused) {
+            answer = questionState.otherText.trim();
           } else {
-            onDecision({
-              behavior: "allow",
-              message: JSON.stringify(newAnswers),
-            });
-            return {
-              ...prev,
-              userAnswers: newAnswers,
-            };
+            answer = options[questionState.selectedOptionIndex].label;
           }
-        });
+        }
+
+        if (!answer) return;
+
+        const newAnswers = {
+          ...questionState.userAnswers,
+          [currentQuestion.question]: answer,
+        };
+
+        if (questionState.currentQuestionIndex < questions.length - 1) {
+          setQuestionState({
+            ...questionState,
+            currentQuestionIndex: questionState.currentQuestionIndex + 1,
+            selectedOptionIndex: 0,
+            selectedOptionIndices: new Set(),
+            userAnswers: newAnswers,
+            otherText: "",
+            otherCursorPosition: 0,
+          });
+        } else {
+          onDecision({
+            behavior: "allow",
+            message: JSON.stringify(newAnswers),
+          });
+          setQuestionState({
+            ...questionState,
+            userAnswers: newAnswers,
+          });
+        }
         return;
       }
 

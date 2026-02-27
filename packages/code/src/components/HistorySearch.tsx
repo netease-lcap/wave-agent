@@ -33,15 +33,10 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
 
   useInput((input, key) => {
     if (key.return) {
-      setState((prev) => {
-        if (
-          prev.entries.length > 0 &&
-          prev.selectedIndex < prev.entries.length
-        ) {
-          onSelect(prev.entries[prev.selectedIndex].prompt);
-        }
-        return prev;
-      });
+      const selectedEntry = state.entries[state.selectedIndex];
+      if (selectedEntry) {
+        onSelect(selectedEntry.prompt);
+      }
       return;
     }
 

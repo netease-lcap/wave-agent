@@ -17,12 +17,9 @@ export const SessionSelector: React.FC<SessionSelectorProps> = ({
 
   useInput((input, key) => {
     if (key.return) {
-      setSelectedIndex((prev) => {
-        if (sessions.length > 0 && prev < sessions.length) {
-          onSelect(sessions[prev].id);
-        }
-        return prev;
-      });
+      if (sessions.length > 0 && selectedIndex < sessions.length) {
+        onSelect(sessions[selectedIndex].id);
+      }
       return;
     }
 

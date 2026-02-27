@@ -433,13 +433,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Permission management methods
   const setPermissionMode = useCallback((mode: PermissionMode) => {
-    setPermissionModeState((prev) => {
-      if (prev === mode) return prev;
-      if (agentRef.current && agentRef.current.getPermissionMode() !== mode) {
-        agentRef.current.setPermissionMode(mode);
-      }
-      return mode;
-    });
+    setPermissionModeState(mode);
+    if (agentRef.current && agentRef.current.getPermissionMode() !== mode) {
+      agentRef.current.setPermissionMode(mode);
+    }
   }, []);
 
   // MCP management methods - delegate to Agent
