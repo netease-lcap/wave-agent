@@ -27,10 +27,10 @@ This will generate a unique name (e.g., `gentle-swift-breeze`) and create the wo
 When you exit the Wave CLI (e.g., by pressing `Ctrl+C`), the system will check for any uncommitted changes or new commits in the worktree.
 
 ### If No Changes are Detected
-The CLI will exit immediately, leaving the worktree and branch intact.
+The CLI will exit immediately, and the git worktree and its associated branch will be deleted automatically. This keeps your environment clean.
 
 ### If Changes are Detected
-You will see an interactive prompt:
+If you have uncommitted changes or new commits, you will see an interactive prompt:
 
 ```text
 Exiting worktree session

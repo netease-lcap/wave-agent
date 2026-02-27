@@ -84,15 +84,15 @@ As a developer, I want to be warned if I have new commits when exiting a worktre
 
 ### User Story 5 - Clean Exit (Priority: P2)
 
-As a developer, I want the CLI to exit immediately if I haven't made any changes in the worktree, so that I don't have to deal with unnecessary prompts.
+As a developer, I want the CLI to automatically clean up the worktree if I haven't made any changes, so that I don't have to manually delete empty worktrees.
 
-**Why this priority**: Improves user experience by removing friction for "read-only" or "no-change" sessions.
+**Why this priority**: Improves user experience by automating cleanup for "read-only" or "no-change" sessions.
 
-**Independent Test**: Start a worktree session, make no changes, exit the CLI, and verify it exits without any prompt.
+**Independent Test**: Start a worktree session, make no changes, exit the CLI, and verify it exits immediately and the worktree directory and branch are deleted.
 
 **Acceptance Scenarios**:
 
-1. **Given** I am in a worktree session with no uncommitted changes and no new commits, **When** I exit the CLI, **Then** it exits immediately without a prompt.
+1. **Given** I am in a worktree session with no uncommitted changes and no new commits, **When** I exit the CLI, **Then** it exits immediately, and the git worktree and its associated branch are deleted.
 
 ---
 
@@ -124,7 +124,7 @@ As a developer, I want the CLI to exit immediately if I haven't made any changes
 - **FR-009**: The exit prompt MUST offer two options: "Keep worktree" and "Remove worktree".
 - **FR-010**: "Keep worktree" MUST exit the CLI while leaving the worktree directory intact.
 - **FR-011**: "Remove worktree" MUST delete the git worktree (using `git worktree remove --force`) and the worktree branch (using `git branch -D`).
-- **FR-012**: System MUST exit without a prompt if no changes or commits are detected.
+- **FR-012**: System MUST exit without a prompt AND delete the git worktree and branch if no changes or commits are detected.
 - **FR-013**: System MUST error and exit if `-w` or `--worktree` is used outside of a git repository.
 - **FR-014**: System MUST handle `SIGINT` (Ctrl+C) and `SIGTERM` signals by triggering the exit detection and prompt flow.
 - **FR-015**: If the user cancels the exit prompt (e.g., via Esc), the CLI MUST return to the active session.

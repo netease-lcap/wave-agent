@@ -40,5 +40,6 @@ Represents a git worktree session created by the CLI.
 
 4. **User Decision**:
    - If `hasUncommittedChanges` or `hasNewCommits` is `true`, show prompt.
-   - **Keep worktree**: Exit CLI, leave worktree and branch intact.
-   - **Remove worktree**: Run `git worktree remove --force <path>` and `git branch -D <branch>`, then exit.
+     - **Keep worktree**: Exit CLI, leave worktree and branch intact.
+     - **Remove worktree**: Run `git worktree remove --force <path>` and `git branch -D <branch>`, then exit.
+   - If both are `false`, automatically run `git worktree remove --force <path>` and `git branch -D <branch>`, then exit.
