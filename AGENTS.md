@@ -36,6 +36,7 @@ Always use `pnpm` as the package manager.
 
 ## 🔍 Code Navigation & Exploration
 
+- **Worktree Isolation**: If the current working directory is within a worktree (e.g., `.wave/worktrees/`), do NOT read or edit files in the base repository. Always stay within the current worktree.
 - **Code Exploration**: This is a large codebase. NEVER read too many code files at once. ALWAYS prefer using the `LSP` tool (goToDefinition, findReferences, etc.) to understand code relationships and navigate the codebase efficiently.
 
 ## 🤖 Subagent Usage
