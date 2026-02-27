@@ -4,6 +4,13 @@ import { startCli } from "./cli.js";
 import { Scope, generateRandomName } from "wave-agent-sdk";
 import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const packageJsonPath = path.resolve(__dirname, "../package.json");
+const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
+const version = packageJson.version;
 
 // Export main function for external use
 export async function main() {
@@ -282,6 +289,7 @@ export async function main() {
         tools,
         worktreeSession,
         workdir,
+        version,
       });
     }
 
@@ -298,6 +306,7 @@ export async function main() {
         tools,
         worktreeSession,
         workdir,
+        version,
       });
     }
 
@@ -309,6 +318,7 @@ export async function main() {
       tools,
       worktreeSession,
       workdir,
+      version,
     });
   } catch (error) {
     console.error("Failed to start WAVE Code:", error);

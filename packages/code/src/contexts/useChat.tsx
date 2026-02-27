@@ -22,9 +22,10 @@ import {
   AgentCallbacks,
   type ToolPermissionContext,
 } from "wave-agent-sdk";
-import { WorktreeSession } from "../utils/worktree.js";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
+
+import { BaseAppProps } from "../types.js";
 
 // Main Chat Context
 export interface ChatContextType {
@@ -97,6 +98,8 @@ export interface ChatContextType {
   getGatewayConfig: () => import("wave-agent-sdk").GatewayConfig;
   getModelConfig: () => import("wave-agent-sdk").ModelConfig;
   workingDirectory: string;
+  version?: string;
+  workdir?: string;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -109,13 +112,8 @@ export const useChat = () => {
   return context;
 };
 
-export interface ChatProviderProps {
+export interface ChatProviderProps extends BaseAppProps {
   children: React.ReactNode;
-  bypassPermissions?: boolean;
-  pluginDirs?: string[];
-  tools?: string[];
-  workdir?: string;
-  worktreeSession?: WorktreeSession;
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({
@@ -125,6 +123,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   tools,
   workdir,
   worktreeSession,
+  version,
 }) => {
   const { restoreSessionId, continueLastSession } = useAppConfig();
 
@@ -646,6 +645,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     getGatewayConfig,
     getModelConfig,
     workingDirectory,
+    version,
+    workdir,
   };
 
   return (

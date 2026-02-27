@@ -2,16 +2,12 @@ import React from "react";
 import { render } from "ink";
 import { App } from "./components/App.js";
 import { cleanupLogs } from "./utils/logger.js";
-import { type WorktreeSession, removeWorktree } from "./utils/worktree.js";
+import { removeWorktree } from "./utils/worktree.js";
+import { BaseAppProps } from "./types.js";
 
-export interface CliOptions {
+export interface CliOptions extends BaseAppProps {
   restoreSessionId?: string;
   continueLastSession?: boolean;
-  bypassPermissions?: boolean;
-  pluginDirs?: string[];
-  tools?: string[];
-  worktreeSession?: WorktreeSession;
-  workdir?: string;
 }
 
 export async function startCli(options: CliOptions): Promise<void> {
@@ -23,6 +19,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     tools,
     worktreeSession,
     workdir,
+    version,
   } = options;
 
   // Continue with ink-based UI for normal mode
@@ -43,6 +40,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       tools={tools}
       worktreeSession={worktreeSession}
       workdir={workdir}
+      version={version}
       onExit={handleExit}
     />,
     { exitOnCtrlC: false },

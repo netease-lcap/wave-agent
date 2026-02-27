@@ -1,4 +1,5 @@
 import React from "react";
+import os from "os";
 import { Box, Text, Static } from "ink";
 import type { Message } from "wave-agent-sdk";
 import { MessageBlockItem } from "./MessageBlockItem.js";
@@ -7,6 +8,8 @@ export interface MessageListProps {
   messages: Message[];
   isExpanded?: boolean;
   hideDynamicBlocks?: boolean;
+  version?: string;
+  workdir?: string;
 }
 
 export const MessageList = React.memo(
@@ -14,17 +17,21 @@ export const MessageList = React.memo(
     messages,
     isExpanded = false,
     hideDynamicBlocks = false,
+    version,
+    workdir,
   }: MessageListProps) => {
-    // Empty message state
-    if (messages.length === 0) {
-      return (
-        <Box flexDirection="column" gap={1}>
-          <Box flexDirection="column" paddingY={1}>
-            <Text color="gray">Welcome to WAVE Code Assistant!</Text>
-          </Box>
-        </Box>
-      );
-    }
+    const welcomeMessage = (
+      <Box flexDirection="column">
+        <Text color="gray">
+          Welcome to WAVE Code Assistant!{version ? ` (v${version})` : ""}
+        </Text>
+        {workdir && (
+          <Text color="gray" wrap="truncate-middle">
+            Working directory: {workdir.replace(os.homedir(), "~")}
+          </Text>
+        )}
+      </Box>
+    );
 
     // Limit messages when expanded to prevent long rendering times
     const maxExpandedMessages = 20;
@@ -63,20 +70,34 @@ export const MessageList = React.memo(
       ? []
       : blocksWithStatus.filter((b) => b.isDynamic);
 
+    const staticItems = [
+      { isWelcome: true, key: "welcome", block: undefined, message: undefined },
+      ...staticBlocks.map((b) => ({ ...b, isWelcome: false })),
+    ];
+
     return (
       <Box flexDirection="column" paddingBottom={1}>
-        {/* Static blocks */}
-        {staticBlocks.length > 0 && (
-          <Static items={staticBlocks}>
-            {(item) => (
-              <MessageBlockItem
-                key={item.key}
-                block={item.block}
-                message={item.message}
-                isExpanded={isExpanded}
-                paddingTop={1}
-              />
-            )}
+        {/* Static items (Welcome message + Static blocks) */}
+        {staticItems.length > 0 && (
+          <Static items={staticItems}>
+            {(item) => {
+              if (item.isWelcome) {
+                return (
+                  <React.Fragment key={item.key}>
+                    {welcomeMessage}
+                  </React.Fragment>
+                );
+              }
+              return (
+                <MessageBlockItem
+                  key={item.key}
+                  block={item.block!}
+                  message={item.message!}
+                  isExpanded={isExpanded}
+                  paddingTop={1}
+                />
+              );
+            }}
           </Static>
         )}
 
