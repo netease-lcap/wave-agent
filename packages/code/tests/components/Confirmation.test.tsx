@@ -127,12 +127,12 @@ describe("Confirmation", () => {
 
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
-          "Use ↑↓ to navigate • ESC to cancel",
+          "Use ↑↓ or Tab to navigate • ESC to cancel",
         );
       });
 
       const frame = lastFrame();
-      expect(frame).toContain("Use ↑↓ to navigate • ESC to cancel");
+      expect(frame).toContain("Use ↑↓ or Tab to navigate • ESC to cancel");
     });
 
     it("should show correct auto-accept text for Bash without repeating command", async () => {
@@ -945,12 +945,12 @@ describe("Confirmation", () => {
 
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
-          "Use ↑↓ to navigate • ESC to cancel",
+          "Use ↑↓ or Tab to navigate • ESC to cancel",
         );
       });
 
       const frame = lastFrame();
-      expect(frame).toContain("Use ↑↓ to navigate • ESC to cancel");
+      expect(frame).toContain("Use ↑↓ or Tab to navigate • ESC to cancel");
       expect(frame).toContain("> Yes, proceed"); // Visual indicator of selection
       expect(frame).toContain("  Yes, and auto-accept edits"); // Visual indicator of non-selection
       expect(frame).toContain("  Type here to tell Wave what to change"); // Visual indicator of non-selection
