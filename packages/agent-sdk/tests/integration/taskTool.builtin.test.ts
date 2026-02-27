@@ -140,7 +140,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       expect(result).toEqual({
         success: true,
         content: "Search completed successfully",
-        shortResult: "Task completed by Explore",
+        shortResult: "Task completed",
       });
     });
 
@@ -197,7 +197,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       );
       expect(result.success).toBe(true);
       expect(result.content).toBe("Research completed");
-      expect(result.shortResult).toBe("Task completed by general-purpose");
+      expect(result.shortResult).toBe("Task completed");
     });
 
     it("should handle fastModel configuration correctly", async () => {
@@ -304,7 +304,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
         success: true,
         content:
           "Plan completed successfully\n\n### Critical Files for Implementation\n- src/main.ts",
-        shortResult: "Task completed by Plan",
+        shortResult: "Task completed",
       });
     });
 
