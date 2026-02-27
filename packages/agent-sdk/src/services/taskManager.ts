@@ -110,7 +110,7 @@ export class TaskManager extends EventEmitter {
       const content = JSON.stringify(fullTask, null, 2);
       await fs.writeFile(taskPath, content, "utf8");
       this.emit("tasksChange", this.taskListId);
-      logger.info(`Task ${taskId} created in task list ${this.taskListId}`);
+      logger.debug(`Task ${taskId} created in task list ${this.taskListId}`);
       return taskId;
     });
   }
@@ -141,7 +141,7 @@ export class TaskManager extends EventEmitter {
       const content = JSON.stringify(task, null, 2);
       await fs.writeFile(taskPath, content, "utf8");
       this.emit("tasksChange", this.taskListId);
-      logger.info(`Task ${task.id} updated in task list ${this.taskListId}`);
+      logger.debug(`Task ${task.id} updated in task list ${this.taskListId}`);
     });
   }
 
