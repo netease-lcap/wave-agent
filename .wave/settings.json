@@ -18,5 +18,17 @@
   },
   "enabledPlugins": {
     "typescript-lsp@wave-plugins-official": true
+  },
+  "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pnpm install && pnpm build"
+          }
+        ]
+      }
+    ]
   }
 }

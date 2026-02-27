@@ -107,6 +107,10 @@ export interface AgentOptions {
    * - string[]: Enable only the tools with the specified names.
    */
   tools?: string[];
+  /**Optional worktree name */
+  worktreeName?: string;
+  /**Whether this is a newly created worktree */
+  isNewWorktree?: boolean;
 }
 
 export interface AgentCallbacks
@@ -512,6 +516,37 @@ export class Agent {
     } catch (error) {
       this.logger?.error("Failed to initialize hooks system:", error);
       // Don't throw error to prevent app startup failure
+    }
+
+    // Trigger WorktreeCreate hook if this is a new worktree
+    if (this.options.isNewWorktree && this.hookManager) {
+      try {
+        this.logger?.info(
+          `Triggering WorktreeCreate hook for ${this.options.worktreeName}...`,
+        );
+        const hookResults = await this.hookManager.executeHooks(
+          "WorktreeCreate",
+          {
+            event: "WorktreeCreate",
+            projectDir: this.workdir,
+            timestamp: new Date(),
+            sessionId: this.sessionId,
+            transcriptPath: this.messageManager.getTranscriptPath(),
+            cwd: this.workdir,
+            worktreeName: this.options.worktreeName,
+            env: this.configurationService.getEnvironmentVars(),
+          },
+        );
+
+        // Process hook results
+        this.hookManager.processHookResults(
+          "WorktreeCreate",
+          hookResults,
+          this.messageManager,
+        );
+      } catch (error) {
+        this.logger?.warn("WorktreeCreate hooks execution failed:", error);
+      }
     }
 
     // Resolve and validate configuration after loading settings.json

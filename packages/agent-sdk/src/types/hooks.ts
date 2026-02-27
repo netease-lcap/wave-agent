@@ -19,7 +19,8 @@ export type HookEvent =
   | "UserPromptSubmit"
   | "Stop"
   | "SubagentStop"
-  | "Notification";
+  | "Notification"
+  | "WorktreeCreate";
 
 // Individual hook command configuration
 export interface HookCommand {
@@ -98,6 +99,7 @@ export function isValidHookEvent(event: string): event is HookEvent {
     "Stop",
     "SubagentStop",
     "Notification",
+    "WorktreeCreate",
   ].includes(event);
 }
 
@@ -146,6 +148,7 @@ export interface HookJsonInput {
   subagent_type?: string; // Present when hook is executed by a subagent
   message?: string; // Present for Notification events
   notification_type?: string; // Present for Notification events
+  name?: string; // Present for WorktreeCreate events
 }
 
 // Extended context interface for passing additional data to hook executor
@@ -160,6 +163,7 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   subagentType?: string; // Subagent type when hook is executed by a subagent
   message?: string; // Notification message (Notification only)
   notificationType?: string; // Notification type (Notification only)
+  worktreeName?: string; // Worktree name (WorktreeCreate only)
 }
 
 // Environment variables injected into hook processes

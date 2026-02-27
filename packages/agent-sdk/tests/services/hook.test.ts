@@ -22,7 +22,17 @@ import {
   executeCommands,
   isCommandSafe,
 } from "../../src/services/hook.js";
-import type { HookExecutionContext } from "../../src/types/hooks.js";
+import type {
+  HookExecutionContext,
+  ExtendedHookExecutionContext,
+} from "../../src/types/hooks.js";
+
+// Mock session service
+vi.mock("../../src/services/session.js", () => ({
+  generateSessionFilePath: vi
+    .fn()
+    .mockResolvedValue("/path/to/transcript.json"),
+}));
 
 // Mock child_process module
 vi.mock("child_process", () => ({
@@ -580,6 +590,82 @@ describe("Hook Services", () => {
       expect(parsedInput.cwd).toBe("/test/cwd");
       expect(parsedInput.hook_event_name).toBe("PostToolUse");
       expect(parsedInput.subagent_type).toBeUndefined(); // Verify subagent_type is not included
+    });
+  });
+
+  describe("WorktreeCreate hook", () => {
+    it("should NOT inject HOOK_WORKTREE_NAME and HOOK_WORKTREE_PATH environment variables", async () => {
+      const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
+      let spawnEnv: NodeJS.ProcessEnv | undefined;
+
+      mockSpawn.mockImplementation((command, args, options) => {
+        spawnEnv = options?.env;
+        return mockProcess;
+      });
+
+      const worktreeContext: ExtendedHookExecutionContext = {
+        event: "WorktreeCreate",
+        projectDir: "/test/worktree-path",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        worktreeName: "test-worktree",
+      };
+
+      const resultPromise = executeCommand("echo test", worktreeContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(spawnEnv).toBeDefined();
+      expect(spawnEnv!.HOOK_EVENT).toBe("WorktreeCreate");
+      expect(spawnEnv!.HOOK_WORKTREE_NAME).toBeUndefined();
+      expect(spawnEnv!.HOOK_WORKTREE_PATH).toBeUndefined();
+      expect(spawnEnv!.WAVE_PROJECT_DIR).toBe("/test/worktree-path");
+    });
+
+    it("should include 'name' field in JSON input and NOT include 'worktree_name' or 'worktree_path'", async () => {
+      const mockProcess = new MockChildProcess();
+      const mockStdin = new MockStdin();
+      let stdinData = "";
+
+      vi.spyOn(mockStdin, "write").mockImplementation(
+        (_data?: string | Buffer | Uint8Array) => {
+          if (_data) {
+            stdinData += _data.toString();
+          }
+          return true;
+        },
+      );
+
+      mockProcess.stdin = mockStdin;
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const worktreeContext: ExtendedHookExecutionContext = {
+        event: "WorktreeCreate",
+        projectDir: "/test/worktree-path",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        worktreeName: "test-worktree",
+      };
+
+      const resultPromise = executeCommand("echo test", worktreeContext);
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(stdinData).toBeTruthy();
+      const parsedInput = JSON.parse(stdinData);
+      expect(parsedInput.name).toBe("test-worktree");
+      expect(parsedInput.worktree_name).toBeUndefined();
+      expect(parsedInput.worktree_path).toBeUndefined();
+      expect(parsedInput.hook_event_name).toBe("WorktreeCreate");
     });
   });
 });

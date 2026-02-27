@@ -18,6 +18,9 @@ Represents a git worktree session created by the CLI.
   - `true` if there are staged or unstaged changes in the worktree.
 - **hasNewCommits**: `boolean`
   - `true` if there are commits in the worktree branch that are not in the base branch.
+- **isNew**: `boolean`
+  - `true` if the worktree was newly created in the current session.
+  - `false` if an existing worktree was reused.
 
 ## State Transitions
 
@@ -30,6 +33,7 @@ Represents a git worktree session created by the CLI.
    - `WorktreeSession` is initialized with `name`, `path`, and `branch`.
 
 2. **Execution**:
+   - If `isNew` is `true`, trigger `WorktreeCreate` hook event.
    - Agent operates within the worktree directory.
    - User makes changes and/or commits.
 

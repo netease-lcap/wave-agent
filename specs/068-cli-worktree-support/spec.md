@@ -130,6 +130,9 @@ As a developer, I want the CLI to automatically clean up the worktree if I haven
 - **FR-015**: If the user cancels the exit prompt (e.g., via Esc), the CLI MUST return to the active session.
 - **FR-016**: If a worktree with the same name already exists, the system MUST reuse it and skip the creation step.
 - **FR-017**: Exit detection MUST complete within 500ms to avoid noticeable lag for the user.
+- **FR-018**: System MUST trigger a `WorktreeCreate` hook event when a new worktree is created.
+- **FR-019**: The `WorktreeCreate` hook MUST provide a JSON input via stdin containing a `name` field. The hook MUST execute in the newly created worktree directory.
+- **FR-020**: The `WorktreeCreate` hook MUST NOT be triggered when reusing an existing worktree.
 
 ### Key Entities
 

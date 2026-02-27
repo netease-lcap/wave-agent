@@ -22,6 +22,7 @@ import {
   AgentCallbacks,
   type ToolPermissionContext,
 } from "wave-agent-sdk";
+import { WorktreeSession } from "../utils/worktree.js";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
 
@@ -110,6 +111,7 @@ export interface ChatProviderProps {
   pluginDirs?: string[];
   tools?: string[];
   workdir?: string;
+  worktreeSession?: WorktreeSession;
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({
@@ -118,6 +120,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   pluginDirs,
   tools,
   workdir,
+  worktreeSession,
 }) => {
   const { restoreSessionId, continueLastSession } = useAppConfig();
 
@@ -319,6 +322,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           plugins: pluginDirs?.map((path) => ({ type: "local", path })),
           tools,
           workdir,
+          worktreeName: worktreeSession?.name,
+          isNewWorktree: worktreeSession?.isNew,
         });
 
         agentRef.current = agent;
@@ -353,6 +358,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     pluginDirs,
     tools,
     workdir,
+    worktreeSession,
   ]);
 
   // Cleanup on unmount
