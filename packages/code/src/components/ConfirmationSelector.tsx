@@ -70,6 +70,15 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     userAnswers: {} as Record<string, string>,
     otherText: "",
     otherCursorPosition: 0,
+    savedStates: {} as Record<
+      number,
+      {
+        selectedOptionIndex: number;
+        selectedOptionIndices: Set<number>;
+        otherText: string;
+        otherCursorPosition: number;
+      }
+    >,
   });
 
   const questions =
@@ -133,23 +142,75 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
           };
 
           if (prev.currentQuestionIndex < questions.length - 1) {
-            return {
-              ...prev,
-              currentQuestionIndex: prev.currentQuestionIndex + 1,
+            const nextIndex = prev.currentQuestionIndex + 1;
+            const savedStates = {
+              ...prev.savedStates,
+              [prev.currentQuestionIndex]: {
+                selectedOptionIndex: prev.selectedOptionIndex,
+                selectedOptionIndices: prev.selectedOptionIndices,
+                otherText: prev.otherText,
+                otherCursorPosition: prev.otherCursorPosition,
+              },
+            };
+
+            const nextState = savedStates[nextIndex] || {
               selectedOptionIndex: 0,
-              selectedOptionIndices: new Set(),
-              userAnswers: newAnswers,
+              selectedOptionIndices: new Set<number>(),
               otherText: "",
               otherCursorPosition: 0,
             };
+
+            return {
+              ...prev,
+              currentQuestionIndex: nextIndex,
+              ...nextState,
+              userAnswers: newAnswers,
+              savedStates,
+            };
           } else {
+            const finalAnswers = { ...newAnswers };
+            // Also collect from savedStates for any questions that were skipped via Tab
+            for (const [idxStr, s] of Object.entries(prev.savedStates)) {
+              const idx = parseInt(idxStr);
+              const q = questions[idx];
+              if (q && !finalAnswers[q.question]) {
+                const opts = [...q.options, { label: "Other" }];
+                let a = "";
+                if (q.multiSelect) {
+                  const selectedLabels = Array.from(s.selectedOptionIndices)
+                    .filter((i) => i < q.options.length)
+                    .map((i) => q.options[i].label);
+                  const isOtherChecked = s.selectedOptionIndices.has(
+                    opts.length - 1,
+                  );
+                  if (isOtherChecked && s.otherText.trim()) {
+                    selectedLabels.push(s.otherText.trim());
+                  }
+                  a = selectedLabels.join(", ");
+                } else {
+                  if (s.selectedOptionIndex === opts.length - 1) {
+                    a = s.otherText.trim();
+                  } else {
+                    a = opts[s.selectedOptionIndex].label;
+                  }
+                }
+                if (a) finalAnswers[q.question] = a;
+              }
+            }
+
+            // Only submit if all questions have been answered
+            const allAnswered = questions.every(
+              (q) => finalAnswers[q.question],
+            );
+            if (!allAnswered) return prev;
+
             onDecision({
               behavior: "allow",
-              message: JSON.stringify(newAnswers),
+              message: JSON.stringify(finalAnswers),
             });
             return {
               ...prev,
-              userAnswers: newAnswers,
+              userAnswers: finalAnswers,
             };
           }
         });
@@ -194,6 +255,41 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
             prev.selectedOptionIndex + 1,
           ),
         }));
+        return;
+      }
+      if (key.tab) {
+        setQuestionState((prev) => {
+          const direction = key.shift ? -1 : 1;
+          let nextIndex = prev.currentQuestionIndex + direction;
+          if (nextIndex < 0) nextIndex = questions.length - 1;
+          if (nextIndex >= questions.length) nextIndex = 0;
+
+          if (nextIndex === prev.currentQuestionIndex) return prev;
+
+          const savedStates = {
+            ...prev.savedStates,
+            [prev.currentQuestionIndex]: {
+              selectedOptionIndex: prev.selectedOptionIndex,
+              selectedOptionIndices: prev.selectedOptionIndices,
+              otherText: prev.otherText,
+              otherCursorPosition: prev.otherCursorPosition,
+            },
+          };
+
+          const nextState = savedStates[nextIndex] || {
+            selectedOptionIndex: 0,
+            selectedOptionIndices: new Set<number>(),
+            otherText: "",
+            otherCursorPosition: 0,
+          };
+
+          return {
+            ...prev,
+            currentQuestionIndex: nextIndex,
+            ...nextState,
+            savedStates,
+          };
+        });
         return;
       }
 
@@ -321,6 +417,19 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
       return;
     }
 
+    if (key.tab) {
+      const currentIndex = availableOptions.indexOf(state.selectedOption);
+      const direction = key.shift ? -1 : 1;
+      let nextIndex = currentIndex + direction;
+      if (nextIndex < 0) nextIndex = availableOptions.length - 1;
+      if (nextIndex >= availableOptions.length) nextIndex = 0;
+      setState((prev) => ({
+        ...prev,
+        selectedOption: availableOptions[nextIndex],
+      }));
+      return;
+    }
+
     if (input && !key.ctrl && !key.meta && !("alt" in key && key.alt)) {
       setState((prev) => {
         const nextText =
@@ -436,7 +545,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
                 Question {questionState.currentQuestionIndex + 1} of{" "}
                 {questions.length} •
                 {currentQuestion.multiSelect ? " Space to toggle •" : ""} Use ↑↓
-                to navigate • Enter to confirm
+                or Tab to navigate • Enter to confirm
               </Text>
             </Box>
           </Box>
@@ -531,7 +640,7 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
             </Box>
           </Box>
           <Box marginTop={1}>
-            <Text dimColor>Use ↑↓ to navigate • ESC to cancel</Text>
+            <Text dimColor>Use ↑↓ or Tab to navigate • ESC to cancel</Text>
           </Box>
         </>
       )}
