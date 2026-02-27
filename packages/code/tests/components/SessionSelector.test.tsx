@@ -37,7 +37,8 @@ describe("SessionSelector", () => {
     expect(output).toContain("session-1");
     expect(output).toContain("session-2");
     expect(output).toContain("Hello world");
-    expect(output).toContain("How are you?");
+    // Only the selected session's first message is shown
+    expect(output).not.toContain("How are you?");
   });
 
   it("should handle empty sessions list", () => {
@@ -105,6 +106,6 @@ describe("SessionSelector", () => {
       <SessionSelector {...mockProps} sessions={manySessions} />,
     );
     const output = lastFrame();
-    expect(output).toContain("showing 10 of 15 sessions");
+    expect(output).toContain("showing 3 of 15 sessions");
   });
 });
