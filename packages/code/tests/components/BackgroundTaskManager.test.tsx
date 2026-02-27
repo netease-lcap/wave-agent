@@ -102,7 +102,9 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+    callbacks.onBackgroundTasksChange!(
+      mockTasks as unknown as BackgroundTask[],
+    );
 
     await vi.waitFor(() => {
       const output = lastFrame();
@@ -129,7 +131,9 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+    callbacks.onBackgroundTasksChange!(
+      mockTasks as unknown as BackgroundTask[],
+    );
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("[task-1] shell: ls -la");
@@ -170,7 +174,9 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+    callbacks.onBackgroundTasksChange!(
+      mockTasks as unknown as BackgroundTask[],
+    );
 
     await vi.waitFor(() => {
       expect(onCancel).not.toHaveBeenCalled();
@@ -198,7 +204,9 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+    callbacks.onBackgroundTasksChange!(
+      mockTasks as unknown as BackgroundTask[],
+    );
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("[task-1] shell: ls -la");
@@ -233,7 +241,9 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+    callbacks.onBackgroundTasksChange!(
+      mockTasks as unknown as BackgroundTask[],
+    );
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("[task-1] shell: ls -la");
@@ -280,7 +290,7 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!([] as unknown as BackgroundTask[]);
+    callbacks.onBackgroundTasksChange!([] as unknown as BackgroundTask[]);
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("No background tasks found");
@@ -326,7 +336,7 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!(
+    callbacks.onBackgroundTasksChange!(
       tasksWithDifferentDurations as unknown as BackgroundTask[],
     );
 
@@ -365,7 +375,9 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+    callbacks.onBackgroundTasksChange!(
+      mockTasks as unknown as BackgroundTask[],
+    );
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("[task-1] shell: ls -la");
@@ -379,7 +391,7 @@ describe("BackgroundTaskManager", () => {
     });
 
     // Simulate task being removed
-    callbacks.onTasksChange!([]);
+    callbacks.onBackgroundTasksChange!([]);
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("No background tasks found");
@@ -410,7 +422,9 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!(taskNoDesc as unknown as BackgroundTask[]);
+    callbacks.onBackgroundTasksChange!(
+      taskNoDesc as unknown as BackgroundTask[],
+    );
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("[task-no-desc] shell");
@@ -433,7 +447,9 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+    callbacks.onBackgroundTasksChange!(
+      mockTasks as unknown as BackgroundTask[],
+    );
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("[task-1]");
@@ -472,7 +488,9 @@ describe("BackgroundTaskManager", () => {
 
     const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
     const callbacks = agentCreateArgs.callbacks!;
-    callbacks.onTasksChange!(mockTasks as unknown as BackgroundTask[]);
+    callbacks.onBackgroundTasksChange!(
+      mockTasks as unknown as BackgroundTask[],
+    );
 
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("[task-1]");

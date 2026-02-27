@@ -76,7 +76,7 @@ describe("Agent - Task Session Restoration", () => {
 
     mockHandleSessionRestoration.mockResolvedValue(sessionData);
 
-    const onSessionTasksChange = vi.fn();
+    const onTasksChange = vi.fn();
 
     const agent = await Agent.create({
       apiKey: "test-key",
@@ -84,12 +84,12 @@ describe("Agent - Task Session Restoration", () => {
       restoreSessionId: sessionId,
       workdir: testWorkdir,
       callbacks: {
-        onSessionTasksChange,
+        onTasksChange,
       },
     });
 
     // Verify tasks were fetched and callback was called
-    expect(onSessionTasksChange).toHaveBeenCalledWith(
+    expect(onTasksChange).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
           id: "task-1",
@@ -130,24 +130,24 @@ describe("Agent - Task Session Restoration", () => {
       },
     });
 
-    const onSessionTasksChange = vi.fn();
+    const onTasksChange = vi.fn();
 
     const agent = await Agent.create({
       apiKey: "test-key",
       baseURL: "https://test.com",
       workdir: testWorkdir,
       callbacks: {
-        onSessionTasksChange,
+        onTasksChange,
       },
     });
 
     // Clear initial call from Agent.create
-    onSessionTasksChange.mockClear();
+    onTasksChange.mockClear();
 
     await agent.restoreSession(targetSessionId);
 
     // Verify tasks were fetched and callback was called for the target session
-    expect(onSessionTasksChange).toHaveBeenCalledWith(
+    expect(onTasksChange).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
           id: "task-1",

@@ -67,7 +67,7 @@ This file will be analyzed by the file-analyzer subagent to test the real execut
   agent = await Agent.create({
     workdir: tempDir,
     callbacks: {
-      onTasksChange: (tasks) => {
+      onBackgroundTasksChange: (tasks) => {
         console.log(`📝 Tasks updated! Total: ${tasks.length}`);
         tasks.forEach((task) => {
           console.log(

@@ -5,10 +5,12 @@ import { Container } from "../../src/utils/container.js";
 
 describe("BackgroundTaskManager", () => {
   let manager: BackgroundTaskManager;
-  let mockCallbacks: { onTasksChange: (tasks: BackgroundTask[]) => void };
+  let mockCallbacks: {
+    onBackgroundTasksChange: (tasks: BackgroundTask[]) => void;
+  };
 
   beforeEach(() => {
-    mockCallbacks = { onTasksChange: vi.fn() };
+    mockCallbacks = { onBackgroundTasksChange: vi.fn() };
     const container = new Container();
     manager = new BackgroundTaskManager(container, {
       callbacks: mockCallbacks,
@@ -35,7 +37,7 @@ describe("BackgroundTaskManager", () => {
     manager.addTask(task);
     expect(manager.getTask("task_1")).toEqual(task);
     expect(manager.getAllTasks()).toContain(task);
-    expect(mockCallbacks.onTasksChange).toHaveBeenCalledWith([task]);
+    expect(mockCallbacks.onBackgroundTasksChange).toHaveBeenCalledWith([task]);
   });
 
   it("should start a shell task", async () => {
@@ -88,7 +90,7 @@ describe("BackgroundTaskManager", () => {
     manager.addTask(task);
     manager.cleanup();
     expect(manager.getAllTasks().length).toBe(0);
-    expect(mockCallbacks.onTasksChange).toHaveBeenCalled();
+    expect(mockCallbacks.onBackgroundTasksChange).toHaveBeenCalled();
   });
 
   it("should handle invalid regex filter", () => {

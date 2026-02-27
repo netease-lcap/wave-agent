@@ -47,7 +47,7 @@ async function demonstrateBackgrounding(): Promise<void> {
             );
           }
         },
-        onTasksChange: (tasks) => {
+        onBackgroundTasksChange: (tasks) => {
           const runningTasks = tasks.filter((t) => t.status === "running");
           const completedTasks = tasks.filter((t) => t.status === "completed");
           if (runningTasks.length > 0 || completedTasks.length > 0) {

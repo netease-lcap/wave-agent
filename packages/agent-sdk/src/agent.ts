@@ -118,8 +118,8 @@ export interface AgentCallbacks
     BackgroundTaskManagerCallbacks,
     McpManagerCallbacks,
     SubagentManagerCallbacks {
-  onTasksChange?: (tasks: BackgroundTask[]) => void;
-  onSessionTasksChange?: (tasks: import("./types/tasks.js").Task[]) => void;
+  onBackgroundTasksChange?: (tasks: BackgroundTask[]) => void;
+  onTasksChange?: (tasks: import("./types/tasks.js").Task[]) => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
   onSubagentLatestTotalTokensChange?: (
     subagentId: string,
@@ -228,11 +228,11 @@ export class Agent {
       onSessionIdChange: () => {
         this.taskManager.setTaskListId(this.messageManager.getRootSessionId());
       },
-      onSessionTasksChange: (tasks) => {
-        this.options.callbacks?.onSessionTasksChange?.(tasks);
-      },
       onTasksChange: (tasks) => {
         this.options.callbacks?.onTasksChange?.(tasks);
+      },
+      onBackgroundTasksChange: (tasks) => {
+        this.options.callbacks?.onBackgroundTasksChange?.(tasks);
       },
       onPermissionModeChange: (mode) => {
         this.options.callbacks?.onPermissionModeChange?.(mode);
@@ -643,7 +643,7 @@ export class Agent {
 
         // After session is initialized, load tasks for the session
         const tasks = await this.taskManager.listTasks();
-        this.options.callbacks?.onSessionTasksChange?.(tasks);
+        this.options.callbacks?.onTasksChange?.(tasks);
       }
     }
   }
@@ -693,7 +693,7 @@ export class Agent {
 
     // 7. Load tasks for the restored session
     const tasks = await this.taskManager.listTasks();
-    this.options.callbacks?.onSessionTasksChange?.(tasks);
+    this.options.callbacks?.onTasksChange?.(tasks);
   }
 
   public abortAIMessage(): void {
@@ -979,7 +979,9 @@ export class Agent {
   public async truncateHistory(index: number): Promise<void> {
     await this.messageManager.truncateHistory(index, this.reversionManager);
     // After truncating history, the task list might have changed, so refresh it.
-    await this.taskManager.refreshTasks();
+    // We explicitly load tasks and trigger the callback to ensure UI updates immediately and in order.
+    const tasks = await this.taskManager.listTasks();
+    this.options.callbacks?.onTasksChange?.(tasks);
   }
 
   /**

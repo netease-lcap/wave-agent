@@ -22,7 +22,7 @@ describe("useTasks", () => {
     return null;
   }
 
-  it("should return sessionTasks from useChat", () => {
+  it("should return tasks from useChat", () => {
     const mockTasks: Task[] = [
       {
         id: "1",
@@ -45,7 +45,7 @@ describe("useTasks", () => {
     ];
 
     vi.mocked(useChat).mockReturnValue({
-      sessionTasks: mockTasks,
+      tasks: mockTasks,
     } as unknown as ReturnType<typeof useChat>);
 
     let lastValue: Task[] | undefined;
@@ -60,7 +60,7 @@ describe("useTasks", () => {
 
   it("should return empty array if no tasks", () => {
     vi.mocked(useChat).mockReturnValue({
-      sessionTasks: [],
+      tasks: [],
     } as unknown as ReturnType<typeof useChat>);
 
     let lastValue: Task[] | undefined;
