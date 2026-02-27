@@ -260,6 +260,10 @@ export async function main() {
 
     const workdir = worktreeSession?.path || originalCwd;
 
+    if (worktreeSession) {
+      process.chdir(workdir);
+    }
+
     // Handle restore session command
     if (
       argv.restore === "" ||

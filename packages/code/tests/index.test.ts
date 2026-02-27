@@ -290,6 +290,7 @@ describe("main", () => {
 
   it("should handle --worktree argument", async () => {
     process.argv = ["node", "index.js", "--worktree", "test-worktree"];
+    const chdirSpy = vi.spyOn(process, "chdir").mockImplementation(() => {});
     await main();
     expect(cli.startCli).toHaveBeenCalledWith({
       restoreSessionId: undefined,
@@ -300,6 +301,10 @@ describe("main", () => {
       worktreeSession: expect.objectContaining({ name: "test-worktree" }),
       workdir: expect.stringContaining("test-worktree"),
     });
+    expect(chdirSpy).toHaveBeenCalledWith(
+      expect.stringContaining("test-worktree"),
+    );
+    chdirSpy.mockRestore();
   });
 
   describe("plugin commands", () => {
