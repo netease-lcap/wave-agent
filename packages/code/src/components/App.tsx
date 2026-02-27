@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useStdout } from "ink";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useStdout, useInput } from "ink";
 import { ChatInterface } from "./ChatInterface.js";
 import { ChatProvider, useChat } from "../contexts/useChat.js";
 import { AppProvider } from "../contexts/useAppConfig.js";
-import { type WorktreeSession, removeWorktree } from "../utils/worktree.js";
+import { type WorktreeSession } from "../utils/worktree.js";
 import { WorktreeExitPrompt } from "./WorktreeExitPrompt.js";
 import {
   hasUncommittedChanges,
@@ -18,7 +18,7 @@ interface AppProps {
   pluginDirs?: string[];
   tools?: string[];
   worktreeSession?: WorktreeSession;
-  onExit: () => void;
+  onExit: (shouldRemove: boolean) => void;
 }
 
 const AppWithProviders: React.FC<{
@@ -26,7 +26,7 @@ const AppWithProviders: React.FC<{
   pluginDirs?: string[];
   tools?: string[];
   worktreeSession?: WorktreeSession;
-  onExit: () => void;
+  onExit: (shouldRemove: boolean) => void;
 }> = ({ bypassPermissions, pluginDirs, tools, worktreeSession, onExit }) => {
   const [isExiting, setIsExiting] = useState(false);
   const [worktreeStatus, setWorktreeStatus] = useState<{
@@ -34,37 +34,45 @@ const AppWithProviders: React.FC<{
     hasNewCommits: boolean;
   } | null>(null);
 
-  useEffect(() => {
-    const handleSignal = async () => {
-      if (worktreeSession) {
-        const cwd = process.cwd();
-        const baseBranch = getDefaultRemoteBranch(cwd);
-        const hasChanges = hasUncommittedChanges(cwd);
-        const hasCommits = hasNewCommits(cwd, baseBranch);
+  const handleSignal = useCallback(async () => {
+    if (worktreeSession) {
+      const cwd = process.cwd();
+      const baseBranch = getDefaultRemoteBranch(cwd);
+      const hasChanges = hasUncommittedChanges(cwd);
+      const hasCommits = hasNewCommits(cwd, baseBranch);
 
-        if (hasChanges || hasCommits) {
-          setWorktreeStatus({
-            hasUncommittedChanges: hasChanges,
-            hasNewCommits: hasCommits,
-          });
-          setIsExiting(true);
-        } else {
-          removeWorktree(worktreeSession, cwd);
-          onExit();
-        }
+      if (hasChanges || hasCommits) {
+        setWorktreeStatus({
+          hasUncommittedChanges: hasChanges,
+          hasNewCommits: hasCommits,
+        });
+        setIsExiting(true);
       } else {
-        onExit();
+        onExit(true);
       }
-    };
+    } else {
+      onExit(false);
+    }
+  }, [worktreeSession, onExit]);
 
-    process.on("SIGINT", handleSignal);
-    process.on("SIGTERM", handleSignal);
+  useInput((input, key) => {
+    if (input === "c" && key.ctrl) {
+      handleSignal();
+    }
+  });
+
+  useEffect(() => {
+    const onSigInt = () => handleSignal();
+    const onSigTerm = () => handleSignal();
+
+    process.on("SIGINT", onSigInt);
+    process.on("SIGTERM", onSigTerm);
 
     return () => {
-      process.off("SIGINT", handleSignal);
-      process.off("SIGTERM", handleSignal);
+      process.off("SIGINT", onSigInt);
+      process.off("SIGTERM", onSigTerm);
     };
-  }, [worktreeSession, onExit]);
+  }, [handleSignal]);
 
   if (isExiting && worktreeSession && worktreeStatus) {
     return (
@@ -73,11 +81,8 @@ const AppWithProviders: React.FC<{
         path={worktreeSession.path}
         hasUncommittedChanges={worktreeStatus.hasUncommittedChanges}
         hasNewCommits={worktreeStatus.hasNewCommits}
-        onKeep={() => onExit()}
-        onRemove={() => {
-          removeWorktree(worktreeSession, process.cwd());
-          onExit();
-        }}
+        onKeep={() => onExit(false)}
+        onRemove={() => onExit(true)}
         onCancel={() => setIsExiting(false)}
       />
     );

@@ -2,7 +2,7 @@ import React from "react";
 import { render } from "ink";
 import { App } from "./components/App.js";
 import { cleanupLogs } from "./utils/logger.js";
-import { type WorktreeSession } from "./utils/worktree.js";
+import { type WorktreeSession, removeWorktree } from "./utils/worktree.js";
 
 export interface CliOptions {
   restoreSessionId?: string;
@@ -24,37 +24,15 @@ export async function startCli(options: CliOptions): Promise<void> {
   } = options;
 
   // Continue with ink-based UI for normal mode
-  // Global cleanup tracker
-  let isCleaningUp = false;
-  let appUnmounted = false;
+  let shouldRemoveWorktree = false;
 
-  const cleanup = async () => {
-    if (isCleaningUp) return;
-    isCleaningUp = true;
-
-    try {
-      // Clean up old log files
-      await cleanupLogs().catch((error) => {
-        console.warn("Failed to cleanup old logs:", error);
-      });
-
-      // Unmount the React app to trigger cleanup
-      if (!appUnmounted) {
-        unmount();
-        appUnmounted = true;
-        // Give React time to cleanup
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-
-      process.exit(0);
-    } catch (error: unknown) {
-      console.error("Error during cleanup:", error);
-      process.exit(1);
-    }
+  const handleExit = (shouldRemove: boolean) => {
+    shouldRemoveWorktree = shouldRemove;
+    unmount();
   };
 
   // Render the application
-  const { unmount } = render(
+  const { unmount, waitUntilExit } = render(
     <App
       restoreSessionId={restoreSessionId}
       continueLastSession={continueLastSession}
@@ -62,21 +40,28 @@ export async function startCli(options: CliOptions): Promise<void> {
       pluginDirs={pluginDirs}
       tools={tools}
       worktreeSession={worktreeSession}
-      onExit={cleanup}
+      onExit={handleExit}
     />,
+    { exitOnCtrlC: false },
   );
 
-  // Store unmount function for cleanup when process exits normally
-  process.on("exit", () => {
-    if (!appUnmounted) {
-      try {
-        unmount();
-      } catch {
-        // Ignore errors during unmount
-      }
-    }
-  });
+  // Wait for the app to finish unmounting
+  await waitUntilExit();
 
-  // Return a promise that never resolves to keep the CLI running
-  return new Promise(() => {});
+  try {
+    // Clean up old log files
+    await cleanupLogs().catch((error) => {
+      console.warn("Failed to cleanup old logs:", error);
+    });
+
+    // Cleanup worktree if requested
+    if (shouldRemoveWorktree && worktreeSession) {
+      removeWorktree(worktreeSession);
+    }
+
+    process.exit(0);
+  } catch (error: unknown) {
+    console.error("Error during cleanup:", error);
+    process.exit(1);
+  }
 }

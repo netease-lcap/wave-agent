@@ -16,7 +16,6 @@ import {
   hasNewCommits,
   getDefaultRemoteBranch,
 } from "wave-agent-sdk";
-import { removeWorktree } from "../../src/utils/worktree.js";
 
 vi.mock("wave-agent-sdk", async () => {
   const actual = await vi.importActual("wave-agent-sdk");
@@ -64,6 +63,7 @@ describe("App Component", () => {
       name: "test-feat",
       path: "/repo/test-feat",
       branch: "worktree-test-feat",
+      repoRoot: "/repo",
       hasUncommittedChanges: false,
       hasNewCommits: false,
     };
@@ -80,11 +80,7 @@ describe("App Component", () => {
     )![1] as () => Promise<void>;
     await handleSignal();
 
-    expect(removeWorktree).toHaveBeenCalledWith(
-      worktreeSession,
-      expect.any(String),
-    );
-    expect(onExit).toHaveBeenCalled();
+    expect(onExit).toHaveBeenCalledWith(true);
   });
 
   it("should show exit prompt on SIGINT if there are changes in worktree", async () => {
@@ -93,6 +89,7 @@ describe("App Component", () => {
       name: "test-feat",
       path: "/repo/test-feat",
       branch: "worktree-test-feat",
+      repoRoot: "/repo",
       hasUncommittedChanges: false,
       hasNewCommits: false,
     };
@@ -120,7 +117,6 @@ describe("App Component", () => {
       );
     });
 
-    expect(removeWorktree).not.toHaveBeenCalled();
     expect(onExit).not.toHaveBeenCalled();
   });
 });
