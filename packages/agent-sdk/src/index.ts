@@ -22,6 +22,6 @@ export * from "./utils/stringUtils.js";
 export * from "./utils/customCommands.js";
 export * from "./utils/hookMatcher.js";
 export * from "./utils/tokenCalculation.js";
-
-// Export types
+export * from "./utils/gitUtils.js";
+export * from "./utils/nameGenerator.js";
 export * from "./types/index.js";

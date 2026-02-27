@@ -6,7 +6,7 @@ import { INPUT_PLACEHOLDER_TEXT_PREFIX } from "@/components/InputBox.js";
 
 async function testApp() {
   try {
-    const { stdin, lastFrame, unmount } = render(<App />);
+    const { stdin, lastFrame, unmount } = render(<App onExit={() => {}} />);
 
     const waitFor = async (
       condition: () => boolean,

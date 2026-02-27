@@ -6,7 +6,7 @@ import { stripAnsiColors } from "wave-agent-sdk";
 
 describe("App Component", () => {
   it("should render the main interface with file count", async () => {
-    const { lastFrame } = render(<App />);
+    const { lastFrame } = render(<App onExit={vi.fn()} />);
 
     // Wait for the component to initialize and render
     await vi.waitFor(() => {
@@ -17,7 +17,7 @@ describe("App Component", () => {
   });
 
   it("should render the chat interface", async () => {
-    const { lastFrame } = render(<App />);
+    const { lastFrame } = render(<App onExit={vi.fn()} />);
 
     // Wait for components to initialize and render
     await vi.waitFor(() => {
@@ -31,7 +31,7 @@ describe("App Component", () => {
   });
 
   it("should wrap components with providers", async () => {
-    const { lastFrame } = render(<App />);
+    const { lastFrame } = render(<App onExit={vi.fn()} />);
 
     // Wait for the component to initialize and render
     await vi.waitFor(() => {

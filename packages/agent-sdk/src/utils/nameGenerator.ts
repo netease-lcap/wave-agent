@@ -69,10 +69,11 @@ const nouns = [
 ];
 
 /**
- * Generates a random English name (adjective-noun)
+ * Generates a random English name (adjective-adjective-noun)
  */
 export function generateRandomName(seed?: string): string {
-  let adjIndex: number;
+  let adj1Index: number;
+  let adj2Index: number;
   let nounIndex: number;
 
   if (seed) {
@@ -82,14 +83,17 @@ export function generateRandomName(seed?: string): string {
       hash = (hash << 5) - hash + seed.charCodeAt(i);
       hash |= 0; // Convert to 32bit integer
     }
-    adjIndex = Math.abs(hash) % adjectives.length;
+    adj1Index = Math.abs(hash) % adjectives.length;
+    adj2Index = Math.abs(hash >> 4) % adjectives.length;
     nounIndex = Math.abs(hash >> 8) % nouns.length;
   } else {
-    adjIndex = Math.floor(Math.random() * adjectives.length);
+    adj1Index = Math.floor(Math.random() * adjectives.length);
+    adj2Index = Math.floor(Math.random() * adjectives.length);
     nounIndex = Math.floor(Math.random() * nouns.length);
   }
 
-  const adj = adjectives[adjIndex];
+  const adj1 = adjectives[adj1Index];
+  const adj2 = adjectives[adj2Index];
   const noun = nouns[nounIndex];
-  return `${adj}-${noun}`;
+  return `${adj1}-${adj2}-${noun}`;
 }
