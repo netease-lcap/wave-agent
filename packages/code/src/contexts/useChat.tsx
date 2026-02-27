@@ -93,6 +93,10 @@ export interface ChatContextType {
   }>;
   wasLastDetailsTooTall: number;
   setWasLastDetailsTooTall: React.Dispatch<React.SetStateAction<number>>;
+  // Status metadata
+  getGatewayConfig: () => import("wave-agent-sdk").GatewayConfig;
+  getModelConfig: () => import("wave-agent-sdk").ModelConfig;
+  workingDirectory: string;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -199,6 +203,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Rewind state
   const [rewindId, setRewindId] = useState(0);
+
+  // Status metadata state
+  const [workingDirectory, setWorkingDirectory] = useState("");
 
   // Confirmation too tall state
   const [wasLastDetailsTooTall, setWasLastDetailsTooTall] = useState(0);
@@ -336,6 +343,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setIsCommandRunning(agent.isCommandRunning);
         setIsCompressing(agent.isCompressing);
         setPermissionModeState(agent.getPermissionMode());
+        setWorkingDirectory(agent.workingDirectory);
 
         // Get initial MCP servers state
         const mcpServers = agent.getMcpServers?.() || [];
@@ -545,6 +553,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return { messages: [], sessionIds: [] };
   }, []);
 
+  const getGatewayConfig = useCallback(() => {
+    if (!agentRef.current) {
+      return { baseURL: "" };
+    }
+    return agentRef.current.getGatewayConfig();
+  }, []);
+
+  const getModelConfig = useCallback(() => {
+    if (!agentRef.current) {
+      return { agentModel: "", fastModel: "" };
+    }
+    return agentRef.current.getModelConfig();
+  }, []);
+
   // Listen for Ctrl+O hotkey to toggle collapse/expand state and ESC to cancel confirmation
   useInput((input, key) => {
     if (key.ctrl && input === "o") {
@@ -621,6 +643,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     getFullMessageThread,
     wasLastDetailsTooTall,
     setWasLastDetailsTooTall,
+    getGatewayConfig,
+    getModelConfig,
+    workingDirectory,
   };
 
   return (

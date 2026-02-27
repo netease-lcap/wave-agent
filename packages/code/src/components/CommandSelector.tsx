@@ -28,6 +28,12 @@ const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "Show help and key bindings",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "status",
+    name: "status",
+    description: "Show agent status and configuration",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];
 
 export interface CommandSelectorProps {
