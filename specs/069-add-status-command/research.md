@@ -18,7 +18,7 @@ The version will be read from `packages/code/package.json`. Since we are using E
 - **Session ID**: Available via `agent.sessionId`.
 - **CWD**: Available via `agent.workingDirectory`.
 - **Base URL**: Available via `agent.getGatewayConfig().baseURL`.
-- **Model**: Available via `agent.getModelConfig().agentModel`.
+- **Model**: Available via `agent.getModelConfig().model`.
 
 #### 3. UI Implementation
 - **Component**: `StatusCommand.tsx` in `packages/code/src/components`.

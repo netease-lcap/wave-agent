@@ -89,7 +89,7 @@ describe("SubagentManager - Callback Integration", () => {
     };
 
     mockModelConfig = {
-      agentModel: "claude-3-sonnet",
+      model: "claude-3-sonnet",
       fastModel: "claude-3-haiku",
     };
 

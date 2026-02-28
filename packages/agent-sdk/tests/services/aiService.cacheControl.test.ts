@@ -11,13 +11,13 @@ const TEST_GATEWAY_CONFIG: GatewayConfig = {
 
 // Claude-specific model config for cache control testing
 const CLAUDE_MODEL_CONFIG: ModelConfig = {
-  agentModel: "claude-3-sonnet-20240229",
+  model: "claude-3-sonnet-20240229",
   fastModel: "gemini-2.5-flash",
 };
 
 // Non-Claude model config for compatibility testing
 const NON_CLAUDE_MODEL_CONFIG: ModelConfig = {
-  agentModel: "gpt-4o",
+  model: "gpt-4o",
   fastModel: "gpt-4o-mini",
 };
 
@@ -1328,19 +1328,19 @@ describe("AI Service - Claude Cache Control", () => {
       const nonClaudeModels = [
         {
           name: "OpenAI GPT-4o",
-          config: { agentModel: "gpt-4o", fastModel: "gpt-4o-mini" },
+          config: { model: "gpt-4o", fastModel: "gpt-4o-mini" },
         },
         {
           name: "OpenAI GPT-3.5",
-          config: { agentModel: "gpt-3.5-turbo", fastModel: "gpt-3.5-turbo" },
+          config: { model: "gpt-3.5-turbo", fastModel: "gpt-3.5-turbo" },
         },
         {
           name: "Google Gemini",
-          config: { agentModel: "gemini-pro", fastModel: "gemini-flash" },
+          config: { model: "gemini-pro", fastModel: "gemini-flash" },
         },
         {
           name: "Meta Llama",
-          config: { agentModel: "llama2-70b", fastModel: "llama2-7b" },
+          config: { model: "llama2-70b", fastModel: "llama2-7b" },
         },
       ];
 
@@ -1410,7 +1410,7 @@ describe("AI Service - Claude Cache Control", () => {
           const result = await callAgent({
             gatewayConfig: TEST_GATEWAY_CONFIG,
             modelConfig: {
-              agentModel: testCase.modelName,
+              model: testCase.modelName,
               fastModel: "gpt-4o-mini",
             },
             messages: [{ role: "user", content: "Test message" }],
@@ -1436,7 +1436,7 @@ describe("AI Service - Claude Cache Control", () => {
       it("should maintain standard usage tracking for non-Claude models", async () => {
         const result = await callAgent({
           gatewayConfig: TEST_GATEWAY_CONFIG,
-          modelConfig: { agentModel: "gpt-4o", fastModel: "gpt-4o-mini" },
+          modelConfig: { model: "gpt-4o", fastModel: "gpt-4o-mini" },
           messages: [{ role: "user", content: "Test message" }],
           workdir: "/test/workdir",
         });

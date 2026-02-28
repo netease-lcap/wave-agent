@@ -11,7 +11,7 @@ Extended interface for Agent constructor parameters.
 **Fields**:
 - `apiKey?: string` - Gateway API key (optional, fallback to WAVE_API_KEY)
 - `baseURL?: string` - Gateway endpoint URL (optional, fallback to WAVE_BASE_URL)
-- `agentModel?: string` - Model ID for main operations (optional, fallback to WAVE_MODEL)
+- `model?: string` - Model ID for main operations (optional, fallback to WAVE_MODEL)
 - `fastModel?: string` - Model ID for fast operations (optional, fallback to WAVE_FAST_MODEL)
 - `maxInputTokens?: number` - Token limit for compression (optional, fallback to WAVE_MAX_INPUT_TOKENS, default: 96000)
 - `callbacks?: AgentCallbacks` - Existing callback handlers
@@ -48,7 +48,7 @@ Resolved configuration for gateway service connection.
 Resolved configuration for model selection.
 
 **Fields**:
-- `agentModel: string` - Model ID for main operations (resolved from constructor, env, or default)
+- `model: string` - Model ID for main operations (resolved from constructor, env, or default)
 - `fastModel: string` - Model ID for compression and fast operations (resolved from constructor, env, or default)
 
 **Validation Rules**:
@@ -56,7 +56,7 @@ Resolved configuration for model selection.
 - No format validation (service validates model availability)
 
 **Default Values**:
-- `agentModel`: "gemini-3-flash"
+- `model`: "gemini-3-flash"
 - `fastModel`: "gemini-2.5-flash"
 
 **Relationships**:
@@ -71,14 +71,14 @@ Configuration values resolved in this order:
 1. **Constructor Parameters** (highest precedence)
    - `AgentOptions.apiKey`
    - `AgentOptions.baseURL`
-   - `AgentOptions.agentModel`
+   - `AgentOptions.model`
    - `AgentOptions.fastModel`
    - `AgentOptions.maxInputTokens`
 
 2. **Environment Variables** (fallback)
    - `process.env.WAVE_API_KEY` → `apiKey`
    - `process.env.WAVE_BASE_URL` → `baseURL`
-   - `process.env.WAVE_MODEL` → `agentModel`
+   - `process.env.WAVE_MODEL` → `model`
    - `process.env.WAVE_FAST_MODEL` → `fastModel`
    - `process.env.WAVE_MAX_INPUT_TOKENS` → `maxInputTokens`
 

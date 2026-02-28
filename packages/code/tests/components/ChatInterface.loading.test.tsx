@@ -39,12 +39,10 @@ describe("ChatInterface Loading State", () => {
     slashCommands: [],
     hasSlashCommand: vi.fn(),
     isTaskListVisible: true,
-    getModelConfig: vi
-      .fn()
-      .mockReturnValue({
-        agentModel: "test-model",
-        fastModel: "test-fast-model",
-      }),
+    getModelConfig: vi.fn().mockReturnValue({
+      model: "test-model",
+      fastModel: "test-fast-model",
+    }),
   } as unknown as ChatContextType;
 
   const mockInputManager = {

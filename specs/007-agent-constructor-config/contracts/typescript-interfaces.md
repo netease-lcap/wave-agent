@@ -7,7 +7,7 @@ export interface AgentOptions {
   // Optional configuration with environment fallbacks
   apiKey?: string;
   baseURL?: string;
-  agentModel?: string;
+  model?: string;
   fastModel?: string;
   maxInputTokens?: number;
   
@@ -27,7 +27,7 @@ export interface GatewayConfig {
 }
 
 export interface ModelConfig {
-  agentModel: string;
+  model: string;
   fastModel: string;
 }
 ```
@@ -84,11 +84,11 @@ export interface ConfigurationResolver {
   
   /**
    * Resolves model configuration with fallbacks
-   * @param agentModel - Agent model from constructor (optional)
+   * @param model - Agent model from constructor (optional)
    * @param fastModel - Fast model from constructor (optional)
    * @returns Resolved model configuration with defaults
    */
-  resolveModelConfig(agentModel?: string, fastModel?: string): ModelConfig;
+  resolveModelConfig(model?: string, fastModel?: string): ModelConfig;
   
   /**
    * Resolves token limit with fallbacks

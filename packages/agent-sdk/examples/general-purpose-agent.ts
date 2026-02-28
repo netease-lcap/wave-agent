@@ -3,7 +3,7 @@ import { Agent } from "../src/agent.js";
 async function main() {
   const agent = await Agent.create({
     workdir: process.cwd(),
-    agentModel: "gemini-2.5-flash",
+    model: "gemini-2.5-flash",
     callbacks: {
       onSubagentAssistantMessageAdded: (subagentId) => {
         const instance = agent.getSubagentInstance(subagentId);

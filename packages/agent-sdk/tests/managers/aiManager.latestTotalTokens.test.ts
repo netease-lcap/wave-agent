@@ -40,7 +40,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
   };
 
   const mockModelConfig: ModelConfig = {
-    agentModel: "test-agent-model",
+    model: "test-agent-model",
     fastModel: "test-fast-model",
   };
 

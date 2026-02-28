@@ -64,10 +64,10 @@ export interface CacheControl {
 
 ```typescript
 // Add before createParams construction (line ~195)
-if (isClaudeModel(model || modelConfig.agentModel)) {
+if (isClaudeModel(model || modelConfig.model)) {
   openaiMessages = transformMessagesForClaudeCache(
     openaiMessages,
-    model || modelConfig.agentModel,
+    model || modelConfig.model,
     tools
   );
   
@@ -81,7 +81,7 @@ if (isClaudeModel(model || modelConfig.agentModel)) {
 
 ```typescript
 // Extend usage object for Claude models
-if (response.usage && isClaudeModel(model || modelConfig.agentModel)) {
+if (response.usage && isClaudeModel(model || modelConfig.model)) {
   totalUsage = extendUsageWithCacheMetrics(response.usage, responseHeaders);
 }
 ```

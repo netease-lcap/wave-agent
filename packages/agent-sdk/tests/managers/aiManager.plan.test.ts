@@ -62,7 +62,7 @@ describe("AIManager Plan Mode Prompt", () => {
     aiManager = new AIManager(container, {
       workdir: "/test/workdir",
       getGatewayConfig: () => ({}) as GatewayConfig,
-      getModelConfig: () => ({ agentModel: "gpt-4" }) as ModelConfig,
+      getModelConfig: () => ({ model: "gpt-4" }) as ModelConfig,
       getMaxInputTokens: () => 1000,
       getLanguage: () => undefined,
       stream: false,

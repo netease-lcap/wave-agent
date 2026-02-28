@@ -444,13 +444,13 @@ export class ConfigurationService {
   /**
    * Resolves model configuration with fallbacks
    * Resolution priority: options > env (from settings.json) > process.env > default
-   * @param agentModel - Agent model from constructor (optional)
+   * @param model - Agent model from constructor (optional)
    * @param fastModel - Fast model from constructor (optional)
    * @param maxTokens - Max output tokens from constructor (optional)
    * @returns Resolved model configuration with defaults
    */
   resolveModelConfig(
-    agentModel?: string,
+    model?: string,
     fastModel?: string,
     maxTokens?: number,
     permissionMode?: PermissionMode,
@@ -460,7 +460,7 @@ export class ConfigurationService {
     const DEFAULT_FAST_MODEL = "gemini-2.5-flash";
 
     // Resolve agent model: constructor > env (settings.json) > process.env > default
-    let resolvedAgentModel = agentModel || this.env.WAVE_MODEL;
+    let resolvedAgentModel = model || this.env.WAVE_MODEL;
 
     if (!resolvedAgentModel && this.currentConfiguration?.env?.WAVE_MODEL) {
       resolvedAgentModel = this.currentConfiguration.env.WAVE_MODEL;
@@ -481,7 +481,7 @@ export class ConfigurationService {
     const resolvedMaxTokens = this.resolveMaxOutputTokens(maxTokens);
 
     return {
-      agentModel: resolvedAgentModel,
+      model: resolvedAgentModel,
       fastModel: resolvedFastModel,
       maxTokens: resolvedMaxTokens,
       permissionMode,

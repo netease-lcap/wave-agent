@@ -21,7 +21,7 @@ interface AgentOptions {
   // Flattened configuration parameters
   apiKey?: string;
   baseURL?: string;
-  agentModel?: string;
+  model?: string;
   fastModel?: string;
   maxInputTokens?: number;
 }
@@ -43,7 +43,7 @@ interface AgentOptions {
   // All optional configuration with env fallbacks
   apiKey?: string;
   baseURL?: string;
-  agentModel?: string;
+  model?: string;
   fastModel?: string;
   maxInputTokens?: number;
   // ... existing options
@@ -115,7 +115,7 @@ function validateGatewayConfig(apiKey?: string, baseURL?: string): void {
 **Environment Variable Mapping**:
 - `apiKey` ↔ `process.env.WAVE_API_KEY`
 - `baseURL` ↔ `process.env.WAVE_BASE_URL`
-- `agentModel` ↔ `process.env.WAVE_MODEL`
+- `model` ↔ `process.env.WAVE_MODEL`
 - `fastModel` ↔ `process.env.WAVE_FAST_MODEL`
 - `maxInputTokens` ↔ `process.env.WAVE_MAX_INPUT_TOKENS`
 

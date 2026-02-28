@@ -41,7 +41,7 @@ export const ChatInterface: React.FC = () => {
     getModelConfig,
   } = useChat();
 
-  const model = getModelConfig().agentModel;
+  const model = getModelConfig().model;
 
   const handleDetailsHeightMeasured = useCallback((height: number) => {
     setDetailsHeight(height);

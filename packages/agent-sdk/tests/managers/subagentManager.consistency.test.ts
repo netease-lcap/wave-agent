@@ -66,7 +66,7 @@ describe("SubagentManager Consistency", () => {
       workdir: "/test",
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
-        agentModel: "claude-3-5-sonnet",
+        model: "claude-3-5-sonnet",
         fastModel: "claude-3-haiku",
       }),
       getMaxInputTokens: () => 200000,

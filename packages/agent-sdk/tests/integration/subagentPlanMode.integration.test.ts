@@ -117,7 +117,7 @@ describe("Subagent Plan Mode Integration", () => {
       workdir: "/test/project",
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
-        agentModel: "test-model",
+        model: "test-model",
         fastModel: "test-fast-model",
         permissionMode: "plan",
       }),

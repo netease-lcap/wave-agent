@@ -46,7 +46,7 @@ describe("AI Service - Branch Coverage", () => {
   };
 
   const TEST_MODEL_CONFIG = {
-    agentModel: "gpt-4o",
+    model: "gpt-4o",
     fastModel: "gpt-4o-mini",
   };
 

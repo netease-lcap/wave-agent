@@ -103,7 +103,7 @@ describe("SubagentManager - Session Functionality", () => {
     };
 
     mockModelConfig = {
-      agentModel: "claude-3-5-sonnet-20241022",
+      model: "claude-3-5-sonnet-20241022",
       fastModel: "claude-3-haiku-20240307",
     };
 

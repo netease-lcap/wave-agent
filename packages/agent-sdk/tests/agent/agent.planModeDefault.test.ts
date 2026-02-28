@@ -23,7 +23,7 @@ vi.mock("../../src/services/configurationService.js", () => {
           baseURL: "https://test.api",
         }),
         resolveModelConfig: vi.fn().mockReturnValue({
-          agentModel: "test-model",
+          model: "test-model",
           fastModel: "test-fast-model",
         }),
         resolveMaxInputTokens: vi.fn().mockReturnValue(100000),
@@ -95,7 +95,7 @@ describe("Agent Plan Mode Default", () => {
           baseURL: "https://test.api",
         }),
         resolveModelConfig: vi.fn().mockReturnValue({
-          agentModel: "test-model",
+          model: "test-model",
           fastModel: "test-fast-model",
         }),
         resolveMaxInputTokens: vi.fn().mockReturnValue(100000),

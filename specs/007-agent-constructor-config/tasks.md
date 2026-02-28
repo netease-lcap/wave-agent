@@ -85,7 +85,7 @@
 
 **Goal**: Enable developers to specify AI models (agent model and fast model) through Agent constructor instead of environment variables
 
-**Independent Test**: Create Agent with custom agentModel and fastModel, verify specified models are used for AI operations instead of environment variables or defaults
+**Independent Test**: Create Agent with custom model and fastModel, verify specified models are used for AI operations instead of environment variables or defaults
 
 ### Implementation for User Story 3
 

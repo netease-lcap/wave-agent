@@ -63,7 +63,7 @@ Developers need to specify default AI models (agent model and fast model) throug
 
 - **FR-001**: Agent constructor MUST accept optional `apiKey` string parameter with fallback to WAVE_API_KEY environment variable
 - **FR-002**: Agent constructor MUST accept optional `baseURL` string parameter with fallback to WAVE_BASE_URL environment variable
-- **FR-003**: Agent constructor MUST accept optional `agentModel` string parameter with fallback to WAVE_MODEL environment variable
+- **FR-003**: Agent constructor MUST accept optional `model` string parameter with fallback to WAVE_MODEL environment variable
 - **FR-004**: Agent constructor MUST accept optional `fastModel` string parameter with fallback to WAVE_FAST_MODEL environment variable
 - **FR-005**: Agent constructor MUST accept optional `maxInputTokens` number parameter with fallback to WAVE_MAX_INPUT_TOKENS environment variable
 - **FR-006**: System MUST validate resolved configuration and throw clear errors for missing/invalid values
@@ -74,7 +74,7 @@ Developers need to specify default AI models (agent model and fast model) throug
 
 ### Key Entities *(include if feature involves data)*
 
-- **AgentConfig**: Flattened configuration parameters directly in AgentOptions (apiKey, baseURL, agentModel, fastModel, maxInputTokens)
+- **AgentConfig**: Flattened configuration parameters directly in AgentOptions (apiKey, baseURL, model, fastModel, maxInputTokens)
 - **GatewayConfig**: Resolved configuration for gateway service including authentication and endpoint details
 - **ModelConfig**: Resolved model selection configuration specifying which models to use for different operations
 

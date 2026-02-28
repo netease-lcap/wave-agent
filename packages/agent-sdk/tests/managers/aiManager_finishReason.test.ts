@@ -35,7 +35,7 @@ describe("AIManager finish reason", () => {
   };
 
   const mockModelConfig: ModelConfig = {
-    agentModel: "test-agent-model",
+    model: "test-agent-model",
     fastModel: "test-fast-model",
   };
 

@@ -12,7 +12,7 @@ const TEST_GATEWAY_CONFIG: GatewayConfig = {
 };
 
 const TEST_MODEL_CONFIG: ModelConfig = {
-  agentModel: "rate-limit-test",
+  model: "rate-limit-test",
   fastModel: "gemini-2.5-flash",
 };
 

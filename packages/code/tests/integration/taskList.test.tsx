@@ -65,12 +65,10 @@ describe("TaskList Integration", () => {
       getMcpServers: vi.fn().mockReturnValue([]),
       getSlashCommands: vi.fn().mockReturnValue([]),
       getGatewayConfig: vi.fn().mockReturnValue({ baseURL: "" }),
-      getModelConfig: vi
-        .fn()
-        .mockReturnValue({
-          agentModel: "test-model",
-          fastModel: "test-fast-model",
-        }),
+      getModelConfig: vi.fn().mockReturnValue({
+        model: "test-model",
+        fastModel: "test-fast-model",
+      }),
       destroy: vi.fn(),
     } as unknown as Agent;
 

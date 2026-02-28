@@ -68,7 +68,7 @@ describe("SubagentManager - Recent Changes Coverage", () => {
       baseURL: "https://api.anthropic.com",
     };
     mockModelConfig = {
-      agentModel: "claude-3-sonnet",
+      model: "claude-3-sonnet",
       fastModel: "claude-3-haiku",
     };
 

@@ -9,7 +9,7 @@ const TEST_GATEWAY_CONFIG: GatewayConfig = {
 };
 
 const TEST_MODEL_CONFIG: ModelConfig = {
-  agentModel: "gemini-3-flash",
+  model: "gemini-3-flash",
   fastModel: "gemini-2.5-flash",
 };
 
@@ -95,7 +95,7 @@ describe("AI Service - CompressMessages", () => {
       const callArgs = mockCreate.mock.calls[0][0];
 
       // Verify model configuration
-      expect(callArgs.model).toBe(TEST_MODEL_CONFIG.agentModel);
+      expect(callArgs.model).toBe(TEST_MODEL_CONFIG.model);
       expect(callArgs.temperature).toBe(0.1);
       expect(callArgs.max_tokens).toBe(2048);
       expect(callArgs.stream).toBe(false);

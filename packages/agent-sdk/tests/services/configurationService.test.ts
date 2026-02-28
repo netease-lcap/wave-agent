@@ -440,7 +440,7 @@ describe("ConfigurationService", () => {
       const expectedAgentModel = process.env.WAVE_MODEL || "gemini-3-flash";
       const expectedFastModel =
         process.env.WAVE_FAST_MODEL || "gemini-2.5-flash";
-      expect(config.agentModel).toBe(expectedAgentModel);
+      expect(config.model).toBe(expectedAgentModel);
       expect(config.fastModel).toBe(expectedFastModel);
       expect(config.maxTokens).toBe(DEFAULT_WAVE_MAX_OUTPUT_TOKENS);
     });
@@ -452,7 +452,7 @@ describe("ConfigurationService", () => {
         WAVE_MAX_OUTPUT_TOKENS: "1000",
       });
       const config = configService.resolveModelConfig();
-      expect(config.agentModel).toBe("custom-agent");
+      expect(config.model).toBe("custom-agent");
       expect(config.fastModel).toBe("custom-fast");
       expect(config.maxTokens).toBe(1000);
     });
