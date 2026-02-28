@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { readFileSync } from "fs";
 import {
   convertImageToBase64,
-  addCommandOutputMessage,
-  updateCommandOutputInMessage,
-  completeCommandInMessage,
+  addBangMessage,
+  updateBangInMessage,
+  completeBangInMessage,
   addUserMessageToMessages,
   addErrorBlockToMessage,
 } from "@/utils/messageOperations.js";
@@ -235,8 +235,8 @@ describe("convertImageToBase64", () => {
   });
 });
 
-describe("Command Output Message Operations", () => {
-  describe("addCommandOutputMessage", () => {
+describe("Bang Message Operations", () => {
+  describe("addBangMessage", () => {
     it("should add a new command output message", () => {
       const initialMessages: Message[] = [
         {
@@ -245,7 +245,7 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = addCommandOutputMessage({
+      const result = addBangMessage({
         messages: initialMessages,
         command: "echo hello",
       });
@@ -255,7 +255,7 @@ describe("Command Output Message Operations", () => {
         role: "user",
         blocks: [
           {
-            type: "command_output",
+            type: "bang",
             command: "echo hello",
             output: "",
             isRunning: true,
@@ -268,7 +268,7 @@ describe("Command Output Message Operations", () => {
     it("should work with empty message list", () => {
       const initialMessages: Message[] = [];
 
-      const result = addCommandOutputMessage({
+      const result = addBangMessage({
         messages: initialMessages,
         command: "ls -la",
       });
@@ -278,7 +278,7 @@ describe("Command Output Message Operations", () => {
         role: "user",
         blocks: [
           {
-            type: "command_output",
+            type: "bang",
             command: "ls -la",
             output: "",
             isRunning: true,
@@ -296,7 +296,7 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = addCommandOutputMessage({
+      const result = addBangMessage({
         messages: initialMessages,
         command: "pwd",
       });
@@ -307,14 +307,14 @@ describe("Command Output Message Operations", () => {
     });
   });
 
-  describe("updateCommandOutputInMessage", () => {
+  describe("updateBangInMessage", () => {
     it("should update output in the correct command block", () => {
       const initialMessages: Message[] = [
         {
           role: "user",
           blocks: [
             {
-              type: "command_output",
+              type: "bang",
               command: "echo hello",
               output: "",
               isRunning: true,
@@ -324,14 +324,14 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = updateCommandOutputInMessage({
+      const result = updateBangInMessage({
         messages: initialMessages,
         command: "echo hello",
         output: "hello\n",
       });
 
       expect(result[0].blocks[0]).toMatchObject({
-        type: "command_output",
+        type: "bang",
         command: "echo hello",
         output: "hello",
         isRunning: true,
@@ -345,7 +345,7 @@ describe("Command Output Message Operations", () => {
           role: "user",
           blocks: [
             {
-              type: "command_output",
+              type: "bang",
               command: "echo first",
               output: "first",
               isRunning: false,
@@ -357,7 +357,7 @@ describe("Command Output Message Operations", () => {
           role: "user",
           blocks: [
             {
-              type: "command_output",
+              type: "bang",
               command: "echo second",
               output: "",
               isRunning: true,
@@ -367,7 +367,7 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = updateCommandOutputInMessage({
+      const result = updateBangInMessage({
         messages: initialMessages,
         command: "echo second",
         output: "second\n",
@@ -394,7 +394,7 @@ describe("Command Output Message Operations", () => {
           role: "user",
           blocks: [
             {
-              type: "command_output",
+              type: "bang",
               command: "echo test",
               output: "",
               isRunning: true,
@@ -404,7 +404,7 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = updateCommandOutputInMessage({
+      const result = updateBangInMessage({
         messages: initialMessages,
         command: "echo test",
         output: "  test output  \n",
@@ -421,7 +421,7 @@ describe("Command Output Message Operations", () => {
           role: "user",
           blocks: [
             {
-              type: "command_output",
+              type: "bang",
               command: "echo hello",
               output: "hello",
               isRunning: false,
@@ -431,7 +431,7 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = updateCommandOutputInMessage({
+      const result = updateBangInMessage({
         messages: initialMessages,
         command: "echo hello",
         output: "new output",
@@ -445,14 +445,14 @@ describe("Command Output Message Operations", () => {
     });
   });
 
-  describe("completeCommandInMessage", () => {
+  describe("completeBangInMessage", () => {
     it("should mark command as completed with exit code", () => {
       const initialMessages: Message[] = [
         {
           role: "user",
           blocks: [
             {
-              type: "command_output",
+              type: "bang",
               command: "echo hello",
               output: "hello",
               isRunning: true,
@@ -462,14 +462,14 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = completeCommandInMessage({
+      const result = completeBangInMessage({
         messages: initialMessages,
         command: "echo hello",
         exitCode: 0,
       });
 
       expect(result[0].blocks[0]).toMatchObject({
-        type: "command_output",
+        type: "bang",
         command: "echo hello",
         output: "hello",
         isRunning: false,
@@ -483,7 +483,7 @@ describe("Command Output Message Operations", () => {
           role: "user",
           blocks: [
             {
-              type: "command_output",
+              type: "bang",
               command: "ls /nonexistent",
               output: "ls: /nonexistent: No such file or directory",
               isRunning: true,
@@ -493,7 +493,7 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = completeCommandInMessage({
+      const result = completeBangInMessage({
         messages: initialMessages,
         command: "ls /nonexistent",
         exitCode: 1,
@@ -511,7 +511,7 @@ describe("Command Output Message Operations", () => {
           role: "user",
           blocks: [
             {
-              type: "command_output",
+              type: "bang",
               command: "echo first",
               output: "first",
               isRunning: false,
@@ -523,7 +523,7 @@ describe("Command Output Message Operations", () => {
           role: "user",
           blocks: [
             {
-              type: "command_output",
+              type: "bang",
               command: "echo second",
               output: "second",
               isRunning: true,
@@ -533,7 +533,7 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = completeCommandInMessage({
+      const result = completeBangInMessage({
         messages: initialMessages,
         command: "echo second",
         exitCode: 0,
@@ -560,7 +560,7 @@ describe("Command Output Message Operations", () => {
           role: "user",
           blocks: [
             {
-              type: "command_output",
+              type: "bang",
               command: "echo hello",
               output: "hello",
               isRunning: false,
@@ -570,7 +570,7 @@ describe("Command Output Message Operations", () => {
         },
       ];
 
-      const result = completeCommandInMessage({
+      const result = completeBangInMessage({
         messages: initialMessages,
         command: "echo hello",
         exitCode: 1,

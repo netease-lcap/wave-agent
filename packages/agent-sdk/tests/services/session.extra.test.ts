@@ -96,11 +96,11 @@ describe("session service - additional coverage", () => {
       expect(content).toBe("hello");
     });
 
-    it("should return command from command_output block", async () => {
+    it("should return command from bang block", async () => {
       const fileUtils = await import("../../src/utils/fileUtils.js");
       vi.mocked(fileUtils.readFirstLine).mockResolvedValue(
         JSON.stringify({
-          blocks: [{ type: "command_output", command: "ls" }],
+          blocks: [{ type: "bang", command: "ls" }],
         }),
       );
 

@@ -64,7 +64,7 @@ export const MessageList = React.memo(
       const isDynamic =
         isLastMessage &&
         ((block.type === "tool" && block.stage !== "end") ||
-          (block.type === "command_output" && block.isRunning));
+          (block.type === "bang" && block.isRunning));
       return { ...item, isDynamic };
     });
 
