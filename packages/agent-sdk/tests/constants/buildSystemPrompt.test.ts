@@ -24,7 +24,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toContain(TOOL_POLICY);
   });
 
-  it("should include tool-specific prompts when tools are present", () => {
+  it("should NOT include tool-specific prompts when tools are present", () => {
     const tools = [
       {
         name: READ_TOOL_NAME,
@@ -36,19 +36,7 @@ describe("buildSystemPrompt", () => {
       } as unknown as ToolPlugin,
     ];
     const prompt = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, tools);
-    expect(prompt).toContain("Read for reading files");
-    expect(prompt).toContain("Write for creating files");
-  });
-
-  it("should exclude tool-specific prompts when tools are missing", () => {
-    const tools = [
-      {
-        name: READ_TOOL_NAME,
-        prompt: () => "Read for reading files",
-      } as unknown as ToolPlugin,
-    ];
-    const prompt = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, tools);
-    expect(prompt).toContain("Read for reading files");
+    expect(prompt).not.toContain("Read for reading files");
     expect(prompt).not.toContain("Write for creating files");
   });
 });

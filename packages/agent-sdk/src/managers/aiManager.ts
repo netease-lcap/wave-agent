@@ -132,7 +132,15 @@ export class AIManager {
    * Get filtered tool configuration based on tools list
    */
   private getFilteredToolsConfig(tools?: string[]) {
-    const allTools = this.toolManager.getToolsConfig();
+    // Get available subagents and skills for dynamic prompts
+    const availableSubagents = this.subagentManager?.getConfigurations();
+    const availableSkills = this.skillManager?.getAvailableSkills();
+
+    const allTools = this.toolManager.getToolsConfig({
+      availableSubagents,
+      availableSkills,
+      workdir: this.workdir,
+    });
 
     // If no tools specified, return all tools
     if (!tools || tools.length === 0) {
@@ -383,10 +391,6 @@ export class AIManager {
         }
       }
 
-      // Get available subagents and skills for dynamic prompts
-      const availableSubagents = this.subagentManager?.getConfigurations();
-      const availableSkills = this.skillManager?.getAvailableSkills();
-
       // Call AI service with streaming callbacks if enabled
       const callAgentOptions: CallAgentOptions = {
         gatewayConfig: this.getGatewayConfig(),
@@ -406,8 +410,6 @@ export class AIManager {
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
             planMode: planModeOptions,
-            availableSubagents,
-            availableSkills,
           },
         ), // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override

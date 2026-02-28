@@ -23,7 +23,7 @@ export interface ToolPlugin {
     context: ToolContext,
   ) => string;
   /**
-   * Optional function to provide a prompt to be added to the system prompt
+   * Function to provide a prompt to be added to the tool description
    */
   prompt?: (args?: {
     availableSubagents?: SubagentConfiguration[];
