@@ -37,6 +37,9 @@ import { Container } from "../utils/container.js";
 
 import { logger } from "../utils/globalLogger.js";
 
+import type { SubagentConfiguration } from "../utils/subagentParser.js";
+import type { SkillMetadata } from "../types/skills.js";
+
 export interface ToolManagerOptions {
   container: Container;
   /** Optional list of tool names to enable */
@@ -244,7 +247,11 @@ class ToolManager {
     return [...builtInTools, ...mcpTools];
   }
 
-  getToolsConfig(): ChatCompletionFunctionTool[] {
+  getToolsConfig(options?: {
+    availableSubagents?: SubagentConfiguration[];
+    availableSkills?: SkillMetadata[];
+    workdir?: string;
+  }): ChatCompletionFunctionTool[] {
     const effectivePermissionMode = this.getPermissionMode();
     const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
@@ -258,7 +265,20 @@ class ToolManager {
         }
         return true;
       })
-      .map((tool) => tool.config);
+      .map((tool) => {
+        // Create a copy of the tool config to avoid modifying the original
+        const config = {
+          ...tool.config,
+          function: {
+            ...tool.config.function,
+          },
+        };
+        // Override description with prompt if available
+        if (tool.prompt) {
+          config.function.description = tool.prompt(options);
+        }
+        return config;
+      });
     const mcpToolsConfig = this.mcpManager.getMcpToolsConfig();
     return [...builtInToolsConfig, ...mcpToolsConfig];
   }
