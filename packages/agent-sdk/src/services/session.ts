@@ -768,7 +768,7 @@ export async function getFirstMessageContent(
       }
 
       const commandBlock = message.blocks.find(
-        (block) => block.type === "command_output",
+        (block) => block.type === "bang",
       );
       if (commandBlock && "command" in commandBlock) {
         return commandBlock.command;

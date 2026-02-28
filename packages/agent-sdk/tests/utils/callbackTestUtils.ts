@@ -24,9 +24,9 @@ export function createMockCallbacks(): MessageManagerCallbacks {
     onCompressBlockAdded: vi.fn(),
     onCompressionStateChange: vi.fn(),
     onMemoryBlockAdded: vi.fn(),
-    onAddCommandOutputMessage: vi.fn(),
-    onUpdateCommandOutputMessage: vi.fn(),
-    onCompleteCommandMessage: vi.fn(),
+    onAddBangMessage: vi.fn(),
+    onUpdateBangMessage: vi.fn(),
+    onCompleteBangMessage: vi.fn(),
     // Note: Subagent-specific callbacks have been moved to SubagentManagerCallbacks
   };
 }

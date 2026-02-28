@@ -3,9 +3,9 @@ import {
   updateToolBlockInMessage,
   addErrorBlockToMessage,
   addUserMessageToMessages,
-  addCommandOutputMessage,
-  updateCommandOutputInMessage,
-  completeCommandInMessage,
+  addBangMessage,
+  updateBangInMessage,
+  completeBangInMessage,
   removeLastUserMessage,
   UserMessageParams,
   type AgentToolBlockUpdateParams,
@@ -48,10 +48,10 @@ export interface MessageManagerCallbacks {
     type: "project" | "user",
     storagePath: string,
   ) => void;
-  // Bash command callback
-  onAddCommandOutputMessage?: (command: string) => void;
-  onUpdateCommandOutputMessage?: (command: string, output: string) => void;
-  onCompleteCommandMessage?: (command: string, exitCode: number) => void;
+  // Bang callback
+  onAddBangMessage?: (command: string) => void;
+  onUpdateBangMessage?: (command: string, output: string) => void;
+  onCompleteBangMessage?: (command: string, exitCode: number) => void;
   onSlashCommandsChange?: (commands: SlashCommand[]) => void;
   onInfoBlockAdded?: (content: string) => void;
   // Rewind callbacks
@@ -463,34 +463,34 @@ export class MessageManager {
     }
   }
 
-  // Bash command related message operations
-  public addCommandOutputMessage(command: string): void {
-    const updatedMessages = addCommandOutputMessage({
+  // Bang related message operations
+  public addBangMessage(command: string): void {
+    const updatedMessages = addBangMessage({
       messages: this.messages,
       command,
     });
     this.setMessages(updatedMessages);
-    this.callbacks.onAddCommandOutputMessage?.(command);
+    this.callbacks.onAddBangMessage?.(command);
   }
 
-  public updateCommandOutputMessage(command: string, output: string): void {
-    const updatedMessages = updateCommandOutputInMessage({
+  public updateBangMessage(command: string, output: string): void {
+    const updatedMessages = updateBangInMessage({
       messages: this.messages,
       command,
       output,
     });
     this.setMessages(updatedMessages);
-    this.callbacks.onUpdateCommandOutputMessage?.(command, output);
+    this.callbacks.onUpdateBangMessage?.(command, output);
   }
 
-  public completeCommandMessage(command: string, exitCode: number): void {
-    const updatedMessages = completeCommandInMessage({
+  public completeBangMessage(command: string, exitCode: number): void {
+    const updatedMessages = completeBangInMessage({
       messages: this.messages,
       command,
       exitCode,
     });
     this.setMessages(updatedMessages);
-    this.callbacks.onCompleteCommandMessage?.(command, exitCode);
+    this.callbacks.onCompleteBangMessage?.(command, exitCode);
   }
 
   /**

@@ -2,7 +2,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { Message, MessageBlock } from "wave-agent-sdk";
 import { MessageSource } from "wave-agent-sdk";
-import { CommandOutputDisplay } from "./CommandOutputDisplay.js";
+import { BangDisplay } from "./BangDisplay.js";
 import { ToolDisplay } from "./ToolDisplay.js";
 import { CompressDisplay } from "./CompressDisplay.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
@@ -51,8 +51,8 @@ export const MessageBlockItem = ({
         </Box>
       )}
 
-      {block.type === "command_output" && (
-        <CommandOutputDisplay block={block} isExpanded={isExpanded} />
+      {block.type === "bang" && (
+        <BangDisplay block={block} isExpanded={isExpanded} />
       )}
 
       {block.type === "tool" && (

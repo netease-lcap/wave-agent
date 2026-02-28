@@ -11,7 +11,7 @@ import {
 } from "./managers/subagentManager.js";
 import { McpManager, type McpManagerCallbacks } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
-import { BashManager } from "./managers/bashManager.js";
+import { BangManager } from "./managers/bangManager.js";
 import {
   BackgroundTaskManager,
   type BackgroundTaskManagerCallbacks,
@@ -132,7 +132,7 @@ export class Agent {
   private messageManager: MessageManager;
   private aiManager: AIManager;
 
-  private bashManager: BashManager | null = null;
+  private bangManager: BangManager | null = null;
   private backgroundTaskManager: BackgroundTaskManager;
   private logger?: Logger; // Add optional logger property
   private toolManager: ToolManager; // Add tool registry instance
@@ -270,7 +270,7 @@ export class Agent {
     this.aiManager = this.container.get("AIManager")!;
     this.slashCommandManager = this.container.get("SlashCommandManager")!;
     this.pluginManager = this.container.get("PluginManager")!;
-    this.bashManager = this.container.get("BashManager")!;
+    this.bangManager = this.container.get("BangManager")!;
 
     // Set initial permission mode if provided
     if (options.permissionMode) {
@@ -355,7 +355,7 @@ export class Agent {
 
   /** Get bash command execution status */
   public get isCommandRunning(): boolean {
-    return this.bashManager?.isCommandRunning ?? false;
+    return this.bangManager?.isCommandRunning ?? false;
   }
 
   /** Get background bash shell output */
@@ -702,7 +702,7 @@ export class Agent {
 
   /** Execute bash command */
   public async executeBashCommand(command: string): Promise<void> {
-    await this.bashManager?.executeCommand(command);
+    await this.bangManager?.executeCommand(command);
   }
 
   public clearMessages(): void {
@@ -718,7 +718,7 @@ export class Agent {
 
   /** Interrupt bash command execution */
   public abortBashCommand(): void {
-    this.bashManager?.abortCommand();
+    this.bangManager?.abortCommand();
   }
 
   /** Interrupt slash command execution */

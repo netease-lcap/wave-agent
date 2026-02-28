@@ -23,7 +23,7 @@ export type MessageBlock =
   | ErrorBlock
   | ToolBlock
   | ImageBlock
-  | CommandOutputBlock
+  | BangBlock
   | CompressBlock
   | ReasoningBlock
   | FileHistoryBlock;
@@ -73,8 +73,8 @@ export interface ImageBlock {
   imageUrls?: string[];
 }
 
-export interface CommandOutputBlock {
-  type: "command_output";
+export interface BangBlock {
+  type: "bang";
   command: string;
   output: string;
   isRunning: boolean;

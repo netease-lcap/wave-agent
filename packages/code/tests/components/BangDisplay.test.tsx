@@ -1,12 +1,12 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi } from "vitest";
-import { CommandOutputDisplay } from "../../src/components/CommandOutputDisplay.js";
-import { CommandOutputBlock } from "wave-agent-sdk";
+import { BangDisplay } from "../../src/components/BangDisplay.js";
+import { BangBlock } from "wave-agent-sdk";
 
-describe("CommandOutputDisplay", () => {
-  const mockBlock: CommandOutputBlock = {
-    type: "command_output",
+describe("BangDisplay", () => {
+  const mockBlock: BangBlock = {
+    type: "bang",
     command: "ls -la",
     output:
       "total 0\ndrwxr-xr-x  2 user  group   64 Feb  5 23:00 .\ndrwxr-xr-x  3 user  group   96 Feb  5 23:00 ..",
@@ -15,7 +15,7 @@ describe("CommandOutputDisplay", () => {
   };
 
   it("should render command and output correctly", () => {
-    const { lastFrame } = render(<CommandOutputDisplay block={mockBlock} />);
+    const { lastFrame } = render(<BangDisplay block={mockBlock} />);
     const frame = lastFrame();
     expect(frame).toContain("! ls -la");
     expect(frame).toContain("total 0");
@@ -23,19 +23,19 @@ describe("CommandOutputDisplay", () => {
 
   it("should render command when running", () => {
     const runningBlock = { ...mockBlock, isRunning: true, exitCode: null };
-    const { lastFrame } = render(<CommandOutputDisplay block={runningBlock} />);
+    const { lastFrame } = render(<BangDisplay block={runningBlock} />);
     expect(lastFrame()).toContain("! ls -la");
   });
 
   it("should render command when error occurs", () => {
     const errorBlock = { ...mockBlock, exitCode: 1 };
-    const { lastFrame } = render(<CommandOutputDisplay block={errorBlock} />);
+    const { lastFrame } = render(<BangDisplay block={errorBlock} />);
     expect(lastFrame()).toContain("! ls -la");
   });
 
   it("should render command when SIGINT occurs", () => {
     const sigintBlock = { ...mockBlock, exitCode: 130 };
-    const { lastFrame } = render(<CommandOutputDisplay block={sigintBlock} />);
+    const { lastFrame } = render(<BangDisplay block={sigintBlock} />);
     expect(lastFrame()).toContain("! ls -la");
   });
 
@@ -46,7 +46,7 @@ describe("CommandOutputDisplay", () => {
     ).join("\n");
     const longBlock = { ...mockBlock, output: longOutput };
     const { lastFrame } = render(
-      <CommandOutputDisplay block={longBlock} isExpanded={false} />,
+      <BangDisplay block={longBlock} isExpanded={false} />,
     );
 
     // Wait for useEffect to run and update state
@@ -65,7 +65,7 @@ describe("CommandOutputDisplay", () => {
     ).join("\n");
     const longBlock = { ...mockBlock, output: longOutput };
     const { lastFrame } = render(
-      <CommandOutputDisplay block={longBlock} isExpanded={true} />,
+      <BangDisplay block={longBlock} isExpanded={true} />,
     );
     const frame = lastFrame();
     expect(frame).not.toContain("Content truncated");
@@ -75,7 +75,7 @@ describe("CommandOutputDisplay", () => {
 
   it("should handle empty output", () => {
     const emptyBlock = { ...mockBlock, output: "" };
-    const { lastFrame } = render(<CommandOutputDisplay block={emptyBlock} />);
+    const { lastFrame } = render(<BangDisplay block={emptyBlock} />);
     expect(lastFrame()).toContain("! ls -la");
     // Should not have the output box
     expect(lastFrame()).not.toContain("borderLeft");

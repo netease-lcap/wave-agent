@@ -53,18 +53,18 @@ export interface AddErrorBlockParams {
   error: string;
 }
 
-export interface AddCommandOutputParams {
+export interface AddBangParams {
   messages: Message[];
   command: string;
 }
 
-export interface UpdateCommandOutputParams {
+export interface UpdateBangParams {
   messages: Message[];
   command: string;
   output: string;
 }
 
-export interface CompleteCommandParams {
+export interface CompleteBangParams {
   messages: Message[];
   command: string;
   exitCode: number;
@@ -295,16 +295,16 @@ export const addErrorBlockToMessage = ({
   return newMessages;
 };
 
-// Add command output block to message list
-export const addCommandOutputMessage = ({
+// Add bang block to message list
+export const addBangMessage = ({
   messages,
   command,
-}: AddCommandOutputParams): Message[] => {
+}: AddBangParams): Message[] => {
   const outputMessage: Message = {
     role: "user",
     blocks: [
       {
-        type: "command_output",
+        type: "bang",
         command,
         output: "",
         isRunning: true,
@@ -316,24 +316,22 @@ export const addCommandOutputMessage = ({
   return [...messages, outputMessage];
 };
 
-// Update output content of command output block
-export const updateCommandOutputInMessage = ({
+// Update output content of bang block
+export const updateBangInMessage = ({
   messages,
   command,
   output,
-}: UpdateCommandOutputParams): Message[] => {
+}: UpdateBangParams): Message[] => {
   const newMessages = [...messages];
-  // Find the last user message with a command_output block for this command
+  // Find the last user message with a bang block for this command
   for (let i = newMessages.length - 1; i >= 0; i--) {
     const msg = newMessages[i];
     if (msg.role === "user") {
       const commandBlock = msg.blocks.find(
         (block) =>
-          block.type === "command_output" &&
-          block.command === command &&
-          block.isRunning,
+          block.type === "bang" && block.command === command && block.isRunning,
       );
-      if (commandBlock && commandBlock.type === "command_output") {
+      if (commandBlock && commandBlock.type === "bang") {
         commandBlock.output = output.trim();
         break;
       }
@@ -342,24 +340,22 @@ export const updateCommandOutputInMessage = ({
   return newMessages;
 };
 
-// Complete command execution, update exit status
-export const completeCommandInMessage = ({
+// Complete bang execution, update exit status
+export const completeBangInMessage = ({
   messages,
   command,
   exitCode,
-}: CompleteCommandParams): Message[] => {
+}: CompleteBangParams): Message[] => {
   const newMessages = [...messages];
-  // Find the last user message with a command_output block for this command
+  // Find the last user message with a bang block for this command
   for (let i = newMessages.length - 1; i >= 0; i--) {
     const msg = newMessages[i];
     if (msg.role === "user") {
       const commandBlock = msg.blocks.find(
         (block) =>
-          block.type === "command_output" &&
-          block.command === command &&
-          block.isRunning,
+          block.type === "bang" && block.command === command && block.isRunning,
       );
-      if (commandBlock && commandBlock.type === "command_output") {
+      if (commandBlock && commandBlock.type === "bang") {
         commandBlock.isRunning = false;
         commandBlock.exitCode = exitCode;
         break;

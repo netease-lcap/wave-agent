@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "child_process";
 import type { MessageManager } from "./messageManager.js";
 import { Container } from "../utils/container.js";
 
-export interface BashManagerOptions {
+export interface BangManagerOptions {
   workdir: string;
 }
 
@@ -11,14 +11,14 @@ export interface CommandExecutionResult {
   output: string;
 }
 
-export class BashManager {
+export class BangManager {
   private workdir: string;
   public isCommandRunning = false;
   private currentProcess: ChildProcess | null = null;
 
   constructor(
     private container: Container,
-    options: BashManagerOptions,
+    options: BangManagerOptions,
   ) {
     this.workdir = options.workdir;
   }
@@ -38,8 +38,8 @@ export class BashManager {
 
     this.setCommandRunning(true);
 
-    // Add command output placeholder
-    this.messageManager.addCommandOutputMessage(command);
+    // Add bang placeholder
+    this.messageManager.addBangMessage(command);
 
     return new Promise<number>((resolve) => {
       const child = spawn(command, {
@@ -56,7 +56,7 @@ export class BashManager {
 
       const updateOutput = (newData: string) => {
         outputBuffer += newData;
-        this.messageManager.updateCommandOutputMessage(command, outputBuffer);
+        this.messageManager.updateBangMessage(command, outputBuffer);
       };
 
       child.stdout?.on("data", (data) => {
@@ -70,7 +70,7 @@ export class BashManager {
       child.on("exit", (code, signal) => {
         const exitCode = code === null && signal ? 130 : (code ?? 0);
 
-        this.messageManager.completeCommandMessage(command, exitCode);
+        this.messageManager.completeBangMessage(command, exitCode);
 
         this.setCommandRunning(false);
         this.currentProcess = null;
@@ -79,7 +79,7 @@ export class BashManager {
 
       child.on("error", (error) => {
         updateOutput(`\nError: ${error.message}\n`);
-        this.messageManager.completeCommandMessage(command, 1);
+        this.messageManager.completeBangMessage(command, 1);
 
         this.setCommandRunning(false);
         this.currentProcess = null;

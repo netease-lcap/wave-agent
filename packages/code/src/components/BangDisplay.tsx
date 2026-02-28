@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
-import type { CommandOutputBlock } from "wave-agent-sdk";
+import type { BangBlock } from "wave-agent-sdk";
 
-interface CommandOutputDisplayProps {
-  block: CommandOutputBlock;
+interface BangDisplayProps {
+  block: BangBlock;
   isExpanded?: boolean;
 }
 
-export const CommandOutputDisplay: React.FC<CommandOutputDisplayProps> = ({
+export const BangDisplay: React.FC<BangDisplayProps> = ({
   block,
   isExpanded = false,
 }) => {

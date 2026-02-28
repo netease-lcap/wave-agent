@@ -8,16 +8,16 @@ vi.mock("child_process");
 // Mock bashHistory utility
 vi.mock("@/utils/bashHistory");
 
-import { BashManager } from "@/managers/bashManager.js";
+import { BangManager } from "@/managers/bangManager.js";
 import type { MessageManager } from "@/managers/messageManager.js";
 import { Container } from "@/utils/container.js";
 
 // Mock MessageManager
 const createMockMessageManager = (): MessageManager => {
   const mock = {
-    addCommandOutputMessage: vi.fn(),
-    updateCommandOutputMessage: vi.fn(),
-    completeCommandMessage: vi.fn(),
+    addBangMessage: vi.fn(),
+    updateBangMessage: vi.fn(),
+    completeBangMessage: vi.fn(),
   };
   return mock as unknown as MessageManager;
 };
@@ -51,8 +51,8 @@ class MockChildProcess extends EventEmitter {
   }
 }
 
-describe("BashManager", () => {
-  let bashManager: BashManager;
+describe("BangManager", () => {
+  let bangManager: BangManager;
   let mockMessageManager: MessageManager;
   let mockChildProcess: MockChildProcess;
   const testWorkdir = "/test/workdir";
@@ -68,7 +68,7 @@ describe("BashManager", () => {
     const container = new Container();
     container.register("MessageManager", mockMessageManager);
 
-    bashManager = new BashManager(container, {
+    bangManager = new BangManager(container, {
       workdir: testWorkdir,
     });
   });
@@ -78,18 +78,18 @@ describe("BashManager", () => {
   });
 
   describe("constructor and factory", () => {
-    it("should create BashManager instance with correct options", () => {
-      expect(bashManager).toBeInstanceOf(BashManager);
-      expect(bashManager.isCommandRunning).toBe(false);
+    it("should create BangManager instance with correct options", () => {
+      expect(bangManager).toBeInstanceOf(BangManager);
+      expect(bangManager.isCommandRunning).toBe(false);
     });
 
-    it("should create BashManager using factory function", () => {
+    it("should create BangManager using factory function", () => {
       const container = new Container();
       container.register("MessageManager", createMockMessageManager());
-      const manager = new BashManager(container, {
+      const manager = new BangManager(container, {
         workdir: "/test/workdir",
       });
-      expect(manager).toBeInstanceOf(BashManager);
+      expect(manager).toBeInstanceOf(BangManager);
     });
   });
 
@@ -98,10 +98,10 @@ describe("BashManager", () => {
       const command = "echo 'hello world'";
 
       // Start command execution
-      const executePromise = bashManager.executeCommand(command);
+      const executePromise = bangManager.executeCommand(command);
 
       // Verify initial state
-      expect(bashManager.isCommandRunning).toBe(true);
+      expect(bangManager.isCommandRunning).toBe(true);
 
       // Verify spawn was called with correct arguments
       expect(mockSpawn).toHaveBeenCalledWith(command, {
@@ -112,17 +112,16 @@ describe("BashManager", () => {
       });
 
       // Verify initial command message was added
-      expect(mockMessageManager.addCommandOutputMessage).toHaveBeenCalledWith(
-        command,
-      );
+      expect(mockMessageManager.addBangMessage).toHaveBeenCalledWith(command);
 
       // Simulate command output
       mockChildProcess.simulateStdout("hello world\n");
 
       // Verify output update callback was called
-      expect(
-        mockMessageManager.updateCommandOutputMessage,
-      ).toHaveBeenCalledWith(command, "hello world\n");
+      expect(mockMessageManager.updateBangMessage).toHaveBeenCalledWith(
+        command,
+        "hello world\n",
+      );
 
       // Simulate command completion
       mockChildProcess.simulateExit(0);
@@ -130,8 +129,8 @@ describe("BashManager", () => {
 
       // Verify final state
       expect(exitCode).toBe(0);
-      expect(bashManager.isCommandRunning).toBe(false);
-      expect(mockMessageManager.completeCommandMessage).toHaveBeenCalledWith(
+      expect(bangManager.isCommandRunning).toBe(false);
+      expect(mockMessageManager.completeBangMessage).toHaveBeenCalledWith(
         command,
         0,
       );
@@ -140,12 +139,10 @@ describe("BashManager", () => {
     it("should handle command with stderr output", async () => {
       const command = "ls /nonexistent";
 
-      const executePromise = bashManager.executeCommand(command);
+      const executePromise = bangManager.executeCommand(command);
 
       // Verify initial callback was called
-      expect(mockMessageManager.addCommandOutputMessage).toHaveBeenCalledWith(
-        command,
-      );
+      expect(mockMessageManager.addBangMessage).toHaveBeenCalledWith(command);
 
       // Simulate stderr output
       mockChildProcess.simulateStderr(
@@ -153,9 +150,7 @@ describe("BashManager", () => {
       );
 
       // Verify update callback was called with stderr output
-      expect(
-        mockMessageManager.updateCommandOutputMessage,
-      ).toHaveBeenCalledWith(
+      expect(mockMessageManager.updateBangMessage).toHaveBeenCalledWith(
         command,
         "ls: /nonexistent: No such file or directory",
       );
@@ -165,7 +160,7 @@ describe("BashManager", () => {
       const exitCode = await executePromise;
 
       expect(exitCode).toBe(1);
-      expect(mockMessageManager.completeCommandMessage).toHaveBeenCalledWith(
+      expect(mockMessageManager.completeBangMessage).toHaveBeenCalledWith(
         command,
         1,
       );
@@ -174,12 +169,10 @@ describe("BashManager", () => {
     it("should handle command execution error", async () => {
       const command = "nonexistentcommand";
 
-      const executePromise = bashManager.executeCommand(command);
+      const executePromise = bangManager.executeCommand(command);
 
       // Verify initial callback was called
-      expect(mockMessageManager.addCommandOutputMessage).toHaveBeenCalledWith(
-        command,
-      );
+      expect(mockMessageManager.addBangMessage).toHaveBeenCalledWith(command);
 
       // Simulate command error
       const error = new Error("Command not found");
@@ -188,10 +181,11 @@ describe("BashManager", () => {
       const exitCode = await executePromise;
 
       // Should have error output and exit code 1
-      expect(
-        mockMessageManager.updateCommandOutputMessage,
-      ).toHaveBeenCalledWith(command, "\nError: Command not found\n");
-      expect(mockMessageManager.completeCommandMessage).toHaveBeenCalledWith(
+      expect(mockMessageManager.updateBangMessage).toHaveBeenCalledWith(
+        command,
+        "\nError: Command not found\n",
+      );
+      expect(mockMessageManager.completeBangMessage).toHaveBeenCalledWith(
         command,
         1,
       );
@@ -201,14 +195,14 @@ describe("BashManager", () => {
     it("should handle SIGKILL signal", async () => {
       const command = "long_running_command";
 
-      const executePromise = bashManager.executeCommand(command);
+      const executePromise = bangManager.executeCommand(command);
 
       // Simulate signal termination
       mockChildProcess.simulateExit(null, "SIGKILL");
       const exitCode = await executePromise;
 
       expect(exitCode).toBe(130);
-      expect(mockMessageManager.completeCommandMessage).toHaveBeenCalledWith(
+      expect(mockMessageManager.completeBangMessage).toHaveBeenCalledWith(
         command,
         130,
       );
@@ -219,11 +213,11 @@ describe("BashManager", () => {
       const command2 = "command2";
 
       // Start first command
-      bashManager.executeCommand(command1);
-      expect(bashManager.isCommandRunning).toBe(true);
+      bangManager.executeCommand(command1);
+      expect(bangManager.isCommandRunning).toBe(true);
 
       // Trying to start second command should throw
-      await expect(bashManager.executeCommand(command2)).rejects.toThrow(
+      await expect(bangManager.executeCommand(command2)).rejects.toThrow(
         "Command already running",
       );
     });
@@ -231,25 +225,27 @@ describe("BashManager", () => {
     it("should update output progressively", async () => {
       const command = "cat file.txt";
 
-      const executePromise = bashManager.executeCommand(command);
+      const executePromise = bangManager.executeCommand(command);
 
       // Simulate partial output
       mockChildProcess.simulateStdout("line1");
-      expect(
-        mockMessageManager.updateCommandOutputMessage,
-      ).toHaveBeenCalledWith(command, "line1");
+      expect(mockMessageManager.updateBangMessage).toHaveBeenCalledWith(
+        command,
+        "line1",
+      );
 
       // Simulate more output
       mockChildProcess.simulateStdout("\nline2");
-      expect(
-        mockMessageManager.updateCommandOutputMessage,
-      ).toHaveBeenCalledWith(command, "line1\nline2");
+      expect(mockMessageManager.updateBangMessage).toHaveBeenCalledWith(
+        command,
+        "line1\nline2",
+      );
 
       // Complete
       mockChildProcess.simulateExit(0);
       await executePromise;
 
-      expect(mockMessageManager.completeCommandMessage).toHaveBeenCalledWith(
+      expect(mockMessageManager.completeBangMessage).toHaveBeenCalledWith(
         command,
         0,
       );
@@ -260,38 +256,38 @@ describe("BashManager", () => {
     it("should abort running command", async () => {
       const command = "long_command";
 
-      bashManager.executeCommand(command);
-      expect(bashManager.isCommandRunning).toBe(true);
+      bangManager.executeCommand(command);
+      expect(bangManager.isCommandRunning).toBe(true);
 
       // Abort the command
-      bashManager.abortCommand();
+      bangManager.abortCommand();
 
       // Verify kill was called
       expect(mockChildProcess.kill).toHaveBeenCalledWith("SIGKILL");
-      expect(bashManager.isCommandRunning).toBe(false);
+      expect(bangManager.isCommandRunning).toBe(false);
     });
 
     it("should do nothing when no command is running", () => {
-      expect(bashManager.isCommandRunning).toBe(false);
+      expect(bangManager.isCommandRunning).toBe(false);
 
       // Should not throw or cause issues
-      bashManager.abortCommand();
+      bangManager.abortCommand();
 
-      expect(bashManager.isCommandRunning).toBe(false);
+      expect(bangManager.isCommandRunning).toBe(false);
     });
   });
 
   describe("isCommandRunning", () => {
     it("should return correct running state", async () => {
-      expect(bashManager.isCommandRunning).toBe(false);
+      expect(bangManager.isCommandRunning).toBe(false);
 
-      const executePromise = bashManager.executeCommand("test_command");
-      expect(bashManager.isCommandRunning).toBe(true);
+      const executePromise = bangManager.executeCommand("test_command");
+      expect(bangManager.isCommandRunning).toBe(true);
 
       mockChildProcess.simulateExit(0);
       await executePromise;
 
-      expect(bashManager.isCommandRunning).toBe(false);
+      expect(bangManager.isCommandRunning).toBe(false);
     });
   });
 });
