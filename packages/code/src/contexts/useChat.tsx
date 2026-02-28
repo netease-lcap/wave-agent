@@ -124,6 +124,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   workdir,
   worktreeSession,
   version,
+  model,
 }) => {
   const { restoreSessionId, continueLastSession } = useAppConfig();
 
@@ -330,6 +331,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           workdir,
           worktreeName: worktreeSession?.name,
           isNewWorktree: worktreeSession?.isNew,
+          model,
         });
 
         agentRef.current = agent;

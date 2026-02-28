@@ -28,6 +28,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   worktreeSession,
   workdir,
   version,
+  model,
   onExit,
 }) => {
   const [isExiting, setIsExiting] = useState(false);
@@ -98,6 +99,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
       workdir={workdir}
       worktreeSession={worktreeSession}
       version={version}
+      model={model}
     >
       <ChatInterfaceWithRemount />
     </ChatProvider>
@@ -160,6 +162,7 @@ export const App: React.FC<AppProps> = ({
   worktreeSession,
   workdir,
   version,
+  model,
   onExit,
 }) => {
   return (
@@ -174,6 +177,7 @@ export const App: React.FC<AppProps> = ({
         worktreeSession={worktreeSession}
         workdir={workdir}
         version={version}
+        model={model}
         onExit={onExit}
       />
     </AppProvider>

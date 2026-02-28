@@ -20,6 +20,7 @@ export async function startCli(options: CliOptions): Promise<void> {
     worktreeSession,
     workdir,
     version,
+    model,
   } = options;
 
   // Continue with ink-based UI for normal mode
@@ -41,6 +42,7 @@ export async function startCli(options: CliOptions): Promise<void> {
       worktreeSession={worktreeSession}
       workdir={workdir}
       version={version}
+      model={model}
       onExit={handleExit}
     />,
     { exitOnCtrlC: false },

@@ -42,6 +42,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
     tools,
     worktreeSession,
     workdir,
+    model,
   } = options;
 
   if (
@@ -147,6 +148,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       plugins: pluginDirs?.map((path) => ({ type: "local", path })),
       tools,
       workdir,
+      model,
       // 保持流式模式以获得更好的命令行用户体验
     });
 

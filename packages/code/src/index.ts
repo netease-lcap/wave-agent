@@ -65,6 +65,11 @@ export async function main() {
         type: "string",
         global: false,
       })
+      .option("model", {
+        description: "Specify the AI model to use",
+        type: "string",
+        global: false,
+      })
       .command(
         "plugin",
         "Manage plugins and marketplaces",
@@ -294,6 +299,7 @@ export async function main() {
         worktreeSession,
         workdir,
         version,
+        model: argv.model as string | undefined,
       });
     }
 
@@ -301,28 +307,32 @@ export async function main() {
     if (argv.print !== undefined) {
       const { startPrintCli } = await import("./print-cli.js");
       return startPrintCli({
-        restoreSessionId: argv.restore,
-        continueLastSession: argv.continue,
+        restoreSessionId: argv.restore as string | undefined,
+        continueLastSession: argv.continue as boolean | undefined,
         message: argv.print,
-        showStats: argv.showStats,
-        bypassPermissions: argv.dangerouslySkipPermissions,
+        showStats: argv.showStats as boolean | undefined,
+        bypassPermissions: argv.dangerouslySkipPermissions as
+          | boolean
+          | undefined,
         pluginDirs,
         tools,
         worktreeSession,
         workdir,
         version,
+        model: argv.model as string | undefined,
       });
     }
 
     await startCli({
-      restoreSessionId: argv.restore,
-      continueLastSession: argv.continue,
-      bypassPermissions: argv.dangerouslySkipPermissions,
+      restoreSessionId: argv.restore as string | undefined,
+      continueLastSession: argv.continue as boolean | undefined,
+      bypassPermissions: argv.dangerouslySkipPermissions as boolean | undefined,
       pluginDirs,
       tools,
       worktreeSession,
       workdir,
       version,
+      model: argv.model as string | undefined,
     });
   } catch (error) {
     console.error("Failed to start WAVE Code:", error);
