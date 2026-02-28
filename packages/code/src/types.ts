@@ -7,4 +7,5 @@ export interface BaseAppProps {
   worktreeSession?: WorktreeSession;
   workdir?: string;
   version?: string;
+  model?: string;
 }
