@@ -561,7 +561,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const getModelConfig = useCallback(() => {
     if (!agentRef.current) {
-      return { agentModel: "", fastModel: "" };
+      return { model: "", fastModel: "" };
     }
     return agentRef.current.getModelConfig();
   }, []);

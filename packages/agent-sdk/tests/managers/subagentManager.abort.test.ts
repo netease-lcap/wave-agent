@@ -69,7 +69,7 @@ describe("SubagentManager - Abort Logic", () => {
       workdir: "/test",
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
-        agentModel: "test-model",
+        model: "test-model",
         fastModel: "test-fast-model",
       }),
       getMaxInputTokens: () => 1000,

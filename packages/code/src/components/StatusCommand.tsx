@@ -83,7 +83,7 @@ export const StatusCommand: React.FC<StatusCommandProps> = ({ onCancel }) => {
         <Box width={20}>
           <Text color="yellow">Model:</Text>
         </Box>
-        <Text color="white">{modelConfig.agentModel}</Text>
+        <Text color="white">{modelConfig.model}</Text>
       </Box>
 
       <Box marginTop={1}>

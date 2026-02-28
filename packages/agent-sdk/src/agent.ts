@@ -72,7 +72,7 @@ export interface AgentOptions {
   defaultHeaders?: Record<string, string>;
   fetchOptions?: ClientOptions["fetchOptions"];
   fetch?: ClientOptions["fetch"];
-  agentModel?: string;
+  model?: string;
   fastModel?: string;
   maxInputTokens?: number;
   maxTokens?: number;
@@ -177,7 +177,7 @@ export class Agent {
 
   public getModelConfig(): ModelConfig {
     return this.configurationService.resolveModelConfig(
-      this.options.agentModel,
+      this.options.model,
       this.options.fastModel,
       this.options.maxTokens,
       this.getPermissionMode(),
@@ -450,7 +450,7 @@ export class Agent {
     configValidator.validateGatewayConfig(gatewayConfig);
     configValidator.validateMaxInputTokens(maxInputTokens);
     configValidator.validateModelConfig(
-      modelConfig.agentModel,
+      modelConfig.model,
       modelConfig.fastModel,
     );
   }

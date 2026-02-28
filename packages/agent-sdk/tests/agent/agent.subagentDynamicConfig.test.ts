@@ -100,9 +100,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
         baseURL: "https://parent.url",
       });
 
-      expect(subagentAIManager.getModelConfig().agentModel).toBe(
-        "parent-model",
-      );
+      expect(subagentAIManager.getModelConfig().model).toBe("parent-model");
       expect(subagentAIManager.getMaxInputTokens()).toBe(40000);
 
       // Update parent environment variables
@@ -117,7 +115,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
         baseURL: "https://updated-parent.url",
       });
 
-      expect(subagentAIManager.getModelConfig().agentModel).toBe(
+      expect(subagentAIManager.getModelConfig().model).toBe(
         "updated-parent-model",
       );
       expect(subagentAIManager.getMaxInputTokens()).toBe(50000);
@@ -172,7 +170,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
 
       // Should use override model, but inherit fastModel from parent
       const modelConfig = subagentAIManager.getModelConfig();
-      expect(modelConfig.agentModel).toBe("specific-subagent-model");
+      expect(modelConfig.model).toBe("specific-subagent-model");
       expect(modelConfig.fastModel).toBe("parent-fast-model");
 
       // Should inherit token limit from parent (using default since not specified)
@@ -184,7 +182,7 @@ describe("Subagent Dynamic Configuration Tests", () => {
 
       // Verify subagent still uses override model but gets updated inherited values
       const updatedModelConfig = subagentAIManager.getModelConfig();
-      expect(updatedModelConfig.agentModel).toBe("specific-subagent-model"); // Still overridden
+      expect(updatedModelConfig.model).toBe("specific-subagent-model"); // Still overridden
       expect(updatedModelConfig.fastModel).toBe("updated-parent-fast-model"); // Inherited dynamically
 
       expect(subagentAIManager.getGatewayConfig().apiKey).toBe(
@@ -247,12 +245,8 @@ describe("Subagent Dynamic Configuration Tests", () => {
       expect(subagent1.aiManager.getGatewayConfig().apiKey).toBe("multi-token");
       expect(subagent2.aiManager.getGatewayConfig().apiKey).toBe("multi-token");
 
-      expect(subagent1.aiManager.getModelConfig().agentModel).toBe(
-        "multi-model",
-      );
-      expect(subagent2.aiManager.getModelConfig().agentModel).toBe(
-        "custom-model",
-      );
+      expect(subagent1.aiManager.getModelConfig().model).toBe("multi-model");
+      expect(subagent2.aiManager.getModelConfig().model).toBe("custom-model");
 
       // Update environment
       process.env.WAVE_API_KEY = "multi-updated-token";
@@ -266,12 +260,10 @@ describe("Subagent Dynamic Configuration Tests", () => {
         "multi-updated-token",
       );
 
-      expect(subagent1.aiManager.getModelConfig().agentModel).toBe(
+      expect(subagent1.aiManager.getModelConfig().model).toBe(
         "multi-updated-model",
       );
-      expect(subagent2.aiManager.getModelConfig().agentModel).toBe(
-        "custom-model",
-      ); // Still overridden
+      expect(subagent2.aiManager.getModelConfig().model).toBe("custom-model"); // Still overridden
     });
   });
 });

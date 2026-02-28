@@ -203,7 +203,7 @@ export async function callAgent(
   // Apply global 1 QPS rate limit
   if (
     process.env.NODE_ENV !== "test" ||
-    modelConfig.agentModel === "rate-limit-test"
+    modelConfig.model === "rate-limit-test"
   ) {
     await acquireSlot(abortSignal);
   }
@@ -239,7 +239,7 @@ export async function callAgent(
     openaiMessages = [systemMessage, ...messages];
 
     // Apply cache control for Claude models
-    const currentModel = model || modelConfig.agentModel;
+    const currentModel = model || modelConfig.model;
     const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
 
     processedTools = tools;
@@ -257,7 +257,7 @@ export async function callAgent(
     }
 
     // Get model configuration - use injected modelConfig with optional override
-    const openaiModelConfig = getModelConfig(model || modelConfig.agentModel, {
+    const openaiModelConfig = getModelConfig(model || modelConfig.model, {
       temperature: 0,
       max_tokens: resolvedMaxTokens,
     });
@@ -421,7 +421,7 @@ export async function callAgent(
         const debugData: DebugData = {
           originalMessages: messages,
           timestamp: new Date().toISOString(),
-          model: model || modelConfig.agentModel,
+          model: model || modelConfig.model,
           workdir,
           sessionId: options.sessionId,
           gatewayConfig: {
@@ -760,7 +760,7 @@ export async function compressMessages(
   // Apply global 1 QPS rate limit
   if (
     process.env.NODE_ENV !== "test" ||
-    modelConfig.agentModel === "rate-limit-test"
+    modelConfig.model === "rate-limit-test"
   ) {
     await acquireSlot(abortSignal);
   }
@@ -775,13 +775,10 @@ export async function compressMessages(
   });
 
   // Get model configuration - use injected agent model
-  const openaiModelConfig = getModelConfig(
-    options.model || modelConfig.agentModel,
-    {
-      temperature: 0.1,
-      max_tokens: 2048,
-    },
-  );
+  const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
+    temperature: 0.1,
+    max_tokens: 2048,
+  });
 
   try {
     const response = await openai.chat.completions.create(

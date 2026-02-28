@@ -5,7 +5,7 @@ import { Agent } from "../src/agent.js";
 // Create Agent instance with Gemini model to test cache control
 const agent = await Agent.create({
   // Use Gemini model to enable cache control features
-  agentModel: "gemini-3-flash",
+  model: "gemini-3-flash",
 
   callbacks: {
     onUsagesChange: (usages) => {

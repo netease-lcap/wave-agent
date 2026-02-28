@@ -15,7 +15,7 @@ export interface GatewayConfig {
 }
 
 export interface ModelConfig {
-  agentModel: string;
+  model: string;
   fastModel: string;
   maxTokens?: number;
   permissionMode?: PermissionMode;

@@ -241,7 +241,7 @@ export class AIManager {
               prompt_tokens: compressionResult.usage.prompt_tokens,
               completion_tokens: compressionResult.usage.completion_tokens,
               total_tokens: compressionResult.usage.total_tokens,
-              model: model || this.getModelConfig().agentModel,
+              model: model || this.getModelConfig().model,
               operation_type: "compress",
             };
           }
@@ -512,7 +512,7 @@ export class AIManager {
           prompt_tokens: result.usage.prompt_tokens,
           completion_tokens: result.usage.completion_tokens,
           total_tokens: result.usage.total_tokens,
-          model: model || this.getModelConfig().agentModel,
+          model: model || this.getModelConfig().model,
           operation_type: "agent",
           // Preserve cache fields if present
           ...(result.usage.cache_read_input_tokens !== undefined && {

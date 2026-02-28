@@ -19,7 +19,7 @@ async function validateAgentConfiguration() {
     const agent = await Agent.create({
       apiKey: "test-api-key-here",
       baseURL: "https://test-gateway.com",
-      agentModel: "gemini-3-flash",
+      model: "gemini-3-flash",
       fastModel: "gemini-2.5-flash",
       maxInputTokens: 50000,
       workdir: "./project",
@@ -77,7 +77,7 @@ async function validateAgentConfiguration() {
   try {
     const agent = await Agent.create({
       apiKey: "explicit-key", // Overrides WAVE_API_KEY
-      agentModel: "custom-model", // Overrides WAVE_MODEL
+      model: "custom-model", // Overrides WAVE_MODEL
       maxInputTokens: 32000, // Overrides WAVE_MAX_INPUT_TOKENS
       workdir: "./project",
     });
@@ -98,7 +98,7 @@ async function validateAgentConfiguration() {
     const testAgent = await Agent.create({
       apiKey: "test-api-key",
       baseURL: "http://localhost:3000/mock-ai",
-      agentModel: "test-model",
+      model: "test-model",
       fastModel: "test-fast-model",
       maxInputTokens: 1000,
       messages: [],
@@ -213,7 +213,7 @@ async function validateAgentConfiguration() {
     const agent = await Agent.create({
       apiKey: "constructor-key", // Should override env
       baseURL: "https://constructor-url.com", // Should override env
-      // agentModel should use environment variable
+      // model should use environment variable
     });
     // Verify configuration precedence works
     if (agent) {
@@ -235,7 +235,7 @@ async function validateAgentConfiguration() {
         process.env.NODE_ENV === "production"
           ? "https://prod-gateway.com"
           : "https://dev-gateway.com",
-      agentModel:
+      model:
         process.env.NODE_ENV === "production"
           ? "gemini-3-flash"
           : "gemini-2.5-flash",

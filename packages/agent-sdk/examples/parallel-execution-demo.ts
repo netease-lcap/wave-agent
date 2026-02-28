@@ -26,7 +26,7 @@ async function demonstrateParallelExecution(): Promise<void> {
     // Create agent with bash tool enabled and callbacks for timing
     const agent = await Agent.create({
       workdir,
-      agentModel: "gemini-2.5-flash",
+      model: "gemini-2.5-flash",
       callbacks: {
         onAssistantContentUpdated: (chunk: string) => {
           process.stdout.write(chunk);

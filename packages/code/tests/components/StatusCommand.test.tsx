@@ -14,7 +14,7 @@ describe("StatusCommand", () => {
     sessionId: "test-session-id",
     workingDirectory: "/test/cwd",
     getGatewayConfig: vi.fn().mockReturnValue({ baseURL: "https://test.api" }),
-    getModelConfig: vi.fn().mockReturnValue({ agentModel: "test-model" }),
+    getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
   };
 
   beforeEach(() => {

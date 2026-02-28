@@ -45,7 +45,7 @@ async function runDemo() {
 
     // Create Agent
     agent = await Agent.create({
-      agentModel: "gemini-2.5-flash",
+      model: "gemini-2.5-flash",
       callbacks: {
         onToolBlockUpdated: (params) => {
           if (params.stage === "start") {

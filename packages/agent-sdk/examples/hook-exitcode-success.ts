@@ -157,7 +157,7 @@ async function demonstrateSuccessExitCodes(): Promise<void> {
     // Create Agent instance
     const agent = await Agent.create({
       workdir: hookDir,
-      agentModel: "gemini-2.5-flash",
+      model: "gemini-2.5-flash",
       logger: console,
       callbacks: {
         onAssistantContentUpdated: (chunk: string) => {

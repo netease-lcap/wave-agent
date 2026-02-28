@@ -89,20 +89,16 @@ export class ConfigValidator {
 
   /**
    * Validates model configuration (basic validation)
-   * @param agentModel - Agent model string
+   * @param model - Agent model string
    * @param fastModel - Fast model string
    * @throws ConfigurationError if invalid
    */
-  static validateModelConfig(agentModel: string, fastModel: string): void {
-    if (
-      !agentModel ||
-      typeof agentModel !== "string" ||
-      agentModel.trim() === ""
-    ) {
+  static validateModelConfig(model: string, fastModel: string): void {
+    if (!model || typeof model !== "string" || model.trim() === "") {
       throw new ConfigurationError(
         "Agent model must be a non-empty string.",
-        "agentModel",
-        agentModel,
+        "model",
+        model,
       );
     }
 

@@ -66,7 +66,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       workdir: "/test",
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({
-        agentModel: "test-model",
+        model: "test-model",
         fastModel: "test-fast-model",
       }),
       getMaxInputTokens: () => 1000,
@@ -78,7 +78,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const managerNoBG = new SubagentManager(container, {
       workdir: "/test",
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
-      getModelConfig: () => ({ agentModel: "m", fastModel: "f" }),
+      getModelConfig: () => ({ model: "m", fastModel: "f" }),
       getMaxInputTokens: () => 1000,
       getLanguage: () => "en",
     });
@@ -185,7 +185,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       workdir: "/test",
       callbacks: { onSubagentAssistantReasoningUpdated },
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
-      getModelConfig: () => ({ agentModel: "m", fastModel: "f" }),
+      getModelConfig: () => ({ model: "m", fastModel: "f" }),
       getMaxInputTokens: () => 1000,
       getLanguage: () => "en",
     });

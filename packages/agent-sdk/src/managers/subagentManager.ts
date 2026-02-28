@@ -202,8 +202,8 @@ export class SubagentManager {
         let modelToUse: string;
 
         if (!configuration.model || configuration.model === "inherit") {
-          // Use parent's agentModel for "inherit" or undefined
-          modelToUse = parentModelConfig.agentModel;
+          // Use parent's model for "inherit" or undefined
+          modelToUse = parentModelConfig.model;
         } else if (configuration.model === "fastModel") {
           // Use parent's fastModel for special "fastModel" value
           modelToUse = parentModelConfig.fastModel;
@@ -214,7 +214,7 @@ export class SubagentManager {
 
         return {
           ...parentModelConfig,
-          agentModel: modelToUse,
+          model: modelToUse,
         };
       },
       getMaxInputTokens: this.getMaxInputTokens,

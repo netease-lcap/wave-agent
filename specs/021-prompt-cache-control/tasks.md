@@ -171,10 +171,10 @@ export function addCacheControlToContent(
 #### T009: System Message Integration
 ```typescript
 // Integration point in aiService.ts after line 183
-if (isClaudeModel(model || modelConfig.agentModel)) {
+if (isClaudeModel(model || modelConfig.model)) {
   openaiMessages = transformMessagesForClaudeCache(
     openaiMessages,
-    model || modelConfig.agentModel
+    model || modelConfig.model
   );
 }
 ```

@@ -9,7 +9,7 @@ import { Agent } from 'wave-agent-sdk';
 const agent = await Agent.create({
   apiKey: 'your-api-key-here',
   baseURL: 'https://your-gateway.com',
-  agentModel: 'gemini-3-flash',
+  model: 'gemini-3-flash',
   fastModel: 'gemini-2.5-flash',
   maxInputTokens:50000,
   workdir: './project'
@@ -37,7 +37,7 @@ const agent = await Agent.create({
 const agent = await Agent.create({
   apiKey: 'explicit-key',        // Overrides WAVE_API_KEY
   // baseURL uses WAVE_BASE_URL environment variable
-  agentModel: 'custom-model',    // Overrides WAVE_MODEL
+  model: 'custom-model',    // Overrides WAVE_MODEL
   // fastModel uses WAVE_FAST_MODEL or default
   maxInputTokens:32000,             // Overrides WAVE_MAX_INPUT_TOKENS
   workdir: './project'
@@ -53,7 +53,7 @@ import { Agent } from 'wave-agent-sdk';
 const testAgent = await Agent.create({
   apiKey: 'test-api-key',
   baseURL: 'http://localhost:3000/mock-ai',
-  agentModel: 'test-model',
+  model: 'test-model',
   fastModel: 'test-fast-model',
   maxInputTokens:1000, // Lower limit for testing
   messages: [], // Start with empty messages
@@ -126,7 +126,7 @@ const modernAgent = await Agent.create({
 const agent1 = await Agent.create({
   apiKey: 'constructor-key',     // Uses constructor value
   baseURL: 'constructor-url',    // Uses constructor value
-  // agentModel uses WAVE_MODEL from environment
+  // model uses WAVE_MODEL from environment
 });
 
 // Partial override example  
@@ -152,7 +152,7 @@ const agent = await Agent.create({
   baseURL: process.env.NODE_ENV === 'production' 
     ? 'https://prod-gateway.com'
     : 'https://dev-gateway.com',
-  agentModel: process.env.NODE_ENV === 'production'
+  model: process.env.NODE_ENV === 'production'
     ? 'gemini-3-flash'
     : 'gemini-2.5-flash', // Cheaper model for development
   fastModel: 'gemini-2.5-flash',
