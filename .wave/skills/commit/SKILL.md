@@ -3,6 +3,7 @@ name: commit
 description: Streamlined prompt for creating a single git commit with pre-populated context
 context: fork
 model: gemini-2.5-flash
+user-invocable: false
 allowed-tools:
   - Bash(git add*)
   - Bash(git status*)
