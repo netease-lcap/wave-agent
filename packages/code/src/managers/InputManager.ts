@@ -345,7 +345,10 @@ export class InputManager {
 
         // If not an agent command or execution failed, check local commands
         if (!commandExecuted) {
-          if (command === "tasks") {
+          if (command === "clear") {
+            this.callbacks.onClearMessages?.();
+            commandExecuted = true;
+          } else if (command === "tasks") {
             this.setShowBackgroundTaskManager(true);
             commandExecuted = true;
           } else if (command === "mcp") {
@@ -359,9 +362,6 @@ export class InputManager {
             commandExecuted = true;
           } else if (command === "status") {
             this.setShowStatusCommand(true);
-            commandExecuted = true;
-          } else if (command === "clear") {
-            this.callbacks.onClearMessages?.();
             commandExecuted = true;
           }
         }
