@@ -120,6 +120,7 @@ export interface Skill extends SkillMetadata {
 export interface SkillFrontmatter {
   name: string;
   description: string;
+  "allowed-tools"?: string | string[];
   [key: string]: unknown;
 }
 

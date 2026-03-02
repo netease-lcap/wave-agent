@@ -1,6 +1,7 @@
 ---
 name: code-review
 description: Reviews code for best practices and potential issues.
+allowed-tools: Read, Grep, Glob
 ---
 
 When reviewing code, check for:

@@ -3,7 +3,11 @@ import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
-import { CustomSlashCommand, TextBlock } from "../../src/types/index.js";
+import {
+  CustomSlashCommand,
+  TextBlock,
+  SkillMetadata,
+} from "../../src/types/index.js";
 import { Container } from "../../src/utils/container.js";
 
 // Mock child_process for bash command execution tests
@@ -307,6 +311,50 @@ describe("SlashCommandManager", () => {
       expect(textBlock.customCommandContent).toContain(
         "VAR: $WAVE_PLUGIN_ROOT",
       );
+    });
+  });
+
+  describe("registerSkillCommands", () => {
+    it("should register skill commands and pass allowedTools to aiManager", async () => {
+      const mockSkillManager = {
+        executeSkill: vi.fn().mockResolvedValue({
+          content: "Skill content",
+          allowedTools: ["tool1", "tool2"],
+        }),
+      };
+
+      const container = (
+        slashCommandManager as unknown as { container: Container }
+      ).container;
+      container.register("SkillManager", mockSkillManager);
+
+      const skills = [
+        {
+          name: "test-skill",
+          description: "Test skill description",
+          type: "personal",
+          skillPath: "/path/to/skill",
+          allowedTools: ["tool1", "tool2"],
+        },
+      ];
+
+      slashCommandManager.registerSkillCommands(
+        skills as unknown as SkillMetadata[],
+      );
+
+      expect(slashCommandManager.hasCommand("test-skill")).toBe(true);
+
+      const cmd = slashCommandManager.getCommand("test-skill");
+      await cmd?.handler("test args");
+
+      expect(mockSkillManager.executeSkill).toHaveBeenCalledWith({
+        skill_name: "test-skill",
+        args: "test args",
+      });
+
+      expect(aiManager.sendAIMessage).toHaveBeenCalledWith({
+        allowedRules: ["tool1", "tool2"],
+      });
     });
   });
 });

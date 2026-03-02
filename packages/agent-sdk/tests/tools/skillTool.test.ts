@@ -4,6 +4,7 @@ import { TaskManager } from "../../src/services/taskManager.js";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { skillTool } from "../../src/tools/skillTool.js";
 import { Container } from "../../src/utils/container.js";
+import type { ToolContext } from "../../src/tools/types.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
@@ -123,6 +124,39 @@ describe("skillTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toBe("Test result");
     expect(result.shortResult).toBe("Invoked skill: test-skill");
+  });
+
+  it("should add temporary rules if allowedTools are present", async () => {
+    await skillManager.initialize();
+
+    // Mock executeSkill to return success with allowedTools
+    vi.spyOn(skillManager, "executeSkill").mockResolvedValue({
+      content: "Test result",
+      context: { skillName: "test-skill" },
+      allowedTools: ["tool1", "tool2"],
+    });
+
+    const mockPermissionManager = {
+      addTemporaryRules: vi.fn(),
+    };
+
+    const context = {
+      workdir: "/test",
+      taskManager: new TaskManager(new Container(), "test-session"),
+      skillManager,
+      permissionManager: mockPermissionManager,
+    };
+
+    const result = await skillTool.execute(
+      { skill_name: "test-skill" },
+      context as unknown as ToolContext,
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockPermissionManager.addTemporaryRules).toHaveBeenCalledWith([
+      "tool1",
+      "tool2",
+    ]);
   });
 
   it("should handle skill execution errors", async () => {

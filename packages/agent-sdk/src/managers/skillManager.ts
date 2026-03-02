@@ -182,7 +182,7 @@ export class SkillManager {
 
           if (parsed.isValid) {
             // Override the skill type with the collection type
-            const skillMetadata = {
+            const skillMetadata: SkillMetadata = {
               ...parsed.skillMetadata,
               type,
             };
@@ -193,6 +193,7 @@ export class SkillManager {
               description: parsed.skillMetadata.description,
               type: type, // Use the collection type
               skillPath: parsed.skillMetadata.skillPath,
+              allowedTools: parsed.skillMetadata.allowedTools,
               content: parsed.content,
               frontmatter: parsed.frontmatter,
               isValid: parsed.isValid,
@@ -249,9 +250,11 @@ export class SkillManager {
   /**
    * Execute a skill by name
    */
-  async executeSkill(
-    args: SkillToolArgs,
-  ): Promise<{ content: string; context?: SkillInvocationContext }> {
+  async executeSkill(args: SkillToolArgs): Promise<{
+    content: string;
+    context?: SkillInvocationContext;
+    allowedTools?: string[];
+  }> {
     const { skill_name, args: skillArgs } = args;
 
     logger?.debug(`Invoking skill: ${skill_name} with args: ${skillArgs}`);
@@ -285,6 +288,7 @@ export class SkillManager {
         context: {
           skillName: skill_name,
         },
+        allowedTools: skill.allowedTools,
       };
     } catch (error) {
       logger?.error(`Failed to execute skill '${skill_name}':`, error);
@@ -349,6 +353,7 @@ export class SkillManager {
         description: skill.description,
         type: skill.type,
         skillPath: skill.skillPath,
+        allowedTools: skill.allowedTools,
       });
       this.skillContent.set(skill.name, skill);
     }
