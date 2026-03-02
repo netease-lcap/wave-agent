@@ -26,6 +26,11 @@
 **Alternatives considered**: Each skill as separate tool, skill namespace system  
 **Chosen approach**: Single Skill tool with skill name as parameter, following existing tool plugin pattern
 
+### Decision: User-Invokable Skills with Arguments and Bash
+**Rationale**: Users want to explicitly invoke skills like slash commands and provide arguments. Additionally, skills should support dynamic content via bash execution.  
+**Alternatives considered**: Keep skills model-invoked only, use separate slash command system  
+**Chosen approach**: Register skills as slash commands in `SlashCommandManager`, support parameter substitution (`$1`, `$ARGUMENTS`) and bash execution (`!`command``) in `SkillManager`.
+
 ## Technical Research
 
 ### Existing Markdown Parser Capabilities
