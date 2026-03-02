@@ -119,6 +119,23 @@ A user wants to execute a complex skill in a separate subagent to provide a fres
 
 ---
 
+### User Story 8 - Controlling Skill Invocation and Visibility (Priority: P2)
+
+A user wants to control how skills are invoked and whether they are visible in the slash command menu. This allows for "internal" skills used only by the AI or "manual" skills that the AI should not trigger automatically.
+
+**Why this priority**: Provides necessary control for complex skill ecosystems where some skills might be too powerful or specific for autonomous AI invocation, or where some skills are intended only as building blocks for the AI.
+
+**Independent Test**: Can be tested by setting `disable-model-invocation: true` and `user-invocable: false` in various combinations and verifying visibility in the `/` menu and the AI's tool prompt.
+
+**Acceptance Scenarios**:
+
+1. **Given** a skill has `disable-model-invocation: true` in its frontmatter, **When** Wave generates the tool prompt for the AI, **Then** this skill should be excluded from the available skills list
+2. **Given** a skill has `disable-model-invocation: true`, **When** the AI attempts to call it via the `Skill` tool, **Then** Wave should block the execution and return an error to the AI
+3. **Given** a skill has `user-invocable: false` in its frontmatter, **When** I type `/` in the chat, **Then** the skill should NOT appear in the slash command suggestions
+4. **Given** a skill has `user-invocable: false`, **When** I attempt to execute it via `/skill-name`, **Then** Wave should not recognize it as a valid command
+
+---
+
 ### Edge Cases
 
 - What happens when a skill's SKILL.md file has malformed YAML frontmatter?
@@ -148,10 +165,12 @@ A user wants to execute a complex skill in a separate subagent to provide a fres
 - **FR-015**: Wave MUST support bash command execution in skills using `!`command`` syntax
 - **FR-016**: Wave MUST support `allowed-tools` in skill frontmatter to restrict tool access during skill execution
 - **FR-017**: Wave MUST support `context: fork` and `agent:` in skill frontmatter to execute skills in specialized subagents
+- **FR-018**: Wave MUST support `disable-model-invocation: true` in skill frontmatter to prevent AI from automatically triggering the skill
+- **FR-019**: Wave MUST support `user-invocable: boolean` (default: `true`) in skill frontmatter to control visibility in the slash command menu
 
 ### Key Entities
 
-- **Skill**: A discoverable capability package consisting of a SKILL.md file with YAML frontmatter (name, description, optional allowed-tools) and optional supporting files
+- **Skill**: A discoverable capability package consisting of a SKILL.md file with YAML frontmatter (name, description, optional allowed-tools, disable-model-invocation, user-invocable) and optional supporting files
 - **Personal Skill**: Skills stored globally in user's home directory (`~/.wave/skills/`) available across all projects
 - **Project Skill**: Skills stored in project directory (`.wave/skills/`) shared with team members and version-controlled
 - **Skill Directory**: Container holding SKILL.md and optional supporting files (reference.md, examples.md, scripts/, templates/)

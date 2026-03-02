@@ -155,6 +155,9 @@ export class SlashCommandManager {
     this.skillCommandIds.clear();
 
     for (const skill of skills) {
+      if (skill.userInvocable === false) {
+        continue;
+      }
       const commandId = skill.name;
       this.skillCommandIds.add(commandId);
 

@@ -69,6 +69,17 @@ export function parseSkillFile(
         .filter((t) => t.length > 0);
     }
 
+    // Extract disable-model-invocation
+    const disableModelInvocation =
+      result.frontmatter["disable-model-invocation"] === true ||
+      result.frontmatter["disable-model-invocation"] === "true";
+
+    // Extract user-invocable (default to true)
+    const userInvocable =
+      result.frontmatter["user-invocable"] === undefined ||
+      result.frontmatter["user-invocable"] === true ||
+      result.frontmatter["user-invocable"] === "true";
+
     result.skillMetadata = {
       name: result.frontmatter.name,
       description: result.frontmatter.description,
@@ -77,6 +88,8 @@ export function parseSkillFile(
       allowedTools,
       context: result.frontmatter.context,
       agent: result.frontmatter.agent,
+      disableModelInvocation,
+      userInvocable,
     };
 
     // Validate metadata if requested
