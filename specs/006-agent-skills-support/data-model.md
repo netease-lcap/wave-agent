@@ -15,6 +15,9 @@ Represents a discoverable capability package with metadata and optional supporti
 - `skillPath: string` - Directory path containing skill and supporting files
 - `content: string` - Full markdown content (loaded lazily)
 - `type: 'personal' | 'project'` - Skill location type
+- `allowedTools: string[]` - Optional list of allowed tools (from `allowed-tools` frontmatter)
+- `context: 'fork'` - Optional execution context
+- `agent: string` - Optional agent type for fork context
 
 **Validation Rules**:
 - Name must match `/^[a-z0-9-]+$/` and be ≤ 64 characters
@@ -56,6 +59,9 @@ interface SkillMetadata {
   description: string;
   type: 'personal' | 'project';
   skillPath: string;
+  allowedTools?: string[];
+  context?: 'fork';
+  agent?: string;
 }
 ```
 

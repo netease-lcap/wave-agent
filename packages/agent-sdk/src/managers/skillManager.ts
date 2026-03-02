@@ -101,6 +101,17 @@ export class SkillManager {
   }
 
   /**
+   * Get metadata for a specific skill by name
+   */
+  getSkillMetadata(name: string): SkillMetadata | undefined {
+    if (!this.initialized) {
+      throw new Error("SkillManager not initialized. Call initialize() first.");
+    }
+
+    return this.skillMetadata.get(name);
+  }
+
+  /**
    * Load a specific skill by name
    * Returns the skill content that was loaded during initialization
    */
@@ -189,11 +200,7 @@ export class SkillManager {
 
             // Create full skill object with content
             const skill: Skill = {
-              name: parsed.skillMetadata.name,
-              description: parsed.skillMetadata.description,
-              type: type, // Use the collection type
-              skillPath: parsed.skillMetadata.skillPath,
-              allowedTools: parsed.skillMetadata.allowedTools,
+              ...skillMetadata,
               content: parsed.content,
               frontmatter: parsed.frontmatter,
               isValid: parsed.isValid,

@@ -100,6 +100,43 @@ describe("SkillManager", () => {
       );
     });
 
+    it("should return skill metadata by name", async () => {
+      vi.mocked(readdir).mockImplementation(async (path) => {
+        if (path.toString().includes(".wave/skills")) {
+          return [
+            { name: "skill1", isDirectory: () => true },
+          ] as unknown as Awaited<ReturnType<typeof readdir>>;
+        }
+        return [] as unknown as Awaited<ReturnType<typeof readdir>>;
+      });
+
+      vi.mocked(stat).mockResolvedValue(
+        {} as unknown as Awaited<ReturnType<typeof stat>>,
+      );
+      vi.mocked(parseSkillFile).mockReturnValue({
+        isValid: true,
+        skillMetadata: {
+          name: "skill1",
+          description: "desc1",
+          type: "personal",
+          skillPath: "/path/to/skill1",
+          context: "fork",
+          agent: "typescript-expert",
+        },
+        content: "---\nname: skill1\n---\ncontent1",
+        frontmatter: { name: "skill1" },
+        validationErrors: [],
+      } as unknown as ReturnType<typeof parseSkillFile>);
+
+      await skillManager.initialize();
+
+      const metadata = skillManager.getSkillMetadata("skill1");
+      expect(metadata).toBeDefined();
+      expect(metadata?.name).toBe("skill1");
+      expect(metadata?.context).toBe("fork");
+      expect(metadata?.agent).toBe("typescript-expert");
+    });
+
     it("should handle discovery errors and log warnings", async () => {
       vi.mocked(readdir).mockImplementation(async (path) => {
         if (path.toString().includes(".wave/skills")) {
@@ -308,6 +345,37 @@ describe("SkillManager", () => {
       expect(result.content).toContain("📁 Skill location: `/path/to/skill`");
       expect(result.content).toContain("# Actual Content");
       expect(result.content).not.toContain("---");
+    });
+
+    it("should not include fork info in formatted skill content", async () => {
+      const mockSkill: Skill = {
+        name: "fork-skill",
+        description: "A forked skill",
+        type: "personal",
+        skillPath: "/path/to/skill",
+        content:
+          "---\nname: fork-skill\ndescription: A forked skill\ncontext: fork\n---\n\n# Actual Content",
+        frontmatter: {
+          name: "fork-skill",
+          description: "A forked skill",
+          context: "fork",
+        },
+        isValid: true,
+        errors: [],
+        context: "fork",
+      };
+
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+      skillManager.registerPluginSkills([mockSkill]);
+
+      const result = await skillManager.executeSkill({
+        skill_name: "fork-skill",
+      });
+
+      expect(result.content).toContain("🧠 **fork-skill** (personal skill)");
+      expect(result.content).not.toContain("🔄 Context: `fork`");
+      expect(result.content).toContain("# Actual Content");
     });
 
     it("should format skill content correctly without frontmatter markers in content", async () => {

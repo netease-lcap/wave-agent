@@ -1,6 +1,12 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { SKILL_TOOL_NAME } from "../constants/tools.js";
+import { GENERAL_PURPOSE_SUBAGENT_TYPE } from "../constants/subagents.js";
 import type { SkillMetadata } from "../types/skills.js";
+import { logger } from "../utils/globalLogger.js";
+import {
+  countToolBlocks,
+  formatToolTokenSummary,
+} from "../utils/messageOperations.js";
 
 /**
  * Skill tool plugin for invoking Wave skills
@@ -71,7 +77,103 @@ export const skillTool: ToolPlugin = {
         };
       }
 
-      // Execute the skill
+      const skillMetadata = skillManager.getSkillMetadata(skillName);
+
+      // Handle fork context
+      if (skillMetadata?.context === "fork") {
+        const subagentManager = context.subagentManager;
+        if (!subagentManager) {
+          return {
+            success: false,
+            content: "",
+            error: "Subagent manager not available in tool context",
+          };
+        }
+
+        const agentType = skillMetadata.agent || GENERAL_PURPOSE_SUBAGENT_TYPE;
+        const configuration = await subagentManager.findSubagent(agentType);
+
+        if (!configuration) {
+          return {
+            success: false,
+            content: "",
+            error: `No subagent found matching "${agentType}" for skill "${skillName}"`,
+          };
+        }
+
+        // Execute the skill to get the content
+        const skillResult = await skillManager.executeSkill({
+          skill_name: skillName,
+          args: skillArgs,
+        });
+
+        logger.debug(`Skill ${skillName} executed, allowedTools:`, {
+          allowedTools: skillResult.allowedTools,
+        });
+
+        // Create subagent instance
+        const instance = await subagentManager.createInstance(
+          configuration,
+          {
+            description: `Skill: ${skillName}`,
+            prompt: skillResult.content,
+            subagent_type: agentType,
+            allowedTools: skillResult.allowedTools,
+          },
+          false, // run_in_background
+          () => {
+            // Update shortResult
+            const messages = instance.messageManager.getMessages();
+            const tokens = instance.messageManager.getlatestTotalTokens();
+            const lastTools = instance.lastTools;
+
+            const toolCount = countToolBlocks(messages);
+            const summary = formatToolTokenSummary(toolCount, tokens);
+
+            let shortResult = "";
+            if (toolCount > 2) {
+              shortResult += "... ";
+            }
+            if (lastTools.length > 0) {
+              shortResult += `${lastTools.join(", ")} `;
+            }
+            shortResult += summary;
+
+            context.onShortResultUpdate?.(shortResult);
+          },
+        );
+
+        try {
+          const result = await subagentManager.executeTask(
+            instance,
+            skillResult.content,
+            context.abortSignal,
+            false,
+          );
+
+          // Cleanup subagent instance after task completion
+          subagentManager.cleanupInstance(instance.subagentId);
+
+          const messages = instance.messageManager.getMessages();
+          const tokens = instance.messageManager.getlatestTotalTokens();
+          const toolCount = countToolBlocks(messages);
+          const summary = formatToolTokenSummary(toolCount, tokens);
+
+          return {
+            success: true,
+            content: result,
+            shortResult: `Invoked skill: ${skillName}${summary ? ` ${summary}` : ""}`,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            content: "",
+            error: `Skill fork failed: ${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
+      }
+
+      // Standard execution
       const result = await skillManager.executeSkill({
         skill_name: skillName,
         args: skillArgs,

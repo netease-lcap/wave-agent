@@ -59,6 +59,25 @@ allowed-tools: tool1, tool2
       expect(result.skillMetadata.allowedTools).toEqual(["tool1", "tool2"]);
     });
 
+    it("should parse context and agent in frontmatter", () => {
+      const mockContent = `---
+name: test-skill
+description: A test skill for validation
+context: fork
+agent: typescript-expert
+---
+
+# Test Skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      expect(result.isValid).toBe(true);
+      expect(result.skillMetadata.context).toBe("fork");
+      expect(result.skillMetadata.agent).toBe("typescript-expert");
+    });
+
     it("should parse allowed-tools in frontmatter (list)", () => {
       const mockContent = `---
 name: test-skill

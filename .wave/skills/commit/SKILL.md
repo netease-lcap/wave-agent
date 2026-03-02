@@ -1,6 +1,7 @@
 ---
 name: commit
 description: Streamlined prompt for creating a single git commit with pre-populated context
+context: fork
 allowed-tools:
   - Bash(git add*)
   - Bash(git status*)

@@ -103,6 +103,22 @@ A user wants to restrict the tools available to the AI when a skill is invoked, 
 
 ---
 
+### User Story 7 - Forking Skills into Subagents (Priority: P2)
+
+A user wants to execute a complex skill in a separate subagent to provide a fresh context or use a specialized agent type. This helps in isolating the skill's execution and leveraging specific agent expertise.
+
+**Why this priority**: Enhances the power of skills by allowing them to run in specialized contexts, improving the quality of results for complex tasks.
+
+**Independent Test**: Can be tested by creating a skill with `context: fork` and an optional `agent` field in its frontmatter, and verifying that Wave executes the skill in a subagent of the specified type.
+
+**Acceptance Scenarios**:
+
+1. **Given** I have a skill with `context: fork` in its frontmatter, **When** the skill is invoked, **Then** Wave should execute the skill content in a new subagent instance
+2. **Given** I have a skill with `context: fork` and `agent: typescript-expert`, **When** the skill is invoked, **Then** Wave should use a `typescript-expert` subagent to execute the skill
+3. **Given** a skill is forked into a subagent, **When** the subagent is running, **Then** Wave should provide real-time updates on the subagent's progress (tools used, tokens consumed) in the tool's short result
+
+---
+
 ### Edge Cases
 
 - What happens when a skill's SKILL.md file has malformed YAML frontmatter?
@@ -131,6 +147,7 @@ A user wants to restrict the tools available to the AI when a skill is invoked, 
 - **FR-014**: Wave MUST support parameter substitution in skills using `$1`, `$2`, ..., and `$ARGUMENTS`
 - **FR-015**: Wave MUST support bash command execution in skills using `!`command`` syntax
 - **FR-016**: Wave MUST support `allowed-tools` in skill frontmatter to restrict tool access during skill execution
+- **FR-017**: Wave MUST support `context: fork` and `agent:` in skill frontmatter to execute skills in specialized subagents
 
 ### Key Entities
 

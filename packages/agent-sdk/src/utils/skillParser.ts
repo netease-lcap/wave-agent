@@ -75,6 +75,8 @@ export function parseSkillFile(
       type: skillType,
       skillPath,
       allowedTools,
+      context: result.frontmatter.context,
+      agent: result.frontmatter.agent,
     };
 
     // Validate metadata if requested

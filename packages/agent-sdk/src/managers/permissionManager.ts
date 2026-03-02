@@ -345,8 +345,10 @@ export class PermissionManager {
 
     // 1.2 Check if tool call is allowed by persistent or temporary rules
     if (this.isAllowedByRule(context)) {
-      logger?.debug("Permission allowed by persistent rule", {
+      logger?.debug("Permission allowed by persistent or temporary rule", {
         toolName: context.toolName,
+        temporaryRulesCount: this.temporaryRules.length,
+        allowedRulesCount: this.allowedRules.length,
       });
       return { behavior: "allow" };
     }
@@ -563,7 +565,16 @@ export class PermissionManager {
         .replace(/[.+^${}()|[\]\\?]/g, "\\$&") // Escape regex special chars including ?
         .replace(/\*/g, ".*"); // Replace * with .*
       const regex = new RegExp(`^${regexPattern}$`);
-      return regex.test(processedPart);
+      const matched = regex.test(processedPart);
+      if (!matched) {
+        logger?.debug(
+          `Bash rule pattern mismatch: ${pattern} vs ${processedPart}`,
+          {
+            regex: regex.source,
+          },
+        );
+      }
+      return matched;
     }
 
     // Handle path-based rules (e.g., "Read(**/*.env)")
@@ -649,9 +660,16 @@ export class PermissionManager {
             ...ctx,
             toolInput: { ...ctx.toolInput, command: processedPart },
           };
-          const allowedByRule = rules.some((rule) =>
-            this.matchesRule(partContext, rule),
-          );
+          const allowedByRule = rules.some((rule) => {
+            const matched = this.matchesRule(partContext, rule);
+            if (matched) {
+              logger?.debug(`Rule matched: ${rule}`, {
+                toolName: ctx.toolName,
+                command: processedPart,
+              });
+            }
+            return matched;
+          });
 
           if (allowedByRule) return true;
 

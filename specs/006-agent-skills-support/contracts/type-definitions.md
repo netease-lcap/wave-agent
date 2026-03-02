@@ -15,6 +15,9 @@ export interface SkillMetadata {
   description: string;             // Purpose and context for AI
   type: 'personal' | 'project';   // Skill location type
   skillPath: string;               // Absolute path to skill directory
+  allowedTools?: string[];         // Optional list of allowed tools
+  context?: 'fork';                // Optional execution context
+  agent?: string;                  // Optional agent type for fork context
 }
 
 /**
@@ -33,6 +36,9 @@ export interface Skill extends SkillMetadata {
 export interface SkillFrontmatter {
   name: string;                    // Must match directory name
   description: string;             // 1-1024 characters
+  "allowed-tools"?: string | string[]; // Optional list of allowed tools
+  context?: 'fork';                // Optional execution context
+  agent?: string;                  // Optional agent type for fork context
   [key: string]: unknown;          // Allow additional fields for future extension
 }
 
