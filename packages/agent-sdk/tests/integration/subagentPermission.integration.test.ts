@@ -140,6 +140,53 @@ describe("Subagent Permission Integration", () => {
     ).not.toContain("git:*");
   });
 
+  it("should inherit all permission settings from parent PermissionManager", async () => {
+    const parentPermissionManager = new PermissionManager(container, {
+      workdir: "/tmp/test",
+      configuredDefaultMode: "acceptEdits",
+      allowedRules: ["git:*"],
+      deniedRules: ["Bash(rm *)"],
+      additionalDirectories: ["/tmp/other"],
+      planFilePath: "/tmp/test/plan.md",
+    });
+    container.register("PermissionManager", parentPermissionManager);
+
+    const mockConfig: SubagentConfiguration = {
+      name: "test-agent",
+      description: "test",
+      systemPrompt: "test",
+      tools: ["Bash"],
+      model: "inherit",
+      filePath: "/tmp/test.md",
+      scope: "project",
+      priority: 1,
+    };
+
+    const instance = await subagentManager.createInstance(mockConfig, {
+      description: "test task",
+      prompt: "test prompt",
+      subagent_type: "test-agent",
+    });
+
+    const subagentContainer = (
+      instance.aiManager as unknown as { container: Container }
+    ).container;
+    const subagentPermissionManager =
+      subagentContainer.get<PermissionManager>("PermissionManager");
+
+    expect(subagentPermissionManager.getConfiguredDefaultMode()).toBe(
+      "acceptEdits",
+    );
+    expect(subagentPermissionManager.getAllowedRules()).toContain("git:*");
+    expect(subagentPermissionManager.getDeniedRules()).toContain("Bash(rm *)");
+    expect(subagentPermissionManager.getAdditionalDirectories()).toContain(
+      "/tmp/other",
+    );
+    expect(subagentPermissionManager.getPlanFilePath()).toBe(
+      "/tmp/test/plan.md",
+    );
+  });
+
   it("should verify that skillTool passes allowedTools to subagentManager.createInstance", async () => {
     const { skillTool } = await import("../../src/tools/skillTool.js");
     const mockSkillManager = {

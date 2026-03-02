@@ -105,10 +105,31 @@ export class PermissionManager {
   }
 
   /**
+   * Get the configured default mode
+   */
+  public getConfiguredDefaultMode(): PermissionMode | undefined {
+    return this.configuredDefaultMode;
+  }
+
+  /**
    * Get all currently allowed rules
    */
   public getAllowedRules(): string[] {
     return [...this.allowedRules];
+  }
+
+  /**
+   * Get all currently denied rules
+   */
+  public getDeniedRules(): string[] {
+    return [...this.deniedRules];
+  }
+
+  /**
+   * Get all additional directories
+   */
+  public getAdditionalDirectories(): string[] {
+    return [...this.additionalDirectories];
   }
 
   /**
