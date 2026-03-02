@@ -182,7 +182,7 @@ Usage:
             return {
               success: false,
               content: "",
-              error: `${EDIT_TOOL_NAME} operation denied, reason: ${permissionResult.message || "No reason provided"}`,
+              error: `${EDIT_TOOL_NAME} operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
             };
           }
         } catch {

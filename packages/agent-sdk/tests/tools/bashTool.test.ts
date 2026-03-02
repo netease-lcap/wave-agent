@@ -309,7 +309,9 @@ describe("bashTool", () => {
       const result = await bashTool.execute({ command: "ls" }, testContext);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("operation denied, reason: No way");
+      expect(result.error).toContain(
+        "operation denied by user, reason: No way",
+      );
     });
 
     it("should handle permission check failure", async () => {
