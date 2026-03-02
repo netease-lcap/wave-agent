@@ -1,4 +1,4 @@
-# Quickstart: Wave Skills Support Implementation
+# Quickstart: Agent Skills Support Implementation
 
 **Phase**: 1 - Design & Contracts  
 **Date**: 2024-12-19  
@@ -349,7 +349,7 @@ describe('Skill Tool Integration', () => {
 
   beforeEach(async () => {
     // Create temporary directory for each test
-    tempDir = await mkdtemp(join(tmpdir(), 'wave-skills-test-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'agent-skills-test-'));
     personalSkillsDir = join(tempDir, '.wave', 'skills');
     projectSkillsDir = join(tempDir, 'project', '.wave', 'skills');
     
@@ -424,7 +424,7 @@ You can reference supporting files like:
 
 ### Test Directory Structure (Temporary)
 ```
-/tmp/wave-skills-test-{random}/
+/tmp/agent-skills-test-{random}/
 ├── .wave/skills/                    # Personal skills (temporary)
 │   ├── personal-skill/
 │   │   └── SKILL.md

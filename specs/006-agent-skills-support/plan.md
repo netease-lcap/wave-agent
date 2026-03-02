@@ -1,13 +1,13 @@
-# Implementation Plan: Wave Skills Support
+# Implementation Plan: Agent Skills Support
 
-**Branch**: `006-wave-skills-support` | **Date**: 2024-12-19 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/006-wave-skills-support/spec.md`
+**Branch**: `006-agent-skills-support` | **Date**: 2024-12-19 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/006-agent-skills-support/spec.md`
 
 **Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
 
 ## Summary
 
-Implement Wave Skills support - a system that allows users to package expertise into discoverable capabilities. Skills consist of SKILL.md files with YAML frontmatter containing name and description, plus optional supporting files. The system must autonomously decide when to invoke skills based on user requests and skill descriptions. This includes creating a new Skill tool that reuses the existing markdown meta parser from custom commands, supports both personal (~/.wave/skills/) and project (.wave/skills/) skills, and enables progressive loading of supporting resources.
+Implement Agent Skills support - a system that allows users to package expertise into discoverable capabilities. Skills consist of SKILL.md files with YAML frontmatter containing name and description, plus optional supporting files. The system must autonomously decide when to invoke skills based on user requests and skill descriptions. This includes creating a new Skill tool that reuses the existing markdown meta parser from custom commands, supports both personal (~/.wave/skills/) and project (.wave/skills/) skills, and enables progressive loading of supporting resources.
 
 ## Technical Context
 

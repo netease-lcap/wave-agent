@@ -1,4 +1,4 @@
-# Research: Wave Skills Support
+# Research: Agent Skills Support
 
 **Phase**: 0 - Research & Analysis  
 **Date**: 2024-12-19  

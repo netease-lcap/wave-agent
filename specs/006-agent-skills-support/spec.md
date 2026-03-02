@@ -1,13 +1,13 @@
-# Feature Specification: Wave Skills Support
+# Feature Specification: Agent Skills Support
 
-**Feature Branch**: `006-wave-skills-support`  
+**Feature Branch**: `006-agent-skills-support`  
 **Created**: 2024-12-19  
 **Status**: Implemented  
 **Input**: User description: "support Skill. What are Agent Skills? Agent Skills package expertise into discoverable capabilities. Each Skill consists of a SKILL.md file with instructions that Claude reads when relevant, plus optional supporting files like scripts and templates. How Skills are invoked: Skills are model-invoked—Claude autonomously decides when to use them based on your request and the Skill's description. This is different from slash commands, which are user-invoked (you explicitly type /command to trigger them). Create a Skill Skills are stored as directories containing a SKILL.md file. Personal Skills Personal Skills are available across all your projects. Store them in ~/.claude/skills/: Use personal Skills for: Your individual workflows and preferences Experimental Skills you're developing Personal productivity tools Project Skills Project Skills are shared with your team. Store them in .claude/skills/ within your project: Use project Skills for: Team workflows and conventions Project-specific expertise Shared utilities and scripts Project Skills are checked into git and automatically available to team members. remember replace .claude with .wave . Write SKILL.md Create a SKILL.md file with YAML frontmatter and Markdown content: Field requirements: name: Must use lowercase letters, numbers, and hyphens only (max 64 characters) description: Brief description of what the Skill does and when to use it (max 1024 characters) The description field is critical for Claude to discover when to use your Skill. It should include both what the Skill does and when Claude should use it. Claude to Wave. Add supporting files Create additional files alongside SKILL.md: Reference these files from SKILL.md: Claude reads these files only when needed, using progressive disclosure to manage context efficiently."
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Create Personal Wave Skills (Priority: P1)
+### User Story 1 - Create Personal Agent Skills (Priority: P1)
 
 A developer wants to create reusable skills for their personal workflow that work across all their Wave projects. They need to package their expertise into discoverable capabilities that Wave can autonomously invoke when relevant.
 
@@ -23,7 +23,7 @@ A developer wants to create reusable skills for their personal workflow that wor
 
 ---
 
-### User Story 2 - Create Project-Specific Wave Skills (Priority: P2)
+### User Story 2 - Create Project-Specific Agent Skills (Priority: P2)
 
 A development team wants to create shared skills that encapsulate project-specific knowledge, team conventions, and workflows. These skills should be version-controlled and automatically available to all team members.
 
