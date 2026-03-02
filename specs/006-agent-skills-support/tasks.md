@@ -1,6 +1,6 @@
-# Tasks: Wave Skills Support
+# Tasks: Agent Skills Support
 
-**Input**: Design documents from `/specs/006-wave-skills-support/`
+**Input**: Design documents from `/specs/006-agent-skills-support/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
 **Tests**: Integration tests are included as specified in quickstart.md for end-to-end validation using temporary directories.
@@ -16,7 +16,7 @@
 
 **Purpose**: Project initialization and basic structure
 
-- [x] T001 Create feature branch 006-wave-skills-support from main
+- [x] T001 Create feature branch 006-agent-skills-support from main
 - [x] T002 [P] Verify agent-sdk package structure and dependencies
 - [x] T003 [P] Run existing tests to ensure baseline functionality
 
@@ -57,7 +57,7 @@
 
 ---
 
-## Phase 4: User Story 1 - Create Personal Wave Skills (Priority: P1)
+## Phase 4: User Story 1 - Create Personal Agent Skills (Priority: P1)
 
 **Goal**: Developer can create reusable skills for personal workflow that work across all Wave projects
 
@@ -74,7 +74,7 @@
 
 ---
 
-## Phase 5: User Story 2 - Create Project-Specific Wave Skills (Priority: P2)
+## Phase 5: User Story 2 - Create Project-Specific Agent Skills (Priority: P2)
 
 **Goal**: Development teams can create shared skills that are version-controlled and automatically available to team members
 

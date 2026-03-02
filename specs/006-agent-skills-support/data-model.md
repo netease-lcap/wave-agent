@@ -1,4 +1,4 @@
-# Data Model: Wave Skills Support
+# Data Model: Agent Skills Support
 
 **Phase**: 1 - Design & Contracts  
 **Date**: 2024-12-19  

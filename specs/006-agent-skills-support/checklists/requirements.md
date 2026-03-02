@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Wave Skills Support
+# Specification Quality Checklist: Agent Skills Support
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2024-12-19
