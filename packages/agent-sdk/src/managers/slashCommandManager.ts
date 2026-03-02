@@ -12,15 +12,13 @@ import {
 } from "../utils/commandArgumentParser.js";
 import { Container } from "../utils/container.js";
 import {
-  BashCommandResult,
   parseBashCommands,
   replaceBashCommandsWithOutput,
+  executeBashCommands,
 } from "../utils/markdownParser.js";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { INIT_PROMPT } from "../prompts/index.js";
-
-const execAsync = promisify(exec);
+import type { SkillManager } from "./skillManager.js";
+import type { SkillMetadata } from "../types/skills.js";
 
 import { logger } from "../utils/globalLogger.js";
 
@@ -31,6 +29,7 @@ export interface SlashCommandManagerOptions {
 export class SlashCommandManager {
   private commands = new Map<string, SlashCommand>();
   private customCommands = new Map<string, CustomSlashCommand>();
+  private skillCommandIds = new Set<string>();
   private workdir: string;
 
   constructor(
@@ -59,6 +58,10 @@ export class SlashCommandManager {
 
   private get taskManager(): TaskManager {
     return this.container.get<TaskManager>("TaskManager")!;
+  }
+
+  private get skillManager(): SkillManager {
+    return this.container.get<SkillManager>("SkillManager")!;
   }
 
   private initializeBuiltinCommands(): void {
@@ -139,6 +142,60 @@ export class SlashCommandManager {
     } catch (error) {
       logger?.warn("Failed to load custom commands:", error);
     }
+  }
+
+  /**
+   * Register skills as slash commands
+   */
+  public registerSkillCommands(skills: SkillMetadata[]): void {
+    // Clear existing skill commands
+    for (const commandId of this.skillCommandIds) {
+      this.unregisterCommand(commandId);
+    }
+    this.skillCommandIds.clear();
+
+    for (const skill of skills) {
+      const commandId = skill.name;
+      this.skillCommandIds.add(commandId);
+
+      this.registerCommand({
+        id: commandId,
+        name: skill.name,
+        description: `Skill: ${skill.description}`,
+        handler: async (args?: string) => {
+          try {
+            const result = await this.skillManager.executeSkill({
+              skill_name: skill.name,
+              args,
+            });
+
+            // Add user message with skill content
+            const originalInput = args
+              ? `/${skill.name} ${args}`
+              : `/${skill.name}`;
+            this.messageManager.addUserMessage({
+              content: originalInput,
+              customCommandContent: result.content,
+            });
+
+            // Trigger AI response
+            await this.aiManager.sendAIMessage();
+          } catch (error) {
+            logger?.error(
+              `Failed to execute skill command '${skill.name}':`,
+              error,
+            );
+            this.messageManager.addErrorBlock(
+              `Failed to execute skill command '${skill.name}': ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        },
+      });
+    }
+
+    logger?.debug(`Registered ${skills.length} skill commands`);
   }
 
   /**
@@ -325,39 +382,14 @@ export class SlashCommandManager {
       const { commands, processedContent } = parseBashCommands(content);
 
       // Execute bash commands if any
-      const bashResults: BashCommandResult[] = [];
-      for (const command of commands) {
-        try {
-          const { stdout, stderr } = await execAsync(command, {
-            cwd: this.workdir,
-            timeout: 30000, // 30 second timeout
-          });
-          bashResults.push({
-            command,
-            output: stdout || stderr || "",
-            exitCode: 0,
-          });
-        } catch (error) {
-          const execError = error as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-            code?: number;
-          };
-          bashResults.push({
-            command,
-            output:
-              execError.stdout || execError.stderr || execError.message || "",
-            exitCode: execError.code || 1,
-          });
-        }
+      let finalContent = processedContent;
+      if (commands.length > 0) {
+        const bashResults = await executeBashCommands(commands, this.workdir);
+        finalContent = replaceBashCommandsWithOutput(
+          processedContent,
+          bashResults,
+        );
       }
-
-      // Replace bash command placeholders with their outputs
-      const finalContent =
-        bashResults.length > 0
-          ? replaceBashCommandsWithOutput(processedContent, bashResults)
-          : processedContent;
 
       // Add custom command message to show the command being executed
       const originalInput = args

@@ -53,6 +53,7 @@ export interface SkillInvocationContext {
 
 export interface SkillToolArgs {
   skill_name: string;
+  args?: string;
 }
 
 export interface SkillManagerOptions {

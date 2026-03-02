@@ -20,6 +20,10 @@ export const skillTool: ToolPlugin = {
             type: "string",
             description: "Name of the skill to invoke",
           },
+          args: {
+            type: "string",
+            description: "Optional arguments to pass to the skill",
+          },
         },
         required: ["skill_name"],
       },
@@ -57,6 +61,8 @@ export const skillTool: ToolPlugin = {
 
       // Validate arguments
       const skillName = args.skill_name as string;
+      const skillArgs = args.args as string | undefined;
+
       if (!skillName || typeof skillName !== "string") {
         return {
           success: false,
@@ -68,6 +74,7 @@ export const skillTool: ToolPlugin = {
       // Execute the skill
       const result = await skillManager.executeSkill({
         skill_name: skillName,
+        args: skillArgs,
       });
 
       return {

@@ -11,6 +11,12 @@ import type {
   SkillInvocationContext,
 } from "../types/index.js";
 import { parseSkillFile, formatSkillError } from "../utils/skillParser.js";
+import { substituteCommandParameters } from "../utils/commandArgumentParser.js";
+import {
+  parseBashCommands,
+  replaceBashCommandsWithOutput,
+  executeBashCommands,
+} from "../utils/markdownParser.js";
 
 import { Container } from "../utils/container.js";
 import { logger } from "../utils/globalLogger.js";
@@ -246,9 +252,9 @@ export class SkillManager {
   async executeSkill(
     args: SkillToolArgs,
   ): Promise<{ content: string; context?: SkillInvocationContext }> {
-    const { skill_name } = args;
+    const { skill_name, args: skillArgs } = args;
 
-    logger?.debug(`Invoking skill: ${skill_name}`);
+    logger?.debug(`Invoking skill: ${skill_name} with args: ${skillArgs}`);
 
     try {
       // Load the skill
@@ -267,9 +273,15 @@ export class SkillManager {
         };
       }
 
+      // Process skill content with arguments and bash commands
+      const processedContent = await this.processSkillContent(
+        skill,
+        skillArgs || "",
+      );
+
       // Return skill content with context
       return {
-        content: this.formatSkillContent(skill),
+        content: processedContent,
         context: {
           skillName: skill_name,
         },
@@ -283,16 +295,29 @@ export class SkillManager {
   }
 
   /**
-   * Format skill content for output
+   * Process skill content with arguments and bash commands
    */
-  private formatSkillContent(skill: Skill): string {
+  private async processSkillContent(
+    skill: Skill,
+    argsString: string,
+  ): Promise<string> {
     const header = `🧠 **${skill.name}** (${skill.type} skill)\n\n`;
     const description = `*${skill.description}*\n\n`;
     const skillPath = `📁 Skill location: \`${skill.skillPath}\`\n\n`;
 
     // Extract content after frontmatter
     const contentMatch = skill.content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
-    const mainContent = contentMatch ? contentMatch[1].trim() : skill.content;
+    let mainContent = contentMatch ? contentMatch[1].trim() : skill.content;
+
+    // 1. Substitute parameters ($1, $ARGUMENTS, etc.)
+    mainContent = substituteCommandParameters(mainContent, argsString);
+
+    // 2. Parse and execute bash commands (!`command`)
+    const { commands } = parseBashCommands(mainContent);
+    if (commands.length > 0) {
+      const results = await executeBashCommands(commands, this.workdir);
+      mainContent = replaceBashCommandsWithOutput(mainContent, results);
+    }
 
     return header + description + skillPath + mainContent;
   }
