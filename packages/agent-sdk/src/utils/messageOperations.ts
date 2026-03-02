@@ -68,6 +68,7 @@ export interface CompleteBangParams {
   messages: Message[];
   command: string;
   exitCode: number;
+  output?: string;
 }
 
 /**
@@ -345,6 +346,7 @@ export const completeBangInMessage = ({
   messages,
   command,
   exitCode,
+  output,
 }: CompleteBangParams): Message[] => {
   const newMessages = [...messages];
   // Find the last user message with a bang block for this command
@@ -358,6 +360,9 @@ export const completeBangInMessage = ({
       if (commandBlock && commandBlock.type === "bang") {
         commandBlock.isRunning = false;
         commandBlock.exitCode = exitCode;
+        if (output !== undefined) {
+          commandBlock.output = output.trim();
+        }
         break;
       }
     }

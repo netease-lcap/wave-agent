@@ -197,23 +197,8 @@ Usage notes:
 
       let outputBuffer = "";
       let errorBuffer = "";
-      let shortResultBuffer = "";
       let isAborted = false;
       let isBackgrounded = false;
-
-      const updateShortResult = (chunk: string) => {
-        if (!chunk) return;
-        shortResultBuffer += chunk;
-        if (shortResultBuffer.length > MAX_OUTPUT_LENGTH) {
-          shortResultBuffer = shortResultBuffer.slice(-MAX_OUTPUT_LENGTH);
-        }
-        const lastLines = shortResultBuffer
-          .trim()
-          .split("\n")
-          .slice(-3)
-          .join("\n");
-        context.onShortResultUpdate?.(lastLines || "");
-      };
 
       const foregroundTaskId = `bash_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -324,7 +309,6 @@ Usage notes:
         if (!isAborted && !isBackgrounded && !runInBackground) {
           const chunk = stripAnsiColors(data.toString());
           outputBuffer += chunk;
-          updateShortResult(chunk);
         }
       });
 
@@ -332,7 +316,6 @@ Usage notes:
         if (!isAborted && !isBackgrounded && !runInBackground) {
           const chunk = stripAnsiColors(data.toString());
           errorBuffer += chunk;
-          updateShortResult(chunk);
         }
       });
 
@@ -361,9 +344,16 @@ Usage notes:
                 "\n\n... (output truncated)"
               : finalOutput;
 
+          const shortResult = combinedOutput
+            .trim()
+            .split("\n")
+            .slice(-3)
+            .join("\n");
+
           resolve({
             success: exitCode === 0,
             content,
+            shortResult: shortResult || undefined,
             error:
               exitCode !== 0
                 ? `Command failed with exit code: ${exitCode}`

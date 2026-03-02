@@ -117,11 +117,8 @@ describe("BangManager", () => {
       // Simulate command output
       mockChildProcess.simulateStdout("hello world\n");
 
-      // Verify output update callback was called
-      expect(mockMessageManager.updateBangMessage).toHaveBeenCalledWith(
-        command,
-        "hello world\n",
-      );
+      // Verify output update callback was NOT called during execution
+      expect(mockMessageManager.updateBangMessage).not.toHaveBeenCalled();
 
       // Simulate command completion
       mockChildProcess.simulateExit(0);
@@ -133,6 +130,7 @@ describe("BangManager", () => {
       expect(mockMessageManager.completeBangMessage).toHaveBeenCalledWith(
         command,
         0,
+        "hello world\n",
       );
     });
 
@@ -149,11 +147,8 @@ describe("BangManager", () => {
         "ls: /nonexistent: No such file or directory",
       );
 
-      // Verify update callback was called with stderr output
-      expect(mockMessageManager.updateBangMessage).toHaveBeenCalledWith(
-        command,
-        "ls: /nonexistent: No such file or directory",
-      );
+      // Verify update callback was NOT called during execution
+      expect(mockMessageManager.updateBangMessage).not.toHaveBeenCalled();
 
       // Simulate command completion with non-zero exit code
       mockChildProcess.simulateExit(1);
@@ -163,6 +158,7 @@ describe("BangManager", () => {
       expect(mockMessageManager.completeBangMessage).toHaveBeenCalledWith(
         command,
         1,
+        "ls: /nonexistent: No such file or directory",
       );
     });
 
@@ -181,13 +177,11 @@ describe("BangManager", () => {
       const exitCode = await executePromise;
 
       // Should have error output and exit code 1
-      expect(mockMessageManager.updateBangMessage).toHaveBeenCalledWith(
-        command,
-        "\nError: Command not found\n",
-      );
+      expect(mockMessageManager.updateBangMessage).not.toHaveBeenCalled();
       expect(mockMessageManager.completeBangMessage).toHaveBeenCalledWith(
         command,
         1,
+        "\nError: Command not found\n",
       );
       expect(exitCode).toBe(1);
     });
@@ -205,6 +199,7 @@ describe("BangManager", () => {
       expect(mockMessageManager.completeBangMessage).toHaveBeenCalledWith(
         command,
         130,
+        "",
       );
     });
 
@@ -222,24 +217,18 @@ describe("BangManager", () => {
       );
     });
 
-    it("should update output progressively", async () => {
+    it("should NOT update output progressively", async () => {
       const command = "cat file.txt";
 
       const executePromise = bangManager.executeCommand(command);
 
       // Simulate partial output
       mockChildProcess.simulateStdout("line1");
-      expect(mockMessageManager.updateBangMessage).toHaveBeenCalledWith(
-        command,
-        "line1",
-      );
+      expect(mockMessageManager.updateBangMessage).not.toHaveBeenCalled();
 
       // Simulate more output
       mockChildProcess.simulateStdout("\nline2");
-      expect(mockMessageManager.updateBangMessage).toHaveBeenCalledWith(
-        command,
-        "line1\nline2",
-      );
+      expect(mockMessageManager.updateBangMessage).not.toHaveBeenCalled();
 
       // Complete
       mockChildProcess.simulateExit(0);
@@ -248,6 +237,7 @@ describe("BangManager", () => {
       expect(mockMessageManager.completeBangMessage).toHaveBeenCalledWith(
         command,
         0,
+        "line1\nline2",
       );
     });
   });
