@@ -133,6 +133,8 @@ describe("worktree utils", () => {
         isNew: false,
       };
 
+      vi.mocked(execSync).mockReturnValue(Buffer.from("worktree-my-feat\n"));
+
       removeWorktree(session);
 
       expect(execSync).toHaveBeenCalledWith(
@@ -141,6 +143,76 @@ describe("worktree utils", () => {
       );
       expect(execSync).toHaveBeenCalledWith(
         expect.stringContaining("git branch -D worktree-my-feat"),
+        expect.any(Object),
+      );
+    });
+
+    it("should remove worktree, original branch, and current branch if different", () => {
+      const session = {
+        name: "my-feat",
+        path: "/repo/root/.wave/worktrees/my-feat",
+        branch: "worktree-my-feat",
+        repoRoot: "/repo/root",
+        hasUncommittedChanges: false,
+        hasNewCommits: false,
+        isNew: false,
+      };
+
+      vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+      vi.mocked(execSync).mockImplementation((cmd) => {
+        if (cmd === "git rev-parse --abbrev-ref HEAD") {
+          return "another-branch\n";
+        }
+        return "";
+      });
+
+      removeWorktree(session);
+
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining("git worktree remove --force"),
+        expect.any(Object),
+      );
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining("git branch -D worktree-my-feat"),
+        expect.any(Object),
+      );
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining("git branch -D another-branch"),
+        expect.any(Object),
+      );
+    });
+
+    it("should NOT remove current branch if it is a protected branch", () => {
+      const session = {
+        name: "my-feat",
+        path: "/repo/root/.wave/worktrees/my-feat",
+        branch: "worktree-my-feat",
+        repoRoot: "/repo/root",
+        hasUncommittedChanges: false,
+        hasNewCommits: false,
+        isNew: false,
+      };
+
+      vi.mocked(getDefaultRemoteBranch).mockReturnValue("origin/main");
+      vi.mocked(execSync).mockImplementation((cmd) => {
+        if (cmd === "git rev-parse --abbrev-ref HEAD") {
+          return "main\n";
+        }
+        return "";
+      });
+
+      removeWorktree(session);
+
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining("git worktree remove --force"),
+        expect.any(Object),
+      );
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining("git branch -D worktree-my-feat"),
+        expect.any(Object),
+      );
+      expect(execSync).not.toHaveBeenCalledWith(
+        expect.stringContaining("git branch -D main"),
         expect.any(Object),
       );
     });
