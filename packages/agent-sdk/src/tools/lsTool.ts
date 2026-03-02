@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { minimatch } from "minimatch";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
-import { isBinary, getDisplayPath } from "@/utils/path.js";
+import { isBinary, getDisplayPath } from "../utils/path.js";
 import {
   LS_TOOL_NAME,
   GLOB_TOOL_NAME,

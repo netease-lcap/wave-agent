@@ -32,6 +32,7 @@ import {
   LS_TOOL_NAME,
 } from "../constants/tools.js";
 import { Container } from "../utils/container.js";
+import { ConfigurationService } from "../services/configurationService.js";
 
 const SAFE_COMMANDS = ["cd", "ls", "pwd", "true", "false"];
 
@@ -698,5 +699,50 @@ export class PermissionManager {
     }
 
     return rules;
+  }
+
+  /**
+   * Add a persistent permission rule
+   * @param rule - The rule to add (e.g., "Bash(ls)")
+   */
+  public async addPermissionRule(rule: string): Promise<void> {
+    if (!this.workdir) {
+      throw new Error("Working directory not set in PermissionManager");
+    }
+
+    // 1. Expand rule if it's a Bash command
+    let rulesToAdd = [rule];
+    const bashMatch = rule.match(/^Bash\((.*)\)$/);
+    if (bashMatch) {
+      const command = bashMatch[1];
+      rulesToAdd = this.expandBashRule(command, this.workdir);
+    }
+
+    const configurationService = this.container.get<ConfigurationService>(
+      "ConfigurationService",
+    );
+
+    for (const ruleToAdd of rulesToAdd) {
+      // 2. Update PermissionManager state
+      const currentRules = this.getAllowedRules();
+      if (!currentRules.includes(ruleToAdd)) {
+        this.updateAllowedRules([...currentRules, ruleToAdd]);
+
+        // 3. Persist to settings.local.json
+        try {
+          if (configurationService) {
+            await configurationService.addAllowedRule(this.workdir, ruleToAdd);
+            this._logger?.debug("Persistent permission rule added", {
+              rule: ruleToAdd,
+            });
+          }
+        } catch (error) {
+          this._logger?.error("Failed to persist permission rule", {
+            rule: ruleToAdd,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
   }
 }

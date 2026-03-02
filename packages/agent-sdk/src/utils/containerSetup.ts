@@ -21,7 +21,7 @@ import { SubagentManager } from "../managers/subagentManager.js";
 import { LiveConfigManager } from "../managers/liveConfigManager.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ReversionService } from "../services/reversionService.js";
-import type { AgentOptions } from "../agent.js";
+import type { AgentOptions } from "../types/index.js";
 import type {
   PermissionMode,
   Usage,

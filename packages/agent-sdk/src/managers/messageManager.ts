@@ -85,6 +85,7 @@ export class MessageManager {
   private filesInContext: Set<string> = new Set(); // Track files mentioned in the conversation
   private sessionType: "main" | "subagent";
   private subagentType?: string;
+  private _usages: Usage[] = [];
 
   constructor(
     private container: Container,
@@ -126,6 +127,10 @@ export class MessageManager {
 
   public getMessages(): Message[] {
     return [...this.messages];
+  }
+
+  public getUsages(): Usage[] {
+    return [...this._usages];
   }
 
   public getlatestTotalTokens(): number {
@@ -495,16 +500,34 @@ export class MessageManager {
   }
 
   /**
+   * Rebuild usage array from messages containing usage metadata
+   * Called during session restoration to reconstruct usage tracking
+   */
+  public rebuildUsageFromMessages(messages: Message[]): void {
+    this._usages = [];
+    messages.forEach((message) => {
+      if (message.role === "assistant" && message.usage) {
+        this._usages.push(message.usage);
+      }
+    });
+    // Trigger callback after rebuilding usage array
+    this.triggerUsageChange();
+  }
+
+  /**
+   * Add usage data to the tracking array and trigger callbacks
+   * @param usage Usage data from AI operations
+   */
+  public addUsage(usage: Usage): void {
+    this._usages.push(usage);
+    this.triggerUsageChange();
+  }
+
+  /**
    * Trigger usage change callback with all usage data from assistant messages
    */
   public triggerUsageChange(): void {
-    const usages: Usage[] = [];
-    for (const message of this.messages) {
-      if (message.role === "assistant" && message.usage) {
-        usages.push(message.usage);
-      }
-    }
-    this.callbacks.onUsagesChange?.(usages);
+    this.callbacks.onUsagesChange?.([...this._usages]);
   }
 
   /**
