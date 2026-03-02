@@ -77,6 +77,11 @@ export const skillTool: ToolPlugin = {
         args: skillArgs,
       });
 
+      // Add temporary rules if allowedTools are present
+      if (result.allowedTools && result.allowedTools.length > 0) {
+        context.permissionManager?.addTemporaryRules(result.allowedTools);
+      }
+
       return {
         success: true,
         content: result.content,

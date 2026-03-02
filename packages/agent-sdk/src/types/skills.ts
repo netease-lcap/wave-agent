@@ -8,6 +8,7 @@ export interface SkillMetadata {
   description: string;
   type: "personal" | "project";
   skillPath: string;
+  allowedTools?: string[];
 }
 
 export interface Skill extends SkillMetadata {
@@ -20,6 +21,7 @@ export interface Skill extends SkillMetadata {
 export interface SkillFrontmatter {
   name: string;
   description: string;
+  "allowed-tools"?: string | string[];
   [key: string]: unknown;
 }
 

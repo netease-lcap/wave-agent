@@ -179,7 +179,9 @@ export class SlashCommandManager {
             });
 
             // Trigger AI response
-            await this.aiManager.sendAIMessage();
+            await this.aiManager.sendAIMessage({
+              allowedRules: result.allowedTools,
+            });
           } catch (error) {
             logger?.error(
               `Failed to execute skill command '${skill.name}':`,

@@ -87,6 +87,22 @@ A user wants to explicitly invoke a skill using a slash command syntax and provi
 
 ---
 
+### User Story 6 - Restricting Tool Access for Skills (Priority: P2)
+
+A user wants to restrict the tools available to the AI when a skill is invoked, either manually via a slash command or autonomously by the AI. This ensures that the AI uses only the intended tools for a specific task, improving security and reliability.
+
+**Why this priority**: Enhances security and reliability by limiting the AI's toolset to what's necessary for the skill.
+
+**Independent Test**: Can be tested by creating a skill with `allowed-tools` in its frontmatter and verifying that the AI is restricted to those tools when the skill is invoked.
+
+**Acceptance Scenarios**:
+
+1. **Given** I have a skill with `allowed-tools` specified in its frontmatter, **When** I invoke it using a slash command, **Then** Wave should restrict the AI to only use the specified tools for the resulting turn
+2. **Given** a skill with `allowed-tools` is invoked autonomously by the AI via the `Skill` tool, **When** the skill is executed, **Then** Wave should enforce the tool restrictions for the remainder of the AI's turn
+3. **Given** a skill specifies `allowed-tools` as a YAML list or a comma-separated string, **When** the skill is parsed, **Then** Wave should correctly identify and enforce all specified tools
+
+---
+
 ### Edge Cases
 
 - What happens when a skill's SKILL.md file has malformed YAML frontmatter?
@@ -114,10 +130,11 @@ A user wants to explicitly invoke a skill using a slash command syntax and provi
 - **FR-013**: Wave MUST support user-invokable skills via slash command syntax (e.g., `/skill-name args`)
 - **FR-014**: Wave MUST support parameter substitution in skills using `$1`, `$2`, ..., and `$ARGUMENTS`
 - **FR-015**: Wave MUST support bash command execution in skills using `!`command`` syntax
+- **FR-016**: Wave MUST support `allowed-tools` in skill frontmatter to restrict tool access during skill execution
 
 ### Key Entities
 
-- **Skill**: A discoverable capability package consisting of a SKILL.md file with YAML frontmatter (name, description) and optional supporting files
+- **Skill**: A discoverable capability package consisting of a SKILL.md file with YAML frontmatter (name, description, optional allowed-tools) and optional supporting files
 - **Personal Skill**: Skills stored globally in user's home directory (`~/.wave/skills/`) available across all projects
 - **Project Skill**: Skills stored in project directory (`.wave/skills/`) shared with team members and version-controlled
 - **Skill Directory**: Container holding SKILL.md and optional supporting files (reference.md, examples.md, scripts/, templates/)

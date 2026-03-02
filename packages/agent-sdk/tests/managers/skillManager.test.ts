@@ -368,6 +368,33 @@ describe("SkillManager", () => {
       expect(result.context).toEqual({ skillName: "test-skill" });
     });
 
+    it("should return allowedTools when executing skill", async () => {
+      const mockSkill: Skill = {
+        name: "test-skill",
+        description: "A test skill",
+        type: "personal",
+        skillPath: "/path/to/skill",
+        content:
+          "---\nname: test-skill\ndescription: A test skill\nallowed-tools: tool1, tool2\n---\n\n# Test Content",
+        frontmatter: {
+          name: "test-skill",
+          description: "A test skill",
+          "allowed-tools": ["tool1", "tool2"],
+        },
+        isValid: true,
+        errors: [],
+        allowedTools: ["tool1", "tool2"],
+      };
+
+      vi.mocked(skillManager.loadSkill).mockResolvedValue(mockSkill);
+
+      const result = await skillManager.executeSkill({
+        skill_name: "test-skill",
+      });
+
+      expect(result.allowedTools).toEqual(["tool1", "tool2"]);
+    });
+
     it("should handle skill not found", async () => {
       const mockSkills: SkillMetadata[] = [
         {

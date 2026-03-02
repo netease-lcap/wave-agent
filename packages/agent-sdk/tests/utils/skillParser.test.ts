@@ -42,6 +42,42 @@ This is a test skill content.`;
       expect(result.validationErrors).toHaveLength(0);
     });
 
+    it("should parse allowed-tools in frontmatter (string)", () => {
+      const mockContent = `---
+name: test-skill
+description: A test skill for validation
+allowed-tools: tool1, tool2
+---
+
+# Test Skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      expect(result.isValid).toBe(true);
+      expect(result.skillMetadata.allowedTools).toEqual(["tool1", "tool2"]);
+    });
+
+    it("should parse allowed-tools in frontmatter (list)", () => {
+      const mockContent = `---
+name: test-skill
+description: A test skill for validation
+allowed-tools:
+  - tool1
+  - tool2
+---
+
+# Test Skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      expect(result.isValid).toBe(true);
+      expect(result.skillMetadata.allowedTools).toEqual(["tool1", "tool2"]);
+    });
+
     it("should handle missing YAML frontmatter", () => {
       const mockContent = `# Test Skill
 

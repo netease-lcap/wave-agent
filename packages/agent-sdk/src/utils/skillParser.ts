@@ -57,11 +57,24 @@ export function parseSkillFile(
       ? "project"
       : "personal";
 
+    // Extract allowed tools
+    let allowedTools: string[] | undefined;
+    const rawAllowedTools = result.frontmatter["allowed-tools"];
+    if (Array.isArray(rawAllowedTools)) {
+      allowedTools = rawAllowedTools.map((t) => String(t).trim());
+    } else if (typeof rawAllowedTools === "string") {
+      allowedTools = rawAllowedTools
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+    }
+
     result.skillMetadata = {
       name: result.frontmatter.name,
       description: result.frontmatter.description,
       type: skillType,
       skillPath,
+      allowedTools,
     };
 
     // Validate metadata if requested
@@ -88,9 +101,28 @@ function parseYamlFrontmatter(yamlContent: string): SkillFrontmatter {
 
   try {
     const lines = yamlContent.split("\n");
+    let currentKey: string | null = null;
+
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
+
+      // Check for list item
+      if (trimmed.startsWith("-") && currentKey) {
+        const value = trimmed
+          .substring(1)
+          .trim()
+          .replace(/^["']|["']$/g, "");
+        if (value) {
+          const existing = frontmatter[currentKey];
+          if (Array.isArray(existing)) {
+            (existing as string[]).push(value);
+          } else {
+            frontmatter[currentKey] = [value];
+          }
+        }
+        continue;
+      }
 
       const colonIndex = trimmed.indexOf(":");
       if (colonIndex === -1) continue;
@@ -101,8 +133,12 @@ function parseYamlFrontmatter(yamlContent: string): SkillFrontmatter {
         .trim()
         .replace(/^["']|["']$/g, "");
 
+      currentKey = key;
       if (key && value) {
         frontmatter[key] = value;
+      } else if (key) {
+        // Key with no value on the same line, might be a list
+        frontmatter[key] = [];
       }
     }
   } catch {
