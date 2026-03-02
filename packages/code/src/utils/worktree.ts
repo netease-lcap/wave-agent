@@ -104,17 +104,58 @@ export function removeWorktree(session: WorktreeSession): void {
   const repoRoot = session.repoRoot;
 
   try {
+    // Get current branch in worktree before removing it
+    let currentBranch: string | undefined;
+    try {
+      currentBranch = execSync(`git rev-parse --abbrev-ref HEAD`, {
+        cwd: session.path,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+    } catch {
+      // Ignore errors getting current branch
+    }
+
     // Remove worktree
     execSync(`git worktree remove --force "${session.path}"`, {
       cwd: repoRoot,
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    // Delete branch
-    execSync(`git branch -D ${session.branch}`, {
-      cwd: repoRoot,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    // Delete original branch
+    try {
+      execSync(`git branch -D ${session.branch}`, {
+        cwd: repoRoot,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch {
+      // Ignore errors deleting original branch
+    }
+
+    // Delete current branch if it's different and not a protected branch
+    if (
+      currentBranch &&
+      currentBranch !== session.branch &&
+      currentBranch !== "HEAD"
+    ) {
+      const defaultRemoteBranch = getDefaultRemoteBranch(repoRoot);
+      const defaultBranchName = defaultRemoteBranch.split("/").pop();
+
+      if (
+        currentBranch !== defaultBranchName &&
+        currentBranch !== "main" &&
+        currentBranch !== "master"
+      ) {
+        try {
+          execSync(`git branch -D ${currentBranch}`, {
+            cwd: repoRoot,
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+        } catch {
+          // Ignore errors deleting current branch
+        }
+      }
+    }
   } catch (error: unknown) {
     console.error(
       `Failed to remove worktree or branch: ${(error as Error).message}`,
