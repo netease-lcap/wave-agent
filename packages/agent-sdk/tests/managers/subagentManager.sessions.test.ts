@@ -73,10 +73,9 @@ describe("SubagentManager - Session Functionality", () => {
   beforeEach(async () => {
     // Create container
     container = new Container();
-    container.register(
-      "PermissionManager",
-      {} as unknown as Record<string, unknown>,
-    );
+    container.register("PermissionManager", {
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+    } as unknown as Record<string, unknown>);
     container.register("TaskManager", {} as unknown as Record<string, unknown>);
     container.register(
       "ReversionManager",
