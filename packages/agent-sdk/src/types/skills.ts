@@ -11,6 +11,8 @@ export interface SkillMetadata {
   allowedTools?: string[];
   context?: "fork";
   agent?: string;
+  disableModelInvocation?: boolean;
+  userInvocable?: boolean;
 }
 
 export interface Skill extends SkillMetadata {
@@ -26,6 +28,8 @@ export interface SkillFrontmatter {
   "allowed-tools"?: string | string[];
   context?: "fork";
   agent?: string;
+  "disable-model-invocation"?: boolean | string;
+  "user-invocable"?: boolean | string;
   [key: string]: unknown;
 }
 

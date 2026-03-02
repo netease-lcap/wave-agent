@@ -134,7 +134,9 @@ export class AIManager {
   private getFilteredToolsConfig(tools?: string[]) {
     // Get available subagents and skills for dynamic prompts
     const availableSubagents = this.subagentManager?.getConfigurations();
-    const availableSkills = this.skillManager?.getAvailableSkills();
+    const availableSkills = this.skillManager
+      ?.getAvailableSkills()
+      .filter((skill) => !skill.disableModelInvocation);
 
     const allTools = this.toolManager.getToolsConfig({
       availableSubagents,

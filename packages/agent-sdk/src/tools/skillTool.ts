@@ -37,7 +37,9 @@ export const skillTool: ToolPlugin = {
   },
 
   prompt: (args?: { availableSkills?: SkillMetadata[] }) => {
-    const availableSkills = args?.availableSkills;
+    const availableSkills = args?.availableSkills?.filter(
+      (skill) => !skill.disableModelInvocation,
+    );
     if (!availableSkills || availableSkills.length === 0) {
       return "Invoke a Wave skill by name. Skills are user-defined automation templates that can be personal or project-specific. No skills are currently available.";
     }
@@ -78,6 +80,14 @@ export const skillTool: ToolPlugin = {
       }
 
       const skillMetadata = skillManager.getSkillMetadata(skillName);
+
+      if (skillMetadata?.disableModelInvocation) {
+        return {
+          success: false,
+          content: "",
+          error: `Skill "${skillName}" is not available for model invocation.`,
+        };
+      }
 
       // Handle fork context
       if (skillMetadata?.context === "fork") {

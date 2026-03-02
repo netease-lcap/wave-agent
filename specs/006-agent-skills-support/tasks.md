@@ -127,8 +127,27 @@
 - [x] T032 [P] Code cleanup and refactoring across all skill-related modules
 - [x] T033 [P] Performance optimization for skill discovery and loading
 - [x] T034 Run type-check and lint validation across all modified files
-- [ ] T035 Run quickstart.md validation with real skill examples
-- [ ] T036 Run test.
+- [x] T035 Implement Skill Invocation Control Flags (disable-model-invocation, user-invocable)
+- [x] T036 Create unit tests for Skill Invocation Control Flags
+- [ ] T037 Run quickstart.md validation with real skill examples
+- [ ] T038 Run test.
+
+---
+
+## Phase 9: Skill Invocation Control Flags (Priority: P2)
+
+**Goal**: Users can control how skills are invoked and whether they are visible in the slash command menu.
+
+**Independent Test**: Set `disable-model-invocation: true` and `user-invocable: false` in various combinations and verify visibility in the `/` menu and the AI's tool prompt.
+
+### Implementation for Phase 9
+
+- [x] T039 [P] [US8] Update SkillMetadata and SkillFrontmatter types in packages/agent-sdk/src/types/skills.ts
+- [x] T040 [P] [US8] Update parseSkillFile to extract new flags in packages/agent-sdk/src/utils/skillParser.ts
+- [x] T041 [US8] Update SkillTool to respect disableModelInvocation in packages/agent-sdk/src/tools/skillTool.ts
+- [x] T042 [US8] Update AIManager to filter skills by disableModelInvocation in packages/agent-sdk/src/managers/aiManager.ts
+- [x] T043 [US8] Update SlashCommandManager to skip non-invocable skills in packages/agent-sdk/src/managers/slashCommandManager.ts
+- [x] T044 [P] [US8] Create unit tests for new flags in packages/agent-sdk/tests/utils/skillParser_flags.test.ts, packages/agent-sdk/tests/tools/skillTool_flags.test.ts, and packages/agent-sdk/tests/managers/slashCommandManager_flags.test.ts
 
 ---
 
