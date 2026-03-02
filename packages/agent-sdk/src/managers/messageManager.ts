@@ -489,11 +489,16 @@ export class MessageManager {
     this.callbacks.onUpdateBangMessage?.(command, output);
   }
 
-  public completeBangMessage(command: string, exitCode: number): void {
+  public completeBangMessage(
+    command: string,
+    exitCode: number,
+    output?: string,
+  ): void {
     const updatedMessages = completeBangInMessage({
       messages: this.messages,
       command,
       exitCode,
+      output,
     });
     this.setMessages(updatedMessages);
     this.callbacks.onCompleteBangMessage?.(command, exitCode);

@@ -56,7 +56,6 @@ export class BangManager {
 
       const updateOutput = (newData: string) => {
         outputBuffer += newData;
-        this.messageManager.updateBangMessage(command, outputBuffer);
       };
 
       child.stdout?.on("data", (data) => {
@@ -70,7 +69,11 @@ export class BangManager {
       child.on("exit", (code, signal) => {
         const exitCode = code === null && signal ? 130 : (code ?? 0);
 
-        this.messageManager.completeBangMessage(command, exitCode);
+        this.messageManager.completeBangMessage(
+          command,
+          exitCode,
+          outputBuffer,
+        );
 
         this.setCommandRunning(false);
         this.currentProcess = null;
@@ -79,7 +82,7 @@ export class BangManager {
 
       child.on("error", (error) => {
         updateOutput(`\nError: ${error.message}\n`);
-        this.messageManager.completeBangMessage(command, 1);
+        this.messageManager.completeBangMessage(command, 1, outputBuffer);
 
         this.setCommandRunning(false);
         this.currentProcess = null;

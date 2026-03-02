@@ -446,7 +446,7 @@ describe("Bang Message Operations", () => {
   });
 
   describe("completeBangInMessage", () => {
-    it("should mark command as completed with exit code", () => {
+    it("should mark command as completed with exit code and output", () => {
       const initialMessages: Message[] = [
         {
           role: "user",
@@ -454,7 +454,7 @@ describe("Bang Message Operations", () => {
             {
               type: "bang",
               command: "echo hello",
-              output: "hello",
+              output: "",
               isRunning: true,
               exitCode: null,
             },
@@ -466,6 +466,7 @@ describe("Bang Message Operations", () => {
         messages: initialMessages,
         command: "echo hello",
         exitCode: 0,
+        output: "hello\n",
       });
 
       expect(result[0].blocks[0]).toMatchObject({
