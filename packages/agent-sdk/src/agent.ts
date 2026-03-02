@@ -225,9 +225,6 @@ export class Agent {
       configurationService: this.configurationService,
       systemPrompt: this.systemPrompt,
       stream: this.stream,
-      onSessionIdChange: () => {
-        this.taskManager.setTaskListId(this.messageManager.getRootSessionId());
-      },
       onTasksChange: (tasks) => {
         this.options.callbacks?.onTasksChange?.(tasks);
       },

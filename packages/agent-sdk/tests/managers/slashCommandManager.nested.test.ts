@@ -202,8 +202,8 @@ describe("SlashCommandManager Nested Command Integration", () => {
 
       const commands = slashCommandManager.getCommands();
 
-      // Should have built-in clear, init + 6 custom commands
-      expect(commands).toHaveLength(8);
+      // Should have built-in init + 6 custom commands
+      expect(commands).toHaveLength(7);
 
       // Check that both flat and nested commands are registered
       expect(slashCommandManager.hasCommand("help")).toBe(true);
@@ -422,9 +422,9 @@ describe("SlashCommandManager Nested Command Integration", () => {
       // Should include built-in commands + custom commands
       expect(commands.length).toBeGreaterThan(0);
 
-      // Built-in clear command should still be there
-      const clearCommand = commands.find((cmd) => cmd.id === "clear");
-      expect(clearCommand).toBeDefined();
+      // Built-in init command should still be there
+      const initCommand = commands.find((cmd) => cmd.id === "init");
+      expect(initCommand).toBeDefined();
 
       // Custom flat commands should be there
       const helpCommand = commands.find((cmd) => cmd.id === "help");

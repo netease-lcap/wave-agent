@@ -22,6 +22,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ onCancel }) => {
     { key: "Ctrl+V", description: "Paste image" },
     { key: "Shift+Tab", description: "Cycle permission mode" },
     { key: "/status", description: "Show agent status and configuration" },
+    { key: "/clear", description: "Clear the chat session and terminal" },
     {
       key: "Esc",
       description: "Interrupt AI or command / Cancel selector / Close help",

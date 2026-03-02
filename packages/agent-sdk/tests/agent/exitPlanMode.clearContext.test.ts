@@ -18,6 +18,23 @@ interface AgentInternal {
 // Mock fs/promises
 vi.mock("fs/promises");
 
+// Mock AI Service
+vi.mock("@/services/aiService", () => ({
+  createChatCompletion: vi.fn().mockImplementation(async () => {
+    return {
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: "Test response",
+          },
+          finish_reason: "stop",
+        },
+      ],
+    };
+  }),
+}));
+
 describe("ExitPlanMode Clear Context", () => {
   const originalEnv = process.env;
   let mockStdout: typeof process.stdout.write;

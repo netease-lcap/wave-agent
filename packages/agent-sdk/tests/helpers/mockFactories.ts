@@ -24,6 +24,9 @@ export const createMockTaskManager = (): TaskManager => {
     getTask: vi.fn(),
     updateTask: vi.fn(),
     listTasks: vi.fn(),
+    getTaskListId: vi.fn().mockReturnValue("test-task-list"),
+    refreshTasks: vi.fn().mockResolvedValue(undefined),
+    syncWithSession: vi.fn().mockResolvedValue(undefined),
     on: vi.fn(),
     emit: vi.fn(),
   } as unknown as TaskManager;

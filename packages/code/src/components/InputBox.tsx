@@ -58,6 +58,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     backgroundCurrentTask,
     messages,
     getFullMessageThread,
+    clearMessages,
   } = useChat();
 
   // Input manager with all input state and functionality (including images)
@@ -108,6 +109,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onAbortMessage: abortMessage,
     onBackgroundCurrentTask: backgroundCurrentTask,
     onPermissionModeChange: setChatPermissionMode,
+    onClearMessages: clearMessages,
   });
 
   // Sync permission mode from useChat to InputManager

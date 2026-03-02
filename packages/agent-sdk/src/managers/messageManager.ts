@@ -266,8 +266,9 @@ export class MessageManager {
    */
   public clearMessages(): void {
     this.setMessages([]);
-    this.setSessionId(generateSessionId());
-    this.rootSessionId = this.sessionId;
+    const newSessionId = generateSessionId();
+    this.rootSessionId = newSessionId;
+    this.setSessionId(newSessionId);
     this.setlatestTotalTokens(0);
     this.savedMessageCount = 0; // Reset saved message count
   }

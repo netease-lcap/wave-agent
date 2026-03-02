@@ -41,6 +41,7 @@ export interface InputManagerCallbacks {
   ) => void | Promise<void>;
   onHasSlashCommand?: (commandId: string) => boolean;
   onAbortMessage?: () => void;
+  onClearMessages?: () => void;
   onBackgroundCurrentTask?: () => void;
   onResetHistoryNavigation?: () => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
@@ -358,6 +359,9 @@ export class InputManager {
             commandExecuted = true;
           } else if (command === "status") {
             this.setShowStatusCommand(true);
+            commandExecuted = true;
+          } else if (command === "clear") {
+            this.callbacks.onClearMessages?.();
             commandExecuted = true;
           }
         }

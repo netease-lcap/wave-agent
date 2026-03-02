@@ -34,6 +34,12 @@ const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "Show agent status and configuration",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "clear",
+    name: "clear",
+    description: "Clear the chat session and terminal",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];
 
 export interface CommandSelectorProps {

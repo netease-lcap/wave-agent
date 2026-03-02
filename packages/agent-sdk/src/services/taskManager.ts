@@ -5,6 +5,7 @@ import { EventEmitter } from "events";
 import { Task } from "../types/tasks.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
+import type { MessageManager } from "../managers/messageManager.js";
 
 export class TaskManager extends EventEmitter {
   private readonly baseDir: string;
@@ -25,6 +26,21 @@ export class TaskManager extends EventEmitter {
 
   public setTaskListId(taskListId: string): void {
     this.taskListId = taskListId;
+  }
+
+  /**
+   * Syncs the task list ID with the current session's root session ID.
+   * This is typically called when the session is cleared or compressed.
+   */
+  public async syncWithSession(): Promise<void> {
+    const messageManager = this.container.get<MessageManager>("MessageManager");
+    if (!messageManager) return;
+
+    const rootSessionId = messageManager.getRootSessionId();
+    if (this.taskListId !== rootSessionId && !process.env.WAVE_TASK_LIST_ID) {
+      this.setTaskListId(rootSessionId);
+      await this.refreshTasks();
+    }
   }
 
   private getSessionDir(): string {
