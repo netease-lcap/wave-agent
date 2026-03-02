@@ -7,7 +7,7 @@
 
 ## Summary
 
-Add permission system to Wave Agent SDK with "default" and "bypassPermissions" modes. In default mode, system prompts for confirmation before executing destructive tools (Edit, Delete, Bash). Users can bypass with `--dangerously-skip-permissions` CLI flag. System implements `canUseTool` callback in Agent SDK for custom authorization and adds confirmation component to CLI. **Updated**: System supports multiple tool calls with individual sequential confirmations, allowing granular user control per tool while batching results back to AI.
+Add permission system to Wave Agent SDK with "default" and "bypassPermissions" modes. In default mode, system prompts for confirmation before executing destructive tools (Edit, Delete, Bash). Users can bypass with `--dangerously-skip-permissions` CLI flag. System implements `canUseTool` callback in Agent SDK for custom authorization and adds confirmation component to CLI. **Updated**: System supports multiple tool calls with individual sequential confirmations, allowing granular user control per tool while batching results back to AI. **Updated**: System now includes hardcoded default allowed rules for read-only `git` operations and common safe commands in `default` mode to reduce manual confirmation overhead.
 
 ## Technical Context
 

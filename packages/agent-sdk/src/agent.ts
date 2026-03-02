@@ -650,9 +650,19 @@ export class Agent {
   }
 
   /**
-   * Get all currently allowed rules (for testing and UI)
+   * Get all currently allowed rules (user-defined and default)
    */
   public getAllowedRules(): string[] {
+    return [
+      ...this.permissionManager.getAllowedRules(),
+      ...this.permissionManager.getDefaultAllowedRules(),
+    ];
+  }
+
+  /**
+   * Get only user-defined allowed rules
+   */
+  public getUserAllowedRules(): string[] {
     return this.permissionManager.getAllowedRules();
   }
 

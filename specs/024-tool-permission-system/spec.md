@@ -105,6 +105,8 @@ A developer integrating Wave's agent SDK can provide custom permission handling 
 - **FR-018**: When one tool call is denied in a sequence of multiple tool calls, system MUST continue processing remaining tool calls with individual confirmations for each restricted tool
 - **FR-019**: When user provides alternative instructions for one tool call in a sequence, system MUST continue with remaining tool calls and return all tool results (including alternative instructions in tool result field) to the AI after all confirmations are complete
 - **FR-020**: System MUST implement queue-based sequential confirmation for multiple tool calls, processing confirmations one at a time with proper state management
+- **FR-021**: System MUST automatically allow a set of default read-only `git` commands in `default` mode without requiring manual confirmation.
+- **FR-022**: System MUST automatically allow a set of common safe commands (e.g., `echo`, `which`, `hostname`) in `default` mode without requiring manual confirmation.
 
 ### Key Entities
 
