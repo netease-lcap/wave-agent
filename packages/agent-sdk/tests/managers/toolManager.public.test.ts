@@ -44,6 +44,7 @@ describe("ToolManager.initializeBuiltInTools", () => {
 
     const mockTaskManager = {
       listTasks: vi.fn().mockResolvedValue([]),
+      getTaskListId: vi.fn().mockReturnValue("test-task-list"),
     } as unknown as import("@/services/taskManager.js").TaskManager;
 
     const mockReversionManager =

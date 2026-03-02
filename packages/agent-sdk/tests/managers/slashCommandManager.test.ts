@@ -59,41 +59,6 @@ describe("SlashCommandManager", () => {
   });
 
   describe("Basic Command Management", () => {
-    it("should have a built-in clear command", () => {
-      const commands = slashCommandManager.getCommands();
-
-      const clearCommand = commands.find((cmd) => cmd.id === "clear");
-      expect(clearCommand).toBeDefined();
-      expect(clearCommand?.name).toBe("clear");
-      expect(clearCommand?.description).toBe(
-        "Clear the chat session and terminal",
-      );
-    });
-
-    it("should be able to check if clear command exists", () => {
-      expect(slashCommandManager.hasCommand("clear")).toBe(true);
-      expect(slashCommandManager.hasCommand("nonexistent")).toBe(false);
-    });
-
-    it("should be able to execute clear command", async () => {
-      const result = await slashCommandManager.executeCommand("clear");
-      expect(result).toBe(true);
-    });
-
-    it("should return false when executing non-existent command", async () => {
-      const result = await slashCommandManager.executeCommand("nonexistent");
-      expect(result).toBe(false);
-    });
-
-    it("should return correct command by id", () => {
-      const clearCommand = slashCommandManager.getCommand("clear");
-      expect(clearCommand).toBeDefined();
-      expect(clearCommand?.id).toBe("clear");
-
-      const nonExistentCommand = slashCommandManager.getCommand("nonexistent");
-      expect(nonExistentCommand).toBeUndefined();
-    });
-
     it("should have a built-in init command", () => {
       const commands = slashCommandManager.getCommands();
 
@@ -103,6 +68,30 @@ describe("SlashCommandManager", () => {
       expect(initCommand?.description).toBe(
         "Initialize repository for AI agents by generating AGENTS.md",
       );
+    });
+
+    it("should be able to check if init command exists", () => {
+      expect(slashCommandManager.hasCommand("init")).toBe(true);
+      expect(slashCommandManager.hasCommand("nonexistent")).toBe(false);
+    });
+
+    it("should be able to execute init command", async () => {
+      const result = await slashCommandManager.executeCommand("init");
+      expect(result).toBe(true);
+    });
+
+    it("should return false when executing non-existent command", async () => {
+      const result = await slashCommandManager.executeCommand("nonexistent");
+      expect(result).toBe(false);
+    });
+
+    it("should return correct command by id", () => {
+      const initCommand = slashCommandManager.getCommand("init");
+      expect(initCommand).toBeDefined();
+      expect(initCommand?.id).toBe("init");
+
+      const nonExistentCommand = slashCommandManager.getCommand("nonexistent");
+      expect(nonExistentCommand).toBeUndefined();
     });
   });
 
@@ -118,10 +107,10 @@ describe("SlashCommandManager", () => {
     });
 
     it("should validate existing slash commands correctly", () => {
-      const result = slashCommandManager.parseAndValidateSlashCommand("/clear");
+      const result = slashCommandManager.parseAndValidateSlashCommand("/init");
 
       expect(result.isValid).toBe(true);
-      expect(result.commandId).toBe("clear");
+      expect(result.commandId).toBe("init");
       expect(result.args).toBeUndefined();
     });
 
@@ -160,10 +149,10 @@ describe("SlashCommandManager", () => {
 
     it("should handle command with empty args correctly", () => {
       const result =
-        slashCommandManager.parseAndValidateSlashCommand("/clear   ");
+        slashCommandManager.parseAndValidateSlashCommand("/init   ");
 
       expect(result.isValid).toBe(true);
-      expect(result.commandId).toBe("clear");
+      expect(result.commandId).toBe("init");
       expect(result.args).toBeUndefined(); // Empty args should be undefined
     });
 

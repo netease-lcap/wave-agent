@@ -62,24 +62,6 @@ export class SlashCommandManager {
   }
 
   private initializeBuiltinCommands(): void {
-    // Register built-in clear command
-    this.registerCommand({
-      id: "clear",
-      name: "clear",
-      description: "Clear the chat session and terminal",
-      handler: () => {
-        // Clear chat messages
-        this.messageManager.clearMessages();
-
-        // Reset task list if WAVE_TASK_LIST_ID is not set
-        if (!process.env.WAVE_TASK_LIST_ID) {
-          const newTaskListId = this.messageManager.getRootSessionId();
-          this.taskManager.setTaskListId(newTaskListId);
-          this.taskManager.emit("tasksChange", newTaskListId);
-        }
-      },
-    });
-
     // Register built-in init command
     this.registerCommand({
       id: "init",

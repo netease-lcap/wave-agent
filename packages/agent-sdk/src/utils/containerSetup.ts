@@ -41,7 +41,6 @@ export interface AgentContainerSetupOptions {
   stream: boolean;
 
   // Callbacks to Agent methods
-  onSessionIdChange: (sessionId: string) => void;
   onBackgroundTasksChange: (tasks: BackgroundTask[]) => void;
   onTasksChange: (tasks: Task[]) => void;
   onPermissionModeChange: (mode: PermissionMode) => void;
@@ -66,7 +65,6 @@ export function setupAgentContainer(
     configurationService,
     systemPrompt,
     stream,
-    onSessionIdChange,
     onBackgroundTasksChange,
     onTasksChange,
     onPermissionModeChange,
@@ -94,7 +92,12 @@ export function setupAgentContainer(
     callbacks: {
       ...callbacks,
       onSessionIdChange: (sessionId) => {
-        onSessionIdChange(sessionId);
+        const taskManager = container.get<TaskManager>("TaskManager");
+        if (taskManager) {
+          taskManager.syncWithSession().catch((error) => {
+            logger.error("Failed to sync task list with session:", error);
+          });
+        }
         callbacks.onSessionIdChange?.(sessionId);
       },
     },

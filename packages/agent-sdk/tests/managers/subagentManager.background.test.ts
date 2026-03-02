@@ -55,6 +55,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const taskManager = {
       on: vi.fn(),
       listTasks: vi.fn().mockResolvedValue([]),
+      getTaskListId: vi.fn().mockReturnValue("test-task-list"),
     } as unknown as TaskManager;
 
     container = new Container();

@@ -1,77 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { SlashCommandManager } from "../../src/managers/slashCommandManager.js";
-import { MessageManager } from "../../src/managers/messageManager.js";
-import { TaskManager } from "../../src/services/taskManager.js";
-import { AIManager } from "../../src/managers/aiManager.js";
-import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
-import { Container } from "../../src/utils/container.js";
+import { describe, it } from "vitest";
 
 describe("SlashCommandManager /clear reset", () => {
-  let slashCommandManager: SlashCommandManager;
-  let messageManager: MessageManager;
-  let taskManager: TaskManager;
-  let aiManager: AIManager;
-  const container = new Container();
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-
-    messageManager = new MessageManager(container, {
-      callbacks: {},
-      workdir: "/test/workdir",
-    });
-
-    taskManager = new TaskManager(container, "initial-task-list-id");
-    vi.spyOn(taskManager, "setTaskListId");
-    vi.spyOn(taskManager, "emit");
-
-    aiManager = {} as AIManager;
-
-    container.register("MessageManager", messageManager);
-    container.register("AIManager", aiManager);
-    container.register("BackgroundTaskManager", {} as BackgroundTaskManager);
-    container.register("TaskManager", taskManager);
-
-    slashCommandManager = new SlashCommandManager(container, {
-      workdir: "/test/workdir",
-    });
-    slashCommandManager.initialize();
+  it.skip("should reset task list ID and emit tasksChange when /clear is called and WAVE_TASK_LIST_ID is not set", async () => {
+    // This test is no longer relevant as /clear has been moved to CLI
   });
 
-  it("should reset task list ID and emit tasksChange when /clear is called and WAVE_TASK_LIST_ID is not set", async () => {
-    const initialRootSessionId = messageManager.getRootSessionId();
-    expect(taskManager.getTaskListId()).toBe("initial-task-list-id");
-
-    await slashCommandManager.executeCommand("clear");
-
-    const newRootSessionId = messageManager.getRootSessionId();
-    expect(newRootSessionId).not.toBe(initialRootSessionId);
-    expect(taskManager.setTaskListId).toHaveBeenCalledWith(newRootSessionId);
-    expect(taskManager.emit).toHaveBeenCalledWith(
-      "tasksChange",
-      newRootSessionId,
-    );
-    expect(taskManager.getTaskListId()).toBe(newRootSessionId);
-  });
-
-  it("should NOT reset task list ID when /clear is called and WAVE_TASK_LIST_ID is set", async () => {
-    process.env.WAVE_TASK_LIST_ID = "fixed-task-list-id";
-
-    // Re-initialize to pick up env var if needed, but our implementation checks it at runtime
-    const initialRootSessionId = messageManager.getRootSessionId();
-
-    await slashCommandManager.executeCommand("clear");
-
-    const newRootSessionId = messageManager.getRootSessionId();
-    expect(newRootSessionId).not.toBe(initialRootSessionId);
-
-    expect(taskManager.setTaskListId).not.toHaveBeenCalled();
-    expect(taskManager.emit).not.toHaveBeenCalledWith(
-      "tasksChange",
-      expect.any(String),
-    );
-    expect(taskManager.getTaskListId()).toBe("initial-task-list-id");
-
-    delete process.env.WAVE_TASK_LIST_ID;
+  it.skip("should NOT reset task list ID when /clear is called and WAVE_TASK_LIST_ID is set", async () => {
+    // This test is no longer relevant as /clear has been moved to CLI
   });
 });
