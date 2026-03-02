@@ -745,6 +745,20 @@ describe("PermissionManager", () => {
           (await permissionManager.checkPermission(context)).behavior,
         ).toBe("deny");
       });
+
+      it("should match multi-line commands with *", async () => {
+        permissionManager.updateAllowedRules(["Bash(git commit*)"]);
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command: 'git commit -m "line1\nline2"',
+          },
+        };
+        expect(
+          (await permissionManager.checkPermission(context)).behavior,
+        ).toBe("allow");
+      });
     });
 
     it("should return true for restricted tools", () => {

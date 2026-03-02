@@ -499,7 +499,7 @@ export class PermissionManager {
       const regexPattern = pattern
         .replace(/[.+^${}()|[\]\\?]/g, "\\$&") // Escape regex special chars including ?
         .replace(/\*/g, ".*"); // Replace * with .*
-      const regex = new RegExp(`^${regexPattern}$`);
+      const regex = new RegExp(`^${regexPattern}$`, "s");
       const matched = regex.test(processedPart);
       return matched;
     }
