@@ -9,6 +9,8 @@ import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import { Container } from "../../src/utils/container.js";
 import * as aiService from "../../src/services/aiService.js";
 
+import { buildSystemPrompt } from "../../src/prompts/index.js";
+
 describe("Subagent Plan Mode Integration", () => {
   let subagentManager: SubagentManager;
   let mockToolManager: ToolManager;
@@ -111,6 +113,12 @@ describe("Subagent Plan Mode Integration", () => {
       mergeAssistantAdditionalFields: vi.fn(),
     } as unknown as MessageManager;
 
+    // Ensure mockMessages is populated for the test
+    mockMessages.push({
+      role: "assistant",
+      blocks: [{ type: "text", content: "Subagent response" }],
+    } as Message);
+
     container.register("MessageManager", mockMessageManager);
 
     subagentManager = new SubagentManager(container, {
@@ -144,6 +152,25 @@ describe("Subagent Plan Mode Integration", () => {
           }
         ).container.register("MessageManager", mockMessageManager);
         instance.messageManager = mockMessageManager;
+        // Ensure the subagent's AIManager uses the mock callAgent
+        const aiManager = instance.aiManager as unknown as {
+          sendAIMessage: () => Promise<void>;
+        };
+        aiManager.sendAIMessage = async () => {
+          const systemPrompt = buildSystemPrompt(config.systemPrompt, [], {
+            workdir: "/test/project",
+            memory: "",
+            language: undefined,
+            isSubagent: true,
+            planMode: {
+              planFilePath: "/test/project/plan.md",
+              planExists: true,
+            },
+          });
+          lastSystemPrompt = systemPrompt;
+          mockMessageManager.addAssistantMessage();
+          return Promise.resolve();
+        };
         return instance;
       });
   });
