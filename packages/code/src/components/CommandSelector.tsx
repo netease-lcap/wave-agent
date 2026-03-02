@@ -4,6 +4,12 @@ import type { SlashCommand } from "wave-agent-sdk";
 
 const AVAILABLE_COMMANDS: SlashCommand[] = [
   {
+    id: "clear",
+    name: "clear",
+    description: "Clear the chat session and terminal",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
+  {
     id: "tasks",
     name: "tasks",
     description: "View and manage background tasks (shells and subagents)",
@@ -34,12 +40,6 @@ const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "Show agent status and configuration",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
-  {
-    id: "clear",
-    name: "clear",
-    description: "Clear the chat session and terminal",
-    handler: () => {}, // Handler here won't be used, actual processing is in the hook
-  },
 ];
 
 export interface CommandSelectorProps {
@@ -60,8 +60,13 @@ export const CommandSelector: React.FC<CommandSelectorProps> = ({
   const MAX_VISIBLE_ITEMS = 3;
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  // Reset selected index when search query changes
+  React.useEffect(() => {
+    setSelectedIndex(0);
+  }, [searchQuery]);
+
   // Merge agent commands and local commands
-  const allCommands = [...commands, ...AVAILABLE_COMMANDS];
+  const allCommands = [...AVAILABLE_COMMANDS, ...commands];
 
   // Filter command list
   const filteredCommands = allCommands.filter(

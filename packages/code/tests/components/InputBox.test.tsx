@@ -180,12 +180,12 @@ describe("InputBox Smoke Tests", () => {
       });
 
       const afterSlashFrame = lastFrame();
-      expect(afterSlashFrame).toContain("docs");
+      expect(afterSlashFrame).toContain("clear");
 
       // Step 2: Input "git" to filter commands
       stdin.write("git");
       await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).not.toContain("docs");
+        expect(stripAnsiColors(lastFrame() || "")).toContain("git-commit");
       });
 
       const filteredFrame = lastFrame();
@@ -256,6 +256,7 @@ describe("InputBox Smoke Tests", () => {
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
       stdin.write("tasks");
+      await vi.waitFor(() => expect(lastFrame()).toContain("▶ /tasks"));
       stdin.write("\r");
 
       await vi.waitFor(
@@ -278,6 +279,7 @@ describe("InputBox Smoke Tests", () => {
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
       stdin.write("mcp");
+      await vi.waitFor(() => expect(lastFrame()).toContain("▶ /mcp"));
       stdin.write("\r");
 
       await vi.waitFor(
@@ -302,12 +304,13 @@ describe("InputBox Smoke Tests", () => {
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
       stdin.write("rewind");
+      await vi.waitFor(() => expect(lastFrame()).toContain("▶ /rewind"));
       stdin.write("\r");
 
       await vi.waitFor(
         () => {
           expect(stripAnsiColors(lastFrame() || "")).toMatch(
-            /Rewind|Background Tasks/,
+            /Rewind|Background Tasks|No user messages found to rewind to/,
           );
         },
         { timeout: 2000 },
@@ -361,7 +364,7 @@ describe("InputBox Smoke Tests", () => {
       stdin.write("e");
       stdin.write("l");
       stdin.write("p");
-      await vi.waitFor(() => expect(lastFrame()).toContain("/help"));
+      await vi.waitFor(() => expect(lastFrame()).toContain("▶ /help"));
       stdin.write("\r");
 
       await vi.waitFor(
