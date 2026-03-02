@@ -48,6 +48,11 @@ describe("SubagentManager - Callback Integration", () => {
     container = new Container();
     container.register("PermissionManager", {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+      getConfiguredDefaultMode: vi.fn().mockReturnValue("default"),
+      getAllowedRules: vi.fn().mockReturnValue([]),
+      getDeniedRules: vi.fn().mockReturnValue([]),
+      getAdditionalDirectories: vi.fn().mockReturnValue([]),
+      getPlanFilePath: vi.fn().mockReturnValue(undefined),
     } as unknown as Record<string, unknown>);
     container.register("TaskManager", {} as unknown as Record<string, unknown>);
     container.register(
