@@ -250,7 +250,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                   setMessages([...agentRef.current.messages]);
                 }
                 messagesUpdateTimerRef.current = null;
-              }, 50);
+              }, 100);
             }
           }
         },
