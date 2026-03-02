@@ -116,6 +116,7 @@ A user wants to execute a complex skill in a separate subagent to provide a fres
 1. **Given** I have a skill with `context: fork` in its frontmatter, **When** the skill is invoked, **Then** Wave should execute the skill content in a new subagent instance
 2. **Given** I have a skill with `context: fork` and `agent: typescript-expert`, **When** the skill is invoked, **Then** Wave should use a `typescript-expert` subagent to execute the skill
 3. **Given** a skill is forked into a subagent, **When** the subagent is running, **Then** Wave should provide real-time updates on the subagent's progress (tools used, tokens consumed) in the tool's short result
+4. **Given** I have a skill with `model: gpt-4o`, **When** the skill is invoked (manually or autonomously), **Then** Wave should use the specified model for the execution
 
 ---
 
@@ -167,10 +168,11 @@ A user wants to control how skills are invoked and whether they are visible in t
 - **FR-017**: Wave MUST support `context: fork` and `agent:` in skill frontmatter to execute skills in specialized subagents
 - **FR-018**: Wave MUST support `disable-model-invocation: true` in skill frontmatter to prevent AI from automatically triggering the skill
 - **FR-019**: Wave MUST support `user-invocable: boolean` (default: `true`) in skill frontmatter to control visibility in the slash command menu
+- **FR-020**: Wave MUST support `model:` in skill frontmatter to override the model configuration for skill execution (including forked subagents)
 
 ### Key Entities
 
-- **Skill**: A discoverable capability package consisting of a SKILL.md file with YAML frontmatter (name, description, optional allowed-tools, disable-model-invocation, user-invocable) and optional supporting files
+- **Skill**: A discoverable capability package consisting of a SKILL.md file with YAML frontmatter (name, description, optional allowed-tools, disable-model-invocation, user-invocable, model) and optional supporting files
 - **Personal Skill**: Skills stored globally in user's home directory (`~/.wave/skills/`) available across all projects
 - **Project Skill**: Skills stored in project directory (`.wave/skills/`) shared with team members and version-controlled
 - **Skill Directory**: Container holding SKILL.md and optional supporting files (reference.md, examples.md, scripts/, templates/)

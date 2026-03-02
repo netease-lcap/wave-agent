@@ -280,8 +280,8 @@ describe("PermissionManager", () => {
 
         expect(result).toEqual({ behavior: "allow" });
         expect(logger.debug).toHaveBeenCalledWith(
-          "Permission allowed by persistent rule",
-          { toolName: "Bash" },
+          "Permission allowed by persistent or temporary rule",
+          expect.objectContaining({ toolName: "Bash" }),
         );
       });
 

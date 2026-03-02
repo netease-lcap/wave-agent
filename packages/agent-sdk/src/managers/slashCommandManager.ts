@@ -183,6 +183,7 @@ export class SlashCommandManager {
 
             // Trigger AI response
             await this.aiManager.sendAIMessage({
+              model: skill.model,
               allowedRules: result.allowedTools,
             });
           } catch (error) {

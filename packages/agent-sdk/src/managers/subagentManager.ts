@@ -72,6 +72,7 @@ export interface SubagentInstance {
   allowedTools?: string[]; // Optional permission rules (e.g. git:*)
   backgroundTaskId?: string; // ID of the background task if transitioned
   onUpdate?: () => void; // Optional callback for real-time updates
+  model?: string; // Optional model override
 }
 
 export interface SubagentManagerOptions {
@@ -163,6 +164,7 @@ export class SubagentManager {
       prompt: string;
       subagent_type: string;
       allowedTools?: string[];
+      model?: string;
     },
     runInBackground?: boolean,
     onUpdate?: () => void,
@@ -229,7 +231,10 @@ export class SubagentManager {
         const parentModelConfig = this.getModelConfig();
         let modelToUse: string;
 
-        if (!configuration.model || configuration.model === "inherit") {
+        if (parameters.model) {
+          // Use model override from parameters if provided
+          modelToUse = parameters.model;
+        } else if (!configuration.model || configuration.model === "inherit") {
           // Use parent's model for "inherit" or undefined
           modelToUse = parentModelConfig.model;
         } else if (configuration.model === "fastModel") {
@@ -266,6 +271,7 @@ export class SubagentManager {
       subagentType: parameters.subagent_type, // Store the subagent type
       description: parameters.description, // Store the AI-generated description
       allowedTools: parameters.allowedTools, // Store optional permission rules
+      model: parameters.model, // Store optional model override
       onUpdate,
     };
 
@@ -438,7 +444,9 @@ export class SubagentManager {
       // The AIManager will handle abort signals through its own abort controllers
       // Resolve model name for sendAIMessage
       let resolvedModel: string | undefined;
-      if (
+      if (instance.model) {
+        resolvedModel = instance.model;
+      } else if (
         instance.configuration.model &&
         instance.configuration.model !== "inherit"
       ) {
