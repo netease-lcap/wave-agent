@@ -3,12 +3,7 @@ import { join, extname, basename } from "path";
 import { homedir } from "os";
 import type { CustomSlashCommand } from "../types/index.js";
 import { parseMarkdownFile } from "./markdownParser.js";
-import {
-  generateCommandId,
-  getCommandSegments,
-  getNamespace,
-  getDepth,
-} from "./commandPathResolver.js";
+import { generateCommandId } from "./commandPathResolver.js";
 import { logger } from "./globalLogger.js";
 
 /**
@@ -26,104 +21,46 @@ export function getUserCommandsDir(): string {
 }
 
 /**
- * Scan a directory for markdown command files with nested directory support
+ * Scan a directory for markdown command files (flat structure only)
  * @param dirPath - Root commands directory path
- * @param maxDepth - Maximum nesting depth to scan (default: 1)
  */
-export function scanCommandsDirectory(
-  dirPath: string,
-  maxDepth: number = 1,
-): CustomSlashCommand[] {
+export function scanCommandsDirectory(dirPath: string): CustomSlashCommand[] {
   if (!existsSync(dirPath)) {
     return [];
   }
 
-  return scanCommandsDirectoryRecursive(dirPath, dirPath, 0, maxDepth);
-}
-
-/**
- * Recursively scan directory for commands with depth control
- * @param currentPath - Current directory being scanned
- * @param rootPath - Root commands directory (for relative path calculation)
- * @param currentDepth - Current nesting depth
- * @param maxDepth - Maximum allowed depth
- */
-function scanCommandsDirectoryRecursive(
-  currentPath: string,
-  rootPath: string,
-  currentDepth: number,
-  maxDepth: number,
-): CustomSlashCommand[] {
   const commands: CustomSlashCommand[] = [];
 
   try {
-    const entries = readdirSync(currentPath);
+    const entries = readdirSync(dirPath);
 
     for (const entryName of entries) {
-      const fullPath = join(currentPath, entryName);
-
-      let isDirectory = false;
-      let isFile = false;
+      const fullPath = join(dirPath, entryName);
 
       try {
         const stats = statSync(fullPath);
-        isDirectory = stats.isDirectory();
-        isFile = stats.isFile();
-      } catch (error) {
-        // Skip entries that cannot be stat'd
-        logger.warn(`Cannot access ${fullPath}:`, error);
-        continue;
-      }
-
-      if (isDirectory) {
-        // Skip subdirectories if we're at max depth
-        if (currentDepth >= maxDepth) {
-          logger.warn(
-            `Skipping directory ${fullPath}: exceeds maximum nesting depth of ${maxDepth}`,
-          );
+        if (!stats.isFile() || extname(entryName) !== ".md") {
           continue;
         }
 
-        // Recursively scan subdirectory
-        const nestedCommands = scanCommandsDirectoryRecursive(
-          fullPath,
-          rootPath,
-          currentDepth + 1,
-          maxDepth,
-        );
-        commands.push(...nestedCommands);
-      } else if (isFile && extname(entryName) === ".md") {
         // Process markdown file
-        try {
-          const commandId = generateCommandId(fullPath, rootPath);
-          const segments = getCommandSegments(fullPath, rootPath);
-          const namespace = getNamespace(segments);
-          const depth = getDepth(segments);
+        const commandId = generateCommandId(fullPath, dirPath);
+        const { content, config } = parseMarkdownFile(fullPath);
 
-          const { content, config } = parseMarkdownFile(fullPath);
-
-          commands.push({
-            id: commandId,
-            name: basename(entryName, ".md"),
-            description: config?.description,
-            filePath: fullPath,
-            content,
-            config,
-
-            // Nested command metadata
-            namespace,
-            isNested: depth > 0,
-            depth,
-            segments,
-          });
-        } catch (error) {
-          logger.warn(`Failed to load custom command from ${fullPath}:`, error);
-        }
+        commands.push({
+          id: commandId,
+          name: basename(entryName, ".md"),
+          description: config?.description,
+          filePath: fullPath,
+          content,
+          config,
+        });
+      } catch (error) {
+        logger.warn(`Failed to load custom command from ${fullPath}:`, error);
       }
-      // Skip non-markdown files silently
     }
   } catch (error) {
-    logger.warn(`Failed to scan commands directory ${currentPath}:`, error);
+    logger.warn(`Failed to scan commands directory ${dirPath}:`, error);
   }
 
   return commands;

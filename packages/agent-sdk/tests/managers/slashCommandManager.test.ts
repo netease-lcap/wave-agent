@@ -229,9 +229,6 @@ describe("SlashCommandManager", () => {
           content: "Test command\n!`echo $WAVE_PLUGIN_ROOT`",
           pluginPath,
           filePath: `${pluginPath}/commands/env-test.md`,
-          isNested: false,
-          depth: 0,
-          segments: ["env-test"],
         },
       ];
 
@@ -274,9 +271,6 @@ describe("SlashCommandManager", () => {
           name: "no-plugin-path",
           content: 'Test command\n!`echo "VAR: $WAVE_PLUGIN_ROOT"`',
           filePath: "/test/commands/no-plugin-path.md",
-          isNested: false,
-          depth: 0,
-          segments: ["no-plugin-path"],
         },
       ];
 

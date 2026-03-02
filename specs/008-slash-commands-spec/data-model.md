@@ -35,10 +35,6 @@
 - `filePath: string` - Absolute path to source markdown file
 - `content: string` - Markdown content after frontmatter removal
 - `config?: CustomSlashCommandConfig` - Parsed YAML frontmatter configuration
-- `namespace?: string` - Parent directory for nested commands (e.g., "openspec")
-- `isNested: boolean` - Whether command is in a subdirectory
-- `depth: number` - Nesting level (0 = root, 1 = nested)
-- `segments: string[]` - Path components for ID generation
 - `pluginPath?: string` - Absolute path to the plugin root directory (only set for plugin commands)
 
 **Validation Rules**:
@@ -123,9 +119,7 @@
 # Project-level commands (higher priority)
 {workdir}/.wave/commands/
 ├── command1.md
-├── command2.md
-└── openspec/
-    └── apply.md       # Discovered as /openspec:apply
+└── command2.md
 
 # User-level commands (lower priority)  
 ~/.wave/commands/
@@ -135,8 +129,7 @@
 
 **Rules**:
 - Only `.md` files are considered for command loading
-- Subdirectories are scanned up to 1 level deep
-- Command ID derived from filename (root) or colon-separated path (nested)
+- Command ID derived from filename
 - Project commands override user commands with same ID
 
 ### File Format Structure
