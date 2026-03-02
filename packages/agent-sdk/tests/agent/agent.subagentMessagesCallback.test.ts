@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { Agent } from "@/agent.js";
-import type { AgentCallbacks } from "@/agent.js";
+import type { AgentCallbacks } from "@/types/index.js";
 import type { SubagentConfiguration } from "@/utils/subagentParser.js";
 
 // Mock subagent configurations

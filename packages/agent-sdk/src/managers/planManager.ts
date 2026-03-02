@@ -4,6 +4,9 @@ import os from "node:os";
 import { generateRandomName } from "../utils/nameGenerator.js";
 
 import { Container } from "../utils/container.js";
+import { MessageManager } from "./messageManager.js";
+import { PermissionManager } from "./permissionManager.js";
+import type { PermissionMode } from "../types/permissions.js";
 
 /**
  * Manages plan files for plan mode
@@ -60,5 +63,28 @@ export class PlanManager {
    */
   public getPlanDir(): string {
     return this.planDir;
+  }
+
+  /**
+   * Handle plan mode transition, generating or clearing plan file path
+   * @param mode - The current effective permission mode
+   */
+  public handlePlanModeTransition(mode: PermissionMode): void {
+    const permissionManager =
+      this.container.get<PermissionManager>("PermissionManager");
+    const messageManager = this.container.get<MessageManager>("MessageManager");
+
+    if (mode === "plan") {
+      this.getOrGeneratePlanFilePath(messageManager?.getRootSessionId())
+        .then(({ path }) => {
+          logger?.debug("Plan file path generated", { path });
+          permissionManager?.setPlanFilePath(path);
+        })
+        .catch((error) => {
+          logger?.error("Failed to generate plan file path", error);
+        });
+    } else {
+      permissionManager?.setPlanFilePath(undefined);
+    }
   }
 }

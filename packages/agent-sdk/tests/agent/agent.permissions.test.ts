@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
-import type { AgentOptions } from "@/agent.js";
+import type { AgentOptions } from "@/types/index.js";
 import type {
   PermissionCallback,
   PermissionDecision,

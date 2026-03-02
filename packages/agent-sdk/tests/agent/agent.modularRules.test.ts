@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
-import type { AgentCallbacks } from "@/agent.js";
+import type { AgentCallbacks } from "@/types/index.js";
 import { promises as fs } from "fs";
 import * as fsPromises from "fs/promises";
 import type { PathLike } from "fs";

@@ -5,7 +5,7 @@ import { createMockToolManager } from "../helpers/mockFactories.js";
 import { Container } from "@/utils/container.js";
 import { AIManager } from "@/managers/aiManager.js";
 
-import type { ErrorBlock } from "@/types/index.js";
+import type { ErrorBlock, Usage } from "@/types/index.js";
 
 // Mock AI Service
 vi.mock("@/services/aiService");
@@ -67,10 +67,12 @@ describe("Agent - Abort Handling", () => {
     const aiManager = new AIManager(container, {
       callbacks: {
         ...mockCallbacks,
-        onUsageAdded: (usage: unknown) =>
-          (agent as unknown as { addUsage: (u: unknown) => void }).addUsage(
-            usage,
-          ),
+        onUsageAdded: (usage: Usage) =>
+          (
+            agent as unknown as {
+              messageManager: { addUsage: (u: Usage) => void };
+            }
+          ).messageManager.addUsage(usage),
       },
       workdir: "/tmp/test-abort",
       getGatewayConfig: () => agent.getGatewayConfig(),

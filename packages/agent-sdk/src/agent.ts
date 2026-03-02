@@ -1,32 +1,23 @@
 import { ForegroundTaskManager } from "./managers/foregroundTaskManager.js";
-import {
-  MessageManager,
-  type MessageManagerCallbacks,
-} from "./managers/messageManager.js";
+import { MessageManager } from "./managers/messageManager.js";
 import { AIManager } from "./managers/aiManager.js";
 import { ToolManager } from "./managers/toolManager.js";
-import {
-  SubagentManager,
-  type SubagentManagerCallbacks,
-} from "./managers/subagentManager.js";
-import { McpManager, type McpManagerCallbacks } from "./managers/mcpManager.js";
+import { SubagentManager } from "./managers/subagentManager.js";
+import { McpManager } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BangManager } from "./managers/bangManager.js";
-import {
-  BackgroundTaskManager,
-  type BackgroundTaskManagerCallbacks,
-} from "./managers/backgroundTaskManager.js";
+import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
 import { PluginManager } from "./managers/pluginManager.js";
 import { HookManager } from "./managers/hookManager.js";
 import { ReversionManager } from "./managers/reversionManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
 import { PlanManager } from "./managers/planManager.js";
-import type {
+import {
   SlashCommand,
   CustomSlashCommand,
   ILspManager,
-  PluginConfig,
+  AgentOptions,
 } from "./types/index.js";
 import type {
   Message,
@@ -36,8 +27,6 @@ import type {
   ModelConfig,
   Usage,
   PermissionMode,
-  PermissionCallback,
-  BackgroundTask,
   ForegroundTask,
 } from "./types/index.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
@@ -45,88 +34,11 @@ import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
 import { TaskManager } from "./services/taskManager.js";
-import {
-  loadSessionFromJsonl,
-  handleSessionRestoration,
-} from "./services/session.js";
-import { setGlobalLogger } from "./utils/globalLogger.js";
+import { InitializationService } from "./services/initializationService.js";
+import { InteractionService } from "./services/interactionService.js";
 import { ConfigurationService } from "./services/configurationService.js";
-import * as fs from "fs/promises";
-import path from "path";
-import os from "os";
-import { ClientOptions } from "openai";
-
 import { Container } from "./utils/container.js";
 import { setupAgentContainer } from "./utils/containerSetup.js";
-
-/**
- * Configuration options for Agent instances
- *
- * IMPORTANT: This interface is used by both Agent constructor and Agent.create()
- * Any changes to this interface must be compatible with both methods.
- */
-export interface AgentOptions {
-  // Optional configuration with environment fallbacks
-  apiKey?: string;
-  baseURL?: string;
-  defaultHeaders?: Record<string, string>;
-  fetchOptions?: ClientOptions["fetchOptions"];
-  fetch?: ClientOptions["fetch"];
-  model?: string;
-  fastModel?: string;
-  maxInputTokens?: number;
-  maxTokens?: number;
-  /** Preferred language for agent communication */
-  language?: string;
-
-  // Existing options (preserved)
-  callbacks?: AgentCallbacks;
-  restoreSessionId?: string;
-  continueLastSession?: boolean;
-  logger?: Logger;
-  /**Add optional initial messages parameter for testing convenience */
-  messages?: Message[];
-  /**Working directory - if not specified, use process.cwd() */
-  workdir?: string;
-  /**Optional custom system prompt - if provided, replaces default system prompt */
-  systemPrompt?: string;
-  /**Permission mode - defaults to "default" */
-  permissionMode?: PermissionMode;
-  /**Custom permission callback */
-  canUseTool?: PermissionCallback;
-  /**Whether to use streaming mode for AI responses - defaults to true */
-  stream?: boolean;
-  /**Optional custom LSP manager - if not provided, a standalone one will be created */
-  lspManager?: ILspManager;
-  /**Optional local plugins to load */
-  plugins?: PluginConfig[];
-  /**
-   * Optional list of tool names to enable.
-   * - undefined: Enable all built-in tools and plugins (default).
-   * - []: Disable all tools.
-   * - string[]: Enable only the tools with the specified names.
-   */
-  tools?: string[];
-  /**Optional worktree name */
-  worktreeName?: string;
-  /**Whether this is a newly created worktree */
-  isNewWorktree?: boolean;
-}
-
-export interface AgentCallbacks
-  extends MessageManagerCallbacks,
-    BackgroundTaskManagerCallbacks,
-    McpManagerCallbacks,
-    SubagentManagerCallbacks {
-  onBackgroundTasksChange?: (tasks: BackgroundTask[]) => void;
-  onTasksChange?: (tasks: import("./types/tasks.js").Task[]) => void;
-  onPermissionModeChange?: (mode: PermissionMode) => void;
-  onSubagentLatestTotalTokensChange?: (
-    subagentId: string,
-    tokens: number,
-  ) => void;
-  onBackgroundCurrentTask?: () => void;
-}
 
 export class Agent {
   private messageManager: MessageManager;
@@ -154,7 +66,6 @@ export class Agent {
   private configurationService: ConfigurationService; // Add configuration service
   private workdir: string; // Working directory
   private systemPrompt?: string; // Custom system prompt
-  private _usages: Usage[] = []; // Usage tracking array
   private stream: boolean; // Streaming mode flag
 
   // Configuration options storage for dynamic resolution
@@ -235,13 +146,13 @@ export class Agent {
         this.options.callbacks?.onPermissionModeChange?.(mode);
       },
       handlePlanModeTransition: (mode) => {
-        this.handlePlanModeTransition(mode);
+        this.planManager.handlePlanModeTransition(mode);
       },
       setPermissionMode: (mode) => {
         this.setPermissionMode(mode);
       },
       addPermissionRule: (rule) => this.addPermissionRule(rule),
-      addUsage: (usage) => this.addUsage(usage),
+      addUsage: (usage) => this.messageManager.addUsage(usage),
       getGatewayConfig: () => this.getGatewayConfig(),
       getModelConfig: () => this.getModelConfig(),
       getMaxInputTokens: () => this.getMaxInputTokens(),
@@ -285,35 +196,11 @@ export class Agent {
   }
 
   public get usages(): Usage[] {
-    return [...this._usages]; // Return copy to prevent external modification
+    return this.messageManager.getUsages();
   }
 
   public get sessionFilePath(): string {
     return this.messageManager.getTranscriptPath();
-  }
-
-  /**
-   * Rebuild usage array from messages containing usage metadata
-   * Called during session restoration to reconstruct usage tracking
-   */
-  private rebuildUsageFromMessages(messages: Message[]): void {
-    this._usages = [];
-    messages.forEach((message) => {
-      if (message.role === "assistant" && message.usage) {
-        this._usages.push(message.usage);
-      }
-    });
-    // Trigger callback after rebuilding usage array
-    this.messageManager.triggerUsageChange();
-  }
-
-  /**
-   * Add usage data to the tracking array and trigger callbacks
-   * @param usage Usage data from AI operations
-   */
-  private addUsage(usage: Usage): void {
-    this._usages.push(usage);
-    this.messageManager.triggerUsageChange();
   }
 
   public get latestTotalTokens(): number {
@@ -458,196 +345,35 @@ export class Agent {
     continueLastSession?: boolean;
     messages?: Message[];
   }): Promise<void> {
-    // Initialize managers first
-    try {
-      // Initialize SkillManager
-      await this.skillManager.initialize();
-
-      // Initialize SubagentManager (load and cache configurations)
-      await this.subagentManager.initialize();
-
-      // Register managers in container for tool access
-      this.container.register("SubagentManager", this.subagentManager);
-      this.container.register("SkillManager", this.skillManager);
-
-      // Initialize built-in tools
-      this.toolManager.initializeBuiltInTools();
-
-      // Initialize plugins
-      await this.pluginManager.loadPlugins(this.options.plugins || []);
-
-      // Register skill commands
-      this.slashCommandManager.registerSkillCommands(
-        this.skillManager.getAvailableSkills(),
-      );
-    } catch (error) {
-      this.logger?.error("Failed to initialize managers and tools:", error);
-      // Don't throw error to prevent app startup failure
-    }
-
-    // Initialize MCP servers with auto-connect
-    try {
-      await this.mcpManager.initialize(this.workdir, true);
-      if (this.lspManager instanceof LspManager) {
-        await this.lspManager.initialize(this.workdir);
-      }
-    } catch (error) {
-      this.logger?.error("Failed to initialize MCP servers:", error);
-      // Don't throw error to prevent app startup failure
-    }
-
-    // Initialize hooks configuration
-    try {
-      // Load hooks configuration using ConfigurationService
-      this.logger?.debug("Loading hooks configuration...");
-      const configResult =
-        await this.configurationService.loadMergedConfiguration(this.workdir);
-
-      this.hookManager.loadConfigurationFromWaveConfig(
-        configResult.configuration,
-      );
-
-      // Update plugin manager with enabled plugins configuration
-      if (configResult.configuration?.enabledPlugins) {
-        this.pluginManager.updateEnabledPlugins(
-          configResult.configuration.enabledPlugins,
-        );
-      }
-
-      this.logger?.debug("Hooks system initialized successfully");
-    } catch (error) {
-      this.logger?.error("Failed to initialize hooks system:", error);
-      // Don't throw error to prevent app startup failure
-    }
-
-    // Trigger WorktreeCreate hook if this is a new worktree
-    if (this.options.isNewWorktree && this.hookManager) {
-      try {
-        this.logger?.info(
-          `Triggering WorktreeCreate hook for ${this.options.worktreeName}...`,
-        );
-        const hookResults = await this.hookManager.executeHooks(
-          "WorktreeCreate",
-          {
-            event: "WorktreeCreate",
-            projectDir: this.workdir,
-            timestamp: new Date(),
-            sessionId: this.sessionId,
-            transcriptPath: this.messageManager.getTranscriptPath(),
-            cwd: this.workdir,
-            worktreeName: this.options.worktreeName,
-            env: this.configurationService.getEnvironmentVars(),
-          },
-        );
-
-        // Process hook results
-        this.hookManager.processHookResults(
-          "WorktreeCreate",
-          hookResults,
-          this.messageManager,
-        );
-      } catch (error) {
-        this.logger?.warn("WorktreeCreate hooks execution failed:", error);
-      }
-    }
-
-    // Resolve and validate configuration after loading settings.json
-    this.resolveAndValidateConfig();
-
-    // Set global logger for SDK-wide access before discovering rules
-    setGlobalLogger(this.logger || null);
-
-    // Discover modular memory rules
-    try {
-      await this.memoryRuleManager.discoverRules();
-    } catch (error) {
-      this.logger?.error("Failed to discover memory rules:", error);
-    }
-
-    // Initialize live configuration reload
-    try {
-      this.logger?.debug("Initializing live configuration reload...");
-      await this.liveConfigManager.initialize();
-      this.logger?.debug("Live configuration reload initialized successfully");
-    } catch (error) {
-      this.logger?.error(
-        "Failed to initialize live configuration reload:",
-        error,
-      );
-      // Don't throw error to prevent app startup failure - continue without live reload
-    }
-
-    // Load memory files during initialization
-    try {
-      this.logger?.debug("Loading memory files...");
-
-      // Load project memory from AGENTS.md (bypass memory store for direct file access)
-      try {
-        const projectMemoryPath = path.join(this.workdir, "AGENTS.md");
-        this._projectMemoryContent = await fs.readFile(
-          projectMemoryPath,
-          "utf-8",
-        );
-        this.logger?.debug("Project memory loaded successfully");
-      } catch (error) {
-        this._projectMemoryContent = "";
-        this.logger?.debug(
-          "Project memory file not found or unreadable, using empty content:",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-
-      // Load user memory (bypass memory store for direct file access)
-      try {
-        const userMemoryPath = path.join(os.homedir(), ".wave", "AGENTS.md");
-        this._userMemoryContent = await fs.readFile(userMemoryPath, "utf-8");
-        this.logger?.debug("User memory loaded successfully");
-      } catch (error) {
-        this._userMemoryContent = "";
-        this.logger?.debug(
-          "User memory file not found or unreadable, using empty content:",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-
-      this.logger?.debug("Memory initialization completed");
-    } catch (error) {
-      // Ensure memory is always initialized even if loading fails
-      this._projectMemoryContent = "";
-      this._userMemoryContent = "";
-      this.logger?.error("Failed to load memory files:", error);
-      // Don't throw error to prevent app startup failure
-    }
-
-    // Handle session restoration or set provided messages
-    if (options?.messages) {
-      // If messages are provided, use them directly (useful for testing)
-      this.messageManager.setMessages(options.messages);
-      // Rebuild usage array from restored messages
-      this.rebuildUsageFromMessages(options.messages);
-    } else {
-      // Otherwise, handle session restoration
-      const sessionToRestore = await handleSessionRestoration(
-        options?.restoreSessionId,
-        options?.continueLastSession,
-        this.messageManager.getWorkdir(),
-      );
-      // Rebuild usage array from restored messages
-      this.rebuildUsageFromMessages(sessionToRestore?.messages || []);
-
-      if (sessionToRestore) {
-        this.messageManager.initializeFromSession(sessionToRestore);
-
-        // Update task manager with the root session ID to ensure continuity across compressions
-        this.taskManager.setTaskListId(
-          sessionToRestore.rootSessionId || sessionToRestore.id,
-        );
-
-        // After session is initialized, load tasks for the session
-        const tasks = await this.taskManager.listTasks();
-        this.options.callbacks?.onTasksChange?.(tasks);
-      }
-    }
+    await InitializationService.initialize(
+      {
+        skillManager: this.skillManager,
+        subagentManager: this.subagentManager,
+        container: this.container,
+        toolManager: this.toolManager,
+        pluginManager: this.pluginManager,
+        options: this.options,
+        slashCommandManager: this.slashCommandManager,
+        logger: this.logger,
+        mcpManager: this.mcpManager,
+        workdir: this.workdir,
+        lspManager: this.lspManager,
+        configurationService: this.configurationService,
+        hookManager: this.hookManager,
+        messageManager: this.messageManager,
+        memoryRuleManager: this.memoryRuleManager,
+        liveConfigManager: this.liveConfigManager,
+        taskManager: this.taskManager,
+        setProjectMemory: (content) => {
+          this._projectMemoryContent = content;
+        },
+        setUserMemory: (content) => {
+          this._userMemoryContent = content;
+        },
+        resolveAndValidateConfig: () => this.resolveAndValidateConfig(),
+      },
+      options,
+    );
   }
 
   /**
@@ -655,47 +381,22 @@ export class Agent {
    * @param sessionId - The ID of the session to restore
    */
   public async restoreSession(sessionId: string): Promise<void> {
-    // 1. Validation
-    if (!sessionId || sessionId === this.sessionId) {
-      return; // No-op if session ID is invalid or already current
-    }
-
-    // 2. Auto-save current session
-    try {
-      await this.messageManager.saveSession();
-    } catch (error) {
-      this.logger?.warn(
-        "Failed to save current session before restore:",
-        error,
-      );
-      // Continue with restoration even if save fails
-    }
-
-    // 3. Load target session
-    const sessionData = await loadSessionFromJsonl(
+    await InteractionService.restoreSession(
+      {
+        messageManager: this.messageManager,
+        slashCommandManager: this.slashCommandManager,
+        hookManager: this.hookManager,
+        workdir: this.workdir,
+        configurationService: this.configurationService,
+        logger: this.logger,
+        aiManager: this.aiManager,
+        subagentManager: this.subagentManager,
+        taskManager: this.taskManager,
+        options: this.options,
+        abortMessage: () => this.abortMessage(),
+      },
       sessionId,
-      this.messageManager.getWorkdir(),
     );
-    if (!sessionData) {
-      throw new Error(`Session not found: ${sessionId}`);
-    }
-
-    // 4. Clean current state
-    this.abortMessage(); // Abort any running operations
-    this.subagentManager.cleanup(); // Clean up active subagents
-
-    // 5. Rebuild usage (in correct order)
-    this.rebuildUsageFromMessages(sessionData.messages);
-
-    // 6. Initialize session state last
-    this.messageManager.initializeFromSession(sessionData);
-
-    // Update task manager with the root session ID to ensure continuity across compressions
-    this.taskManager.setTaskListId(sessionData.rootSessionId || sessionData.id);
-
-    // 7. Load tasks for the restored session
-    const tasks = await this.taskManager.listTasks();
-    this.options.callbacks?.onTasksChange?.(tasks);
   }
 
   public abortAIMessage(): void {
@@ -825,82 +526,23 @@ export class Agent {
     content: string,
     images?: Array<{ path: string; mimeType: string }>,
   ): Promise<void> {
-    try {
-      // Handle slash command - check if it's a slash command (starts with /)
-      if (content.startsWith("/")) {
-        const command = content.trim();
-        if (!command || command === "/") return;
-
-        // Parse and validate slash command
-        const { isValid, commandId, args } =
-          this.slashCommandManager.parseAndValidateSlashCommand(command);
-
-        if (isValid && commandId !== undefined) {
-          // Execute valid slash command
-          await this.slashCommandManager.executeCommand(commandId, args);
-
-          return;
-        }
-
-        // If command doesn't exist, continue as normal message processing
-        // Don't add to history, let normal message processing logic below handle it
-      }
-
-      // Handle normal AI message
-      // Add user message first, will automatically sync to UI
-      this.messageManager.addUserMessage({
-        content,
-        images: images?.map((img) => ({
-          path: img.path,
-          mimeType: img.mimeType,
-        })),
-      });
-
-      // Execute UserPromptSubmit hooks after adding the user message
-      if (this.hookManager) {
-        try {
-          const hookResults = await this.hookManager.executeHooks(
-            "UserPromptSubmit",
-            {
-              event: "UserPromptSubmit",
-              projectDir: this.workdir,
-              timestamp: new Date(),
-              // UserPromptSubmit doesn't need toolName
-              sessionId: this.sessionId,
-              transcriptPath: this.messageManager.getTranscriptPath(),
-              cwd: this.workdir,
-              userPrompt: content,
-              env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
-            },
-          );
-
-          // Process hook results and determine if we should continue
-          const processResult = this.hookManager.processHookResults(
-            "UserPromptSubmit",
-            hookResults,
-            this.messageManager,
-          );
-
-          // If hook processing indicates we should block (exit code 2), stop here
-          if (processResult.shouldBlock) {
-            this.logger?.info(
-              "UserPromptSubmit hook blocked prompt processing with error:",
-              processResult.errorMessage,
-            );
-            return; // Don't send to AI
-          }
-        } catch (error) {
-          this.logger?.warn("UserPromptSubmit hooks execution failed:", error);
-          // Continue processing even if hooks fail
-        }
-      }
-
-      // Send AI message
-      await this.aiManager.sendAIMessage();
-    } catch (error) {
-      console.error("Failed to add user message:", error);
-      // Loading state will be automatically updated by the useEffect that watches messages
-    }
+    await InteractionService.sendMessage(
+      {
+        messageManager: this.messageManager,
+        slashCommandManager: this.slashCommandManager,
+        hookManager: this.hookManager,
+        workdir: this.workdir,
+        configurationService: this.configurationService,
+        logger: this.logger,
+        aiManager: this.aiManager,
+        subagentManager: this.subagentManager,
+        taskManager: this.taskManager,
+        options: this.options,
+        abortMessage: () => this.abortMessage(),
+      },
+      content,
+      images,
+    );
   }
 
   // ========== MCP Management Methods ==========
@@ -973,7 +615,7 @@ export class Agent {
     this.logger?.debug("Setting permission mode", { mode });
     this.toolManager.setPermissionMode(mode);
 
-    this.handlePlanModeTransition(mode);
+    this.planManager.handlePlanModeTransition(mode);
 
     this.options.callbacks?.onPermissionModeChange?.(mode);
   }
@@ -1028,57 +670,7 @@ export class Agent {
    * @param rule - The rule to add (e.g., "Bash(ls)")
    */
   public async addPermissionRule(rule: string): Promise<void> {
-    // 1. Expand rule if it's a Bash command
-    let rulesToAdd = [rule];
-    const bashMatch = rule.match(/^Bash\((.*)\)$/);
-    if (bashMatch) {
-      const command = bashMatch[1];
-      rulesToAdd = this.permissionManager.expandBashRule(command, this.workdir);
-    }
-
-    for (const ruleToAdd of rulesToAdd) {
-      // 2. Update PermissionManager state
-      const currentRules = this.permissionManager.getAllowedRules();
-      if (!currentRules.includes(ruleToAdd)) {
-        this.permissionManager.updateAllowedRules([...currentRules, ruleToAdd]);
-
-        // 3. Persist to settings.local.json
-        try {
-          await this.configurationService.addAllowedRule(
-            this.workdir,
-            ruleToAdd,
-          );
-          this.logger?.debug("Persistent permission rule added", {
-            rule: ruleToAdd,
-          });
-        } catch (error) {
-          this.logger?.error("Failed to persist permission rule", {
-            rule: ruleToAdd,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    }
-  }
-
-  /**
-   * Handle plan mode transition, generating or clearing plan file path
-   * @param mode - The current effective permission mode
-   */
-  private handlePlanModeTransition(mode: PermissionMode): void {
-    if (mode === "plan") {
-      this.planManager
-        .getOrGeneratePlanFilePath(this.messageManager.getRootSessionId())
-        .then(({ path }) => {
-          this.logger?.debug("Plan file path generated", { path });
-          this.permissionManager.setPlanFilePath(path);
-        })
-        .catch((error) => {
-          this.logger?.error("Failed to generate plan file path", error);
-        });
-    } else {
-      this.permissionManager.setPlanFilePath(undefined);
-    }
+    await this.permissionManager.addPermissionRule(rule);
   }
 
   /**
