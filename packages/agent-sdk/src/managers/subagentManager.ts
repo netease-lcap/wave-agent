@@ -14,12 +14,14 @@ import {
   createAbortPromise,
 } from "../utils/abortUtils.js";
 import { BackgroundTaskManager } from "./backgroundTaskManager.js";
+import { logger } from "../utils/globalLogger.js";
 import {
   UserMessageParams,
   type AgentToolBlockUpdateParams,
 } from "../utils/messageOperations.js";
 
 import { Container } from "../utils/container.js";
+import type { PermissionManager } from "./permissionManager.js";
 
 export interface SubagentManagerCallbacks {
   // Granular subagent message callbacks (015-subagent-message-callbacks)
@@ -67,6 +69,7 @@ export interface SubagentInstance {
   lastTools: string[]; // Track last two tool names
   subagentType: string; // Store the subagent type for hook context
   description: string; // Store the AI-generated description
+  allowedTools?: string[]; // Optional permission rules (e.g. git:*)
   backgroundTaskId?: string; // ID of the background task if transitioned
   onUpdate?: () => void; // Optional callback for real-time updates
 }
@@ -159,6 +162,7 @@ export class SubagentManager {
       description: string;
       prompt: string;
       subagent_type: string;
+      allowedTools?: string[];
     },
     runInBackground?: boolean,
     onUpdate?: () => void,
@@ -176,6 +180,25 @@ export class SubagentManager {
     // Create a child container for the subagent to isolate its managers
     const subagentContainer = this.container.createChild();
 
+    // Create isolated PermissionManager for the subagent
+    const { PermissionManager } = await import("./permissionManager.js");
+    const parentPermissionManager =
+      this.container.get<PermissionManager>("PermissionManager");
+    const subagentPermissionManager = new PermissionManager(subagentContainer, {
+      workdir: this.workdir,
+      configuredDefaultMode: parentPermissionManager?.getCurrentEffectiveMode(),
+    });
+    subagentContainer.register("PermissionManager", subagentPermissionManager);
+
+    // Add temporary permission rules if provided
+    if (parameters.allowedTools) {
+      logger.debug(
+        `Adding ${parameters.allowedTools.length} temporary permission rules to subagent ${subagentId}`,
+        { rules: parameters.allowedTools },
+      );
+      subagentPermissionManager.addTemporaryRules(parameters.allowedTools);
+    }
+
     // Create isolated MessageManager for the subagent
     const subagentCallbacks = this.createSubagentCallbacks(subagentId);
 
@@ -187,8 +210,13 @@ export class SubagentManager {
     });
     subagentContainer.register("MessageManager", messageManager);
 
-    // Use the parent tool manager directly - tool restrictions will be handled by allowedTools parameter
-    const toolManager = parentToolManager;
+    // Create isolated ToolManager for the subagent to ensure it uses the subagent's PermissionManager
+    const toolManager = new ToolManager({
+      container: subagentContainer,
+      tools: configuration.tools,
+    });
+    toolManager.initializeBuiltInTools();
+    subagentContainer.register("ToolManager", toolManager);
 
     // Create isolated AIManager for the subagent
     const aiManager = new AIManager(subagentContainer, {
@@ -237,6 +265,7 @@ export class SubagentManager {
       lastTools: [], // Initialize lastTools
       subagentType: parameters.subagent_type, // Store the subagent type
       description: parameters.description, // Store the AI-generated description
+      allowedTools: parameters.allowedTools, // Store optional permission rules
       onUpdate,
     };
 
@@ -392,16 +421,17 @@ export class SubagentManager {
       // Add the user's prompt as a message
       instance.messageManager.addUserMessage({ content: prompt });
 
-      // Create allowed tools list - always exclude Task tool to prevent subagent recursion
-      let allowedTools = instance.configuration.tools;
+      // Create enabled tools list - always exclude Task tool to prevent subagent recursion
+      // Use instance.configuration.tools if provided, otherwise fallback to all tools
+      let enabledTools = instance.configuration.tools;
 
       // Always filter out the Task tool to prevent subagents from creating sub-subagents
-      if (allowedTools) {
-        allowedTools = allowedTools.filter((tool) => tool !== "Task");
+      if (enabledTools) {
+        enabledTools = enabledTools.filter((tool) => tool !== "Task");
       } else {
         // If no tools specified, get all tools except Task
         const allTools = instance.toolManager.list().map((tool) => tool.name);
-        allowedTools = allTools.filter((tool) => tool !== "Task");
+        enabledTools = allTools.filter((tool) => tool !== "Task");
       }
 
       // Execute the AI request with tool restrictions
@@ -424,7 +454,7 @@ export class SubagentManager {
       // For "inherit" or undefined, resolvedModel remains undefined (uses AIManager default)
 
       const executeAI = instance.aiManager.sendAIMessage({
-        tools: allowedTools,
+        tools: enabledTools,
         model: resolvedModel,
       });
 

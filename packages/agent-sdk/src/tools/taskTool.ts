@@ -2,37 +2,10 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { EXPLORE_SUBAGENT_TYPE } from "../constants/subagents.js";
 import { TASK_TOOL_NAME } from "../constants/tools.js";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
-import type { Message } from "../types/index.js";
-
-/**
- * Helper to count tool blocks in messages
- */
-function countToolBlocks(messages: Message[]): number {
-  let toolCount = 0;
-  messages.forEach((msg) => {
-    msg.blocks.forEach((block) => {
-      if (block.type === "tool") {
-        toolCount++;
-      }
-    });
-  });
-  return toolCount;
-}
-
-/**
- * Helper to format tool and token summary
- */
-function formatToolTokenSummary(toolCount: number, tokens: number): string {
-  if (toolCount === 0) {
-    return "";
-  }
-  let summary = `(${toolCount} tools`;
-  if (tokens > 0) {
-    summary += ` | ${tokens.toLocaleString()} tokens`;
-  }
-  summary += ")";
-  return summary;
-}
+import {
+  countToolBlocks,
+  formatToolTokenSummary,
+} from "../utils/messageOperations.js";
 
 /**
  * Task tool plugin for delegating tasks to specialized subagents

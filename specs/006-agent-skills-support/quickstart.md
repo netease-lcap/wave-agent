@@ -108,6 +108,9 @@ export interface SkillMetadata {
   description: string;
   type: 'personal' | 'project';
   skillPath: string;
+  allowedTools?: string[];
+  context?: 'fork';
+  agent?: string;
 }
 
 export interface Skill extends SkillMetadata {
@@ -121,12 +124,15 @@ export interface SkillFrontmatter {
   name: string;
   description: string;
   "allowed-tools"?: string | string[];
+  context?: 'fork';
+  agent?: string;
   [key: string]: unknown;
 }
 
 export interface ISkillManager {
   initialize(): Promise<void>;
   getAvailableSkills(): SkillMetadata[];
+  getSkillMetadata(name: string): SkillMetadata | undefined;
   loadSkill(skillName: string): Promise<Skill | null>;
 }
 

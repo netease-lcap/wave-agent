@@ -9,6 +9,8 @@ export interface SkillMetadata {
   type: "personal" | "project";
   skillPath: string;
   allowedTools?: string[];
+  context?: "fork";
+  agent?: string;
 }
 
 export interface Skill extends SkillMetadata {
@@ -22,6 +24,8 @@ export interface SkillFrontmatter {
   name: string;
   description: string;
   "allowed-tools"?: string | string[];
+  context?: "fork";
+  agent?: string;
   [key: string]: unknown;
 }
 

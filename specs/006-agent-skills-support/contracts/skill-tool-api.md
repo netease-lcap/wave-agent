@@ -100,6 +100,9 @@ interface SkillManager {
   
   // Get all available skills metadata
   getAvailableSkills(): SkillMetadata[];
+
+  // Get metadata for a specific skill by name
+  getSkillMetadata(name: string): SkillMetadata | undefined;
   
   // Load specific skill content
   loadSkill(skillName: string): Promise<Skill | null>;
@@ -152,6 +155,9 @@ Project Skills:
 ---
 name: skill-name
 description: Brief description of what this skill does and when to use it
+allowed-tools: [tool1, tool2] # Optional
+context: fork # Optional
+agent: typescript-expert # Optional, defaults to general-purpose if context is fork
 ---
 
 # Skill Content

@@ -366,20 +366,49 @@ export const completeBangInMessage = ({
 };
 
 /**
- * Removes the last user message from the messages array
+ * Helper to count tool blocks in messages
+ */
+export function countToolBlocks(messages: Message[]): number {
+  let toolCount = 0;
+  messages.forEach((msg) => {
+    msg.blocks.forEach((block) => {
+      if (block.type === "tool") {
+        toolCount++;
+      }
+    });
+  });
+  return toolCount;
+}
+
+/**
+ * Remove the last user message from the conversation
  * Used for hook error handling when the user prompt needs to be erased
  */
 export const removeLastUserMessage = (messages: Message[]): Message[] => {
   const newMessages = [...messages];
-
-  // Find the index of the last user message
   for (let i = newMessages.length - 1; i >= 0; i--) {
     if (newMessages[i].role === "user") {
-      // Remove the user message at index i
       newMessages.splice(i, 1);
       break;
     }
   }
-
   return newMessages;
 };
+
+/**
+ * Helper to format tool and token summary
+ */
+export function formatToolTokenSummary(
+  toolCount: number,
+  tokens: number,
+): string {
+  if (toolCount === 0) {
+    return "";
+  }
+  let summary = `(${toolCount} tools`;
+  if (tokens > 0) {
+    summary += ` | ${tokens.toLocaleString()} tokens`;
+  }
+  summary += ")";
+  return summary;
+}
