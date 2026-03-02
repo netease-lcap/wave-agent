@@ -454,7 +454,9 @@ describe("SkillManager", () => {
 
       await skillManager.executeSkill({ skill_name: "test-skill" });
 
-      expect(logger.debug).toHaveBeenCalledWith("Invoking skill: test-skill");
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Invoking skill: test-skill with args: undefined",
+      );
     });
   });
 

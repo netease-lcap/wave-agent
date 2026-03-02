@@ -23,6 +23,10 @@ const skillTool: ToolPlugin = {
           skill_name: {
             type: "string",
             description: "Name of the skill to invoke from available skills"
+          },
+          args: {
+            type: "string",
+            description: "Optional arguments to pass to the skill"
           }
         },
         required: ["skill_name"],
@@ -39,6 +43,7 @@ const skillTool: ToolPlugin = {
 ```typescript
 interface SkillToolArgs {
   skill_name: string; // Must match existing skill name
+  args?: string;      // Optional arguments to pass to the skill
 }
 
 interface ToolContext {

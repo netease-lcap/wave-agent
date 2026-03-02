@@ -475,6 +475,11 @@ export class Agent {
 
       // Initialize plugins
       await this.pluginManager.loadPlugins(this.options.plugins || []);
+
+      // Register skill commands
+      this.slashCommandManager.registerSkillCommands(
+        this.skillManager.getAvailableSkills(),
+      );
     } catch (error) {
       this.logger?.error("Failed to initialize managers and tools:", error);
       // Don't throw error to prevent app startup failure
@@ -928,8 +933,12 @@ export class Agent {
   }
 
   /** Reload custom commands */
-  public reloadCustomCommands(): void {
+  public async reloadCustomCommands(): Promise<void> {
+    await this.skillManager.initialize();
     this.slashCommandManager.reloadCustomCommands();
+    this.slashCommandManager.registerSkillCommands(
+      this.skillManager.getAvailableSkills(),
+    );
   }
 
   /** Get custom command details */

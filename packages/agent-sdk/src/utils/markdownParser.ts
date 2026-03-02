@@ -1,5 +1,9 @@
 import { readFileSync } from "fs";
+import { exec } from "child_process";
+import { promisify } from "util";
 import type { CustomSlashCommandConfig } from "../types/index.js";
+
+const execAsync = promisify(exec);
 
 interface ParsedMarkdownFile {
   content: string;
@@ -175,4 +179,47 @@ export function replaceBashCommandsWithOutput(
   });
 
   return processedContent;
+}
+
+/**
+ * Execute bash commands and return results
+ */
+export async function executeBashCommands(
+  commands: string[],
+  workdir: string,
+  timeout: number = 30000,
+): Promise<BashCommandResult[]> {
+  const results: BashCommandResult[] = [];
+
+  for (const command of commands) {
+    try {
+      const { stdout, stderr } = await execAsync(command, {
+        cwd: workdir,
+        timeout,
+      });
+      results.push({
+        command,
+        output: (stdout + (stderr || "")).trim(),
+        exitCode: 0,
+      });
+    } catch (error: unknown) {
+      const execError = error as {
+        stdout?: string;
+        stderr?: string;
+        message?: string;
+        code?: number;
+      };
+      results.push({
+        command,
+        output: (
+          (execError.stdout || "") +
+          (execError.stderr || "") +
+          (execError.message || "")
+        ).trim(),
+        exitCode: execError.code || 1,
+      });
+    }
+  }
+
+  return results;
 }

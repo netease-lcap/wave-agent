@@ -84,6 +84,7 @@ export interface SkillInvocationContext {
  */
 export interface SkillToolArgs {
   skill_name: string;              // Required: name of skill to invoke
+  args?: string;                   // Optional: arguments to pass to the skill
 }
 ```
 
