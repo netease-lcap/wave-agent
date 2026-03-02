@@ -264,7 +264,7 @@ interface ResourceLimits {
   
   fileSystem: {
     watchedDirectories: 2  // Project + user
-    scanDepth: 1          // Flat structure only
+    scanDepth: 0          // Flat structure only
     maxConcurrentFiles: 100
   }
   
