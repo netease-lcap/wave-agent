@@ -3,17 +3,21 @@ import { Box, Text, useInput } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
 
 export const MarketplaceAddForm: React.FC = () => {
-  const { actions } = usePluginManagerContext();
+  const { state, actions } = usePluginManagerContext();
   const [source, setSource] = useState("");
 
   useInput((input, key) => {
     if (key.escape) {
       actions.setView("MARKETPLACES");
+    } else if (state.isLoading) {
+      return;
     } else if (key.return) {
-      if (source.trim()) {
-        actions.addMarketplace(source.trim());
-        actions.setView("MARKETPLACES");
-      }
+      setSource((prev) => {
+        if (prev.trim()) {
+          actions.addMarketplace(prev.trim());
+        }
+        return prev;
+      });
     } else if (key.backspace || key.delete) {
       setSource((prev) => prev.slice(0, -1));
     } else if (input.length === 1) {
@@ -28,11 +32,20 @@ export const MarketplaceAddForm: React.FC = () => {
       </Text>
       <Box marginTop={1}>
         <Text>Source (URL or Path): </Text>
-        <Text color="yellow">{source}</Text>
-        <Text color="yellow">_</Text>
+        <Text color={state.isLoading ? "gray" : "yellow"}>{source}</Text>
+        {!state.isLoading && <Text color="yellow">_</Text>}
       </Box>
+      {state.isLoading && (
+        <Box marginTop={1}>
+          <Text color="yellow">⌛ Adding marketplace...</Text>
+        </Box>
+      )}
       <Box marginTop={1}>
-        <Text dimColor>Press Enter to add, Esc to cancel</Text>
+        <Text dimColor>
+          {state.isLoading
+            ? "Please wait..."
+            : "Press Enter to add, Esc to cancel"}
+        </Text>
       </Box>
     </Box>
   );

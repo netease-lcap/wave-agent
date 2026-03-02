@@ -44,12 +44,16 @@ describe("InstalledView", () => {
       selectedId: null,
       isLoading: false,
       error: null,
+      successMessage: null,
       searchQuery: "",
     },
     marketplaces: [],
     installedPlugins: plugins,
     discoverablePlugins: [],
-    actions: mockActions,
+    actions: {
+      ...mockActions,
+      clearPluginFeedback: vi.fn(),
+    },
   });
 
   beforeEach(() => {
