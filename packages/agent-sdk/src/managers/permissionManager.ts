@@ -36,6 +36,29 @@ import { ConfigurationService } from "../services/configurationService.js";
 
 const SAFE_COMMANDS = ["cd", "ls", "pwd", "true", "false"];
 
+const DEFAULT_ALLOWED_RULES = [
+  "Bash(git status*)",
+  "Bash(git diff*)",
+  "Bash(git log*)",
+  "Bash(git show*)",
+  "Bash(git branch*)",
+  "Bash(git tag*)",
+  "Bash(git remote*)",
+  "Bash(git ls-files*)",
+  "Bash(git rev-parse*)",
+  "Bash(git config --list*)",
+  "Bash(git config -l*)",
+  "Bash(git cat-file*)",
+  "Bash(git count-objects*)",
+  "Bash(echo*)",
+  "Bash(which*)",
+  "Bash(type*)",
+  "Bash(hostname*)",
+  "Bash(whoami*)",
+  "Bash(date*)",
+  "Bash(uptime*)",
+];
+
 import { logger } from "../utils/globalLogger.js";
 
 export interface PermissionManagerOptions {
@@ -113,7 +136,7 @@ export class PermissionManager {
   }
 
   /**
-   * Get all currently allowed rules
+   * Get all currently allowed rules (user-defined)
    */
   public getAllowedRules(): string[] {
     return [...this.allowedRules];
@@ -131,6 +154,13 @@ export class PermissionManager {
    */
   public getAdditionalDirectories(): string[] {
     return [...this.additionalDirectories];
+  }
+
+  /**
+   * Get all default allowed rules
+   */
+  public getDefaultAllowedRules(): string[] {
+    return [...DEFAULT_ALLOWED_RULES];
   }
 
   /**
@@ -608,7 +638,12 @@ export class PermissionManager {
     }
 
     // Check persistent allowed rules
-    return isAllowedByRuleList(context, this.allowedRules);
+    if (isAllowedByRuleList(context, this.allowedRules)) {
+      return true;
+    }
+
+    // Check default allowed rules
+    return isAllowedByRuleList(context, DEFAULT_ALLOWED_RULES);
   }
 
   /**
@@ -725,7 +760,11 @@ export class PermissionManager {
     for (const ruleToAdd of rulesToAdd) {
       // 2. Update PermissionManager state
       const currentRules = this.getAllowedRules();
-      if (!currentRules.includes(ruleToAdd)) {
+      const defaultRules = this.getDefaultAllowedRules();
+      if (
+        !currentRules.includes(ruleToAdd) &&
+        !defaultRules.includes(ruleToAdd)
+      ) {
         this.updateAllowedRules([...currentRules, ruleToAdd]);
 
         // 3. Persist to settings.local.json

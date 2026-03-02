@@ -6,16 +6,25 @@ This guide shows how to use the new tool permission system in Wave Agent SDK.
 
 ### Default Safe Mode (Recommended)
 
-By default, Wave will prompt for confirmation before executing potentially dangerous operations:
+By default, Wave will prompt for confirmation before executing potentially dangerous operations. However, common read-only `git` operations and safe commands are automatically allowed to reduce overhead:
 
 ```bash
-# Normal mode - prompts for confirmation
+# Normal mode - prompts for confirmation for destructive tools
 wave
 
-# Agent attempts to edit a file
+# Agent attempts to run 'git status'
+# → Automatically allowed (no prompt)
+
+# Agent attempts to run 'git reset --hard'
 # → Shows confirmation: "Do you want to proceed?"
 # → User can approve or provide alternative instructions
 ```
+
+### Default Allowed Commands
+
+The following commands are automatically allowed in `default` mode:
+- **Git (Read-only)**: `status`, `diff`, `log`, `show`, `branch`, `tag`, `remote`, `ls-files`, `rev-parse`, `config --list`, `cat-file`, `count-objects`.
+- **Safe Utilities**: `echo`, `which`, `type`, `hostname`, `whoami`, `date`, `uptime`.
 
 ### Bypass Mode (Advanced Users)
 

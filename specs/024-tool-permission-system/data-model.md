@@ -57,6 +57,8 @@
 - `toolName`: string
 - `permissionMode`: PermissionMode
 - `canUseToolCallback?`: PermissionCallback
+- `allowedRules?`: string[]
+- `defaultAllowedRules?`: string[]
 
 **Validation Rules**:
 - `toolName` must match registered tool name
@@ -81,6 +83,7 @@
 - `selectedOption` must be one of two allowed values
 - `alternativeText` can be empty string
 - `hasUserInput` tracks whether user has typed (to hide placeholder)
+- `defaultAllowedRules`: Array<string> (hardcoded read-only git and safe commands)
 - `toolName` must be non-empty when `isVisible` is true
 
 **State Transitions**:

@@ -70,7 +70,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     // 2. Test persistent rule
     mockCallback.mockResolvedValueOnce({
       behavior: "allow",
-      newPermissionRule: "Bash(whoami)",
+      newPermissionRule: "Bash(npm install)",
     });
 
     // Switch back to default mode to test rule matching
@@ -78,7 +78,7 @@ describe("Agent Auto-Accept Permissions Integration", () => {
 
     await toolManager.execute(
       "Bash",
-      { command: "whoami" },
+      { command: "npm install" },
       { workdir: tempDir, taskManager },
     );
 
@@ -87,13 +87,13 @@ describe("Agent Auto-Accept Permissions Integration", () => {
     const configContent = await fs.readFile(configPath, "utf-8");
     const config = JSON.parse(configContent);
 
-    expect(config.permissions.allow).toContain("Bash(whoami)");
+    expect(config.permissions.allow).toContain("Bash(npm install*)");
 
     // 3. Test that the rule actually allows the command without calling the callback
     mockCallback.mockClear();
     await toolManager.execute(
       "Bash",
-      { command: "whoami" },
+      { command: "npm install" },
       { workdir: tempDir, taskManager },
     );
     expect(mockCallback).not.toHaveBeenCalled();

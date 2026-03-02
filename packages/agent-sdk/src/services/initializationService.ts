@@ -23,6 +23,7 @@ import type { MessageManager } from "../managers/messageManager.js";
 import type { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import type { LiveConfigManager } from "../managers/liveConfigManager.js";
 import type { TaskManager } from "./taskManager.js";
+import type { PermissionManager } from "../managers/permissionManager.js";
 
 export interface InitializationContext {
   skillManager: SkillManager;
@@ -131,6 +132,29 @@ export class InitializationService {
         pluginManager.updateEnabledPlugins(
           configResult.configuration.enabledPlugins,
         );
+      }
+
+      // Initialize permission manager with loaded rules
+      if (configResult.configuration?.permissions) {
+        const permissionManager =
+          context.container.get<PermissionManager>("PermissionManager");
+        if (permissionManager) {
+          if (configResult.configuration.permissions.allow) {
+            permissionManager.updateAllowedRules(
+              configResult.configuration.permissions.allow,
+            );
+          }
+          if (configResult.configuration.permissions.deny) {
+            permissionManager.updateDeniedRules(
+              configResult.configuration.permissions.deny,
+            );
+          }
+          if (configResult.configuration.permissions.defaultMode) {
+            permissionManager.updateConfiguredDefaultMode(
+              configResult.configuration.permissions.defaultMode,
+            );
+          }
+        }
       }
 
       logger?.debug("Hooks system initialized successfully");

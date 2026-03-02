@@ -102,6 +102,9 @@
 - [X] T031 [US3] Add callback integration tests in packages/agent-sdk/tests/managers/permissionManager.test.ts
 - [X] T032 [US3] Add Agent SDK callback examples to packages/agent-sdk/examples/ directory
 - [X] T033 [US3] Validate callback return value format and error handling
+- [X] T041 [US1] Implement hardcoded default allowed rules for read-only git operations and safe commands in PermissionManager.ts
+- [X] T042 [US1] Update Agent.ts to handle combined user-defined and default allowed rules
+- [X] T043 [US1] Add tests for default allowed git and safe commands
 
 **Checkpoint**: All user stories should now be independently functional - default mode prompts, bypass mode skips, custom callbacks work
 
