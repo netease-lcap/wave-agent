@@ -2,6 +2,7 @@
 name: commit-push-pr
 description: Commit, push, and open a PR
 context: fork
+model: gemini-2.5-flash
 allowed-tools:
   - Bash(git checkout --branch*)
   - Bash(git checkout -b*)

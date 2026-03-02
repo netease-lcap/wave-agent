@@ -24,6 +24,7 @@ description: A brief description of what the skill does and when the AI should u
 allowed-tools: [Bash, Read, Write] # Optional: Restrict tools available to the AI
 context: fork # Optional: Run in a separate subagent
 agent: typescript-expert # Optional: Specify agent type for fork context
+model: gpt-4o # Optional: Override model for skill execution
 disable-model-invocation: false # Optional: Set to true to prevent AI from auto-triggering
 user-invocable: true # Optional: Set to false to hide from / menu
 ---

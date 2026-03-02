@@ -18,6 +18,7 @@ Represents a discoverable capability package with metadata and optional supporti
 - `allowedTools: string[]` - Optional list of allowed tools (from `allowed-tools` frontmatter)
 - `context: 'fork'` - Optional execution context
 - `agent: string` - Optional agent type for fork context
+- `model: string` - Optional model override for skill execution
 - `disableModelInvocation: boolean` - Whether the AI is prevented from automatically triggering the skill
 - `userInvocable: boolean` - Whether the skill appears in the slash command menu (default: true)
 
@@ -64,6 +65,7 @@ interface SkillMetadata {
   allowedTools?: string[];
   context?: 'fork';
   agent?: string;
+  model?: string;
   disableModelInvocation?: boolean;
   userInvocable?: boolean;
 }

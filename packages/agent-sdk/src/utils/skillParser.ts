@@ -88,6 +88,7 @@ export function parseSkillFile(
       allowedTools,
       context: result.frontmatter.context,
       agent: result.frontmatter.agent,
+      model: result.frontmatter.model as string | undefined,
       disableModelInvocation,
       userInvocable,
     };

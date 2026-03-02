@@ -129,6 +129,7 @@ export const skillTool: ToolPlugin = {
             prompt: skillResult.content,
             subagent_type: agentType,
             allowedTools: skillResult.allowedTools,
+            model: skillMetadata.model,
           },
           false, // run_in_background
           () => {
