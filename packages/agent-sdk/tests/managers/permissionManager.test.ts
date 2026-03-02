@@ -184,18 +184,6 @@ describe("PermissionManager", () => {
         const result = await permissionManager.checkPermission(context);
 
         expect(result).toEqual({ behavior: "allow" });
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Checking permission for tool",
-          {
-            toolName: "Edit",
-            permissionMode: "bypassPermissions",
-            hasCallback: false,
-          },
-        );
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Permission bypassed for tool",
-          { toolName: "Edit" },
-        );
       });
 
       it("should allow restricted tools in bypassPermissions mode", async () => {
@@ -246,10 +234,6 @@ describe("PermissionManager", () => {
           const result = await manager.checkPermission(context);
 
           expect(result).toEqual({ behavior: "allow" });
-          expect(logger.debug).toHaveBeenCalledWith(
-            "Permission automatically accepted for tool in acceptEdits mode",
-            { toolName },
-          );
         }
       });
 
@@ -279,10 +263,6 @@ describe("PermissionManager", () => {
         const result = await permissionManager.checkPermission(context);
 
         expect(result).toEqual({ behavior: "allow" });
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Permission allowed by persistent or temporary rule",
-          expect.objectContaining({ toolName: "Bash" }),
-        );
       });
 
       it("should deny Bash command if it does not match any allowed rule", async () => {
@@ -481,10 +461,6 @@ describe("PermissionManager", () => {
           const result = await permissionManager.checkPermission(context);
 
           expect(result).toEqual({ behavior: "allow" });
-          expect(logger.debug).toHaveBeenCalledWith(
-            "Tool is not restricted, allowing",
-            { toolName },
-          );
         }
       });
 
@@ -504,10 +480,6 @@ describe("PermissionManager", () => {
 
         expect(result).toEqual({ behavior: "allow" });
         expect(mockCallback).not.toHaveBeenCalled();
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Tool is not restricted, allowing",
-          { toolName: "Read" },
-        );
       });
     });
 
@@ -531,14 +503,6 @@ describe("PermissionManager", () => {
           permissionMode: "default",
           canUseToolCallback: mockCallback,
         });
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Calling custom permission callback for tool",
-          { toolName: "Edit" },
-        );
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Custom callback returned decision",
-          { toolName: "Edit", decision: { behavior: "allow" } },
-        );
       });
 
       it("should call callback and return deny decision with message", async () => {
@@ -702,49 +666,6 @@ describe("PermissionManager", () => {
         }
       });
     });
-
-    describe("logging behavior", () => {
-      it("should log initial permission check with hasCallback=true", async () => {
-        const mockCallback: PermissionCallback = vi.fn().mockResolvedValue({
-          behavior: "allow",
-        });
-
-        const context: ToolPermissionContext = {
-          toolName: "Edit",
-          permissionMode: "default",
-          canUseToolCallback: mockCallback,
-        };
-
-        await permissionManager.checkPermission(context);
-
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Checking permission for tool",
-          {
-            toolName: "Edit",
-            permissionMode: "default",
-            hasCallback: true,
-          },
-        );
-      });
-
-      it("should log initial permission check with hasCallback=false", async () => {
-        const context: ToolPermissionContext = {
-          toolName: "Read",
-          permissionMode: "default",
-        };
-
-        await permissionManager.checkPermission(context);
-
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Checking permission for tool",
-          {
-            toolName: "Read",
-            permissionMode: "default",
-            hasCallback: false,
-          },
-        );
-      });
-    });
   });
 
   describe("isRestrictedTool method", () => {
@@ -830,10 +751,6 @@ describe("PermissionManager", () => {
       for (const toolName of RESTRICTED_TOOLS) {
         const result = permissionManager.isRestrictedTool(toolName);
         expect(result).toBe(true);
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Checking if tool is restricted",
-          { toolName, isRestricted: true },
-        );
       }
     });
 
@@ -850,10 +767,6 @@ describe("PermissionManager", () => {
       for (const toolName of unrestrictedTools) {
         const result = permissionManager.isRestrictedTool(toolName);
         expect(result).toBe(false);
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Checking if tool is restricted",
-          { toolName, isRestricted: false },
-        );
       }
     });
 
@@ -883,12 +796,6 @@ describe("PermissionManager", () => {
         permissionMode: "default",
         canUseToolCallback: undefined,
       });
-      expect(logger.debug).toHaveBeenCalledWith("Created permission context", {
-        toolName: "Edit",
-        permissionMode: "default",
-        hasCallback: false,
-        hasToolInput: false,
-      });
     });
 
     it("should create context with callback", () => {
@@ -906,12 +813,6 @@ describe("PermissionManager", () => {
         toolName: "Write",
         permissionMode: "bypassPermissions",
         canUseToolCallback: mockCallback,
-      });
-      expect(logger.debug).toHaveBeenCalledWith("Created permission context", {
-        toolName: "Write",
-        permissionMode: "bypassPermissions",
-        hasCallback: true,
-        hasToolInput: false,
       });
     });
 
@@ -1052,7 +953,6 @@ describe("PermissionManager", () => {
 
       await permissionManager.checkPermission(context);
 
-      expect(logger.debug).toHaveBeenCalled();
       expect(logger.warn).toHaveBeenCalled();
       expect(logger.error).not.toHaveBeenCalled();
     });

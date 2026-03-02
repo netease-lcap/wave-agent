@@ -93,10 +93,6 @@ export class PermissionManager {
   updateConfiguredDefaultMode(defaultMode?: PermissionMode): void {
     const oldEffectiveMode = this.getCurrentEffectiveMode();
 
-    logger?.debug("Updating configured default permission mode", {
-      previous: this.configuredDefaultMode,
-      new: defaultMode,
-    });
     this.configuredDefaultMode = defaultMode;
 
     const newEffectiveMode = this.getCurrentEffectiveMode();
@@ -104,13 +100,6 @@ export class PermissionManager {
       oldEffectiveMode !== newEffectiveMode &&
       this.onConfiguredDefaultModeChange
     ) {
-      logger?.debug(
-        "Effective permission mode changed due to configuration update",
-        {
-          oldMode: oldEffectiveMode,
-          newMode: newEffectiveMode,
-        },
-      );
       this.onConfiguredDefaultModeChange(newEffectiveMode);
     }
   }
@@ -126,9 +115,6 @@ export class PermissionManager {
    * Update the allowed rules (e.g., when configuration reloads)
    */
   updateAllowedRules(rules: string[]): void {
-    logger?.debug("Updating allowed permission rules", {
-      count: rules.length,
-    });
     this.allowedRules = rules;
   }
 
@@ -136,9 +122,6 @@ export class PermissionManager {
    * Update the denied rules (e.g., when configuration reloads)
    */
   updateDeniedRules(rules: string[]): void {
-    logger?.debug("Updating denied permission rules", {
-      count: rules.length,
-    });
     this.deniedRules = rules;
   }
 
@@ -146,10 +129,6 @@ export class PermissionManager {
    * Add temporary rules for the current session
    */
   public addTemporaryRules(rules: string[]): void {
-    logger?.debug("Adding temporary permission rules", {
-      count: rules.length,
-      rules,
-    });
     this.temporaryRules.push(...rules);
   }
 
@@ -157,7 +136,6 @@ export class PermissionManager {
    * Clear all temporary rules
    */
   public clearTemporaryRules(): void {
-    logger?.debug("Clearing temporary permission rules");
     this.temporaryRules = [];
   }
 
@@ -165,9 +143,6 @@ export class PermissionManager {
    * Update the additional directories (e.g., when configuration reloads)
    */
   updateAdditionalDirectories(directories: string[]): void {
-    logger?.debug("Updating additional directories", {
-      count: directories.length,
-    });
     this.additionalDirectories = directories.map((dir) => {
       if (this.workdir && !path.isAbsolute(dir)) {
         return path.resolve(this.workdir, dir);
@@ -180,9 +155,6 @@ export class PermissionManager {
    * Update the working directory
    */
   updateWorkdir(workdir: string): void {
-    logger?.debug("Updating working directory", {
-      workdir,
-    });
     this.workdir = workdir;
   }
 
@@ -190,7 +162,6 @@ export class PermissionManager {
    * Set the current plan file path
    */
   public setPlanFilePath(path: string | undefined): void {
-    logger?.debug("Setting plan file path", { path });
     this.planFilePath = path;
   }
 
@@ -228,12 +199,6 @@ export class PermissionManager {
       }
     }
 
-    logger?.debug("Path is outside Safe Zone", {
-      absolutePath,
-      workdir: effectiveWorkdir,
-      additionalDirectories: this.additionalDirectories,
-    });
-
     return { isInside: false, resolvedPath: absolutePath };
   }
 
@@ -252,23 +217,15 @@ export class PermissionManager {
   ): PermissionMode {
     // CLI override takes highest precedence
     if (cliPermissionMode !== undefined) {
-      logger?.debug("Using CLI permission mode override", {
-        cliMode: cliPermissionMode,
-        configuredDefault: this.configuredDefaultMode,
-      });
       return cliPermissionMode;
     }
 
     // Use configured default mode if available
     if (this.configuredDefaultMode !== undefined) {
-      logger?.debug("Using configured default permission mode", {
-        configuredDefault: this.configuredDefaultMode,
-      });
       return this.configuredDefaultMode;
     }
 
     // Fall back to system default
-    logger?.debug("Using system default permission mode");
     return "default";
   }
 
@@ -279,12 +236,6 @@ export class PermissionManager {
   async checkPermission(
     context: ToolPermissionContext,
   ): Promise<PermissionDecision> {
-    logger?.debug("Checking permission for tool", {
-      toolName: context.toolName,
-      permissionMode: context.permissionMode,
-      hasCallback: !!context.canUseToolCallback,
-    });
-
     // 0. Check denied rules first - Deny always takes precedence
     for (const rule of this.deniedRules) {
       if (this.matchesRule(context, rule)) {
@@ -301,9 +252,6 @@ export class PermissionManager {
 
     // 1. If bypassPermissions mode, always allow
     if (context.permissionMode === "bypassPermissions") {
-      logger?.debug("Permission bypassed for tool", {
-        toolName: context.toolName,
-      });
       return { behavior: "allow" };
     }
 
@@ -331,12 +279,6 @@ export class PermissionManager {
             );
             // Fall through to normal permission check flow to trigger confirmation prompt
           } else {
-            logger?.debug(
-              "Permission automatically accepted for tool in acceptEdits mode",
-              {
-                toolName: context.toolName,
-              },
-            );
             return { behavior: "allow" };
           }
         }
@@ -345,11 +287,6 @@ export class PermissionManager {
 
     // 1.2 Check if tool call is allowed by persistent or temporary rules
     if (this.isAllowedByRule(context)) {
-      logger?.debug("Permission allowed by persistent or temporary rule", {
-        toolName: context.toolName,
-        temporaryRulesCount: this.temporaryRules.length,
-        allowedRulesCount: this.allowedRules.length,
-      });
       return { behavior: "allow" };
     }
 
@@ -364,10 +301,6 @@ export class PermissionManager {
           const absolutePlanPath = path.resolve(this.planFilePath);
 
           if (absoluteTargetPath === absolutePlanPath) {
-            logger?.debug("Allowing write to plan file in plan mode", {
-              toolName: context.toolName,
-              targetPath,
-            });
             return { behavior: "allow" };
           }
         }
@@ -381,23 +314,19 @@ export class PermissionManager {
 
     // 2. If not a restricted tool, always allow
     if (!this.isRestrictedTool(context.toolName)) {
-      logger?.debug("Tool is not restricted, allowing", {
-        toolName: context.toolName,
-      });
       return { behavior: "allow" };
     }
 
     // 3. If custom callback provided, call it and return result
     if (context.canUseToolCallback) {
       try {
-        logger?.debug("Calling custom permission callback for tool", {
-          toolName: context.toolName,
-        });
         const decision = await context.canUseToolCallback(context);
-        logger?.debug("Custom callback returned decision", {
-          toolName: context.toolName,
-          decision,
-        });
+        if (decision.behavior !== "allow") {
+          logger?.debug("Custom callback returned decision", {
+            toolName: context.toolName,
+            decision,
+          });
+        }
         return decision;
       } catch (error) {
         const errorMessage =
@@ -431,14 +360,7 @@ export class PermissionManager {
    * Determine if a tool requires permission checks based on its name
    */
   isRestrictedTool(toolName: string): boolean {
-    const isRestricted = (RESTRICTED_TOOLS as readonly string[]).includes(
-      toolName,
-    );
-    logger?.debug("Checking if tool is restricted", {
-      toolName,
-      isRestricted,
-    });
-    return isRestricted;
+    return (RESTRICTED_TOOLS as readonly string[]).includes(toolName);
   }
 
   /**
@@ -523,14 +445,6 @@ export class PermissionManager {
       }
     }
 
-    logger?.debug("Created permission context", {
-      toolName,
-      permissionMode,
-      hasCallback: !!callback,
-      hasToolInput: !!toolInput,
-      suggestedPrefix,
-    });
-
     return context;
   }
 
@@ -566,14 +480,6 @@ export class PermissionManager {
         .replace(/\*/g, ".*"); // Replace * with .*
       const regex = new RegExp(`^${regexPattern}$`);
       const matched = regex.test(processedPart);
-      if (!matched) {
-        logger?.debug(
-          `Bash rule pattern mismatch: ${pattern} vs ${processedPart}`,
-          {
-            regex: regex.source,
-          },
-        );
-      }
       return matched;
     }
 
@@ -661,14 +567,7 @@ export class PermissionManager {
             toolInput: { ...ctx.toolInput, command: processedPart },
           };
           const allowedByRule = rules.some((rule) => {
-            const matched = this.matchesRule(partContext, rule);
-            if (matched) {
-              logger?.debug(`Rule matched: ${rule}`, {
-                toolName: ctx.toolName,
-                command: processedPart,
-              });
-            }
-            return matched;
+            return this.matchesRule(partContext, rule);
           });
 
           if (allowedByRule) return true;
