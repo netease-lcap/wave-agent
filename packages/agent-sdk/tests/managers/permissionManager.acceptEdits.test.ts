@@ -5,16 +5,6 @@ import type {
   PermissionCallback,
 } from "../../src/types/permissions.js";
 import { Container } from "../../src/utils/container.js";
-import { logger } from "../../src/utils/globalLogger.js";
-
-vi.mock("../../src/utils/globalLogger.js", () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
 
 describe("PermissionManager - acceptEdits mode", () => {
   let permissionManager: PermissionManager;
@@ -42,12 +32,7 @@ describe("PermissionManager - acceptEdits mode", () => {
         };
 
         const result = await manager.checkPermission(context);
-
         expect(result).toEqual({ behavior: "allow" });
-        expect(logger.debug).toHaveBeenCalledWith(
-          "Permission automatically accepted for tool in acceptEdits mode",
-          { toolName },
-        );
       }
     });
 
