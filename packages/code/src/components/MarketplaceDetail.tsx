@@ -24,14 +24,13 @@ export const MarketplaceDetail: React.FC = () => {
       setSelectedActionIndex((prev) =>
         prev < ACTIONS.length - 1 ? prev + 1 : 0,
       );
-    } else if (key.return && marketplace) {
+    } else if (key.return && marketplace && !state.isLoading) {
       const action = ACTIONS[selectedActionIndex].id;
       if (action === "update") {
         actions.updateMarketplace(marketplace.name);
       } else {
         actions.removeMarketplace(marketplace.name);
       }
-      actions.setView("MARKETPLACES");
     }
   });
 
@@ -56,19 +55,35 @@ export const MarketplaceDetail: React.FC = () => {
         <Text>Source: {JSON.stringify(marketplace.source)}</Text>
       </Box>
 
+      {state.isLoading && (
+        <Box marginBottom={1}>
+          <Text color="yellow">⌛ Processing operation...</Text>
+        </Box>
+      )}
+
       <Box marginTop={1} flexDirection="column">
         <Text bold>Marketplace Actions:</Text>
         {ACTIONS.map((action, index) => (
           <Text
             key={action.id}
-            color={index === selectedActionIndex ? "yellow" : undefined}
+            color={
+              index === selectedActionIndex
+                ? state.isLoading
+                  ? "gray"
+                  : "yellow"
+                : undefined
+            }
           >
             {index === selectedActionIndex ? "> " : "  "}
             {action.label}
           </Text>
         ))}
         <Box marginTop={1}>
-          <Text dimColor>Use ↑/↓ to select, Enter to confirm</Text>
+          <Text dimColor>
+            {state.isLoading
+              ? "Please wait..."
+              : "Use ↑/↓ to select, Enter to confirm"}
+          </Text>
         </Box>
         <Box marginTop={1}>
           <Text dimColor>Press Esc to go back</Text>

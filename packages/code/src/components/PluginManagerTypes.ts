@@ -17,6 +17,7 @@ export interface PluginManagerState {
   selectedId: string | null; // Plugin name or Marketplace name
   isLoading: boolean;
   error: string | null;
+  successMessage: string | null;
   searchQuery: string;
 }
 
@@ -43,5 +44,6 @@ export interface PluginManagerContextType {
     uninstallPlugin: (name: string, marketplace: string) => Promise<void>;
     updatePlugin: (name: string, marketplace: string) => Promise<void>;
     refresh: () => Promise<void>;
+    clearPluginFeedback: () => void;
   };
 }

@@ -24,6 +24,7 @@ describe("MarketplaceDetail", () => {
       selectedId: "test-mp",
       isLoading: false,
       error: null,
+      successMessage: null,
       searchQuery: "",
     },
     marketplaces: [
@@ -35,7 +36,10 @@ describe("MarketplaceDetail", () => {
     ],
     installedPlugins: [],
     discoverablePlugins: [],
-    actions: mockActions,
+    actions: {
+      ...mockActions,
+      clearPluginFeedback: vi.fn(),
+    },
   };
 
   beforeEach(() => {
@@ -108,7 +112,6 @@ describe("MarketplaceDetail", () => {
     stdin.write("\r"); // Enter
     await vi.waitFor(() => {
       expect(mockActions.updateMarketplace).toHaveBeenCalledWith("test-mp");
-      expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES");
     });
   });
 
@@ -126,7 +129,6 @@ describe("MarketplaceDetail", () => {
     stdin.write("\r"); // Enter
     await vi.waitFor(() => {
       expect(mockActions.removeMarketplace).toHaveBeenCalledWith("test-mp");
-      expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES");
     });
   });
 });

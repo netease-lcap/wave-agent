@@ -24,6 +24,7 @@ describe("MarketplaceView", () => {
       selectedId: null,
       isLoading: false,
       error: null,
+      successMessage: null,
       searchQuery: "",
     },
     marketplaces: [
@@ -40,7 +41,10 @@ describe("MarketplaceView", () => {
     ],
     installedPlugins: [],
     discoverablePlugins: [],
-    actions: mockActions,
+    actions: {
+      ...mockActions,
+      clearPluginFeedback: vi.fn(),
+    },
   };
 
   beforeEach(() => {

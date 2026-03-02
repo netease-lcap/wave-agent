@@ -45,12 +45,16 @@ describe("DiscoverView", () => {
       selectedId: null,
       isLoading: false,
       error: null,
+      successMessage: null,
       searchQuery: "",
     },
     marketplaces: [],
     installedPlugins: [],
     discoverablePlugins: plugins,
-    actions: mockActions,
+    actions: {
+      ...mockActions,
+      clearPluginFeedback: vi.fn(),
+    },
   });
 
   beforeEach(() => {

@@ -172,14 +172,32 @@ export const PluginManagerShell: React.FC<{ children?: React.ReactNode }> = ({
           borderLeft={false}
           borderRight={false}
         >
-          <Text dimColor>
-            {state.isLoading
-              ? "Loading..."
-              : "Use Tab to switch views, arrows to navigate, Enter to select, Esc to go back"}
-          </Text>
+          <Box flexGrow={1}>
+            <Text dimColor>
+              {state.isLoading
+                ? "Loading..."
+                : "Use Tab to switch views, arrows to navigate, Enter to select, Esc to go back"}
+            </Text>
+          </Box>
+          {state.isLoading && (
+            <Box marginLeft={2}>
+              <Text color="yellow" bold>
+                ⌛ Processing...
+              </Text>
+            </Box>
+          )}
+          {state.successMessage && (
+            <Box marginLeft={2}>
+              <Text color="green" bold>
+                ✓ {state.successMessage}
+              </Text>
+            </Box>
+          )}
           {state.error && (
             <Box marginLeft={2}>
-              <Text color="red">Error: {state.error}</Text>
+              <Text color="red" bold>
+                ✗ Error: {state.error}
+              </Text>
             </Box>
           )}
         </Box>

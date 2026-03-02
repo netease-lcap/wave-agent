@@ -49,7 +49,7 @@ export const PluginDetail: React.FC = () => {
       setSelectedScopeIndex((prev) =>
         prev < SCOPES.length - 1 ? prev + 1 : 0,
       );
-    } else if (key.return && plugin) {
+    } else if (key.return && plugin && !state.isLoading) {
       if (isInstalledAndEnabled) {
         setSelectedActionIndex((prev) => {
           const action = INSTALLED_ACTIONS[prev].id;
@@ -70,7 +70,6 @@ export const PluginDetail: React.FC = () => {
           return prev;
         });
       }
-      actions.setView("INSTALLED");
     }
   });
 
@@ -102,6 +101,11 @@ export const PluginDetail: React.FC = () => {
           </Text>
         </Box>
       )}
+      {state.isLoading && (
+        <Box marginBottom={1}>
+          <Text color="yellow">⌛ Processing operation...</Text>
+        </Box>
+      )}
 
       <Box marginTop={1} flexDirection="column">
         {isInstalledAndEnabled ? (
@@ -110,14 +114,24 @@ export const PluginDetail: React.FC = () => {
             {INSTALLED_ACTIONS.map((action, index) => (
               <Text
                 key={action.id}
-                color={index === selectedActionIndex ? "yellow" : undefined}
+                color={
+                  index === selectedActionIndex
+                    ? state.isLoading
+                      ? "gray"
+                      : "yellow"
+                    : undefined
+                }
               >
                 {index === selectedActionIndex ? "> " : "  "}
                 {action.label}
               </Text>
             ))}
             <Box marginTop={1}>
-              <Text dimColor>Use ↑/↓ to select, Enter to confirm</Text>
+              <Text dimColor>
+                {state.isLoading
+                  ? "Please wait..."
+                  : "Use ↑/↓ to select, Enter to confirm"}
+              </Text>
             </Box>
           </Box>
         ) : (
@@ -126,14 +140,24 @@ export const PluginDetail: React.FC = () => {
             {SCOPES.map((scope, index) => (
               <Text
                 key={scope.id}
-                color={index === selectedScopeIndex ? "green" : undefined}
+                color={
+                  index === selectedScopeIndex
+                    ? state.isLoading
+                      ? "gray"
+                      : "green"
+                    : undefined
+                }
               >
                 {index === selectedScopeIndex ? "> " : "  "}
                 {scope.label}
               </Text>
             ))}
             <Box marginTop={1}>
-              <Text dimColor>Use ↑/↓ to select, Enter to install</Text>
+              <Text dimColor>
+                {state.isLoading
+                  ? "Please wait..."
+                  : "Use ↑/↓ to select, Enter to install"}
+              </Text>
             </Box>
           </Box>
         )}

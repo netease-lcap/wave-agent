@@ -50,12 +50,16 @@ describe("PluginDetail", () => {
       selectedId,
       isLoading: false,
       error: null,
+      successMessage: null,
       searchQuery: "",
     },
     marketplaces: [],
     installedPlugins: installed,
     discoverablePlugins: discoverable,
-    actions: mockActions,
+    actions: {
+      ...mockActions,
+      clearPluginFeedback: vi.fn(),
+    },
   });
 
   beforeEach(() => {
@@ -206,7 +210,6 @@ describe("PluginDetail", () => {
           "mp1",
           "user",
         );
-        expect(mockActions.setView).toHaveBeenCalledWith("INSTALLED");
       });
     });
   });
@@ -268,7 +271,6 @@ describe("PluginDetail", () => {
           "plugin2",
           "mp2",
         );
-        expect(mockActions.setView).toHaveBeenCalledWith("INSTALLED");
       });
     });
 
@@ -283,7 +285,6 @@ describe("PluginDetail", () => {
       stdin.write("\r");
       await vi.waitFor(() => {
         expect(mockActions.updatePlugin).toHaveBeenCalledWith("plugin2", "mp2");
-        expect(mockActions.setView).toHaveBeenCalledWith("INSTALLED");
       });
     });
   });

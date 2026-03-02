@@ -17,6 +17,7 @@ export function usePluginManager(): PluginManagerContextType {
     selectedId: null,
     isLoading: true,
     error: null,
+    successMessage: null,
     searchQuery: "",
   });
 
@@ -34,11 +35,37 @@ export function usePluginManager(): PluginManagerContextType {
 
   const pluginCore = useMemo(() => new PluginCore(), []);
 
+  const clearPluginFeedback = useCallback(() => {
+    setState((prev: PluginManagerState) => ({
+      ...prev,
+      error: null,
+      successMessage: null,
+    }));
+  }, []);
+
+  const setSuccessMessage = useCallback(
+    (message: string) => {
+      setState((prev: PluginManagerState) => ({
+        ...prev,
+        successMessage: message,
+        error: null,
+      }));
+      setTimeout(() => {
+        setState((prev: PluginManagerState) => ({
+          ...prev,
+          successMessage:
+            prev.successMessage === message ? null : prev.successMessage,
+        }));
+      }, 5000);
+    },
+    [setState],
+  );
+
   const refresh = useCallback(async () => {
+    clearPluginFeedback();
     setState((prev: PluginManagerState) => ({
       ...prev,
       isLoading: true,
-      error: null,
     }));
     try {
       const [mks, installed, enabledMap] = await Promise.all([
@@ -115,14 +142,15 @@ export function usePluginManager(): PluginManagerContextType {
 
   const addMarketplace = useCallback(
     async (source: string) => {
+      clearPluginFeedback();
       setState((prev: PluginManagerState) => ({
         ...prev,
         isLoading: true,
-        error: null,
       }));
       try {
         await pluginCore.addMarketplace(source);
         await refresh();
+        setSuccessMessage(`Marketplace added successfully`);
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -131,19 +159,20 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginCore, refresh],
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
   );
 
   const removeMarketplace = useCallback(
     async (name: string) => {
+      clearPluginFeedback();
       setState((prev: PluginManagerState) => ({
         ...prev,
         isLoading: true,
-        error: null,
       }));
       try {
         await pluginCore.removeMarketplace(name);
         await refresh();
+        setSuccessMessage(`Marketplace '${name}' removed successfully`);
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -152,19 +181,20 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginCore, refresh],
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
   );
 
   const updateMarketplace = useCallback(
     async (name: string) => {
+      clearPluginFeedback();
       setState((prev: PluginManagerState) => ({
         ...prev,
         isLoading: true,
-        error: null,
       }));
       try {
         await pluginCore.updateMarketplace(name);
         await refresh();
+        setSuccessMessage(`Marketplace '${name}' updated successfully`);
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -173,7 +203,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginCore, refresh],
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
   );
 
   const installPlugin = useCallback(
@@ -182,15 +212,16 @@ export function usePluginManager(): PluginManagerContextType {
       marketplace: string,
       scope: "user" | "project" | "local" = "project",
     ) => {
+      clearPluginFeedback();
       setState((prev: PluginManagerState) => ({
         ...prev,
         isLoading: true,
-        error: null,
       }));
       try {
         const pluginId = `${name}@${marketplace}`;
         await pluginCore.installPlugin(pluginId, scope);
         await refresh();
+        setSuccessMessage(`Plugin '${name}' installed successfully`);
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -199,20 +230,21 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginCore, refresh],
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
   );
 
   const uninstallPlugin = useCallback(
     async (name: string, marketplace: string) => {
+      clearPluginFeedback();
       setState((prev: PluginManagerState) => ({
         ...prev,
         isLoading: true,
-        error: null,
       }));
       try {
         const pluginId = `${name}@${marketplace}`;
         await pluginCore.uninstallPlugin(pluginId);
         await refresh();
+        setSuccessMessage(`Plugin '${name}' uninstalled successfully`);
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -221,20 +253,21 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginCore, refresh],
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
   );
 
   const updatePlugin = useCallback(
     async (name: string, marketplace: string) => {
+      clearPluginFeedback();
       setState((prev: PluginManagerState) => ({
         ...prev,
         isLoading: true,
-        error: null,
       }));
       try {
         const pluginId = `${name}@${marketplace}`;
         await pluginCore.updatePlugin(pluginId);
         await refresh();
+        setSuccessMessage(`Plugin '${name}' updated successfully`);
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -243,7 +276,7 @@ export function usePluginManager(): PluginManagerContextType {
         }));
       }
     },
-    [pluginCore, refresh],
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
   );
 
   return {
@@ -261,6 +294,7 @@ export function usePluginManager(): PluginManagerContextType {
       uninstallPlugin,
       updatePlugin,
       refresh,
+      clearPluginFeedback,
     },
   };
 }

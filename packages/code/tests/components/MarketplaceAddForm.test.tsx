@@ -24,12 +24,16 @@ describe("MarketplaceAddForm", () => {
       selectedId: null,
       isLoading: false,
       error: null,
+      successMessage: null,
       searchQuery: "",
     },
     marketplaces: [],
     installedPlugins: [],
     discoverablePlugins: [],
-    actions: mockActions,
+    actions: {
+      ...mockActions,
+      clearPluginFeedback: vi.fn(),
+    },
   };
 
   beforeEach(() => {
@@ -84,7 +88,7 @@ describe("MarketplaceAddForm", () => {
     });
   });
 
-  it("should call addMarketplace and setView when Enter is pressed with content", async () => {
+  it("should call addMarketplace when Enter is pressed with content", async () => {
     const { stdin, lastFrame } = render(
       <PluginManagerContext.Provider value={mockContext}>
         <MarketplaceAddForm />
@@ -96,25 +100,14 @@ describe("MarketplaceAddForm", () => {
       expect(lastFrame()).toContain("s");
     });
 
-    // Try sending return key via stdin.write
     stdin.write("\r");
-
-    // Manually trigger the return key if stdin.write doesn't work
-    // This is sometimes necessary in ink-testing-library
-    // However, let's try to see if we can get it to work with stdin first.
-    // Wait a bit longer or try multiple times?
 
     await vi.waitFor(
       () => {
-        if (mockActions.setView.mock.calls.length === 0) {
-          stdin.write("\r");
-        }
-        expect(mockActions.setView).toHaveBeenCalledWith("MARKETPLACES");
+        expect(mockActions.addMarketplace).toHaveBeenCalledWith("s");
       },
       { timeout: 3000 },
     );
-
-    expect(mockActions.addMarketplace).toHaveBeenCalledWith("s");
   });
 
   it("should call setView('MARKETPLACES') when Escape is pressed", async () => {
