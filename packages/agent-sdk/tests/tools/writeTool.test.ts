@@ -342,7 +342,7 @@ describe("writeTool", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain(
-        "Write operation denied, reason: Write denied",
+        "Write operation denied by user, reason: Write denied",
       );
     });
 

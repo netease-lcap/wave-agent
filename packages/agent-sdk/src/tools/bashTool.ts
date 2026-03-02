@@ -153,7 +153,7 @@ Usage notes:
           return {
             success: false,
             content: "",
-            error: `${BASH_TOOL_NAME} operation denied, reason: ${permissionResult.message || "No reason provided"}`,
+            error: `${BASH_TOOL_NAME} operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
           };
         }
       } catch {

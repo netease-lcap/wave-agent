@@ -341,7 +341,7 @@ describe("editTool", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain(
-      "Edit operation denied, reason: User denied",
+      "Edit operation denied by user, reason: User denied",
     );
   });
 
