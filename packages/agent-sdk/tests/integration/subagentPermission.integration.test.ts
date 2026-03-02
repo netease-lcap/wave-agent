@@ -172,7 +172,7 @@ describe("Subagent Permission Integration", () => {
       instance.aiManager as unknown as { container: Container }
     ).container;
     const subagentPermissionManager =
-      subagentContainer.get<PermissionManager>("PermissionManager");
+      subagentContainer.get<PermissionManager>("PermissionManager")!;
 
     expect(subagentPermissionManager.getConfiguredDefaultMode()).toBe(
       "acceptEdits",
