@@ -71,6 +71,22 @@ Users need to validate their skill definitions, understand skill structure requi
 
 ---
 
+### User Story 5 - User-Invokable Skills with Arguments (Priority: P2)
+
+A user wants to explicitly invoke a skill using a slash command syntax and provide arguments that are substituted into the skill's content. They also want skills to be able to execute bash commands to provide dynamic information.
+
+**Why this priority**: Enhances the flexibility and power of skills, allowing them to function like custom slash commands while maintaining their discoverable nature.
+
+**Independent Test**: Can be tested by invoking a skill with `/skill-name arg1 arg2` and verifying that `$1` and `$ARGUMENTS` are correctly substituted, and bash commands like !`pwd` are executed.
+
+**Acceptance Scenarios**:
+
+1. **Given** I have a skill with parameter placeholders (e.g., `$1`, `$ARGUMENTS`), **When** I invoke it using `/skill-name arg1 arg2`, **Then** Wave should substitute the placeholders with the provided arguments before processing
+2. **Given** I have a skill with bash command placeholders (e.g., !`pwd`), **When** the skill is invoked, **Then** Wave should execute the bash commands and replace the placeholders with their output
+3. **Given** a skill is registered, **When** I type `/` in the chat, **Then** the skill should appear in the slash command suggestions
+
+---
+
 ### Edge Cases
 
 - What happens when a skill's SKILL.md file has malformed YAML frontmatter?
@@ -95,6 +111,9 @@ Users need to validate their skill definitions, understand skill structure requi
 - **FR-010**: Wave MUST reload skill definitions when SKILL.md files are modified
 - **FR-011**: Wave MUST handle missing or inaccessible supporting files gracefully
 - **FR-012**: Wave MUST support skills with multiple supporting file types (markdown, scripts, templates)
+- **FR-013**: Wave MUST support user-invokable skills via slash command syntax (e.g., `/skill-name args`)
+- **FR-014**: Wave MUST support parameter substitution in skills using `$1`, `$2`, ..., and `$ARGUMENTS`
+- **FR-015**: Wave MUST support bash command execution in skills using `!`command`` syntax
 
 ### Key Entities
 
