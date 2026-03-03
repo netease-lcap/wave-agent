@@ -55,7 +55,7 @@ describe("AI Service - Branch Coverage", () => {
   });
 
   describe("getModelConfig", () => {
-    it("should handle gpt-5-codex model", async () => {
+    it("should handle gpt-5 model", async () => {
       const mockWithResponse = vi.fn().mockResolvedValue({
         data: { choices: [{ message: { content: "hi" } }] },
         response: { headers: new Map() },
@@ -67,11 +67,11 @@ describe("AI Service - Branch Coverage", () => {
         modelConfig: TEST_MODEL_CONFIG,
         messages: [],
         workdir: "/some/path",
-        model: "gpt-5-codex-something",
+        model: "gpt-5-something",
       });
 
       const callArgs = mockCreate.mock.calls[0][0];
-      expect(callArgs.temperature).toBeUndefined();
+      expect(callArgs).not.toHaveProperty("temperature");
     });
 
     it("should handle gemini-3-flash model", async () => {

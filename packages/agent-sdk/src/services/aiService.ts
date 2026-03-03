@@ -132,9 +132,9 @@ function getModelConfig(
   };
 
   // Configuration rules for specific models
-  if (modelName.includes("gpt-5-codex")) {
-    // gpt-5-codex model sets temperature to undefined
-    config.temperature = undefined;
+  if (modelName.includes("gpt-5")) {
+    // gpt-5 models should not have temperature field
+    delete config.temperature;
   }
 
   return config;
