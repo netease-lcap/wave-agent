@@ -9,6 +9,7 @@ import {
   removeLastUserMessage,
   UserMessageParams,
   type AgentToolBlockUpdateParams,
+  generateMessageId,
 } from "../utils/messageOperations.js";
 import type { Message, Usage, SlashCommand } from "../types/index.js";
 import { join } from "path";
@@ -422,6 +423,7 @@ export class MessageManager {
 
     // Create compressed message
     const compressMessage: Message = {
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         {

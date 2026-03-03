@@ -29,6 +29,7 @@ describe("MessageList Static Rendering", () => {
     content: string,
     id: number,
   ): Message => ({
+    id: `msg-${id}`,
     role,
     blocks: [
       {
@@ -228,6 +229,7 @@ describe("MessageList Static Rendering", () => {
 
     it("should handle complex message types with mixed blocks", () => {
       const createComplexMessage = (id: number): Message => ({
+        id: `msg-${id}`,
         role: "assistant",
         blocks: [
           { type: "text", content: `Solution ${id}` },

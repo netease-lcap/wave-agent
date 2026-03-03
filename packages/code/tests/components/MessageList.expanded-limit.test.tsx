@@ -29,6 +29,7 @@ describe("MessageList Component - Expanded Mode Limit", () => {
     content: string,
     id: number,
   ): Message => ({
+    id: `msg-${id}`,
     role,
     blocks: [
       {

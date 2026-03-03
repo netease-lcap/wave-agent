@@ -18,6 +18,7 @@ const createMessage = (
   role: "user" | "assistant",
   content: string,
 ): Message => ({
+  id: `msg-${Math.random()}`,
   role,
   blocks: [{ type: "text", content }],
 });
