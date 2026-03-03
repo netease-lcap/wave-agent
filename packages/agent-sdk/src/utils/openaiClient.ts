@@ -52,7 +52,9 @@ export class OpenAIClient {
             >;
           // Prevent unhandled rejection if only withResponse() is used
           promise.catch((e) => {
-            logger.error("Unhandled OpenAI promise rejection:", e);
+            if (!(e instanceof Error && e.name === "AbortError")) {
+              logger.error("Unhandled OpenAI promise rejection:", e);
+            }
           });
           return promise;
         },

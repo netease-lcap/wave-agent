@@ -399,6 +399,7 @@ export async function callAgent(
     }
   } catch (error) {
     if ((error as Error).name === "AbortError") {
+      logger.info("OpenAI request aborted");
       throw new Error("Request was aborted");
     }
 
@@ -818,6 +819,7 @@ export async function compressMessages(
     };
   } catch (error) {
     if ((error as Error).name === "AbortError") {
+      logger.info("Compression request was aborted");
       throw new Error("Compression request was aborted");
     }
     logger.error("Failed to compress messages:", error);
