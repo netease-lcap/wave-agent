@@ -115,7 +115,6 @@ export class FileWatcherService extends EventEmitter {
       }
 
       this.watchers.delete(path);
-      this.logger?.debug(`Live Config: Stopped watching file: ${path}`);
     } catch (error) {
       this.logger?.warn(
         `Live Config: Error unwatching file ${path}: ${(error as Error).message}`,
@@ -199,8 +198,6 @@ export class FileWatcherService extends EventEmitter {
       entry.watcher = this.globalWatcher;
       entry.isActive = true;
       entry.errorCount = 0;
-
-      this.logger?.debug(`Live Config: Started watching file: ${entry.path}`);
     } catch (error) {
       entry.errorCount++;
       entry.isActive = false;
@@ -215,9 +212,6 @@ export class FileWatcherService extends EventEmitter {
         !entry.config.fallbackPolling &&
         entry.errorCount < entry.config.maxRetries
       ) {
-        this.logger?.debug(
-          `Live Config: Attempting polling fallback for ${entry.path}`,
-        );
         entry.config.fallbackPolling = true;
         await this.initializeWatcher(entry);
       } else {
@@ -281,7 +275,5 @@ export class FileWatcherService extends EventEmitter {
         );
       }
     }
-
-    this.logger?.debug(`Live Config: File ${type} event for ${filePath}`);
   }
 }

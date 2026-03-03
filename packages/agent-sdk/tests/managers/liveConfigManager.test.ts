@@ -324,11 +324,6 @@ describe("LiveConfigManager - Configuration Management", () => {
 
       await liveConfigManager.reload();
       expect(liveConfigManager.getCurrentConfiguration()).toEqual(validConfig);
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "Using previous valid configuration due to loading errors",
-        ),
-      );
     });
 
     it("should handle exceptions during reload gracefully", async () => {

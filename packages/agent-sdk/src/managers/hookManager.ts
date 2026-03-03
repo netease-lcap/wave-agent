@@ -80,10 +80,6 @@ export class HookManager {
    */
   loadConfigurationFromWaveConfig(waveConfig: WaveConfiguration | null): void {
     try {
-      logger?.debug(
-        `[HookManager] Loading hooks configuration from pre-loaded config...`,
-      );
-
       this.configuration = waveConfig?.hooks || undefined;
 
       // Validate the loaded configuration if it exists
@@ -96,10 +92,6 @@ export class HookManager {
           );
         }
       }
-
-      logger?.debug(
-        `[HookManager] Hooks configuration loaded successfully with ${Object.keys(waveConfig?.hooks || {}).length} event types`,
-      );
     } catch (error) {
       // If loading fails, start with undefined configuration (no hooks)
       this.configuration = undefined;
@@ -139,24 +131,15 @@ export class HookManager {
     }
 
     if (!this.configuration) {
-      logger?.debug(
-        `[HookManager] No configuration loaded, skipping ${event} hooks`,
-      );
       return [];
     }
 
     const eventConfigs = this.configuration[event];
     if (!eventConfigs || eventConfigs.length === 0) {
-      logger?.debug(`[HookManager] No hooks configured for ${event} event`);
       return [];
     }
 
-    logger?.debug(
-      `[HookManager] Starting ${event} hook execution with ${eventConfigs.length} configurations`,
-    );
-
     const results: HookExecutionResult[] = [];
-    const startTime = Date.now();
 
     for (
       let configIndex = 0;
@@ -167,15 +150,8 @@ export class HookManager {
 
       // Check if this config applies to the current context
       if (!this.configApplies(config, event, context.toolName)) {
-        logger?.debug(
-          `[HookManager] Skipping configuration ${configIndex + 1}: matcher '${config.matcher}' does not match tool '${context.toolName}'`,
-        );
         continue;
       }
-
-      logger?.debug(
-        `[HookManager] Executing configuration ${configIndex + 1} with ${config.hooks.length} commands (matcher: ${config.matcher || "any"})`,
-      );
 
       // Execute all commands for this configuration
       for (
@@ -186,27 +162,12 @@ export class HookManager {
         const hookCommand = config.hooks[commandIndex];
 
         try {
-          logger?.debug(
-            `[HookManager] Executing command ${commandIndex + 1}/${config.hooks.length} in configuration ${configIndex + 1}`,
-          );
-
           const result = await executeCommand(
             hookCommand.command,
             context,
             undefined,
           );
           results.push(result);
-
-          // Report individual command result
-          if (result.success) {
-            logger?.debug(
-              `[HookManager] Command ${commandIndex + 1} completed successfully in ${result.duration}ms`,
-            );
-          } else {
-            logger?.debug(
-              `[HookManager] Command ${commandIndex + 1} failed in ${result.duration}ms (exit code: ${result.exitCode}, timed out: ${result.timedOut})`,
-            );
-          }
 
           // Continue with next command even if this one fails
           // This allows for non-critical hooks to fail without stopping the workflow
@@ -227,15 +188,6 @@ export class HookManager {
         }
       }
     }
-
-    // Generate execution summary
-    const totalDuration = Date.now() - startTime;
-    const summary = this.generateExecutionSummary(
-      event,
-      results,
-      totalDuration,
-    );
-    logger?.debug(`[HookManager] ${event} execution summary: ${summary}`);
 
     return results;
   }
@@ -797,9 +749,5 @@ export class HookManager {
     }
 
     this.mergeHooksConfiguration(this.configuration, hooks);
-
-    logger?.debug(
-      `Registered plugin hooks. Total event types: ${Object.keys(this.configuration).length}`,
-    );
   }
 }
