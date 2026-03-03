@@ -355,13 +355,19 @@ export class SkillManager {
    */
   registerPluginSkills(skills: Skill[]): void {
     for (const skill of skills) {
-      this.skillMetadata.set(skill.name, {
+      const metadata: SkillMetadata = {
         name: skill.name,
         description: skill.description,
         type: skill.type,
         skillPath: skill.skillPath,
         allowedTools: skill.allowedTools,
-      });
+        context: skill.context,
+        agent: skill.agent,
+        model: skill.model,
+        disableModelInvocation: skill.disableModelInvocation,
+        userInvocable: skill.userInvocable,
+      };
+      this.skillMetadata.set(skill.name, metadata);
       this.skillContent.set(skill.name, skill);
     }
     logger?.debug(
