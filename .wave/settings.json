@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "defaultMode": "acceptEdits",
+    "defaultMode": "default",
     "allow": [
       "Bash(pnpm*)",
       "Bash(*.specify/scripts/bash/*)",
@@ -14,7 +14,10 @@
       "Bash(touch*)",
       "Bash(node packages/code/dist/index.js *)"
     ],
-    "additionalDirectories": ["../wave-plugins-official"]
+    "additionalDirectories": [
+      "../wave-plugins-official",
+      "../../../wave-plugins-official"
+    ]
   },
   "enabledPlugins": {
     "typescript-lsp@wave-plugins-official": true
