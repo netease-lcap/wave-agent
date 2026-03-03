@@ -162,68 +162,77 @@ ${subagentList || "No subagents configured"}
         },
       );
 
-      // Register for backgrounding if not already in background
-      if (!run_in_background && context.foregroundTaskManager) {
-        context.foregroundTaskManager.registerForegroundTask({
-          id: instance.subagentId,
-          backgroundHandler: async () => {
-            isBackgrounded = true;
-            await subagentManager.backgroundInstance(instance.subagentId);
-          },
-        });
-      }
+      return new Promise<ToolResult>((resolve) => {
+        (async () => {
+          // Register for backgrounding if not already in background
+          if (!run_in_background && context.foregroundTaskManager) {
+            context.foregroundTaskManager.registerForegroundTask({
+              id: instance.subagentId,
+              backgroundHandler: async () => {
+                isBackgrounded = true;
+                await subagentManager.backgroundInstance(instance.subagentId);
+                resolve({
+                  success: true,
+                  content: "Task backgrounded",
+                  shortResult: "Task backgrounded",
+                  isManuallyBackgrounded: true,
+                });
+              },
+            });
+          }
 
-      try {
-        const result = await subagentManager.executeTask(
-          instance,
-          prompt,
-          context.abortSignal,
-          run_in_background,
-        );
+          try {
+            const result = await subagentManager.executeTask(
+              instance,
+              prompt,
+              context.abortSignal,
+              run_in_background,
+            );
 
-        if (isBackgrounded) {
-          // If it was backgrounded during execution, the backgroundHandler already returned/will return
-          // But wait, the backgroundHandler is async and returns a ToolResult.
-          // In the current ToolManager/AIManager implementation, the backgroundHandler's return value
-          // is what's used when backgrounding happens.
-          // However, executeTask might still be running.
-          // We should return a special value or just let it be.
-          return {
-            success: true,
-            content: "Task backgrounded",
-            shortResult: "Task backgrounded",
-            isManuallyBackgrounded: true,
-          };
-        }
+            if (isBackgrounded) {
+              return;
+            }
 
-        if (run_in_background) {
-          return {
-            success: true,
-            content: `Task started in background with ID: ${result}`,
-            shortResult: `Task started in background: ${result}`,
-          };
-        }
+            if (run_in_background) {
+              resolve({
+                success: true,
+                content: `Task started in background with ID: ${result}`,
+                shortResult: `Task started in background: ${result}`,
+              });
+              return;
+            }
 
-        // Cleanup subagent instance after task completion
-        subagentManager.cleanupInstance(instance.subagentId);
+            // Cleanup subagent instance after task completion
+            subagentManager.cleanupInstance(instance.subagentId);
 
-        const messages = instance.messageManager.getMessages();
-        const tokens = instance.messageManager.getlatestTotalTokens();
-        const toolCount = countToolBlocks(messages);
-        const summary = formatToolTokenSummary(toolCount, tokens);
+            const messages = instance.messageManager.getMessages();
+            const tokens = instance.messageManager.getlatestTotalTokens();
+            const toolCount = countToolBlocks(messages);
+            const summary = formatToolTokenSummary(toolCount, tokens);
 
-        return {
-          success: true,
-          content: result,
-          shortResult: `Task completed${summary ? ` ${summary}` : ""}`,
-        };
-      } finally {
-        if (!run_in_background && context.foregroundTaskManager) {
-          context.foregroundTaskManager.unregisterForegroundTask(
-            instance.subagentId,
-          );
-        }
-      }
+            resolve({
+              success: true,
+              content: result,
+              shortResult: `Task completed${summary ? ` ${summary}` : ""}`,
+            });
+          } catch (error) {
+            if (!isBackgrounded) {
+              resolve({
+                success: false,
+                content: "",
+                error: `Task delegation failed: ${error instanceof Error ? error.message : String(error)}`,
+                shortResult: "Delegation error",
+              });
+            }
+          } finally {
+            if (!run_in_background && context.foregroundTaskManager) {
+              context.foregroundTaskManager.unregisterForegroundTask(
+                instance.subagentId,
+              );
+            }
+          }
+        })();
+      });
     } catch (error) {
       return {
         success: false,
