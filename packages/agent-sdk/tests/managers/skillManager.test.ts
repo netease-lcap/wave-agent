@@ -273,6 +273,44 @@ describe("SkillManager", () => {
         expect.stringContaining("Registered 1 plugin skills"),
       );
     });
+
+    it("should register all metadata fields from plugin skills", async () => {
+      // Initialize first
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+
+      const pluginSkill: Skill = {
+        name: "plugin-skill",
+        description: "from plugin",
+        type: "personal",
+        skillPath: "/plugin/path",
+        content: "content",
+        frontmatter: {
+          name: "plugin-skill",
+          description: "from plugin",
+          context: "fork",
+          agent: "typescript-expert",
+          model: "gpt-4",
+        },
+        isValid: true,
+        errors: [],
+        context: "fork",
+        agent: "typescript-expert",
+        model: "gpt-4",
+        disableModelInvocation: true,
+        userInvocable: false,
+      };
+
+      skillManager.registerPluginSkills([pluginSkill]);
+
+      const metadata = skillManager.getSkillMetadata("plugin-skill");
+      expect(metadata).toBeDefined();
+      expect(metadata?.context).toBe("fork");
+      expect(metadata?.agent).toBe("typescript-expert");
+      expect(metadata?.model).toBe("gpt-4");
+      expect(metadata?.disableModelInvocation).toBe(true);
+      expect(metadata?.userInvocable).toBe(false);
+    });
   });
 
   describe("loadSkill", () => {

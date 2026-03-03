@@ -98,10 +98,8 @@ export class PluginLoader {
             });
             if (parsed.isValid) {
               skills.push({
-                name: parsed.skillMetadata.name,
-                description: parsed.skillMetadata.description,
+                ...parsed.skillMetadata,
                 type: "project", // Plugin skills are treated as project skills
-                skillPath: parsed.skillMetadata.skillPath,
                 content: parsed.content,
                 frontmatter: parsed.frontmatter,
                 isValid: parsed.isValid,
