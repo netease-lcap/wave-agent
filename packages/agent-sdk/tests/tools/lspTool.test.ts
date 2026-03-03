@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { lspTool } from "../../src/tools/lspTool.js";
+import { lspTool, MAX_RESULTS, MAX_FILES } from "../../src/tools/lspTool.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { ToolContext } from "../../src/tools/types.js";
 import { Container } from "../../src/utils/container.js";
@@ -555,5 +555,319 @@ describe("lspTool", () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain("GlobalSym (Function) - Line 11");
+  });
+
+  describe("truncation", () => {
+    it("should truncate goToDefinition results", async () => {
+      const total = MAX_RESULTS + 10;
+      const mockLspResult = Array.from({ length: total }, (_, i) => ({
+        uri: `file:///test/workdir/src/file${i}.ts`,
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 10 },
+        },
+      }));
+
+      mockLspManager.execute.mockResolvedValue({
+        success: true,
+        content: JSON.stringify(mockLspResult),
+      });
+
+      const result = await lspTool.execute(
+        {
+          operation: "goToDefinition",
+          filePath: "src/main.ts",
+          line: 1,
+          character: 1,
+        },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain(`Found ${total} definitions:`);
+      expect(result.content).toContain(`(showing first ${MAX_RESULTS})`);
+      const lines = result.content.split("\n");
+      // Header + MAX_RESULTS lines
+      expect(lines.length).toBe(MAX_RESULTS + 1);
+    });
+
+    it("should truncate findReferences results by result count", async () => {
+      const total = MAX_RESULTS + 10;
+      const mockLspResult = Array.from({ length: total }, (_, i) => ({
+        uri: "file:///test/workdir/src/single_file.ts",
+        range: {
+          start: { line: i, character: 0 },
+          end: { line: i, character: 10 },
+        },
+      }));
+
+      mockLspManager.execute.mockResolvedValue({
+        success: true,
+        content: JSON.stringify(mockLspResult),
+      });
+
+      const result = await lspTool.execute(
+        {
+          operation: "findReferences",
+          filePath: "src/main.ts",
+          line: 1,
+          character: 1,
+        },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain(
+        `Found ${total} references across 1 files:`,
+      );
+      expect(result.content).toContain(
+        `(showing first ${MAX_RESULTS} results and 1 files)`,
+      );
+      expect(result.content).toContain("... and 10 more in this file");
+    });
+
+    it("should truncate findReferences results by file count", async () => {
+      const totalFiles = MAX_FILES + 10;
+      const mockLspResult = Array.from({ length: totalFiles }, (_, i) => ({
+        uri: `file:///test/workdir/src/file${i}.ts`,
+        range: {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 10 },
+        },
+      }));
+
+      mockLspManager.execute.mockResolvedValue({
+        success: true,
+        content: JSON.stringify(mockLspResult),
+      });
+
+      const result = await lspTool.execute(
+        {
+          operation: "findReferences",
+          filePath: "src/main.ts",
+          line: 1,
+          character: 1,
+        },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain(
+        `Found ${totalFiles} references across ${totalFiles} files:`,
+      );
+      expect(result.content).toContain(
+        `(showing first ${MAX_FILES} results and ${MAX_FILES} files)`,
+      );
+      // Each file has 1 result, so resultsShown == filesShown == MAX_FILES
+    });
+
+    it("should truncate documentSymbol results", async () => {
+      const total = MAX_RESULTS + 10;
+      const mockLspResult = Array.from({ length: total }, (_, i) => ({
+        name: `Sym${i}`,
+        kind: 12,
+        range: {
+          start: { line: i, character: 0 },
+          end: { line: i, character: 10 },
+        },
+        selectionRange: {
+          start: { line: i, character: 0 },
+          end: { line: i, character: 10 },
+        },
+      }));
+
+      mockLspManager.execute.mockResolvedValue({
+        success: true,
+        content: JSON.stringify(mockLspResult),
+      });
+
+      const result = await lspTool.execute(
+        {
+          operation: "documentSymbol",
+          filePath: "src/main.ts",
+          line: 1,
+          character: 1,
+        },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain(
+        `Document symbols: (showing first ${MAX_RESULTS} of ${total})`,
+      );
+      const lines = result.content.split("\n");
+      // Header + MAX_RESULTS lines
+      expect(lines.length).toBe(MAX_RESULTS + 1);
+    });
+
+    it("should truncate workspaceSymbol results", async () => {
+      const total = MAX_RESULTS + 10;
+      const mockLspResult = Array.from({ length: total }, (_, i) => ({
+        name: `Sym${i}`,
+        kind: 12,
+        location: {
+          uri: "file:///test/workdir/src/single_file.ts",
+          range: {
+            start: { line: i, character: 0 },
+            end: { line: i, character: 10 },
+          },
+        },
+      }));
+
+      mockLspManager.execute.mockResolvedValue({
+        success: true,
+        content: JSON.stringify(mockLspResult),
+      });
+
+      const result = await lspTool.execute(
+        {
+          operation: "workspaceSymbol",
+          filePath: "",
+          line: 0,
+          character: 0,
+        },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain(`Found ${total} symbols in workspace:`);
+      expect(result.content).toContain(
+        `(showing first ${MAX_RESULTS} results and 1 files)`,
+      );
+      expect(result.content).toContain("... and 10 more in this file");
+    });
+
+    it("should truncate prepareCallHierarchy results", async () => {
+      const total = MAX_RESULTS + 10;
+      const mockLspResult = Array.from({ length: total }, (_, i) => ({
+        name: `Func${i}`,
+        kind: 12,
+        uri: "file:///test/workdir/src/main.ts",
+        range: {
+          start: { line: i, character: 0 },
+          end: { line: i, character: 10 },
+        },
+        selectionRange: {
+          start: { line: i, character: 0 },
+          end: { line: i, character: 10 },
+        },
+      }));
+
+      mockLspManager.execute.mockResolvedValue({
+        success: true,
+        content: JSON.stringify(mockLspResult),
+      });
+
+      const result = await lspTool.execute(
+        {
+          operation: "prepareCallHierarchy",
+          filePath: "src/main.ts",
+          line: 1,
+          character: 1,
+        },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain(`Found ${total} call hierarchy items:`);
+      expect(result.content).toContain(`(showing first ${MAX_RESULTS})`);
+      const lines = result.content.split("\n");
+      // Header + MAX_RESULTS lines
+      expect(lines.length).toBe(MAX_RESULTS + 1);
+    });
+
+    it("should truncate incomingCalls results", async () => {
+      const total = MAX_RESULTS + 10;
+      const mockLspResult = Array.from({ length: total }, (_, i) => ({
+        from: {
+          name: `Caller${i}`,
+          kind: 12,
+          uri: "file:///test/workdir/src/single_file.ts",
+          range: {
+            start: { line: i, character: 0 },
+            end: { line: i, character: 10 },
+          },
+          selectionRange: {
+            start: { line: i, character: 0 },
+            end: { line: i, character: 10 },
+          },
+        },
+        fromRanges: [
+          {
+            start: { line: i, character: 5 },
+            end: { line: i, character: 10 },
+          },
+        ],
+      }));
+
+      mockLspManager.execute.mockResolvedValue({
+        success: true,
+        content: JSON.stringify(mockLspResult),
+      });
+
+      const result = await lspTool.execute(
+        {
+          operation: "incomingCalls",
+          filePath: "src/main.ts",
+          line: 1,
+          character: 1,
+        },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain(`Found ${total} incoming calls:`);
+      expect(result.content).toContain(
+        `(showing first ${MAX_RESULTS} results and 1 files)`,
+      );
+      expect(result.content).toContain("... and 10 more in this file");
+    });
+
+    it("should truncate outgoingCalls results", async () => {
+      const total = MAX_RESULTS + 10;
+      const mockLspResult = Array.from({ length: total }, (_, i) => ({
+        to: {
+          name: `Callee${i}`,
+          kind: 12,
+          uri: "file:///test/workdir/src/single_file.ts",
+          range: {
+            start: { line: i, character: 0 },
+            end: { line: i, character: 10 },
+          },
+          selectionRange: {
+            start: { line: i, character: 0 },
+            end: { line: i, character: 10 },
+          },
+        },
+        fromRanges: [
+          {
+            start: { line: i, character: 5 },
+            end: { line: i, character: 10 },
+          },
+        ],
+      }));
+
+      mockLspManager.execute.mockResolvedValue({
+        success: true,
+        content: JSON.stringify(mockLspResult),
+      });
+
+      const result = await lspTool.execute(
+        {
+          operation: "outgoingCalls",
+          filePath: "src/main.ts",
+          line: 1,
+          character: 1,
+        },
+        context,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain(`Found ${total} outgoing calls:`);
+      expect(result.content).toContain(
+        `(showing first ${MAX_RESULTS} results and 1 files)`,
+      );
+      expect(result.content).toContain("... and 10 more in this file");
+    });
   });
 });

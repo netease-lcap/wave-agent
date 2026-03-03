@@ -98,4 +98,5 @@
 
 - [X] T017 [P] Implement graceful shutdown in `LspManager`
 - [X] T018 [P] Implement response formatting and URI-to-path conversion in `lspTool`
+- [X] T020 [P] Implement result and file count limits in `lspTool` to prevent excessive token usage
 - [X] T019 [P] Final type-check and linting
