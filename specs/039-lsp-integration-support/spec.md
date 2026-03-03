@@ -54,7 +54,7 @@ As an AI agent, I want to see what functions call a specific method so that I ca
 
 - **No Server Configured**: If a file extension has no mapped LSP server, the tool should return a clear error.
 - **Server Crash**: If the LSP server process dies, the `LspManager` should handle it gracefully and potentially restart it.
-- **Large Responses**: Some LSP responses (like `findReferences`) can be very large; the tool should truncate or format them to fit within the agent's context.
+- **Large Responses**: Some LSP responses (like `findReferences`) can be very large; the tool MUST truncate results to a maximum of 1000 items and 100 files to prevent excessive token usage, while still reporting the total count in the header.
 - **Slow Servers**: Implement timeouts to prevent the agent from waiting indefinitely for a slow language server.
 
 ## Requirements *(mandatory)*

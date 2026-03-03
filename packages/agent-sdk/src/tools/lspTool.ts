@@ -14,6 +14,9 @@ import type {
   LspCallHierarchyOutgoingCall as CallHierarchyOutgoingCall,
 } from "../types/lsp.js";
 
+export const MAX_RESULTS = 1000;
+export const MAX_FILES = 100;
+
 /**
  * Formats an LSP URI into a readable file path
  */
@@ -126,10 +129,16 @@ function formatGoToDefinitionResult(
       return `Defined in ${formatLocation(validLocations[0], workdir)}`;
     }
 
-    const formatted = validLocations
+    const shownLocations = validLocations.slice(0, MAX_RESULTS);
+    const formatted = shownLocations
       .map((loc) => `  ${formatLocation(loc, workdir)}`)
       .join("\n");
-    return `Found ${validLocations.length} definitions:\n${formatted}`;
+
+    let header = `Found ${validLocations.length} definitions:`;
+    if (validLocations.length > MAX_RESULTS) {
+      header += ` (showing first ${MAX_RESULTS})`;
+    }
+    return `${header}\n${formatted}`;
   }
 
   const loc = isLocationLink(result) ? locationLinkToLocation(result) : result;
@@ -157,18 +166,42 @@ function formatFindReferencesResult(
   }
 
   const grouped = groupItemsByUri(validLocations, workdir);
-  const lines = [
-    `Found ${validLocations.length} references across ${grouped.size} files:`,
-  ];
+  const totalResults = validLocations.length;
+  const totalFiles = grouped.size;
+
+  let resultsShown = 0;
+  let filesShown = 0;
+  const lines: string[] = [];
 
   for (const [path, locs] of grouped) {
+    if (resultsShown >= MAX_RESULTS || filesShown >= MAX_FILES) break;
+
+    filesShown++;
+    const remainingResults = MAX_RESULTS - resultsShown;
+    const locsToShow = locs.slice(0, remainingResults);
+    const isTruncated = locsToShow.length < locs.length;
+
     lines.push(`\n${path}:`);
-    for (const loc of locs) {
+    for (const loc of locsToShow) {
       const line = loc.range.start.line + 1;
       const character = loc.range.start.character + 1;
       lines.push(`  Line ${line}:${character}`);
     }
+
+    if (isTruncated) {
+      lines.push(
+        `  ... and ${locs.length - locsToShow.length} more in this file`,
+      );
+    }
+
+    resultsShown += locsToShow.length;
   }
+
+  let header = `Found ${totalResults} references across ${totalFiles} files:`;
+  if (totalResults > resultsShown || totalFiles > filesShown) {
+    header += ` (showing first ${resultsShown} results and ${filesShown} files)`;
+  }
+  lines.unshift(header);
 
   return lines.join("\n");
 }
@@ -243,23 +276,32 @@ function getSymbolKindName(kind: number): string {
 /**
  * Formats a single document symbol recursively
  */
-function formatDocumentSymbol(symbol: DocumentSymbol, depth = 0): string[] {
+function formatDocumentSymbol(
+  symbol: DocumentSymbol,
+  state: { count: number; total: number },
+  depth = 0,
+): string[] {
+  state.total++;
   const results: string[] = [];
-  const indent = "  ".repeat(depth);
-  const kindName = getSymbolKindName(symbol.kind);
-  let line = `${indent}${symbol.name} (${kindName})`;
 
-  if (symbol.detail) {
-    line += ` ${symbol.detail}`;
+  if (state.count < MAX_RESULTS) {
+    const indent = "  ".repeat(depth);
+    const kindName = getSymbolKindName(symbol.kind);
+    let line = `${indent}${symbol.name} (${kindName})`;
+
+    if (symbol.detail) {
+      line += ` ${symbol.detail}`;
+    }
+
+    const startLine = symbol.range.start.line + 1;
+    line += ` - Line ${startLine}`;
+    results.push(line);
+    state.count++;
   }
-
-  const startLine = symbol.range.start.line + 1;
-  line += ` - Line ${startLine}`;
-  results.push(line);
 
   if (symbol.children && symbol.children.length > 0) {
     for (const child of symbol.children) {
-      results.push(...formatDocumentSymbol(child, depth + 1));
+      results.push(...formatDocumentSymbol(child, state, depth + 1));
     }
   }
 
@@ -282,10 +324,18 @@ function formatDocumentSymbolResult(
     return formatWorkspaceSymbolResult(result as SymbolInformation[], workdir);
   }
 
-  const lines = ["Document symbols:"];
+  const state = { count: 0, total: 0 };
+  const lines: string[] = [];
   for (const symbol of result as DocumentSymbol[]) {
-    lines.push(...formatDocumentSymbol(symbol));
+    lines.push(...formatDocumentSymbol(symbol, state));
   }
+
+  let header = "Document symbols:";
+  if (state.total > MAX_RESULTS) {
+    header += ` (showing first ${MAX_RESULTS} of ${state.total})`;
+  }
+  lines.unshift(header);
+
   return lines.join("\n");
 }
 
@@ -305,14 +355,24 @@ function formatWorkspaceSymbolResult(
     return "No symbols found in workspace. This may occur if the workspace is empty, or if the LSP server has not finished indexing the project.";
   }
 
-  const lines = [
-    `Found ${validSymbols.length} symbol${validSymbols.length === 1 ? "" : "s"} in workspace:`,
-  ];
   const grouped = groupItemsByUri(validSymbols, workdir);
+  const totalResults = validSymbols.length;
+  const totalFiles = grouped.size;
+
+  let resultsShown = 0;
+  let filesShown = 0;
+  const lines: string[] = [];
 
   for (const [path, symbols] of grouped) {
+    if (resultsShown >= MAX_RESULTS || filesShown >= MAX_FILES) break;
+
+    filesShown++;
+    const remainingResults = MAX_RESULTS - resultsShown;
+    const symbolsToShow = symbols.slice(0, remainingResults);
+    const isTruncated = symbolsToShow.length < symbols.length;
+
     lines.push(`\n${path}:`);
-    for (const s of symbols) {
+    for (const s of symbolsToShow) {
       const kindName = getSymbolKindName(s.kind);
       const startLine = s.location.range.start.line + 1;
       let line = `  ${s.name} (${kindName}) - Line ${startLine}`;
@@ -321,7 +381,21 @@ function formatWorkspaceSymbolResult(
       }
       lines.push(line);
     }
+
+    if (isTruncated) {
+      lines.push(
+        `  ... and ${symbols.length - symbolsToShow.length} more in this file`,
+      );
+    }
+
+    resultsShown += symbolsToShow.length;
   }
+
+  let header = `Found ${totalResults} symbol${totalResults === 1 ? "" : "s"} in workspace:`;
+  if (totalResults > resultsShown || totalFiles > filesShown) {
+    header += ` (showing first ${resultsShown} results and ${filesShown} files)`;
+  }
+  lines.unshift(header);
 
   return lines.join("\n");
 }
@@ -364,10 +438,18 @@ function formatPrepareCallHierarchyResult(
     return `Call hierarchy item: ${formatCallHierarchyItem(result[0], workdir)}`;
   }
 
-  const lines = [`Found ${result.length} call hierarchy items:`];
-  for (const item of result) {
+  const shownItems = result.slice(0, MAX_RESULTS);
+  const lines: string[] = [];
+  for (const item of shownItems) {
     lines.push(`  ${formatCallHierarchyItem(item, workdir)}`);
   }
+
+  let header = `Found ${result.length} call hierarchy items:`;
+  if (result.length > MAX_RESULTS) {
+    header += ` (showing first ${MAX_RESULTS})`;
+  }
+  lines.unshift(header);
+
   return lines.join("\n");
 }
 
@@ -382,10 +464,8 @@ function formatIncomingCallsResult(
     return "No incoming calls found (nothing calls this function)";
   }
 
-  const lines = [
-    `Found ${result.length} incoming call${result.length === 1 ? "" : "s"}:`,
-  ];
   const grouped = new Map<string, CallHierarchyIncomingCall[]>();
+  const totalResults = result.length;
 
   for (const call of result) {
     if (!call.from) {
@@ -403,9 +483,21 @@ function formatIncomingCallsResult(
     }
   }
 
+  const totalFiles = grouped.size;
+  let resultsShown = 0;
+  let filesShown = 0;
+  const lines: string[] = [];
+
   for (const [path, calls] of grouped) {
+    if (resultsShown >= MAX_RESULTS || filesShown >= MAX_FILES) break;
+
+    filesShown++;
+    const remainingResults = MAX_RESULTS - resultsShown;
+    const callsToShow = calls.slice(0, remainingResults);
+    const isTruncated = callsToShow.length < calls.length;
+
     lines.push(`\n${path}:`);
-    for (const call of calls) {
+    for (const call of callsToShow) {
       if (!call.from) continue;
       const kindName = getSymbolKindName(call.from.kind);
       const startLine = call.from.range.start.line + 1;
@@ -419,7 +511,21 @@ function formatIncomingCallsResult(
       }
       lines.push(line);
     }
+
+    if (isTruncated) {
+      lines.push(
+        `  ... and ${calls.length - callsToShow.length} more in this file`,
+      );
+    }
+
+    resultsShown += callsToShow.length;
   }
+
+  let header = `Found ${totalResults} incoming call${totalResults === 1 ? "" : "s"}:`;
+  if (totalResults > resultsShown || totalFiles > filesShown) {
+    header += ` (showing first ${resultsShown} results and ${filesShown} files)`;
+  }
+  lines.unshift(header);
 
   return lines.join("\n");
 }
@@ -435,10 +541,8 @@ function formatOutgoingCallsResult(
     return "No outgoing calls found (this function calls nothing)";
   }
 
-  const lines = [
-    `Found ${result.length} outgoing call${result.length === 1 ? "" : "s"}:`,
-  ];
   const grouped = new Map<string, CallHierarchyOutgoingCall[]>();
+  const totalResults = result.length;
 
   for (const call of result) {
     if (!call.to) {
@@ -456,9 +560,21 @@ function formatOutgoingCallsResult(
     }
   }
 
+  const totalFiles = grouped.size;
+  let resultsShown = 0;
+  let filesShown = 0;
+  const lines: string[] = [];
+
   for (const [path, calls] of grouped) {
+    if (resultsShown >= MAX_RESULTS || filesShown >= MAX_FILES) break;
+
+    filesShown++;
+    const remainingResults = MAX_RESULTS - resultsShown;
+    const callsToShow = calls.slice(0, remainingResults);
+    const isTruncated = callsToShow.length < calls.length;
+
     lines.push(`\n${path}:`);
-    for (const call of calls) {
+    for (const call of callsToShow) {
       if (!call.to) continue;
       const kindName = getSymbolKindName(call.to.kind);
       const startLine = call.to.range.start.line + 1;
@@ -472,7 +588,21 @@ function formatOutgoingCallsResult(
       }
       lines.push(line);
     }
+
+    if (isTruncated) {
+      lines.push(
+        `  ... and ${calls.length - callsToShow.length} more in this file`,
+      );
+    }
+
+    resultsShown += callsToShow.length;
   }
+
+  let header = `Found ${totalResults} outgoing call${totalResults === 1 ? "" : "s"}:`;
+  if (totalResults > resultsShown || totalFiles > filesShown) {
+    header += ` (showing first ${resultsShown} results and ${filesShown} files)`;
+  }
+  lines.unshift(header);
 
   return lines.join("\n");
 }
