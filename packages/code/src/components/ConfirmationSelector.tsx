@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Box, Text, useInput, useStdout, measureElement } from "ink";
 import type { PermissionDecision, AskUserQuestionInput } from "wave-agent-sdk";
 import {
@@ -79,6 +79,16 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
         otherCursorPosition: number;
       }
     >,
+  });
+
+  const pendingDecisionRef = useRef<PermissionDecision | null>(null);
+
+  useEffect(() => {
+    if (pendingDecisionRef.current) {
+      const decision = pendingDecisionRef.current;
+      pendingDecisionRef.current = null;
+      onDecision(decision);
+    }
   });
 
   const questions =
@@ -204,10 +214,10 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
             );
             if (!allAnswered) return prev;
 
-            onDecision({
+            pendingDecisionRef.current = {
               behavior: "allow",
               message: JSON.stringify(finalAnswers),
-            });
+            };
             return {
               ...prev,
               userAnswers: finalAnswers,
