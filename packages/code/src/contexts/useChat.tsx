@@ -141,7 +141,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // AI State
   const [messages, setMessages] = useState<Message[]>([]);
-  const messagesUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [latestTotalTokens, setlatestTotalTokens] = useState(0);
@@ -243,15 +242,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     const initializeAgent = async () => {
       const callbacks: AgentCallbacks = {
         onMessagesChange: () => {
-          if (!isExpandedRef.current) {
-            if (!messagesUpdateTimerRef.current) {
-              messagesUpdateTimerRef.current = setTimeout(() => {
-                if (agentRef.current) {
-                  setMessages([...agentRef.current.messages]);
-                }
-                messagesUpdateTimerRef.current = null;
-              }, 100);
-            }
+          if (!isExpandedRef.current && agentRef.current) {
+            setMessages([...agentRef.current.messages]);
           }
         },
         onServersChange: (servers) => {
@@ -374,9 +366,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (messagesUpdateTimerRef.current) {
-        clearTimeout(messagesUpdateTimerRef.current);
-      }
       if (agentRef.current) {
         try {
           // Display usage summary before cleanup
@@ -580,10 +569,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       setIsExpanded((prev) => {
         const newExpanded = !prev;
         if (newExpanded) {
-          if (messagesUpdateTimerRef.current) {
-            clearTimeout(messagesUpdateTimerRef.current);
-            messagesUpdateTimerRef.current = null;
-          }
           // Transitioning to EXPANDED: Freeze the current view
           // Deep copy the last message to ensure it doesn't update if the agent is still writing to it
           setMessages((currentMessages) => {
