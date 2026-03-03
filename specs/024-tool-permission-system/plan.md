@@ -7,7 +7,7 @@
 
 ## Summary
 
-Add permission system to Wave Agent SDK with "default" and "bypassPermissions" modes. In default mode, system prompts for confirmation before executing destructive tools (Edit, Delete, Bash). Users can bypass with `--dangerously-skip-permissions` CLI flag. System implements `canUseTool` callback in Agent SDK for custom authorization and adds confirmation component to CLI. **Updated**: System supports multiple tool calls with individual sequential confirmations, allowing granular user control per tool while batching results back to AI. **Updated**: System now includes hardcoded default allowed rules for read-only `git` operations and common safe commands in `default` mode to reduce manual confirmation overhead.
+Add permission system to Wave Agent SDK with "default", "acceptEdits", "plan", and "bypassPermissions" modes. In default mode, system prompts for confirmation before executing destructive tools (Edit, Delete, Bash). Users can bypass with `--dangerously-skip-permissions` CLI flag. System implements `canUseTool` callback in Agent SDK for custom authorization and adds confirmation component to CLI. **Updated**: System supports multiple tool calls with individual sequential confirmations, allowing granular user control per tool while batching results back to AI. **Updated**: System now includes hardcoded default allowed rules for read-only `git` operations and common safe commands in `default` mode to reduce manual confirmation overhead. **Updated**: System includes `Shift+Tab` shortcut to cycle between safe modes ("default", "acceptEdits", "plan"), explicitly excluding "bypassPermissions" from the cycle.
 
 ## Technical Context
 
@@ -104,6 +104,8 @@ packages/
 │   ├── src/
 │   │   ├── index.ts                   # Add --dangerously-skip-permissions CLI flag
 │   │   ├── cli.tsx                    # Pass permission mode to Agent
+│   │   ├── managers/
+│   │   │   └── InputManager.ts        # MODIFY: Add Shift+Tab shortcut for permission cycling
 │   │   ├── contexts/
 │   │   │   └── useChat.tsx           # MODIFY: Add confirmation state management
 │   │   └── components/

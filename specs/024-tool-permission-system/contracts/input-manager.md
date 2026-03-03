@@ -1,4 +1,4 @@
-# API Contracts: Remove Bypass Permissions from Shift+Tab
+# API Contracts: Input Manager
 
 ## Internal Component Contracts
 
@@ -10,7 +10,8 @@
 - **Pre-condition**: None.
 - **Post-condition**: 
   - If `permissionMode` was `"default"`, it becomes `"acceptEdits"`.
-  - If `permissionMode` was `"acceptEdits"`, it becomes `"default"`.
+  - If `permissionMode` was `"acceptEdits"`, it becomes `"plan"`.
+  - If `permissionMode` was `"plan"`, it becomes `"default"`.
   - If `permissionMode` was `"bypassPermissions"` or any other value, it becomes `"default"`.
   - `callbacks.onPermissionModeChange` is called with the new mode.
 

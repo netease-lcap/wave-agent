@@ -74,10 +74,28 @@ A developer integrating Wave's agent SDK can provide custom permission handling 
 
 ---
 
+### User Story 4 - Cycle between Permission Modes via Shortcut (Priority: P1)
+
+As a user, I want to quickly toggle between safe permission modes using a keyboard shortcut so that I can control how the agent interacts with my system without accidentally enabling full bypass mode.
+
+**Why this priority**: This ensures the most common and safe permission modes are easily accessible while removing the risk of accidentally entering bypass mode.
+
+**Independent Test**: Can be tested by pressing `Shift+Tab` multiple times and observing that the mode cycles through "default", "acceptEdits", and "plan".
+
+**Acceptance Scenarios**:
+
+1. **Given** the agent is in "default" permission mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to "acceptEdits".
+2. **Given** the agent is in "acceptEdits" permission mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to "plan".
+3. **Given** the agent is in "plan" permission mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to "default".
+4. **Given** the agent is in "bypassPermissions" mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to "default".
+
+---
+
 ### Edge Cases
 
 - How does the system handle network timeouts or interruptions during confirmation prompts?
 - What occurs when a `canUseTool` callback throws an exception or takes too long to respond? → System denies operation and aborts execution
+- **What happens when the user presses Shift+Tab repeatedly?** The system should continuously cycle between "default", "acceptEdits", and "plan".
 
 
 ## Requirements *(mandatory)*

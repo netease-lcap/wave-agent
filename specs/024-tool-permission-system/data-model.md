@@ -5,15 +5,17 @@
 ### PermissionMode
 **Description**: Configuration setting that determines tool execution behavior
 **Fields**:
-- `value`: "default" | "bypassPermissions"
+- `value`: "default" | "acceptEdits" | "plan" | "bypassPermissions"
 
 **Validation Rules**:
-- Must be one of the two allowed string values
+- Must be one of the allowed string values
 - Cannot be null or undefined when specified
 
 **State Transitions**: 
 - Can change between modes, but changes ignored during tool execution
 - Applied to new operations after current execution completes
+- `Shift+Tab` cycles through "default", "acceptEdits", and "plan"
+- If in "bypassPermissions", `Shift+Tab` transitions to "default"
 
 ---
 
