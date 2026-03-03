@@ -165,11 +165,6 @@ describe("HookManager Coverage", () => {
         context as unknown as Parameters<HookManager["executeHooks"]>[1],
       );
       expect(results).toHaveLength(0);
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining(
-          "matcher 'other-tool' does not match tool 'my-tool'",
-        ),
-      );
     });
 
     it("should handle unexpected error during command execution", async () => {

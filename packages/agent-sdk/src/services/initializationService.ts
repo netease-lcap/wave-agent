@@ -121,7 +121,6 @@ export class InitializationService {
     // Initialize hooks configuration
     try {
       // Load hooks configuration using ConfigurationService
-      logger?.debug("Loading hooks configuration...");
       const configResult =
         await configurationService.loadMergedConfiguration(workdir);
 
@@ -156,8 +155,6 @@ export class InitializationService {
           }
         }
       }
-
-      logger?.debug("Hooks system initialized successfully");
     } catch (error) {
       logger?.error("Failed to initialize hooks system:", error);
       // Don't throw error to prevent app startup failure
@@ -206,9 +203,7 @@ export class InitializationService {
 
     // Initialize live configuration reload
     try {
-      logger?.debug("Initializing live configuration reload...");
       await liveConfigManager.initialize();
-      logger?.debug("Live configuration reload initialized successfully");
     } catch (error) {
       logger?.error("Failed to initialize live configuration reload:", error);
       // Don't throw error to prevent app startup failure - continue without live reload
@@ -216,8 +211,6 @@ export class InitializationService {
 
     // Load memory files during initialization
     try {
-      logger?.debug("Loading memory files...");
-
       // Load project memory from AGENTS.md (bypass memory store for direct file access)
       try {
         const projectMemoryPath = path.join(workdir, "AGENTS.md");
@@ -226,13 +219,9 @@ export class InitializationService {
           "utf-8",
         );
         setProjectMemory(projectMemoryContent);
-        logger?.debug("Project memory loaded successfully");
       } catch (error) {
+        logger?.warn("Failed to load project memory file:", error);
         setProjectMemory("");
-        logger?.debug(
-          "Project memory file not found or unreadable, using empty content:",
-          error instanceof Error ? error.message : String(error),
-        );
       }
 
       // Load user memory (bypass memory store for direct file access)
@@ -240,16 +229,10 @@ export class InitializationService {
         const userMemoryPath = path.join(os.homedir(), ".wave", "AGENTS.md");
         const userMemoryContent = await fs.readFile(userMemoryPath, "utf-8");
         setUserMemory(userMemoryContent);
-        logger?.debug("User memory loaded successfully");
       } catch (error) {
+        logger?.warn("Failed to load user memory file:", error);
         setUserMemory("");
-        logger?.debug(
-          "User memory file not found or unreadable, using empty content:",
-          error instanceof Error ? error.message : String(error),
-        );
       }
-
-      logger?.debug("Memory initialization completed");
     } catch (error) {
       // Ensure memory is always initialized even if loading fails
       setProjectMemory("");
