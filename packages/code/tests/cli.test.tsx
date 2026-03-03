@@ -25,6 +25,9 @@ describe("startCli", () => {
 
   it("should call process.chdir to repoRoot before removing worktree", async () => {
     const chdirSpy = vi.spyOn(process, "chdir").mockImplementation(() => {});
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process.exit called");
     });
@@ -61,5 +64,6 @@ describe("startCli", () => {
 
     chdirSpy.mockRestore();
     exitSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 });
