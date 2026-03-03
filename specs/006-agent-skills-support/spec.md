@@ -84,6 +84,7 @@ A user wants to explicitly invoke a skill using a slash command syntax and provi
 1. **Given** I have a skill with parameter placeholders (e.g., `$1`, `$ARGUMENTS`), **When** I invoke it using `/skill-name arg1 arg2`, **Then** Wave should substitute the placeholders with the provided arguments before processing
 2. **Given** I have a skill with bash command placeholders (e.g., !`pwd`), **When** the skill is invoked, **Then** Wave should execute the bash commands and replace the placeholders with their output
 3. **Given** a skill is registered, **When** I type `/` in the chat, **Then** the skill should appear in the slash command suggestions
+4. **Given** I have a skill with NO parameter placeholders, **When** I invoke it using `/skill-name arg1 arg2`, **Then** Wave should automatically append the arguments to the end of the skill content
 
 ---
 

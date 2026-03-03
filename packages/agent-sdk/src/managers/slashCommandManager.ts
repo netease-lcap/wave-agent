@@ -117,15 +117,10 @@ export class SlashCommandManager {
             }
 
             if (args) {
-              if (hasParameterPlaceholders(processedContent)) {
-                processedContent = substituteCommandParameters(
-                  processedContent,
-                  args,
-                );
-              } else {
-                // If no placeholders, append arguments to the content
-                processedContent = `${processedContent.trim()} ${args}`;
-              }
+              processedContent = substituteCommandParameters(
+                processedContent,
+                args,
+              );
             }
 
             await this.executeCustomCommandInMainAgent(
@@ -240,15 +235,10 @@ export class SlashCommandManager {
           }
 
           if (args) {
-            if (hasParameterPlaceholders(processedContent)) {
-              processedContent = substituteCommandParameters(
-                processedContent,
-                args,
-              );
-            } else {
-              // If no placeholders, append arguments to the content
-              processedContent = `${processedContent.trim()} ${args}`;
-            }
+            processedContent = substituteCommandParameters(
+              processedContent,
+              args,
+            );
           }
 
           await this.executeCustomCommandInMainAgent(
