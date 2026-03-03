@@ -96,6 +96,13 @@ export class InputManager {
   // Flag to prevent handleInput conflicts when selector selection occurs
   private selectorJustUsed: boolean = false;
 
+  private setSelectorJustUsed(): void {
+    this.selectorJustUsed = true;
+    setTimeout(() => {
+      this.selectorJustUsed = false;
+    }, 0);
+  }
+
   private callbacks: InputManagerCallbacks;
   private logger?: Logger;
 
@@ -265,11 +272,7 @@ export class InputManager {
       this.handleCancelFileSelect();
 
       // Set flag to prevent handleInput from processing the same Enter key
-      this.selectorJustUsed = true;
-      // Reset flag after a short delay
-      setTimeout(() => {
-        this.selectorJustUsed = false;
-      }, 0);
+      this.setSelectorJustUsed();
 
       return { newInput, newCursorPosition };
     }
@@ -283,6 +286,7 @@ export class InputManager {
     this.filteredFiles = [];
 
     this.callbacks.onFileSelectorStateChange?.(false, [], "", -1);
+    this.setSelectorJustUsed();
   }
 
   checkForAtDeletion(cursorPosition: number): boolean {
@@ -370,10 +374,7 @@ export class InputManager {
       this.handleCancelCommandSelect();
 
       // Set flag to prevent handleInput from processing the same Enter key
-      this.selectorJustUsed = true;
-      setTimeout(() => {
-        this.selectorJustUsed = false;
-      }, 0);
+      this.setSelectorJustUsed();
 
       this.callbacks.onInputTextChange?.(newInput);
       this.callbacks.onCursorPositionChange?.(newCursorPosition);
@@ -399,10 +400,7 @@ export class InputManager {
       this.handleCancelCommandSelect();
 
       // Set flag to prevent handleInput from processing the same Enter key
-      this.selectorJustUsed = true;
-      setTimeout(() => {
-        this.selectorJustUsed = false;
-      }, 0);
+      this.setSelectorJustUsed();
 
       this.callbacks.onInputTextChange?.(newInput);
       this.callbacks.onCursorPositionChange?.(newCursorPosition);
@@ -418,6 +416,7 @@ export class InputManager {
     this.commandSearchQuery = "";
 
     this.callbacks.onCommandSelectorStateChange?.(false, "", -1);
+    this.setSelectorJustUsed();
   }
 
   checkForSlashDeletion(cursorPosition: number): boolean {
@@ -647,6 +646,9 @@ export class InputManager {
   setShowBackgroundTaskManager(show: boolean): void {
     this.showBackgroundTaskManager = show;
     this.callbacks.onBackgroundTaskManagerStateChange?.(show);
+    if (!show) {
+      this.setSelectorJustUsed();
+    }
   }
 
   getShowMcpManager(): boolean {
@@ -656,6 +658,9 @@ export class InputManager {
   setShowMcpManager(show: boolean): void {
     this.showMcpManager = show;
     this.callbacks.onMcpManagerStateChange?.(show);
+    if (!show) {
+      this.setSelectorJustUsed();
+    }
   }
 
   getShowRewindManager(): boolean {
@@ -665,6 +670,9 @@ export class InputManager {
   setShowRewindManager(show: boolean): void {
     this.showRewindManager = show;
     this.callbacks.onRewindManagerStateChange?.(show);
+    if (!show) {
+      this.setSelectorJustUsed();
+    }
   }
 
   getShowHelp(): boolean {
@@ -674,6 +682,9 @@ export class InputManager {
   setShowHelp(show: boolean): void {
     this.showHelp = show;
     this.callbacks.onHelpStateChange?.(show);
+    if (!show) {
+      this.setSelectorJustUsed();
+    }
   }
 
   getShowStatusCommand(): boolean {
@@ -683,6 +694,9 @@ export class InputManager {
   setShowStatusCommand(show: boolean): void {
     this.showStatusCommand = show;
     this.callbacks.onStatusCommandStateChange?.(show);
+    if (!show) {
+      this.setSelectorJustUsed();
+    }
   }
 
   // Permission mode methods
@@ -842,6 +856,7 @@ export class InputManager {
     this.showHistorySearch = false;
     this.historySearchQuery = "";
     this.callbacks.onHistorySearchStateChange?.(false, "");
+    this.setSelectorJustUsed();
   }
 
   // Handle normal input (when no selector is active)
@@ -948,14 +963,15 @@ export class InputManager {
     }
 
     // Handle interrupt request - use Esc key to interrupt AI request or command
-    if (
-      key.escape &&
-      (isLoading || isCommandRunning) &&
-      !this.isAnySelectorOrManagerActive()
-    ) {
-      // Unified interrupt for AI message generation and command execution
-      this.callbacks.onAbortMessage?.();
-      return true;
+    if (key.escape) {
+      if (
+        (isLoading || isCommandRunning) &&
+        !this.isAnySelectorOrManagerActive()
+      ) {
+        // Unified interrupt for AI message generation and command execution
+        this.callbacks.onAbortMessage?.();
+        return true;
+      }
     }
 
     // Handle Shift+Tab for permission mode cycling
