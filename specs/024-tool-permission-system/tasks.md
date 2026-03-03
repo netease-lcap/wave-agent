@@ -105,6 +105,17 @@
 - [X] T041 [US1] Implement hardcoded default allowed rules for read-only git operations and safe commands in PermissionManager.ts
 - [X] T042 [US1] Update Agent.ts to handle combined user-defined and default allowed rules
 - [X] T043 [US1] Add tests for default allowed git and safe commands
+- [X] T044 [P] [US4] Verify current state of `packages/code/src/managers/InputManager.ts` and `packages/code/tests/managers/InputManager.permissionMode.test.ts`
+- [X] T045 [P] [US4] Ensure `packages/agent-sdk` is built and available for `packages/code`
+- [X] T046 [US4] Update `packages/code/tests/managers/InputManager.permissionMode.test.ts` to expect only safe modes in the cycle
+- [X] T047 [US4] Modify `cyclePermissionMode` in `packages/code/src/managers/InputManager.ts` to restrict the `modes` array to safe modes
+- [X] T048 [US4] Verify implementation by running `pnpm test tests/managers/InputManager.permissionMode.test.ts` in `packages/code`
+- [X] T049 [US4] Add a test case to `packages/code/tests/managers/InputManager.permissionMode.test.ts` that starts in `bypassPermissions` and verifies transition to `default` on `Shift+Tab`
+- [X] T050 [US4] Update `cyclePermissionMode` in `packages/code/src/managers/InputManager.ts` to handle cases where the current mode is not in the cycle (e.g., `bypassPermissions`)
+- [X] T051 [US4] Verify implementation by running `pnpm test tests/managers/InputManager.permissionMode.test.ts` in `packages/code`
+- [X] T052 [P] [US4] Run `pnpm run type-check` in `packages/code` to ensure no regressions
+- [X] T053 [P] [US4] Run `pnpm run lint` in `packages/code` to ensure code quality
+- [X] T054 [P] [US4] Run quickstart.md validation manually in the CLI
 
 **Checkpoint**: All user stories should now be independently functional - default mode prompts, bypass mode skips, custom callbacks work
 

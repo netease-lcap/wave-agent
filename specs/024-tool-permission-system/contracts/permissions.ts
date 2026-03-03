@@ -8,9 +8,11 @@
 /**
  * Permission mode configuration
  * - "default": Prompt for confirmation on restricted tools
+ * - "acceptEdits": Automatically accept file modifications
+ * - "plan": Plan mode for the agent
  * - "bypassPermissions": Execute all tools without confirmation
  */
-export type PermissionMode = "default" | "bypassPermissions";
+export type PermissionMode = "default" | "acceptEdits" | "plan" | "bypassPermissions";
 
 /**
  * Result of a permission check
