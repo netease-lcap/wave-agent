@@ -323,16 +323,23 @@ describe("AIManager", () => {
       );
     });
 
-    it("should log warning when finish reason is length", async () => {
+    it("should log warning and recurse when finish reason is length", async () => {
       const aiService = await import("../../src/services/aiService.js");
       const mockHeaders = { "x-test-header": "test-value" };
-      vi.spyOn(aiService, "callAgent").mockResolvedValue({
-        content: "Truncated response",
-        finish_reason: "length",
-        response_headers: mockHeaders,
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        tool_calls: [],
-      });
+      vi.spyOn(aiService, "callAgent")
+        .mockResolvedValueOnce({
+          content: "Truncated response",
+          finish_reason: "length",
+          response_headers: mockHeaders,
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          tool_calls: [],
+        })
+        .mockResolvedValueOnce({
+          content: "Final response",
+          finish_reason: "stop",
+          usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+          tool_calls: [],
+        });
 
       await aiManager.sendAIMessage();
 
@@ -340,6 +347,12 @@ describe("AIManager", () => {
         "AI response truncated due to length limit. Response headers:",
         mockHeaders,
       );
+      expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.stringContaining("cut off"),
+        }),
+      );
+      expect(aiService.callAgent).toHaveBeenCalledTimes(2);
     });
 
     it("should save session during each recursion regardless of tool execution results", async () => {

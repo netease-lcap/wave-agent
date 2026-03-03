@@ -557,12 +557,6 @@ export class AIManager {
         }
       }
 
-      if (result.finish_reason === "length" && toolCalls.length === 0) {
-        this.messageManager.addErrorBlock(
-          "AI response was truncated due to length limit. Please try to reduce the complexity of your request or split it into smaller parts.",
-        );
-      }
-
       if (toolCalls.length > 0) {
         // Execute all tools in parallel using Promise.all
         const toolExecutionPromises = toolCalls.map(
@@ -720,8 +714,8 @@ export class AIManager {
         model,
       );
 
-      // Check if there are tool operations, if so automatically initiate next AI service call
-      if (toolCalls.length > 0) {
+      // Check if there are tool operations or response was truncated, if so automatically initiate next AI service call
+      if (toolCalls.length > 0 || result.finish_reason === "length") {
         // Record committed snapshots to message history
         if (this.reversionManager) {
           const snapshots =
@@ -754,6 +748,14 @@ export class AIManager {
             "Some tools were manually backgrounded, stopping recursion.",
           );
         } else if (!isCurrentlyAborted) {
+          // If response was truncated and no tools were called, add a continuation message
+          if (result.finish_reason === "length" && toolCalls.length === 0) {
+            this.messageManager.addUserMessage({
+              content:
+                "Your response was cut off because it exceeded the output token limit. Please break your work into smaller pieces. Continue from where you left off.",
+            });
+          }
+
           // Recursively call AI service, increment recursion depth, and pass same configuration
           await this.sendAIMessage({
             recursionDepth: recursionDepth + 1,
