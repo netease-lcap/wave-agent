@@ -12,6 +12,8 @@ vi.mock("fs", () => ({
     writeFile: vi.fn(),
     readFile: vi.fn(),
     unlink: vi.fn(),
+    stat: vi.fn(),
+    rm: vi.fn(),
   },
 }));
 
@@ -309,6 +311,87 @@ describe("TaskManager", () => {
 
       expect(spy).toHaveBeenCalledWith(sessionId);
       expect(fs.writeFile).toHaveBeenCalled();
+    });
+
+    it("should delete a task", async () => {
+      const mockFileHandle = {
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      vi.mocked(fs.open).mockResolvedValue(
+        mockFileHandle as unknown as Awaited<ReturnType<typeof fs.open>>,
+      );
+      vi.mocked(fs.unlink).mockResolvedValue(undefined);
+
+      await taskManager.deleteTask("1");
+
+      expect(fs.unlink).toHaveBeenCalledWith(expect.stringContaining("1.json"));
+      expect(fs.unlink).toHaveBeenCalledWith(
+        expect.stringMatching(/\/\.lock$/),
+      );
+    });
+
+    it("should cleanup old task lists", async () => {
+      const oldDir = "old-session";
+      const currentDir = sessionId;
+      const otherFile = "not-a-dir";
+
+      vi.mocked(fs.readdir)
+        .mockResolvedValueOnce([
+          oldDir,
+          currentDir,
+          otherFile,
+        ] as unknown as Awaited<ReturnType<typeof fs.readdir>>) // baseDir
+        .mockResolvedValueOnce(["1.json"] as unknown as Awaited<
+          ReturnType<typeof fs.readdir>
+        >); // oldDir contents
+
+      const now = Date.now();
+      const thirtyOneDaysAgo = now - 31 * 24 * 60 * 60 * 1000;
+
+      vi.mocked(fs.stat).mockImplementation(async (path: unknown) => {
+        const pathStr = String(path);
+        if (pathStr.endsWith(oldDir)) {
+          return {
+            isDirectory: () => true,
+            mtimeMs: thirtyOneDaysAgo,
+          } as unknown as Awaited<ReturnType<typeof fs.stat>>;
+        }
+        if (pathStr.endsWith(currentDir)) {
+          return {
+            isDirectory: () => true,
+            mtimeMs: now,
+          } as unknown as Awaited<ReturnType<typeof fs.stat>>;
+        }
+        if (pathStr.endsWith(otherFile)) {
+          return {
+            isDirectory: () => false,
+            mtimeMs: now,
+          } as unknown as Awaited<ReturnType<typeof fs.stat>>;
+        }
+        if (pathStr.endsWith("1.json")) {
+          return {
+            isDirectory: () => false,
+            mtimeMs: thirtyOneDaysAgo,
+          } as unknown as Awaited<ReturnType<typeof fs.stat>>;
+        }
+        return {
+          isDirectory: () => false,
+          mtimeMs: now,
+        } as unknown as Awaited<ReturnType<typeof fs.stat>>;
+      });
+
+      vi.mocked(fs.rm).mockResolvedValue(undefined);
+
+      await taskManager.cleanupOldTaskLists(30);
+
+      expect(fs.rm).toHaveBeenCalledWith(expect.stringContaining(oldDir), {
+        recursive: true,
+        force: true,
+      });
+      expect(fs.rm).not.toHaveBeenCalledWith(
+        expect.stringContaining(currentDir),
+        expect.anything(),
+      );
     });
   });
 });

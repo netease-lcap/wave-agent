@@ -40,6 +40,7 @@ vi.mock("../../src/services/taskManager.js", () => {
     getTaskListId: vi.fn(),
     setTaskListId: vi.fn(),
     refreshTasks: vi.fn().mockResolvedValue(undefined),
+    cleanupOldTaskLists: vi.fn().mockResolvedValue(undefined),
   };
   return {
     TaskManager: vi.fn().mockImplementation(function (taskListId: string) {

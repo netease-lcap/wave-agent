@@ -161,6 +161,57 @@ export class TaskManager extends EventEmitter {
     });
   }
 
+  async deleteTask(taskId: string): Promise<void> {
+    await this.withLock(async () => {
+      const taskPath = this.getTaskPath(taskId);
+      try {
+        await fs.unlink(taskPath);
+        this.emit("tasksChange", this.taskListId);
+        logger.debug(
+          `Task ${taskId} deleted from task list ${this.taskListId}`,
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          throw error;
+        }
+      }
+    });
+  }
+
+  async cleanupOldTaskLists(days: number = 30): Promise<void> {
+    const threshold = Date.now() - days * 24 * 60 * 60 * 1000;
+    try {
+      const dirs = await fs.readdir(this.baseDir);
+      for (const dir of dirs) {
+        if (dir === this.taskListId) continue;
+
+        const dirPath = join(this.baseDir, dir);
+        const stats = await fs.stat(dirPath);
+        if (!stats.isDirectory()) continue;
+
+        // Check mtime of the directory and its contents
+        let latestMtime = stats.mtimeMs;
+        const files = await fs.readdir(dirPath);
+        for (const file of files) {
+          const filePath = join(dirPath, file);
+          const fileStats = await fs.stat(filePath);
+          if (fileStats.mtimeMs > latestMtime) {
+            latestMtime = fileStats.mtimeMs;
+          }
+        }
+
+        if (latestMtime < threshold) {
+          logger.info(`Cleaning up old task list directory: ${dirPath}`);
+          await fs.rm(dirPath, { recursive: true, force: true });
+        }
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        logger.error("Failed to cleanup old task lists:", error);
+      }
+    }
+  }
+
   async listTasks(): Promise<Task[]> {
     const sessionDir = this.getSessionDir();
     try {

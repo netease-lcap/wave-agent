@@ -101,6 +101,15 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 - Check TaskList first to avoid creating duplicate tasks`,
   execute: async (args, context: ToolContext): Promise<ToolResult> => {
     const taskManager = context.taskManager;
+
+    if (args.status === "deleted") {
+      return {
+        success: true,
+        content: `Task creation skipped because status was set to 'deleted'.`,
+        shortResult: `Skipped deleted task`,
+      };
+    }
+
     const task: Omit<Task, "id"> = {
       subject: args.subject as string,
       description: args.description as string,
@@ -331,6 +340,74 @@ Set up task dependencies:
       return {
         success: false,
         content: `Task with ID ${taskId} not found.`,
+      };
+    }
+
+    if (args.status === "deleted") {
+      // Reciprocal Dependency Cleanup
+      // For each task in the deleted task's blocks list, remove the deleted task's ID from their blockedBy list.
+      for (const targetId of existingTask.blocks) {
+        const targetTask = await taskManager.getTask(targetId);
+        if (targetTask && targetTask.blockedBy.includes(taskId)) {
+          let targetSnapshotId: string | undefined;
+          if (context.reversionManager && context.messageId) {
+            const targetPath = taskManager.getTaskPath(targetId);
+            targetSnapshotId = await context.reversionManager.recordSnapshot(
+              context.messageId,
+              targetPath,
+              "modify",
+            );
+          }
+          await taskManager.updateTask({
+            ...targetTask,
+            blockedBy: targetTask.blockedBy.filter((id) => id !== taskId),
+          });
+          if (context.reversionManager && targetSnapshotId) {
+            await context.reversionManager.commitSnapshot(targetSnapshotId);
+          }
+        }
+      }
+
+      // For each task in the deleted task's blockedBy list, remove the deleted task's ID from their blocks list.
+      for (const targetId of existingTask.blockedBy) {
+        const targetTask = await taskManager.getTask(targetId);
+        if (targetTask && targetTask.blocks.includes(taskId)) {
+          let targetSnapshotId: string | undefined;
+          if (context.reversionManager && context.messageId) {
+            const targetPath = taskManager.getTaskPath(targetId);
+            targetSnapshotId = await context.reversionManager.recordSnapshot(
+              context.messageId,
+              targetPath,
+              "modify",
+            );
+          }
+          await taskManager.updateTask({
+            ...targetTask,
+            blocks: targetTask.blocks.filter((id) => id !== taskId),
+          });
+          if (context.reversionManager && targetSnapshotId) {
+            await context.reversionManager.commitSnapshot(targetSnapshotId);
+          }
+        }
+      }
+
+      // Record delete snapshot for the task itself
+      if (context.reversionManager && context.messageId) {
+        const taskPath = taskManager.getTaskPath(taskId);
+        const deleteSnapshotId = await context.reversionManager.recordSnapshot(
+          context.messageId,
+          taskPath,
+          "delete",
+        );
+        await context.reversionManager.commitSnapshot(deleteSnapshotId);
+      }
+
+      await taskManager.deleteTask(taskId);
+
+      return {
+        success: true,
+        content: `Task #${taskId} deleted and removed from disk.`,
+        shortResult: `Deleted task ${taskId}`,
       };
     }
 
