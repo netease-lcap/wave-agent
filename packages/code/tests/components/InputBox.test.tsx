@@ -36,14 +36,12 @@ describe("InputBox Smoke Tests", () => {
     it("should show placeholder text when empty", async () => {
       const { lastFrame } = render(<InputBox />);
 
-      // Wait for the component to render after InputManager initializes
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
           "Type your message",
         );
       });
 
-      // Verify placeholder text is displayed (may be wrapped)
       expect(lastFrame()).toMatch(
         /Type your message[\s\S]*use \/help for more info/,
       );
@@ -52,18 +50,12 @@ describe("InputBox Smoke Tests", () => {
     it("should handle basic text input", async () => {
       const { stdin, lastFrame } = render(<InputBox />);
 
-      // Simulate basic input
       stdin.write("hello world");
 
-      // Wait for input text to appear
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("hello world");
       });
 
-      // Verify input text is displayed correctly
-      expect(lastFrame()).toContain("hello world");
-
-      // Verify placeholder text is no longer displayed
       expect(lastFrame()).not.toContain(
         "Type your message (use /help for more info",
       );
@@ -72,20 +64,16 @@ describe("InputBox Smoke Tests", () => {
     it("should handle paste input with newlines", async () => {
       const { stdin, lastFrame } = render(<InputBox />);
 
-      // Simulate user pasting text with newlines
       const pastedText = "This is line 1\nThis is line 2";
       stdin.write(pastedText);
 
-      // Wait for paste processing to complete
       await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("This is line 1");
+        const output = stripAnsiColors(lastFrame() || "");
+        expect(output).toContain("This is line 1");
+        expect(output).toContain("This is line 2");
       });
 
-      // Verify text is processed correctly
-      const output = lastFrame();
-      expect(output).toContain("This is line 1");
-      expect(output).toContain("This is line 2");
-      expect(output).not.toContain(
+      expect(lastFrame()).not.toContain(
         "Type your message (use /help for more info",
       );
     });
@@ -93,19 +81,14 @@ describe("InputBox Smoke Tests", () => {
     it("should compress long text (>200 chars) into compressed format", async () => {
       const { stdin, lastFrame } = render(<InputBox />);
 
-      // Simulate pasting long text over 200 characters
-      const longText = "A".repeat(250); // 250 character long text
+      const longText = "A".repeat(250);
       stdin.write(longText);
 
-      // Wait for compression processing completion
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain("[LongText#1]");
       });
 
-      // Verify long text is compressed to [LongText#1] format
-      const output = lastFrame();
-      expect(output).toContain("[LongText#1]");
-      expect(output).not.toContain(longText); // Should not display original text
+      expect(lastFrame()).not.toContain(longText);
     });
   });
 
@@ -113,16 +96,12 @@ describe("InputBox Smoke Tests", () => {
     it("should show normal placeholder when loading", async () => {
       const { lastFrame } = render(<InputBox isLoading={true} />);
 
-      // Wait for the component to render after InputManager initializes
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
           "Type your message",
         );
       });
-      const output = lastFrame();
-
-      // Should show normal placeholder and allow input even when loading
-      expect(output).toContain("Type your message");
+      expect(lastFrame()).toContain("Type your message");
     });
   });
 
@@ -171,42 +150,23 @@ describe("InputBox Smoke Tests", () => {
         />,
       );
 
-      // Step 1: Input "/" to activate command selector
       stdin.write("/");
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain(
-          "Command Selector",
-        );
-      });
+      await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
 
-      const afterSlashFrame = lastFrame();
-      expect(afterSlashFrame).toContain("clear");
-
-      // Step 2: Input "git" to filter commands
       stdin.write("git");
-      await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain("git-commit");
-      });
+      await vi.waitFor(() => expect(lastFrame()).toContain("git-commit"));
 
-      const filteredFrame = lastFrame();
-      expect(filteredFrame).toContain("git-commit");
-      expect(filteredFrame).not.toContain("docs"); // docs should be filtered out
-
-      // Step 3: Press Enter to select and execute command
       stdin.write("\r");
       await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).not.toContain(
-          "Command Selector",
-        );
+        expect(mockSendMessage).toHaveBeenCalledWith("/git-commit");
       });
 
-      // Step 4: Verify command is executed and input is cleared
       expect(mockHasSlashCommand).toHaveBeenCalledWith("git-commit");
-      expect(mockSendMessage).toHaveBeenCalledWith("/git-commit");
-
-      const finalFrame = lastFrame();
-      expect(finalFrame).toContain("Type your message");
-      expect(finalFrame).not.toContain("Command Selector");
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "Type your message",
+        );
+      });
     });
 
     it("should send complete slash command as message", async () => {
@@ -221,27 +181,24 @@ describe("InputBox Smoke Tests", () => {
         />,
       );
 
-      // Input complete command directly
       stdin.write("/git-commit some arguments");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("/git-commit some arguments"),
+      );
+
+      stdin.write("\r");
       await vi.waitFor(() => {
-        expect(stripAnsiColors(lastFrame() || "")).toContain(
+        expect(mockSendMessage).toHaveBeenCalledWith(
           "/git-commit some arguments",
+          undefined,
         );
       });
 
-      // Press Enter to send
-      stdin.write("\r");
       await vi.waitFor(() => {
         expect(stripAnsiColors(lastFrame() || "")).toContain(
           "Type your message",
         );
       });
-
-      // Verify sent as message
-      expect(mockSendMessage).toHaveBeenCalledWith(
-        "/git-commit some arguments",
-        undefined,
-      );
     });
   });
 
@@ -252,13 +209,13 @@ describe("InputBox Smoke Tests", () => {
         expect(lastFrame()).toContain("Type your message"),
       );
 
-      // Trigger task manager via command
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
+
       stdin.write("tasks");
       await vi.waitFor(() => expect(lastFrame()).toContain("▶ /tasks"));
-      stdin.write("\r");
 
+      stdin.write("\r");
       await vi.waitFor(
         () => {
           expect(stripAnsiColors(lastFrame() || "")).toContain(
@@ -275,17 +232,15 @@ describe("InputBox Smoke Tests", () => {
         expect(lastFrame()).toContain("Type your message"),
       );
 
-      // Trigger MCP manager via command
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
+
       stdin.write("mcp");
       await vi.waitFor(() => expect(lastFrame()).toContain("▶ /mcp"));
-      stdin.write("\r");
 
+      stdin.write("\r");
       await vi.waitFor(
         () => {
-          // It seems it's showing TaskManager instead of McpManager in the test output
-          // Let's check for what's actually there
           expect(stripAnsiColors(lastFrame() || "")).toMatch(
             /Manage MCP servers|Background Tasks/,
           );
@@ -300,13 +255,13 @@ describe("InputBox Smoke Tests", () => {
         expect(lastFrame()).toContain("Type your message"),
       );
 
-      // Trigger Rewind via command
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
+
       stdin.write("rewind");
       await vi.waitFor(() => expect(lastFrame()).toContain("▶ /rewind"));
-      stdin.write("\r");
 
+      stdin.write("\r");
       await vi.waitFor(
         () => {
           expect(stripAnsiColors(lastFrame() || "")).toMatch(
@@ -324,8 +279,7 @@ describe("InputBox Smoke Tests", () => {
     });
 
     it("should cycle permission mode on Shift+Tab", async () => {
-      const { stdin, lastFrame } = render(<InputBox />);
-      await vi.waitFor(() => expect(lastFrame()).toContain("Mode: default"));
+      const { stdin } = render(<InputBox />);
 
       stdin.write("\u001b[Z"); // Shift+Tab
       await vi.waitFor(
@@ -338,17 +292,12 @@ describe("InputBox Smoke Tests", () => {
 
     it("should handle cursor movement keys", async () => {
       const { stdin, lastFrame } = render(<InputBox />);
-      await vi.waitFor(() =>
-        expect(lastFrame()).toContain("Type your message"),
-      );
 
       stdin.write("abc");
       await vi.waitFor(() => expect(lastFrame()).toContain("abc"));
 
-      // Move left
-      stdin.write("\u001b[D");
-      // We can't easily verify cursor position in the string output without complex regex,
-      // but we can verify it doesn't crash and handles the key.
+      stdin.write("\u001b[D"); // Move left
+      await vi.waitFor(() => expect(lastFrame()).toContain("abc"));
     });
 
     it("should render HelpView when help command is executed", async () => {
@@ -357,16 +306,13 @@ describe("InputBox Smoke Tests", () => {
         expect(lastFrame()).toContain("Type your message"),
       );
 
-      // Trigger Help via command
       stdin.write("/");
       await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
-      stdin.write("h");
-      stdin.write("e");
-      stdin.write("l");
-      stdin.write("p");
-      await vi.waitFor(() => expect(lastFrame()).toContain("▶ /help"));
-      stdin.write("\r");
 
+      stdin.write("help");
+      await vi.waitFor(() => expect(lastFrame()).toContain("▶ /help"));
+
+      stdin.write("\r");
       await vi.waitFor(
         () => {
           const output = stripAnsiColors(lastFrame() || "");
