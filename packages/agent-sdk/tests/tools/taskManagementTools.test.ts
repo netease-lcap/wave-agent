@@ -18,6 +18,8 @@ vi.mock("../../src/services/taskManager.js", () => {
   TaskManager.prototype.getTask = vi.fn();
   TaskManager.prototype.updateTask = vi.fn();
   TaskManager.prototype.listTasks = vi.fn();
+  TaskManager.prototype.deleteTask = vi.fn();
+  TaskManager.prototype.getTaskPath = vi.fn(() => "/mock/path");
   return { TaskManager };
 });
 
@@ -116,6 +118,20 @@ describe("Task Management Tools", () => {
         workdir: "/test/workdir",
       } as ToolContext);
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe("TaskCreate tool - skip deleted", () => {
+    it("should skip task creation if status is deleted", async () => {
+      const args = {
+        subject: "Deleted Task",
+        description: "Should not be created",
+        status: "deleted",
+      };
+      const result = await taskCreateTool.execute(args, context);
+      expect(mockTaskManager.createTask).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("Task creation skipped");
     });
   });
 
@@ -410,6 +426,68 @@ describe("Task Management Tools", () => {
           metadata: { key1: "newVal", key3: "val3" },
         }),
       );
+    });
+  });
+
+  describe("TaskUpdate tool - physical deletion", () => {
+    it("should physically delete task and cleanup reciprocal dependencies", async () => {
+      const task1: Task = {
+        id: "1",
+        subject: "Task 1",
+        description: "",
+        status: "pending",
+        blocks: ["2"],
+        blockedBy: ["3"],
+        metadata: {},
+      };
+      const task2: Task = {
+        id: "2",
+        subject: "Task 2",
+        description: "",
+        status: "pending",
+        blocks: [],
+        blockedBy: ["1"],
+        metadata: {},
+      };
+      const task3: Task = {
+        id: "3",
+        subject: "Task 3",
+        description: "",
+        status: "pending",
+        blocks: ["1"],
+        blockedBy: [],
+        metadata: {},
+      };
+
+      mockTaskManager.getTask.mockImplementation(async (id) => {
+        if (id === "1") return task1;
+        if (id === "2") return task2;
+        if (id === "3") return task3;
+        return null;
+      });
+
+      const result = await taskUpdateTool.execute(
+        { taskId: "1", status: "deleted" },
+        context,
+      );
+
+      expect(mockTaskManager.deleteTask).toHaveBeenCalledWith("1");
+      // Check reciprocal cleanup for task 2 (which was blocked by 1)
+      expect(mockTaskManager.updateTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "2",
+          blockedBy: [],
+        }),
+      );
+      // Check reciprocal cleanup for task 3 (which blocked 1)
+      expect(mockTaskManager.updateTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "3",
+          blocks: [],
+        }),
+      );
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("deleted and removed from disk");
     });
   });
 });

@@ -116,6 +116,9 @@ export function setupAgentContainer(
     const tasks = await taskManager.listTasks();
     onTasksChange(tasks);
   });
+  taskManager.cleanupOldTaskLists(30).catch((error) => {
+    logger.error("Failed to cleanup old task lists:", error);
+  });
 
   const backgroundTaskManager = new BackgroundTaskManager(container, {
     callbacks: {
