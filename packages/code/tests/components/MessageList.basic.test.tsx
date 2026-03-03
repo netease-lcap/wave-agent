@@ -29,6 +29,7 @@ describe("MessageList Component", () => {
     content: string,
     id: number,
   ): Message => ({
+    id: `msg-${id}`,
     role,
     blocks: [
       {
@@ -107,6 +108,7 @@ describe("MessageList Component", () => {
     it("should render error blocks", () => {
       const messages: Message[] = [
         {
+          id: "msg-error",
           role: "assistant",
           blocks: [{ type: "error", content: "Something went wrong" }],
         },
@@ -137,6 +139,7 @@ describe("MessageList Component", () => {
       // Create a message with single image block
       const messagesWithImage: Message[] = [
         {
+          id: "msg-image-1",
           role: "user",
           blocks: [
             { type: "text", content: "Look at this image" },
@@ -163,6 +166,7 @@ describe("MessageList Component", () => {
       // Create a message with multiple image blocks
       const messagesWithImages: Message[] = [
         {
+          id: "msg-image-2",
           role: "user",
           blocks: [
             {
@@ -187,6 +191,7 @@ describe("MessageList Component", () => {
       // Create a message with image block but no imageUrls
       const messagesWithEmptyImage: Message[] = [
         {
+          id: "msg-image-empty",
           role: "user",
           blocks: [
             {
@@ -211,6 +216,7 @@ describe("MessageList Component", () => {
       // Create a message with only image, no text
       const imageOnlyMessage: Message[] = [
         {
+          id: "msg-image-only",
           role: "user",
           blocks: [
             {
@@ -236,6 +242,7 @@ describe("MessageList Component", () => {
     it("should display reasoning block correctly", () => {
       const messagesWithReasoning: Message[] = [
         {
+          id: "msg-reasoning",
           role: "assistant",
           blocks: [
             {
@@ -268,6 +275,7 @@ describe("MessageList Component", () => {
     it("should not display empty reasoning blocks", () => {
       const messagesWithEmptyReasoning: Message[] = [
         {
+          id: "msg-empty-reasoning",
           role: "assistant",
           blocks: [
             {

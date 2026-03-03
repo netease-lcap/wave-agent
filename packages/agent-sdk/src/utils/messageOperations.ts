@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { Message, Usage } from "../types/index.js";
 import { MessageSource } from "../types/index.js";
 import { readFileSync } from "fs";
@@ -113,6 +114,8 @@ export const convertImageToBase64 = (imagePath: string): string => {
   }
 };
 
+export const generateMessageId = (): string => `msg-${randomUUID()}`;
+
 // Add user message
 export const addUserMessageToMessages = ({
   messages,
@@ -142,7 +145,7 @@ export const addUserMessageToMessages = ({
   }
 
   const userMessage: Message = {
-    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    id: generateMessageId(),
     role: "user",
     blocks,
   };
@@ -179,7 +182,7 @@ export const addAssistantMessageToMessages = (
   }
 
   const initialAssistantMessage: Message = {
-    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    id: generateMessageId(),
     role: "assistant",
     blocks,
     usage, // Include usage data if provided
@@ -283,6 +286,7 @@ export const addErrorBlockToMessage = ({
   } else {
     // If the last message is not an assistant message, create a new assistant message
     newMessages.push({
+      id: generateMessageId(),
       role: "assistant",
       blocks: [
         {
@@ -302,6 +306,7 @@ export const addBangMessage = ({
   command,
 }: AddBangParams): Message[] => {
   const outputMessage: Message = {
+    id: generateMessageId(),
     role: "user",
     blocks: [
       {

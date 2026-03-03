@@ -54,7 +54,7 @@ export const MessageList = React.memo(
         message,
         isLastMessage: messageIndex === messages.length - 1,
         // Unique key for each block to help Static component
-        key: `${message.id || messageIndex}-${blockIndex}`,
+        key: `${message.id}-${blockIndex}`,
       }));
     });
 
