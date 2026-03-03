@@ -6,6 +6,11 @@ import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
 import { GLOB_TOOL_NAME } from "../constants/tools.js";
 
 /**
+ * Maximum number of files returned by glob tool
+ */
+const MAX_GLOB_RESULTS = 1000;
+
+/**
  * Glob Tool Plugin - Fast file pattern matching
  */
 export const globTool: ToolPlugin = {
@@ -109,15 +114,23 @@ export const globTool: ToolPlugin = {
         .sort((a, b) => b.mtime.getTime() - a.mtime.getTime()) // Most recently modified files first
         .map((item) => item.path);
 
+      const totalCount = sortedFiles.length;
+      const finalFiles = sortedFiles.slice(0, MAX_GLOB_RESULTS);
+
       // Format output
-      const output = sortedFiles
+      const output = finalFiles
         .map((file, index) => `${index + 1}. ${file}`)
         .join("\n");
+
+      const isTruncated = totalCount > MAX_GLOB_RESULTS;
+      const shortResult = isTruncated
+        ? `Found ${totalCount} files (showing first ${MAX_GLOB_RESULTS})`
+        : `Found ${totalCount} file${totalCount === 1 ? "" : "s"}`;
 
       return {
         success: true,
         content: output,
-        shortResult: `Found ${sortedFiles.length} file${sortedFiles.length === 1 ? "" : "s"}`,
+        shortResult,
       };
     } catch (error) {
       return {
