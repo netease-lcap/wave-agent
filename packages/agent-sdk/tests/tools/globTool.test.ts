@@ -340,4 +340,31 @@ describe("globTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("nested/deep/file.ts");
   });
+
+  it("should limit the number of results to 1000", async () => {
+    const manyFiles = Array.from(
+      { length: 1005 },
+      (_, i) => `/test/workdir/file${i}.txt`,
+    );
+    mockGlob.mockResolvedValueOnce(manyFiles);
+
+    // Mock stat for all files - make them progressively newer
+    manyFiles.forEach((_, i) => {
+      mockStat.mockResolvedValueOnce(
+        createMockStats(new Date(2023, 0, 1, 0, 0, i)),
+      );
+    });
+
+    const result = await globTool.execute({ pattern: "**/*.txt" }, testContext);
+
+    expect(result.success).toBe(true);
+    const lines = result.content.split("\n");
+    expect(lines.length).toBe(1000);
+    expect(result.shortResult).toBe("Found 1005 files (showing first 1000)");
+    // Verify it shows the most recent ones (the ones with higher index in our mock)
+    // file1004.txt is the newest, so it should be first
+    expect(lines[0]).toContain("file1004.txt");
+    // file5.txt should be the last one (1005 - 1000 = 5)
+    expect(lines[999]).toContain("file5.txt");
+  });
 });
