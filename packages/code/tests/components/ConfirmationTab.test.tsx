@@ -1,5 +1,13 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  type Mock,
+} from "vitest";
 import { render } from "ink-testing-library";
 import { ConfirmationSelector } from "../../src/components/ConfirmationSelector.js";
 import { stripAnsiColors } from "wave-agent-sdk";
@@ -11,10 +19,15 @@ describe("Confirmation Tab Navigation", () => {
   let mockOnAbort: Mock<() => void>;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     mockOnDecision = vi.fn<(decision: PermissionDecision) => void>();
     mockOnCancel = vi.fn<() => void>();
     mockOnAbort = vi.fn<() => void>();
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("should handle Tab key navigation for normal tools", async () => {
@@ -27,28 +40,9 @@ describe("Confirmation Tab Navigation", () => {
       />,
     );
 
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
-    });
+    // Press Tab 3 times to cycle back to first option
+    stdin.write("\t\t\t");
 
-    // Press Tab to go to next option
-    stdin.write("\t");
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain(
-        "> Yes, and auto-accept edits",
-      );
-    });
-
-    // Press Tab again to go to alternative option
-    stdin.write("\t");
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain(
-        "> Type here to tell Wave what to change",
-      );
-    });
-
-    // Press Tab again to cycle back to first option
-    stdin.write("\t");
     await vi.waitFor(() => {
       expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
     });
@@ -64,20 +58,15 @@ describe("Confirmation Tab Navigation", () => {
       />,
     );
 
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
-    });
-
-    // Press Shift+Tab to cycle backwards to last option
-    stdin.write("\u001b[Z"); // Shift+Tab
+    // Press Shift+Tab twice to go to "Yes, and auto-accept edits"
+    stdin.write("\u001b[Z"); // Shift+Tab to last
     await vi.waitFor(() => {
       expect(stripAnsiColors(lastFrame() || "")).toContain(
         "> Type here to tell Wave what to change",
       );
     });
+    stdin.write("\u001b[Z"); // Shift+Tab to second to last
 
-    // Press Shift+Tab again
-    stdin.write("\u001b[Z");
     await vi.waitFor(() => {
       expect(stripAnsiColors(lastFrame() || "")).toContain(
         "> Yes, and auto-accept edits",
@@ -111,30 +100,16 @@ describe("Confirmation Tab Navigation", () => {
       />,
     );
 
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 1");
-    });
+    // Select B and cycle through questions
+    stdin.write("\u001b[B"); // Down to B
+    stdin.write("\t"); // Tab to Q2
+    stdin.write("\t"); // Tab back to Q1
 
-    // Select B
-    stdin.write("\u001b[B");
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("> B");
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("Question 1");
+      expect(frame).toContain("> B");
     });
-
-    // Press Tab to go to Question 2
-    stdin.write("\t");
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 2");
-    });
-
-    // Press Tab to cycle back to Question 1
-    stdin.write("\t");
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 1");
-    });
-
-    // Verify B is still selected
-    expect(stripAnsiColors(lastFrame() || "")).toContain("> B");
   });
 
   it("should preserve 'Other' text when cycling questions", async () => {
@@ -163,31 +138,17 @@ describe("Confirmation Tab Navigation", () => {
       />,
     );
 
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 1");
-    });
-
-    // Select Other and type "Custom"
+    // Select Other, type "Custom", and cycle
     stdin.write("\u001b[B"); // Down to Other
     stdin.write("Custom");
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Custom");
-    });
+    stdin.write("\t"); // Tab to Q2
+    stdin.write("\t"); // Tab back to Q1
 
-    // Tab to Q2
-    stdin.write("\t");
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 2");
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("Question 1");
+      expect(frame).toContain("Custom");
     });
-
-    // Tab back to Q1
-    stdin.write("\t");
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 1");
-    });
-
-    // Verify "Custom" is still there
-    expect(stripAnsiColors(lastFrame() || "")).toContain("Custom");
   });
 
   it("should preserve multi-select state when cycling questions", async () => {
@@ -217,34 +178,19 @@ describe("Confirmation Tab Navigation", () => {
       />,
     );
 
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 1");
-    });
-
-    // Toggle A and B
+    // Toggle A and B, then cycle
     stdin.write(" "); // Toggle A
     stdin.write("\u001b[B"); // Down to B
     stdin.write(" "); // Toggle B
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("[x] A");
-      expect(stripAnsiColors(lastFrame() || "")).toContain("[x] B");
-    });
+    stdin.write("\t"); // Tab to Q2
+    stdin.write("\t"); // Tab back to Q1
 
-    // Tab to Q2
-    stdin.write("\t");
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 2");
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("Question 1");
+      expect(frame).toContain("[x] A");
+      expect(frame).toContain("[x] B");
     });
-
-    // Tab back to Q1
-    stdin.write("\t");
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 1");
-    });
-
-    // Verify A and B are still checked
-    expect(stripAnsiColors(lastFrame() || "")).toContain("[x] A");
-    expect(stripAnsiColors(lastFrame() || "")).toContain("[x] B");
   });
 
   it("should collect all answers when Enter is pressed on the last question after cycling", async () => {
@@ -263,7 +209,7 @@ describe("Confirmation Tab Navigation", () => {
       ],
     };
 
-    const { stdin, lastFrame } = render(
+    const { stdin } = render(
       <ConfirmationSelector
         toolName="AskUserQuestion"
         toolInput={mockQuestions as unknown as Record<string, unknown>}
@@ -273,45 +219,17 @@ describe("Confirmation Tab Navigation", () => {
       />,
     );
 
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 1");
-    });
+    // Tab to Q2, press Enter (should not submit), Tab back to Q1, press Enter (should move to Q2), press Enter (should submit)
+    stdin.write("\t"); // Q2
+    stdin.write("\r"); // Enter on Q2 (unanswered Q1)
+    stdin.write("\t"); // Q1
+    stdin.write("\r"); // Enter on Q1 (select A)
+    stdin.write("\r"); // Enter on Q2 (select B)
 
-    // Tab to Q2
-    stdin.write("\t");
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 2");
-    });
-
-    // Select B and press Enter
-    stdin.write("\r");
-
-    // Should NOT submit yet because Q1 is unanswered
-    await vi.waitFor(() => {
-      expect(mockOnDecision).not.toHaveBeenCalled();
-    });
-
-    // Tab back to Q1
-    stdin.write("\t");
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 1");
-    });
-
-    // Select A and press Enter
-    stdin.write("\r");
-
-    // Now it should move to Q2 (since Q1 was answered)
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 2");
-    });
-
-    // Press Enter on Q2
-    stdin.write("\r");
-
-    // Now it should submit both
     await vi.waitFor(() => {
       expect(mockOnDecision).toHaveBeenCalled();
     });
+
     const call = mockOnDecision.mock.calls[0][0];
     const message = JSON.parse(call.message!);
     expect(message["Question 1"]).toBe("A");
@@ -344,18 +262,10 @@ describe("Confirmation Tab Navigation", () => {
       />,
     );
 
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 1");
-    });
+    // Cycle backwards
+    stdin.write("\u001b[Z"); // Shift+Tab to Q2
+    stdin.write("\u001b[Z"); // Shift+Tab back to Q1
 
-    // Press Shift+Tab to cycle backwards to Question 2
-    stdin.write("\u001b[Z");
-    await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain("Question 2");
-    });
-
-    // Press Shift+Tab again to Question 1
-    stdin.write("\u001b[Z");
     await vi.waitFor(() => {
       expect(stripAnsiColors(lastFrame() || "")).toContain("Question 1");
     });

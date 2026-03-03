@@ -1,6 +1,6 @@
 import { render } from "ink-testing-library";
 import React, { useEffect } from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   ChatProvider,
   useChat,
@@ -86,8 +86,13 @@ describe("ChatProvider", () => {
   };
 
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
     vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   // Helper component to test the hook
@@ -154,9 +159,6 @@ describe("ChatProvider", () => {
     ];
     Object.assign(mockAgent, { messages: newMessages });
     callbacks.onMessagesChange!(newMessages);
-    await vi.waitFor(() => {
-      expect(lastValue?.messages).toEqual(newMessages);
-    });
 
     // Test onServersChange
     const newServers = [
@@ -167,27 +169,15 @@ describe("ChatProvider", () => {
       },
     ];
     callbacks.onServersChange!(newServers);
-    await vi.waitFor(() => {
-      expect(lastValue?.mcpServers).toEqual(newServers);
-    });
 
     // Test onSessionIdChange
     callbacks.onSessionIdChange!("new-session");
-    await vi.waitFor(() => {
-      expect(lastValue?.sessionId).toBe("new-session");
-    });
 
     // Test onLatestTotalTokensChange
     callbacks.onLatestTotalTokensChange!(100);
-    await vi.waitFor(() => {
-      expect(lastValue?.latestTotalTokens).toBe(100);
-    });
 
     // Test onCompressionStateChange
     callbacks.onCompressionStateChange!(true);
-    await vi.waitFor(() => {
-      expect(lastValue?.isCompressing).toBe(true);
-    });
 
     // Test onBackgroundTasksChange
     const newTasks = [
@@ -202,9 +192,6 @@ describe("ChatProvider", () => {
       },
     ];
     callbacks.onBackgroundTasksChange!(newTasks);
-    await vi.waitFor(() => {
-      expect(lastValue?.backgroundTasks).toEqual(newTasks);
-    });
 
     // Test onSubagentMessagesChange
     callbacks.onSubagentMessagesChange?.("sub1", [
@@ -213,22 +200,25 @@ describe("ChatProvider", () => {
         blocks: [{ type: "text" as const, content: "sub-msg" }],
       },
     ]);
-    await vi.waitFor(() => {
-      expect(lastValue?.subagentMessages["sub1"]).toHaveLength(1);
-    });
 
     // Test onPermissionModeChange
     callbacks.onPermissionModeChange!("bypassPermissions");
-    await vi.waitFor(() => {
-      expect(lastValue?.permissionMode).toBe("bypassPermissions");
-    });
 
     // Test onSlashCommandsChange
     const newCommands = [
       { id: "cmd", description: "desc", name: "cmd", handler: vi.fn() },
     ];
     callbacks.onSlashCommandsChange!(newCommands);
+
     await vi.waitFor(() => {
+      expect(lastValue?.messages).toEqual(newMessages);
+      expect(lastValue?.mcpServers).toEqual(newServers);
+      expect(lastValue?.sessionId).toBe("new-session");
+      expect(lastValue?.latestTotalTokens).toBe(100);
+      expect(lastValue?.isCompressing).toBe(true);
+      expect(lastValue?.backgroundTasks).toEqual(newTasks);
+      expect(lastValue?.subagentMessages["sub1"]).toHaveLength(1);
+      expect(lastValue?.permissionMode).toBe("bypassPermissions");
       expect(lastValue?.slashCommands).toEqual(newCommands);
     });
   });
@@ -789,9 +779,6 @@ describe("ChatProvider", () => {
     ];
     Object.assign(mockAgent, { messages: newMessages });
 
-    // Use fake timers to control the throttle timer
-    vi.useFakeTimers();
-
     callbacks.onMessagesChange!(newMessages);
 
     // Get the useInput callback
@@ -806,8 +793,6 @@ describe("ChatProvider", () => {
     vi.advanceTimersByTime(100);
 
     expect(lastValue?.messages).toEqual([]);
-
-    vi.useRealTimers();
   });
 
   it("cancels confirmation with ESC key", async () => {
