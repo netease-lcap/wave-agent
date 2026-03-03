@@ -174,7 +174,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   }
 
   if (showHelp) {
-    return <HelpView onCancel={() => setShowHelp(false)} />;
+    return (
+      <HelpView onCancel={() => setShowHelp(false)} commands={slashCommands} />
+    );
   }
 
   if (showStatusCommand) {

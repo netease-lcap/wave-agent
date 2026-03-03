@@ -370,7 +370,8 @@ describe("InputBox Smoke Tests", () => {
       await vi.waitFor(
         () => {
           const output = stripAnsiColors(lastFrame() || "");
-          expect(output).toContain("Help & Key Bindings");
+          expect(output).toContain("General");
+          expect(output).toContain("Commands");
         },
         { timeout: 2000 },
       );
