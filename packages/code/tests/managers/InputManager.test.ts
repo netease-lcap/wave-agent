@@ -641,6 +641,126 @@ describe("InputManager", () => {
       expect(mockCallbacks.onAbortMessage).not.toHaveBeenCalled();
     });
 
+    it("should NOT handle escape to abort during loading if file selector is active", async () => {
+      manager.activateFileSelector(0);
+      const mockKey = {
+        escape: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      } as Key;
+
+      await manager.handleInput("", mockKey, [], true, false); // isLoading = true
+
+      expect(mockCallbacks.onAbortMessage).not.toHaveBeenCalled();
+    });
+
+    it("should NOT handle escape to abort during loading if command selector is active", async () => {
+      manager.activateCommandSelector(0);
+      const mockKey = {
+        escape: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      } as Key;
+
+      await manager.handleInput("", mockKey, [], true, false); // isLoading = true
+
+      expect(mockCallbacks.onAbortMessage).not.toHaveBeenCalled();
+    });
+
+    it("should NOT handle escape to abort during loading if history search is active", async () => {
+      manager.activateHistorySearch();
+      const mockKey = {
+        escape: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      } as Key;
+
+      await manager.handleInput("", mockKey, [], true, false); // isLoading = true
+
+      expect(mockCallbacks.onAbortMessage).not.toHaveBeenCalled();
+    });
+
+    it("should NOT handle escape to abort during loading if help is active", async () => {
+      manager.setShowHelp(true);
+      const mockKey = {
+        escape: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      } as Key;
+
+      await manager.handleInput("", mockKey, [], true, false); // isLoading = true
+
+      expect(mockCallbacks.onAbortMessage).not.toHaveBeenCalled();
+    });
+
+    it("should NOT handle escape to abort during loading if status command is active", async () => {
+      manager.setShowStatusCommand(true);
+      const mockKey = {
+        escape: true,
+        return: false,
+        upArrow: false,
+        downArrow: false,
+        leftArrow: false,
+        rightArrow: false,
+        ctrl: false,
+        backspace: false,
+        delete: false,
+        pageDown: false,
+        pageUp: false,
+        shift: false,
+        tab: false,
+        meta: false,
+      } as Key;
+
+      await manager.handleInput("", mockKey, [], true, false); // isLoading = true
+
+      expect(mockCallbacks.onAbortMessage).not.toHaveBeenCalled();
+    });
+
     it("should prevent submission when loading", async () => {
       manager.insertTextAtCursor("test");
 
