@@ -690,6 +690,19 @@ export class InputManager {
     return this.permissionMode;
   }
 
+  isAnySelectorOrManagerActive(): boolean {
+    return (
+      this.showFileSelector ||
+      this.showCommandSelector ||
+      this.showHistorySearch ||
+      this.showBackgroundTaskManager ||
+      this.showMcpManager ||
+      this.showRewindManager ||
+      this.showHelp ||
+      this.showStatusCommand
+    );
+  }
+
   setPermissionMode(mode: PermissionMode): void {
     this.permissionMode = mode;
   }
@@ -938,10 +951,7 @@ export class InputManager {
     if (
       key.escape &&
       (isLoading || isCommandRunning) &&
-      !this.showBackgroundTaskManager &&
-      !this.showMcpManager &&
-      !this.showRewindManager &&
-      !this.showStatusCommand
+      !this.isAnySelectorOrManagerActive()
     ) {
       // Unified interrupt for AI message generation and command execution
       this.callbacks.onAbortMessage?.();
@@ -956,16 +966,7 @@ export class InputManager {
     }
 
     // Check if any selector is active
-    if (
-      this.showFileSelector ||
-      this.showCommandSelector ||
-      this.showHistorySearch ||
-      this.showBackgroundTaskManager ||
-      this.showMcpManager ||
-      this.showRewindManager ||
-      this.showHelp ||
-      this.showStatusCommand
-    ) {
+    if (this.isAnySelectorOrManagerActive()) {
       if (
         this.showBackgroundTaskManager ||
         this.showMcpManager ||
