@@ -83,6 +83,14 @@ export function substituteCommandParameters(
   content: string,
   argsString: string,
 ): string {
+  if (!hasParameterPlaceholders(content)) {
+    if (!argsString.trim()) {
+      return content;
+    }
+    const separator = content && !/\s$/.test(content) ? " " : "";
+    return `${content}${separator}${argsString}`;
+  }
+
   const args = parseCommandArguments(argsString);
 
   let result = content;

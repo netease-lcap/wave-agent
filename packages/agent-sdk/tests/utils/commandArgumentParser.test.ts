@@ -119,12 +119,46 @@ describe("Command Argument Parser", () => {
       expect(substituteCommandParameters(content, args)).toBe("Args: a j b");
     });
 
-    it("should handle no parameters in content", () => {
+    it("should handle no parameters in content by appending arguments", () => {
       const content = "No parameters here";
       const args = "some args";
       expect(substituteCommandParameters(content, args)).toBe(
-        "No parameters here",
+        "No parameters here some args",
       );
+    });
+
+    it("should handle empty content with arguments", () => {
+      const content = "";
+      const args = "some args";
+      expect(substituteCommandParameters(content, args)).toBe("some args");
+    });
+
+    it("should handle content with trailing spaces with arguments", () => {
+      const content = "Content  ";
+      const args = "some args";
+      expect(substituteCommandParameters(content, args)).toBe(
+        "Content  some args",
+      );
+    });
+
+    it("should handle content without trailing spaces with arguments", () => {
+      const content = "Content";
+      const args = "some args";
+      expect(substituteCommandParameters(content, args)).toBe(
+        "Content some args",
+      );
+    });
+
+    it("should handle empty arguments with content without placeholders", () => {
+      const content = "Content";
+      const args = "";
+      expect(substituteCommandParameters(content, args)).toBe("Content");
+    });
+
+    it("should handle whitespace-only arguments with content without placeholders", () => {
+      const content = "Content";
+      const args = "   ";
+      expect(substituteCommandParameters(content, args)).toBe("Content");
     });
 
     it("should handle empty arguments", () => {

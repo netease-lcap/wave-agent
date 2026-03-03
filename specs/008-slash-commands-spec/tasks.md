@@ -35,4 +35,5 @@
 - [X] T031 Update `SlashCommandManager.registerPluginCommands` to accept and store plugin path for each command in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 - [X] T032 Update `SlashCommandManager.executeCustomCommandInMainAgent` to set `WAVE_PLUGIN_ROOT` environment variable when executing bash commands for plugin commands in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 - [X] T033 Add tests for plugin commands with WAVE_PLUGIN_ROOT environment variable in `packages/agent-sdk/tests/managers/slashCommandManager.test.ts`
+- [X] T034 Implement automatic argument appending when no placeholders are present in slash commands and skills in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 

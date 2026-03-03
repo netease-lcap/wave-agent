@@ -179,6 +179,13 @@ Markdown content with instructions...
 - Supporting files are included in skill path context for relative resolution
 - Users can organize additional resources as needed (documentation, scripts, templates, etc.)
 
+## Parameter Substitution Contract
+
+**Substitution Rules**:
+- Wave MUST support parameter substitution in skills using `$1`, `$2`, ..., and `$ARGUMENTS`.
+- If no `$ARGUMENTS` or `$n` placeholders are present in the skill content, all arguments MUST be automatically appended to the end of the content.
+- Bash command execution in skills using `!`command`` syntax MUST be supported.
+
 ## Error Handling Contract
 
 ### Error Categories
