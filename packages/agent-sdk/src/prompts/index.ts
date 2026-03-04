@@ -75,7 +75,7 @@ Goal: Gain a comprehensive understanding of the user's request by reading throug
 ### Phase 2: Design
 Goal: Design an implementation approach.
 
-Launch ${AGENT_TOOL_NAME} agent(s) with subagent_type=${PLAN_SUBAGENT_TYPE} to design the implementation based on the user's intent and your exploration results from Phase 1.
+Launch agent(s) with subagent_type=${PLAN_SUBAGENT_TYPE} to design the implementation based on the user's intent and your exploration results from Phase 1.
 
 You can launch up to 3 agent(s) in parallel.
 

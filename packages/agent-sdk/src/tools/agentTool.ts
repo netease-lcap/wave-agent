@@ -1,8 +1,5 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
-import {
-  EXPLORE_SUBAGENT_TYPE,
-  PLAN_SUBAGENT_TYPE,
-} from "../constants/subagents.js";
+import { EXPLORE_SUBAGENT_TYPE } from "../constants/subagents.js";
 import { AGENT_TOOL_NAME } from "../constants/tools.js";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import {
@@ -58,19 +55,7 @@ export const agentTool: ToolPlugin = {
               toolsStr = " (Tools: *)";
             }
 
-            let extraInfo = "";
-            if (config.name === EXPLORE_SUBAGENT_TYPE) {
-              extraInfo =
-                '\n  When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.';
-            } else if (config.name === PLAN_SUBAGENT_TYPE) {
-              extraInfo =
-                "\n  Returns step-by-step plans, identifies critical files, and considers architectural trade-offs.";
-            } else if (config.name === "claude-code-guide") {
-              extraInfo =
-                '\n  **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed claude-code-guide agent that you can resume using the "resume" parameter.';
-            }
-
-            return `- ${config.name}: ${config.description}${toolsStr}${extraInfo}`;
+            return `- ${config.name}: ${config.description}${toolsStr}`;
           })
           .join("\n")
       : "";
