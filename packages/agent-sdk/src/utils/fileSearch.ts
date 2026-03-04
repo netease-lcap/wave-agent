@@ -12,9 +12,6 @@ export const convertPathsToFileItems = (paths: Path[]): FileItem[] => {
     if (isDirectory && !path.endsWith("/")) {
       path += "/";
     }
-    if (!path.startsWith("./") && !path.startsWith("/")) {
-      path = `./${path}`;
-    }
     return {
       path,
       type: isDirectory ? "directory" : "file",
