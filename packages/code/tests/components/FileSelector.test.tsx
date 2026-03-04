@@ -5,7 +5,7 @@ import { FileSelector, FileItem } from "../../src/components/FileSelector.js";
 
 describe("FileSelector", () => {
   const mockFiles: FileItem[] = Array.from({ length: 20 }, (_, i) => ({
-    path: `file${i + 1}.txt`,
+    path: `./file${i + 1}.txt`,
     type: "file",
   }));
 
@@ -21,8 +21,8 @@ describe("FileSelector", () => {
 
     const output = lastFrame();
     expect(output).toContain("Select File/Directory");
-    expect(output).toContain("file1.txt");
-    expect(output).toContain("file10.txt");
+    expect(output).toContain("./file1.txt");
+    expect(output).toContain("./file10.txt");
     expect(output).toContain("... 10 more files below");
   });
 
@@ -31,7 +31,7 @@ describe("FileSelector", () => {
     const propsWithManyFiles = {
       ...mockProps,
       files: Array.from({ length: 25 }, (_, i) => ({
-        path: `file${i + 1}.txt`,
+        path: `./file${i + 1}.txt`,
         type: "file" as const,
       })),
     };
@@ -64,7 +64,7 @@ describe("FileSelector", () => {
     // Test scrolling window logic
     const maxDisplay = 10;
     const files: FileItem[] = Array.from({ length: 20 }, (_, i) => ({
-      path: `file${i + 1}.txt`,
+      path: `./file${i + 1}.txt`,
       type: "file",
     }));
 
@@ -102,20 +102,20 @@ describe("FileSelector", () => {
 
   it("should display directory paths correctly", () => {
     const mixedFiles: FileItem[] = [
-      { path: "src/", type: "directory" },
-      { path: "src/components/", type: "directory" },
-      { path: "package.json", type: "file" },
-      { path: "README.md", type: "file" },
+      { path: "./src/", type: "directory" },
+      { path: "./src/components/", type: "directory" },
+      { path: "./package.json", type: "file" },
+      { path: "./README.md", type: "file" },
     ];
 
     const propsWithMixed = { ...mockProps, files: mixedFiles };
     const { lastFrame } = render(<FileSelector {...propsWithMixed} />);
 
     const output = lastFrame();
-    expect(output).toContain("src/");
-    expect(output).toContain("src/components/");
-    expect(output).toContain("package.json");
-    expect(output).toContain("README.md");
+    expect(output).toContain("./src/");
+    expect(output).toContain("./src/components/");
+    expect(output).toContain("./package.json");
+    expect(output).toContain("./README.md");
     expect(output).not.toContain("📁");
     expect(output).not.toContain("📄");
   });
@@ -129,7 +129,7 @@ describe("FileSelector", () => {
       // Press Tab key (should select first file by default)
       stdin.write("\t");
 
-      expect(onSelectMock).toHaveBeenCalledWith("file1.txt");
+      expect(onSelectMock).toHaveBeenCalledWith("./file1.txt");
       expect(onSelectMock).toHaveBeenCalledTimes(1);
     });
 
@@ -164,8 +164,8 @@ describe("FileSelector", () => {
       stdinEnter.write("\r");
 
       // Both should call onSelect with the same file (first file by default)
-      expect(onSelectMockTab).toHaveBeenCalledWith("file1.txt");
-      expect(onSelectMockEnter).toHaveBeenCalledWith("file1.txt");
+      expect(onSelectMockTab).toHaveBeenCalledWith("./file1.txt");
+      expect(onSelectMockEnter).toHaveBeenCalledWith("./file1.txt");
       expect(onSelectMockTab).toHaveBeenCalledTimes(1);
       expect(onSelectMockEnter).toHaveBeenCalledTimes(1);
     });
@@ -173,9 +173,9 @@ describe("FileSelector", () => {
     it("should trigger onSelect with correct file path when Tab is pressed with different files", () => {
       // Test with a smaller, different set of files to ensure Tab works correctly
       const testFiles: FileItem[] = [
-        { path: "README.md", type: "file" },
-        { path: "package.json", type: "file" },
-        { path: "src", type: "directory" },
+        { path: "./README.md", type: "file" },
+        { path: "./package.json", type: "file" },
+        { path: "./src", type: "directory" },
       ];
 
       const onSelectMock = vi.fn();
@@ -189,13 +189,13 @@ describe("FileSelector", () => {
       // Press Tab key (should select first file by default)
       stdin.write("\t");
 
-      expect(onSelectMock).toHaveBeenCalledWith("README.md");
+      expect(onSelectMock).toHaveBeenCalledWith("./README.md");
       expect(onSelectMock).toHaveBeenCalledTimes(1);
     });
 
     it("should handle Tab key with single file", () => {
       const singleFile: FileItem[] = [
-        { path: "single-file.txt", type: "file" },
+        { path: "./single-file.txt", type: "file" },
       ];
 
       const onSelectMock = vi.fn();
@@ -209,15 +209,15 @@ describe("FileSelector", () => {
       // Press Tab key
       stdin.write("\t");
 
-      expect(onSelectMock).toHaveBeenCalledWith("single-file.txt");
+      expect(onSelectMock).toHaveBeenCalledWith("./single-file.txt");
       expect(onSelectMock).toHaveBeenCalledTimes(1);
     });
 
     it("should handle Tab key correctly with directory files", () => {
       const mixedFiles: FileItem[] = [
-        { path: "src/", type: "directory" },
-        { path: "components/", type: "directory" },
-        { path: "index.ts", type: "file" },
+        { path: "./src/", type: "directory" },
+        { path: "./components/", type: "directory" },
+        { path: "./index.ts", type: "file" },
       ];
 
       const onSelectMock = vi.fn();
@@ -231,7 +231,7 @@ describe("FileSelector", () => {
       // Press Tab key (should select first item - directory)
       stdin.write("\t");
 
-      expect(onSelectMock).toHaveBeenCalledWith("src/");
+      expect(onSelectMock).toHaveBeenCalledWith("./src/");
       expect(onSelectMock).toHaveBeenCalledTimes(1);
     });
   });

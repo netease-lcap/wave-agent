@@ -320,11 +320,11 @@ describe("inputHandlers", () => {
         inputText: "@",
         cursorPosition: 1,
       };
-      handleFileSelect(state, dispatch, callbacks, "file.txt");
+      handleFileSelect(state, dispatch, callbacks, "./file.txt");
 
       expect(dispatch).toHaveBeenCalledWith({
         type: "SET_INPUT_TEXT",
-        payload: "file.txt ",
+        payload: "./file.txt ",
       });
       expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
     });
