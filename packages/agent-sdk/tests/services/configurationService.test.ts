@@ -440,9 +440,12 @@ describe("ConfigurationService", () => {
       const expectedAgentModel = process.env.WAVE_MODEL || "gemini-3-flash";
       const expectedFastModel =
         process.env.WAVE_FAST_MODEL || "gemini-2.5-flash";
+      const expectedMaxTokens = process.env.WAVE_MAX_OUTPUT_TOKENS
+        ? parseInt(process.env.WAVE_MAX_OUTPUT_TOKENS, 10)
+        : DEFAULT_WAVE_MAX_OUTPUT_TOKENS;
       expect(config.model).toBe(expectedAgentModel);
       expect(config.fastModel).toBe(expectedFastModel);
-      expect(config.maxTokens).toBe(DEFAULT_WAVE_MAX_OUTPUT_TOKENS);
+      expect(config.maxTokens).toBe(expectedMaxTokens);
     });
 
     it("should resolve from internal env", () => {
