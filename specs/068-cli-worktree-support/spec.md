@@ -133,6 +133,7 @@ As a developer, I want the CLI to automatically clean up the worktree if I haven
 - **FR-018**: System MUST trigger a `WorktreeCreate` hook event when a new worktree is created.
 - **FR-019**: The `WorktreeCreate` hook MUST provide a JSON input via stdin containing a `name` field. The hook MUST execute in the newly created worktree directory.
 - **FR-020**: The `WorktreeCreate` hook MUST NOT be triggered when reusing an existing worktree.
+- **FR-021**: All git worktrees MUST share the same session storage as the main repository. The project ID for session organization MUST be derived from the main repository root path.
 
 ### Key Entities
 

@@ -7,6 +7,7 @@ import { resolve, join } from "path";
 import { createHash } from "crypto";
 import { realpath, mkdir } from "fs/promises";
 import { homedir, platform } from "os";
+import { getGitProjectRoot } from "./gitUtils.js";
 
 /**
  * Project directory information
@@ -77,7 +78,8 @@ export class PathEncoder {
   async encode(originalPath: string): Promise<string> {
     // Resolve symbolic links and normalize path
     const resolvedPath = await this.resolvePath(originalPath);
-    return this.encodeSync(resolvedPath);
+    const projectRoot = getGitProjectRoot(resolvedPath);
+    return this.encodeSync(projectRoot ?? resolvedPath);
   }
 
   /**
@@ -212,13 +214,15 @@ export class PathEncoder {
     }
 
     // Encode the resolved path
-    const encodedName = await this.encode(resolvedPath);
+    const projectRoot = getGitProjectRoot(resolvedPath);
+    const encodedName = await this.encode(projectRoot ?? resolvedPath);
     const encodedPath = join(baseSessionDir, encodedName);
 
     // Generate hash if encoding resulted in truncation
     let pathHash: string | undefined;
-    if (resolvedPath.length > this.options.maxLength) {
-      pathHash = this.generateHash(resolvedPath, this.options.hashLength);
+    const pathToHash = projectRoot ?? resolvedPath;
+    if (pathToHash.length > this.options.maxLength) {
+      pathHash = this.generateHash(pathToHash, this.options.hashLength);
     }
 
     return {

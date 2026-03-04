@@ -3,6 +3,7 @@ import {
   PathEncoder,
   type PathEncodingOptions,
 } from "../../src/utils/pathEncoder.js";
+import { getGitProjectRoot } from "../../src/utils/gitUtils.js";
 import { realpath, mkdir } from "fs/promises";
 import { homedir, platform } from "os";
 
@@ -11,6 +12,9 @@ vi.mock("fs/promises");
 
 // Mock os
 vi.mock("os");
+
+// Mock gitUtils
+vi.mock("../../src/utils/gitUtils.js");
 
 describe("PathEncoder", () => {
   let pathEncoder: PathEncoder;
@@ -721,6 +725,63 @@ describe("PathEncoder", () => {
         // On other platforms, these characters should be replaced
         expect(encoded).not.toMatch(/[<>:|?*]/);
       }
+    });
+  });
+
+  describe("git worktree support", () => {
+    it("should use main repo root for encoding when in a worktree root", async () => {
+      const mainRepoRoot = "/home/user/main-repo";
+      const worktreeRoot = "/home/user/main-repo/.wave/worktrees/my-feature";
+
+      // Mock getGitProjectRoot to return mainRepoRoot when called with worktreeRoot
+      vi.mocked(getGitProjectRoot).mockImplementation((path) => {
+        if (path === worktreeRoot) return mainRepoRoot;
+        return null;
+      });
+
+      vi.mocked(realpath).mockImplementation((path) =>
+        Promise.resolve(path as string),
+      );
+
+      const result = await pathEncoder.encode(worktreeRoot);
+      expect(result).toBe("home-user-main-repo");
+      expect(getGitProjectRoot).toHaveBeenCalledWith(worktreeRoot);
+    });
+
+    it("should use main repo subdir for encoding when in a worktree subdir", async () => {
+      const mainRepoRoot = "/home/user/main-repo";
+      const worktreeRoot = "/home/user/main-repo/.wave/worktrees/my-feature";
+      const worktreeSubdir = `${worktreeRoot}/subdir`;
+      const mainRepoSubdir = `${mainRepoRoot}/subdir`;
+
+      // Mock getGitProjectRoot to return mainRepoSubdir when called with worktreeSubdir
+      vi.mocked(getGitProjectRoot).mockImplementation((path) => {
+        if (path === worktreeSubdir) return mainRepoSubdir;
+        return null;
+      });
+
+      vi.mocked(realpath).mockImplementation((path) =>
+        Promise.resolve(path as string),
+      );
+
+      const result = await pathEncoder.encode(worktreeSubdir);
+      expect(result).toBe("home-user-main-repo-subdir");
+      expect(getGitProjectRoot).toHaveBeenCalledWith(worktreeSubdir);
+    });
+
+    it("should use actual path for encoding when NOT in a worktree", async () => {
+      const mainRepoRoot = "/home/user/main-repo";
+
+      // Mock getGitProjectRoot to return null for main repo root
+      vi.mocked(getGitProjectRoot).mockReturnValue(null);
+
+      vi.mocked(realpath).mockImplementation((path) =>
+        Promise.resolve(path as string),
+      );
+
+      const result = await pathEncoder.encode(mainRepoRoot);
+      expect(result).toBe("home-user-main-repo");
+      expect(getGitProjectRoot).toHaveBeenCalledWith(mainRepoRoot);
     });
   });
 });

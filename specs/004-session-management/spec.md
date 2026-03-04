@@ -64,7 +64,7 @@ As a developer using subagents, I want subagent sessions to be clearly identifie
 
 - **FR-001**: All session data MUST be stored in `~/.wave/projects`.
 - **FR-002**: Sessions MUST be grouped into subdirectories based on an encoded version of the project's working directory path.
-- **FR-003**: Working directory paths MUST be encoded to be filesystem-safe, resolving symbolic links and handling special characters.
+- **FR-003**: Working directory paths MUST be encoded to be filesystem-safe, resolving symbolic links and handling special characters. For git repositories, the project ID MUST be derived from the main repository root, ensuring that all git worktrees share the same session storage.
 - **FR-004**: Encoded directory names MUST be limited to 200 characters, using a hash suffix for longer paths.
 - **FR-005**: Sessions MUST be stored in JSONL (JSON Lines) format, with one JSON object per line representing a message.
 - **FR-006**: Main session files MUST be named using a UUID. The first session ID in a chain MUST be designated as the `rootSessionId` and persisted in the `SessionIndex`.

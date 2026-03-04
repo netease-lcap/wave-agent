@@ -108,6 +108,41 @@ export function getDefaultRemoteBranch(cwd: string): string {
 }
 
 /**
+ * Get the main repository root if the current directory is part of a git worktree.
+ * @param cwd Working directory
+ * @returns Main repository root path if in a worktree, null otherwise
+ */
+export function getGitProjectRoot(cwd: string): string | null {
+  try {
+    const toplevel = execSync("git rev-parse --show-toplevel", {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+
+    const commonDir = execSync("git rev-parse --git-common-dir", {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+
+    const absoluteToplevel = path.resolve(cwd, toplevel);
+    const absoluteCommonDir = path.resolve(cwd, commonDir);
+    const mainRepoRoot = path.dirname(absoluteCommonDir);
+
+    if (absoluteToplevel !== mainRepoRoot) {
+      // It's a worktree. Map the current path to the main repo.
+      const absoluteCwd = path.resolve(cwd);
+      const relativePath = path.relative(absoluteToplevel, absoluteCwd);
+      return path.resolve(mainRepoRoot, relativePath);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Check if there are uncommitted changes in the working directory
  * @param cwd Working directory
  * @returns True if there are uncommitted changes
