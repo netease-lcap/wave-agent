@@ -1,6 +1,6 @@
 {
   "name": "wave-agent-sdk",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "SDK for building AI-powered development tools and agents",
   "keywords": [
     "ai",
