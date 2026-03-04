@@ -58,6 +58,7 @@ export const HelpView: React.FC<HelpViewProps> = ({
   const helpItems = [
     { key: "@", description: "Reference files" },
     { key: "/", description: "Commands" },
+    { key: "!", description: "Shell commands (e.g. !ls)" },
     { key: "Ctrl+R", description: "Search history" },
     { key: "Ctrl+O", description: "Expand/collapse messages" },
     { key: "Ctrl+T", description: "Toggle task list" },
