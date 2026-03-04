@@ -7,7 +7,6 @@ export const EXIT_PLAN_MODE_TOOL_NAME = "ExitPlanMode";
 export const GLOB_TOOL_NAME = "Glob";
 export const GREP_TOOL_NAME = "Grep";
 export const LSP_TOOL_NAME = "LSP";
-export const LS_TOOL_NAME = "LS";
 export const READ_TOOL_NAME = "Read";
 export const SKILL_TOOL_NAME = "Skill";
 export const TASK_TOOL_NAME = "Task";
