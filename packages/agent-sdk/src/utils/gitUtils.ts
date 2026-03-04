@@ -47,6 +47,7 @@ export function getGitRepoRoot(cwd: string): string {
  * @returns Default remote branch name
  */
 export function getDefaultRemoteBranch(cwd: string): string {
+  // 1. Try git symbolic-ref refs/remotes/origin/HEAD
   try {
     const head = execSync("git symbolic-ref refs/remotes/origin/HEAD", {
       cwd,
@@ -55,9 +56,55 @@ export function getDefaultRemoteBranch(cwd: string): string {
     }).trim();
     return head.replace("refs/remotes/", "");
   } catch {
-    // Fallback to origin/main if origin/HEAD is not set
-    return "origin/main";
+    // Ignore error and proceed to next step
   }
+
+  // 2. Check if origin/main exists
+  try {
+    execSync("git rev-parse --verify origin/main", {
+      cwd,
+      stdio: "ignore",
+    });
+    return "origin/main";
+  } catch {
+    // Ignore error and proceed to next step
+  }
+
+  // 3. Check if origin/master exists
+  try {
+    execSync("git rev-parse --verify origin/master", {
+      cwd,
+      stdio: "ignore",
+    });
+    return "origin/master";
+  } catch {
+    // Ignore error and proceed to next step
+  }
+
+  // 4. Try to get the current branch's upstream
+  try {
+    return execSync("git rev-parse --abbrev-ref --symbolic-full-name @{u}", {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    // Ignore error and proceed to next step
+  }
+
+  // 5. Try to get the current branch name
+  try {
+    return execSync("git rev-parse --abbrev-ref HEAD", {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    // Ignore error and proceed to next step
+  }
+
+  // 6. Fallback to origin/main
+  return "origin/main";
 }
 
 /**

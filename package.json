@@ -17,6 +17,7 @@
     "test:coverage": "pnpm -r test:coverage",
     "lint": "pnpm -r lint",
     "format": "prettier --write .",
+    "print-bin": "echo $(pwd)/packages/code/bin/wave-code.js",
     "ci": "pnpm type-check && pnpm lint && pnpm test:coverage",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
