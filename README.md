@@ -10,18 +10,20 @@ This is a monorepo that contains multiple packages working together to provide A
 
 #### [`packages/code`](./packages/code)
 
-CLI-based code assistant with interactive terminal interface built with React Ink. Provides real-time chat with AI, file browsing, and session management.
+CLI-based code assistant with interactive terminal interface built with React Ink. Similar to **Claude Code**.
 
 - **Main Command**: `wave-code` or `wave` (short alias)
 - **Technology**: Node.js, TypeScript, React Ink
-- **Features**: Interactive CLI, file browser, AI chat, session restoration
 
 #### [`packages/agent-sdk`](./packages/agent-sdk)
 
-Core Node.js SDK providing AI services, tools, and utilities used by the CLI frontend.
+Core Node.js SDK used by the CLI frontend. Similar to **Claude Agent SDK**.
 
 - **Technology**: Node.js, TypeScript
-- **Features**: AI model integration, tool system, memory management
+
+### 📄 Specifications
+
+Detailed feature specifications and design documents can be found in the [`specs/`](./specs) directory.
 
 ### 🚀 Quick Start
 
