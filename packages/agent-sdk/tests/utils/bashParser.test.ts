@@ -3,6 +3,7 @@ import {
   splitBashCommand,
   stripEnvVars,
   stripRedirections,
+  hasWriteRedirections,
 } from "../../src/utils/bashParser.js";
 
 describe("bashParser", () => {
@@ -44,10 +45,12 @@ describe("bashParser", () => {
     });
 
     it("should handle subshells with redirections and env vars", () => {
-      expect(splitBashCommand("(echo foo) > out.txt")).toEqual(["echo foo"]);
+      expect(splitBashCommand("(echo foo) > out.txt")).toEqual([
+        "(echo foo) > out.txt",
+      ]);
       expect(
         splitBashCommand("VAR=val (echo foo && echo bar) > out.txt"),
-      ).toEqual(["echo foo", "echo bar"]);
+      ).toEqual(["VAR=val (echo foo && echo bar) > out.txt"]);
     });
 
     it("should handle complex combinations", () => {
@@ -121,6 +124,41 @@ describe("bashParser", () => {
       expect(stripRedirections('echo  "a  b"')).toBe('echo "a  b"');
       expect(stripRedirections("ls    -l")).toBe("ls -l");
       expect(stripRedirections("ls > out.txt  -l")).toBe("ls -l");
+    });
+  });
+
+  describe("hasWriteRedirections", () => {
+    it("should detect simple write redirections", () => {
+      expect(hasWriteRedirections("echo hi > file")).toBe(true);
+      expect(hasWriteRedirections("echo hi >> file")).toBe(true);
+      expect(hasWriteRedirections("ls > file")).toBe(true);
+    });
+
+    it("should detect write redirections with file descriptors", () => {
+      expect(hasWriteRedirections("ls 2> file")).toBe(true);
+      expect(hasWriteRedirections("ls &> file")).toBe(true);
+      expect(hasWriteRedirections("ls >| file")).toBe(true);
+      expect(hasWriteRedirections("ls 2>&1")).toBe(true);
+    });
+
+    it("should NOT detect read redirections", () => {
+      expect(hasWriteRedirections("cat < file")).toBe(false);
+      expect(hasWriteRedirections("cat <<EOF")).toBe(false);
+    });
+
+    it("should NOT detect quoted or escaped redirections", () => {
+      expect(hasWriteRedirections('echo "hi > file"')).toBe(false);
+      expect(hasWriteRedirections("echo 'hi > file'")).toBe(false);
+      expect(hasWriteRedirections("echo hi \\> file")).toBe(false);
+    });
+
+    it("should handle complex commands", () => {
+      expect(hasWriteRedirections("ls && echo hi > file")).toBe(true);
+      expect(hasWriteRedirections("ls > file && echo hi")).toBe(true);
+    });
+
+    it("should detect write redirections on subshells", () => {
+      expect(hasWriteRedirections("(echo hi) > file")).toBe(true);
     });
   });
 });

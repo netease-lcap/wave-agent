@@ -100,8 +100,13 @@ export function splitBashCommand(command: string): string[] {
 
   const finalResult: string[] = [];
   for (const part of parts) {
-    const stripped = stripRedirections(stripEnvVars(part));
-    if (stripped.startsWith("(") && stripped.endsWith(")")) {
+    const envStripped = stripEnvVars(part);
+    const stripped = stripRedirections(envStripped);
+    if (
+      stripped.startsWith("(") &&
+      stripped.endsWith(")") &&
+      stripped === envStripped
+    ) {
       const inner = stripped.substring(1, stripped.length - 1).trim();
       if (inner) {
         finalResult.push(...splitBashCommand(inner));
@@ -284,6 +289,49 @@ export function stripRedirections(command: string): string {
   }
 
   return result.trim();
+}
+
+/**
+ * Checks if a bash command contains any write redirections (>, >>, &>, 2>, >|).
+ */
+export function hasWriteRedirections(command: string): boolean {
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    if (inSingleQuote || inDoubleQuote) {
+      continue;
+    }
+
+    if (char === ">") {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**

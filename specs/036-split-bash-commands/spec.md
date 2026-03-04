@@ -5,7 +5,7 @@
 **Status**: Implemented  
 **Input**: User description: "when confirm bash tool with \"cmd1 && cmd2\" or other chain cmd, and user select don't ask, system shall split into multi simple cmds and save to permissions.allow array. if the sample cmd is builtin safe cmd(already implemented) like cd, do not save to permissions.allow array."
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Allow Chained Commands with Safe Builtins (Priority: P1)
 
@@ -54,10 +54,11 @@ As a user, when I run a chain consisting only of safe commands, I want the syste
 ### Edge Cases
 
 - **What happens when a command has environment variables?** The system should strip environment variables before checking if it's a safe command, but should probably save the original command (or the stripped version depending on existing policy) to the allow list.
-- **How does system handle subshells?** Commands inside subshells `(cmd)` should be split and processed recursively if they contain operators.
+- **How does system handle subshells?** Commands inside subshells `(cmd)` should be split and processed recursively if they contain operators. If a subshell has a redirection (e.g., `(echo hi) > file`), it should be treated as a single command to preserve the redirection.
 - **What if a command is already allowed?** The system should not add duplicate rules to the `permissions.allow` array.
+- **What about redirections?** Redirections should be preserved in the rules to ensure that the permission is granted for the specific operation. Write redirections should never be automatically allowed by default rules.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -69,7 +70,7 @@ As a user, when I run a chain consisting only of safe commands, I want the syste
 - **FR-006**: System MUST ensure that subsequent executions of any of the saved simple commands do not prompt the user if they match an entry in the `permissions.allow` list.
 - **FR-007**: System MUST handle nested commands (e.g., in subshells) by splitting them into simple commands.
 
-### Key Entities *(include if feature involves data)*
+### Key Entities _(include if feature involves data)_
 
 - **Command**: A string representing a bash command.
 - **Permission Rule**: A string in the format `ToolName(input)` (e.g., `Bash(ls)`) used to match allowed executions.
