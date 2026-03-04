@@ -176,4 +176,54 @@ describe("MessageList Component", () => {
       expect(output).toContain("Third - Message 3");
     });
   });
+
+  describe("forceStatic prop", () => {
+    it("should render dynamic blocks even when forceStatic is true", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          blocks: [
+            {
+              type: "tool",
+              name: "test-tool",
+              parameters: "{}",
+              stage: "running",
+            },
+          ],
+        },
+      ];
+
+      const { lastFrame } = render(
+        <MessageList messages={messages} forceStatic={true} />,
+      );
+
+      const output = lastFrame();
+      expect(output).toContain("test-tool");
+    });
+
+    it("should render dynamic blocks when forceStatic is false", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          blocks: [
+            {
+              type: "tool",
+              name: "test-tool",
+              parameters: "{}",
+              stage: "running",
+            },
+          ],
+        },
+      ];
+
+      const { lastFrame } = render(
+        <MessageList messages={messages} forceStatic={false} />,
+      );
+
+      const output = lastFrame();
+      expect(output).toContain("test-tool");
+    });
+  });
 });

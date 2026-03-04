@@ -95,7 +95,7 @@ export const ChatInterface: React.FC = () => {
       <MessageList
         messages={messages}
         isExpanded={isExpanded}
-        hideDynamicBlocks={isConfirmationVisible}
+        forceStatic={isConfirmationVisible && isConfirmationTooTall}
         version={version}
         workdir={workdir}
         model={model}
