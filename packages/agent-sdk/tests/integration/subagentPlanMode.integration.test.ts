@@ -190,7 +190,7 @@ describe("Subagent Plan Mode Integration", () => {
     (instance.aiManager as unknown as { stream: boolean }).stream = false;
 
     // Execute task
-    await subagentManager.executeTask(instance, "Test prompt");
+    await subagentManager.executeAgent(instance, "Test prompt");
 
     // Verify the system prompt sent to callAgent
     expect(lastSystemPrompt).toBeDefined();

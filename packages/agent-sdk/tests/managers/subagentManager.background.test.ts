@@ -129,12 +129,12 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     await subagentManager.backgroundInstance(instance.subagentId);
 
     // Trigger internalExecute completion logic
-    // We can't easily trigger the internal private method, but we can call executeTask
+    // We can't easily trigger the internal private method, but we can call executeAgent
     // which calls internalExecute.
     vi.mocked(instance.messageManager.getMessages).mockReturnValue([
       { role: "assistant", blocks: [{ type: "text", content: "Done" }] },
     ] as unknown as ReturnType<typeof instance.messageManager.getMessages>);
-    await subagentManager.executeTask(instance, "test prompt");
+    await subagentManager.executeAgent(instance, "test prompt");
 
     expect(mockTask.status).toBe("completed");
     expect(mockTask.endTime).toBeGreaterThan(0);
@@ -172,7 +172,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     vi.mocked(instance.messageManager.getMessages).mockReturnValue([]);
 
     await expect(
-      subagentManager.executeTask(instance, "test prompt"),
+      subagentManager.executeAgent(instance, "test prompt"),
     ).rejects.toThrow("AI Error");
 
     expect(mockTask.status).toBe("failed");

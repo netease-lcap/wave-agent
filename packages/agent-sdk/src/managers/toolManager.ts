@@ -11,7 +11,7 @@ import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
 import { readTool } from "../tools/readTool.js";
 import { lspTool } from "../tools/lspTool.js";
-import { taskTool } from "../tools/taskTool.js";
+import { agentTool } from "../tools/agentTool.js";
 import { skillTool } from "../tools/skillTool.js";
 import {
   taskCreateTool,
@@ -77,10 +77,10 @@ class ToolManager {
    *
    * This method can be called multiple times safely. When called without dependencies,
    * it registers basic tools (Bash, Read, Write, TaskCreate, etc.). When called with
-   * dependencies, it also registers tools that require managers (Task, Skill).
+   * dependencies, it also registers tools that require managers (Agent, Skill).
    *
    * @param deps Optional dependencies for advanced tools
-   * @param deps.subagentManager SubagentManager instance for Task tool
+   * @param deps.subagentManager SubagentManager instance for Agent tool
    * @param deps.skillManager SkillManager instance for Skill tool
    *
    * @example
@@ -108,7 +108,7 @@ class ToolManager {
       grepTool,
       readTool,
       lspTool,
-      taskTool,
+      agentTool,
       skillTool,
       taskCreateTool,
       taskGetTool,

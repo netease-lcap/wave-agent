@@ -73,7 +73,7 @@ export interface ToolContext {
   foregroundTaskManager?: import("../types/processes.js").IForegroundTaskManager;
   /** Task manager instance for task management */
   taskManager: import("../services/taskManager.js").TaskManager;
-  /** Subagent manager instance for task delegation */
+  /** Subagent manager instance for agent delegation */
   subagentManager?: import("../managers/subagentManager.js").SubagentManager;
   /** Skill manager instance for skill invocation */
   skillManager?: import("../managers/skillManager.js").SkillManager;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { taskTool } from "../../src/tools/taskTool.js";
+import { agentTool } from "../../src/tools/agentTool.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import {
   SubagentManager,
@@ -12,7 +12,7 @@ import { Container } from "../../src/utils/container.js";
 // Mock the subagent manager
 vi.mock("../../src/managers/subagentManager.js");
 
-describe("Task Tool Completion shortResult", () => {
+describe("Agent Tool Completion shortResult", () => {
   let mockSubagentManager: SubagentManager;
   const mockToolContext: ToolContext = {
     abortSignal: new AbortController().signal,
@@ -38,7 +38,7 @@ describe("Task Tool Completion shortResult", () => {
       getConfigurations: vi.fn(() => [gpConfig]),
       findSubagent: vi.fn(),
       createInstance: vi.fn(),
-      executeTask: vi.fn(),
+      executeAgent: vi.fn(),
       cleanupInstance: vi.fn(),
     } as unknown as SubagentManager;
 
@@ -63,9 +63,9 @@ describe("Task Tool Completion shortResult", () => {
     vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
       mockInstance as unknown as SubagentInstance,
     );
-    vi.mocked(mockSubagentManager.executeTask).mockResolvedValue("done");
+    vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue("done");
 
-    const result = await taskTool.execute(
+    const result = await agentTool.execute(
       {
         description: "Test task",
         prompt: "Test prompt",
@@ -75,7 +75,7 @@ describe("Task Tool Completion shortResult", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.shortResult).toBe("Task completed (3 tools | 1,234 tokens)");
+    expect(result.shortResult).toBe("Agent completed (3 tools | 1,234 tokens)");
   });
 
   it("should show only tool count if tokens is 0", async () => {
@@ -92,9 +92,9 @@ describe("Task Tool Completion shortResult", () => {
     vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
       mockInstance as unknown as SubagentInstance,
     );
-    vi.mocked(mockSubagentManager.executeTask).mockResolvedValue("done");
+    vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue("done");
 
-    const result = await taskTool.execute(
+    const result = await agentTool.execute(
       {
         description: "Test task",
         prompt: "Test prompt",
@@ -103,10 +103,10 @@ describe("Task Tool Completion shortResult", () => {
       mockToolContext,
     );
 
-    expect(result.shortResult).toBe("Task completed (1 tools)");
+    expect(result.shortResult).toBe("Agent completed (1 tools)");
   });
 
-  it("should show only 'Task completed' if tool count is 0", async () => {
+  it("should show only 'Agent completed' if tool count is 0", async () => {
     const mockInstance = {
       subagentId: "gp-test-id",
       lastTools: [],
@@ -120,9 +120,9 @@ describe("Task Tool Completion shortResult", () => {
     vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
       mockInstance as unknown as SubagentInstance,
     );
-    vi.mocked(mockSubagentManager.executeTask).mockResolvedValue("done");
+    vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue("done");
 
-    const result = await taskTool.execute(
+    const result = await agentTool.execute(
       {
         description: "Test task",
         prompt: "Test prompt",
@@ -131,6 +131,6 @@ describe("Task Tool Completion shortResult", () => {
       mockToolContext,
     );
 
-    expect(result.shortResult).toBe("Task completed");
+    expect(result.shortResult).toBe("Agent completed");
   });
 });

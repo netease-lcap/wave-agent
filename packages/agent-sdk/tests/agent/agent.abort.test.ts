@@ -372,7 +372,7 @@ describe("Agent - Abort Handling", () => {
       // Create 12 operations to exceed the warning threshold
       for (let i = 0; i < 12; i++) {
         const promise = new Promise<void>((resolve, reject) => {
-          // Simulate what SubagentManager.executeTask does
+          // Simulate what SubagentManager.executeAgent does
           if (abortController.signal.aborted) {
             reject(new Error("Already aborted"));
             return;

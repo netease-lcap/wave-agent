@@ -142,7 +142,7 @@ describe("skillTool fork", () => {
     const mockSubagentManager = {
       findSubagent: vi.fn().mockResolvedValue({ name: "typescript-expert" }),
       createInstance: vi.fn().mockResolvedValue(mockSubagentInstance),
-      executeTask: vi.fn().mockResolvedValue("Subagent execution result"),
+      executeAgent: vi.fn().mockResolvedValue("Subagent execution result"),
       cleanupInstance: vi.fn(),
     };
 
@@ -167,7 +167,7 @@ describe("skillTool fork", () => {
       "typescript-expert",
     );
     expect(mockSubagentManager.createInstance).toHaveBeenCalled();
-    expect(mockSubagentManager.executeTask).toHaveBeenCalledWith(
+    expect(mockSubagentManager.executeAgent).toHaveBeenCalledWith(
       mockSubagentInstance,
       "Skill content to execute",
       undefined,

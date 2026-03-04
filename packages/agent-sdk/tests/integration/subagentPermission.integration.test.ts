@@ -207,7 +207,7 @@ describe("Subagent Permission Integration", () => {
         },
         lastTools: [],
       }),
-      executeTask: vi.fn().mockResolvedValue("task result"),
+      executeAgent: vi.fn().mockResolvedValue("task result"),
       cleanupInstance: vi.fn(),
     };
 

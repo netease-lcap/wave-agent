@@ -87,7 +87,7 @@ describe("SubagentManager - Abort Logic", () => {
 
     const abortController = new AbortController();
 
-    const executePromise = subagentManager.executeTask(
+    const executePromise = subagentManager.executeAgent(
       instance,
       "test prompt",
       abortController.signal,
@@ -97,7 +97,7 @@ describe("SubagentManager - Abort Logic", () => {
     // Abort immediately
     abortController.abort();
 
-    await expect(executePromise).rejects.toThrow("Task was aborted");
+    await expect(executePromise).rejects.toThrow("Agent was aborted");
 
     const aiManager = instance.aiManager;
     expect(aiManager.abortAIMessage).toHaveBeenCalled();
@@ -113,7 +113,7 @@ describe("SubagentManager - Abort Logic", () => {
     const abortController = new AbortController();
 
     // Execute in background
-    const taskId = await subagentManager.executeTask(
+    const taskId = await subagentManager.executeAgent(
       instance,
       "test prompt",
       abortController.signal,
@@ -162,7 +162,12 @@ describe("SubagentManager - Abort Logic", () => {
       return false;
     });
 
-    await subagentManager.executeTask(instance, "test prompt", undefined, true);
+    await subagentManager.executeAgent(
+      instance,
+      "test prompt",
+      undefined,
+      true,
+    );
 
     // Wait for background task to start
     await new Promise((resolve) => setTimeout(resolve, 10));

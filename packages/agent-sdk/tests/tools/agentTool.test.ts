@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { taskTool } from "../../src/tools/taskTool.js";
+import { agentTool } from "../../src/tools/agentTool.js";
 import { TaskManager } from "../../src/services/taskManager.js";
 import {
   SubagentManager,
@@ -12,7 +12,7 @@ import { Container } from "../../src/utils/container.js";
 // Mock the subagent manager
 vi.mock("../../src/managers/subagentManager.js");
 
-describe("Task Tool Background Execution", () => {
+describe("Agent Tool Background Execution", () => {
   let mockSubagentManager: SubagentManager;
   const mockToolContext: ToolContext = {
     abortSignal: new AbortController().signal,
@@ -38,7 +38,7 @@ describe("Task Tool Background Execution", () => {
       getConfigurations: vi.fn(() => [gpConfig]),
       findSubagent: vi.fn(),
       createInstance: vi.fn(),
-      executeTask: vi.fn(),
+      executeAgent: vi.fn(),
       backgroundInstance: vi.fn(),
     } as unknown as SubagentManager;
 
@@ -47,8 +47,10 @@ describe("Task Tool Background Execution", () => {
   });
 
   it("should support run_in_background parameter", async () => {
-    expect(taskTool.prompt?.({ availableSubagents: [gpConfig] })).toBeDefined();
-    expect(typeof taskTool.prompt?.({ availableSubagents: [gpConfig] })).toBe(
+    expect(
+      agentTool.prompt?.({ availableSubagents: [gpConfig] }),
+    ).toBeDefined();
+    expect(typeof agentTool.prompt?.({ availableSubagents: [gpConfig] })).toBe(
       "string",
     );
     const mockInstance = {
@@ -64,11 +66,11 @@ describe("Task Tool Background Execution", () => {
     vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
       mockInstance as unknown as SubagentInstance,
     );
-    vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
+    vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue(
       "task_12345", // Returns task ID when background is true
     );
 
-    const result = await taskTool.execute(
+    const result = await agentTool.execute(
       {
         description: "Background task",
         prompt: "Do something in background",
@@ -78,7 +80,7 @@ describe("Task Tool Background Execution", () => {
       mockToolContext,
     );
 
-    expect(mockSubagentManager.executeTask).toHaveBeenCalledWith(
+    expect(mockSubagentManager.executeAgent).toHaveBeenCalledWith(
       mockInstance,
       "Do something in background",
       mockToolContext.abortSignal,
@@ -86,9 +88,9 @@ describe("Task Tool Background Execution", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain("Task started in background");
+    expect(result.content).toContain("Agent started in background");
     expect(result.content).toContain("task_12345");
-    expect(result.shortResult).toBe("Task started in background: task_12345");
+    expect(result.shortResult).toBe("Agent started in background: task_12345");
   });
 
   it("should add '...' to shortResult when toolCount > 2", async () => {
@@ -120,9 +122,9 @@ describe("Task Tool Background Execution", () => {
         return mockInstance as unknown as SubagentInstance;
       },
     );
-    vi.mocked(mockSubagentManager.executeTask).mockResolvedValue("done");
+    vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue("done");
 
-    await taskTool.execute(
+    await agentTool.execute(
       {
         description: "Test",
         prompt: "Test",
@@ -165,9 +167,9 @@ describe("Task Tool Background Execution", () => {
         return mockInstance as unknown as SubagentInstance;
       },
     );
-    vi.mocked(mockSubagentManager.executeTask).mockResolvedValue("done");
+    vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue("done");
 
-    await taskTool.execute(
+    await agentTool.execute(
       {
         description: "Test",
         prompt: "Test",
@@ -182,13 +184,13 @@ describe("Task Tool Background Execution", () => {
   });
 
   it("should handle missing parameters", async () => {
-    const result = await taskTool.execute({}, mockToolContext);
+    const result = await agentTool.execute({}, mockToolContext);
     expect(result.success).toBe(false);
     expect(result.error).toContain("description parameter is required");
   });
 
   it("should handle missing prompt", async () => {
-    const result = await taskTool.execute(
+    const result = await agentTool.execute(
       { description: "Test" },
       mockToolContext,
     );
@@ -197,7 +199,7 @@ describe("Task Tool Background Execution", () => {
   });
 
   it("should handle missing subagent_type", async () => {
-    const result = await taskTool.execute(
+    const result = await agentTool.execute(
       { description: "Test", prompt: "Test" },
       mockToolContext,
     );
@@ -212,7 +214,7 @@ describe("Task Tool Background Execution", () => {
     vi.mocked(mockSubagentManager.createInstance).mockRejectedValue(
       new Error("Execution failed"),
     );
-    const result = await taskTool.execute(
+    const result = await agentTool.execute(
       {
         description: "Test",
         prompt: "Test",
@@ -221,12 +223,12 @@ describe("Task Tool Background Execution", () => {
       mockToolContext,
     );
     expect(result.success).toBe(false);
-    expect(result.error).toContain("Task delegation failed: Execution failed");
+    expect(result.error).toContain("Agent delegation failed: Execution failed");
   });
 
   it("should handle invalid subagent type", async () => {
     vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(null);
-    const result = await taskTool.execute(
+    const result = await agentTool.execute(
       {
         description: "Test",
         prompt: "Test",
@@ -235,7 +237,7 @@ describe("Task Tool Background Execution", () => {
       mockToolContext,
     );
     expect(result.success).toBe(false);
-    expect(result.error).toContain('No subagent found matching "Invalid"');
+    expect(result.error).toContain('No agent found matching "Invalid"');
   });
 
   it("should format compact params", () => {
@@ -243,7 +245,7 @@ describe("Task Tool Background Execution", () => {
       subagent_type: "Explore",
       description: "Find files",
     };
-    const formatted = taskTool.formatCompactParams?.(params, mockToolContext);
+    const formatted = agentTool.formatCompactParams?.(params, mockToolContext);
     expect(formatted).toBe("Explore: Find files");
   });
 });

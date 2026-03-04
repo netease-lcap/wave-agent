@@ -414,7 +414,7 @@ export class Agent {
 
   /** Unified interrupt method, interrupts both AI messages and command execution */
   public abortMessage(): void {
-    this.abortAIMessage(); // This will abort tools including Task tool (subagents)
+    this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
   }
@@ -454,7 +454,7 @@ export class Agent {
   /** Destroy managers, clean up resources */
   public async destroy(): Promise<void> {
     await this.messageManager.saveSession();
-    this.abortAIMessage(); // This will abort tools including Task tool (subagents)
+    this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();
     // Cleanup background task manager

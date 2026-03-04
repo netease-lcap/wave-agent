@@ -155,14 +155,14 @@ export const skillTool: ToolPlugin = {
         );
 
         try {
-          const result = await subagentManager.executeTask(
+          const result = await subagentManager.executeAgent(
             instance,
             skillResult.content,
             context.abortSignal,
             false,
           );
 
-          // Cleanup subagent instance after task completion
+          // Cleanup subagent instance after agent completion
           subagentManager.cleanupInstance(instance.subagentId);
 
           const messages = instance.messageManager.getMessages();

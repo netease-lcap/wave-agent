@@ -208,8 +208,8 @@ describe("SubagentManager - Recent Changes Coverage", () => {
     // Use spyOn instead of vi.mocked for instance methods
     vi.spyOn(subagentManager, "findSubagent").mockResolvedValue(mockConfig);
 
-    // Use task tool
-    const { taskTool } = await import("../../src/tools/taskTool.js");
+    // Use agent tool
+    const { agentTool } = await import("../../src/tools/agentTool.js");
     // Set subagent manager in context
     const onShortResultUpdate = vi.fn();
     const context = {
@@ -218,10 +218,10 @@ describe("SubagentManager - Recent Changes Coverage", () => {
       subagentManager,
     } as unknown as ToolContext;
 
-    // We need to mock executeTask to not actually run AI
-    vi.spyOn(subagentManager, "executeTask").mockResolvedValue("Done");
+    // We need to mock executeAgent to not actually run AI
+    vi.spyOn(subagentManager, "executeAgent").mockResolvedValue("Done");
 
-    await taskTool.execute(
+    await agentTool.execute(
       {
         description: "Test",
         prompt: "Test",

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { skillTool } from "../../src/tools/skillTool.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
-import { taskTool } from "../../src/tools/taskTool.js";
+import { agentTool } from "../../src/tools/agentTool.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import { Container } from "../../src/utils/container.js";
@@ -43,7 +43,7 @@ describe("Dynamic Tool Definitions", () => {
     });
   });
 
-  describe("Task Tool", () => {
+  describe("Agent Tool", () => {
     it("should dynamically reflect subagents added after tool creation", async () => {
       const subagentManager = new SubagentManager(container, {
         workdir: "/test/workdir",
@@ -61,11 +61,11 @@ describe("Dynamic Tool Definitions", () => {
         }
       ).cachedConfigurations = [];
 
-      const tool = taskTool;
+      const tool = agentTool;
 
       // Initially no subagents
       const promptNoSubagents = tool.prompt?.({ availableSubagents: [] });
-      expect(promptNoSubagents).toContain("No subagents configured");
+      expect(promptNoSubagents).toContain("No agents configured");
 
       // Add a subagent
       const mockSubagents: SubagentConfiguration[] = [
