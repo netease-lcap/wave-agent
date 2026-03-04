@@ -4,13 +4,15 @@
 
 ## Summary
 
-The primary requirement is to prevent the "Don't ask again" option from appearing in the bash confirmation dialog for dangerous commands or commands that operate outside the project's working directory. 
+The primary requirement is to prevent the "Don't ask again" option from appearing in the bash confirmation dialog for dangerous commands, commands that operate outside the project's working directory, or commands that perform file writes via redirections.
 
 Technical approach:
-1.  Enhance `agent-sdk`'s `PermissionManager` to identify dangerous/out-of-bounds commands.
+
+1.  Enhance `agent-sdk`'s `PermissionManager` to identify dangerous/out-of-bounds commands and write redirections.
 2.  Add a `hidePersistentOption` flag to `ToolPermissionContext`.
 3.  Update the `code` package's `Confirmation` component to respect this flag.
 4.  Enforce safety in `PermissionManager.expandBashRule` to prevent persistence of dangerous rules.
+5.  Update `PermissionManager.isAllowedByRule` and `matchesRule` to handle write redirections securely.
 
 ## Technical Context
 
@@ -25,7 +27,7 @@ Technical approach:
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+_GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 - [x] Package-First Architecture: Changes span `agent-sdk` and `code`.
 - [x] TypeScript Excellence: Strict typing for new context field.
@@ -83,8 +85,8 @@ packages/
 
 ## Complexity Tracking
 
-*Fill ONLY if Constitution Check has violations that must be justified*
+_Fill ONLY if Constitution Check has violations that must be justified_
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| None | | |
+| --------- | ---------- | ------------------------------------ |
+| None      |            |                                      |

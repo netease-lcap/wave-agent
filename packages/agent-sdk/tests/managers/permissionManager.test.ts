@@ -1115,14 +1115,14 @@ describe("PermissionManager", () => {
       expect(result.behavior).toBe("deny");
     });
 
-    it("should strip env vars and redirections before checking rules", async () => {
+    it("should strip env vars and read redirections before checking rules", async () => {
       permissionManager.updateAllowedRules(["Bash(ls)", "Bash(echo hello)"]);
 
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
         toolInput: {
-          command: "VAR=val ls > out.txt && echo hello 2> /dev/null",
+          command: "VAR=val ls < in.txt && echo hello",
         },
       };
 
@@ -1330,10 +1330,10 @@ describe("PermissionManager", () => {
       expect(rules).toEqual(["Bash(mkdir test)"]);
     });
 
-    it("should strip env vars and redirections from rules", () => {
+    it("should strip env vars and preserve redirections in rules", () => {
       const command = "VAR=val npm install > out.txt";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(npm install*)"]);
+      expect(rules).toEqual(["Bash(npm install > out.txt)"]);
     });
 
     it("should identify unsafe paths in cd/ls as non-safe and filter them out", () => {
@@ -1377,6 +1377,75 @@ describe("PermissionManager", () => {
       const command = "npm install lodash";
       const rules = permissionManager.expandBashRule(command, workdir);
       expect(rules).toEqual(["Bash(npm install*)"]);
+    });
+  });
+
+  describe("Bash Write Redirections", () => {
+    const workdir = "/home/user/project";
+
+    it("should NOT allow echo with write redirection by default (even if echo* is allowed)", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "echo hi > file.txt", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should set hidePersistentOption for commands with write redirections", () => {
+      const context = permissionManager.createContext(
+        "Bash",
+        "default",
+        undefined,
+        { command: "echo hi > file.txt", workdir },
+      );
+
+      expect(context.hidePersistentOption).toBe(true);
+    });
+
+    it("should NOT treat ls with write redirection as a safe command", async () => {
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "ls > file.txt", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should allow write redirection if explicitly allowed by a rule with redirection", async () => {
+      permissionManager.updateAllowedRules(["Bash(echo * > *)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "echo hi > file.txt", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("allow");
+    });
+
+    it("should NOT allow write redirection if rule does NOT have redirection", async () => {
+      permissionManager.updateAllowedRules(["Bash(echo *)"]);
+
+      const context: ToolPermissionContext = {
+        toolName: "Bash",
+        permissionMode: "default",
+        toolInput: { command: "echo hi > file.txt", workdir },
+      };
+
+      const result = await permissionManager.checkPermission(context);
+      expect(result.behavior).toBe("deny");
+    });
+
+    it("should preserve redirection in expandBashRule", () => {
+      const command = "echo hi > file.txt";
+      const rules = permissionManager.expandBashRule(command, workdir);
+      expect(rules).toEqual(["Bash(echo hi > file.txt)"]);
     });
   });
 });

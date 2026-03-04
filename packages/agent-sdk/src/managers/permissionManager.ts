@@ -20,6 +20,7 @@ import {
   splitBashCommand,
   stripEnvVars,
   stripRedirections,
+  hasWriteRedirections,
   getSmartPrefix,
   DANGEROUS_COMMANDS,
 } from "../utils/bashParser.js";
@@ -464,6 +465,9 @@ export class PermissionManager {
       const parts = splitBashCommand(command);
 
       const isDangerous = parts.some((part) => {
+        if (hasWriteRedirections(part)) {
+          return true;
+        }
         const processedPart = stripRedirections(stripEnvVars(part));
         const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
         if (commandMatch) {
@@ -523,7 +527,17 @@ export class PermissionManager {
     // Handle Bash command rules
     if (toolName === BASH_TOOL_NAME) {
       const command = String(context.toolInput?.command || "");
-      const processedPart = stripRedirections(stripEnvVars(command));
+      const hasWriteInPattern = hasWriteRedirections(pattern);
+      const hasWriteInCommand = hasWriteRedirections(command);
+
+      // If the command has write redirections, it must match a pattern that also has write redirections
+      if (hasWriteInCommand && !hasWriteInPattern) {
+        return false;
+      }
+
+      const processedPart = hasWriteInPattern
+        ? stripEnvVars(command)
+        : stripRedirections(stripEnvVars(command));
       // For Bash commands, we want '*' to match everything including slashes and spaces
       // minimatch's default behavior for '*' is to not match across directory separators
       // We use a regex to replace '*' with '.*' (match anything)
@@ -561,6 +575,7 @@ export class PermissionManager {
     const isAllowedByRuleList = (
       ctx: ToolPermissionContext,
       rules: string[],
+      isDefaultRules: boolean = false,
     ) => {
       if (ctx.toolName === BASH_TOOL_NAME && ctx.toolInput?.command) {
         const command = String(ctx.toolInput.command);
@@ -570,53 +585,60 @@ export class PermissionManager {
         const workdir = ctx.toolInput?.workdir as string | undefined;
 
         return parts.every((part) => {
+          const hasWrite = hasWriteRedirections(part);
           const processedPart = stripRedirections(stripEnvVars(part));
 
           // Check for safe commands
-          const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
-          if (commandMatch) {
-            const cmd = commandMatch[1];
-            const args = commandMatch[2]?.trim() || "";
+          if (!hasWrite) {
+            const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
+            if (commandMatch) {
+              const cmd = commandMatch[1];
+              const args = commandMatch[2]?.trim() || "";
 
-            if (SAFE_COMMANDS.includes(cmd)) {
-              if (cmd === "pwd" || cmd === "true" || cmd === "false") {
-                return true;
-              }
-
-              if (workdir) {
-                // For cd and ls, check paths
-                const pathArgs =
-                  (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
-                    (arg) => !arg.startsWith("-"),
-                  ) || [];
-
-                if (pathArgs.length === 0) {
-                  // cd or ls without arguments operates on current dir (workdir)
+              if (SAFE_COMMANDS.includes(cmd)) {
+                if (cmd === "pwd" || cmd === "true" || cmd === "false") {
                   return true;
                 }
 
-                const allPathsSafe = pathArgs.every((pathArg) => {
-                  // Remove quotes if present
-                  const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
-                  const { isInside } = this.isInsideSafeZone(
-                    cleanPath,
-                    workdir,
-                  );
-                  return isInside;
-                });
+                if (workdir) {
+                  // For cd and ls, check paths
+                  const pathArgs =
+                    (args.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []).filter(
+                      (arg) => !arg.startsWith("-"),
+                    ) || [];
 
-                if (allPathsSafe) {
-                  return true;
+                  if (pathArgs.length === 0) {
+                    // cd or ls without arguments operates on current dir (workdir)
+                    return true;
+                  }
+
+                  const allPathsSafe = pathArgs.every((pathArg) => {
+                    // Remove quotes if present
+                    const cleanPath = pathArg.replace(/^['"](.*)['"]$/, "$1");
+                    const { isInside } = this.isInsideSafeZone(
+                      cleanPath,
+                      workdir,
+                    );
+                    return isInside;
+                  });
+
+                  if (allPathsSafe) {
+                    return true;
+                  }
                 }
               }
             }
           }
 
           // Check if this specific part is allowed by any rule
+          if (hasWrite && isDefaultRules) {
+            return false;
+          }
+
           // We create a temporary context with just this part of the command
           const partContext = {
             ...ctx,
-            toolInput: { ...ctx.toolInput, command: processedPart },
+            toolInput: { ...ctx.toolInput, command: part },
           };
           const allowedByRule = rules.some((rule) => {
             return this.matchesRule(partContext, rule);
@@ -643,7 +665,7 @@ export class PermissionManager {
     }
 
     // Check default allowed rules
-    return isAllowedByRuleList(context, DEFAULT_ALLOWED_RULES);
+    return isAllowedByRuleList(context, DEFAULT_ALLOWED_RULES, true);
   }
 
   /**
@@ -659,13 +681,14 @@ export class PermissionManager {
     const rules: string[] = [];
 
     for (const part of parts) {
+      const hasWrite = hasWriteRedirections(part);
       const processedPart = stripRedirections(stripEnvVars(part));
 
       // Check for safe commands
       const commandMatch = processedPart.match(/^(\w+)(\s+.*)?$/);
       let isSafe = false;
 
-      if (commandMatch) {
+      if (commandMatch && !hasWrite) {
         const cmd = commandMatch[1];
         const args = commandMatch[2]?.trim() || "";
 
@@ -724,11 +747,11 @@ export class PermissionManager {
           }
         }
 
-        const smartPrefix = getSmartPrefix(processedPart);
+        const smartPrefix = hasWrite ? null : getSmartPrefix(processedPart);
         if (smartPrefix) {
           rules.push(`Bash(${smartPrefix}*)`);
         } else {
-          rules.push(`Bash(${processedPart})`);
+          rules.push(`Bash(${hasWrite ? stripEnvVars(part) : processedPart})`);
         }
       }
     }

@@ -5,7 +5,7 @@
 **Status**: Implemented  
 **Input**: User description: "for some bash confirm which will never save to permissions.allow array, like cd outside of workdir or other danger cmd, should not display \"Don't ask again\" option"
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Dangerous Command Confirmation (Priority: P1)
 
@@ -19,6 +19,7 @@ As a user, when I run a command that is considered dangerous or moves outside th
 
 1. **Given** the agent is running in a project directory, **When** I execute a command that attempts to change the directory to one outside the project root (e.g., `cd /tmp`), **Then** the confirmation dialog MUST NOT include a "Don't ask again" option.
 2. **Given** a command is identified as "dangerous" (e.g., system-level modifications), **When** I execute it, **Then** the confirmation dialog MUST NOT include a "Don't ask again" option.
+3. **Given** a bash command contains a write redirection (e.g., `echo "..." > file.txt`), **When** I execute it, **Then** the confirmation dialog MUST NOT include a "Don't ask again" option, as file write operations should use specialized tools like `Write` or `Edit`.
 
 ---
 
@@ -26,8 +27,9 @@ As a user, when I run a command that is considered dangerous or moves outside th
 
 - **What happens when a command is partially outside the workdir?** (e.g., `ls ../other-project`). The system should treat any access outside the workdir as a reason to hide the "Don't ask again" option.
 - **How does the system handle aliases or complex scripts?** The system should analyze the final command to be executed to determine its safety/scope.
+- **What about write redirections in subshells?** Redirections applied to subshells (e.g., `(echo hi) > file`) should also be detected and treated as dangerous.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -35,8 +37,10 @@ As a user, when I run a command that is considered dangerous or moves outside th
 - **FR-002**: The system MUST maintain a list or logic to identify "dangerous" commands that should never be permanently authorized.
 - **FR-003**: The confirmation dialog MUST hide the "Don't ask again" option for any command identified in FR-001 or FR-002.
 - **FR-004**: The system MUST ensure that permissions for these "dangerous" or "out-of-bounds" commands are never persisted to the `permissions.allow` configuration.
+- **FR-005**: The system MUST detect write redirections (`>`, `>>`, `&>`, `2>`, `>|`) in bash commands and treat them as dangerous, hiding the "Don't ask again" option.
+- **FR-006**: The system MUST ensure that bash commands with write redirections are not automatically allowed by default rules (e.g., `Bash(echo*)`).
 
-### Key Entities *(include if feature involves data)*
+### Key Entities _(include if feature involves data)_
 
 - **Permission Configuration**: The data structure (e.g., `permissions.allow`) that stores user-authorized commands.
 - **Bash Command**: The command string and its context (working directory, arguments) being evaluated for safety.
