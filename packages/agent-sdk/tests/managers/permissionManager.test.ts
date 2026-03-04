@@ -769,14 +769,7 @@ describe("PermissionManager", () => {
     });
 
     it("should return false for unrestricted tools", () => {
-      const unrestrictedTools = [
-        "Read",
-        "Grep",
-        "LS",
-        "Glob",
-        "TaskCreate",
-        "Skill",
-      ];
+      const unrestrictedTools = ["Read", "Grep", "Glob", "TaskCreate", "Skill"];
 
       for (const toolName of unrestrictedTools) {
         const result = permissionManager.isRestrictedTool(toolName);

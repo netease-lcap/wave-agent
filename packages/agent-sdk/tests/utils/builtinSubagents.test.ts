@@ -98,7 +98,6 @@ describe("Built-in Subagents", () => {
       expect(explore?.tools).toContain("Grep");
       expect(explore?.tools).toContain("Read");
       expect(explore?.tools).toContain("Bash");
-      expect(explore?.tools).toContain("LS");
       expect(explore?.tools).toContain("LSP");
       expect(explore?.tools).not.toContain("Write");
       expect(explore?.tools).not.toContain("Edit");
@@ -133,7 +132,6 @@ describe("Built-in Subagents", () => {
       expect(plan?.tools).toContain("Grep");
       expect(plan?.tools).toContain("Read");
       expect(plan?.tools).toContain("Bash");
-      expect(plan?.tools).toContain("LS");
       expect(plan?.tools).toContain("LSP");
       expect(plan?.tools).not.toContain("Write");
       expect(plan?.tools).not.toContain("Edit");

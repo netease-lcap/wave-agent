@@ -15,7 +15,6 @@ import {
   GLOB_TOOL_NAME,
   GREP_TOOL_NAME,
   READ_TOOL_NAME,
-  LS_TOOL_NAME,
   LSP_TOOL_NAME,
 } from "../constants/tools.js";
 import type { SubagentConfiguration } from "./subagentParser.js";
@@ -79,7 +78,6 @@ function createExploreSubagent(): SubagentConfiguration {
     GREP_TOOL_NAME,
     READ_TOOL_NAME,
     BASH_TOOL_NAME,
-    LS_TOOL_NAME,
     LSP_TOOL_NAME,
   ];
 
@@ -107,7 +105,6 @@ function createPlanSubagent(): SubagentConfiguration {
     GREP_TOOL_NAME,
     READ_TOOL_NAME,
     BASH_TOOL_NAME,
-    LS_TOOL_NAME,
     LSP_TOOL_NAME,
   ];
 

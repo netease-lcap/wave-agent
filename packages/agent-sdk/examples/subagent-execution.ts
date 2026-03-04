@@ -39,7 +39,7 @@ async function setupTest() {
 name: file-analyzer
 description: Analyzes files and provides summaries
 model: gemini-2.5-flash
-tools: [Read, LS]
+tools: [Read, Glob]
 ---
 
 You are a file analyzer. When given file contents, provide a concise summary and analysis. Be helpful and thorough in your analysis.`;
@@ -138,7 +138,7 @@ async function runTests() {
     // This will demonstrate both subagent creation and execution callbacks
     console.log("\n📤 Sending message to agent with subagent task...");
     await agent.sendMessage(
-      "Use the file-analyzer subagent to first list all files in the current directory, then analyze the sample.txt file in detail. Please provide a comprehensive summary of its contents and structure.",
+      "Use the file-analyzer subagent to first find all files in the current directory, then analyze the sample.txt file in detail. Please provide a comprehensive summary of its contents and structure.",
     );
     console.log("✅ Subagent execution and callback demonstration completed");
   } catch (error) {

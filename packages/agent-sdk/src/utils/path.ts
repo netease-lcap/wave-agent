@@ -24,68 +24,6 @@ export function resolvePath(filePath: string, workdir: string): string {
 }
 
 /**
- * Binary file extension list
- */
-export const binaryExtensions = [
-  // Image files
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "bmp",
-  "ico",
-  "webp",
-  "svg",
-  "sketch",
-  // Audio files
-  "mp3",
-  "wav",
-  "ogg",
-  "aac",
-  // Video files
-  "mp4",
-  "webm",
-  "avi",
-  "mov",
-  // Document files
-  "pdf",
-  "doc",
-  "docx",
-  "xls",
-  "xlsx",
-  "ppt",
-  "pptx",
-  // Compressed files
-  "zip",
-  "rar",
-  "7z",
-  "tar",
-  "gz",
-  // Font files
-  "ttf",
-  "otf",
-  "woff",
-  "woff2",
-  "eot",
-  // Other binary files
-  "exe",
-  "dll",
-  "so",
-  "dylib",
-  "bin",
-] as const;
-/**
- * Check if a file is a binary file
- * @param filename File name
- * @returns Whether it is a binary file
- */
-export const isBinary = (filename: string): boolean => {
-  const parts = filename.split(".");
-  const ext = parts.length > 1 ? parts.pop()?.toLowerCase() || "" : "";
-  return binaryExtensions.includes(ext as (typeof binaryExtensions)[number]);
-};
-
-/**
  * Get relative path for display, use relative path if shorter and not in parent directory
  * @param filePath Absolute path
  * @param workdir Working directory

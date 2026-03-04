@@ -112,7 +112,7 @@ async function main() {
 
       if (env === "production") {
         // Strict production rules
-        const allowedInProduction = ["Read", "Grep", "LS", "Glob"];
+        const allowedInProduction = ["Read", "Grep", "Glob"];
         if (allowedInProduction.includes(context.toolName)) {
           console.log(`   ✅ ${context.toolName} allowed in production`);
           return { behavior: "allow" };

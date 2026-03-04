@@ -30,7 +30,6 @@ import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
   READ_TOOL_NAME,
-  LS_TOOL_NAME,
 } from "../constants/tools.js";
 import { Container } from "../utils/container.js";
 import { ConfigurationService } from "../services/configurationService.js";
@@ -550,12 +549,7 @@ export class PermissionManager {
     }
 
     // Handle path-based rules (e.g., "Read(**/*.env)")
-    const pathTools = [
-      READ_TOOL_NAME,
-      WRITE_TOOL_NAME,
-      EDIT_TOOL_NAME,
-      LS_TOOL_NAME,
-    ];
+    const pathTools = [READ_TOOL_NAME, WRITE_TOOL_NAME, EDIT_TOOL_NAME];
     if (pathTools.includes(toolName)) {
       const targetPath = (context.toolInput?.file_path ||
         context.toolInput?.path) as string | undefined;

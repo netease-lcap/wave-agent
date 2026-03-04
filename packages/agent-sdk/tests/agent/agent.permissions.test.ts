@@ -190,7 +190,7 @@ describe("Agent Permission Integration", () => {
     });
 
     describe("Unrestricted Tools Behavior", () => {
-      const unrestrictedTools = ["Read", "Grep", "LS", "Glob", "TaskCreate"];
+      const unrestrictedTools = ["Read", "Grep", "Glob", "TaskCreate"];
 
       it.each(unrestrictedTools)(
         "should never block %s tool",

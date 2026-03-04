@@ -17,9 +17,9 @@ import {
 // Mock database service
 class PermissionDatabase {
   private permissions = new Map([
-    ["user123", new Set(["Edit", "Write", "Read", "Grep", "LS"])],
-    ["admin456", new Set(["Edit", "Write", "Read", "Grep", "LS", "Bash"])],
-    ["readonly789", new Set(["Read", "Grep", "LS"])],
+    ["user123", new Set(["Edit", "Write", "Read", "Grep"])],
+    ["admin456", new Set(["Edit", "Write", "Read", "Grep", "Bash"])],
+    ["readonly789", new Set(["Read", "Grep"])],
   ]);
 
   async getUserPermissions(userId: string): Promise<Set<string>> {
@@ -99,7 +99,7 @@ async function main() {
       } catch (error) {
         console.log(`   💥 Database error: ${error}`);
         // Graceful degradation: allow read-only operations, deny write operations
-        const readOnlyTools = ["Read", "Grep", "LS", "Glob"];
+        const readOnlyTools = ["Read", "Grep", "Glob"];
         if (readOnlyTools.includes(context.toolName)) {
           console.log(
             `   🚑 Fallback: allowing read-only tool ${context.toolName}`,
@@ -271,7 +271,7 @@ async function main() {
         console.log(`   💥 Permission check failed: ${error}`);
 
         // Graceful degradation
-        const safeFallbackTools = ["Read", "Grep", "LS"];
+        const safeFallbackTools = ["Read", "Grep"];
         if (safeFallbackTools.includes(context.toolName)) {
           console.log(`   🚑 Fallback: allowing safe tool ${context.toolName}`);
           return { behavior: "allow" };

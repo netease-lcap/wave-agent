@@ -9,7 +9,6 @@ import { askUserQuestionTool } from "../tools/askUserQuestion.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
 import { grepTool } from "../tools/grepTool.js";
-import { lsTool } from "../tools/lsTool.js";
 import { readTool } from "../tools/readTool.js";
 import { lspTool } from "../tools/lspTool.js";
 import { taskTool } from "../tools/taskTool.js";
@@ -107,7 +106,6 @@ class ToolManager {
       askUserQuestionTool,
       globTool,
       grepTool,
-      lsTool,
       readTool,
       lspTool,
       taskTool,
