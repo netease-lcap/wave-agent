@@ -7,7 +7,7 @@ import { MessageBlockItem } from "./MessageBlockItem.js";
 export interface MessageListProps {
   messages: Message[];
   isExpanded?: boolean;
-  hideDynamicBlocks?: boolean;
+  forceStatic?: boolean;
   version?: string;
   workdir?: string;
   model?: string;
@@ -17,7 +17,7 @@ export const MessageList = React.memo(
   ({
     messages,
     isExpanded = false,
-    hideDynamicBlocks = false,
+    forceStatic = false,
     version,
     workdir,
     model,
@@ -62,6 +62,7 @@ export const MessageList = React.memo(
     const blocksWithStatus = allBlocks.map((item) => {
       const { block, isLastMessage } = item;
       const isDynamic =
+        !forceStatic &&
         isLastMessage &&
         ((block.type === "tool" && block.stage !== "end") ||
           (block.type === "bang" && block.isRunning));
@@ -69,9 +70,7 @@ export const MessageList = React.memo(
     });
 
     const staticBlocks = blocksWithStatus.filter((b) => !b.isDynamic);
-    const dynamicBlocks = hideDynamicBlocks
-      ? []
-      : blocksWithStatus.filter((b) => b.isDynamic);
+    const dynamicBlocks = blocksWithStatus.filter((b) => b.isDynamic);
 
     const staticItems = [
       { isWelcome: true, key: "welcome", block: undefined, message: undefined },
