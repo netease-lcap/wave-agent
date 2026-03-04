@@ -1,0 +1,462 @@
+import { describe, it, expect } from "vitest";
+import {
+  inputReducer,
+  initialState,
+  InputState,
+} from "../../src/managers/inputReducer.js";
+import { FileItem } from "wave-agent-sdk";
+
+describe("inputReducer", () => {
+  it("should return initial state", () => {
+    expect(initialState).toEqual({
+      inputText: "",
+      cursorPosition: 0,
+      showFileSelector: false,
+      atPosition: -1,
+      fileSearchQuery: "",
+      filteredFiles: [],
+      showCommandSelector: false,
+      slashPosition: -1,
+      commandSearchQuery: "",
+      showHistorySearch: false,
+      historySearchQuery: "",
+      longTextCounter: 0,
+      longTextMap: {},
+      attachedImages: [],
+      imageIdCounter: 1,
+      showBackgroundTaskManager: false,
+      showMcpManager: false,
+      showRewindManager: false,
+      showHelp: false,
+      showStatusCommand: false,
+      permissionMode: "default",
+      selectorJustUsed: false,
+      isPasting: false,
+      pasteBuffer: "",
+      initialPasteCursorPosition: 0,
+    });
+  });
+
+  it("should handle SET_INPUT_TEXT", () => {
+    const state = inputReducer(initialState, {
+      type: "SET_INPUT_TEXT",
+      payload: "hello",
+    });
+    expect(state.inputText).toBe("hello");
+    expect(state).not.toBe(initialState);
+  });
+
+  it("should handle SET_CURSOR_POSITION", () => {
+    const stateWithText: InputState = { ...initialState, inputText: "hello" };
+
+    let state = inputReducer(stateWithText, {
+      type: "SET_CURSOR_POSITION",
+      payload: 2,
+    });
+    expect(state.cursorPosition).toBe(2);
+
+    // Boundary checks
+    state = inputReducer(stateWithText, {
+      type: "SET_CURSOR_POSITION",
+      payload: -1,
+    });
+    expect(state.cursorPosition).toBe(0);
+
+    state = inputReducer(stateWithText, {
+      type: "SET_CURSOR_POSITION",
+      payload: 10,
+    });
+    expect(state.cursorPosition).toBe(5);
+  });
+
+  it("should handle INSERT_TEXT", () => {
+    // Insert at start
+    let state = inputReducer(initialState, {
+      type: "INSERT_TEXT",
+      payload: "world",
+    });
+    expect(state.inputText).toBe("world");
+    expect(state.cursorPosition).toBe(5);
+
+    // Insert in middle
+    state = { ...state, cursorPosition: 0 };
+    state = inputReducer(state, { type: "INSERT_TEXT", payload: "hello " });
+    expect(state.inputText).toBe("hello world");
+    expect(state.cursorPosition).toBe(6);
+
+    // Insert at end
+    state = { ...state, cursorPosition: 11 };
+    state = inputReducer(state, { type: "INSERT_TEXT", payload: "!" });
+    expect(state.inputText).toBe("hello world!");
+    expect(state.cursorPosition).toBe(12);
+  });
+
+  it("should handle DELETE_CHAR", () => {
+    const stateWithText: InputState = {
+      ...initialState,
+      inputText: "hello",
+      cursorPosition: 5,
+    };
+
+    // Delete at end
+    let state = inputReducer(stateWithText, { type: "DELETE_CHAR" });
+    expect(state.inputText).toBe("hell");
+    expect(state.cursorPosition).toBe(4);
+
+    // Delete in middle
+    state = { ...stateWithText, cursorPosition: 3 };
+    state = inputReducer(state, { type: "DELETE_CHAR" });
+    expect(state.inputText).toBe("helo");
+    expect(state.cursorPosition).toBe(2);
+
+    // Delete at start (should do nothing)
+    state = { ...stateWithText, cursorPosition: 0 };
+    state = inputReducer(state, { type: "DELETE_CHAR" });
+    expect(state.inputText).toBe("hello");
+    expect(state.cursorPosition).toBe(0);
+  });
+
+  it("should handle MOVE_CURSOR", () => {
+    const stateWithText: InputState = {
+      ...initialState,
+      inputText: "hello",
+      cursorPosition: 2,
+    };
+
+    // Move right
+    let state = inputReducer(stateWithText, {
+      type: "MOVE_CURSOR",
+      payload: 1,
+    });
+    expect(state.cursorPosition).toBe(3);
+
+    // Move left
+    state = inputReducer(stateWithText, { type: "MOVE_CURSOR", payload: -1 });
+    expect(state.cursorPosition).toBe(1);
+
+    // Boundary checks
+    state = inputReducer(stateWithText, { type: "MOVE_CURSOR", payload: 10 });
+    expect(state.cursorPosition).toBe(5);
+
+    state = inputReducer(stateWithText, { type: "MOVE_CURSOR", payload: -10 });
+    expect(state.cursorPosition).toBe(0);
+  });
+
+  it("should handle ACTIVATE_FILE_SELECTOR", () => {
+    const state = inputReducer(initialState, {
+      type: "ACTIVATE_FILE_SELECTOR",
+      payload: 5,
+    });
+    expect(state.showFileSelector).toBe(true);
+    expect(state.atPosition).toBe(5);
+    expect(state.fileSearchQuery).toBe("");
+    expect(state.filteredFiles).toEqual([]);
+  });
+
+  it("should handle SET_FILE_SEARCH_QUERY", () => {
+    const state = inputReducer(initialState, {
+      type: "SET_FILE_SEARCH_QUERY",
+      payload: "test",
+    });
+    expect(state.fileSearchQuery).toBe("test");
+  });
+
+  it("should handle SET_FILTERED_FILES", () => {
+    const files: FileItem[] = [{ path: "test.ts", type: "file" }];
+    const state = inputReducer(initialState, {
+      type: "SET_FILTERED_FILES",
+      payload: files,
+    });
+    expect(state.filteredFiles).toEqual(files);
+  });
+
+  it("should handle CANCEL_FILE_SELECTOR", () => {
+    const stateWithSelector: InputState = {
+      ...initialState,
+      showFileSelector: true,
+      atPosition: 5,
+      fileSearchQuery: "test",
+      filteredFiles: [{ path: "test.ts", type: "file" }],
+    };
+    const state = inputReducer(stateWithSelector, {
+      type: "CANCEL_FILE_SELECTOR",
+    });
+    expect(state.showFileSelector).toBe(false);
+    expect(state.atPosition).toBe(-1);
+    expect(state.fileSearchQuery).toBe("");
+    expect(state.filteredFiles).toEqual([]);
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle ACTIVATE_COMMAND_SELECTOR", () => {
+    const state = inputReducer(initialState, {
+      type: "ACTIVATE_COMMAND_SELECTOR",
+      payload: 5,
+    });
+    expect(state.showCommandSelector).toBe(true);
+    expect(state.slashPosition).toBe(5);
+    expect(state.commandSearchQuery).toBe("");
+  });
+
+  it("should handle SET_COMMAND_SEARCH_QUERY", () => {
+    const state = inputReducer(initialState, {
+      type: "SET_COMMAND_SEARCH_QUERY",
+      payload: "test",
+    });
+    expect(state.commandSearchQuery).toBe("test");
+  });
+
+  it("should handle CANCEL_COMMAND_SELECTOR", () => {
+    const stateWithSelector: InputState = {
+      ...initialState,
+      showCommandSelector: true,
+      slashPosition: 5,
+      commandSearchQuery: "test",
+    };
+    const state = inputReducer(stateWithSelector, {
+      type: "CANCEL_COMMAND_SELECTOR",
+    });
+    expect(state.showCommandSelector).toBe(false);
+    expect(state.slashPosition).toBe(-1);
+    expect(state.commandSearchQuery).toBe("");
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle ACTIVATE_HISTORY_SEARCH", () => {
+    const state = inputReducer(initialState, {
+      type: "ACTIVATE_HISTORY_SEARCH",
+    });
+    expect(state.showHistorySearch).toBe(true);
+    expect(state.historySearchQuery).toBe("");
+  });
+
+  it("should handle SET_HISTORY_SEARCH_QUERY", () => {
+    const state = inputReducer(initialState, {
+      type: "SET_HISTORY_SEARCH_QUERY",
+      payload: "test",
+    });
+    expect(state.historySearchQuery).toBe("test");
+  });
+
+  it("should handle CANCEL_HISTORY_SEARCH", () => {
+    const stateWithSelector: InputState = {
+      ...initialState,
+      showHistorySearch: true,
+      historySearchQuery: "test",
+    };
+    const state = inputReducer(stateWithSelector, {
+      type: "CANCEL_HISTORY_SEARCH",
+    });
+    expect(state.showHistorySearch).toBe(false);
+    expect(state.historySearchQuery).toBe("");
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle ADD_IMAGE", () => {
+    const state = inputReducer(initialState, {
+      type: "ADD_IMAGE",
+      payload: { path: "test.png", mimeType: "image/png" },
+    });
+    expect(state.attachedImages).toHaveLength(1);
+    expect(state.attachedImages[0]).toEqual({
+      id: 1,
+      path: "test.png",
+      mimeType: "image/png",
+    });
+    expect(state.imageIdCounter).toBe(2);
+  });
+
+  it("should handle REMOVE_IMAGE", () => {
+    const stateWithImage: InputState = {
+      ...initialState,
+      attachedImages: [{ id: 1, path: "test.png", mimeType: "image/png" }],
+      imageIdCounter: 2,
+    };
+    const state = inputReducer(stateWithImage, {
+      type: "REMOVE_IMAGE",
+      payload: 1,
+    });
+    expect(state.attachedImages).toHaveLength(0);
+  });
+
+  it("should handle CLEAR_IMAGES", () => {
+    const stateWithImages: InputState = {
+      ...initialState,
+      attachedImages: [
+        { id: 1, path: "test1.png", mimeType: "image/png" },
+        { id: 2, path: "test2.png", mimeType: "image/png" },
+      ],
+    };
+    const state = inputReducer(stateWithImages, { type: "CLEAR_IMAGES" });
+    expect(state.attachedImages).toHaveLength(0);
+  });
+
+  it("should handle SET_SHOW_BACKGROUND_TASK_MANAGER", () => {
+    let state = inputReducer(initialState, {
+      type: "SET_SHOW_BACKGROUND_TASK_MANAGER",
+      payload: true,
+    });
+    expect(state.showBackgroundTaskManager).toBe(true);
+    expect(state.selectorJustUsed).toBe(false);
+
+    state = inputReducer(state, {
+      type: "SET_SHOW_BACKGROUND_TASK_MANAGER",
+      payload: false,
+    });
+    expect(state.showBackgroundTaskManager).toBe(false);
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle SET_SHOW_MCP_MANAGER", () => {
+    let state = inputReducer(initialState, {
+      type: "SET_SHOW_MCP_MANAGER",
+      payload: true,
+    });
+    expect(state.showMcpManager).toBe(true);
+    expect(state.selectorJustUsed).toBe(false);
+
+    state = inputReducer(state, {
+      type: "SET_SHOW_MCP_MANAGER",
+      payload: false,
+    });
+    expect(state.showMcpManager).toBe(false);
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle SET_SHOW_REWIND_MANAGER", () => {
+    let state = inputReducer(initialState, {
+      type: "SET_SHOW_REWIND_MANAGER",
+      payload: true,
+    });
+    expect(state.showRewindManager).toBe(true);
+    expect(state.selectorJustUsed).toBe(false);
+
+    state = inputReducer(state, {
+      type: "SET_SHOW_REWIND_MANAGER",
+      payload: false,
+    });
+    expect(state.showRewindManager).toBe(false);
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle SET_SHOW_HELP", () => {
+    let state = inputReducer(initialState, {
+      type: "SET_SHOW_HELP",
+      payload: true,
+    });
+    expect(state.showHelp).toBe(true);
+    expect(state.selectorJustUsed).toBe(false);
+
+    state = inputReducer(state, { type: "SET_SHOW_HELP", payload: false });
+    expect(state.showHelp).toBe(false);
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle SET_SHOW_STATUS_COMMAND", () => {
+    let state = inputReducer(initialState, {
+      type: "SET_SHOW_STATUS_COMMAND",
+      payload: true,
+    });
+    expect(state.showStatusCommand).toBe(true);
+    expect(state.selectorJustUsed).toBe(false);
+
+    state = inputReducer(state, {
+      type: "SET_SHOW_STATUS_COMMAND",
+      payload: false,
+    });
+    expect(state.showStatusCommand).toBe(false);
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle SET_PERMISSION_MODE", () => {
+    const state = inputReducer(initialState, {
+      type: "SET_PERMISSION_MODE",
+      payload: "plan",
+    });
+    expect(state.permissionMode).toBe("plan");
+  });
+
+  it("should handle SET_SELECTOR_JUST_USED", () => {
+    const state = inputReducer(initialState, {
+      type: "SET_SELECTOR_JUST_USED",
+      payload: true,
+    });
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle COMPRESS_AND_INSERT_TEXT", () => {
+    // Short text
+    let state = inputReducer(initialState, {
+      type: "COMPRESS_AND_INSERT_TEXT",
+      payload: "short text",
+    });
+    expect(state.inputText).toBe("short text");
+    expect(state.longTextCounter).toBe(0);
+    expect(state.longTextMap).toEqual({});
+
+    // Long text
+    const longText = "a".repeat(201);
+    state = inputReducer(initialState, {
+      type: "COMPRESS_AND_INSERT_TEXT",
+      payload: longText,
+    });
+    expect(state.inputText).toBe("[LongText#1]");
+    expect(state.longTextCounter).toBe(1);
+    expect(state.longTextMap["[LongText#1]"]).toBe(longText);
+    expect(state.cursorPosition).toBe("[LongText#1]".length);
+  });
+
+  it("should handle CLEAR_LONG_TEXT_MAP", () => {
+    const stateWithLongText: InputState = {
+      ...initialState,
+      longTextMap: { "[LongText#1]": "some long text" },
+    };
+    const state = inputReducer(stateWithLongText, {
+      type: "CLEAR_LONG_TEXT_MAP",
+    });
+    expect(state.longTextMap).toEqual({});
+  });
+
+  it("should handle CLEAR_INPUT", () => {
+    const stateWithInput: InputState = {
+      ...initialState,
+      inputText: "hello",
+      cursorPosition: 5,
+    };
+    const state = inputReducer(stateWithInput, { type: "CLEAR_INPUT" });
+    expect(state.inputText).toBe("");
+    expect(state.cursorPosition).toBe(0);
+  });
+
+  it("should handle START_PASTE, APPEND_PASTE_BUFFER, END_PASTE", () => {
+    let state = inputReducer(initialState, {
+      type: "START_PASTE",
+      payload: { buffer: "start", cursorPosition: 0 },
+    });
+    expect(state.isPasting).toBe(true);
+    expect(state.pasteBuffer).toBe("start");
+    expect(state.initialPasteCursorPosition).toBe(0);
+
+    state = inputReducer(state, {
+      type: "APPEND_PASTE_BUFFER",
+      payload: " more",
+    });
+    expect(state.pasteBuffer).toBe("start more");
+
+    state = inputReducer(state, { type: "END_PASTE" });
+    expect(state.isPasting).toBe(false);
+    expect(state.pasteBuffer).toBe("");
+  });
+
+  it("should handle ADD_IMAGE_AND_INSERT_PLACEHOLDER", () => {
+    const state = inputReducer(initialState, {
+      type: "ADD_IMAGE_AND_INSERT_PLACEHOLDER",
+      payload: { path: "test.png", mimeType: "image/png" },
+    });
+    expect(state.attachedImages).toHaveLength(1);
+    expect(state.attachedImages[0].id).toBe(1);
+    expect(state.inputText).toBe("[Image #1]");
+    expect(state.cursorPosition).toBe("[Image #1]".length);
+    expect(state.imageIdCounter).toBe(2);
+  });
+});
