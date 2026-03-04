@@ -39,7 +39,7 @@ describe("skillTool model override", () => {
         },
         lastTools: [],
       }),
-      executeTask: vi.fn().mockResolvedValue("Task result"),
+      executeAgent: vi.fn().mockResolvedValue("Task result"),
       cleanupInstance: vi.fn(),
     };
 

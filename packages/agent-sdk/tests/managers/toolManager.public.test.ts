@@ -87,7 +87,7 @@ describe("ToolManager.initializeBuiltInTools", () => {
     expect(names).toContain("TaskGet");
     expect(names).toContain("TaskUpdate");
     expect(names).toContain("TaskList");
-    expect(names).toContain("Task");
+    expect(names).toContain("Agent");
     expect(names).toContain("Skill");
   });
 

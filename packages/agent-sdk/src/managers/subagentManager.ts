@@ -9,6 +9,7 @@ import type {
 import { AIManager } from "./aiManager.js";
 import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
+import { AGENT_TOOL_NAME } from "../constants/tools.js";
 import {
   addConsolidatedAbortListener,
   createAbortPromise,
@@ -287,12 +288,12 @@ export class SubagentManager {
   }
 
   /**
-   * Execute task using subagent instance
+   * Execute agent using subagent instance
    *
-   * IMPORTANT: This method automatically filters out the Task tool from allowedTools
+   * IMPORTANT: This method automatically filters out the Agent tool from allowedTools
    * to prevent subagents from spawning other subagents (infinite recursion protection)
    */
-  async executeTask(
+  async executeAgent(
     instance: SubagentInstance,
     prompt: string,
     abortSignal?: AbortSignal,
@@ -301,7 +302,7 @@ export class SubagentManager {
     try {
       // Check if already aborted before starting
       if (abortSignal?.aborted) {
-        throw new Error("Task was aborted before execution started");
+        throw new Error("Agent was aborted before execution started");
       }
 
       // Set status to active and update parent
@@ -433,17 +434,17 @@ export class SubagentManager {
       // Add the user's prompt as a message
       instance.messageManager.addUserMessage({ content: prompt });
 
-      // Create enabled tools list - always exclude Task tool to prevent subagent recursion
+      // Create enabled tools list - always exclude Agent tool to prevent subagent recursion
       // Use instance.configuration.tools if provided, otherwise fallback to all tools
       let enabledTools = instance.configuration.tools;
 
-      // Always filter out the Task tool to prevent subagents from creating sub-subagents
+      // Always filter out the Agent tool to prevent subagents from creating sub-subagents
       if (enabledTools) {
-        enabledTools = enabledTools.filter((tool) => tool !== "Task");
+        enabledTools = enabledTools.filter((tool) => tool !== AGENT_TOOL_NAME);
       } else {
-        // If no tools specified, get all tools except Task
+        // If no tools specified, get all tools except Agent
         const allTools = instance.toolManager.list().map((tool) => tool.name);
-        enabledTools = allTools.filter((tool) => tool !== "Task");
+        enabledTools = allTools.filter((tool) => tool !== AGENT_TOOL_NAME);
       }
 
       // Execute the AI request with tool restrictions
@@ -476,7 +477,7 @@ export class SubagentManager {
       if (abortSignal && !instance.backgroundTaskId) {
         await Promise.race([
           executeAI,
-          createAbortPromise(abortSignal, "Task was aborted"),
+          createAbortPromise(abortSignal, "Agent was aborted"),
         ]);
       } else {
         await executeAI;
@@ -510,7 +511,7 @@ export class SubagentManager {
         const task = backgroundTaskManager.getTask(instance.backgroundTaskId);
         if (task) {
           task.status = "completed";
-          task.stdout = response || "Task completed with no text response";
+          task.stdout = response || "Agent completed with no text response";
           task.endTime = Date.now();
           if (task.startTime) {
             task.runtime = task.endTime - task.startTime;
@@ -518,7 +519,7 @@ export class SubagentManager {
         }
       }
 
-      return response || "Task completed with no text response";
+      return response || "Agent completed with no text response";
     } catch (error) {
       const backgroundTaskManager = this.container.has("BackgroundTaskManager")
         ? this.container.get<BackgroundTaskManager>("BackgroundTaskManager")

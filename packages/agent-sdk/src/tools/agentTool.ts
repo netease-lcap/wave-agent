@@ -1,6 +1,9 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
-import { EXPLORE_SUBAGENT_TYPE } from "../constants/subagents.js";
-import { TASK_TOOL_NAME } from "../constants/tools.js";
+import {
+  EXPLORE_SUBAGENT_TYPE,
+  PLAN_SUBAGENT_TYPE,
+} from "../constants/subagents.js";
+import { AGENT_TOOL_NAME } from "../constants/tools.js";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import {
   countToolBlocks,
@@ -8,16 +11,16 @@ import {
 } from "../utils/messageOperations.js";
 
 /**
- * Task tool plugin for delegating tasks to specialized subagents
+ * Agent tool plugin for launching specialized agents to handle complex tasks
  */
-export const taskTool: ToolPlugin = {
-  name: TASK_TOOL_NAME,
+export const agentTool: ToolPlugin = {
+  name: AGENT_TOOL_NAME,
   config: {
     type: "function" as const,
     function: {
-      name: TASK_TOOL_NAME,
+      name: AGENT_TOOL_NAME,
       description:
-        "Delegate a task to a specialized subagent. Use this when you need specialized expertise or want to break down complex work into focused subtasks.",
+        "Launch a new agent to handle complex, multi-step tasks autonomously.",
       parameters: {
         type: "object",
         properties: {
@@ -47,19 +50,43 @@ export const taskTool: ToolPlugin = {
   prompt: (args?: { availableSubagents?: SubagentConfiguration[] }) => {
     const subagentList = args?.availableSubagents
       ? args.availableSubagents
-          .map((config) => `- ${config.name}: ${config.description}`)
+          .map((config) => {
+            let toolsStr = "";
+            if (config.tools && config.tools.length > 0) {
+              toolsStr = ` (Tools: ${config.tools.join(", ")})`;
+            } else {
+              toolsStr = " (Tools: *)";
+            }
+
+            let extraInfo = "";
+            if (config.name === EXPLORE_SUBAGENT_TYPE) {
+              extraInfo =
+                '\n  When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.';
+            } else if (config.name === PLAN_SUBAGENT_TYPE) {
+              extraInfo =
+                "\n  Returns step-by-step plans, identifies critical files, and considers architectural trade-offs.";
+            } else if (config.name === "claude-code-guide") {
+              extraInfo =
+                '\n  **IMPORTANT:** Before spawning a new agent, check if there is already a running or recently completed claude-code-guide agent that you can resume using the "resume" parameter.';
+            }
+
+            return `- ${config.name}: ${config.description}${toolsStr}${extraInfo}`;
+          })
           .join("\n")
       : "";
 
-    return `
-Delegate a task to a specialized subagent. Use this when you need specialized expertise or want to break down complex work into focused subtasks.
+    return `Launch a new agent to handle complex, multi-step tasks autonomously.
 
-Available subagents:
-${subagentList || "No subagents configured"}
+The Agent tool launches specialized agents (subprocesses) that autonomously handle complex tasks. Each agent type has specific capabilities and tools available to it.
 
-- When doing file search, prefer to use the ${TASK_TOOL_NAME} tool in order to reduce context usage.
-- You should proactively use the ${TASK_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description.
-- VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the ${TASK_TOOL_NAME} tool with subagent_type=${EXPLORE_SUBAGENT_TYPE} instead of running search commands directly.`;
+Available agent types and the tools they have access to:
+${subagentList || "No agents configured"}
+
+When using the Agent tool, you must specify a subagent_type parameter to select which agent type to use.
+
+- When doing file search, prefer to use the ${AGENT_TOOL_NAME} tool in order to reduce context usage.
+- You should proactively use the ${AGENT_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description.
+- VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the ${AGENT_TOOL_NAME} tool with subagent_type=${EXPLORE_SUBAGENT_TYPE} instead of running search commands directly.`;
   },
 
   execute: async (
@@ -72,7 +99,7 @@ ${subagentList || "No subagents configured"}
         success: false,
         content: "",
         error: "Subagent manager not available in tool context",
-        shortResult: "Task delegation failed",
+        shortResult: "Agent delegation failed",
       };
     }
 
@@ -87,7 +114,7 @@ ${subagentList || "No subagents configured"}
         success: false,
         content: "",
         error: "description parameter is required and must be a string",
-        shortResult: "Task delegation failed",
+        shortResult: "Agent delegation failed",
       };
     }
 
@@ -96,7 +123,7 @@ ${subagentList || "No subagents configured"}
         success: false,
         content: "",
         error: "prompt parameter is required and must be a string",
-        shortResult: "Task delegation failed",
+        shortResult: "Agent delegation failed",
       };
     }
 
@@ -105,7 +132,7 @@ ${subagentList || "No subagents configured"}
         success: false,
         content: "",
         error: "subagent_type parameter is required and must be a string",
-        shortResult: "Task delegation failed",
+        shortResult: "Agent delegation failed",
       };
     }
 
@@ -121,14 +148,14 @@ ${subagentList || "No subagents configured"}
         return {
           success: false,
           content: "",
-          error: `No subagent found matching "${subagent_type}". Available subagents: ${availableNames || "none"}`,
-          shortResult: "Subagent not found",
+          error: `No agent found matching "${subagent_type}". Available agents: ${availableNames || "none"}`,
+          shortResult: "Agent not found",
         };
       }
 
       let isBackgrounded = false;
 
-      // Create subagent instance and execute task
+      // Create subagent instance and execute agent
       const instance = await subagentManager.createInstance(
         configuration,
         {
@@ -173,8 +200,8 @@ ${subagentList || "No subagents configured"}
                 await subagentManager.backgroundInstance(instance.subagentId);
                 resolve({
                   success: true,
-                  content: "Task backgrounded",
-                  shortResult: "Task backgrounded",
+                  content: "Agent backgrounded",
+                  shortResult: "Agent backgrounded",
                   isManuallyBackgrounded: true,
                 });
               },
@@ -182,7 +209,7 @@ ${subagentList || "No subagents configured"}
           }
 
           try {
-            const result = await subagentManager.executeTask(
+            const result = await subagentManager.executeAgent(
               instance,
               prompt,
               context.abortSignal,
@@ -196,13 +223,13 @@ ${subagentList || "No subagents configured"}
             if (run_in_background) {
               resolve({
                 success: true,
-                content: `Task started in background with ID: ${result}`,
-                shortResult: `Task started in background: ${result}`,
+                content: `Agent started in background with ID: ${result}`,
+                shortResult: `Agent started in background: ${result}`,
               });
               return;
             }
 
-            // Cleanup subagent instance after task completion
+            // Cleanup subagent instance after agent completion
             subagentManager.cleanupInstance(instance.subagentId);
 
             const messages = instance.messageManager.getMessages();
@@ -213,14 +240,14 @@ ${subagentList || "No subagents configured"}
             resolve({
               success: true,
               content: result,
-              shortResult: `Task completed${summary ? ` ${summary}` : ""}`,
+              shortResult: `Agent completed${summary ? ` ${summary}` : ""}`,
             });
           } catch (error) {
             if (!isBackgrounded) {
               resolve({
                 success: false,
                 content: "",
-                error: `Task delegation failed: ${error instanceof Error ? error.message : String(error)}`,
+                error: `Agent delegation failed: ${error instanceof Error ? error.message : String(error)}`,
                 shortResult: "Delegation error",
               });
             }
@@ -237,7 +264,7 @@ ${subagentList || "No subagents configured"}
       return {
         success: false,
         content: "",
-        error: `Task delegation failed: ${error instanceof Error ? error.message : String(error)}`,
+        error: `Agent delegation failed: ${error instanceof Error ? error.message : String(error)}`,
         shortResult: "Delegation error",
       };
     }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TaskManager } from "../../src/services/taskManager.js";
-import { taskTool } from "../../src/tools/taskTool.js";
+import { agentTool } from "../../src/tools/agentTool.js";
 import {
   SubagentManager,
   type SubagentInstance,
@@ -11,7 +11,7 @@ import type { ToolContext } from "../../src/tools/types.js";
 // Mock the subagent manager
 vi.mock("../../src/managers/subagentManager.js");
 
-describe("Task Tool Integration with Built-in Subagents", () => {
+describe("Agent Tool Integration with Built-in Subagents", () => {
   let mockSubagentManager: SubagentManager;
   const mockToolContext: ToolContext = {
     abortSignal: new AbortController().signal,
@@ -24,7 +24,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       getConfigurations: vi.fn(() => [exploreConfig, gpConfig, planConfig]),
       findSubagent: vi.fn(),
       createInstance: vi.fn(),
-      executeTask: vi.fn(),
+      executeAgent: vi.fn(),
       backgroundInstance: vi.fn(),
       cleanupInstance: vi.fn(),
     } as unknown as SubagentManager,
@@ -71,20 +71,22 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     mockSubagentManager = mockToolContext.subagentManager!;
   });
 
-  describe("Task tool with built-in Explore subagent", () => {
+  describe("Agent tool with built-in Explore subagent", () => {
     it("should list Explore subagent in available options", () => {
-      const prompt = taskTool.prompt?.({
+      const prompt = agentTool.prompt?.({
         availableSubagents: [exploreConfig, gpConfig, planConfig],
       });
 
-      expect(prompt).toContain("Available subagents:");
+      expect(prompt).toContain(
+        "Available agent types and the tools they have access to:",
+      );
       expect(prompt).toContain(
         "- Explore: Fast agent specialized for exploring codebases",
       );
     });
 
     it("should include Explore in subagent_type parameter description", () => {
-      const prompt = taskTool.prompt?.({
+      const prompt = agentTool.prompt?.({
         availableSubagents: [exploreConfig, gpConfig, planConfig],
       });
       expect(prompt).toContain("Explore");
@@ -106,11 +108,11 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
         mockInstance as unknown as SubagentInstance,
       );
-      vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
+      vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue(
         "Search completed successfully",
       );
 
-      const result = await taskTool.execute(
+      const result = await agentTool.execute(
         {
           description: "Find TypeScript files",
           prompt: "Search for all .ts files in the src directory",
@@ -130,7 +132,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
         undefined,
         expect.any(Function),
       );
-      expect(mockSubagentManager.executeTask).toHaveBeenCalledWith(
+      expect(mockSubagentManager.executeAgent).toHaveBeenCalledWith(
         mockInstance,
         "Search for all .ts files in the src directory",
         mockToolContext.abortSignal,
@@ -140,14 +142,14 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       expect(result).toEqual({
         success: true,
         content: "Search completed successfully",
-        shortResult: "Task completed",
+        shortResult: "Agent completed",
       });
     });
 
     it("should include built-in subagents in error message for invalid types", async () => {
       vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(null);
 
-      const result = await taskTool.execute(
+      const result = await agentTool.execute(
         {
           description: "Test task",
           prompt: "Test prompt",
@@ -157,11 +159,9 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       );
 
       expect(result.success).toBe(false);
+      expect(result.error).toContain('No agent found matching "InvalidAgent"');
       expect(result.error).toContain(
-        'No subagent found matching "InvalidAgent"',
-      );
-      expect(result.error).toContain(
-        "Available subagents: Explore, general-purpose",
+        "Available agents: Explore, general-purpose",
       );
     });
 
@@ -179,11 +179,11 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
         mockInstance as unknown as SubagentInstance,
       );
-      vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
+      vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue(
         "Research completed",
       );
 
-      const result = await taskTool.execute(
+      const result = await agentTool.execute(
         {
           description: "Research auth",
           prompt: "Analyze auth flow",
@@ -197,7 +197,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       );
       expect(result.success).toBe(true);
       expect(result.content).toBe("Research completed");
-      expect(result.shortResult).toBe("Task completed");
+      expect(result.shortResult).toBe("Agent completed");
     });
 
     it("should handle fastModel configuration correctly", async () => {
@@ -216,11 +216,11 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
         mockInstance as unknown as SubagentInstance,
       );
-      vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
-        "Task completed",
+      vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue(
+        "Agent completed",
       );
 
-      await taskTool.execute(
+      await agentTool.execute(
         {
           description: "Test exploration",
           prompt: "Test prompt",
@@ -236,20 +236,22 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     });
   });
 
-  describe("Task tool with built-in Plan subagent", () => {
+  describe("Agent tool with built-in Plan subagent", () => {
     it("should list Plan subagent in available options", () => {
-      const prompt = taskTool.prompt?.({
+      const prompt = agentTool.prompt?.({
         availableSubagents: [exploreConfig, gpConfig, planConfig],
       });
 
-      expect(prompt).toContain("Available subagents:");
+      expect(prompt).toContain(
+        "Available agent types and the tools they have access to:",
+      );
       expect(prompt).toContain(
         "- Plan: Software architect agent for designing implementation plans",
       );
     });
 
     it("should include Plan in subagent_type parameter description", () => {
-      const prompt = taskTool.prompt?.({
+      const prompt = agentTool.prompt?.({
         availableSubagents: [exploreConfig, gpConfig, planConfig],
       });
       expect(prompt).toContain("Plan");
@@ -269,11 +271,11 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
         mockInstance as unknown as SubagentInstance,
       );
-      vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
+      vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue(
         "Plan completed successfully\n\n### Critical Files for Implementation\n- src/main.ts",
       );
 
-      const result = await taskTool.execute(
+      const result = await agentTool.execute(
         {
           description: "Design auth implementation",
           prompt: "Design implementation plan for adding authentication",
@@ -293,7 +295,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
         undefined,
         expect.any(Function),
       );
-      expect(mockSubagentManager.executeTask).toHaveBeenCalledWith(
+      expect(mockSubagentManager.executeAgent).toHaveBeenCalledWith(
         mockInstance,
         "Design implementation plan for adding authentication",
         mockToolContext.abortSignal,
@@ -304,7 +306,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
         success: true,
         content:
           "Plan completed successfully\n\n### Critical Files for Implementation\n- src/main.ts",
-        shortResult: "Task completed",
+        shortResult: "Agent completed",
       });
     });
 
@@ -322,11 +324,11 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
         mockInstance as unknown as SubagentInstance,
       );
-      vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
+      vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue(
         "Plan completed",
       );
 
-      await taskTool.execute(
+      await agentTool.execute(
         {
           description: "Test planning",
           prompt: "Test prompt",
@@ -355,11 +357,11 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
         mockInstance as unknown as SubagentInstance,
       );
-      vi.mocked(mockSubagentManager.executeTask).mockResolvedValue(
+      vi.mocked(mockSubagentManager.executeAgent).mockResolvedValue(
         "Plan completed",
       );
 
-      await taskTool.execute(
+      await agentTool.execute(
         {
           description: "Test planning",
           prompt: "Test prompt",
@@ -382,7 +384,7 @@ describe("Task Tool Integration with Built-in Subagents", () => {
     it("should include Plan subagent in error message for invalid types", async () => {
       vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(null);
 
-      const result = await taskTool.execute(
+      const result = await agentTool.execute(
         {
           description: "Test task",
           prompt: "Test prompt",
@@ -392,11 +394,9 @@ describe("Task Tool Integration with Built-in Subagents", () => {
       );
 
       expect(result.success).toBe(false);
+      expect(result.error).toContain('No agent found matching "InvalidAgent"');
       expect(result.error).toContain(
-        'No subagent found matching "InvalidAgent"',
-      );
-      expect(result.error).toContain(
-        "Available subagents: Explore, general-purpose, Plan",
+        "Available agents: Explore, general-purpose, Plan",
       );
     });
   });

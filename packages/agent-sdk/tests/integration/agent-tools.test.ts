@@ -40,7 +40,7 @@ describe("Agent Tool Selection Integration", () => {
     expect(tools).toContain("Read");
     expect(tools).toContain("Write");
     expect(tools).toContain("Edit");
-    expect(tools).toContain("Task");
+    expect(tools).toContain("Agent");
   });
 
   it("should initialize agent with specific tools", async () => {
@@ -57,7 +57,7 @@ describe("Agent Tool Selection Integration", () => {
     expect(tools).toContain("Edit");
     expect(tools).not.toContain("Bash");
     expect(tools).not.toContain("Write");
-    expect(tools).not.toContain("Task");
+    expect(tools).not.toContain("Agent");
   });
 
   it("should initialize agent with no tools when tools is empty array", async () => {

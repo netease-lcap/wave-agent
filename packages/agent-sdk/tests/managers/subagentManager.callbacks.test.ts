@@ -664,7 +664,7 @@ describe("SubagentManager - Callback Integration", () => {
         subagent_type: "bg-subagent",
       });
 
-      await bgSubagentManager.executeTask(instance, "Do it", undefined, true);
+      await bgSubagentManager.executeAgent(instance, "Do it", undefined, true);
 
       expect(addTaskSpy).toHaveBeenCalledWith(
         expect.objectContaining({
