@@ -18,9 +18,9 @@
     "lint": "pnpm -r lint",
     "format": "prettier --write .",
     "ci": "pnpm type-check && pnpm lint && pnpm test:coverage",
-    "version:patch": "node scripts/version.js patch all",
-    "version:minor": "node scripts/version.js minor all",
-    "version:major": "node scripts/version.js major all",
+    "release:patch": "node scripts/release.js patch",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major",
     "prepare": "husky"
   },
   "devDependencies": {
