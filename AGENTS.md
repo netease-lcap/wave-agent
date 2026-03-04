@@ -41,5 +41,5 @@ Always use `pnpm` as the package manager.
 
 ## 🤖 Subagent Usage
 
-- **Subagent Usage**: If you have the `Task` tool, use specialized agents (typescript-expert, vitest-expert, Explore) for focused tasks (exploration, development, or testing) to reduce context usage. Note that subagents typically do not have access to the `Task` tool.
+- **Subagent Usage**: If you have the `Agent` tool, use specialized agents (typescript-expert, vitest-expert, Explore) for focused tasks (exploration, development, or testing) to reduce context usage. Note that subagents typically do not have access to the `Agent` tool.
 
