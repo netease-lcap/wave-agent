@@ -35,12 +35,26 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
     .map((msg, index) => ({ msg, index }))
     .filter(({ msg }) => msg.role === "user");
 
+  const MAX_VISIBLE_ITEMS = 3;
   const [selectedIndex, setSelectedIndex] = useState(checkpoints.length - 1);
 
   // Update selectedIndex when checkpoints change (after loading full thread)
   React.useEffect(() => {
     setSelectedIndex(checkpoints.length - 1);
   }, [checkpoints.length]);
+
+  // Calculate visible window
+  const startIndex = Math.max(
+    0,
+    Math.min(
+      selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
+      Math.max(0, checkpoints.length - MAX_VISIBLE_ITEMS),
+    ),
+  );
+  const visibleCheckpoints = checkpoints.slice(
+    startIndex,
+    startIndex + MAX_VISIBLE_ITEMS,
+  );
 
   useInput((input, key) => {
     if (key.return) {
@@ -114,12 +128,14 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
       </Box>
 
       <Box flexDirection="column">
-        {checkpoints.map((checkpoint, index) => {
-          const isSelected = index === selectedIndex;
+        {visibleCheckpoints.map((checkpoint, index) => {
+          const actualIndex = startIndex + index;
+          const isSelected = actualIndex === selectedIndex;
           const content = checkpoint.msg.blocks
             .filter((b): b is TextBlock => b.type === "text")
             .map((b) => b.content)
             .join(" ")
+            .replace(/\n/g, "\\n")
             .substring(0, 60);
 
           return (
@@ -130,7 +146,7 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
               >
                 {isSelected ? "▶ " : "  "}[{checkpoint.index}]{" "}
                 {content || "(No text content)"}
-                {index === checkpoints.length - 1 ? " (Latest)" : ""}
+                {actualIndex === checkpoints.length - 1 ? " (Latest)" : ""}
               </Text>
             </Box>
           );
@@ -142,8 +158,8 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
       </Box>
       <Box>
         <Text color="red" dimColor>
-          ⚠️ Warning: This will delete all subsequent messages and revert file
-          and task list changes.
+          Warning: This will delete all subsequent messages and revert file and
+          task list changes.
         </Text>
       </Box>
     </Box>
