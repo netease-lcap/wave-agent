@@ -73,7 +73,45 @@ export class PluginManager {
       }
 
       const marketplaceService = new MarketplaceService();
-      const installedRegistry = await marketplaceService.getInstalledPlugins();
+      let installedRegistry = await marketplaceService.getInstalledPlugins();
+      const knownMarketplaces = await marketplaceService.listMarketplaces();
+
+      // Identify missing enabled plugins and auto-install them if marketplace is known
+      for (const pluginId of Object.keys(this.enabledPlugins)) {
+        if (this.enabledPlugins[pluginId] !== true) continue;
+
+        const [name, marketplaceName] = pluginId.split("@");
+        if (!name || !marketplaceName) continue;
+
+        const isInstalled = installedRegistry.plugins.some(
+          (p) => p.name === name && p.marketplace === marketplaceName,
+        );
+
+        if (!isInstalled) {
+          const isMarketplaceKnown = knownMarketplaces.some(
+            (m) => m.name === marketplaceName,
+          );
+
+          if (isMarketplaceKnown) {
+            logger?.info(`Auto-installing missing plugin: ${pluginId}`);
+            try {
+              await marketplaceService.installPlugin(pluginId);
+            } catch (installError) {
+              logger?.error(
+                `Failed to auto-install plugin ${pluginId}:`,
+                installError,
+              );
+            }
+          } else {
+            logger?.warn(
+              `Plugin ${pluginId} is enabled but marketplace ${marketplaceName} is unknown. Skipping auto-install.`,
+            );
+          }
+        }
+      }
+
+      // Refresh registry after potential auto-installs
+      installedRegistry = await marketplaceService.getInstalledPlugins();
 
       for (const p of installedRegistry.plugins) {
         const pluginId = `${p.name}@${p.marketplace}`;

@@ -30,6 +30,7 @@ describe("Agent Plugin Loading Integration", () => {
             { name: "plugin-none", marketplace: "m1", cachePath: "/path/none" },
           ],
         }),
+        listMarketplaces: vi.fn().mockResolvedValue([]),
       } as unknown as MarketplaceService;
     });
 
