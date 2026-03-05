@@ -213,11 +213,44 @@ describe("inputHandlers", () => {
   });
 
   describe("handleSpecialCharInput", () => {
-    it("should activate file selector on @", () => {
+    it("should activate file selector on @ at start", () => {
       handleSpecialCharInput(initialState, dispatch, "@", 1, "@");
       expect(dispatch).toHaveBeenCalledWith({
         type: "ACTIVATE_FILE_SELECTOR",
         payload: 0,
+      });
+    });
+
+    it("should activate file selector on @ after space", () => {
+      handleSpecialCharInput(initialState, dispatch, "@", 6, "test @");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "ACTIVATE_FILE_SELECTOR",
+        payload: 5,
+      });
+    });
+
+    it("should activate file selector on @ after newline", () => {
+      handleSpecialCharInput(initialState, dispatch, "@", 6, "test\n@");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "ACTIVATE_FILE_SELECTOR",
+        payload: 5,
+      });
+    });
+
+    it("should not activate file selector on @ after non-whitespace char", () => {
+      handleSpecialCharInput(initialState, dispatch, "@", 5, "test@");
+      expect(dispatch).not.toHaveBeenCalledWith({
+        type: "ACTIVATE_FILE_SELECTOR",
+        payload: 4,
+      });
+    });
+
+    it("should update search query if @ is typed while selector is already active", () => {
+      const state = { ...initialState, showFileSelector: true, atPosition: 0 };
+      handleSpecialCharInput(state, dispatch, "@", 6, "@test@");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_FILE_SEARCH_QUERY",
+        payload: "test@",
       });
     });
 
@@ -313,7 +346,7 @@ describe("inputHandlers", () => {
   });
 
   describe("handleFileSelect", () => {
-    it("should insert file path and close selector", () => {
+    it("should insert file path and close selector, keeping @", () => {
       const state: InputState = {
         ...initialState,
         atPosition: 0,
@@ -324,7 +357,7 @@ describe("inputHandlers", () => {
 
       expect(dispatch).toHaveBeenCalledWith({
         type: "SET_INPUT_TEXT",
-        payload: "file.txt ",
+        payload: "@file.txt ",
       });
       expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
     });
@@ -390,6 +423,21 @@ describe("inputHandlers", () => {
         type: "INSERT_TEXT",
         payload: "a",
       });
+    });
+
+    it("should cancel file selector on space input", () => {
+      const state: InputState = {
+        ...initialState,
+        showFileSelector: true,
+        atPosition: 0,
+        inputText: "@",
+        cursorPosition: 1,
+      };
+      const key = {} as Key;
+      const result = handleSelectorInput(state, dispatch, callbacks, " ", key);
+
+      expect(result).toBe(true);
+      expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
     });
   });
 
