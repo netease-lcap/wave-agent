@@ -140,7 +140,10 @@ export const handleSpecialCharInput = (
   cursorPosition: number,
   inputText: string,
 ): void => {
-  if (char === "@") {
+  if (
+    char === "@" &&
+    (cursorPosition === 1 || /\s/.test(inputText[cursorPosition - 2]))
+  ) {
     dispatch({ type: "ACTIVATE_FILE_SELECTOR", payload: cursorPosition - 1 });
   } else if (char === "/" && !state.showFileSelector && cursorPosition === 1) {
     dispatch({
@@ -266,8 +269,8 @@ export const handleFileSelect = (
   if (state.atPosition >= 0) {
     const beforeAt = state.inputText.substring(0, state.atPosition);
     const afterQuery = state.inputText.substring(state.cursorPosition);
-    const newInput = beforeAt + `${filePath} ` + afterQuery;
-    const newCursorPosition = beforeAt.length + filePath.length + 1;
+    const newInput = beforeAt + `@${filePath} ` + afterQuery;
+    const newCursorPosition = beforeAt.length + filePath.length + 2;
 
     dispatch({ type: "SET_INPUT_TEXT", payload: newInput });
     dispatch({ type: "SET_CURSOR_POSITION", payload: newCursorPosition });
@@ -341,6 +344,10 @@ export const handleSelectorInput = (
 
   if (key.upArrow || key.downArrow || key.return || key.tab) {
     return true;
+  }
+
+  if (input === " " && state.showFileSelector) {
+    dispatch({ type: "CANCEL_FILE_SELECTOR" });
   }
 
   if (
