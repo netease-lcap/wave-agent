@@ -4,7 +4,7 @@ import {
   initialState,
   InputState,
 } from "../../src/managers/inputReducer.js";
-import { FileItem } from "wave-agent-sdk";
+import { FileItem, PromptEntry } from "wave-agent-sdk";
 
 describe("inputReducer", () => {
   it("should return initial state", () => {
@@ -34,6 +34,10 @@ describe("inputReducer", () => {
       isPasting: false,
       pasteBuffer: "",
       initialPasteCursorPosition: 0,
+      history: [],
+      historyIndex: -1,
+      originalInputText: "",
+      originalLongTextMap: {},
     });
   });
 
@@ -458,5 +462,138 @@ describe("inputReducer", () => {
     expect(state.inputText).toBe("[Image #1]");
     expect(state.cursorPosition).toBe("[Image #1]".length);
     expect(state.imageIdCounter).toBe(2);
+  });
+
+  describe("history navigation", () => {
+    const mockHistory = [
+      { prompt: "first", timestamp: 1000 },
+      { prompt: "second", timestamp: 2000 },
+    ];
+
+    it("should handle SET_HISTORY_ENTRIES", () => {
+      const state = inputReducer(initialState, {
+        type: "SET_HISTORY_ENTRIES",
+        payload: mockHistory,
+      });
+      expect(state.history).toEqual(mockHistory);
+    });
+
+    it("should navigate up and down through history", () => {
+      let state = {
+        ...initialState,
+        history: mockHistory,
+        inputText: "current",
+      };
+
+      // Navigate up to "first" (index 0)
+      state = inputReducer(state, { type: "NAVIGATE_HISTORY", payload: "up" });
+      expect(state.historyIndex).toBe(0);
+      expect(state.inputText).toBe("first");
+      expect(state.originalInputText).toBe("current");
+
+      // Navigate up to "second" (index 1)
+      state = inputReducer(state, { type: "NAVIGATE_HISTORY", payload: "up" });
+      expect(state.historyIndex).toBe(1);
+      expect(state.inputText).toBe("second");
+
+      // Navigate up again (should stay at index 1)
+      state = inputReducer(state, { type: "NAVIGATE_HISTORY", payload: "up" });
+      expect(state.historyIndex).toBe(1);
+
+      // Navigate down to "first" (index 0)
+      state = inputReducer(state, {
+        type: "NAVIGATE_HISTORY",
+        payload: "down",
+      });
+      expect(state.historyIndex).toBe(0);
+      expect(state.inputText).toBe("first");
+
+      // Navigate down to original (index -1)
+      state = inputReducer(state, {
+        type: "NAVIGATE_HISTORY",
+        payload: "down",
+      });
+      expect(state.historyIndex).toBe(-1);
+      expect(state.inputText).toBe("current");
+    });
+
+    it("should handle long text in history navigation", () => {
+      const historyWithLongText: PromptEntry[] = [
+        {
+          prompt: "[LongText#1]",
+          timestamp: 1000,
+          longTextMap: { "[LongText#1]": "long content" },
+        },
+      ];
+      let state: InputState = {
+        ...initialState,
+        history: historyWithLongText,
+        inputText: "current",
+        longTextMap: { "[LongText#2]": "current long" },
+      };
+
+      // Navigate up
+      state = inputReducer(state, { type: "NAVIGATE_HISTORY", payload: "up" });
+      expect(state.inputText).toBe("[LongText#1]");
+      expect(state.longTextMap).toEqual({ "[LongText#1]": "long content" });
+      expect(state.originalInputText).toBe("current");
+      expect(state.originalLongTextMap).toEqual({
+        "[LongText#2]": "current long",
+      });
+
+      // Navigate down
+      state = inputReducer(state, {
+        type: "NAVIGATE_HISTORY",
+        payload: "down",
+      });
+      expect(state.inputText).toBe("current");
+      expect(state.longTextMap).toEqual({ "[LongText#2]": "current long" });
+    });
+
+    it("should reset history navigation on text input", () => {
+      let state = {
+        ...initialState,
+        history: mockHistory,
+        historyIndex: 0,
+        inputText: "first",
+        cursorPosition: 5,
+        originalInputText: "current",
+      };
+
+      state = inputReducer(state, { type: "INSERT_TEXT", payload: "!" });
+      expect(state.historyIndex).toBe(-1);
+      expect(state.inputText).toBe("first!");
+    });
+
+    it("should handle SELECT_HISTORY_ENTRY", () => {
+      const entry = {
+        prompt: "selected",
+        timestamp: 3000,
+        longTextMap: { "[LongText#1]": "selected long" },
+      };
+      const state = inputReducer(initialState, {
+        type: "SELECT_HISTORY_ENTRY",
+        payload: entry,
+      });
+      expect(state.inputText).toBe("selected");
+      expect(state.longTextMap).toEqual({ "[LongText#1]": "selected long" });
+      expect(state.historyIndex).toBe(-1);
+      expect(state.history).toEqual([]);
+    });
+
+    it("should handle RESET_HISTORY_NAVIGATION", () => {
+      const stateWithNav = {
+        ...initialState,
+        historyIndex: 0,
+        history: mockHistory,
+        originalInputText: "current",
+      };
+      const state = inputReducer(stateWithNav, {
+        type: "RESET_HISTORY_NAVIGATION",
+      });
+      expect(state.historyIndex).toBe(-1);
+      expect(state.history).toEqual([]);
+      expect(state.originalInputText).toBe("");
+    });
   });
 });

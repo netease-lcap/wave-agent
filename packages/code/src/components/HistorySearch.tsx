@@ -4,7 +4,7 @@ import { PromptHistoryManager, type PromptEntry } from "wave-agent-sdk";
 
 export interface HistorySearchProps {
   searchQuery: string;
-  onSelect: (prompt: string) => void;
+  onSelect: (entry: PromptEntry) => void;
   onCancel: () => void;
 }
 
@@ -44,7 +44,7 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
         entriesRef.current.length > 0 &&
         selectedIndexRef.current < entriesRef.current.length
       ) {
-        onSelect(entriesRef.current[selectedIndexRef.current].prompt);
+        onSelect(entriesRef.current[selectedIndexRef.current]);
       }
       return;
     }

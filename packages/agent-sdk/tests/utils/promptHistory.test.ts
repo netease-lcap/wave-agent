@@ -46,11 +46,25 @@ describe("PromptHistoryManager", () => {
         .spyOn(fs.promises, "appendFile")
         .mockResolvedValue(undefined);
 
-      await PromptHistoryManager.addEntry("hello world");
+      await PromptHistoryManager.addEntry("hello world", "session-1", {
+        "[LongText#1]": "very long text",
+      });
 
       expect(appendFileSpy).toHaveBeenCalledWith(
         "/mock/path/history.jsonl",
         expect.stringContaining('"prompt":"hello world"'),
+        "utf-8",
+      );
+      expect(appendFileSpy).toHaveBeenCalledWith(
+        "/mock/path/history.jsonl",
+        expect.stringContaining('"sessionId":"session-1"'),
+        "utf-8",
+      );
+      expect(appendFileSpy).toHaveBeenCalledWith(
+        "/mock/path/history.jsonl",
+        expect.stringContaining(
+          '"longTextMap":{"[LongText#1]":"very long text"}',
+        ),
         "utf-8",
       );
     });
@@ -86,6 +100,36 @@ describe("PromptHistoryManager", () => {
       expect(history[0].prompt).toBe("first");
       expect(history[0].timestamp).toBe(3000);
       expect(history[1].prompt).toBe("second");
+    });
+
+    it("should filter by sessionId if provided", async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      const mockData =
+        JSON.stringify({
+          prompt: "session1-a",
+          timestamp: 1000,
+          sessionId: "s1",
+        }) +
+        "\n" +
+        JSON.stringify({
+          prompt: "session2-a",
+          timestamp: 2000,
+          sessionId: "s2",
+        }) +
+        "\n" +
+        JSON.stringify({
+          prompt: "session1-b",
+          timestamp: 3000,
+          sessionId: "s1",
+        }) +
+        "\n";
+
+      vi.spyOn(fs.promises, "readFile").mockResolvedValue(mockData);
+
+      const history = await PromptHistoryManager.getHistory("s1");
+      expect(history).toHaveLength(2);
+      expect(history[0].prompt).toBe("session1-b");
+      expect(history[1].prompt).toBe("session1-a");
     });
   });
 

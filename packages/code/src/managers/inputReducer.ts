@@ -1,4 +1,4 @@
-import { FileItem, PermissionMode, Logger } from "wave-agent-sdk";
+import { FileItem, PermissionMode, Logger, PromptEntry } from "wave-agent-sdk";
 
 export interface AttachedImage {
   id: number;
@@ -35,8 +35,8 @@ export interface InputManagerCallbacks {
   onAbortMessage?: () => void;
   onClearMessages?: () => void;
   onBackgroundCurrentTask?: () => void;
-  onResetHistoryNavigation?: () => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
+  sessionId?: string;
   logger?: Logger;
 }
 
@@ -66,6 +66,10 @@ export interface InputState {
   isPasting: boolean;
   pasteBuffer: string;
   initialPasteCursorPosition: number;
+  history: PromptEntry[];
+  historyIndex: number;
+  originalInputText: string;
+  originalLongTextMap: Record<string, string>;
 }
 
 export const initialState: InputState = {
@@ -94,6 +98,10 @@ export const initialState: InputState = {
   isPasting: false,
   pasteBuffer: "",
   initialPasteCursorPosition: 0,
+  history: [],
+  historyIndex: -1,
+  originalInputText: "",
+  originalLongTextMap: {},
 };
 
 export type InputAction =
@@ -131,7 +139,11 @@ export type InputAction =
   | {
       type: "ADD_IMAGE_AND_INSERT_PLACEHOLDER";
       payload: { path: string; mimeType: string };
-    };
+    }
+  | { type: "SET_HISTORY_ENTRIES"; payload: PromptEntry[] }
+  | { type: "NAVIGATE_HISTORY"; payload: "up" | "down" }
+  | { type: "RESET_HISTORY_NAVIGATION" }
+  | { type: "SELECT_HISTORY_ENTRY"; payload: PromptEntry };
 
 export function inputReducer(
   state: InputState,
@@ -139,7 +151,11 @@ export function inputReducer(
 ): InputState {
   switch (action.type) {
     case "SET_INPUT_TEXT":
-      return { ...state, inputText: action.payload };
+      return {
+        ...state,
+        inputText: action.payload,
+        historyIndex: -1,
+      };
     case "SET_CURSOR_POSITION":
       return {
         ...state,
@@ -157,6 +173,7 @@ export function inputReducer(
         ...state,
         inputText: newText,
         cursorPosition: newCursorPosition,
+        historyIndex: -1,
       };
     }
     case "DELETE_CHAR": {
@@ -172,6 +189,7 @@ export function inputReducer(
           ...state,
           inputText: newText,
           cursorPosition: newCursorPosition,
+          historyIndex: -1,
         };
       }
       return state;
@@ -314,6 +332,7 @@ export function inputReducer(
         cursorPosition: newCursorPosition,
         longTextCounter: newLongTextCounter,
         longTextMap: newLongTextMap,
+        historyIndex: -1,
       };
     }
     case "CLEAR_LONG_TEXT_MAP":
@@ -323,6 +342,7 @@ export function inputReducer(
         ...state,
         inputText: "",
         cursorPosition: 0,
+        historyIndex: -1,
       };
     case "START_PASTE":
       return {
@@ -359,8 +379,71 @@ export function inputReducer(
         imageIdCounter: state.imageIdCounter + 1,
         inputText: newText,
         cursorPosition: newCursorPosition,
+        historyIndex: -1,
       };
     }
+    case "SET_HISTORY_ENTRIES":
+      return { ...state, history: action.payload };
+    case "NAVIGATE_HISTORY": {
+      const direction = action.payload;
+      let newIndex = state.historyIndex;
+      let newOriginalInputText = state.originalInputText;
+      let newOriginalLongTextMap = state.originalLongTextMap;
+
+      if (direction === "up") {
+        if (newIndex === -1) {
+          newOriginalInputText = state.inputText;
+          newOriginalLongTextMap = state.longTextMap;
+        }
+        newIndex = Math.min(state.history.length - 1, newIndex + 1);
+      } else {
+        newIndex = Math.max(-1, newIndex - 1);
+      }
+
+      if (newIndex === -1) {
+        return {
+          ...state,
+          historyIndex: newIndex,
+          inputText: newOriginalInputText,
+          longTextMap: newOriginalLongTextMap,
+          cursorPosition: newOriginalInputText.length,
+          originalInputText: newOriginalInputText,
+          originalLongTextMap: newOriginalLongTextMap,
+        };
+      } else {
+        const entry = state.history[newIndex];
+        return {
+          ...state,
+          historyIndex: newIndex,
+          inputText: entry.prompt,
+          longTextMap: entry.longTextMap || {},
+          cursorPosition: entry.prompt.length,
+          originalInputText: newOriginalInputText,
+          originalLongTextMap: newOriginalLongTextMap,
+        };
+      }
+    }
+    case "SELECT_HISTORY_ENTRY": {
+      const entry = action.payload;
+      return {
+        ...state,
+        inputText: entry.prompt,
+        longTextMap: entry.longTextMap || {},
+        cursorPosition: entry.prompt.length,
+        historyIndex: -1,
+        history: [],
+        originalInputText: "",
+        originalLongTextMap: {},
+      };
+    }
+    case "RESET_HISTORY_NAVIGATION":
+      return {
+        ...state,
+        historyIndex: -1,
+        history: [],
+        originalInputText: "",
+        originalLongTextMap: {},
+      };
     default:
       return state;
   }

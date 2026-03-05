@@ -5,7 +5,11 @@ import {
   initialState,
   InputManagerCallbacks,
 } from "../managers/inputReducer.js";
-import { searchFiles as searchFilesUtil, PermissionMode } from "wave-agent-sdk";
+import {
+  searchFiles as searchFilesUtil,
+  PermissionMode,
+  PromptEntry,
+} from "wave-agent-sdk";
 import * as handlers from "../managers/inputHandlers.js";
 
 export const useInputManager = (
@@ -68,7 +72,7 @@ export const useInputManager = (
         );
         dispatch({ type: "COMPRESS_AND_INSERT_TEXT", payload: processedInput });
         dispatch({ type: "END_PASTE" });
-        callbacksRef.current.onResetHistoryNavigation?.();
+        dispatch({ type: "RESET_HISTORY_NAVIGATION" });
       }, pasteDebounceDelay);
       return () => clearTimeout(timer);
     }
@@ -247,10 +251,8 @@ export const useInputManager = (
     );
   }, []);
 
-  const handleHistorySearchSelect = useCallback((prompt: string) => {
-    dispatch({ type: "SET_INPUT_TEXT", payload: prompt });
-    dispatch({ type: "SET_CURSOR_POSITION", payload: prompt.length });
-    dispatch({ type: "CANCEL_HISTORY_SEARCH" });
+  const handleHistorySearchSelect = useCallback((entry: PromptEntry) => {
+    dispatch({ type: "SELECT_HISTORY_ENTRY", payload: entry });
   }, []);
 
   const handleCancelHistorySearch = useCallback(() => {

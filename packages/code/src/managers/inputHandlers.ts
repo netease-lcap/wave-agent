@@ -54,7 +54,11 @@ export const handleSubmit = async (
     let cleanContent = state.inputText.replace(imageRegex, "").trim();
     cleanContent = expandLongTextPlaceholders(cleanContent, state.longTextMap);
 
-    PromptHistoryManager.addEntry(cleanContent).catch((err: unknown) => {
+    PromptHistoryManager.addEntry(
+      cleanContent,
+      callbacks.sessionId,
+      state.longTextMap,
+    ).catch((err: unknown) => {
       callbacks.logger?.error("Failed to save prompt history", err);
     });
 
@@ -63,7 +67,7 @@ export const handleSubmit = async (
       referencedImages.length > 0 ? referencedImages : undefined,
     );
     dispatch({ type: "CLEAR_INPUT" });
-    callbacks.onResetHistoryNavigation?.();
+    dispatch({ type: "RESET_HISTORY_NAVIGATION" });
     dispatch({ type: "CLEAR_LONG_TEXT_MAP" });
   }
 };
@@ -276,7 +280,7 @@ export const handlePasteInput = (
       char = "!";
     }
 
-    callbacks.onResetHistoryNavigation?.();
+    dispatch({ type: "RESET_HISTORY_NAVIGATION" });
     dispatch({ type: "INSERT_TEXT", payload: char });
 
     processSelectorInput(state, dispatch, char);
@@ -494,7 +498,25 @@ export const handleNormalInput = async (
       dispatch({ type: "CANCEL_FILE_SELECTOR" });
     } else if (state.showCommandSelector) {
       dispatch({ type: "CANCEL_COMMAND_SELECTOR" });
+    } else if (state.historyIndex !== -1) {
+      dispatch({ type: "RESET_HISTORY_NAVIGATION" });
     }
+    return true;
+  }
+
+  if (key.upArrow) {
+    if (state.history.length === 0) {
+      const history = await PromptHistoryManager.getHistory(
+        callbacks.sessionId,
+      );
+      dispatch({ type: "SET_HISTORY_ENTRIES", payload: history });
+    }
+    dispatch({ type: "NAVIGATE_HISTORY", payload: "up" });
+    return true;
+  }
+
+  if (key.downArrow) {
+    dispatch({ type: "NAVIGATE_HISTORY", payload: "down" });
     return true;
   }
 
@@ -509,7 +531,7 @@ export const handleNormalInput = async (
       const newInputText = beforeCursor + afterCursor;
 
       dispatch({ type: "DELETE_CHAR" });
-      callbacks.onResetHistoryNavigation?.();
+      dispatch({ type: "RESET_HISTORY_NAVIGATION" });
 
       checkForAtDeletion(state, dispatch, newCursorPosition);
       checkForSlashDeletion(state, dispatch, newCursorPosition);

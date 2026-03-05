@@ -77,7 +77,7 @@ describe("HistorySearch", () => {
 
     stdin.write("\r");
     await vi.waitFor(() => {
-      expect(onSelect).toHaveBeenCalledWith("first prompt");
+      expect(onSelect).toHaveBeenCalledWith(mockEntries[0]);
     });
   });
 
@@ -118,7 +118,7 @@ describe("HistorySearch", () => {
 
     stdin.write("\r");
     await vi.waitFor(() => {
-      expect(onSelect).toHaveBeenCalledWith("second prompt");
+      expect(onSelect).toHaveBeenCalledWith(mockEntries[1]);
     });
   });
 
