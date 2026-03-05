@@ -278,6 +278,15 @@ export class ConfigurationService {
       }
     }
 
+    // Validate autoMemoryEnabled if present
+    if (
+      config.autoMemoryEnabled !== undefined &&
+      typeof config.autoMemoryEnabled !== "boolean"
+    ) {
+      result.isValid = false;
+      result.errors.push("autoMemoryEnabled configuration must be a boolean");
+    }
+
     return result;
   }
 
@@ -532,6 +541,28 @@ export class ConfigurationService {
     }
 
     return undefined;
+  }
+
+  /**
+   * Resolves auto-memory enabled state with fallbacks
+   * Resolution priority: settings.json > WAVE_DISABLE_AUTO_MEMORY > default (true)
+   * @returns Resolved auto-memory enabled state
+   */
+  resolveAutoMemoryEnabled(): boolean {
+    // 1. settings.json (merged)
+    if (this.currentConfiguration?.autoMemoryEnabled !== undefined) {
+      return this.currentConfiguration.autoMemoryEnabled;
+    }
+
+    // 2. WAVE_DISABLE_AUTO_MEMORY environment variable
+    const disableAutoMemory =
+      this.env.WAVE_DISABLE_AUTO_MEMORY || process.env.WAVE_DISABLE_AUTO_MEMORY;
+    if (disableAutoMemory === "1" || disableAutoMemory === "true") {
+      return false;
+    }
+
+    // 3. Default (true)
+    return true;
   }
 
   /**
@@ -874,6 +905,10 @@ export function loadWaveConfigFromFile(
       permissions: config.permissions || undefined,
       enabledPlugins: config.enabledPlugins || undefined,
       language: config.language || undefined,
+      autoMemoryEnabled:
+        config.autoMemoryEnabled !== undefined
+          ? config.autoMemoryEnabled
+          : undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -1030,6 +1065,11 @@ export function loadMergedWaveConfig(
     if (config.language !== undefined) {
       mergedConfig.language = config.language;
     }
+
+    // Merge autoMemoryEnabled (last one wins)
+    if (config.autoMemoryEnabled !== undefined) {
+      mergedConfig.autoMemoryEnabled = config.autoMemoryEnabled;
+    }
   }
 
   return {
@@ -1052,5 +1092,6 @@ export function loadMergedWaveConfig(
         ? mergedConfig.enabledPlugins
         : undefined,
     language: mergedConfig.language,
+    autoMemoryEnabled: mergedConfig.autoMemoryEnabled,
   };
 }

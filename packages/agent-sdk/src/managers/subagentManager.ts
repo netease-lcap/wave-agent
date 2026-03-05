@@ -83,6 +83,7 @@ export interface SubagentManagerOptions {
   getModelConfig: () => ModelConfig;
   getMaxInputTokens: () => number;
   getLanguage: () => string | undefined;
+  getAutoMemoryEnabled: () => boolean;
   getEnvironmentVars?: () => Record<string, string>;
   onUsageAdded?: (usage: Usage) => void;
 }
@@ -97,6 +98,7 @@ export class SubagentManager {
   private getModelConfig: () => ModelConfig;
   private getMaxInputTokens: () => number;
   private getLanguage: () => string | undefined;
+  private getAutoMemoryEnabled: () => boolean;
   private getEnvironmentVars?: () => Record<string, string>;
   private onUsageAdded?: (usage: Usage) => void;
   private container: Container;
@@ -109,6 +111,7 @@ export class SubagentManager {
     this.getModelConfig = options.getModelConfig;
     this.getMaxInputTokens = options.getMaxInputTokens;
     this.getLanguage = options.getLanguage;
+    this.getAutoMemoryEnabled = options.getAutoMemoryEnabled;
     this.getEnvironmentVars = options.getEnvironmentVars;
     this.onUsageAdded = options.onUsageAdded;
   }
@@ -259,6 +262,7 @@ export class SubagentManager {
       },
       getMaxInputTokens: this.getMaxInputTokens,
       getLanguage: this.getLanguage,
+      getAutoMemoryEnabled: this.getAutoMemoryEnabled,
       getEnvironmentVars: this.getEnvironmentVars,
       callbacks: {
         onUsageAdded: this.onUsageAdded,

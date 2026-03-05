@@ -42,6 +42,24 @@ export function getGitRepoRoot(cwd: string): string {
 }
 
 /**
+ * Get the common directory of the git repository (handles worktrees)
+ * @param cwd Working directory
+ * @returns Repository common directory path
+ */
+export function getGitCommonDir(cwd: string): string {
+  try {
+    const commonDir = execSync("git rev-parse --git-common-dir", {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return path.resolve(cwd, commonDir);
+  } catch {
+    return getGitRepoRoot(cwd);
+  }
+}
+
+/**
  * Get the default remote branch (e.g., origin/main)
  * @param cwd Working directory
  * @returns Default remote branch name

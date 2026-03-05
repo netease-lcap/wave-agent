@@ -15,6 +15,12 @@ vi.mock("../../src/services/aiService.js", () => ({
 
 // Mock the memory service
 vi.mock("../../src/services/memory.js", () => ({
+  MemoryService: vi.fn().mockImplementation(() => ({
+    getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+    getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+    ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+    getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+  })),
   getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
 }));
 
@@ -75,6 +81,12 @@ describe("AIManager finish reason", () => {
     container.register("MessageManager", mockMessageManager);
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", {} as unknown as TaskManager);
+    container.register("MemoryService", {
+      getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+      getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+      ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+      getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+    });
     container.register("PermissionManager", {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
       clearTemporaryRules: vi.fn(),
@@ -96,6 +108,7 @@ describe("AIManager finish reason", () => {
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 96000,
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => undefined,
       stream: false,
     });

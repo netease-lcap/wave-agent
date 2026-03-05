@@ -24,6 +24,9 @@ const mockMemoryServiceInstance = {
   ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
   readMemoryFile: vi.fn().mockResolvedValue(""),
   getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+  getAutoMemoryDirectory: vi.fn().mockReturnValue("/test/auto-memory"),
+  ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+  getAutoMemoryContent: vi.fn().mockResolvedValue(""),
 };
 
 vi.mock("@/services/memory", () => ({

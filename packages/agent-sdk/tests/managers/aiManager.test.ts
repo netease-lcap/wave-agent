@@ -50,6 +50,12 @@ vi.mock("../../src/services/aiService.js", () => ({
 
 // Mock the memory service
 vi.mock("../../src/services/memory.js", () => ({
+  MemoryService: vi.fn().mockImplementation(() => ({
+    getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+    getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+    ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+    getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+  })),
   getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
 }));
 
@@ -115,6 +121,16 @@ describe("AIManager", () => {
     container.register("MessageManager", mockMessageManager);
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", taskManager);
+    container.register("MemoryService", {
+      getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+      getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+      ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+      getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+    });
+    container.register("PermissionManager", {
+      getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+      clearTemporaryRules: vi.fn(),
+    } as unknown as Record<string, unknown>);
 
     // Mock SubagentManager and register it
     container.register("SubagentManager", {
@@ -132,6 +148,7 @@ describe("AIManager", () => {
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 96000,
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => undefined,
       stream: false,
     });
@@ -162,12 +179,23 @@ describe("AIManager", () => {
       container.register("MessageManager", mockMessageManager);
       container.register("ToolManager", mockToolManager);
       container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+      } as unknown as Record<string, unknown>);
 
       const aiManagerWithLanguage = new AIManager(container, {
         workdir: "/test/workdir",
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
+        getAutoMemoryEnabled: () => true,
         getLanguage: () => "Chinese",
         stream: false,
       });
@@ -206,12 +234,23 @@ describe("AIManager", () => {
       container.register("MessageManager", mockMessageManager);
       container.register("ToolManager", mockToolManager);
       container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+      } as unknown as Record<string, unknown>);
 
       const aiManagerWithLanguage = new AIManager(container, {
         workdir: "/test/workdir",
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
+        getAutoMemoryEnabled: () => true,
         getLanguage: () => "Spanish",
         stream: false,
       });
@@ -406,6 +445,16 @@ describe("AIManager", () => {
       container.register("MessageManager", mockMessageManager);
       container.register("ToolManager", mockToolManager);
       container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+      } as unknown as Record<string, unknown>);
       container.register(
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
@@ -416,6 +465,7 @@ describe("AIManager", () => {
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
+        getAutoMemoryEnabled: () => true,
         getLanguage: () => undefined,
         stream: false,
       });
@@ -447,6 +497,16 @@ describe("AIManager", () => {
       container.register("MessageManager", mockMessageManager);
       container.register("ToolManager", mockToolManager);
       container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+      } as unknown as Record<string, unknown>);
       container.register(
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
@@ -457,6 +517,7 @@ describe("AIManager", () => {
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
+        getAutoMemoryEnabled: () => true,
         getLanguage: () => undefined,
         stream: false,
       });
@@ -486,6 +547,16 @@ describe("AIManager", () => {
       container.register("MessageManager", mockMessageManager);
       container.register("ToolManager", mockToolManager);
       container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+      });
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+      } as unknown as Record<string, unknown>);
       container.register(
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
@@ -496,6 +567,7 @@ describe("AIManager", () => {
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 96000,
+        getAutoMemoryEnabled: () => true,
         getLanguage: () => undefined,
         stream: false,
       });
@@ -510,6 +582,88 @@ describe("AIManager", () => {
 
       expect(mockPermissionManager.addTemporaryRules).toHaveBeenCalled();
       expect(mockPermissionManager.clearTemporaryRules).toHaveBeenCalled();
+    });
+  });
+
+  describe("Auto-Memory Injection", () => {
+    it("should inject auto-memory content when enabled", async () => {
+      const memoryService = {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue("Auto-memory content"),
+      };
+
+      const container = new Container();
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      });
+      container.register("MemoryService", memoryService);
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+      });
+
+      const aiManagerWithAutoMemory = new AIManager(container, {
+        workdir: "/test/workdir",
+        getGatewayConfig: () => mockGatewayConfig,
+        getModelConfig: () => mockModelConfig,
+        getMaxInputTokens: () => 96000,
+        getAutoMemoryEnabled: () => true,
+        getLanguage: () => undefined,
+        stream: false,
+      });
+
+      await aiManagerWithAutoMemory.sendAIMessage();
+
+      expect(aiService.callAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.stringContaining("Auto-memory content"),
+        }),
+      );
+    });
+
+    it("should NOT inject auto-memory content when disabled", async () => {
+      const memoryService = {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+        ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+        getAutoMemoryContent: vi.fn().mockResolvedValue("Auto-memory content"),
+      };
+
+      const container = new Container();
+      container.register("MessageManager", mockMessageManager);
+      container.register("ToolManager", mockToolManager);
+      container.register("TaskManager", {
+        on: vi.fn(),
+        listTasks: vi.fn().mockResolvedValue([]),
+      });
+      container.register("MemoryService", memoryService);
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
+        clearTemporaryRules: vi.fn(),
+      });
+
+      const aiManagerDisabledAutoMemory = new AIManager(container, {
+        workdir: "/test/workdir",
+        getGatewayConfig: () => mockGatewayConfig,
+        getModelConfig: () => mockModelConfig,
+        getMaxInputTokens: () => 96000,
+        getAutoMemoryEnabled: () => false,
+        getLanguage: () => undefined,
+        stream: false,
+      });
+
+      await aiManagerDisabledAutoMemory.sendAIMessage();
+
+      expect(aiService.callAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          systemPrompt: expect.not.stringContaining("Auto-memory content"),
+        }),
+      );
     });
   });
 

@@ -143,6 +143,10 @@ export function setupAgentContainer(
   container.register("LspManager", lspManager);
 
   const permissionManager = new PermissionManager(container, { workdir });
+  if (configurationService.resolveAutoMemoryEnabled()) {
+    const autoMemoryDir = memoryService.getAutoMemoryDirectory(workdir);
+    permissionManager.updateAdditionalDirectories([autoMemoryDir]);
+  }
   container.register("PermissionManager", permissionManager);
   permissionManager.setOnConfiguredDefaultModeChange((mode) => {
     handlePlanModeTransition(mode);
@@ -254,6 +258,7 @@ export function setupAgentContainer(
     getModelConfig,
     getMaxInputTokens,
     getLanguage,
+    getAutoMemoryEnabled: () => configurationService.resolveAutoMemoryEnabled(),
     getEnvironmentVars: () => configurationService.getEnvironmentVars(),
     onUsageAdded: (usage: Usage) => addUsage(usage),
   });
@@ -271,6 +276,7 @@ export function setupAgentContainer(
     getModelConfig,
     getMaxInputTokens,
     getLanguage,
+    getAutoMemoryEnabled: () => configurationService.resolveAutoMemoryEnabled(),
     getEnvironmentVars: () => configurationService.getEnvironmentVars(),
   });
   container.register("AIManager", aiManager);

@@ -35,6 +35,9 @@ const mockMemoryServiceInstance = vi.hoisted(() => ({
   getCombinedMemoryContent: vi
     .fn()
     .mockResolvedValue("Combined memory content"),
+  getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+  ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+  getAutoMemoryContent: vi.fn().mockResolvedValue(""),
 }));
 
 vi.mock("../../src/services/memory.js", () => ({

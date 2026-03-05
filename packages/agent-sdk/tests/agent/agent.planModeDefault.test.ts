@@ -28,6 +28,7 @@ vi.mock("../../src/services/configurationService.js", () => {
         }),
         resolveMaxInputTokens: vi.fn().mockReturnValue(100000),
         getEnvironmentVars: vi.fn().mockReturnValue({}),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
       };
     }),
   };
@@ -39,6 +40,9 @@ const mockMemoryServiceInstance = {
   ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
   readMemoryFile: vi.fn().mockResolvedValue(""),
   getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+  getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+  ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+  getAutoMemoryContent: vi.fn().mockResolvedValue(""),
 };
 
 vi.mock("../../src/services/memory.js", () => ({
@@ -116,6 +120,7 @@ describe("Agent Plan Mode Default", () => {
         }),
         resolveMaxInputTokens: vi.fn().mockReturnValue(100000),
         getEnvironmentVars: vi.fn().mockReturnValue({}),
+        resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
       } as unknown as ConfigurationService;
     });
 

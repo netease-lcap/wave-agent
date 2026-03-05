@@ -50,6 +50,7 @@ describe("Dynamic Tool Definitions", () => {
         getGatewayConfig: () => ({}) as unknown as GatewayConfig,
         getModelConfig: () => ({}) as unknown as ModelConfig,
         getMaxInputTokens: () => 1000,
+        getAutoMemoryEnabled: () => true,
         onUsageAdded: () => {},
         getLanguage: () => undefined,
       });

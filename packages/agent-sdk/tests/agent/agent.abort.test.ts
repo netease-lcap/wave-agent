@@ -78,6 +78,7 @@ describe("Agent - Abort Handling", () => {
       getGatewayConfig: () => agent.getGatewayConfig(),
       getModelConfig: () => agent.getModelConfig(),
       getMaxInputTokens: () => agent.getMaxInputTokens(),
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => agent.getLanguage(),
       getEnvironmentVars: () =>
         (

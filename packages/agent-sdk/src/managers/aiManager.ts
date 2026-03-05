@@ -36,6 +36,7 @@ export interface AIManagerOptions {
   getModelConfig: () => ModelConfig;
   getMaxInputTokens: () => number;
   getLanguage: () => string | undefined;
+  getAutoMemoryEnabled: () => boolean;
   getEnvironmentVars?: () => Record<string, string>; // Get configuration environment variables for hooks
 }
 
@@ -53,6 +54,7 @@ export class AIManager {
   private getModelConfigFn: () => ModelConfig;
   private getMaxInputTokensFn: () => number;
   private getLanguageFn: () => string | undefined;
+  private getAutoMemoryEnabledFn: () => boolean;
   private getEnvironmentVarsFn?: () => Record<string, string>;
 
   // Service overrides
@@ -71,6 +73,7 @@ export class AIManager {
     this.getModelConfigFn = options.getModelConfig;
     this.getMaxInputTokensFn = options.getMaxInputTokens;
     this.getLanguageFn = options.getLanguage;
+    this.getAutoMemoryEnabledFn = options.getAutoMemoryEnabled;
     this.getEnvironmentVarsFn = options.getEnvironmentVars;
   }
 
@@ -80,6 +83,12 @@ export class AIManager {
 
   private get messageManager(): MessageManager {
     return this.container.get<MessageManager>("MessageManager")!;
+  }
+
+  private get memoryService(): import("../services/memory.js").MemoryService {
+    return this.container.get<import("../services/memory.js").MemoryService>(
+      "MemoryService",
+    )!;
   }
 
   private get taskManager(): import("../services/taskManager.js").TaskManager {
@@ -123,6 +132,10 @@ export class AIManager {
 
   public getLanguage(): string | undefined {
     return this.getLanguageFn();
+  }
+
+  public getAutoMemoryEnabled(): boolean {
+    return this.getAutoMemoryEnabledFn();
   }
 
   private isCompressing: boolean = false;
@@ -393,6 +406,18 @@ export class AIManager {
         }
       }
 
+      let autoMemoryOptions: { directory: string; content: string } | undefined;
+
+      if (this.getAutoMemoryEnabled()) {
+        const directory = this.memoryService.getAutoMemoryDirectory(
+          this.workdir,
+        );
+        const content = await this.memoryService.getAutoMemoryContent(
+          this.workdir,
+        );
+        autoMemoryOptions = { directory, content };
+      }
+
       // Call AI service with streaming callbacks if enabled
       const callAgentOptions: CallAgentOptions = {
         gatewayConfig: this.getGatewayConfig(),
@@ -412,6 +437,7 @@ export class AIManager {
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
             planMode: planModeOptions,
+            autoMemory: autoMemoryOptions,
           },
         ), // Pass custom system prompt
         maxTokens: maxTokens, // Pass max tokens override
