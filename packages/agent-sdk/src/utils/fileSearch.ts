@@ -3,6 +3,7 @@ import { rgPath } from "@vscode/ripgrep";
 import fuzzysort from "fuzzysort";
 import { getGlobIgnorePatterns } from "./fileFilter.js";
 import type { FileItem } from "../types/fileSearch.js";
+import { logger } from "./globalLogger.js";
 
 /**
  * Execute ripgrep to get all file paths
@@ -139,7 +140,7 @@ export const searchFiles = async (
 
     return fuzzyResults.map((res) => res.obj);
   } catch (error) {
-    console.error("Fuzzy search error:", error);
+    logger.error("Fuzzy search error:", error);
     return [];
   }
 };
