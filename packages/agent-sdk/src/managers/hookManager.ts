@@ -162,10 +162,31 @@ export class HookManager {
         const hookCommand = config.hooks[commandIndex];
 
         try {
+          const options = hookCommand.timeout
+            ? { timeout: hookCommand.timeout * 1000 }
+            : undefined;
+
+          if (hookCommand.async) {
+            // Execute async command without awaiting
+            executeCommand(hookCommand.command, context, options).catch(
+              (error) => {
+                const errorMessage =
+                  error instanceof Error
+                    ? error.message
+                    : "Unknown execution error";
+                logger?.error(
+                  `[HookManager] Async hook command ${commandIndex + 1} failed: ${errorMessage}`,
+                );
+              },
+            );
+            // Async hooks are not included in results to prevent blocking
+            continue;
+          }
+
           const result = await executeCommand(
             hookCommand.command,
             context,
-            undefined,
+            options,
           );
           results.push(result);
 

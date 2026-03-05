@@ -26,6 +26,8 @@ export type HookEvent = 'PreToolUse' | 'PostToolUse' | 'UserPromptSubmit' | 'Sto
 export interface HookCommand {
   type: 'command';
   command: string;
+  async?: boolean;
+  timeout?: number; // seconds
 }
 
 export interface HookEventConfig {
@@ -171,6 +173,27 @@ export class Agent {
           {
             "type": "command",
             "command": "\"$WAVE_PROJECT_DIR\"/.wave/hooks/cleanup.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Async Background Hook
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm test",
+            "async": true,
+            "timeout": 300
           }
         ]
       }

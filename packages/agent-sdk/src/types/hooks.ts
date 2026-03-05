@@ -26,6 +26,8 @@ export type HookEvent =
 export interface HookCommand {
   type: "command";
   command: string;
+  async?: boolean;
+  timeout?: number; // seconds
 }
 
 // Hook event configuration with optional pattern matching
@@ -104,15 +106,29 @@ export function isValidHookEvent(event: string): event is HookEvent {
 }
 
 export function isValidHookCommand(cmd: unknown): cmd is HookCommand {
-  return (
-    typeof cmd === "object" &&
-    cmd !== null &&
-    "type" in cmd &&
-    cmd.type === "command" &&
-    "command" in cmd &&
-    typeof cmd.command === "string" &&
-    cmd.command.length > 0
-  );
+  if (
+    typeof cmd !== "object" ||
+    cmd === null ||
+    !("type" in cmd) ||
+    cmd.type !== "command" ||
+    !("command" in cmd) ||
+    typeof cmd.command !== "string" ||
+    cmd.command.length === 0
+  ) {
+    return false;
+  }
+
+  const hookCmd = cmd as Record<string, unknown>;
+
+  if ("async" in hookCmd && typeof hookCmd.async !== "boolean") {
+    return false;
+  }
+
+  if ("timeout" in hookCmd && typeof hookCmd.timeout !== "number") {
+    return false;
+  }
+
+  return true;
 }
 
 export function isValidHookEventConfig(

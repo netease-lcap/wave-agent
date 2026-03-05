@@ -128,6 +128,22 @@ A developer creates a Stop hook to perform cleanup actions when a session ends. 
 
 ---
 
+### User Story 9 - Async Hook Execution (Priority: P2)
+
+As a developer, I want to run long-running tasks like tests or background analysis as hooks without blocking Wave's response, so that I can continue my interaction while the tasks execute in the background.
+
+**Why this priority**: Enables powerful background workflows without sacrificing the responsiveness of the AI agent.
+
+**Independent Test**: Can be tested by configuring an async hook with a `sleep` command and verifying that Wave continues immediately without waiting for the sleep to complete.
+
+**Acceptance Scenarios**:
+
+1. **Given** an async hook is configured with `async: true`, **When** the triggering event occurs, **Then** the hook command starts executing in the background and Wave continues its workflow immediately.
+2. **Given** an async hook with a custom `timeout`, **When** the hook executes, **Then** it is allowed to run up to the specified timeout before being terminated.
+3. **Given** an async hook produces output, **When** it completes, **Then** its output is logged but not delivered to the conversation.
+
+---
+
 ### Edge Cases
 
 - What happens when a hook command fails or times out?
@@ -163,6 +179,9 @@ A developer creates a Stop hook to perform cleanup actions when a session ends. 
 - **FR-019**: System MUST maintain backward compatibility with existing hooks that don't expect JSON input
 - **FR-020**: System MUST organize hook components according to Constitution VII: HookManager in managers/, executor and settings as functions in services/hook.ts, matcher in utils/hookMatcher.ts, and types in types/hooks.ts.
 - **FR-021**: System MUST ensure test file structure mirrors the source code structure.
+- **FR-022**: System MUST support `async` field in hook configuration to allow background execution.
+- **FR-023**: System MUST support `timeout` field (in seconds) in hook configuration to override the default 10-minute timeout.
+- **FR-024**: System MUST NOT deliver stdout/stderr from async hooks to the conversation to prevent unexpected message injections from background tasks.
 
 ### Key Entities
 
