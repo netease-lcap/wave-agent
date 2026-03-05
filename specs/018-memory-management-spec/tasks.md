@@ -18,7 +18,7 @@
 
 - [X] T001 Research existing memory service and manager logic
 - [X] T002 Document Project vs. User memory distinction in spec.md
-- [X] T003 Document the `#` trigger and saving flow in spec.md
+- [X] T003 Document the memory saving flow in spec.md
 - [X] T004 Define data models and storage formats in data-model.md
 
 ---
@@ -28,7 +28,6 @@
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
 - [X] T005 [P] Create unit test file for memory service in `packages/agent-sdk/tests/services/memory.test.ts`
-- [ ] T006 [P] Create unit test file for `MemoryTypeSelector` component in `packages/code/tests/components/MemoryTypeSelector.test.tsx`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -36,21 +35,20 @@
 
 ## Phase 3: User Story 1 & 2 - Save Memory (Priority: P1) 🎯 MVP
 
-**Goal**: Enable saving project and user memory via `#` trigger.
+**Goal**: Enable saving project and user memory.
 
-**Independent Test**: Type `# test memory` and verify it can be saved to either project or user storage.
+**Independent Test**: Ask the agent to remember something and verify it can be saved to either project or user storage.
 
 ### Tests for User Story 1 & 2 (REQUIRED) ⚠️
 
-- [X] T007 [US1,US2] Write failing tests for `#` trigger detection
+- [X] T007 [US1,US2] Write failing tests for memory saving detection
 - [X] T008 [US1,US2] Write failing tests for file writing (Project vs User)
 
 ### Implementation for User Story 1 & 2
 
-- [X] T009 [US1,US2] Implement `#` trigger detection in `packages/code/src/managers/InputManager.ts`
-- [X] T010 [US1,US2] Implement `MemoryTypeSelector` component in `packages/code/src/components/MemoryTypeSelector.tsx`
-- [X] T011 [US1,US2] Implement memory saving logic in `packages/agent-sdk/src/services/memory.ts`
-- [X] T012 [US1,US2] Integrate memory retrieval into `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T009 [US1,US2] Implement memory saving detection in `packages/agent-sdk/src/prompts/autoMemory.ts`
+- [X] T010 [US1,US2] Implement memory saving logic in `packages/agent-sdk/src/services/memory.ts`
+- [X] T011 [US1,US2] Integrate memory retrieval into `packages/agent-sdk/src/managers/aiManager.ts`
 
 **Checkpoint**: User Stories 1 and 2 are fully functional and testable independently.
 

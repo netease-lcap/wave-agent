@@ -9,31 +9,30 @@
 
 ### User Story 1 - Save Project-Specific Memory (Priority: P1)
 
-As a user, I want to save project-specific rules or context by typing `#` so the agent remembers them for this project.
+As a user, I want the agent to save project-specific rules or context so it remembers them for this project.
 
 **Why this priority**: This is the core functionality that allows the agent to adapt to different project requirements and styles.
 
-**Independent Test**: Type `# Use pnpm instead of npm` in a project directory, select "Project" memory, and verify it's saved to `AGENTS.md`.
+**Independent Test**: Ask the agent to remember a project-specific rule (e.g., "always use pnpm") and verify it's saved to `AGENTS.md`.
 
 **Acceptance Scenarios**:
 
-1. **Given** the user types a message starting with `#`, **When** they press `Enter`, **Then** a memory type selector MUST appear.
-2. **Given** the selector is open, **When** the user selects "Project", **Then** the message MUST be saved to `AGENTS.md` in the current directory.
-3. **Given** information is saved in `AGENTS.md`, **When** the agent is asked a related question, **Then** it MUST use that information in its response.
+1. **Given** the user asks the agent to remember something for the project, **When** the agent identifies it as a project rule, **Then** it MUST be saved to `AGENTS.md` in the current directory.
+2. **Given** information is saved in `AGENTS.md`, **When** the agent is asked a related question, **Then** it MUST use that information in its response.
 
 ---
 
 ### User Story 2 - Save Global User Memory (Priority: P1)
 
-As a user, I want to save global preferences that follow me across all projects so I don't have to repeat them.
+As a user, I want the agent to save global preferences that follow me across all projects so I don't have to repeat them.
 
 **Why this priority**: Essential for a personalized experience across different workspaces.
 
-**Independent Test**: Type `# My name is Alice`, select "User" memory, and verify it's saved to the global memory file (e.g., `~/.wave/memory.md`).
+**Independent Test**: Ask the agent to remember a global preference (e.g., "my name is Alice") and verify it's saved to the global memory file (e.g., `~/.wave/AGENTS.md`).
 
 **Acceptance Scenarios**:
 
-1. **Given** the memory type selector is open, **When** the user selects "User", **Then** the message MUST be saved to the global user memory file.
+1. **Given** the user asks the agent to remember something globally, **When** the agent identifies it as a user preference, **Then** it MUST be saved to the global user memory file.
 2. **Given** information is saved in global memory, **When** the agent is used in ANY project, **Then** it MUST have access to that information.
 
 ---
@@ -82,10 +81,10 @@ As a user, I want the agent to automatically remember important information acro
 
 ### Functional Requirements
 
-- **FR-001**: System MUST trigger memory saving when a message starts with `#`.
-- **FR-002**: System MUST provide a UI to choose between "Project" and "User" memory.
+- **FR-001**: System MUST allow the agent to save memory when requested by the user.
+- **FR-002**: System SHOULD provide a way for the agent to distinguish between "Project" and "User" memory.
 - **FR-003**: Project memory MUST be stored in `AGENTS.md` in the current working directory.
-- **FR-004**: User memory MUST be stored in a global file (e.g., `~/.wave/memory.md`).
+- **FR-004**: User memory MUST be stored in a global file (e.g., `~/.wave/AGENTS.md`).
 - **FR-005**: Memory entries MUST be stored in Markdown bullet point format.
 - **FR-006**: System MUST combine project, user, and auto-memory and include it in the AI's system prompt for every request.
 - **FR-007**: System SHOULD provide a way to deduplicate memory entries.
@@ -102,9 +101,6 @@ As a user, I want the agent to automatically remember important information acro
     - `content`: The text of the memory.
     - `type`: "Project" or "User".
     - `source`: The file path where it's stored.
-- **MemorySelectorState**: The state of the memory type selector in `InputManager`.
-    - `isActive`: Whether the selector is visible.
-    - `message`: The memory content to be saved.
 
 ## Assumptions
 
