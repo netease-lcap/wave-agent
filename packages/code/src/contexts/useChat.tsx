@@ -462,6 +462,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Unified interrupt method, interrupt both AI messages and command execution
   const abortMessage = useCallback(() => {
+    setQueuedMessages([]);
     agentRef.current?.abortMessage();
   }, []);
 
