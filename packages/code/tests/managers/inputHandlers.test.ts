@@ -7,6 +7,7 @@ import {
 } from "../../src/managers/inputReducer.js";
 import {
   expandLongTextPlaceholders,
+  getAtSelectorPosition,
   handleSubmit,
   handlePasteImage,
   cyclePermissionMode,
@@ -76,6 +77,36 @@ describe("inputHandlers", () => {
       const text = "No placeholders here";
       const result = expandLongTextPlaceholders(text, {});
       expect(result).toBe(text);
+    });
+  });
+
+  describe("getAtSelectorPosition", () => {
+    it("should return @ position if cursor is at start of @word", () => {
+      expect(getAtSelectorPosition("@file", 1)).toBe(0);
+    });
+
+    it("should return @ position if cursor is in middle of @word", () => {
+      expect(getAtSelectorPosition("@file", 3)).toBe(0);
+    });
+
+    it("should return @ position if cursor is at end of @word", () => {
+      expect(getAtSelectorPosition("@file", 5)).toBe(0);
+    });
+
+    it("should return @ position if @ is preceded by space", () => {
+      expect(getAtSelectorPosition("test @file", 10)).toBe(5);
+    });
+
+    it("should return -1 if @ is not at start of word (email-like)", () => {
+      expect(getAtSelectorPosition("user@domain", 5)).toBe(-1);
+    });
+
+    it("should return -1 if cursor is before @", () => {
+      expect(getAtSelectorPosition("test @file", 4)).toBe(-1);
+    });
+
+    it("should return -1 if cursor is after a space following @word", () => {
+      expect(getAtSelectorPosition("@file ", 6)).toBe(-1);
     });
   });
 
@@ -279,6 +310,34 @@ describe("inputHandlers", () => {
         payload: 4,
       });
     });
+    it("should reactivate file selector when typing inside an existing @word", () => {
+      const state = {
+        ...initialState,
+        inputText: "@fi",
+        cursorPosition: 3,
+        showFileSelector: false,
+      };
+      processSelectorInput(state, dispatch, "l");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "ACTIVATE_FILE_SELECTOR",
+        payload: 0,
+      });
+    });
+
+    it("should update search query when typing inside an existing @word", () => {
+      const state = {
+        ...initialState,
+        inputText: "@fi",
+        cursorPosition: 3,
+        showFileSelector: true,
+        atPosition: 0,
+      };
+      processSelectorInput(state, dispatch, "l");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_FILE_SEARCH_QUERY",
+        payload: "fil",
+      });
+    });
   });
 
   describe("handlePasteInput", () => {
@@ -315,16 +374,16 @@ describe("inputHandlers", () => {
   });
 
   describe("handleCommandSelect", () => {
-    it("should execute agent command", async () => {
+    it("should execute agent command and replace entire command word", async () => {
       const state: InputState = {
         ...initialState,
         slashPosition: 0,
-        inputText: "/test",
-        cursorPosition: 5,
+        inputText: "/test-command",
+        cursorPosition: 5, // Cursor at /test|
       };
       vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(true);
 
-      handleCommandSelect(state, dispatch, callbacks, "test");
+      handleCommandSelect(state, dispatch, callbacks, "test-command");
 
       expect(dispatch).toHaveBeenCalledWith({
         type: "SET_INPUT_TEXT",
@@ -336,16 +395,16 @@ describe("inputHandlers", () => {
 
       // Wait for async command execution
       await vi.waitFor(() => {
-        expect(callbacks.onSendMessage).toHaveBeenCalledWith("/test");
+        expect(callbacks.onSendMessage).toHaveBeenCalledWith("/test-command");
       });
     });
 
-    it("should handle local commands like clear", () => {
+    it("should handle local commands like clear and replace entire command word", () => {
       const state: InputState = {
         ...initialState,
         slashPosition: 0,
-        inputText: "/clear",
-        cursorPosition: 6,
+        inputText: "/clear-command",
+        cursorPosition: 6, // Cursor at /clear|
       };
       vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(false);
 
@@ -370,6 +429,21 @@ describe("inputHandlers", () => {
         payload: "@file.txt ",
       });
       expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
+    });
+
+    it("should replace the entire @word even if cursor is in the middle", () => {
+      const state: InputState = {
+        ...initialState,
+        atPosition: 0,
+        inputText: "@file",
+        cursorPosition: 3, // Cursor is at @fi|le
+      };
+      handleFileSelect(state, dispatch, callbacks, "newfile.txt");
+
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_INPUT_TEXT",
+        payload: "@newfile.txt ",
+      });
     });
   });
 
@@ -435,6 +509,42 @@ describe("inputHandlers", () => {
       });
     });
 
+    it("should handle left arrow in selector", () => {
+      const state: InputState = {
+        ...initialState,
+        showFileSelector: true,
+        atPosition: 0,
+        inputText: "@a",
+        cursorPosition: 2,
+      };
+      const key = { leftArrow: true } as Key;
+      const result = handleSelectorInput(state, dispatch, callbacks, "", key);
+
+      expect(result).toBe(true);
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "MOVE_CURSOR",
+        payload: -1,
+      });
+    });
+
+    it("should handle right arrow in selector", () => {
+      const state: InputState = {
+        ...initialState,
+        showFileSelector: true,
+        atPosition: 0,
+        inputText: "@a",
+        cursorPosition: 1,
+      };
+      const key = { rightArrow: true } as Key;
+      const result = handleSelectorInput(state, dispatch, callbacks, "", key);
+
+      expect(result).toBe(true);
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "MOVE_CURSOR",
+        payload: 1,
+      });
+    });
+
     it("should cancel file selector on space input", () => {
       const state: InputState = {
         ...initialState,
@@ -485,6 +595,26 @@ describe("inputHandlers", () => {
 
       expect(result).toBe(true);
       expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
+    });
+
+    it("should reactivate file selector on backspace inside an existing @word", async () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "@file",
+        cursorPosition: 5,
+        showFileSelector: false,
+      };
+      const key = { backspace: true } as Key;
+      await handleNormalInput(state, dispatch, callbacks, "", key);
+
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "ACTIVATE_FILE_SELECTOR",
+        payload: 0,
+      });
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_FILE_SEARCH_QUERY",
+        payload: "fil",
+      });
     });
 
     it("should handle navigation keys", async () => {
