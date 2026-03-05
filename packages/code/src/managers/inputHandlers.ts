@@ -141,6 +141,24 @@ const getProjectedState = (state: InputState, char: string) => {
   return { newInputText, newCursorPosition };
 };
 
+export const getAtSelectorPosition = (
+  text: string,
+  cursorPosition: number,
+): number => {
+  let i = cursorPosition - 1;
+  while (i >= 0 && !/\s/.test(text[i])) {
+    if (text[i] === "@") {
+      // Check if this @ is at the start or preceded by whitespace
+      if (i === 0 || /\s/.test(text[i - 1])) {
+        return i;
+      }
+      break;
+    }
+    i--;
+  }
+  return -1;
+};
+
 export const updateSearchQueriesForActiveSelectors = (
   state: InputState,
   dispatch: React.Dispatch<InputAction>,
@@ -177,8 +195,20 @@ export const processSelectorInput = (
       payload: newCursorPosition - 1,
     } as InputAction);
   } else {
+    const atPos = getAtSelectorPosition(newInputText, newCursorPosition);
+    let showFileSelector = state.showFileSelector;
+    let atPosition = state.atPosition;
+    if (atPos !== -1 && !state.showFileSelector) {
+      dispatch({
+        type: "ACTIVATE_FILE_SELECTOR",
+        payload: atPos,
+      });
+      showFileSelector = true;
+      atPosition = atPos;
+    }
+
     updateSearchQueriesForActiveSelectors(
-      state,
+      { ...state, showFileSelector, atPosition },
       dispatch,
       newInputText,
       newCursorPosition,
@@ -220,6 +250,14 @@ export const handlePasteInput = (
   }
 };
 
+const getWordEnd = (text: string, startPos: number): number => {
+  let i = startPos;
+  while (i < text.length && !/\s/.test(text[i])) {
+    i++;
+  }
+  return i;
+};
+
 export const handleCommandSelect = (
   state: InputState,
   dispatch: React.Dispatch<InputAction>,
@@ -227,9 +265,10 @@ export const handleCommandSelect = (
   command: string,
 ) => {
   if (state.slashPosition >= 0) {
+    const wordEnd = getWordEnd(state.inputText, state.slashPosition);
     const beforeSlash = state.inputText.substring(0, state.slashPosition);
-    const afterQuery = state.inputText.substring(state.cursorPosition);
-    const newInput = beforeSlash + afterQuery;
+    const afterWord = state.inputText.substring(wordEnd);
+    const newInput = beforeSlash + afterWord;
     const newCursorPosition = beforeSlash.length;
 
     dispatch({ type: "SET_INPUT_TEXT", payload: newInput });
@@ -281,9 +320,10 @@ export const handleFileSelect = (
   filePath: string,
 ) => {
   if (state.atPosition >= 0) {
+    const wordEnd = getWordEnd(state.inputText, state.atPosition);
     const beforeAt = state.inputText.substring(0, state.atPosition);
-    const afterQuery = state.inputText.substring(state.cursorPosition);
-    const newInput = beforeAt + `@${filePath} ` + afterQuery;
+    const afterWord = state.inputText.substring(wordEnd);
+    const newInput = beforeAt + `@${filePath} ` + afterWord;
     const newCursorPosition = beforeAt.length + filePath.length + 2;
 
     dispatch({ type: "SET_INPUT_TEXT", payload: newInput });
@@ -360,6 +400,22 @@ export const handleSelectorInput = (
     return true;
   }
 
+  if (key.leftArrow) {
+    const newCursorPosition = state.cursorPosition - 1;
+    dispatch({ type: "MOVE_CURSOR", payload: -1 });
+    checkForAtDeletion(state, dispatch, newCursorPosition);
+    checkForSlashDeletion(state, dispatch, newCursorPosition);
+    return true;
+  }
+
+  if (key.rightArrow) {
+    const newCursorPosition = state.cursorPosition + 1;
+    dispatch({ type: "MOVE_CURSOR", payload: 1 });
+    checkForAtDeletion(state, dispatch, newCursorPosition);
+    checkForSlashDeletion(state, dispatch, newCursorPosition);
+    return true;
+  }
+
   if (input === " " && state.showFileSelector) {
     dispatch({ type: "CANCEL_FILE_SELECTOR" });
   }
@@ -414,11 +470,44 @@ export const handleNormalInput = async (
   if (key.backspace || key.delete) {
     if (state.cursorPosition > 0) {
       const newCursorPosition = state.cursorPosition - 1;
+      const beforeCursor = state.inputText.substring(
+        0,
+        state.cursorPosition - 1,
+      );
+      const afterCursor = state.inputText.substring(state.cursorPosition);
+      const newInputText = beforeCursor + afterCursor;
+
       dispatch({ type: "DELETE_CHAR" });
       callbacks.onResetHistoryNavigation?.();
 
       checkForAtDeletion(state, dispatch, newCursorPosition);
       checkForSlashDeletion(state, dispatch, newCursorPosition);
+
+      // Reactivate file selector if cursor is now within an @word
+      const atPos = getAtSelectorPosition(newInputText, newCursorPosition);
+      let showFileSelector = state.showFileSelector;
+      let atPosition = state.atPosition;
+      if (atPos !== -1 && !state.showFileSelector) {
+        dispatch({
+          type: "ACTIVATE_FILE_SELECTOR",
+          payload: atPos,
+        });
+        showFileSelector = true;
+        atPosition = atPos;
+      }
+
+      updateSearchQueriesForActiveSelectors(
+        {
+          ...state,
+          inputText: newInputText,
+          cursorPosition: newCursorPosition,
+          showFileSelector,
+          atPosition,
+        },
+        dispatch,
+        newInputText,
+        newCursorPosition,
+      );
     }
     return true;
   }
