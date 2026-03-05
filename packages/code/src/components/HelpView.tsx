@@ -64,6 +64,7 @@ export const HelpView: React.FC<HelpViewProps> = ({
     { key: "Ctrl+T", description: "Toggle task list" },
     { key: "Ctrl+B", description: "Background current task" },
     { key: "Ctrl+V", description: "Paste image" },
+    { key: "Ctrl+J", description: "Newline" },
     { key: "Shift+Tab", description: "Cycle permission mode" },
     {
       key: "Esc",
