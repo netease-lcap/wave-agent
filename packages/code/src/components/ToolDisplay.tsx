@@ -129,8 +129,8 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
         </Box>
       )}
 
-      {/* Diff display - only show after tool execution completes and was successful */}
-      {stage === "end" && success && (
+      {/* Diff display - only show after tool execution completes and was successful, and NOT in expanded mode */}
+      {!isExpanded && stage === "end" && success && (
         <DiffDisplay
           toolName={name}
           parameters={parameters}
