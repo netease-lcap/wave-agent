@@ -30,6 +30,7 @@ import { Key } from "ink";
 vi.mock("wave-agent-sdk", () => ({
   PromptHistoryManager: {
     addEntry: vi.fn().mockResolvedValue(undefined),
+    getHistory: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -45,7 +46,6 @@ describe("inputHandlers", () => {
     dispatch = vi.fn() as unknown as React.Dispatch<InputAction>;
     callbacks = {
       onSendMessage: vi.fn(),
-      onResetHistoryNavigation: vi.fn(),
       onPermissionModeChange: vi.fn(),
       onInputTextChange: vi.fn(),
       onCursorPositionChange: vi.fn(),
@@ -139,7 +139,12 @@ describe("inputHandlers", () => {
 
   describe("handleSubmit", () => {
     it("should submit text and clear input", async () => {
-      const state: InputState = { ...initialState, inputText: "hello world" };
+      const state: InputState = {
+        ...initialState,
+        inputText: "hello world",
+        longTextMap: { "[LongText#1]": "long" },
+      };
+      callbacks.sessionId = "session-1";
       await handleSubmit(state, dispatch, callbacks);
 
       expect(callbacks.onSendMessage).toHaveBeenCalledWith(
@@ -148,8 +153,14 @@ describe("inputHandlers", () => {
       );
       expect(dispatch).toHaveBeenCalledWith({ type: "CLEAR_INPUT" });
       expect(dispatch).toHaveBeenCalledWith({ type: "CLEAR_LONG_TEXT_MAP" });
-      expect(callbacks.onResetHistoryNavigation).toHaveBeenCalled();
-      expect(PromptHistoryManager.addEntry).toHaveBeenCalledWith("hello world");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "RESET_HISTORY_NAVIGATION",
+      });
+      expect(PromptHistoryManager.addEntry).toHaveBeenCalledWith(
+        "hello world",
+        "session-1",
+        { "[LongText#1]": "long" },
+      );
     });
 
     it("should handle images in text", async () => {
@@ -704,6 +715,44 @@ describe("inputHandlers", () => {
       expect(dispatch).toHaveBeenCalledWith({
         type: "MOVE_CURSOR",
         payload: 1,
+      });
+    });
+
+    it("should handle up arrow key for history navigation", async () => {
+      const key = { upArrow: true } as Key;
+      const mockHistory = [{ prompt: "prev", timestamp: 1000 }];
+      vi.mocked(PromptHistoryManager.getHistory).mockResolvedValue(mockHistory);
+      callbacks.sessionId = "session-1";
+
+      // First up arrow - fetch history
+      await handleNormalInput(initialState, dispatch, callbacks, "", key);
+      expect(PromptHistoryManager.getHistory).toHaveBeenCalledWith("session-1");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_HISTORY_ENTRIES",
+        payload: mockHistory,
+      });
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "NAVIGATE_HISTORY",
+        payload: "up",
+      });
+
+      // Second up arrow - already has history
+      const stateWithHistory = { ...initialState, history: mockHistory };
+      vi.clearAllMocks();
+      await handleNormalInput(stateWithHistory, dispatch, callbacks, "", key);
+      expect(PromptHistoryManager.getHistory).not.toHaveBeenCalled();
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "NAVIGATE_HISTORY",
+        payload: "up",
+      });
+    });
+
+    it("should handle down arrow key for history navigation", async () => {
+      const key = { downArrow: true } as Key;
+      await handleNormalInput(initialState, dispatch, callbacks, "", key);
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "NAVIGATE_HISTORY",
+        payload: "down",
       });
     });
 

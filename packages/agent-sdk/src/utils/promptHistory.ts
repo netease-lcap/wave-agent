@@ -22,7 +22,11 @@ export class PromptHistoryManager {
   /**
    * Add a new prompt to history
    */
-  static async addEntry(prompt: string): Promise<void> {
+  static async addEntry(
+    prompt: string,
+    sessionId?: string,
+    longTextMap?: Record<string, string>,
+  ): Promise<void> {
     try {
       if (!prompt.trim()) return;
 
@@ -30,6 +34,8 @@ export class PromptHistoryManager {
       const entry: PromptEntry = {
         prompt,
         timestamp: Date.now(),
+        sessionId,
+        longTextMap,
       };
 
       const line = JSON.stringify(entry) + "\n";
@@ -71,7 +77,7 @@ export class PromptHistoryManager {
   /**
    * Get all history entries
    */
-  static async getHistory(): Promise<PromptEntry[]> {
+  static async getHistory(sessionId?: string): Promise<PromptEntry[]> {
     try {
       if (!fs.existsSync(PROMPT_HISTORY_FILE)) {
         return [];
@@ -91,13 +97,18 @@ export class PromptHistoryManager {
         })
         .filter((entry): entry is PromptEntry => entry !== null);
 
+      // Filter by sessionId if provided
+      const filteredEntries = sessionId
+        ? entries.filter((entry) => entry.sessionId === sessionId)
+        : entries;
+
       // Deduplicate by prompt, keeping the most recent one
       const uniqueEntries: PromptEntry[] = [];
       const seenPrompts = new Set<string>();
 
       // Process from newest to oldest
-      for (let i = entries.length - 1; i >= 0; i--) {
-        const entry = entries[i];
+      for (let i = filteredEntries.length - 1; i >= 0; i--) {
+        const entry = filteredEntries[i];
         if (!seenPrompts.has(entry.prompt)) {
           uniqueEntries.push(entry);
           seenPrompts.add(entry.prompt);
@@ -114,9 +125,12 @@ export class PromptHistoryManager {
   /**
    * Search history by query
    */
-  static async searchHistory(query: string): Promise<PromptEntry[]> {
+  static async searchHistory(
+    query: string,
+    sessionId?: string,
+  ): Promise<PromptEntry[]> {
     try {
-      const history = await this.getHistory();
+      const history = await this.getHistory(sessionId);
       if (!query.trim()) {
         return history;
       }
