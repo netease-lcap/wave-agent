@@ -8,6 +8,7 @@ import {
 import {
   expandLongTextPlaceholders,
   getAtSelectorPosition,
+  getSlashSelectorPosition,
   handleSubmit,
   handlePasteImage,
   cyclePermissionMode,
@@ -107,6 +108,28 @@ describe("inputHandlers", () => {
 
     it("should return -1 if cursor is after a space following @word", () => {
       expect(getAtSelectorPosition("@file ", 6)).toBe(-1);
+    });
+  });
+
+  describe("getSlashSelectorPosition", () => {
+    it("should return 0 if cursor is at start of /command", () => {
+      expect(getSlashSelectorPosition("/help", 1)).toBe(0);
+    });
+
+    it("should return 0 if cursor is in middle of /command", () => {
+      expect(getSlashSelectorPosition("/help", 3)).toBe(0);
+    });
+
+    it("should return 0 if cursor is at end of /command", () => {
+      expect(getSlashSelectorPosition("/help", 5)).toBe(0);
+    });
+
+    it("should return -1 if cursor is after a space following /command", () => {
+      expect(getSlashSelectorPosition("/help ", 6)).toBe(-1);
+    });
+
+    it("should return -1 if / is not at start of input", () => {
+      expect(getSlashSelectorPosition("test /help", 7)).toBe(-1);
     });
   });
 
@@ -336,6 +359,34 @@ describe("inputHandlers", () => {
       expect(dispatch).toHaveBeenCalledWith({
         type: "SET_FILE_SEARCH_QUERY",
         payload: "fil",
+      });
+    });
+    it("should reactivate command selector when typing inside an existing /command", () => {
+      const state = {
+        ...initialState,
+        inputText: "/hel",
+        cursorPosition: 4,
+        showCommandSelector: false,
+      };
+      processSelectorInput(state, dispatch, "p");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "ACTIVATE_COMMAND_SELECTOR",
+        payload: 0,
+      });
+    });
+
+    it("should update search query when typing inside an existing /command", () => {
+      const state = {
+        ...initialState,
+        inputText: "/hel",
+        cursorPosition: 4,
+        showCommandSelector: true,
+        slashPosition: 0,
+      };
+      processSelectorInput(state, dispatch, "p");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_COMMAND_SEARCH_QUERY",
+        payload: "help",
       });
     });
   });
@@ -614,6 +665,26 @@ describe("inputHandlers", () => {
       expect(dispatch).toHaveBeenCalledWith({
         type: "SET_FILE_SEARCH_QUERY",
         payload: "fil",
+      });
+    });
+
+    it("should reactivate command selector on backspace inside an existing /command", async () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "/help",
+        cursorPosition: 5,
+        showCommandSelector: false,
+      };
+      const key = { backspace: true } as Key;
+      await handleNormalInput(state, dispatch, callbacks, "", key);
+
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "ACTIVATE_COMMAND_SELECTOR",
+        payload: 0,
+      });
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "SET_COMMAND_SEARCH_QUERY",
+        payload: "hel",
       });
     });
 

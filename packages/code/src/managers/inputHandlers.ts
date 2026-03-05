@@ -159,6 +159,22 @@ export const getAtSelectorPosition = (
   return -1;
 };
 
+export const getSlashSelectorPosition = (
+  text: string,
+  cursorPosition: number,
+): number => {
+  if (text.startsWith("/") && cursorPosition > 0) {
+    let i = 0;
+    while (i < text.length && !/\s/.test(text[i])) {
+      i++;
+    }
+    if (cursorPosition <= i) {
+      return 0;
+    }
+  }
+  return -1;
+};
+
 export const updateSearchQueriesForActiveSelectors = (
   state: InputState,
   dispatch: React.Dispatch<InputAction>,
@@ -207,8 +223,26 @@ export const processSelectorInput = (
       atPosition = atPos;
     }
 
+    const slashPos = getSlashSelectorPosition(newInputText, newCursorPosition);
+    let showCommandSelector = state.showCommandSelector;
+    let slashPosition = state.slashPosition;
+    if (slashPos !== -1 && !state.showCommandSelector) {
+      dispatch({
+        type: "ACTIVATE_COMMAND_SELECTOR",
+        payload: slashPos,
+      });
+      showCommandSelector = true;
+      slashPosition = slashPos;
+    }
+
     updateSearchQueriesForActiveSelectors(
-      { ...state, showFileSelector, atPosition },
+      {
+        ...state,
+        showFileSelector,
+        atPosition,
+        showCommandSelector,
+        slashPosition,
+      },
       dispatch,
       newInputText,
       newCursorPosition,
@@ -496,6 +530,21 @@ export const handleNormalInput = async (
         atPosition = atPos;
       }
 
+      const slashPos = getSlashSelectorPosition(
+        newInputText,
+        newCursorPosition,
+      );
+      let showCommandSelector = state.showCommandSelector;
+      let slashPosition = state.slashPosition;
+      if (slashPos !== -1 && !state.showCommandSelector) {
+        dispatch({
+          type: "ACTIVATE_COMMAND_SELECTOR",
+          payload: slashPos,
+        });
+        showCommandSelector = true;
+        slashPosition = slashPos;
+      }
+
       updateSearchQueriesForActiveSelectors(
         {
           ...state,
@@ -503,6 +552,8 @@ export const handleNormalInput = async (
           cursorPosition: newCursorPosition,
           showFileSelector,
           atPosition,
+          showCommandSelector,
+          slashPosition,
         },
         dispatch,
         newInputText,
