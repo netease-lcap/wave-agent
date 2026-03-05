@@ -255,14 +255,8 @@ export const useInputManager = (
     dispatch({ type: "CANCEL_HISTORY_SEARCH" });
   }, []);
 
-  const handleSpecialCharInput = useCallback((char: string) => {
-    handlers.handleSpecialCharInput(
-      stateRef.current,
-      dispatch,
-      char,
-      stateRef.current.cursorPosition,
-      stateRef.current.inputText,
-    );
+  const processSelectorInput = useCallback((char: string) => {
+    handlers.processSelectorInput(stateRef.current, dispatch, char);
   }, []);
 
   const setInputText = useCallback((text: string) => {
@@ -424,7 +418,7 @@ export const useInputManager = (
     handleCancelHistorySearch,
 
     // Special handling
-    handleSpecialCharInput,
+    processSelectorInput,
 
     // Bash/MCP Manager
     setShowBackgroundTaskManager,
