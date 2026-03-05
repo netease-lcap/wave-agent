@@ -30,18 +30,12 @@ export const handleSubmit = async (
   state: InputState,
   dispatch: React.Dispatch<InputAction>,
   callbacks: Partial<InputManagerCallbacks>,
-  isLoading: boolean = false,
-  isCommandRunning: boolean = false,
   attachedImagesOverride?: Array<{
     id: number;
     path: string;
     mimeType: string;
   }>,
 ): Promise<void> => {
-  if (isLoading || isCommandRunning) {
-    return;
-  }
-
   if (state.inputText.trim()) {
     const imageRegex = /\[Image #(\d+)\]/g;
     const matches = [...state.inputText.matchAll(imageRegex)];
@@ -482,12 +476,10 @@ export const handleNormalInput = async (
   callbacks: Partial<InputManagerCallbacks>,
   input: string,
   key: Key,
-  isLoading: boolean = false,
-  isCommandRunning: boolean = false,
   clearImages?: () => void,
 ): Promise<boolean> => {
   if (key.return) {
-    await handleSubmit(state, dispatch, callbacks, isLoading, isCommandRunning);
+    await handleSubmit(state, dispatch, callbacks);
     clearImages?.();
     return true;
   }
@@ -617,8 +609,6 @@ export const handleInput = async (
   callbacks: Partial<InputManagerCallbacks>,
   input: string,
   key: Key,
-  isLoading: boolean = false,
-  isCommandRunning: boolean = false,
   clearImages?: () => void,
 ): Promise<boolean> => {
   if (state.selectorJustUsed) {
@@ -627,7 +617,6 @@ export const handleInput = async (
 
   if (key.escape) {
     if (
-      (isLoading || isCommandRunning) &&
       !(
         state.showFileSelector ||
         state.showCommandSelector ||
@@ -701,8 +690,6 @@ export const handleInput = async (
       callbacks,
       input,
       key,
-      isLoading,
-      isCommandRunning,
       clearImages,
     );
   }

@@ -4,6 +4,7 @@ import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
 import { LoadingIndicator } from "./LoadingIndicator.js";
 import { TaskList } from "./TaskList.js";
+import { QueuedMessageList } from "./QueuedMessageList.js";
 import { ConfirmationDetails } from "./ConfirmationDetails.js";
 import { ConfirmationSelector } from "./ConfirmationSelector.js";
 
@@ -160,17 +161,20 @@ export const ChatInterface: React.FC = () => {
       )}
 
       {!isConfirmationVisible && !isExpanded && (
-        <InputBox
-          isLoading={isLoading}
-          isCommandRunning={isCommandRunning}
-          sendMessage={sendMessage}
-          abortMessage={abortMessage}
-          mcpServers={mcpServers}
-          connectMcpServer={connectMcpServer}
-          disconnectMcpServer={disconnectMcpServer}
-          slashCommands={slashCommands}
-          hasSlashCommand={hasSlashCommand}
-        />
+        <>
+          <QueuedMessageList />
+          <InputBox
+            isLoading={isLoading}
+            isCommandRunning={isCommandRunning}
+            sendMessage={sendMessage}
+            abortMessage={abortMessage}
+            mcpServers={mcpServers}
+            connectMcpServer={connectMcpServer}
+            disconnectMcpServer={disconnectMcpServer}
+            slashCommands={slashCommands}
+            hasSlashCommand={hasSlashCommand}
+          />
+        </>
       )}
     </Box>
   );

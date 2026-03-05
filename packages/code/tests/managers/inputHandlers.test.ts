@@ -134,14 +134,6 @@ describe("inputHandlers", () => {
   });
 
   describe("handleSubmit", () => {
-    it("should not submit if loading or command is running", async () => {
-      await handleSubmit(initialState, dispatch, callbacks, true, false);
-      expect(callbacks.onSendMessage).not.toHaveBeenCalled();
-
-      await handleSubmit(initialState, dispatch, callbacks, false, true);
-      expect(callbacks.onSendMessage).not.toHaveBeenCalled();
-    });
-
     it("should submit text and clear input", async () => {
       const state: InputState = { ...initialState, inputText: "hello world" };
       await handleSubmit(state, dispatch, callbacks);
@@ -623,8 +615,6 @@ describe("inputHandlers", () => {
         callbacks,
         "",
         key,
-        false,
-        false,
         clearImages,
       );
 
@@ -749,17 +739,10 @@ describe("inputHandlers", () => {
       expect(callbacks.onSendMessage).not.toHaveBeenCalled();
     });
 
-    it("should handle escape to abort message when loading", async () => {
+    it("should handle escape to abort message", async () => {
       const state = { ...initialState };
       const key = { escape: true } as Key;
-      const result = await handleInput(
-        state,
-        dispatch,
-        callbacks,
-        "",
-        key,
-        true,
-      );
+      const result = await handleInput(state, dispatch, callbacks, "", key);
       expect(result).toBe(true);
       expect(callbacks.onAbortMessage).toHaveBeenCalled();
     });

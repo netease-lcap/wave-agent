@@ -37,6 +37,10 @@ export interface ChatContextType {
   isExpanded: boolean;
   isTaskListVisible: boolean;
   setIsTaskListVisible: (visible: boolean) => void;
+  queuedMessages: Array<{
+    content: string;
+    images?: Array<{ path: string; mimeType: string }>;
+  }>;
   // AI functionality
   sessionId: string;
   sendMessage: (
@@ -138,6 +142,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   }, [isExpanded]);
 
   const [isTaskListVisible, setIsTaskListVisible] = useState(true);
+
+  const [queuedMessages, setQueuedMessages] = useState<
+    Array<{
+      content: string;
+      images?: Array<{ path: string; mimeType: string }>;
+    }>
+  >([]);
 
   // AI State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -393,6 +404,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       if (!hasTextContent && !hasImageAttachments) return;
 
+      if (isLoading || isCommandRunning) {
+        setQueuedMessages((prev) => [...prev, { content, images }]);
+        return;
+      }
+
       try {
         // Handle bash mode - check if it's a bash command (starts with ! and only one line)
         if (content.startsWith("!") && !content.includes("\n")) {
@@ -432,8 +448,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         // Loading state will be automatically updated by the useEffect that watches messages
       }
     },
-    [],
+    [isLoading, isCommandRunning],
   );
+
+  // Process queued messages when idle
+  useEffect(() => {
+    if (!isLoading && !isCommandRunning && queuedMessages.length > 0) {
+      const nextMessage = queuedMessages[0];
+      setQueuedMessages((prev) => prev.slice(1));
+      sendMessage(nextMessage.content, nextMessage.images);
+    }
+  }, [isLoading, isCommandRunning, queuedMessages, sendMessage]);
 
   // Unified interrupt method, interrupt both AI messages and command execution
   const abortMessage = useCallback(() => {
@@ -441,6 +466,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   }, []);
 
   const clearMessages = useCallback(() => {
+    setQueuedMessages([]);
     agentRef.current?.clearMessages();
   }, []);
 
@@ -604,6 +630,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     isExpanded,
     isTaskListVisible,
     setIsTaskListVisible,
+    queuedMessages,
     sessionId,
     sendMessage,
     abortMessage,
