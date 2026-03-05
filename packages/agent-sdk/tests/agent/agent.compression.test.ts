@@ -229,6 +229,8 @@ describe("Agent Message Compression Tests", () => {
       messages: [...messages, newUserMessage],
     });
 
+    const initialSessionId = agent.sessionId;
+
     // Mock AI service
     const mockCallAgent = vi.mocked(aiService.callAgent);
     const mockCompressMessages = vi.mocked(aiService.compressMessages);
@@ -254,8 +256,29 @@ describe("Agent Message Compression Tests", () => {
     expect(mockCallAgent).toHaveBeenCalledTimes(1);
     expect(mockCompressMessages).toHaveBeenCalledTimes(1);
 
-    // Verify even if compression fails, AI call still succeeds (no exception thrown)
-    // If no exception thrown here, error handling is correct
+    // Verify that an error block was added to the messages
+    const lastMessage = agent.messages[agent.messages.length - 1];
+    expect(lastMessage.blocks.some((block) => block.type === "error")).toBe(
+      true,
+    );
+    const errorBlock = lastMessage.blocks.find(
+      (block) => block.type === "error",
+    ) as {
+      type: "error";
+      content: string;
+    };
+    expect(errorBlock.content).toContain(
+      "Failed to compress conversation history: Compression failed",
+    );
+
+    // Verify session ID remains unchanged (no reset)
+    expect(agent.sessionId).toBe(initialSessionId);
+
+    // Verify no "compress" block was added
+    const hasCompressBlock = agent.messages.some((msg) =>
+      msg.blocks.some((block) => block.type === "compress"),
+    );
+    expect(hasCompressBlock).toBe(false);
   });
 
   it("should compress all messages when session already contains compression", async () => {

@@ -174,16 +174,17 @@ describe("AI Service - Branch Coverage", () => {
   });
 
   describe("compressMessages", () => {
-    it("should return default message on failure", async () => {
+    it("should throw error on failure", async () => {
       mockCreate.mockRejectedValue(new Error("API Error"));
 
-      const result = await compressMessages({
-        gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: TEST_MODEL_CONFIG,
-        messages: [],
-      });
+      await expect(
+        compressMessages({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: TEST_MODEL_CONFIG,
+          messages: [],
+        }),
+      ).rejects.toThrow("API Error");
 
-      expect(result.content).toBe("Failed to compress conversation history");
       expect(logger.error).toHaveBeenCalledWith(
         expect.stringContaining("Failed to compress messages"),
         expect.any(Error),

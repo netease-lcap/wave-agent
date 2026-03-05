@@ -285,6 +285,9 @@ export class AIManager {
           );
         } catch (compressError) {
           logger?.error("Failed to compress messages:", compressError);
+          this.messageManager.addErrorBlock(
+            `Failed to compress conversation history: ${compressError instanceof Error ? compressError.message : String(compressError)}. You may encounter context limit issues.`,
+          );
         } finally {
           this.setIsCompressing(false);
         }
