@@ -41,8 +41,6 @@ export interface InputBoxProps {
 }
 
 export const InputBox: React.FC<InputBoxProps> = ({
-  isLoading = false,
-  isCommandRunning = false,
   sendMessage = () => {},
   abortMessage = () => {},
   mcpServers = [],
@@ -119,14 +117,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
   // Use the InputManager's unified input handler
   useInput(async (input, key) => {
-    await handleInput(
-      input,
-      key,
-      attachedImages,
-      isLoading,
-      isCommandRunning,
-      clearImages,
-    );
+    await handleInput(input, key, attachedImages, clearImages);
   });
 
   const handleRewindCancel = () => {

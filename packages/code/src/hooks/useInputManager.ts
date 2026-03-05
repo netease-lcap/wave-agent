@@ -326,15 +326,11 @@ export const useInputManager = (
   const handleSubmit = useCallback(
     async (
       attachedImages: Array<{ id: number; path: string; mimeType: string }>,
-      isLoading: boolean = false,
-      isCommandRunning: boolean = false,
     ) => {
       await handlers.handleSubmit(
         stateRef.current,
         dispatch,
         callbacksRef.current,
-        isLoading,
-        isCommandRunning,
         attachedImages,
       );
     },
@@ -357,8 +353,6 @@ export const useInputManager = (
       input: string,
       key: Key,
       attachedImages: Array<{ id: number; path: string; mimeType: string }>,
-      isLoading: boolean = false,
-      isCommandRunning: boolean = false,
       clearImages?: () => void,
     ) => {
       return await handlers.handleInput(
@@ -367,8 +361,6 @@ export const useInputManager = (
         callbacksRef.current,
         input,
         key,
-        isLoading,
-        isCommandRunning,
         clearImages,
       );
     },
