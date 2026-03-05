@@ -77,32 +77,24 @@ export class Agent {
 
   // Dynamic configuration getter methods
   public getGatewayConfig(): GatewayConfig {
-    return this.configurationService.resolveGatewayConfig(
-      this.options.apiKey,
-      this.options.baseURL,
-      this.options.defaultHeaders,
-      this.options.fetchOptions,
-      this.options.fetch,
-    );
+    return this.configurationService.resolveGatewayConfig();
   }
 
   public getModelConfig(): ModelConfig {
     return this.configurationService.resolveModelConfig(
-      this.options.model,
-      this.options.fastModel,
-      this.options.maxTokens,
+      undefined,
+      undefined,
+      undefined,
       this.getPermissionMode(),
     );
   }
 
   public getMaxInputTokens(): number {
-    return this.configurationService.resolveMaxInputTokens(
-      this.options.maxInputTokens,
-    );
+    return this.configurationService.resolveMaxInputTokens();
   }
 
   public getLanguage(): string | undefined {
-    return this.configurationService.resolveLanguage(this.options.language);
+    return this.configurationService.resolveLanguage();
   }
 
   /**
@@ -122,6 +114,7 @@ export class Agent {
 
     // Initialize configuration service
     this.configurationService = new ConfigurationService();
+    this.configurationService.setOptions(options);
 
     this.logger = logger; // Save the passed logger
     this.systemPrompt = systemPrompt; // Save custom system prompt
@@ -153,10 +146,6 @@ export class Agent {
       },
       addPermissionRule: (rule) => this.addPermissionRule(rule),
       addUsage: (usage) => this.messageManager.addUsage(usage),
-      getGatewayConfig: () => this.getGatewayConfig(),
-      getModelConfig: () => this.getModelConfig(),
-      getMaxInputTokens: () => this.getMaxInputTokens(),
-      getLanguage: () => this.getLanguage(),
     });
 
     // Retrieve managers from container

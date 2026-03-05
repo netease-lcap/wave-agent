@@ -63,6 +63,23 @@ describe("Agent - Abort Handling", () => {
     };
     container.register("SkillManager", mockSkillManager);
 
+    // Register ConfigurationService in the container
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: () => agent.getGatewayConfig(),
+      resolveModelConfig: () => agent.getModelConfig(),
+      resolveMaxInputTokens: () => agent.getMaxInputTokens(),
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => agent.getLanguage(),
+      getEnvironmentVars: () =>
+        (
+          agent as unknown as {
+            configurationService: {
+              getEnvironmentVars: () => Record<string, string>;
+            };
+          }
+        ).configurationService.getEnvironmentVars(),
+    });
+
     // Re-initialize AIManager to pick up the mock ToolManager
     const aiManager = new AIManager(container, {
       callbacks: {
@@ -75,19 +92,6 @@ describe("Agent - Abort Handling", () => {
           ).messageManager.addUsage(usage),
       },
       workdir: "/tmp/test-abort",
-      getGatewayConfig: () => agent.getGatewayConfig(),
-      getModelConfig: () => agent.getModelConfig(),
-      getMaxInputTokens: () => agent.getMaxInputTokens(),
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => agent.getLanguage(),
-      getEnvironmentVars: () =>
-        (
-          agent as unknown as {
-            configurationService: {
-              getEnvironmentVars: () => Record<string, string>;
-            };
-          }
-        ).configurationService.getEnvironmentVars(),
       stream: true, // Enable streaming for tests that expect it
     });
     container.register("AIManager", aiManager);

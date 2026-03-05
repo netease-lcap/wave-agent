@@ -125,17 +125,20 @@ describe("Subagent Plan Mode Integration", () => {
 
     container.register("MessageManager", mockMessageManager);
 
-    subagentManager = new SubagentManager(container, {
-      workdir: "/test/project",
-      getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
-      getModelConfig: () => ({
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
+      resolveModelConfig: () => ({
         model: "test-model",
         fastModel: "test-fast-model",
         permissionMode: "plan",
       }),
-      getMaxInputTokens: () => 100000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => undefined,
+      resolveMaxInputTokens: () => 100000,
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => undefined,
+    });
+
+    subagentManager = new SubagentManager(container, {
+      workdir: "/test/project",
     });
 
     // Mock createInstance to return our mockMessageManager

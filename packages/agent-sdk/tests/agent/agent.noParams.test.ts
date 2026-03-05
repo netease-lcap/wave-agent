@@ -55,14 +55,13 @@ describe("Agent - No Parameters Tool Handling", () => {
     const container = (agent as unknown as { container: Container }).container;
     container.register("ToolManager", mockToolManagerInstance);
 
-    // Re-initialize AIManager to pick up the mock ToolManager
-    const aiManager = new AIManager(container, {
-      workdir: "/tmp/test-no-params",
-      getGatewayConfig: () => agent.getGatewayConfig(),
-      getModelConfig: () => agent.getModelConfig(),
-      getMaxInputTokens: () => agent.getMaxInputTokens(),
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => agent.getLanguage(),
+    // Register ConfigurationService in the container
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: () => agent.getGatewayConfig(),
+      resolveModelConfig: () => agent.getModelConfig(),
+      resolveMaxInputTokens: () => agent.getMaxInputTokens(),
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => agent.getLanguage(),
       getEnvironmentVars: () =>
         (
           agent as unknown as {
@@ -71,6 +70,11 @@ describe("Agent - No Parameters Tool Handling", () => {
             };
           }
         ).configurationService.getEnvironmentVars(),
+    });
+
+    // Re-initialize AIManager to pick up the mock ToolManager
+    const aiManager = new AIManager(container, {
+      workdir: "/tmp/test-no-params",
     });
     container.register("AIManager", aiManager);
     (agent as unknown as { aiManager: AIManager }).aiManager = aiManager;

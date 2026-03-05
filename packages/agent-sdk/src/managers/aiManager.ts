@@ -3,7 +3,12 @@ import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { calculateComprehensiveTotalTokens } from "../utils/tokenCalculation.js";
 import * as fs from "node:fs/promises";
-import type { GatewayConfig, ModelConfig, Usage } from "../types/index.js";
+import type {
+  GatewayConfig,
+  ModelConfig,
+  Usage,
+  PermissionMode,
+} from "../types/index.js";
 import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
@@ -16,6 +21,7 @@ import type { SubagentManager } from "./subagentManager.js";
 import type { SkillManager } from "./skillManager.js";
 import { buildSystemPrompt } from "../prompts/index.js";
 import { Container } from "../utils/container.js";
+import { ConfigurationService } from "../services/configurationService.js";
 
 import { logger } from "../utils/globalLogger.js";
 
@@ -31,13 +37,8 @@ export interface AIManagerOptions {
   subagentType?: string; // Optional subagent type for hook context
   /**Whether to use streaming mode for AI responses - defaults to true */
   stream?: boolean;
-  // Dynamic configuration getters
-  getGatewayConfig: () => GatewayConfig;
-  getModelConfig: () => ModelConfig;
-  getMaxInputTokens: () => number;
-  getLanguage: () => string | undefined;
-  getAutoMemoryEnabled: () => boolean;
-  getEnvironmentVars?: () => Record<string, string>; // Get configuration environment variables for hooks
+  /**Optional model override (e.g. for subagents) */
+  modelOverride?: string;
 }
 
 export class AIManager {
@@ -48,14 +49,7 @@ export class AIManager {
   private systemPrompt?: string;
   private subagentType?: string; // Store subagent type for hook context
   private stream: boolean; // Streaming mode flag
-
-  // Configuration properties (replaced with getter function storage)
-  private getGatewayConfigFn: () => GatewayConfig;
-  private getModelConfigFn: () => ModelConfig;
-  private getMaxInputTokensFn: () => number;
-  private getLanguageFn: () => string | undefined;
-  private getAutoMemoryEnabledFn: () => boolean;
-  private getEnvironmentVarsFn?: () => Record<string, string>;
+  private modelOverride?: string;
 
   // Service overrides
   constructor(
@@ -67,14 +61,7 @@ export class AIManager {
     this.subagentType = options.subagentType; // Store subagent type
     this.stream = options.stream ?? true; // Default to true if not specified
     this.callbacks = options.callbacks ?? {};
-
-    // Store configuration getter functions for dynamic resolution
-    this.getGatewayConfigFn = options.getGatewayConfig;
-    this.getModelConfigFn = options.getModelConfig;
-    this.getMaxInputTokensFn = options.getMaxInputTokens;
-    this.getLanguageFn = options.getLanguage;
-    this.getAutoMemoryEnabledFn = options.getAutoMemoryEnabled;
-    this.getEnvironmentVarsFn = options.getEnvironmentVars;
+    this.modelOverride = options.modelOverride;
   }
 
   private get toolManager(): ToolManager {
@@ -117,25 +104,54 @@ export class AIManager {
     return this.container.get<PermissionManager>("PermissionManager");
   }
 
+  private get configurationService(): ConfigurationService {
+    return this.container.get<ConfigurationService>("ConfigurationService")!;
+  }
+
   // Getter methods for accessing dynamic configuration
   public getGatewayConfig(): GatewayConfig {
-    return this.getGatewayConfigFn();
+    return this.configurationService.resolveGatewayConfig();
   }
 
   public getModelConfig(): ModelConfig {
-    return this.getModelConfigFn();
+    const permissionMode = this.container.has("PermissionMode")
+      ? this.container.get<PermissionMode>("PermissionMode")
+      : undefined;
+
+    const parentModelConfig = this.configurationService.resolveModelConfig(
+      undefined,
+      undefined,
+      undefined,
+      permissionMode,
+    );
+    let modelToUse: string | undefined;
+
+    if (this.modelOverride) {
+      if (this.modelOverride === "fastModel") {
+        modelToUse = parentModelConfig.fastModel;
+      } else if (this.modelOverride !== "inherit") {
+        modelToUse = this.modelOverride;
+      }
+    }
+
+    return this.configurationService.resolveModelConfig(
+      modelToUse,
+      undefined,
+      undefined,
+      permissionMode,
+    );
   }
 
   public getMaxInputTokens(): number {
-    return this.getMaxInputTokensFn();
+    return this.configurationService.resolveMaxInputTokens();
   }
 
   public getLanguage(): string | undefined {
-    return this.getLanguageFn();
+    return this.configurationService.resolveLanguage();
   }
 
   public getAutoMemoryEnabled(): boolean {
-    return this.getAutoMemoryEnabledFn();
+    return this.configurationService.resolveAutoMemoryEnabled();
   }
 
   private isCompressing: boolean = false;
@@ -873,7 +889,7 @@ export class AIManager {
         cwd: this.workdir,
         subagentType: this.subagentType, // Include subagent type in hook context
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
-        env: this.getEnvironmentVarsFn?.() || {}, // Include configuration environment variables
+        env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
       };
 
       const results = await this.hookManager.executeHooks(hookName, context);
@@ -944,7 +960,7 @@ export class AIManager {
         cwd: this.workdir,
         toolInput,
         subagentType: this.subagentType, // Include subagent type in hook context
-        env: this.getEnvironmentVarsFn?.() || {}, // Include configuration environment variables
+        env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
       };
 
       const results = await this.hookManager.executeHooks(
@@ -1010,7 +1026,7 @@ export class AIManager {
         toolInput,
         toolResponse,
         subagentType: this.subagentType, // Include subagent type in hook context
-        env: this.getEnvironmentVarsFn?.() || {}, // Include configuration environment variables
+        env: this.configurationService.getEnvironmentVars(), // Include configuration environment variables
       };
 
       const results = await this.hookManager.executeHooks(

@@ -81,7 +81,19 @@ describe("AIManager - latestTotalTokens calculation", () => {
 
     // Create mock Logger
 
+    // Mock ConfigurationService
+    const mockConfigurationService = {
+      setOptions: vi.fn(),
+      resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
+      resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
+      resolveMaxInputTokens: vi.fn().mockReturnValue(96000),
+      resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+      resolveLanguage: vi.fn().mockReturnValue(undefined),
+      getEnvironmentVars: vi.fn().mockReturnValue({}),
+    };
+
     const container = new Container();
+    container.register("ConfigurationService", mockConfigurationService);
     container.register("MessageManager", mockMessageManager);
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", {} as unknown as TaskManager);
@@ -94,6 +106,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
     container.register("PermissionManager", {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
       clearTemporaryRules: vi.fn(),
+      getPlanFilePath: vi.fn().mockReturnValue(undefined),
     } as unknown as Record<string, unknown>);
 
     // Mock SubagentManager and register it
@@ -109,11 +122,6 @@ describe("AIManager - latestTotalTokens calculation", () => {
     // Create AIManager instance
     aiManager = new AIManager(container, {
       workdir: "/test/workdir",
-      getGatewayConfig: () => mockGatewayConfig,
-      getModelConfig: () => mockModelConfig,
-      getMaxInputTokens: () => 96000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => undefined,
       stream: false,
     });
   });

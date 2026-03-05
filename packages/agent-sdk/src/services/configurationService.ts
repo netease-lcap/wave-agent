@@ -33,6 +33,7 @@ import {
   ConfigurationError,
   CONFIG_ERRORS,
   PermissionMode,
+  AgentOptions,
 } from "../types/index.js";
 import {
   DEFAULT_WAVE_MAX_INPUT_TOKENS,
@@ -50,6 +51,14 @@ import { parseCustomHeaders } from "../utils/stringUtils.js";
 export class ConfigurationService {
   private currentConfiguration: WaveConfiguration | null = null;
   private env: Record<string, string> = {};
+  private options: AgentOptions = {};
+
+  /**
+   * Set agent options for configuration resolution
+   */
+  setOptions(options: AgentOptions): void {
+    this.options = options;
+  }
 
   // Core loading operations
 
@@ -362,11 +371,11 @@ export class ConfigurationService {
   /**
    * Resolves gateway configuration from constructor args and environment
    * Resolution priority: options > env (from settings.json) > process.env > error
-   * @param apiKey - API key from constructor (optional)
-   * @param baseURL - Base URL from constructor (optional)
-   * @param defaultHeaders - HTTP headers from constructor (optional)
-   * @param fetchOptions - Fetch options from constructor (optional)
-   * @param fetch - Custom fetch implementation from constructor (optional)
+   * @param apiKey - API key override (optional)
+   * @param baseURL - Base URL override (optional)
+   * @param defaultHeaders - HTTP headers override (optional)
+   * @param fetchOptions - Fetch options override (optional)
+   * @param fetch - Custom fetch implementation override (optional)
    * @returns Resolved gateway configuration
    * @throws ConfigurationError if required configuration is missing after fallbacks
    */
@@ -377,20 +386,24 @@ export class ConfigurationService {
     fetchOptions?: ClientOptions["fetchOptions"],
     fetch?: ClientOptions["fetch"],
   ): GatewayConfig {
-    // Resolve API key: constructor > env (settings.json) > process.env
+    // Resolve API key: override > options > env (settings.json) > process.env
     // Note: Explicitly provided empty strings should be treated as invalid, not fall back to env
     let resolvedApiKey: string | undefined;
     if (apiKey !== undefined) {
       resolvedApiKey = apiKey;
+    } else if (this.options.apiKey !== undefined) {
+      resolvedApiKey = this.options.apiKey;
     } else {
       resolvedApiKey = this.env.WAVE_API_KEY;
     }
 
-    // Resolve base URL: constructor > env (settings.json) > process.env
+    // Resolve base URL: override > options > env (settings.json) > process.env
     // Note: Explicitly provided empty strings should be treated as invalid, not fall back to env
     let resolvedBaseURL: string;
     if (baseURL !== undefined) {
       resolvedBaseURL = baseURL;
+    } else if (this.options.baseURL !== undefined) {
+      resolvedBaseURL = this.options.baseURL;
     } else {
       resolvedBaseURL = this.env.WAVE_BASE_URL || "";
     }
@@ -434,9 +447,10 @@ export class ConfigurationService {
       this.env.WAVE_CUSTOM_HEADERS || process.env.WAVE_CUSTOM_HEADERS || "";
     const parsedEnvHeaders = parseCustomHeaders(envCustomHeaders);
 
-    // Merge headers: env headers < constructor defaultHeaders
+    // Merge headers: env headers < options < override
     const resolvedHeaders = {
       ...parsedEnvHeaders,
+      ...this.options.defaultHeaders,
       ...defaultHeaders,
     };
 
@@ -445,17 +459,18 @@ export class ConfigurationService {
       baseURL: resolvedBaseURL,
       defaultHeaders:
         Object.keys(resolvedHeaders).length > 0 ? resolvedHeaders : undefined,
-      fetchOptions,
-      fetch,
+      fetchOptions: fetchOptions ?? this.options.fetchOptions,
+      fetch: fetch ?? this.options.fetch,
     };
   }
 
   /**
    * Resolves model configuration with fallbacks
-   * Resolution priority: options > env (from settings.json) > process.env > default
-   * @param model - Agent model from constructor (optional)
-   * @param fastModel - Fast model from constructor (optional)
-   * @param maxTokens - Max output tokens from constructor (optional)
+   * Resolution priority: override > options > env (from settings.json) > process.env > default
+   * @param model - Agent model override (optional)
+   * @param fastModel - Fast model override (optional)
+   * @param maxTokens - Max output tokens override (optional)
+   * @param permissionMode - Permission mode override (optional)
    * @returns Resolved model configuration with defaults
    */
   resolveModelConfig(
@@ -468,8 +483,8 @@ export class ConfigurationService {
     const DEFAULT_AGENT_MODEL = "gemini-3-flash";
     const DEFAULT_FAST_MODEL = "gemini-2.5-flash";
 
-    // Resolve agent model: constructor > env (settings.json) > process.env > default
-    let resolvedAgentModel = model || this.env.WAVE_MODEL;
+    // Resolve agent model: override > options > env (settings.json) > process.env > default
+    let resolvedAgentModel = model || this.options.model || this.env.WAVE_MODEL;
 
     if (!resolvedAgentModel && this.currentConfiguration?.env?.WAVE_MODEL) {
       resolvedAgentModel = this.currentConfiguration.env.WAVE_MODEL;
@@ -477,8 +492,9 @@ export class ConfigurationService {
     resolvedAgentModel =
       resolvedAgentModel || process.env.WAVE_MODEL || DEFAULT_AGENT_MODEL;
 
-    // Resolve fast model: constructor > env (settings.json) > process.env > default
-    let resolvedFastModel = fastModel || this.env.WAVE_FAST_MODEL;
+    // Resolve fast model: override > options > env (settings.json) > process.env > default
+    let resolvedFastModel =
+      fastModel || this.options.fastModel || this.env.WAVE_FAST_MODEL;
 
     if (!resolvedFastModel && this.currentConfiguration?.env?.WAVE_FAST_MODEL) {
       resolvedFastModel = this.currentConfiguration.env.WAVE_FAST_MODEL;
@@ -493,20 +509,25 @@ export class ConfigurationService {
       model: resolvedAgentModel,
       fastModel: resolvedFastModel,
       maxTokens: resolvedMaxTokens,
-      permissionMode,
+      permissionMode: permissionMode ?? this.options.permissionMode,
     };
   }
 
   /**
    * Resolves token limit with fallbacks
-   * Resolution priority: options > env (from settings.json) > process.env > default
-   * @param constructorLimit - Token limit from constructor (optional)
+   * Resolution priority: override > options > env (from settings.json) > process.env > default
+   * @param constructorLimit - Token limit override (optional)
    * @returns Resolved token limit
    */
   resolveMaxInputTokens(constructorLimit?: number): number {
-    // If constructor value provided, use it
+    // If override value provided, use it
     if (constructorLimit !== undefined) {
       return constructorLimit;
+    }
+
+    // If options value provided, use it
+    if (this.options.maxInputTokens !== undefined) {
+      return this.options.maxInputTokens;
     }
 
     // Try env (settings.json) first, then process.env
@@ -525,14 +546,19 @@ export class ConfigurationService {
 
   /**
    * Resolves preferred language with fallbacks
-   * Resolution priority: options > settings.json > undefined
-   * @param constructorLanguage - Language from constructor (optional)
+   * Resolution priority: override > options > settings.json > undefined
+   * @param constructorLanguage - Language override (optional)
    * @returns Resolved language or undefined
    */
   resolveLanguage(constructorLanguage?: string): string | undefined {
-    // 1. Constructor options (highest priority)
+    // 1. Override (highest priority)
     if (constructorLanguage !== undefined) {
       return constructorLanguage;
+    }
+
+    // 2. Agent options
+    if (this.options.language !== undefined) {
+      return this.options.language;
     }
 
     // 2. settings.json (merged)
@@ -567,14 +593,19 @@ export class ConfigurationService {
 
   /**
    * Resolves max output tokens with fallbacks
-   * Resolution priority: options > env (from settings.json) > process.env > default
-   * @param constructorLimit - Max output tokens from constructor (optional)
+   * Resolution priority: override > options > env (from settings.json) > process.env > default
+   * @param constructorLimit - Max output tokens override (optional)
    * @returns Resolved max output tokens
    */
   resolveMaxOutputTokens(constructorLimit?: number): number {
-    // If constructor value provided, use it
+    // If override value provided, use it
     if (constructorLimit !== undefined) {
       return constructorLimit;
+    }
+
+    // If options value provided, use it
+    if (this.options.maxTokens !== undefined) {
+      return this.options.maxTokens;
     }
 
     // Try env (settings.json) first, then process.env

@@ -1,11 +1,6 @@
 import { randomUUID } from "crypto";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
-import type {
-  Message,
-  GatewayConfig,
-  ModelConfig,
-  Usage,
-} from "../types/index.js";
+import type { Message, Usage } from "../types/index.js";
 import { AIManager } from "./aiManager.js";
 import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
@@ -23,6 +18,7 @@ import {
 
 import { Container } from "../utils/container.js";
 import type { PermissionManager } from "./permissionManager.js";
+import { ConfigurationService } from "../services/configurationService.js";
 
 export interface SubagentManagerCallbacks {
   // Granular subagent message callbacks (015-subagent-message-callbacks)
@@ -79,12 +75,6 @@ export interface SubagentInstance {
 export interface SubagentManagerOptions {
   workdir: string;
   callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
-  getGatewayConfig: () => GatewayConfig;
-  getModelConfig: () => ModelConfig;
-  getMaxInputTokens: () => number;
-  getLanguage: () => string | undefined;
-  getAutoMemoryEnabled: () => boolean;
-  getEnvironmentVars?: () => Record<string, string>;
   onUsageAdded?: (usage: Usage) => void;
 }
 
@@ -94,12 +84,6 @@ export class SubagentManager {
 
   private workdir: string;
   private callbacks?: SubagentManagerCallbacks; // Use SubagentManagerCallbacks instead of parentCallbacks
-  private getGatewayConfig: () => GatewayConfig;
-  private getModelConfig: () => ModelConfig;
-  private getMaxInputTokens: () => number;
-  private getLanguage: () => string | undefined;
-  private getAutoMemoryEnabled: () => boolean;
-  private getEnvironmentVars?: () => Record<string, string>;
   private onUsageAdded?: (usage: Usage) => void;
   private container: Container;
 
@@ -107,13 +91,11 @@ export class SubagentManager {
     this.container = container;
     this.workdir = options.workdir;
     this.callbacks = options.callbacks; // Store SubagentManagerCallbacks
-    this.getGatewayConfig = options.getGatewayConfig;
-    this.getModelConfig = options.getModelConfig;
-    this.getMaxInputTokens = options.getMaxInputTokens;
-    this.getLanguage = options.getLanguage;
-    this.getAutoMemoryEnabled = options.getAutoMemoryEnabled;
-    this.getEnvironmentVars = options.getEnvironmentVars;
     this.onUsageAdded = options.onUsageAdded;
+  }
+
+  private get configurationService(): ConfigurationService {
+    return this.container.get<ConfigurationService>("ConfigurationService")!;
   }
 
   /**
@@ -235,35 +217,7 @@ export class SubagentManager {
       workdir: this.workdir,
       systemPrompt: configuration.systemPrompt,
       subagentType: parameters.subagent_type, // Pass subagent type for hook context
-      getGatewayConfig: this.getGatewayConfig,
-      getModelConfig: () => {
-        // Determine model dynamically each time
-        const parentModelConfig = this.getModelConfig();
-        let modelToUse: string;
-
-        if (parameters.model) {
-          // Use model override from parameters if provided
-          modelToUse = parameters.model;
-        } else if (!configuration.model || configuration.model === "inherit") {
-          // Use parent's model for "inherit" or undefined
-          modelToUse = parentModelConfig.model;
-        } else if (configuration.model === "fastModel") {
-          // Use parent's fastModel for special "fastModel" value
-          modelToUse = parentModelConfig.fastModel;
-        } else {
-          // Use specific model name
-          modelToUse = configuration.model;
-        }
-
-        return {
-          ...parentModelConfig,
-          model: modelToUse,
-        };
-      },
-      getMaxInputTokens: this.getMaxInputTokens,
-      getLanguage: this.getLanguage,
-      getAutoMemoryEnabled: this.getAutoMemoryEnabled,
-      getEnvironmentVars: this.getEnvironmentVars,
+      modelOverride: parameters.model || configuration.model, // Pass model override
       callbacks: {
         onUsageAdded: this.onUsageAdded,
       },
@@ -453,28 +407,8 @@ export class SubagentManager {
 
       // Execute the AI request with tool restrictions
       // The AIManager will handle abort signals through its own abort controllers
-      // Resolve model name for sendAIMessage
-      let resolvedModel: string | undefined;
-      if (instance.model) {
-        resolvedModel = instance.model;
-      } else if (
-        instance.configuration.model &&
-        instance.configuration.model !== "inherit"
-      ) {
-        if (instance.configuration.model === "fastModel") {
-          // Use parent's fastModel for special "fastModel" value
-          const parentModelConfig = this.getModelConfig();
-          resolvedModel = parentModelConfig.fastModel;
-        } else {
-          // Use specific model name
-          resolvedModel = instance.configuration.model;
-        }
-      }
-      // For "inherit" or undefined, resolvedModel remains undefined (uses AIManager default)
-
       const executeAI = instance.aiManager.sendAIMessage({
         tools: enabledTools,
-        model: resolvedModel,
       });
 
       // If we have an abort signal, race against it using utilities to prevent listener accumulation

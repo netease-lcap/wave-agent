@@ -30,7 +30,6 @@ import type {
   BackgroundTask,
   ToolPermissionContext,
 } from "../types/index.js";
-import type { GatewayConfig, ModelConfig } from "../types/config.js";
 
 import { logger } from "./globalLogger.js";
 
@@ -49,12 +48,6 @@ export interface AgentContainerSetupOptions {
   setPermissionMode: (mode: PermissionMode) => void;
   addPermissionRule: (rule: string) => Promise<void>;
   addUsage: (usage: Usage) => void;
-
-  // Getters
-  getGatewayConfig: () => GatewayConfig;
-  getModelConfig: () => ModelConfig;
-  getMaxInputTokens: () => number;
-  getLanguage: () => string | undefined;
 }
 
 export function setupAgentContainer(
@@ -73,10 +66,6 @@ export function setupAgentContainer(
     setPermissionMode,
     addPermissionRule,
     addUsage,
-    getGatewayConfig,
-    getModelConfig,
-    getMaxInputTokens,
-    getLanguage,
   } = setupOptions;
 
   const callbacks = options.callbacks || {};
@@ -254,12 +243,6 @@ export function setupAgentContainer(
       onSubagentLatestTotalTokensChange:
         callbacks.onSubagentLatestTotalTokensChange,
     },
-    getGatewayConfig,
-    getModelConfig,
-    getMaxInputTokens,
-    getLanguage,
-    getAutoMemoryEnabled: () => configurationService.resolveAutoMemoryEnabled(),
-    getEnvironmentVars: () => configurationService.getEnvironmentVars(),
     onUsageAdded: (usage: Usage) => addUsage(usage),
   });
   container.register("SubagentManager", subagentManager);
@@ -272,12 +255,6 @@ export function setupAgentContainer(
     workdir,
     systemPrompt,
     stream,
-    getGatewayConfig,
-    getModelConfig,
-    getMaxInputTokens,
-    getLanguage,
-    getAutoMemoryEnabled: () => configurationService.resolveAutoMemoryEnabled(),
-    getEnvironmentVars: () => configurationService.getEnvironmentVars(),
   });
   container.register("AIManager", aiManager);
 
