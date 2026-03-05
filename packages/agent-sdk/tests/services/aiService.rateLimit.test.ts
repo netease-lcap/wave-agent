@@ -48,7 +48,7 @@ describe("AI Service - Rate Limiting", () => {
 
     // Reset mock and set default behavior
     mockCreate.mockReset();
-    const mockWithResponse = vi.fn().mockResolvedValue({
+    const mockResponse = {
       data: {
         choices: [
           { message: { content: "Test response" }, finish_reason: "stop" },
@@ -56,8 +56,11 @@ describe("AI Service - Rate Limiting", () => {
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
       },
       response: { headers: new Map() },
+    };
+    mockCreate.mockReturnValue({
+      withResponse: vi.fn().mockResolvedValue(mockResponse),
+      then: (resolve: (value: unknown) => void) => resolve(mockResponse.data),
     });
-    mockCreate.mockReturnValue({ withResponse: mockWithResponse });
 
     const aiService = await import("@/services/aiService.js");
     callAgent = aiService.callAgent;
@@ -102,11 +105,13 @@ describe("AI Service - Rate Limiting", () => {
     const callTimes: number[] = [];
     mockCreate.mockImplementation(() => {
       callTimes.push(Date.now());
+      const mockResponse = {
+        data: { choices: [] },
+        response: { headers: new Map() },
+      };
       return {
-        withResponse: vi.fn().mockResolvedValue({
-          data: { choices: [] },
-          response: { headers: new Map() },
-        }),
+        withResponse: vi.fn().mockResolvedValue(mockResponse),
+        then: (resolve: (value: unknown) => void) => resolve(mockResponse.data),
       };
     });
 

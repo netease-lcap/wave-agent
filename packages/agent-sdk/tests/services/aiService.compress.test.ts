@@ -74,7 +74,7 @@ describe("AI Service - CompressMessages", () => {
       compressMessages = aiService.compressMessages;
     });
 
-    it("should use max_tokens of 2048 and temperature of 0.1", async () => {
+    it("should use max_tokens of 8192 and temperature of 0.1", async () => {
       const messages = [
         {
           role: "user" as const,
@@ -97,7 +97,7 @@ describe("AI Service - CompressMessages", () => {
       // Verify model configuration
       expect(callArgs.model).toBe(TEST_MODEL_CONFIG.model);
       expect(callArgs.temperature).toBe(0.1);
-      expect(callArgs.max_tokens).toBe(2048);
+      expect(callArgs.max_tokens).toBe(8192);
       expect(callArgs.stream).toBe(false);
     });
 
@@ -207,7 +207,7 @@ describe("AI Service - CompressMessages", () => {
       expect(callOptions.signal).toBe(abortController.signal);
     });
 
-    it("should return fallback message when API response is empty", async () => {
+    it("should throw error when API response is empty", async () => {
       mockCreate.mockResolvedValueOnce({
         choices: [
           {
@@ -225,17 +225,20 @@ describe("AI Service - CompressMessages", () => {
         },
       ];
 
-      const result = await compressMessages({
-        gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: TEST_MODEL_CONFIG,
-        messages,
-      });
-
-      expect(result.content).toBe("Failed to compress conversation history");
+      await expect(
+        compressMessages({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: TEST_MODEL_CONFIG,
+          messages,
+        }),
+      ).rejects.toThrow(
+        "Failed to compress conversation history: Empty response from AI",
+      );
     });
 
-    it("should handle API errors gracefully", async () => {
-      mockCreate.mockRejectedValueOnce(new Error("API Error"));
+    it("should throw API errors", async () => {
+      const apiError = new Error("API Error");
+      mockCreate.mockRejectedValueOnce(apiError);
 
       const messages = [
         {
@@ -244,13 +247,13 @@ describe("AI Service - CompressMessages", () => {
         },
       ];
 
-      const result = await compressMessages({
-        gatewayConfig: TEST_GATEWAY_CONFIG,
-        modelConfig: TEST_MODEL_CONFIG,
-        messages,
-      });
-
-      expect(result.content).toBe("Failed to compress conversation history");
+      await expect(
+        compressMessages({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: TEST_MODEL_CONFIG,
+          messages,
+        }),
+      ).rejects.toThrow("API Error");
     });
 
     it("should handle abort errors", async () => {

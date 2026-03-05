@@ -778,7 +778,7 @@ export async function compressMessages(
   // Get model configuration - use injected agent model
   const openaiModelConfig = getModelConfig(options.model || modelConfig.model, {
     temperature: 0.1,
-    max_tokens: 2048,
+    max_tokens: 8192,
   });
 
   try {
@@ -802,9 +802,12 @@ export async function compressMessages(
       },
     );
 
-    const content =
-      response.choices[0]?.message?.content?.trim() ||
-      "Failed to compress conversation history";
+    const content = response.choices[0]?.message?.content?.trim();
+    if (!content) {
+      throw new Error(
+        "Failed to compress conversation history: Empty response from AI",
+      );
+    }
     const usage = response.usage
       ? {
           prompt_tokens: response.usage.prompt_tokens,
@@ -823,9 +826,6 @@ export async function compressMessages(
       throw new Error("Compression request was aborted");
     }
     logger.error("Failed to compress messages:", error);
-    return {
-      content: "Failed to compress conversation history",
-      usage: undefined,
-    };
+    throw error;
   }
 }
