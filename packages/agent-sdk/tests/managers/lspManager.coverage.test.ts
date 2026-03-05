@@ -73,7 +73,8 @@ describe("LspManager Coverage Improvements", () => {
     lspManager.registerServer("typescript", {
       command: "ts-server",
       extensionToLanguage: { ".ts": "typescript" },
-      startupTimeout: 100,
+      startupTimeout: 1,
+      shutdownTimeout: 1,
     });
 
     const lspProc = await lspManager.getProcessForFile("test.ts");
@@ -114,7 +115,8 @@ describe("LspManager Coverage Improvements", () => {
     lspManager.registerServer("typescript", {
       command: "ts-server",
       extensionToLanguage: { ".ts": "typescript" },
-      startupTimeout: 500,
+      startupTimeout: 1,
+      shutdownTimeout: 1,
     });
 
     const lspProc = await lspManager.getProcessForFile("test.ts");
@@ -129,6 +131,7 @@ describe("LspManager Coverage Improvements", () => {
     lspManager.registerServer("typescript", {
       command: "ts-server",
       extensionToLanguage: { ".ts": "typescript" },
+      shutdownTimeout: 1,
     });
 
     const lspProc = await lspManager.getProcessForFile("test.ts");
@@ -153,7 +156,8 @@ describe("LspManager Coverage Improvements", () => {
     lspManager.registerServer("typescript", {
       command: "ts-server",
       extensionToLanguage: { ".ts": "typescript" },
-      startupTimeout: 500,
+      startupTimeout: 1,
+      shutdownTimeout: 1,
     });
 
     // First call to start server
@@ -200,6 +204,7 @@ describe("LspManager Coverage Improvements", () => {
     lspManager.registerServer("typescript", {
       command: "ts-server",
       extensionToLanguage: { ".ts": "typescript" },
+      shutdownTimeout: 1,
     });
 
     const operations = [
@@ -262,6 +267,7 @@ describe("LspManager Coverage Improvements", () => {
     lspManager.registerServer("typescript", {
       command: "ts-server",
       extensionToLanguage: { ".ts": "typescript" },
+      shutdownTimeout: 1,
     });
 
     const res1 = await lspManager.execute({
@@ -316,6 +322,7 @@ describe("LspManager Coverage Improvements", () => {
     lspManager.registerServer("typescript", {
       command: "ts-server",
       extensionToLanguage: { ".ts": "typescript" },
+      shutdownTimeout: 1,
     });
 
     const res1 = await lspManager.execute({
@@ -347,7 +354,7 @@ describe("LspManager Coverage Improvements", () => {
     lspManager.registerServer("typescript", {
       command: "ts-server",
       extensionToLanguage: { ".ts": "typescript" },
-      shutdownTimeout: 10,
+      shutdownTimeout: 1,
     });
 
     await lspManager.getProcessForFile("test.ts");
