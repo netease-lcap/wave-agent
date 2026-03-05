@@ -41,6 +41,13 @@ describe("MessageManager Coverage Improvements", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    const mockMemoryService = {
+      getCombinedMemoryContent: vi.fn().mockResolvedValue("base memory"),
+    };
+    container.register(
+      "MemoryService",
+      mockMemoryService as unknown as Record<string, unknown>,
+    );
     messageManager = new MessageManager(container, {
       callbacks: {},
       workdir,
@@ -73,6 +80,9 @@ describe("MessageManager Coverage Improvements", () => {
       "MemoryRuleManager",
       mockMemoryRuleManager as unknown as Record<string, unknown>,
     );
+    testContainer.register("MemoryService", {
+      getCombinedMemoryContent: vi.fn().mockResolvedValue("base memory"),
+    } as unknown as Record<string, unknown>);
 
     const mm = new MessageManager(testContainer, {
       callbacks: {},

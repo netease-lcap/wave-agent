@@ -2,17 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
 import type { AgentCallbacks } from "@/types/index.js";
 
-// Mock fs operations
-vi.mock("node:fs/promises", () => ({
-  rm: vi.fn(),
-  readFile: vi.fn(),
-  writeFile: vi.fn(),
-  access: vi.fn(),
-  mkdir: vi.fn(),
-  readdir: vi.fn(),
-  stat: vi.fn(),
-}));
-
 // Mock os module
 vi.mock("node:os", () => ({
   default: {
@@ -39,18 +28,19 @@ vi.mock("../../src/services/aiService.js", () => ({
 }));
 
 // Mock memory
-vi.mock("../../src/services/memory.js", () => ({
-  addMemory: vi.fn().mockResolvedValue(undefined),
-  isMemoryMessage: vi.fn().mockReturnValue(true),
-  addUserMemory: vi.fn().mockResolvedValue(undefined),
+const mockMemoryServiceInstance = vi.hoisted(() => ({
   getUserMemoryContent: vi.fn().mockResolvedValue("User memory content"),
   ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
   readMemoryFile: vi.fn().mockResolvedValue("Project memory content"),
   getCombinedMemoryContent: vi
     .fn()
     .mockResolvedValue("Combined memory content"),
-  initializeMemoryStore: vi.fn(),
-  getMemoryStore: vi.fn().mockReturnValue(null),
+}));
+
+vi.mock("../../src/services/memory.js", () => ({
+  MemoryService: vi.fn().mockImplementation(function () {
+    return mockMemoryServiceInstance;
+  }),
 }));
 
 describe("Agent User Memory Integration", () => {
@@ -65,25 +55,13 @@ describe("Agent User Memory Integration", () => {
     // Set up mock directory path
     mockTempDir = "/mock/tmp/aimanager-test-123";
 
-    // Setup fs mock implementations
-    const fs = await import("node:fs/promises");
-    vi.mocked(fs.rm).mockResolvedValue(undefined);
-    vi.mocked(fs.access).mockResolvedValue(undefined);
-    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
-    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
-    vi.mocked(fs.readFile).mockResolvedValue("[]");
-    vi.mocked(fs.readdir).mockResolvedValue([]);
-    vi.mocked(fs.stat).mockResolvedValue({
-      isFile: () => true,
-      isDirectory: () => false,
-    } as unknown as Awaited<ReturnType<typeof fs.stat>>);
-
     // Get mock references after module imports
     const aiService = await import("../../src/services/aiService.js");
-    const memory = await import("../../src/services/memory.js");
 
     mockCallAgent = vi.mocked(aiService.callAgent);
-    mockGetCombinedMemoryContent = vi.mocked(memory.getCombinedMemoryContent);
+    mockGetCombinedMemoryContent = vi.mocked(
+      mockMemoryServiceInstance.getCombinedMemoryContent,
+    );
 
     // Reset all mocks
     vi.clearAllMocks();
