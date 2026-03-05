@@ -1,26 +1,77 @@
-import { globIterate, type Path } from "glob";
+import { spawn } from "child_process";
+import { rgPath } from "@vscode/ripgrep";
+import fuzzysort from "fuzzysort";
 import { getGlobIgnorePatterns } from "./fileFilter.js";
 import type { FileItem } from "../types/fileSearch.js";
 
 /**
- * Convert Path objects to FileItem objects
+ * Execute ripgrep to get all file paths
  */
-export const convertPathsToFileItems = (paths: Path[]): FileItem[] => {
-  return paths.map((pathObj) => {
-    const isDirectory = pathObj.isDirectory();
-    let path = pathObj.relative();
-    if (isDirectory && !path.endsWith("/")) {
-      path += "/";
-    }
-    return {
-      path,
-      type: isDirectory ? "directory" : "file",
-    };
+async function getAllFiles(workingDirectory: string): Promise<string[]> {
+  if (!rgPath) {
+    throw new Error("ripgrep is not available");
+  }
+
+  const ignorePatterns = getGlobIgnorePatterns(workingDirectory);
+  const rgArgs = ["--files", "--color=never", "--hidden"];
+  for (const pattern of ignorePatterns) {
+    rgArgs.push("--glob", `!${pattern}`);
+  }
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(rgPath, rgArgs, {
+      cwd: workingDirectory,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout?.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr?.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0 && code !== 1) {
+        reject(new Error(`ripgrep failed: ${stderr}`));
+        return;
+      }
+      const files = stdout
+        .trim()
+        .split("\n")
+        .filter((f) => f.length > 0)
+        .map((f) => f.replace(/\\/g, "/")); // Normalize to forward slashes
+      resolve(files);
+    });
+
+    child.on("error", (err) => {
+      reject(err);
+    });
   });
-};
+}
 
 /**
- * Search files and directories using glob patterns
+ * Derive directory paths from file paths
+ */
+function deriveDirectories(files: string[]): string[] {
+  const dirs = new Set<string>();
+  for (const file of files) {
+    const parts = file.split("/");
+    // Add all parent directories
+    for (let i = 1; i < parts.length; i++) {
+      const dir = parts.slice(0, i).join("/") + "/";
+      dirs.add(dir);
+    }
+  }
+  return Array.from(dirs);
+}
+
+/**
+ * Search files and directories using fuzzy matching
  */
 export const searchFiles = async (
   query: string,
@@ -32,83 +83,63 @@ export const searchFiles = async (
   const { maxResults = 10, workingDirectory = process.cwd() } = options || {};
 
   try {
-    const globOptions: import("glob").GlobOptionsWithFileTypesTrue = {
-      ignore: getGlobIgnorePatterns(workingDirectory),
-      maxDepth: 10,
-      nocase: true, // Case insensitive
-      dot: true, // Include hidden files and directories
-      cwd: workingDirectory, // Specify search root directory
-      withFileTypes: true, // Get Path objects instead of strings
-    };
-
-    // Build glob patterns based on query
-    let patterns: string[] = [];
+    const files = await getAllFiles(workingDirectory);
 
     if (!query.trim()) {
-      // When query is empty, show some common file types and directories
-      patterns = [
-        "**/*.{ts,tsx,js,jsx,json,py,java}", // Combine common file extensions
-        "*/", // First level directories
-      ];
-    } else {
-      // Build multiple glob patterns to support more flexible search
-      patterns = [
-        // Match files with filenames containing query
-        `**/*${query}*`,
-        // Match files with query in path (match directory names)
-        `**/${query}*/**/*`,
-        // Match directory names containing query
-        `**/*${query}*/`,
-        // Match directories containing query in path
-        `**/${query}*/`,
-      ];
-    }
+      // When query is empty, show some common file types and top-level directories
+      const commonExtensions = new Set([
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "json",
+        "py",
+        "java",
+      ]);
+      const results: FileItem[] = [];
+      const seenDirs = new Set<string>();
 
-    // Collect results until we reach maxResults
-    const collectedPaths: Path[] = [];
-    const seenPaths = new Set<string>();
-
-    // Process each pattern sequentially
-    for (const pattern of patterns) {
-      if (collectedPaths.length >= maxResults) {
-        break;
-      }
-
-      // Use globIterate to get results one by one
-      const iterator = globIterate(pattern, globOptions) as AsyncGenerator<
-        Path,
-        void,
-        void
-      >;
-
-      for await (const pathObj of iterator) {
-        if (collectedPaths.length >= maxResults) {
-          // Stop the iterator when we have enough results
-          break;
+      for (const file of files) {
+        const parts = file.split("/");
+        if (parts.length > 1) {
+          const topDir = parts[0] + "/";
+          if (!seenDirs.has(topDir)) {
+            seenDirs.add(topDir);
+            results.push({ path: topDir, type: "directory" });
+          }
         }
 
-        const relativePath = pathObj.relative();
-        if (!seenPaths.has(relativePath)) {
-          seenPaths.add(relativePath);
-          collectedPaths.push(pathObj);
+        const ext = file.split(".").pop();
+        if (ext && commonExtensions.has(ext)) {
+          results.push({ path: file, type: "file" });
         }
       }
+
+      // Sort: directories first, then files, then alphabetically
+      return results
+        .sort((a, b) => {
+          if (a.type === "directory" && b.type === "file") return -1;
+          if (a.type === "file" && b.type === "directory") return 1;
+          return a.path.localeCompare(b.path);
+        })
+        .slice(0, maxResults);
     }
 
-    // Sort collected paths: directories first, then files
-    collectedPaths.sort((a, b) => {
-      const aIsDir = a.isDirectory();
-      const bIsDir = b.isDirectory();
-      if (aIsDir && !bIsDir) return -1;
-      if (!aIsDir && bIsDir) return 1;
-      return a.relative().localeCompare(b.relative());
+    const directories = deriveDirectories(files);
+    const allItems: FileItem[] = [
+      ...files.map((f) => ({ path: f, type: "file" as const })),
+      ...directories.map((d) => ({ path: d, type: "directory" as const })),
+    ];
+
+    const fuzzyResults = fuzzysort.go(query, allItems, {
+      key: "path",
+      limit: maxResults,
+      threshold: 0,
     });
 
-    // Convert to FileItems
-    const fileItems = convertPathsToFileItems(collectedPaths);
-    return fileItems;
+    return fuzzyResults.map((res) => res.obj);
   } catch (error) {
-    console.error("Glob search error:", error);
+    console.error("Fuzzy search error:", error);
     return [];
   }
 };
