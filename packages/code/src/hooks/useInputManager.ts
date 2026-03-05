@@ -204,14 +204,16 @@ export const useInputManager = (
   const handleCommandInsert = useCallback((command: string) => {
     const currentState = stateRef.current;
     if (currentState.slashPosition >= 0) {
+      const wordEnd = handlers.getWordEnd(
+        currentState.inputText,
+        currentState.slashPosition,
+      );
       const beforeSlash = currentState.inputText.substring(
         0,
         currentState.slashPosition,
       );
-      const afterQuery = currentState.inputText.substring(
-        currentState.cursorPosition,
-      );
-      const newInput = beforeSlash + `/${command} ` + afterQuery;
+      const afterWord = currentState.inputText.substring(wordEnd);
+      const newInput = beforeSlash + `/${command} ` + afterWord;
       const newCursorPosition = beforeSlash.length + command.length + 2;
 
       dispatch({ type: "SET_INPUT_TEXT", payload: newInput });

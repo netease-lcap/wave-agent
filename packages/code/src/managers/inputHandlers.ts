@@ -284,7 +284,7 @@ export const handlePasteInput = (
   }
 };
 
-const getWordEnd = (text: string, startPos: number): number => {
+export const getWordEnd = (text: string, startPos: number): number => {
   let i = startPos;
   while (i < text.length && !/\s/.test(text[i])) {
     i++;
