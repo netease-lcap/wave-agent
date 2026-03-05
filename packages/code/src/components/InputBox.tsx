@@ -129,6 +129,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
   const isPlaceholder = !inputText;
   const placeholderText = INPUT_PLACEHOLDER_TEXT;
 
+  const isShellCommand =
+    inputText?.startsWith("!") && !inputText.includes("\n");
+
   // handleCommandSelectorInsert is already memoized in useInputManager, no need to wrap again
 
   // Split text into three parts: before cursor, cursor position, after cursor
@@ -245,13 +248,19 @@ export const InputBox: React.FC<InputBoxProps> = ({
               </Text>
             </Box>
             <Box paddingRight={1} justifyContent="space-between" width="100%">
-              <Text color="gray">
-                Mode:{" "}
-                <Text color={permissionMode === "plan" ? "yellow" : "cyan"}>
-                  {permissionMode}
-                </Text>{" "}
-                (Shift+Tab to cycle)
-              </Text>
+              {isShellCommand ? (
+                <Text color="gray">
+                  Shell: <Text color="yellow">Run shell command</Text>
+                </Text>
+              ) : (
+                <Text color="gray">
+                  Mode:{" "}
+                  <Text color={permissionMode === "plan" ? "yellow" : "cyan"}>
+                    {permissionMode}
+                  </Text>{" "}
+                  (Shift+Tab to cycle)
+                </Text>
+              )}
             </Box>
           </Box>
         )}
