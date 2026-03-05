@@ -39,19 +39,28 @@ vi.mock("../../src/services/aiService.js", () => ({
 }));
 
 // Mock memory
-vi.mock("../../src/services/memory.js", () => ({
-  addMemory: vi.fn().mockResolvedValue(undefined),
-  isMemoryMessage: vi.fn().mockReturnValue(true),
-  addUserMemory: vi.fn().mockResolvedValue(undefined),
-  getUserMemoryContent: vi.fn().mockResolvedValue("User memory content"),
-  ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
-  readMemoryFile: vi.fn().mockResolvedValue("Project memory content"),
-  getCombinedMemoryContent: vi
-    .fn()
-    .mockResolvedValue("Combined memory content"),
-  initializeMemoryStore: vi.fn(),
-  getMemoryStore: vi.fn().mockReturnValue(null),
-}));
+const mockGetCombinedMemoryContent = vi
+  .fn()
+  .mockReturnValue("Combined memory content");
+vi.mock("../../src/services/memory.js", () => {
+  class MemoryService {
+    initialize = vi.fn().mockResolvedValue(undefined);
+    autoMemoryDir = "/mock/auto-memory";
+    autoMemoryContent = "Auto memory content";
+    projectMemoryContent = "Project memory content";
+    userMemoryContent = "User memory content";
+    autoMemoryEnabled = true;
+    get combinedMemoryContent() {
+      return mockGetCombinedMemoryContent();
+    }
+  }
+  return {
+    MemoryService,
+    getCombinedMemoryContent: vi
+      .fn()
+      .mockImplementation(() => mockGetCombinedMemoryContent()),
+  };
+});
 
 describe("Agent User Memory Integration", () => {
   let agent: Agent;
@@ -59,7 +68,6 @@ describe("Agent User Memory Integration", () => {
   let mockTempDir: string;
 
   let mockCallAgent: ReturnType<typeof vi.fn>;
-  let mockGetCombinedMemoryContent: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     // Set up mock directory path
@@ -80,10 +88,8 @@ describe("Agent User Memory Integration", () => {
 
     // Get mock references after module imports
     const aiService = await import("../../src/services/aiService.js");
-    const memory = await import("../../src/services/memory.js");
 
     mockCallAgent = vi.mocked(aiService.callAgent);
-    mockGetCombinedMemoryContent = vi.mocked(memory.getCombinedMemoryContent);
 
     // Reset all mocks
     vi.clearAllMocks();

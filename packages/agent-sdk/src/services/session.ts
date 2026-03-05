@@ -17,7 +17,6 @@
 
 import { promises as fs } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 import { randomUUID } from "crypto";
 import type { Message } from "../types/index.js";
 import type { SessionMessage } from "../types/session.js";
@@ -25,6 +24,7 @@ import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import { logger } from "../utils/globalLogger.js";
+import { PROJECTS_DIRECTORY } from "../utils/constants.js";
 
 export interface SessionData {
   id: string;
@@ -76,7 +76,7 @@ export function generateSubagentFilename(sessionId: string): string {
 }
 
 // Constants
-export const SESSION_DIR = join(homedir(), ".wave", "projects");
+export const SESSION_DIR = PROJECTS_DIRECTORY;
 const MAX_SESSION_AGE_DAYS = 14;
 const SESSION_INDEX_FILENAME = "sessions-index.json";
 

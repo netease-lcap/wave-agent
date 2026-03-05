@@ -1,9 +1,50 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
+import {
+  USER_MEMORY_FILE,
+  DATA_DIRECTORY,
+  PROJECTS_DIRECTORY,
+} from "../utils/constants.js";
 import { logger } from "../utils/globalLogger.js";
+import { getGitRepoRoot } from "../utils/gitUtils.js";
+import { pathEncoder } from "../utils/pathEncoder.js";
 
 // Project memory related methods
+/**
+ * Get the auto-memory directory for a given working directory
+ * @param workdir - Working directory to find the auto-memory directory for
+ * @returns Promise resolving to the auto-memory directory path
+ */
+const getAutoMemoryDir = async (workdir: string): Promise<string> => {
+  const repoRoot = getGitRepoRoot(workdir);
+  const rootToEncode = repoRoot || workdir;
+  const encodedPath = await pathEncoder.encode(rootToEncode);
+  return path.join(PROJECTS_DIRECTORY, encodedPath, "memory");
+};
+
+/**
+ * Get the auto-memory content from the memory directory
+ * @param memoryDir - Auto-memory directory path
+ * @returns Promise resolving to the first 200 lines of MEMORY.md
+ */
+const getAutoMemoryContent = async (memoryDir: string): Promise<string> => {
+  const memoryFilePath = path.join(memoryDir, "MEMORY.md");
+  try {
+    const content = await fs.readFile(memoryFilePath, "utf-8");
+    const lines = content.split("\n");
+    if (lines.length > 200) {
+      return lines.slice(0, 200).join("\n");
+    }
+    return content;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "";
+    }
+    logger.error("Failed to read auto-memory file", { memoryFilePath, error });
+    return "";
+  }
+};
+
 // User memory related methods
 export const ensureUserMemoryFile = async (): Promise<void> => {
   try {
@@ -75,6 +116,9 @@ export const readMemoryFile = async (workdir: string): Promise<string> => {
 };
 
 // Get merged memory content (project memory + user memory)
+/**
+ * @deprecated Use MemoryService.combinedMemoryContent instead
+ */
 export const getCombinedMemoryContent = async (
   workdir: string,
 ): Promise<string> => {
@@ -98,3 +142,56 @@ export const getCombinedMemoryContent = async (
 
   return combinedMemory;
 };
+
+export class MemoryService {
+  private _autoMemoryDir: string = "";
+  private _autoMemoryContent: string = "";
+  private _projectMemoryContent: string = "";
+  private _userMemoryContent: string = "";
+  private _autoMemoryEnabled: boolean = false;
+
+  async initialize(workdir: string, autoMemoryEnabled: boolean): Promise<void> {
+    this._autoMemoryEnabled = autoMemoryEnabled;
+    this._projectMemoryContent = await readMemoryFile(workdir);
+    this._userMemoryContent = await getUserMemoryContent();
+
+    if (autoMemoryEnabled) {
+      this._autoMemoryDir = await getAutoMemoryDir(workdir);
+      this._autoMemoryContent = await getAutoMemoryContent(this._autoMemoryDir);
+    }
+  }
+
+  get autoMemoryDir(): string {
+    return this._autoMemoryDir;
+  }
+
+  get autoMemoryContent(): string {
+    return this._autoMemoryContent;
+  }
+
+  get projectMemoryContent(): string {
+    return this._projectMemoryContent;
+  }
+
+  get userMemoryContent(): string {
+    return this._userMemoryContent;
+  }
+
+  get autoMemoryEnabled(): boolean {
+    return this._autoMemoryEnabled;
+  }
+
+  get combinedMemoryContent(): string {
+    let combined = "";
+    if (this._projectMemoryContent.trim()) {
+      combined += this._projectMemoryContent;
+    }
+    if (this._userMemoryContent.trim()) {
+      if (combined) {
+        combined += "\n\n";
+      }
+      combined += this._userMemoryContent;
+    }
+    return combined;
+  }
+}

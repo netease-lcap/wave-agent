@@ -27,6 +27,11 @@ export const ERROR_LOG_DIRECTORY = path.join(DATA_DIRECTORY, "error-logs");
 export const USER_MEMORY_FILE = path.join(DATA_DIRECTORY, "AGENTS.md");
 
 /**
+ * Projects directory for session storage and auto-memory
+ */
+export const PROJECTS_DIRECTORY = path.join(os.homedir(), ".wave", "projects");
+
+/**
  * AI related constants
  */
 export const DEFAULT_WAVE_MAX_INPUT_TOKENS = 96000; // Default token limit

@@ -82,3 +82,23 @@
 - [ ] T016 [P] Implement deduplication logic in `addMemory`
 - [ ] T017 [P] Explore RAG-based retrieval for large memory files
 - [ ] T018 [P] Final type-check and linting
+
+---
+
+## Phase 6: User Story 4 - Auto Memory (Priority: P1)
+
+**Goal**: Automatically persist project-specific knowledge in `~/.wave/projects/<encoded-path>/memory/MEMORY.md`.
+
+**Independent Test**: Start an agent session and verify that `MEMORY.md` is created and injected into the system prompt.
+
+### Implementation for User Story 4
+
+- [X] T019 [US4] Implement auto-memory directory resolution and content loading in `packages/agent-sdk/src/services/memory.ts`
+- [X] T020 [US4] Add `autoMemoryEnabled` to `AgentOptions` and `WaveConfiguration`
+- [X] T021 [US4] Implement configuration resolution for auto-memory in `packages/agent-sdk/src/services/configurationService.ts`
+- [X] T022 [US4] Update `InitializationService` to create memory directory and load content during startup
+- [X] T023 [US4] Update `AIManager` and `SubagentManager` to propagate auto-memory to all agents
+- [X] T024 [US4] Update `buildSystemPrompt` in `packages/agent-sdk/src/prompts/index.ts` to inject auto-memory content
+- [X] T025 [US4] Update `PermissionManager` to include auto-memory directory in the "Safe Zone"
+- [X] T026 [US4] Add public getters for auto-memory to the `Agent` class in `packages/agent-sdk/src/agent.ts`
+- [X] T027 [US4] Write and verify unit tests in `packages/agent-sdk/tests/autoMemory.test.ts`

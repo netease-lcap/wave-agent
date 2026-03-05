@@ -1,6 +1,3 @@
-import path from "path";
-import * as fs from "fs/promises";
-import os from "os";
 import { handleSessionRestoration } from "./session.js";
 import { setGlobalLogger } from "../utils/globalLogger.js";
 import { LspManager } from "../managers/lspManager.js";
@@ -24,6 +21,7 @@ import type { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import type { LiveConfigManager } from "../managers/liveConfigManager.js";
 import type { TaskManager } from "./taskManager.js";
 import type { PermissionManager } from "../managers/permissionManager.js";
+import type { MemoryService } from "./memory.js";
 
 export interface InitializationContext {
   skillManager: SkillManager;
@@ -43,8 +41,7 @@ export interface InitializationContext {
   memoryRuleManager: MemoryRuleManager;
   liveConfigManager: LiveConfigManager;
   taskManager: TaskManager;
-  setProjectMemory: (content: string) => void;
-  setUserMemory: (content: string) => void;
+  memoryService: MemoryService;
   resolveAndValidateConfig: () => void;
 }
 
@@ -75,8 +72,7 @@ export class InitializationService {
       memoryRuleManager,
       liveConfigManager,
       taskManager,
-      setProjectMemory,
-      setUserMemory,
+      memoryService,
       resolveAndValidateConfig,
     } = context;
 
@@ -211,32 +207,20 @@ export class InitializationService {
 
     // Load memory files during initialization
     try {
-      // Load project memory from AGENTS.md (bypass memory store for direct file access)
-      try {
-        const projectMemoryPath = path.join(workdir, "AGENTS.md");
-        const projectMemoryContent = await fs.readFile(
-          projectMemoryPath,
-          "utf-8",
-        );
-        setProjectMemory(projectMemoryContent);
-      } catch (error) {
-        logger?.warn("Failed to load project memory file:", error);
-        setProjectMemory("");
-      }
+      const autoMemoryEnabled = configurationService.resolveAutoMemoryEnabled(
+        agentOptions.autoMemoryEnabled,
+      );
+      await memoryService.initialize(workdir, autoMemoryEnabled);
 
-      // Load user memory (bypass memory store for direct file access)
-      try {
-        const userMemoryPath = path.join(os.homedir(), ".wave", "AGENTS.md");
-        const userMemoryContent = await fs.readFile(userMemoryPath, "utf-8");
-        setUserMemory(userMemoryContent);
-      } catch (error) {
-        logger?.warn("Failed to load user memory file:", error);
-        setUserMemory("");
+      if (autoMemoryEnabled) {
+        // Update PermissionManager with auto-memory directory
+        const permissionManager =
+          context.container.get<PermissionManager>("PermissionManager");
+        if (permissionManager) {
+          permissionManager.updateAutoMemoryDir(memoryService.autoMemoryDir);
+        }
       }
     } catch (error) {
-      // Ensure memory is always initialized even if loading fails
-      setProjectMemory("");
-      setUserMemory("");
       logger?.error("Failed to load memory files:", error);
       // Don't throw error to prevent app startup failure
     }

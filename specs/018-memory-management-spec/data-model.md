@@ -11,6 +11,15 @@ A single piece of persisted information.
 | `type` | 'project' \| 'user' | Whether it's stored in `AGENTS.md` or global memory. |
 | `source` | string | The absolute path to the storage file. |
 
+### AutoMemory
+Project-specific knowledge persisted in `~/.wave/projects/<encoded-path>/memory/`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content` | string | The text of the memory (e.g., "Use pnpm"). |
+| `dir` | string | The absolute path to the project-specific memory directory. |
+| `enabled` | boolean | Whether auto-memory is enabled for the current session. |
+
 ### MemorySelectorState
 The state of the memory type selection UI.
 

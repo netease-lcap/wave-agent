@@ -53,6 +53,22 @@ As a user, I want to view and delete saved memory entries so I can keep my conte
 
 ---
 
+### User Story 4 - Auto Memory (Priority: P1)
+
+As a user, I want the agent to automatically remember project-specific knowledge (conventions, architecture, preferences) without me having to manually save it every time.
+
+**Why this priority**: Reduces friction in maintaining project context and ensures the agent learns from its interactions.
+
+**Independent Test**: Start an agent session in a new project, verify that `~/.wave/projects/<encoded-path>/memory/MEMORY.md` is created. Add a rule to it and verify it's injected into the system prompt.
+
+**Acceptance Scenarios**:
+
+1. **Given** an agent session starts, **When** auto-memory is enabled, **Then** a project-specific memory directory MUST be created in `~/.wave/projects/`.
+2. **Given** a `MEMORY.md` file exists in the auto-memory directory, **When** any agent (main or subagent) is initialized, **Then** the first 200 lines of this file MUST be injected into the system prompt.
+3. **Given** the agent is performing file operations, **When** it accesses the auto-memory directory, **Then** these operations MUST be considered within the "Safe Zone" and not require manual confirmation in `acceptEdits` mode.
+
+---
+
 ### Edge Cases
 
 - **Missing storage files**: The system should create `AGENTS.md` or the global memory file if they don't exist.
@@ -72,6 +88,10 @@ As a user, I want to view and delete saved memory entries so I can keep my conte
 - **FR-006**: System MUST combine project and user memory and include it in the AI's system prompt for every request.
 - **FR-007**: System SHOULD provide a way to deduplicate memory entries.
 - **FR-008**: System SHOULD provide a UI for viewing and deleting memory entries.
+- **FR-009**: System MUST automatically create and manage a project-specific `MEMORY.md` file in `~/.wave/projects/<encoded-path>/memory/`.
+- **FR-010**: System MUST inject the first 200 lines of the project-specific `MEMORY.md` into the system prompt for all agents.
+- **FR-011**: System MUST consider the auto-memory directory as part of the "Safe Zone" for permission checks.
+- **FR-012**: System MUST allow disabling auto-memory via `WAVE_DISABLE_AUTO_MEMORY=1` or `autoMemoryEnabled: false` in `settings.json`.
 
 ### Key Entities *(include if feature involves data)*
 

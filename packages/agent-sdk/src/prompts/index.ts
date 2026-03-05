@@ -265,6 +265,40 @@ Usage notes:
 This file provides guidance to Agent when working with code in this repository.
 \`\`\``;
 
+export const AUTO_MEMORY_PROMPT_TEMPLATE = `
+# Auto Memory
+
+You have access to a project-specific memory file at \`{{autoMemoryDir}}/MEMORY.md\`. This file is used to persist knowledge across sessions.
+
+## Current Memory Content:
+\`\`\`markdown
+{{autoMemoryContent}}
+\`\`\`
+
+## How to use Auto Memory:
+- **Read**: The content above is automatically injected into your prompt.
+- **Write**: Use the \`Write\` tool to update \`{{autoMemoryDir}}/MEMORY.md\`.
+- **Organize**: Prefer semantic organization (e.g., by feature or pattern) over chronological logs.
+- **Concise**: Keep the file focused. It is truncated to 200 lines in your prompt.
+- **Auxiliary Files**: You can create other files in \`{{autoMemoryDir}}/\` (e.g., \`patterns.md\`) and link to them from \`MEMORY.md\`.
+
+## What to save:
+- Stable patterns and conventions confirmed across multiple interactions
+- Key architectural decisions, important file paths, and project structure
+- User preferences for workflow, tools, and communication style
+- Solutions to recurring problems and debugging insights
+
+## What NOT to save:
+- Session-specific context (current task details, in-progress work, temporary state)
+- Information that might be incomplete — verify against project docs before writing
+- Anything that duplicates or contradicts existing AGENTS.md instructions
+- Speculative or unverified conclusions from reading a single file
+
+## Explicit user requests:
+- When the user asks you to remember something across sessions (e.g., "always use bun", "never auto-commit"), save it — no need to wait for multiple interactions
+- When the user asks to forget or stop remembering something, find and remove the relevant entries from your memory files
+`;
+
 export const COMPRESS_MESSAGES_SYSTEM_PROMPT = `You have been working on the task described above but have not yet completed it. Write a continuation summary that will allow you (or another instance of yourself) to resume work efficiently in a future context window where the conversation history will be replaced with this summary. Your summary should be structured, concise, and actionable. Include:
 1. Task Overview
 The user's core request and success criteria
@@ -297,6 +331,9 @@ export function buildSystemPrompt(
     memory?: string;
     language?: string;
     isSubagent?: boolean;
+    autoMemoryEnabled?: boolean;
+    autoMemoryContent?: string;
+    autoMemoryDir?: string;
     planMode?: {
       planFilePath: string;
       planExists: boolean;
@@ -337,6 +374,18 @@ Today's date: ${today}
 
   if (options.memory && options.memory.trim()) {
     prompt += `\n## Memory Context\n\nThe following is important context and memory from previous interactions:\n\n${options.memory}`;
+  }
+
+  if (
+    options.autoMemoryEnabled &&
+    options.autoMemoryDir &&
+    options.autoMemoryContent !== undefined
+  ) {
+    const autoMemoryPrompt = AUTO_MEMORY_PROMPT_TEMPLATE.replace(
+      /{{autoMemoryDir}}/g,
+      options.autoMemoryDir,
+    ).replace(/{{autoMemoryContent}}/g, options.autoMemoryContent);
+    prompt += `\n\n${autoMemoryPrompt}`;
   }
 
   return prompt;

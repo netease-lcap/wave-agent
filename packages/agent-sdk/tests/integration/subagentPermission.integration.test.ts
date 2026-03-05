@@ -3,6 +3,7 @@ import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
 import { Container } from "../../src/utils/container.js";
+import { MemoryService } from "../../src/services/memory.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import type { ToolContext } from "../../src/tools/types.js";
@@ -33,6 +34,9 @@ describe("Subagent Permission Integration", () => {
 
     const toolManager = new ToolManager({ container });
     container.register("ToolManager", toolManager);
+
+    const memoryService = new MemoryService();
+    container.register("MemoryService", memoryService);
 
     mockGatewayConfig = { apiKey: "test", baseURL: "test" };
     mockModelConfig = { model: "test", fastModel: "test" };

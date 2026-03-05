@@ -115,6 +115,12 @@ describe("AIManager", () => {
     container.register("MessageManager", mockMessageManager);
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", taskManager);
+    container.register("MemoryService", {
+      getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+      autoMemoryEnabled: false,
+      autoMemoryContent: "",
+      autoMemoryDir: undefined,
+    });
 
     // Mock SubagentManager and register it
     container.register("SubagentManager", {
@@ -162,6 +168,12 @@ describe("AIManager", () => {
       container.register("MessageManager", mockMessageManager);
       container.register("ToolManager", mockToolManager);
       container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        autoMemoryEnabled: false,
+        autoMemoryContent: "",
+        autoMemoryDir: undefined,
+      });
 
       const aiManagerWithLanguage = new AIManager(container, {
         workdir: "/test/workdir",
@@ -206,6 +218,12 @@ describe("AIManager", () => {
       container.register("MessageManager", mockMessageManager);
       container.register("ToolManager", mockToolManager);
       container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        autoMemoryEnabled: false,
+        autoMemoryContent: "",
+        autoMemoryDir: undefined,
+      });
 
       const aiManagerWithLanguage = new AIManager(container, {
         workdir: "/test/workdir",
@@ -406,6 +424,12 @@ describe("AIManager", () => {
       container.register("MessageManager", mockMessageManager);
       container.register("ToolManager", mockToolManager);
       container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        autoMemoryEnabled: false,
+        autoMemoryContent: "",
+        autoMemoryDir: undefined,
+      });
       container.register(
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
@@ -447,6 +471,12 @@ describe("AIManager", () => {
       container.register("MessageManager", mockMessageManager);
       container.register("ToolManager", mockToolManager);
       container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        autoMemoryEnabled: false,
+        autoMemoryContent: "",
+        autoMemoryDir: undefined,
+      });
       container.register(
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,
@@ -486,6 +516,12 @@ describe("AIManager", () => {
       container.register("MessageManager", mockMessageManager);
       container.register("ToolManager", mockToolManager);
       container.register("TaskManager", taskManager);
+      container.register("MemoryService", {
+        getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+        autoMemoryEnabled: false,
+        autoMemoryContent: "",
+        autoMemoryDir: undefined,
+      });
       container.register(
         "PermissionManager",
         mockPermissionManager as unknown as PermissionManager,

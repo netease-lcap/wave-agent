@@ -35,6 +35,8 @@ vi.mock("@/utils/constants", () => ({
 }));
 
 describe("Memory Module", () => {
+  let memoryService: memory.MemoryService;
+
   beforeEach(async () => {
     // Reset all mocks
     vi.clearAllMocks();
@@ -45,6 +47,8 @@ describe("Memory Module", () => {
     vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
     vi.mocked(fsPromises.readFile).mockResolvedValue("");
     vi.mocked(fsPromises.access).mockResolvedValue(undefined);
+
+    memoryService = new memory.MemoryService();
   });
 
   afterEach(async () => {
@@ -60,7 +64,8 @@ describe("Memory Module", () => {
       vi.mocked(fsPromises.access).mockResolvedValue(undefined);
       vi.mocked(fsPromises.readFile).mockResolvedValue("User memory content");
 
-      const result = await memory.getUserMemoryContent();
+      await memoryService.initialize("/mock/workdir", false);
+      const result = memoryService.userMemoryContent;
 
       expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", {
         recursive: true,
@@ -73,42 +78,6 @@ describe("Memory Module", () => {
     });
   });
 
-  describe("ensureUserMemoryFile", () => {
-    it("should create user memory file if it doesn't exist", async () => {
-      // Mock fs operations
-      const { promises: fsPromises } = await import("fs");
-      vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fsPromises.access).mockRejectedValue({ code: "ENOENT" });
-      vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
-
-      await memory.ensureUserMemoryFile();
-
-      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", {
-        recursive: true,
-      });
-      expect(vi.mocked(fsPromises.writeFile)).toHaveBeenCalledWith(
-        "/mock/user/AGENTS.md",
-        expect.stringContaining("# User Memory"),
-        "utf-8",
-      );
-    });
-
-    it("should not create file if it already exists", async () => {
-      // Mock fs operations
-      const { promises: fsPromises } = await import("fs");
-      vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
-      vi.mocked(fsPromises.access).mockResolvedValue(undefined);
-      vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
-
-      await memory.ensureUserMemoryFile();
-
-      expect(vi.mocked(fsPromises.mkdir)).toHaveBeenCalledWith("/mock/data", {
-        recursive: true,
-      });
-      expect(vi.mocked(fsPromises.writeFile)).not.toHaveBeenCalled();
-    });
-  });
-
   describe("readMemoryFile", () => {
     it("should return project memory content", async () => {
       // Mock fs operations
@@ -117,7 +86,8 @@ describe("Memory Module", () => {
         "# Test Memory Content\n\nProject memory data",
       );
 
-      const result = await memory.readMemoryFile("/mock/workdir");
+      await memoryService.initialize("/mock/workdir", false);
+      const result = memoryService.projectMemoryContent;
 
       expect(result).toBe("# Test Memory Content\n\nProject memory data");
       expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
@@ -127,7 +97,7 @@ describe("Memory Module", () => {
     });
   });
 
-  describe("getCombinedMemoryContent", () => {
+  describe("combinedMemoryContent", () => {
     it("should return combined memory content", async () => {
       // Mock fs operations
       const { promises: fsPromises } = await import("fs");
@@ -135,7 +105,8 @@ describe("Memory Module", () => {
         .mockResolvedValueOnce("# Project Memory\n\nProject content")
         .mockResolvedValueOnce("# User Memory\n\nUser content");
 
-      const result = await memory.getCombinedMemoryContent("/mock/workdir");
+      await memoryService.initialize("/mock/workdir", false);
+      const result = memoryService.combinedMemoryContent;
 
       expect(result).toContain("Project content");
       expect(result).toContain("User content");

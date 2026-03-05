@@ -65,6 +65,8 @@ export interface AgentOptions {
   worktreeName?: string;
   /**Whether this is a newly created worktree */
   isNewWorktree?: boolean;
+  /** Whether to enable auto-memory for persistent project knowledge */
+  autoMemoryEnabled?: boolean;
 }
 
 export interface AgentCallbacks

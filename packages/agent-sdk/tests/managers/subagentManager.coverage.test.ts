@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { Container } from "../../src/utils/container.js";
+import { MemoryService } from "../../src/services/memory.js";
 import type { SubagentManagerCallbacks } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
@@ -49,6 +50,7 @@ describe("SubagentManager - Recent Changes Coverage", () => {
       {} as unknown as Record<string, unknown>,
     );
     container.register("LspManager", {} as unknown as Record<string, unknown>);
+    container.register("MemoryService", new MemoryService());
 
     const mockMcpManager = {
       listTools: vi.fn().mockReturnValue([]),

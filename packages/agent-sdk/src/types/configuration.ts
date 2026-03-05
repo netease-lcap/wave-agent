@@ -32,6 +32,8 @@ export interface WaveConfiguration {
   enabledPlugins?: Record<string, boolean>;
   /** Preferred language for agent communication */
   language?: string;
+  /** Whether to enable auto-memory for persistent project knowledge */
+  autoMemoryEnabled?: boolean;
 }
 
 /**

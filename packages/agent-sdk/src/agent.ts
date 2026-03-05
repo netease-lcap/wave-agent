@@ -34,6 +34,7 @@ import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
 import { TaskManager } from "./services/taskManager.js";
+import { MemoryService } from "./services/memory.js";
 import { InitializationService } from "./services/initializationService.js";
 import { InteractionService } from "./services/interactionService.js";
 import { ConfigurationService } from "./services/configurationService.js";
@@ -61,6 +62,7 @@ export class Agent {
   private memoryRuleManager: MemoryRuleManager; // Add memory rule manager instance
   private liveConfigManager: LiveConfigManager; // Add live configuration manager
   private taskManager: TaskManager;
+  private memoryService: MemoryService;
   private foregroundTaskManager: ForegroundTaskManager;
   private container: Container;
   private configurationService: ConfigurationService; // Add configuration service
@@ -70,10 +72,6 @@ export class Agent {
 
   // Configuration options storage for dynamic resolution
   private options: AgentOptions;
-
-  // Memory content storage
-  private _projectMemoryContent: string = "";
-  private _userMemoryContent: string = "";
 
   // Dynamic configuration getter methods
   public getGatewayConfig(): GatewayConfig {
@@ -105,6 +103,20 @@ export class Agent {
     return this.configurationService.resolveLanguage(this.options.language);
   }
 
+  public getAutoMemoryEnabled(): boolean {
+    return this.configurationService.resolveAutoMemoryEnabled(
+      this.options.autoMemoryEnabled,
+    );
+  }
+
+  public getAutoMemoryContent(): string {
+    return this.memoryService.autoMemoryContent;
+  }
+
+  public getAutoMemoryDir(): string | undefined {
+    return this.memoryService.autoMemoryDir;
+  }
+
   /**
    * Agent constructor - handles configuration resolution and validation
    *
@@ -123,6 +135,9 @@ export class Agent {
     // Initialize configuration service
     this.configurationService = new ConfigurationService();
 
+    // Initialize memory service
+    this.memoryService = new MemoryService();
+
     this.logger = logger; // Save the passed logger
     this.systemPrompt = systemPrompt; // Save custom system prompt
     this.stream = stream; // Save streaming mode flag
@@ -134,6 +149,7 @@ export class Agent {
       options,
       workdir: this.workdir,
       configurationService: this.configurationService,
+      memoryService: this.memoryService,
       systemPrompt: this.systemPrompt,
       stream: this.stream,
       onTasksChange: (tasks) => {
@@ -214,12 +230,12 @@ export class Agent {
 
   /** Get project memory content */
   public get projectMemory(): string {
-    return this._projectMemoryContent;
+    return this.memoryService.projectMemoryContent;
   }
 
   /** Get user memory content */
   public get userMemory(): string {
-    return this._userMemoryContent;
+    return this.memoryService.userMemoryContent;
   }
 
   /** Get combined memory content (project + user + modular rules) */
@@ -329,6 +345,7 @@ export class Agent {
     const gatewayConfig = this.getGatewayConfig();
     const modelConfig = this.getModelConfig();
     const maxInputTokens = this.getMaxInputTokens();
+    const autoMemoryEnabled = this.getAutoMemoryEnabled();
 
     // Validate resolved configuration
     configValidator.validateGatewayConfig(gatewayConfig);
@@ -337,6 +354,7 @@ export class Agent {
       modelConfig.model,
       modelConfig.fastModel,
     );
+    configValidator.validateAutoMemoryEnabled(autoMemoryEnabled);
   }
 
   /** Private initialization method, handles async initialization logic */
@@ -364,12 +382,7 @@ export class Agent {
         memoryRuleManager: this.memoryRuleManager,
         liveConfigManager: this.liveConfigManager,
         taskManager: this.taskManager,
-        setProjectMemory: (content) => {
-          this._projectMemoryContent = content;
-        },
-        setUserMemory: (content) => {
-          this._userMemoryContent = content;
-        },
+        memoryService: this.memoryService,
         resolveAndValidateConfig: () => this.resolveAndValidateConfig(),
       },
       options,

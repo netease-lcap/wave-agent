@@ -14,9 +14,21 @@ vi.mock("../../src/services/aiService.js", () => ({
 }));
 
 // Mock the memory service
-vi.mock("../../src/services/memory.js", () => ({
-  getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
-}));
+vi.mock("../../src/services/memory.js", () => {
+  class MemoryService {
+    initialize = vi.fn().mockResolvedValue(undefined);
+    autoMemoryDir = "/mock/auto-memory";
+    autoMemoryContent = "";
+    projectMemoryContent = "";
+    userMemoryContent = "";
+    autoMemoryEnabled = true;
+    combinedMemoryContent = "";
+  }
+  return {
+    MemoryService,
+    getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+  };
+});
 
 vi.mock("../../src/utils/messageOperations.js", () => ({}));
 
@@ -79,6 +91,9 @@ describe("AIManager finish reason", () => {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
       clearTemporaryRules: vi.fn(),
     } as unknown as Record<string, unknown>);
+    container.register("MemoryService", {
+      combinedMemoryContent: "",
+    });
 
     // Mock SubagentManager and register it
     container.register("SubagentManager", {

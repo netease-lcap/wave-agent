@@ -21,6 +21,7 @@ import { SubagentManager } from "../managers/subagentManager.js";
 import { LiveConfigManager } from "../managers/liveConfigManager.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ReversionService } from "../services/reversionService.js";
+import { MemoryService } from "../services/memory.js";
 import type { AgentOptions } from "../types/index.js";
 import type {
   PermissionMode,
@@ -37,6 +38,7 @@ export interface AgentContainerSetupOptions {
   options: AgentOptions;
   workdir: string;
   configurationService: ConfigurationService;
+  memoryService: MemoryService;
   systemPrompt?: string;
   stream: boolean;
 
@@ -63,6 +65,7 @@ export function setupAgentContainer(
     options,
     workdir,
     configurationService,
+    memoryService,
     systemPrompt,
     stream,
     onBackgroundTasksChange,
@@ -84,6 +87,7 @@ export function setupAgentContainer(
   const foregroundTaskManager = new ForegroundTaskManager(container);
   container.register("ForegroundTaskManager", foregroundTaskManager);
   container.register("ConfigurationService", configurationService);
+  container.register("MemoryService", memoryService);
 
   const memoryRuleManager = new MemoryRuleManager(container, { workdir });
   container.register("MemoryRuleManager", memoryRuleManager);
@@ -138,7 +142,10 @@ export function setupAgentContainer(
   const lspManager = options.lspManager || new LspManager(container);
   container.register("LspManager", lspManager);
 
-  const permissionManager = new PermissionManager(container, { workdir });
+  const permissionManager = new PermissionManager(container, {
+    workdir,
+    autoMemoryDir: memoryService.autoMemoryDir,
+  });
   container.register("PermissionManager", permissionManager);
   permissionManager.setOnConfiguredDefaultModeChange((mode) => {
     handlePlanModeTransition(mode);

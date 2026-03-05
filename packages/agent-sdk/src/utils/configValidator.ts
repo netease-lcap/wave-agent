@@ -114,6 +114,21 @@ export class ConfigValidator {
       );
     }
   }
+
+  /**
+   * Validates auto-memory enabled value
+   * @param enabled - Auto-memory enabled value to validate
+   * @throws ConfigurationError if invalid
+   */
+  static validateAutoMemoryEnabled(enabled: unknown): void {
+    if (enabled !== undefined && typeof enabled !== "boolean") {
+      throw new ConfigurationError(
+        CONFIG_ERRORS.INVALID_AUTO_MEMORY_ENABLED,
+        "autoMemoryEnabled",
+        enabled,
+      );
+    }
+  }
 }
 
 /**
@@ -124,4 +139,5 @@ export const configValidator = {
   validateGatewayConfig: ConfigValidator.validateGatewayConfig,
   validateMaxInputTokens: ConfigValidator.validateMaxInputTokens,
   validateModelConfig: ConfigValidator.validateModelConfig,
+  validateAutoMemoryEnabled: ConfigValidator.validateAutoMemoryEnabled,
 };

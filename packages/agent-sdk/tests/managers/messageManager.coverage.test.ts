@@ -30,9 +30,21 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../../src/services/memory.js", () => ({
-  getCombinedMemoryContent: vi.fn().mockResolvedValue("base memory"),
-}));
+vi.mock("../../src/services/memory.js", () => {
+  class MemoryService {
+    initialize = vi.fn().mockResolvedValue(undefined);
+    autoMemoryDir = "/mock/auto-memory";
+    autoMemoryContent = "";
+    projectMemoryContent = "";
+    userMemoryContent = "";
+    autoMemoryEnabled = true;
+    combinedMemoryContent = "base memory";
+  }
+  return {
+    MemoryService,
+    getCombinedMemoryContent: vi.fn().mockResolvedValue("base memory"),
+  };
+});
 
 describe("MessageManager Coverage Improvements", () => {
   let messageManager: MessageManager;

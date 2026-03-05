@@ -83,6 +83,9 @@ describe("AIManager - latestTotalTokens calculation", () => {
       getCurrentEffectiveMode: vi.fn().mockReturnValue("normal"),
       clearTemporaryRules: vi.fn(),
     } as unknown as Record<string, unknown>);
+    container.register("MemoryService", {
+      getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+    });
 
     // Mock SubagentManager and register it
     container.register("SubagentManager", {

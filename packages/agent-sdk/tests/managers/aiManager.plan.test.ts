@@ -48,6 +48,9 @@ describe("AIManager Plan Mode Prompt", () => {
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", {} as unknown as TaskManager);
     container.register("PermissionManager", mockPermissionManager);
+    container.register("MemoryService", {
+      combinedMemoryContent: "",
+    });
 
     // Mock SubagentManager and register it
     container.register("SubagentManager", {

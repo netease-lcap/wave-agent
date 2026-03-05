@@ -108,6 +108,12 @@ export class AIManager {
     return this.container.get<PermissionManager>("PermissionManager");
   }
 
+  private get memoryService(): import("../services/memory.js").MemoryService {
+    return this.container.get<import("../services/memory.js").MemoryService>(
+      "MemoryService",
+    )!;
+  }
+
   // Getter methods for accessing dynamic configuration
   public getGatewayConfig(): GatewayConfig {
     return this.getGatewayConfigFn();
@@ -411,6 +417,9 @@ export class AIManager {
             memory: combinedMemory,
             language: this.getLanguage(),
             isSubagent: !!this.subagentType,
+            autoMemoryEnabled: this.memoryService.autoMemoryEnabled,
+            autoMemoryContent: this.memoryService.autoMemoryContent,
+            autoMemoryDir: this.memoryService.autoMemoryDir,
             planMode: planModeOptions,
           },
         ), // Pass custom system prompt

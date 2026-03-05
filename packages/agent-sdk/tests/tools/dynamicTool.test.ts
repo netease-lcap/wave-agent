@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { skillTool } from "../../src/tools/skillTool.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
+import { MemoryService } from "../../src/services/memory.js";
 import { agentTool } from "../../src/tools/agentTool.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
@@ -45,6 +46,7 @@ describe("Dynamic Tool Definitions", () => {
 
   describe("Agent Tool", () => {
     it("should dynamically reflect subagents added after tool creation", async () => {
+      container.register("MemoryService", new MemoryService());
       const subagentManager = new SubagentManager(container, {
         workdir: "/test/workdir",
         getGatewayConfig: () => ({}) as unknown as GatewayConfig,

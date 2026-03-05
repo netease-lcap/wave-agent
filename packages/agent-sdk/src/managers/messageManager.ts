@@ -161,8 +161,19 @@ export class MessageManager {
    * Get combined memory content (project memory + user memory + modular rules)
    */
   public async getCombinedMemory(): Promise<string> {
-    const memory = await import("../services/memory.js");
-    let combined = await memory.getCombinedMemoryContent(this.workdir);
+    const memoryService =
+      this.container.get<import("../services/memory.js").MemoryService>(
+        "MemoryService",
+      );
+    let combined = "";
+
+    if (memoryService) {
+      combined = memoryService.combinedMemoryContent;
+    } else {
+      // Fallback to old way if MemoryService is not available (e.g. in some tests)
+      const memory = await import("../services/memory.js");
+      combined = await memory.getCombinedMemoryContent(this.workdir);
+    }
 
     if (this.memoryRuleManager) {
       const filesInContext = this.getFilesInContext();

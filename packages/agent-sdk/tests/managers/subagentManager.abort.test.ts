@@ -4,6 +4,7 @@ import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { Container } from "../../src/utils/container.js";
+import { MemoryService } from "../../src/services/memory.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
 // Mock dependencies
@@ -65,6 +66,7 @@ describe("SubagentManager - Abort Logic", () => {
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", taskManager);
     container.register("BackgroundTaskManager", mockBackgroundTaskManager);
+    container.register("MemoryService", new MemoryService());
 
     subagentManager = new SubagentManager(container, {
       workdir: "/test",

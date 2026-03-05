@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { Container } from "../../src/utils/container.js";
+import { MemoryService } from "../../src/services/memory.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
 // Mock dependencies
@@ -60,6 +61,7 @@ describe("SubagentManager Consistency", () => {
     container = new Container();
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", {} as unknown as Record<string, unknown>);
+    container.register("MemoryService", new MemoryService());
 
     // Create SubagentManager with mocks
     subagentManager = new SubagentManager(container, {

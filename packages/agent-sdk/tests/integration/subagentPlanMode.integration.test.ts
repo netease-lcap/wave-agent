@@ -7,6 +7,7 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import { Message } from "../../src/types/index.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import { Container } from "../../src/utils/container.js";
+import { MemoryService } from "../../src/services/memory.js";
 import * as aiService from "../../src/services/aiService.js";
 
 import { buildSystemPrompt } from "../../src/prompts/index.js";
@@ -66,6 +67,7 @@ describe("Subagent Plan Mode Integration", () => {
     const container = new Container();
     container.register("ToolManager", mockToolManager);
     container.register("PermissionManager", mockPermissionManager);
+    container.register("MemoryService", new MemoryService());
     container.register("TaskManager", {
       listTasks: vi.fn().mockResolvedValue([]),
     } as unknown as TaskManager);

@@ -70,6 +70,8 @@ export interface PermissionManagerOptions {
   deniedRules?: string[];
   /** Additional directories considered part of the Safe Zone */
   additionalDirectories?: string[];
+  /** The auto-memory directory */
+  autoMemoryDir?: string;
   /** The main working directory */
   workdir?: string;
   /** Path to the current plan file */
@@ -84,6 +86,7 @@ export class PermissionManager {
   private deniedRules: string[] = [];
   private temporaryRules: string[] = [];
   private additionalDirectories: string[] = [];
+  private autoMemoryDir?: string;
   private workdir?: string;
   private planFilePath?: string;
   private onConfiguredDefaultModeChange?: (mode: PermissionMode) => void;
@@ -96,6 +99,7 @@ export class PermissionManager {
     this.configuredDefaultMode = options.configuredDefaultMode;
     this.allowedRules = options.allowedRules || [];
     this.deniedRules = options.deniedRules || [];
+    this.autoMemoryDir = options.autoMemoryDir;
     this.workdir = options.workdir;
     this.planFilePath = options.planFilePath;
     this._logger = options.logger;
@@ -204,6 +208,13 @@ export class PermissionManager {
   }
 
   /**
+   * Update the auto-memory directory
+   */
+  updateAutoMemoryDir(dir: string): void {
+    this.autoMemoryDir = dir;
+  }
+
+  /**
    * Update the working directory
    */
   updateWorkdir(workdir: string): void {
@@ -222,6 +233,25 @@ export class PermissionManager {
    */
   public getPlanFilePath(): string | undefined {
     return this.planFilePath;
+  }
+
+  /**
+   * Get the auto-memory directory
+   */
+  private getEffectiveAutoMemoryDir(): string | undefined {
+    if (this.autoMemoryDir) {
+      return this.autoMemoryDir;
+    }
+
+    try {
+      const memoryService =
+        this.container.get<import("../services/memory.js").MemoryService>(
+          "MemoryService",
+        );
+      return memoryService?.autoMemoryDir;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -249,6 +279,12 @@ export class PermissionManager {
       if (isPathInside(absolutePath, dir)) {
         return { isInside: true, resolvedPath: absolutePath };
       }
+    }
+
+    // Check auto-memory directory
+    const autoMemoryDir = this.getEffectiveAutoMemoryDir();
+    if (autoMemoryDir && isPathInside(absolutePath, autoMemoryDir)) {
+      return { isInside: true, resolvedPath: absolutePath };
     }
 
     return { isInside: false, resolvedPath: absolutePath };

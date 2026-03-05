@@ -11,6 +11,7 @@ import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 
 import { Container } from "../../src/utils/container.js";
+import { MemoryService } from "../../src/services/memory.js";
 
 // Mock the subagent parser module
 vi.mock("../../src/utils/subagentParser.js", () => ({
@@ -68,6 +69,7 @@ describe("SubagentManager - Callback Integration", () => {
       {} as unknown as Record<string, unknown>,
     );
     container.register("LspManager", {} as unknown as Record<string, unknown>);
+    container.register("MemoryService", new MemoryService());
 
     // Create parent ToolManager (simplified for testing)
     const mockMcpManager = {

@@ -100,4 +100,5 @@ export const CONFIG_ERRORS = {
     "Gateway configuration requires baseURL. Provide via constructor or WAVE_BASE_URL environment variable.",
   INVALID_WAVE_MAX_INPUT_TOKENS: "Token limit must be a positive integer.",
   EMPTY_BASE_URL: "Base URL cannot be empty string.",
+  INVALID_AUTO_MEMORY_ENABLED: "Auto memory enabled must be a boolean.",
 } as const;
