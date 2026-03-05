@@ -46,6 +46,8 @@
 **Fields**:
 - `type: "command"` - Command type (currently only "command" supported)  
 - `command: string` - Bash command to execute
+- `async?: boolean` - Whether to execute in background (default: false)
+- `timeout?: number` - Custom timeout in seconds (default: 600)
 
 **Validation Rules**:
 - type must be "command"

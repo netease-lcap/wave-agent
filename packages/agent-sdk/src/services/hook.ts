@@ -101,8 +101,8 @@ export async function executeCommand(
   context: HookExecutionContext | ExtendedHookExecutionContext,
   options?: HookExecutionOptions,
 ): Promise<HookExecutionResult> {
-  const defaultTimeout = 10000; // 10 seconds
-  const maxTimeout = 300000; // 5 minutes
+  const defaultTimeout = 600000; // 10 minutes
+  const maxTimeout = 600000; // 10 minutes
   const skipExecution =
     process.env.NODE_ENV === "test" &&
     process.env.TEST_HOOK_EXECUTION !== "true";

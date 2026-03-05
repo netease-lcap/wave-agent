@@ -146,6 +146,45 @@ describe("HookManager", () => {
       expect(results[0].success).toBe(true);
     });
 
+    it("should execute async hooks without awaiting", async () => {
+      const waveConfig: WaveConfiguration = {
+        hooks: {
+          PostToolUse: [
+            {
+              matcher: "Edit",
+              hooks: [
+                {
+                  type: "command",
+                  command: "async-hook",
+                  async: true,
+                  timeout: 5,
+                },
+              ],
+            },
+          ],
+        },
+      };
+
+      manager.loadConfigurationFromWaveConfig(waveConfig);
+
+      const context: HookExecutionContext = {
+        event: "PostToolUse",
+        projectDir: "/test",
+        timestamp: new Date(),
+        toolName: "Edit",
+      };
+
+      const results = await manager.executeHooks("PostToolUse", context);
+
+      // Async hooks should not be in results
+      expect(results).toHaveLength(0);
+
+      // executeCommand should have been called with correct options
+      expect(mockExecuteCommand).toHaveBeenCalledWith("async-hook", context, {
+        timeout: 5000,
+      });
+    });
+
     it("should return empty array when no hooks configured", async () => {
       const context: HookExecutionContext = {
         event: "UserPromptSubmit", // Use event that doesn't require toolName

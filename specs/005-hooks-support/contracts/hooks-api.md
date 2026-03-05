@@ -17,6 +17,8 @@ type HookEvent = 'PreToolUse' | 'PostToolUse' | 'UserPromptSubmit' | 'Stop';
 interface HookCommand {
   type: 'command';
   command: string;
+  async?: boolean;
+  timeout?: number; // seconds
 }
 
 // Hook event configuration
@@ -80,7 +82,7 @@ interface HookExecutionResult {
 
 // Hook execution options
 interface HookExecutionOptions {
-  timeout?: number; // milliseconds, default 10000
+  timeout?: number; // milliseconds, default 600000 (10 minutes)
   cwd?: string; // working directory, defaults to projectDir
 }
 ```

@@ -231,6 +231,41 @@ describe("Hook Services", () => {
       expect(result.timedOut).toBe(true);
       vi.useRealTimers();
     });
+
+    it("should use new default timeout of 10 minutes", async () => {
+      vi.useFakeTimers();
+      const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const resultPromise = executeCommand("sleep 601", mockContext);
+
+      // Advance by 10 minutes (600,000 ms)
+      vi.advanceTimersByTime(600001);
+
+      const result = await resultPromise;
+
+      expect(result.timedOut).toBe(true);
+      vi.useRealTimers();
+    });
+
+    it("should cap timeout at 10 minutes", async () => {
+      vi.useFakeTimers();
+      const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
+      mockSpawn.mockReturnValue(mockProcess);
+
+      const resultPromise = executeCommand("sleep 1000", mockContext, {
+        timeout: 1200000, // 20 minutes
+      });
+
+      vi.advanceTimersByTime(600001);
+
+      const result = await resultPromise;
+
+      expect(result.timedOut).toBe(true);
+      vi.useRealTimers();
+    });
   });
 
   describe("command safety validation", () => {
