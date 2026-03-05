@@ -107,15 +107,18 @@ describe("SubagentManager - Callback Integration", () => {
       fastModel: "claude-3-haiku",
     };
 
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: () => mockGatewayConfig,
+      resolveModelConfig: () => mockModelConfig,
+      resolveMaxInputTokens: () => 1000,
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => undefined,
+    });
+
     // Create SubagentManager
     subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
       callbacks,
-      getGatewayConfig: () => mockGatewayConfig,
-      getModelConfig: () => mockModelConfig,
-      getMaxInputTokens: () => 1000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => undefined,
     });
 
     await subagentManager.initialize();
@@ -488,11 +491,6 @@ describe("SubagentManager - Callback Integration", () => {
       const errorSubagentManager = new SubagentManager(container, {
         workdir: "/tmp/test",
         callbacks: errorCallbacks,
-        getGatewayConfig: () => mockGatewayConfig,
-        getModelConfig: () => mockModelConfig,
-        getMaxInputTokens: () => 1000,
-        getAutoMemoryEnabled: () => true,
-        getLanguage: () => undefined,
       });
 
       await errorSubagentManager.initialize();
@@ -533,11 +531,6 @@ describe("SubagentManager - Callback Integration", () => {
       const noCallbackManager = new SubagentManager(container, {
         workdir: "/tmp/test",
         // No callbacks provided
-        getGatewayConfig: () => mockGatewayConfig,
-        getModelConfig: () => mockModelConfig,
-        getMaxInputTokens: () => 1000,
-        getAutoMemoryEnabled: () => true,
-        getLanguage: () => undefined,
       });
 
       await noCallbackManager.initialize();
@@ -653,11 +646,6 @@ describe("SubagentManager - Callback Integration", () => {
 
       const bgSubagentManager = new SubagentManager(container, {
         workdir: "/tmp/test",
-        getGatewayConfig: () => mockGatewayConfig,
-        getModelConfig: () => mockModelConfig,
-        getMaxInputTokens: () => 1000,
-        getAutoMemoryEnabled: () => true,
-        getLanguage: () => undefined,
       });
 
       const mockConfig: SubagentConfiguration = {

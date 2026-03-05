@@ -72,17 +72,20 @@ describe("SubagentManager Consistency", () => {
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", {} as unknown as Record<string, unknown>);
 
-    // Create SubagentManager with mocks
-    subagentManager = new SubagentManager(container, {
-      workdir: "/test",
-      getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
-      getModelConfig: () => ({
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
+      resolveModelConfig: () => ({
         model: "claude-3-5-sonnet",
         fastModel: "claude-3-haiku",
       }),
-      getMaxInputTokens: () => 200000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => undefined,
+      resolveMaxInputTokens: () => 200000,
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => undefined,
+    });
+
+    // Create SubagentManager with mocks
+    subagentManager = new SubagentManager(container, {
+      workdir: "/test",
     });
 
     // Mock configurations

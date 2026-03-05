@@ -85,14 +85,17 @@ describe("SubagentManager - Recent Changes Coverage", () => {
       fastModel: "claude-3-haiku",
     };
 
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: () => mockGatewayConfig,
+      resolveModelConfig: () => mockModelConfig,
+      resolveMaxInputTokens: () => 1000,
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => undefined,
+    });
+
     subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
       callbacks,
-      getGatewayConfig: () => mockGatewayConfig,
-      getModelConfig: () => mockModelConfig,
-      getMaxInputTokens: () => 1000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => undefined,
     });
 
     await subagentManager.initialize();

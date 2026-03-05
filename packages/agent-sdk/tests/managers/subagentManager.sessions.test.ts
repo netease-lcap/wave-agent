@@ -120,14 +120,17 @@ describe("SubagentManager - Session Functionality", () => {
       fastModel: "claude-3-haiku-20240307",
     };
 
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: () => mockGatewayConfig,
+      resolveModelConfig: () => mockModelConfig,
+      resolveMaxInputTokens: () => 1000,
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => undefined,
+    });
+
     // Create SubagentManager
     subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
-      getGatewayConfig: () => mockGatewayConfig,
-      getModelConfig: () => mockModelConfig,
-      getMaxInputTokens: () => 1000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => undefined,
     });
 
     await subagentManager.initialize();

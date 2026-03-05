@@ -46,6 +46,7 @@ describe("LiveConfigManager - Validation", () => {
     mockConfigurationService = {
       loadMergedConfiguration: vi.fn(),
       setEnvironmentVars: vi.fn(),
+      setOptions: vi.fn(),
     } as Partial<ConfigurationService> as ConfigurationService;
 
     // Setup container

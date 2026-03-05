@@ -74,27 +74,25 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     container.register("TaskManager", taskManager);
     container.register("BackgroundTaskManager", mockBackgroundTaskManager);
 
-    subagentManager = new SubagentManager(container, {
-      workdir: "/test",
-      getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
-      getModelConfig: () => ({
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
+      resolveModelConfig: () => ({
         model: "test-model",
         fastModel: "test-fast-model",
       }),
-      getMaxInputTokens: () => 1000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => "en",
+      resolveMaxInputTokens: () => 1000,
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => "en",
+    });
+
+    subagentManager = new SubagentManager(container, {
+      workdir: "/test",
     });
   });
 
   it("should handle backgroundInstance error when backgroundTaskManager is missing", async () => {
     const managerNoBG = new SubagentManager(container, {
       workdir: "/test",
-      getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
-      getModelConfig: () => ({ model: "m", fastModel: "f" }),
-      getMaxInputTokens: () => 1000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => "en",
     });
     // Remove BackgroundTaskManager from container for this test
     (
@@ -198,11 +196,6 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const manager = new SubagentManager(container, {
       workdir: "/test",
       callbacks: { onSubagentAssistantReasoningUpdated },
-      getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
-      getModelConfig: () => ({ model: "m", fastModel: "f" }),
-      getMaxInputTokens: () => 1000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => "en",
     });
 
     const instance = await manager.createInstance(testConfig, {

@@ -13,6 +13,7 @@ describe("PluginScopeManager", () => {
     getMergedEnabledPlugins: Mock;
     getConfigurationPaths: Mock;
     loadWaveConfigFromFile: Mock;
+    setOptions: Mock;
   };
   let mockPluginManager: {
     updateEnabledPlugins: Mock;
@@ -35,6 +36,7 @@ describe("PluginScopeManager", () => {
         ],
       }),
       loadWaveConfigFromFile: vi.fn(),
+      setOptions: vi.fn(),
     };
     mockPluginManager = {
       updateEnabledPlugins: vi.fn(),

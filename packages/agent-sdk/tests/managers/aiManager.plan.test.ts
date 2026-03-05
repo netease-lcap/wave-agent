@@ -8,7 +8,6 @@ import { DEFAULT_SYSTEM_PROMPT } from "../../src/prompts/index.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
-import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 
 vi.mock("node:fs/promises");
 vi.mock("../../src/services/aiService.js");
@@ -52,6 +51,13 @@ describe("AIManager Plan Mode Prompt", () => {
     } as unknown as Mocked<PermissionManager>;
 
     const container = new Container();
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: vi.fn().mockReturnValue({}),
+      resolveModelConfig: vi.fn().mockReturnValue({ model: "gpt-4" }),
+      resolveMaxInputTokens: vi.fn().mockReturnValue(1000),
+      resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
+      resolveLanguage: vi.fn().mockReturnValue(undefined),
+    });
     container.register("MessageManager", mockMessageManager);
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", {} as unknown as TaskManager);
@@ -75,11 +81,6 @@ describe("AIManager Plan Mode Prompt", () => {
 
     aiManager = new AIManager(container, {
       workdir: "/test/workdir",
-      getGatewayConfig: () => ({}) as GatewayConfig,
-      getModelConfig: () => ({ model: "gpt-4" }) as ModelConfig,
-      getMaxInputTokens: () => 1000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => undefined,
       stream: false,
     });
 

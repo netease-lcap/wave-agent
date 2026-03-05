@@ -37,13 +37,16 @@ describe("Subagent Permission Integration", () => {
     mockGatewayConfig = { apiKey: "test", baseURL: "test" };
     mockModelConfig = { model: "test", fastModel: "test" };
 
+    container.register("ConfigurationService", {
+      resolveGatewayConfig: () => mockGatewayConfig,
+      resolveModelConfig: () => mockModelConfig,
+      resolveMaxInputTokens: () => 1000,
+      resolveAutoMemoryEnabled: () => true,
+      resolveLanguage: () => undefined,
+    });
+
     subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",
-      getGatewayConfig: () => mockGatewayConfig,
-      getModelConfig: () => mockModelConfig,
-      getMaxInputTokens: () => 1000,
-      getAutoMemoryEnabled: () => true,
-      getLanguage: () => undefined,
     });
 
     await subagentManager.initialize();

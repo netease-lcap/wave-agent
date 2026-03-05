@@ -45,14 +45,16 @@ describe("Dynamic Tool Definitions", () => {
 
   describe("Agent Tool", () => {
     it("should dynamically reflect subagents added after tool creation", async () => {
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => ({}) as unknown as GatewayConfig,
+        resolveModelConfig: () => ({}) as unknown as ModelConfig,
+        resolveMaxInputTokens: () => 1000,
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => undefined,
+      });
+
       const subagentManager = new SubagentManager(container, {
         workdir: "/test/workdir",
-        getGatewayConfig: () => ({}) as unknown as GatewayConfig,
-        getModelConfig: () => ({}) as unknown as ModelConfig,
-        getMaxInputTokens: () => 1000,
-        getAutoMemoryEnabled: () => true,
-        onUsageAdded: () => {},
-        getLanguage: () => undefined,
       });
 
       // Mock initialization
