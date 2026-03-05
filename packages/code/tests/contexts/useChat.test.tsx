@@ -995,4 +995,51 @@ describe("ChatProvider", () => {
       expect(lastValue?.slashCommands).toEqual([]);
     });
   });
+
+  it("clears queuedMessages when abortMessage is called", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(lastValue).toBeDefined();
+    });
+
+    // Mock sendMessage to not resolve immediately
+    let resolveSendMessage: (value: void | PromiseLike<void>) => void;
+    const sendMessagePromise = new Promise<void>((resolve) => {
+      resolveSendMessage = resolve;
+    });
+    mockAgent.sendMessage.mockReturnValue(sendMessagePromise);
+
+    // Send first message to set isLoading to true
+    const firstSendMessage = lastValue?.sendMessage("First message");
+
+    await vi.waitFor(() => {
+      expect(lastValue?.isLoading).toBe(true);
+    });
+
+    // Send second message to queue it
+    lastValue?.sendMessage("Second message");
+
+    await vi.waitFor(() => {
+      expect(lastValue?.queuedMessages).toHaveLength(1);
+      expect(lastValue?.queuedMessages[0].content).toBe("Second message");
+    });
+
+    // Call abortMessage
+    lastValue?.abortMessage();
+
+    await vi.waitFor(() => {
+      expect(lastValue?.queuedMessages).toHaveLength(0);
+      expect(mockAgent.abortMessage).toHaveBeenCalled();
+    });
+
+    // Cleanup
+    resolveSendMessage!();
+    await firstSendMessage;
+  });
 });
