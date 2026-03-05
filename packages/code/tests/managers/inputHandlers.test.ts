@@ -11,7 +11,7 @@ import {
   handlePasteImage,
   cyclePermissionMode,
   updateSearchQueriesForActiveSelectors,
-  handleSpecialCharInput,
+  processSelectorInput,
   handlePasteInput,
   handleCommandSelect,
   handleFileSelect,
@@ -212,9 +212,9 @@ describe("inputHandlers", () => {
     });
   });
 
-  describe("handleSpecialCharInput", () => {
+  describe("processSelectorInput", () => {
     it("should activate file selector on @ at start", () => {
-      handleSpecialCharInput(initialState, dispatch, "@", 1, "@");
+      processSelectorInput(initialState, dispatch, "@");
       expect(dispatch).toHaveBeenCalledWith({
         type: "ACTIVATE_FILE_SELECTOR",
         payload: 0,
@@ -222,7 +222,8 @@ describe("inputHandlers", () => {
     });
 
     it("should activate file selector on @ after space", () => {
-      handleSpecialCharInput(initialState, dispatch, "@", 6, "test @");
+      const state = { ...initialState, inputText: "test ", cursorPosition: 5 };
+      processSelectorInput(state, dispatch, "@");
       expect(dispatch).toHaveBeenCalledWith({
         type: "ACTIVATE_FILE_SELECTOR",
         payload: 5,
@@ -230,7 +231,8 @@ describe("inputHandlers", () => {
     });
 
     it("should activate file selector on @ after newline", () => {
-      handleSpecialCharInput(initialState, dispatch, "@", 6, "test\n@");
+      const state = { ...initialState, inputText: "test\n", cursorPosition: 5 };
+      processSelectorInput(state, dispatch, "@");
       expect(dispatch).toHaveBeenCalledWith({
         type: "ACTIVATE_FILE_SELECTOR",
         payload: 5,
@@ -238,7 +240,8 @@ describe("inputHandlers", () => {
     });
 
     it("should not activate file selector on @ after non-whitespace char", () => {
-      handleSpecialCharInput(initialState, dispatch, "@", 5, "test@");
+      const state = { ...initialState, inputText: "test", cursorPosition: 4 };
+      processSelectorInput(state, dispatch, "@");
       expect(dispatch).not.toHaveBeenCalledWith({
         type: "ACTIVATE_FILE_SELECTOR",
         payload: 4,
@@ -246,8 +249,14 @@ describe("inputHandlers", () => {
     });
 
     it("should update search query if @ is typed while selector is already active", () => {
-      const state = { ...initialState, showFileSelector: true, atPosition: 0 };
-      handleSpecialCharInput(state, dispatch, "@", 6, "@test@");
+      const state = {
+        ...initialState,
+        showFileSelector: true,
+        atPosition: 0,
+        inputText: "@test",
+        cursorPosition: 5,
+      };
+      processSelectorInput(state, dispatch, "@");
       expect(dispatch).toHaveBeenCalledWith({
         type: "SET_FILE_SEARCH_QUERY",
         payload: "test@",
@@ -255,7 +264,7 @@ describe("inputHandlers", () => {
     });
 
     it("should activate command selector on / at start", () => {
-      handleSpecialCharInput(initialState, dispatch, "/", 1, "/");
+      processSelectorInput(initialState, dispatch, "/");
       expect(dispatch).toHaveBeenCalledWith({
         type: "ACTIVATE_COMMAND_SELECTOR",
         payload: 0,
@@ -263,7 +272,8 @@ describe("inputHandlers", () => {
     });
 
     it("should not activate command selector on / if not at start", () => {
-      handleSpecialCharInput(initialState, dispatch, "/", 5, "test /");
+      const state = { ...initialState, inputText: "test ", cursorPosition: 5 };
+      processSelectorInput(state, dispatch, "/");
       expect(dispatch).not.toHaveBeenCalledWith({
         type: "ACTIVATE_COMMAND_SELECTOR",
         payload: 4,

@@ -114,6 +114,33 @@ export const cyclePermissionMode = (
   callbacks.onPermissionModeChange?.(nextMode);
 };
 
+const SELECTOR_TRIGGERS = [
+  {
+    char: "@",
+    type: "ACTIVATE_FILE_SELECTOR",
+    shouldActivate: (char: string, pos: number, text: string) =>
+      char === "@" && (pos === 1 || /\s/.test(text[pos - 2])),
+  },
+  {
+    char: "/",
+    type: "ACTIVATE_COMMAND_SELECTOR",
+    shouldActivate: (
+      char: string,
+      pos: number,
+      text: string,
+      state: InputState,
+    ) => char === "/" && !state.showFileSelector && pos === 1,
+  },
+] as const;
+
+const getProjectedState = (state: InputState, char: string) => {
+  const beforeCursor = state.inputText.substring(0, state.cursorPosition);
+  const afterCursor = state.inputText.substring(state.cursorPosition);
+  const newInputText = beforeCursor + char + afterCursor;
+  const newCursorPosition = state.cursorPosition + char.length;
+  return { newInputText, newCursorPosition };
+};
+
 export const updateSearchQueriesForActiveSelectors = (
   state: InputState,
   dispatch: React.Dispatch<InputAction>,
@@ -133,29 +160,28 @@ export const updateSearchQueriesForActiveSelectors = (
   }
 };
 
-export const handleSpecialCharInput = (
+export const processSelectorInput = (
   state: InputState,
   dispatch: React.Dispatch<InputAction>,
   char: string,
-  cursorPosition: number,
-  inputText: string,
 ): void => {
-  if (
-    char === "@" &&
-    (cursorPosition === 1 || /\s/.test(inputText[cursorPosition - 2]))
-  ) {
-    dispatch({ type: "ACTIVATE_FILE_SELECTOR", payload: cursorPosition - 1 });
-  } else if (char === "/" && !state.showFileSelector && cursorPosition === 1) {
+  const { newInputText, newCursorPosition } = getProjectedState(state, char);
+
+  const trigger = SELECTOR_TRIGGERS.find((t) =>
+    t.shouldActivate(char, newCursorPosition, newInputText, state),
+  );
+
+  if (trigger) {
     dispatch({
-      type: "ACTIVATE_COMMAND_SELECTOR",
-      payload: cursorPosition - 1,
-    });
+      type: trigger.type,
+      payload: newCursorPosition - 1,
+    } as InputAction);
   } else {
     updateSearchQueriesForActiveSelectors(
       state,
       dispatch,
-      inputText,
-      cursorPosition,
+      newInputText,
+      newCursorPosition,
     );
   }
 };
@@ -190,19 +216,7 @@ export const handlePasteInput = (
     callbacks.onResetHistoryNavigation?.();
     dispatch({ type: "INSERT_TEXT", payload: char });
 
-    // Calculate new state for special char handling
-    const newCursorPosition = state.cursorPosition + char.length;
-    const beforeCursor = state.inputText.substring(0, state.cursorPosition);
-    const afterCursor = state.inputText.substring(state.cursorPosition);
-    const newInputText = beforeCursor + char + afterCursor;
-
-    handleSpecialCharInput(
-      state,
-      dispatch,
-      char,
-      newCursorPosition,
-      newInputText,
-    );
+    processSelectorInput(state, dispatch, char);
   }
 };
 
@@ -365,19 +379,7 @@ export const handleSelectorInput = (
   ) {
     dispatch({ type: "INSERT_TEXT", payload: input });
 
-    // Calculate new state for special char handling
-    const newCursorPosition = state.cursorPosition + input.length;
-    const beforeCursor = state.inputText.substring(0, state.cursorPosition);
-    const afterCursor = state.inputText.substring(state.cursorPosition);
-    const newInputText = beforeCursor + input + afterCursor;
-
-    handleSpecialCharInput(
-      state,
-      dispatch,
-      input,
-      newCursorPosition,
-      newInputText,
-    );
+    processSelectorInput(state, dispatch, input);
     return true;
   }
 
