@@ -287,6 +287,7 @@ describe("LspManager (Mocked)", () => {
         command: "pyright-langserver",
         args: ["--stdio"],
         extensionToLanguage: { ".py": "python" },
+        shutdownTimeout: 1,
       },
     };
 
