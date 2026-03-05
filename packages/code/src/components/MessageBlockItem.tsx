@@ -35,8 +35,11 @@ export const MessageBlockItem = ({
               ~{" "}
             </Text>
           )}
-          {message.role === "user" ? (
-            <Text backgroundColor="gray" color="white">
+          {message.role === "user" || isExpanded ? (
+            <Text
+              backgroundColor={message.role === "user" ? "gray" : undefined}
+              color="white"
+            >
               {block.content}
             </Text>
           ) : (
@@ -77,7 +80,9 @@ export const MessageBlockItem = ({
         <CompressDisplay block={block} isExpanded={isExpanded} />
       )}
 
-      {block.type === "reasoning" && <ReasoningDisplay block={block} />}
+      {block.type === "reasoning" && (
+        <ReasoningDisplay block={block} isExpanded={isExpanded} />
+      )}
     </Box>
   );
 };

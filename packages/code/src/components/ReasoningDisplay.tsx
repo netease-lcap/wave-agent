@@ -1,14 +1,16 @@
 import React from "react";
-import { Box } from "ink";
+import { Box, Text } from "ink";
 import type { ReasoningBlock } from "wave-agent-sdk";
 import { Markdown } from "./Markdown.js";
 
 interface ReasoningDisplayProps {
   block: ReasoningBlock;
+  isExpanded?: boolean;
 }
 
 export const ReasoningDisplay: React.FC<ReasoningDisplayProps> = ({
   block,
+  isExpanded = false,
 }) => {
   const { content } = block;
 
@@ -26,7 +28,11 @@ export const ReasoningDisplay: React.FC<ReasoningDisplayProps> = ({
       paddingLeft={1}
     >
       <Box flexDirection="column">
-        <Markdown>{content}</Markdown>
+        {isExpanded ? (
+          <Text color="white">{content}</Text>
+        ) : (
+          <Markdown>{content}</Markdown>
+        )}
       </Box>
     </Box>
   );
