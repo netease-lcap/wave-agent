@@ -5,13 +5,13 @@
 
 ## Summary
 
-Implement a Memory Management system that allows the agent to persist information across conversations. Triggered by `#`, it allows saving to "Project" (`AGENTS.md`) or "User" (global) storage. Memory is injected into the AI's system prompt.
+Implement a Memory Management system that allows the agent to persist information across conversations. It allows saving to "Project" (`AGENTS.md`), "User" (global), or "Auto-Memory" storage. Memory is injected into the AI's system prompt.
 
 ## Technical Context
 
 **Language/Version**: TypeScript 5.x
 **Primary Dependencies**: agent-sdk, code (Ink, React)
-**Storage**: Markdown files (`AGENTS.md`, `~/.wave/memory.md`)
+**Storage**: Markdown files (`AGENTS.md`, `~/.wave/AGENTS.md`)
 **Testing**: Vitest
 **Target Platform**: CLI (Node.js)
 **Project Type**: Monorepo (agent-sdk + code)
@@ -59,13 +59,10 @@ packages/agent-sdk/
 
 packages/code/
 ├── src/
-│   ├── managers/
-│   │   └── InputManager.ts     # Handle # trigger and state
-│   └── components/
-│       └── MemoryTypeSelector.tsx # UI component
+│   └── managers/
+│       └── InputManager.ts     # Handle input state
 └── tests/
     └── components/
-        └── MemoryTypeSelector.test.tsx
 ```
 
 ## Complexity Tracking
