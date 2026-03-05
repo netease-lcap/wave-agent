@@ -16,6 +16,17 @@ vi.mock("../../src/managers/aiManager.js", () => ({
   }),
 }));
 
+// Mock the memory service
+vi.mock("../../src/services/memory.js", () => ({
+  MemoryService: vi.fn().mockImplementation(() => ({
+    getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+    getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+    ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+    getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+  })),
+  getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+}));
+
 describe("SubagentManager Consistency", () => {
   let subagentManager: SubagentManager;
   let mockToolManager: ToolManager;
@@ -70,6 +81,7 @@ describe("SubagentManager Consistency", () => {
         fastModel: "claude-3-haiku",
       }),
       getMaxInputTokens: () => 200000,
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => undefined,
     });
 

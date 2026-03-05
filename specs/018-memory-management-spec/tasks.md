@@ -27,7 +27,7 @@
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
-- [ ] T005 [P] Create unit test file for memory service in `packages/agent-sdk/tests/services/memory.test.ts`
+- [X] T005 [P] Create unit test file for memory service in `packages/agent-sdk/tests/services/memory.test.ts`
 - [ ] T006 [P] Create unit test file for `MemoryTypeSelector` component in `packages/code/tests/components/MemoryTypeSelector.test.tsx`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
@@ -42,8 +42,8 @@
 
 ### Tests for User Story 1 & 2 (REQUIRED) ⚠️
 
-- [ ] T007 [US1,US2] Write failing tests for `#` trigger detection
-- [ ] T008 [US1,US2] Write failing tests for file writing (Project vs User)
+- [X] T007 [US1,US2] Write failing tests for `#` trigger detection
+- [X] T008 [US1,US2] Write failing tests for file writing (Project vs User)
 
 ### Implementation for User Story 1 & 2
 
@@ -75,10 +75,24 @@
 
 ---
 
-## Phase 5: Polish & Cross-Cutting Concerns
+## Phase 6: User Story 4 - Auto-Memory (Priority: P1)
 
-**Purpose**: Improvements that affect multiple user stories
+**Goal**: Enable the agent to automatically save and retrieve project-specific knowledge.
 
-- [ ] T016 [P] Implement deduplication logic in `addMemory`
-- [ ] T017 [P] Explore RAG-based retrieval for large memory files
-- [ ] T018 [P] Final type-check and linting
+**Independent Test**: Perform a task, start a new session, and verify the agent remembers the context.
+
+### Tests for User Story 4 (REQUIRED) ⚠️
+
+- [X] T019 [US4] Write failing tests for auto-memory directory resolution (git worktrees)
+- [X] T020 [US4] Write failing tests for auto-memory context injection (200-line limit)
+- [X] T021 [US4] Write failing tests for auto-memory "Safe Zone" permission bypass
+
+### Implementation for User Story 4
+
+- [X] T022 [US4] Implement auto-memory directory resolution in `packages/agent-sdk/src/services/memory.ts`
+- [X] T023 [US4] Implement auto-memory context injection in `packages/agent-sdk/src/managers/aiManager.ts`
+- [X] T024 [US4] Update `PermissionManager` to include auto-memory directory as a "Safe Zone"
+- [X] T025 [US4] Add `autoMemoryEnabled` setting and environment variable support
+- [X] T026 [US4] Ensure auto-memory directory and `MEMORY.md` are initialized on startup
+
+**Checkpoint**: Auto-memory is fully functional and integrated.

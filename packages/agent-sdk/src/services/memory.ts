@@ -1,11 +1,74 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { homedir } from "node:os";
 import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
+import { getGitCommonDir } from "../utils/gitUtils.js";
+import { pathEncoder } from "../utils/pathEncoder.js";
 
 export class MemoryService {
   constructor(private container: Container) {}
+
+  /**
+   * Get the project-specific auto-memory directory.
+   * Uses the git common directory to ensure worktrees share the same memory.
+   */
+  getAutoMemoryDirectory(workdir: string): string {
+    const projectRoot = getGitCommonDir(workdir);
+    const encodedName = pathEncoder.encodeSync(projectRoot);
+    return path.join(homedir(), ".wave", "projects", encodedName, "memory");
+  }
+
+  /**
+   * Ensure the auto-memory directory and initial MEMORY.md exist.
+   */
+  async ensureAutoMemoryDirectory(workdir: string): Promise<void> {
+    const memoryDir = this.getAutoMemoryDirectory(workdir);
+    const memoryFile = path.join(memoryDir, "MEMORY.md");
+
+    try {
+      await fs.mkdir(memoryDir, { recursive: true });
+
+      try {
+        await fs.access(memoryFile);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          const initialContent =
+            "# Project Memory\n\nThis file serves as an index for the project's auto-memory. Wave uses this to track knowledge across sessions.\n\n";
+          await fs.writeFile(memoryFile, initialContent, "utf-8");
+          logger.debug(`Created auto-memory file: ${memoryFile}`);
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      logger.error("Failed to ensure auto-memory directory:", error);
+      throw new Error(
+        `Failed to ensure auto-memory directory: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Get the first 200 lines of MEMORY.md.
+   */
+  async getAutoMemoryContent(workdir: string): Promise<string> {
+    const memoryDir = this.getAutoMemoryDirectory(workdir);
+    const memoryFile = path.join(memoryDir, "MEMORY.md");
+
+    try {
+      const content = await fs.readFile(memoryFile, "utf-8");
+      const lines = content.split("\n").slice(0, 200);
+      return lines.join("\n");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return "";
+      }
+      logger.error("Failed to read auto-memory content:", error);
+      return "";
+    }
+  }
 
   async ensureUserMemoryFile(): Promise<void> {
     try {

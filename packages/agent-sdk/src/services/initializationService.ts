@@ -189,6 +189,19 @@ export class InitializationService {
     // Resolve and validate configuration after loading settings.json
     resolveAndValidateConfig();
 
+    // Initialize auto-memory directory
+    try {
+      if (configurationService.resolveAutoMemoryEnabled()) {
+        const memoryService =
+          container.get<import("./memory.js").MemoryService>("MemoryService");
+        if (memoryService) {
+          await memoryService.ensureAutoMemoryDirectory(workdir);
+        }
+      }
+    } catch (error) {
+      logger?.error("Failed to initialize auto-memory directory:", error);
+    }
+
     // Set global logger for SDK-wide access before discovering rules
     setGlobalLogger(logger || null);
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
+import path from "node:path";
 import { PermissionManager } from "../../src/managers/permissionManager.js";
 import { RESTRICTED_TOOLS } from "../../src/types/permissions.js";
 import type {
@@ -42,6 +43,50 @@ describe("PermissionManager", () => {
   });
 
   describe("checkPermission method", () => {
+    describe("Safe Zone and Auto-Memory", () => {
+      it("should allow file operations in auto-memory directory (Safe Zone)", async () => {
+        const workdir = "/home/user/project";
+        const autoMemoryDir = "/home/user/.wave/projects/encoded/memory";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+          additionalDirectories: [autoMemoryDir],
+        });
+
+        // In default mode, restricted tools normally require callback
+        // But if it's an unrestricted tool, it's allowed.
+        // Wait, Write IS a restricted tool.
+        // Let's check acceptEdits mode which uses Safe Zone.
+
+        const contextAcceptEdits: ToolPermissionContext = {
+          toolName: "Write",
+          permissionMode: "acceptEdits",
+          toolInput: { file_path: path.join(autoMemoryDir, "MEMORY.md") },
+        };
+
+        const result = await manager.checkPermission(contextAcceptEdits);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should deny file operations outside Safe Zone in acceptEdits mode", async () => {
+        const workdir = "/home/user/project";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        const context: ToolPermissionContext = {
+          toolName: "Write",
+          permissionMode: "acceptEdits",
+          toolInput: { file_path: "/etc/passwd" },
+        };
+
+        const result = await manager.checkPermission(context);
+        // Should fall through to manual confirmation (deny without callback)
+        expect(result.behavior).toBe("deny");
+      });
+    });
+
     describe("explicit denial (permissions.deny)", () => {
       it("should deny tool if it is in deniedRules", async () => {
         permissionManager.updateDeniedRules(["Bash"]);

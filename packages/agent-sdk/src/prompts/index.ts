@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import { ToolPlugin } from "../tools/types.js";
 import { isGitRepository } from "../utils/gitUtils.js";
+import { buildAutoMemoryPrompt } from "./autoMemory.js";
 import {
   EXPLORE_SUBAGENT_TYPE,
   PLAN_SUBAGENT_TYPE,
@@ -301,6 +302,10 @@ export function buildSystemPrompt(
       planFilePath: string;
       planExists: boolean;
     };
+    autoMemory?: {
+      directory: string;
+      content: string;
+    };
   } = {},
 ): string {
   let prompt = basePrompt || DEFAULT_SYSTEM_PROMPT;
@@ -333,6 +338,13 @@ OS Version: ${osVersion}
 Today's date: ${today}
 </env>
 `;
+  }
+
+  if (options.autoMemory) {
+    prompt += `\n\n${buildAutoMemoryPrompt(options.autoMemory.directory)}`;
+    if (options.autoMemory.content.trim()) {
+      prompt += `\n\n## MEMORY.md\n\n${options.autoMemory.content}`;
+    }
   }
 
   if (options.memory && options.memory.trim()) {

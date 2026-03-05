@@ -134,6 +134,7 @@ describe("Subagent Plan Mode Integration", () => {
         permissionMode: "plan",
       }),
       getMaxInputTokens: () => 100000,
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => undefined,
     });
 

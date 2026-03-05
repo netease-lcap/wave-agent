@@ -42,6 +42,7 @@ describe("Subagent Permission Integration", () => {
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 1000,
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => undefined,
     });
 

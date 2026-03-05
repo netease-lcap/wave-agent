@@ -53,12 +53,30 @@ As a user, I want to view and delete saved memory entries so I can keep my conte
 
 ---
 
+### User Story 4 - Auto-Memory (Priority: P1)
+
+As a user, I want the agent to automatically remember important information across sessions without me having to manually save it.
+
+**Why this priority**: Significantly reduces friction and allows the agent to build a long-term understanding of the project and workflow.
+
+**Independent Test**: Perform a task that involves a specific build command or architectural decision. Start a new session and verify the agent knows about it by checking the system prompt or asking a related question.
+
+**Acceptance Scenarios**:
+
+1. **Given** auto-memory is enabled, **When** the agent identifies valuable information (build commands, debugging insights, etc.), **Then** it MUST be able to save it to the project's auto-memory directory.
+2. **Given** information is saved in `MEMORY.md`, **When** a new session starts, **Then** the first 200 lines of `MEMORY.md` MUST be included in the system prompt.
+3. **Given** the agent is in a git repository, **Then** all worktrees of that repository MUST share the same auto-memory directory.
+4. **Given** the agent needs to write to its auto-memory, **Then** it MUST be able to do so without manual approval (Safe Zone).
+
+---
+
 ### Edge Cases
 
-- **Missing storage files**: The system should create `AGENTS.md` or the global memory file if they don't exist.
+- **Missing storage files**: The system should create `AGENTS.md`, the global memory file, or the auto-memory directory if they don't exist.
 - **Duplicate entries**: The system should ideally prevent or warn about duplicate memory entries.
-- **Large memory files**: If memory files grow too large, the system should handle them efficiently (e.g., using RAG or summarization).
+- **Large memory files**: If memory files grow too large, the system should handle them efficiently. For `MEMORY.md`, only the first 200 lines are loaded.
 - **Concurrent access**: Handle cases where multiple agent instances might try to write to the same memory file.
+- **Git Worktrees**: Ensure the project ID is stable across different worktrees of the same repository.
 
 ## Requirements *(mandatory)*
 
@@ -69,9 +87,14 @@ As a user, I want to view and delete saved memory entries so I can keep my conte
 - **FR-003**: Project memory MUST be stored in `AGENTS.md` in the current working directory.
 - **FR-004**: User memory MUST be stored in a global file (e.g., `~/.wave/memory.md`).
 - **FR-005**: Memory entries MUST be stored in Markdown bullet point format.
-- **FR-006**: System MUST combine project and user memory and include it in the AI's system prompt for every request.
+- **FR-006**: System MUST combine project, user, and auto-memory and include it in the AI's system prompt for every request.
 - **FR-007**: System SHOULD provide a way to deduplicate memory entries.
 - **FR-008**: System SHOULD provide a UI for viewing and deleting memory entries.
+- **FR-009**: System MUST support auto-memory stored in `~/.wave/projects/<project-id>/memory/`.
+- **FR-010**: System MUST load the first 200 lines of `MEMORY.md` into the system prompt.
+- **FR-011**: System MUST allow the agent to write to the auto-memory directory without manual approval.
+- **FR-012**: System MUST use the git common directory to identify the project for auto-memory storage.
+- **FR-013**: System MUST allow disabling auto-memory via `settings.json` or `WAVE_DISABLE_AUTO_MEMORY=1`.
 
 ### Key Entities *(include if feature involves data)*
 

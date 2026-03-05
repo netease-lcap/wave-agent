@@ -12,7 +12,16 @@ import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 
 import { Container } from "../../src/utils/container.js";
 
-// Mock the subagent parser module
+// Mock the memory service
+vi.mock("../../src/services/memory.js", () => ({
+  MemoryService: vi.fn().mockImplementation(() => ({
+    getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+    getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+    ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+    getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+  })),
+  getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+}));
 vi.mock("../../src/utils/subagentParser.js", () => ({
   loadSubagentConfigurations: vi.fn().mockResolvedValue([]),
   findSubagentByName: vi.fn().mockResolvedValue(null),
@@ -105,6 +114,7 @@ describe("SubagentManager - Callback Integration", () => {
       getGatewayConfig: () => mockGatewayConfig,
       getModelConfig: () => mockModelConfig,
       getMaxInputTokens: () => 1000,
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => undefined,
     });
 
@@ -481,6 +491,7 @@ describe("SubagentManager - Callback Integration", () => {
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 1000,
+        getAutoMemoryEnabled: () => true,
         getLanguage: () => undefined,
       });
 
@@ -525,6 +536,7 @@ describe("SubagentManager - Callback Integration", () => {
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 1000,
+        getAutoMemoryEnabled: () => true,
         getLanguage: () => undefined,
       });
 
@@ -644,6 +656,7 @@ describe("SubagentManager - Callback Integration", () => {
         getGatewayConfig: () => mockGatewayConfig,
         getModelConfig: () => mockModelConfig,
         getMaxInputTokens: () => 1000,
+        getAutoMemoryEnabled: () => true,
         getLanguage: () => undefined,
       });
 

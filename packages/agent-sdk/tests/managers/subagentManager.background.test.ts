@@ -21,6 +21,17 @@ vi.mock("../../src/managers/aiManager.js", () => ({
   }),
 }));
 
+// Mock the memory service
+vi.mock("../../src/services/memory.js", () => ({
+  MemoryService: vi.fn().mockImplementation(() => ({
+    getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+    getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+    ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+    getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+  })),
+  getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+}));
+
 describe("SubagentManager - Backgrounding Coverage", () => {
   let subagentManager: SubagentManager;
   let mockToolManager: ToolManager;
@@ -71,6 +82,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
         fastModel: "test-fast-model",
       }),
       getMaxInputTokens: () => 1000,
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => "en",
     });
   });
@@ -81,6 +93,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({ model: "m", fastModel: "f" }),
       getMaxInputTokens: () => 1000,
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => "en",
     });
     // Remove BackgroundTaskManager from container for this test
@@ -188,6 +201,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       getGatewayConfig: () => ({ apiKey: "test", baseURL: "test" }),
       getModelConfig: () => ({ model: "m", fastModel: "f" }),
       getMaxInputTokens: () => 1000,
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => "en",
     });
 

@@ -12,7 +12,15 @@ import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 
 vi.mock("node:fs/promises");
 vi.mock("../../src/services/aiService.js");
-vi.mock("../../src/services/memory.js");
+vi.mock("../../src/services/memory.js", () => ({
+  MemoryService: vi.fn().mockImplementation(() => ({
+    getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+    getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+    ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+    getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+  })),
+  getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+}));
 
 describe("AIManager Plan Mode Prompt", () => {
   let aiManager: AIManager;
@@ -47,6 +55,12 @@ describe("AIManager Plan Mode Prompt", () => {
     container.register("MessageManager", mockMessageManager);
     container.register("ToolManager", mockToolManager);
     container.register("TaskManager", {} as unknown as TaskManager);
+    container.register("MemoryService", {
+      getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+      getAutoMemoryDirectory: vi.fn().mockReturnValue("/mock/auto-memory"),
+      ensureAutoMemoryDirectory: vi.fn().mockResolvedValue(undefined),
+      getAutoMemoryContent: vi.fn().mockResolvedValue(""),
+    });
     container.register("PermissionManager", mockPermissionManager);
 
     // Mock SubagentManager and register it
@@ -64,6 +78,7 @@ describe("AIManager Plan Mode Prompt", () => {
       getGatewayConfig: () => ({}) as GatewayConfig,
       getModelConfig: () => ({ model: "gpt-4" }) as ModelConfig,
       getMaxInputTokens: () => 1000,
+      getAutoMemoryEnabled: () => true,
       getLanguage: () => undefined,
       stream: false,
     });
