@@ -128,8 +128,12 @@ describe("inputHandlers", () => {
       expect(getSlashSelectorPosition("/help ", 6)).toBe(-1);
     });
 
-    it("should return -1 if / is not at start of input", () => {
-      expect(getSlashSelectorPosition("test /help", 7)).toBe(-1);
+    it("should return position if / is preceded by space", () => {
+      expect(getSlashSelectorPosition("test /help", 10)).toBe(5);
+    });
+
+    it("should return -1 if / is not at start of word", () => {
+      expect(getSlashSelectorPosition("test/help", 7)).toBe(-1);
     });
   });
 
@@ -317,8 +321,17 @@ describe("inputHandlers", () => {
       });
     });
 
-    it("should not activate command selector on / if not at start", () => {
+    it("should activate command selector on / after space", () => {
       const state = { ...initialState, inputText: "test ", cursorPosition: 5 };
+      processSelectorInput(state, dispatch, "/");
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "ACTIVATE_COMMAND_SELECTOR",
+        payload: 5,
+      });
+    });
+
+    it("should not activate command selector on / after non-whitespace char", () => {
+      const state = { ...initialState, inputText: "test", cursorPosition: 4 };
       processSelectorInput(state, dispatch, "/");
       expect(dispatch).not.toHaveBeenCalledWith({
         type: "ACTIVATE_COMMAND_SELECTOR",

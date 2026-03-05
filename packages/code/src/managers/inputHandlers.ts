@@ -123,7 +123,10 @@ const SELECTOR_TRIGGERS = [
       pos: number,
       text: string,
       state: InputState,
-    ) => char === "/" && !state.showFileSelector && pos === 1,
+    ) =>
+      char === "/" &&
+      !state.showFileSelector &&
+      (pos === 1 || /\s/.test(text[pos - 2])),
   },
 ] as const;
 
@@ -157,14 +160,16 @@ export const getSlashSelectorPosition = (
   text: string,
   cursorPosition: number,
 ): number => {
-  if (text.startsWith("/") && cursorPosition > 0) {
-    let i = 0;
-    while (i < text.length && !/\s/.test(text[i])) {
-      i++;
+  let i = cursorPosition - 1;
+  while (i >= 0 && !/\s/.test(text[i])) {
+    if (text[i] === "/") {
+      // Check if this / is at the start or preceded by whitespace
+      if (i === 0 || /\s/.test(text[i - 1])) {
+        return i;
+      }
+      break;
     }
-    if (cursorPosition <= i) {
-      return 0;
-    }
+    i--;
   }
   return -1;
 };
