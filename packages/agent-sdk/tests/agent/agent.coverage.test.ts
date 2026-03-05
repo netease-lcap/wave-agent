@@ -18,6 +18,20 @@ vi.mock("@/services/session", async () => {
 });
 vi.mock("fs/promises");
 
+// Mock memory
+const mockMemoryServiceInstance = {
+  getUserMemoryContent: vi.fn().mockResolvedValue(""),
+  ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
+  readMemoryFile: vi.fn().mockResolvedValue(""),
+  getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+};
+
+vi.mock("@/services/memory", () => ({
+  MemoryService: vi.fn().mockImplementation(function () {
+    return mockMemoryServiceInstance;
+  }),
+}));
+
 const { instance: mockToolManagerInstance } = createMockToolManager();
 vi.mock("@/managers/toolManager", () => ({
   ToolManager: vi.fn().mockImplementation(function () {
@@ -30,7 +44,9 @@ describe("Agent - Branch Coverage", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    vi.mocked(fs.readFile).mockResolvedValue("");
+    mockMemoryServiceInstance.readMemoryFile.mockResolvedValue("");
+    mockMemoryServiceInstance.getUserMemoryContent.mockResolvedValue("");
+
     // Default session restoration mock
     vi.mocked(sessionService.handleSessionRestoration).mockResolvedValue(
       undefined,
@@ -44,7 +60,12 @@ describe("Agent - Branch Coverage", () => {
 
   describe("Initialization and Configuration", () => {
     it("should handle missing project and user memory files", async () => {
-      vi.mocked(fs.readFile).mockRejectedValue(new Error("File not found"));
+      mockMemoryServiceInstance.readMemoryFile.mockRejectedValue(
+        new Error("File not found"),
+      );
+      mockMemoryServiceInstance.getUserMemoryContent.mockRejectedValue(
+        new Error("File not found"),
+      );
 
       agent = await Agent.create({ workdir: "/test/workdir" });
 

@@ -1,6 +1,3 @@
-import path from "path";
-import * as fs from "fs/promises";
-import os from "os";
 import { handleSessionRestoration } from "./session.js";
 import { setGlobalLogger } from "../utils/globalLogger.js";
 import { LspManager } from "../managers/lspManager.js";
@@ -24,6 +21,7 @@ import type { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import type { LiveConfigManager } from "../managers/liveConfigManager.js";
 import type { TaskManager } from "./taskManager.js";
 import type { PermissionManager } from "../managers/permissionManager.js";
+import type { MemoryService } from "./memory.js";
 
 export interface InitializationContext {
   skillManager: SkillManager;
@@ -211,23 +209,24 @@ export class InitializationService {
 
     // Load memory files during initialization
     try {
-      // Load project memory from AGENTS.md (bypass memory store for direct file access)
+      const memoryService = container.get<MemoryService>("MemoryService");
+      if (!memoryService) {
+        throw new Error("MemoryService not found in container");
+      }
+
+      // Load project memory from AGENTS.md
       try {
-        const projectMemoryPath = path.join(workdir, "AGENTS.md");
-        const projectMemoryContent = await fs.readFile(
-          projectMemoryPath,
-          "utf-8",
-        );
+        const projectMemoryContent =
+          await memoryService.readMemoryFile(workdir);
         setProjectMemory(projectMemoryContent);
       } catch (error) {
         logger?.warn("Failed to load project memory file:", error);
         setProjectMemory("");
       }
 
-      // Load user memory (bypass memory store for direct file access)
+      // Load user memory
       try {
-        const userMemoryPath = path.join(os.homedir(), ".wave", "AGENTS.md");
-        const userMemoryContent = await fs.readFile(userMemoryPath, "utf-8");
+        const userMemoryContent = await memoryService.getUserMemoryContent();
         setUserMemory(userMemoryContent);
       } catch (error) {
         logger?.warn("Failed to load user memory file:", error);

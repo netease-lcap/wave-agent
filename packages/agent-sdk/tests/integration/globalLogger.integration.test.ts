@@ -820,11 +820,14 @@ describe("Agent - Global Logger Integration", () => {
 
       describe("Memory service functions", () => {
         it("should log when reading memory files", async () => {
-          const { readMemoryFile } = await import(
+          const { MemoryService } = await import(
             "../../src/services/memory.js"
           );
+          const { Container } = await import("../../src/utils/container.js");
 
           const testWorkdir = "/test/project";
+          const container = new Container();
+          const memoryService = new MemoryService(container);
 
           // Mock successful file read
           const mockReadFile = vi
@@ -842,7 +845,7 @@ describe("Agent - Global Logger Integration", () => {
           });
 
           try {
-            await readMemoryFile(testWorkdir);
+            await memoryService.readMemoryFile(testWorkdir);
           } catch {
             // Expected to fail due to incomplete mocking
           }
@@ -1001,9 +1004,12 @@ describe("Agent - Global Logger Integration", () => {
       });
 
       it("should not throw errors when memory services are used without logger", async () => {
-        const { readMemoryFile } = await import("../../src/services/memory.js");
+        const { MemoryService } = await import("../../src/services/memory.js");
+        const { Container } = await import("../../src/utils/container.js");
 
         const testWorkdir = "/mock/workdir";
+        const container = new Container();
+        const memoryService = new MemoryService(container);
 
         // Mock minimal file operations to prevent actual file system access
         vi.doMock("fs/promises", () => ({
@@ -1015,7 +1021,7 @@ describe("Agent - Global Logger Integration", () => {
 
         // These should not throw errors even without logger
         await expect(async () => {
-          await readMemoryFile(testWorkdir);
+          await memoryService.readMemoryFile(testWorkdir);
           globalLogger.debug("This should be silent");
           globalLogger.error("This should also be silent");
         }).not.toThrow();

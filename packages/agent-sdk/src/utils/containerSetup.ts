@@ -21,6 +21,7 @@ import { SubagentManager } from "../managers/subagentManager.js";
 import { LiveConfigManager } from "../managers/liveConfigManager.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ReversionService } from "../services/reversionService.js";
+import { MemoryService } from "../services/memory.js";
 import type { AgentOptions } from "../types/index.js";
 import type {
   PermissionMode,
@@ -84,6 +85,9 @@ export function setupAgentContainer(
   const foregroundTaskManager = new ForegroundTaskManager(container);
   container.register("ForegroundTaskManager", foregroundTaskManager);
   container.register("ConfigurationService", configurationService);
+
+  const memoryService = new MemoryService(container);
+  container.register("MemoryService", memoryService);
 
   const memoryRuleManager = new MemoryRuleManager(container, { workdir });
   container.register("MemoryRuleManager", memoryRuleManager);

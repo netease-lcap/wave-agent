@@ -33,6 +33,20 @@ vi.mock("../../src/services/configurationService.js", () => {
   };
 });
 
+// Mock memory
+const mockMemoryServiceInstance = {
+  getUserMemoryContent: vi.fn().mockResolvedValue(""),
+  ensureUserMemoryFile: vi.fn().mockResolvedValue(undefined),
+  readMemoryFile: vi.fn().mockResolvedValue(""),
+  getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
+};
+
+vi.mock("../../src/services/memory.js", () => ({
+  MemoryService: vi.fn().mockImplementation(function () {
+    return mockMemoryServiceInstance;
+  }),
+}));
+
 // Mock fs/promises
 vi.mock("node:fs/promises", () => {
   return {
@@ -52,6 +66,8 @@ describe("Agent Plan Mode Default", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockMemoryServiceInstance.getUserMemoryContent.mockResolvedValue("");
+    mockMemoryServiceInstance.readMemoryFile.mockResolvedValue("");
   });
 
   it("should generate plan file path when default mode is plan in configuration", async () => {
@@ -107,6 +123,11 @@ describe("Agent Plan Mode Default", () => {
 
     expect(agent.getPermissionMode()).toBe("default");
     expect(agent.getPlanFilePath()).toBeUndefined();
-    expect(fs.mkdir).not.toHaveBeenCalled();
+    // fs.mkdir might be called for memory directory, but not for plans directory
+    const calls = vi.mocked(fs.mkdir).mock.calls;
+    const plansDirCall = calls.find((call) =>
+      (call[0] as string).includes("plans"),
+    );
+    expect(plansDirCall).toBeUndefined();
   });
 });

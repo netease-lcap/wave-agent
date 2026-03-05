@@ -22,6 +22,7 @@ import {
 } from "../services/session.js";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
 import type { MemoryRuleManager } from "./MemoryRuleManager.js";
+import type { MemoryService } from "../services/memory.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
 
 import { Container } from "../utils/container.js";
@@ -113,6 +114,14 @@ export class MessageManager {
       : undefined;
   }
 
+  private get memoryService(): MemoryService {
+    const service = this.container.get<MemoryService>("MemoryService");
+    if (!service) {
+      throw new Error("MemoryService not found in container");
+    }
+    return service;
+  }
+
   // Getter methods
   public getSessionId(): string {
     return this.sessionId;
@@ -161,8 +170,9 @@ export class MessageManager {
    * Get combined memory content (project memory + user memory + modular rules)
    */
   public async getCombinedMemory(): Promise<string> {
-    const memory = await import("../services/memory.js");
-    let combined = await memory.getCombinedMemoryContent(this.workdir);
+    let combined = await this.memoryService.getCombinedMemoryContent(
+      this.workdir,
+    );
 
     if (this.memoryRuleManager) {
       const filesInContext = this.getFilesInContext();
