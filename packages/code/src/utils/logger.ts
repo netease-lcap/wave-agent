@@ -9,7 +9,10 @@
  */
 
 import * as fs from "fs";
+import { Chalk } from "chalk";
 import { LOG_FILE, DATA_DIRECTORY } from "./constants.js";
+
+const chalk = new Chalk({ level: 3 });
 
 const logFile = process.env.LOG_FILE || LOG_FILE;
 
@@ -31,6 +34,16 @@ const LOG_LEVEL_NAMES = {
   [LogLevel.INFO]: "INFO",
   [LogLevel.WARN]: "WARN",
   [LogLevel.ERROR]: "ERROR",
+};
+
+/**
+ * Log level color mapping
+ */
+const LEVEL_COLORS = {
+  [LogLevel.DEBUG]: chalk.gray,
+  [LogLevel.INFO]: chalk.blue,
+  [LogLevel.WARN]: chalk.yellow,
+  [LogLevel.ERROR]: chalk.red,
 };
 
 /**
@@ -146,7 +159,8 @@ const logMessage = (level: LogLevel, ...args: unknown[]): void => {
 
   const levelName = LOG_LEVEL_NAMES[level];
   const timestamp = new Date().toISOString();
-  const formattedMessage = `[${timestamp}] [${levelName}] ${messageText}\n`;
+  const color = LEVEL_COLORS[level] || ((s: string) => s);
+  const formattedMessage = `[${chalk.gray(timestamp)}] [${color(levelName)}] ${messageText}\n`;
 
   try {
     // Ensure directory exists
