@@ -73,6 +73,22 @@ describe("MemoryService", () => {
       const result = memoryService.getAutoMemoryDirectory(workdir);
       expect(result).toBe(expected);
     });
+
+    it("should remove .git suffix from common directory if present", () => {
+      const workdir = "/mock/project/.git";
+      const expectedProjectRoot = "/mock/project";
+      const encoded = Buffer.from(expectedProjectRoot).toString("base64");
+      const expected = path.join(
+        homedir(),
+        ".wave",
+        "projects",
+        encoded,
+        "memory",
+      );
+
+      const result = memoryService.getAutoMemoryDirectory(workdir);
+      expect(result).toBe(expected);
+    });
   });
 
   describe("ensureAutoMemoryDirectory", () => {

@@ -15,7 +15,11 @@ export class MemoryService {
    * Uses the git common directory to ensure worktrees share the same memory.
    */
   getAutoMemoryDirectory(workdir: string): string {
-    const projectRoot = getGitCommonDir(workdir);
+    const commonDir = getGitCommonDir(workdir);
+    // If the common directory is a .git directory, use its parent as the project root
+    // for a cleaner encoded name while maintaining stability across worktrees.
+    const projectRoot =
+      path.basename(commonDir) === ".git" ? path.dirname(commonDir) : commonDir;
     const encodedName = pathEncoder.encodeSync(projectRoot);
     return path.join(homedir(), ".wave", "projects", encodedName, "memory");
   }
