@@ -85,6 +85,9 @@ describe("ExitPlanMode Clear Context", () => {
 
     // Wait for plan file path generation
     await new Promise((resolve) => setTimeout(resolve, 100));
+    const planFilePath = (
+      agent as unknown as AgentInternal
+    ).permissionManager.getPlanFilePath();
 
     vi.mocked(readFile).mockResolvedValue(planContent);
 
@@ -97,7 +100,7 @@ describe("ExitPlanMode Clear Context", () => {
     expect(result.success).toBe(true);
     expect(agent.getPermissionMode()).toBe("acceptEdits");
 
-    // Verify messages are cleared and plan is added
+    // Verify messages are cleared and plan path is added
     expect(agent.messages.length).toBe(1);
     expect(agent.messages[0].role).toBe("user");
     const textBlock = agent.messages[0].blocks.find(
@@ -105,8 +108,8 @@ describe("ExitPlanMode Clear Context", () => {
     ) as TextBlock;
     expect(textBlock).toBeDefined();
     const content = textBlock.content;
-    expect(content).toContain(planContent);
-    expect(content).toContain("Implement the following plan:");
+    expect(content).toContain(planFilePath);
+    expect(content).toContain("Implement the plan at");
   });
 
   it("should NOT clear context if ExitPlanMode fails before permission check", async () => {
@@ -145,47 +148,6 @@ describe("ExitPlanMode Clear Context", () => {
 
     // Messages should NOT be cleared because checkPermission was never called
     expect(agent.messages.length).toBe(initialMessageCount);
-  });
-
-  it("should clear messages but not add plan if reading plan file fails during context clearing", async () => {
-    const workdir = "/test/workdir";
-    const planContent = "My plan content";
-
-    const mockCallback = vi.fn().mockResolvedValue({
-      behavior: "allow",
-      newPermissionMode: "acceptEdits",
-      clearContext: true,
-    });
-
-    const agent = await Agent.create({
-      workdir,
-      permissionMode: "plan",
-      canUseTool: mockCallback as PermissionCallback,
-    });
-
-    // Add some initial messages
-    await agent.sendMessage("Initial message");
-    expect(agent.messages.length).toBeGreaterThan(0);
-
-    // Wait for plan file path generation
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    // First call (in ExitPlanMode) succeeds, second call (in setupAgentContainer) fails
-    vi.mocked(readFile)
-      .mockResolvedValueOnce(planContent)
-      .mockRejectedValueOnce(new Error("Read error during clearing"));
-
-    // Execute ExitPlanMode tool
-    const taskManager = (agent as unknown as AgentInternal).taskManager;
-    const result = await (
-      agent as unknown as AgentInternal
-    ).toolManager.execute("ExitPlanMode", {}, { workdir, taskManager });
-
-    expect(result.success).toBe(true);
-
-    // Messages should be cleared (because clearMessages() is called before readFile())
-    // but plan should not be added because readFile() failed
-    expect(agent.messages.length).toBe(0);
   });
 
   it("should clear messages but not add plan if planFilePath is undefined", async () => {
