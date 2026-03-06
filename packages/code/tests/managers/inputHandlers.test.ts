@@ -141,8 +141,8 @@ describe("inputHandlers", () => {
     it("should submit text and clear input", async () => {
       const state: InputState = {
         ...initialState,
-        inputText: "hello world",
-        longTextMap: { "[LongText#1]": "long" },
+        inputText: "hello [LongText#1]",
+        longTextMap: { "[LongText#1]": "world" },
       };
       callbacks.sessionId = "session-1";
       await handleSubmit(state, dispatch, callbacks);
@@ -157,9 +157,9 @@ describe("inputHandlers", () => {
         type: "RESET_HISTORY_NAVIGATION",
       });
       expect(PromptHistoryManager.addEntry).toHaveBeenCalledWith(
-        "hello world",
+        "hello [LongText#1]",
         "session-1",
-        { "[LongText#1]": "long" },
+        { "[LongText#1]": "world" },
       );
     });
 
@@ -184,11 +184,17 @@ describe("inputHandlers", () => {
         inputText: "Check this: [LongText#1]",
         longTextMap: { "[LongText#1]": "Expanded content" },
       };
+      callbacks.sessionId = "session-1";
       await handleSubmit(state, dispatch, callbacks);
 
       expect(callbacks.onSendMessage).toHaveBeenCalledWith(
         "Check this: Expanded content",
         undefined,
+      );
+      expect(PromptHistoryManager.addEntry).toHaveBeenCalledWith(
+        "Check this: [LongText#1]",
+        "session-1",
+        { "[LongText#1]": "Expanded content" },
       );
     });
   });

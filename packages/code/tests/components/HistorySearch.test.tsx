@@ -122,6 +122,21 @@ describe("HistorySearch", () => {
     });
   });
 
+  it("should render history entries with placeholders", async () => {
+    const entriesWithPlaceholders = [
+      { prompt: "Check this: [LongText#1]", timestamp: 1000 },
+    ];
+    vi.mocked(PromptHistoryManager.searchHistory).mockResolvedValue(
+      entriesWithPlaceholders,
+    );
+    const { lastFrame } = render(<HistorySearch {...mockProps} />);
+
+    await vi.waitFor(() => {
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).toContain("> Check this: [LongText#1]");
+    });
+  });
+
   it("should show empty state when no results", async () => {
     vi.mocked(PromptHistoryManager.searchHistory).mockResolvedValue([]);
     const { lastFrame } = render(
