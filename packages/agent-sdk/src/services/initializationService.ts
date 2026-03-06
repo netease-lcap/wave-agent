@@ -151,6 +151,11 @@ export class InitializationService {
               configResult.configuration.permissions.defaultMode,
             );
           }
+          if (configResult.configuration.permissions.additionalDirectories) {
+            permissionManager.updateAdditionalDirectories(
+              configResult.configuration.permissions.additionalDirectories,
+            );
+          }
         }
       }
     } catch (error) {
@@ -196,6 +201,12 @@ export class InitializationService {
           container.get<import("./memory.js").MemoryService>("MemoryService");
         if (memoryService) {
           await memoryService.ensureAutoMemoryDirectory(workdir);
+          const permissionManager =
+            container.get<PermissionManager>("PermissionManager");
+          if (permissionManager) {
+            const autoMemoryDir = memoryService.getAutoMemoryDirectory(workdir);
+            permissionManager.addSystemAdditionalDirectory(autoMemoryDir);
+          }
         }
       }
     } catch (error) {

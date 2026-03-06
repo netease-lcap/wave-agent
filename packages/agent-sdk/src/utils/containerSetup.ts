@@ -133,7 +133,7 @@ export function setupAgentContainer(
   const permissionManager = new PermissionManager(container, { workdir });
   if (configurationService.resolveAutoMemoryEnabled()) {
     const autoMemoryDir = memoryService.getAutoMemoryDirectory(workdir);
-    permissionManager.updateAdditionalDirectories([autoMemoryDir]);
+    permissionManager.addSystemAdditionalDirectory(autoMemoryDir);
   }
   container.register("PermissionManager", permissionManager);
   permissionManager.setOnConfiguredDefaultModeChange((mode) => {

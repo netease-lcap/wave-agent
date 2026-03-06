@@ -84,6 +84,7 @@ export class PermissionManager {
   private deniedRules: string[] = [];
   private temporaryRules: string[] = [];
   private additionalDirectories: string[] = [];
+  private systemAdditionalDirectories: string[] = [];
   private workdir?: string;
   private planFilePath?: string;
   private onConfiguredDefaultModeChange?: (mode: PermissionMode) => void;
@@ -204,6 +205,20 @@ export class PermissionManager {
   }
 
   /**
+   * Add a system-level additional directory that is persistent across configuration reloads
+   */
+  public addSystemAdditionalDirectory(directory: string): void {
+    const resolvedPath =
+      this.workdir && !path.isAbsolute(directory)
+        ? path.resolve(this.workdir, directory)
+        : path.resolve(directory);
+
+    if (!this.systemAdditionalDirectories.includes(resolvedPath)) {
+      this.systemAdditionalDirectories.push(resolvedPath);
+    }
+  }
+
+  /**
    * Update the working directory
    */
   updateWorkdir(workdir: string): void {
@@ -246,6 +261,13 @@ export class PermissionManager {
 
     // Check additional directories
     for (const dir of this.additionalDirectories) {
+      if (isPathInside(absolutePath, dir)) {
+        return { isInside: true, resolvedPath: absolutePath };
+      }
+    }
+
+    // Check system additional directories
+    for (const dir of this.systemAdditionalDirectories) {
       if (isPathInside(absolutePath, dir)) {
         return { isInside: true, resolvedPath: absolutePath };
       }
