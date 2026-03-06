@@ -20,7 +20,7 @@ vi.mock("@vscode/ripgrep", () => ({
 
 // Mock utilities
 vi.mock("../utils/fileFilter.js", () => ({
-  getGlobIgnorePatterns: vi.fn(() => ["**/node_modules/**", "**/.git/**"]),
+  getAllIgnorePatterns: vi.fn(() => ["**/node_modules/**", "**/.git/**"]),
 }));
 
 vi.mock("../utils/path.js", () => ({
