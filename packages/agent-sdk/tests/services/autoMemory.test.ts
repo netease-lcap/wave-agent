@@ -55,7 +55,7 @@ describe("MemoryService Auto-Memory", () => {
       );
 
       expect(getGitCommonDir).toHaveBeenCalledWith("/repo/root/worktree");
-      expect(pathEncoder.encodeSync).toHaveBeenCalledWith("/repo/root/.git");
+      expect(pathEncoder.encodeSync).toHaveBeenCalledWith("/repo/root");
       expect(result).toBe("/home/user/.wave/projects/repo-root-hash/memory");
     });
   });
