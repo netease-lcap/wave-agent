@@ -64,7 +64,7 @@ allowed-tools: tool1, tool2
 name: test-skill
 description: A test skill for validation
 context: fork
-agent: typescript-expert
+agent: general-purpose
 ---
 
 # Test Skill`;
@@ -75,7 +75,7 @@ agent: typescript-expert
 
       expect(result.isValid).toBe(true);
       expect(result.skillMetadata.context).toBe("fork");
-      expect(result.skillMetadata.agent).toBe("typescript-expert");
+      expect(result.skillMetadata.agent).toBe("general-purpose");
     });
 
     it("should parse allowed-tools in frontmatter (list)", () => {

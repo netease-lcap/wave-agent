@@ -54,11 +54,12 @@
 ## Parallel Execution Examples
 
 ### User Story 1
-- `typescript-expert`: T002 Implement `parseCustomHeaders`
-- `vitest-expert`: T003 Create unit tests for `parseCustomHeaders`
+- `general-purpose`: T002 Implement `parseCustomHeaders`
+- `general-purpose`: T003 Create unit tests for `parseCustomHeaders`
 
 ## Implementation Strategy
 
 1. **MVP First**: Focus on US1 to get basic header support working.
 2. **Incremental Delivery**: US2 adds support for multiple headers in a single variable.
 3. **Quality First**: Ensure unit tests cover edge cases (malformed lines, empty values) before integration.
+on.

@@ -51,7 +51,7 @@ describe("skillTool fork", () => {
       type: "personal",
       skillPath: "/path/to/skill",
       context: "fork",
-      agent: "typescript-expert",
+      agent: "general-purpose",
     });
 
     const context = {
@@ -102,14 +102,14 @@ describe("skillTool fork", () => {
         description: "A forked skill",
         skillPath: "/path/to/skill",
         context: "fork" as const,
-        agent: "typescript-expert",
+        agent: "general-purpose",
       },
     ];
 
     const prompt = skillTool.prompt?.({ availableSkills: mockSkills });
 
     expect(prompt).toContain("fork-skill");
-    expect(prompt).not.toContain("[fork: typescript-expert]");
+    expect(prompt).not.toContain("[fork: general-purpose]");
   });
 
   it("should execute skill in fork context", async () => {
@@ -121,7 +121,7 @@ describe("skillTool fork", () => {
       type: "personal" as const,
       skillPath: "/path/to/skill",
       context: "fork" as const,
-      agent: "typescript-expert",
+      agent: "general-purpose",
     };
 
     vi.spyOn(skillManager, "getSkillMetadata").mockReturnValue(skillMetadata);
@@ -140,7 +140,7 @@ describe("skillTool fork", () => {
     };
 
     const mockSubagentManager = {
-      findSubagent: vi.fn().mockResolvedValue({ name: "typescript-expert" }),
+      findSubagent: vi.fn().mockResolvedValue({ name: "general-purpose" }),
       createInstance: vi.fn().mockResolvedValue(mockSubagentInstance),
       executeAgent: vi.fn().mockResolvedValue("Subagent execution result"),
       cleanupInstance: vi.fn(),
@@ -162,9 +162,9 @@ describe("skillTool fork", () => {
     expect(result.success).toBe(true);
     expect(result.content).toBe("Subagent execution result");
     expect(result.shortResult).toContain("Invoked skill: fork-skill");
-    expect(result.shortResult).not.toContain("(forked to typescript-expert)");
+    expect(result.shortResult).not.toContain("(forked to general-purpose)");
     expect(mockSubagentManager.findSubagent).toHaveBeenCalledWith(
-      "typescript-expert",
+      "general-purpose",
     );
     expect(mockSubagentManager.createInstance).toHaveBeenCalled();
     expect(mockSubagentManager.executeAgent).toHaveBeenCalledWith(

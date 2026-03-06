@@ -157,7 +157,7 @@ name: skill-name
 description: Brief description of what this skill does and when to use it
 allowed-tools: [tool1, tool2] # Optional
 context: fork # Optional
-agent: typescript-expert # Optional, defaults to general-purpose if context is fork
+agent: general-purpose # Optional, defaults to general-purpose if context is fork
 ---
 
 # Skill Content
