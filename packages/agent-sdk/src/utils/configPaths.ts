@@ -5,7 +5,7 @@
  * Supports both regular settings.json and settings.local.json with proper priority.
  *
  * Priority system:
- * - User configs: ~/.wave/settings.local.json > ~/.wave/settings.json
+ * - User configs: ~/.wave/settings.json
  * - Project configs: {workdir}/.wave/settings.local.json > {workdir}/.wave/settings.json
  * - Project configs override user configs (existing behavior)
  */
@@ -32,11 +32,11 @@ export function getProjectConfigPath(workdir: string): string {
 
 /**
  * Get the user-specific configuration file paths in priority order
- * Returns array with .local.json first, then .json
+ * Returns array with .json only
  */
 export function getUserConfigPaths(): string[] {
   const baseDir = join(homedir(), ".wave");
-  return [join(baseDir, "settings.local.json"), join(baseDir, "settings.json")];
+  return [join(baseDir, "settings.json")];
 }
 
 /**

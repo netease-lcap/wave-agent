@@ -691,7 +691,7 @@ export class ConfigurationService {
 
     let configPath: string;
     if (scope === "user") {
-      configPath = getUserConfigPaths()[1]; // settings.json
+      configPath = getUserConfigPaths()[0]; // settings.json
     } else if (scope === "project") {
       configPath = getProjectConfigPaths(workdir)[1]; // settings.json
     } else {
@@ -737,7 +737,7 @@ export class ConfigurationService {
 
     let configPath: string;
     if (scope === "user") {
-      configPath = getUserConfigPaths()[1]; // settings.json
+      configPath = getUserConfigPaths()[0]; // settings.json
     } else if (scope === "project") {
       configPath = getProjectConfigPaths(workdir)[1]; // settings.json
     } else {
@@ -993,14 +993,13 @@ export function loadProjectWaveConfig(
 export function loadMergedWaveConfig(
   workdir: string,
 ): WaveConfiguration | null {
-  const userPaths = getUserConfigPaths(); // [local, json]
+  const userPaths = getUserConfigPaths(); // [json]
   const projectPaths = getProjectConfigPaths(workdir); // [local, json]
 
   // Priority order (lowest to highest):
-  // user settings.json -> user settings.local.json -> project settings.json -> project settings.local.json
+  // user settings.json -> project settings.json -> project settings.local.json
   const pathsToLoad = [
-    userPaths[1], // user settings.json
-    userPaths[0], // user settings.local.json
+    userPaths[0], // user settings.json
     projectPaths[1], // project settings.json
     projectPaths[0], // project settings.local.json
   ];

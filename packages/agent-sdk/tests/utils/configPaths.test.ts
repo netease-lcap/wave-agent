@@ -44,10 +44,7 @@ describe("configPaths", () => {
 
   it("getUserConfigPaths returns priority paths", () => {
     const paths = getUserConfigPaths();
-    expect(paths).toEqual([
-      join(home, ".wave", "settings.local.json"),
-      join(home, ".wave", "settings.json"),
-    ]);
+    expect(paths).toEqual([join(home, ".wave", "settings.json")]);
   });
 
   it("getProjectConfigPaths returns priority paths", () => {
@@ -66,21 +63,21 @@ describe("configPaths", () => {
     const result = getAllConfigPaths(workdir);
     expect(result.userPaths).toEqual(getUserConfigPaths());
     expect(result.projectPaths).toEqual(getProjectConfigPaths(workdir));
-    expect(result.allPaths).toHaveLength(4);
+    expect(result.allPaths).toHaveLength(3);
   });
 
   it("getExistingConfigPaths filters existing paths", () => {
-    const userLocal = join(home, ".wave", "settings.local.json");
+    const userJson = join(home, ".wave", "settings.json");
     const projectJson = join(workdir, ".wave", "settings.json");
 
     vi.mocked(fs.existsSync).mockImplementation((path) => {
-      return path === userLocal || path === projectJson;
+      return path === userJson || path === projectJson;
     });
 
     const result = getExistingConfigPaths(workdir);
-    expect(result.userPaths).toEqual([userLocal]);
+    expect(result.userPaths).toEqual([userJson]);
     expect(result.projectPaths).toEqual([projectJson]);
-    expect(result.existingPaths).toEqual([userLocal, projectJson]);
+    expect(result.existingPaths).toEqual([userJson, projectJson]);
   });
 
   it("getFirstExistingPath returns first match", () => {
@@ -94,25 +91,25 @@ describe("configPaths", () => {
   });
 
   it("getEffectiveConfigPaths handles precedence", () => {
-    const userLocal = join(home, ".wave", "settings.local.json");
+    const userJson = join(home, ".wave", "settings.json");
     const projectLocal = join(workdir, ".wave", "settings.local.json");
 
     // Both exist
     vi.mocked(fs.existsSync).mockImplementation((path) => {
-      return path === userLocal || path === projectLocal;
+      return path === userJson || path === projectLocal;
     });
 
     let result = getEffectiveConfigPaths(workdir);
-    expect(result.userPath).toBe(userLocal);
+    expect(result.userPath).toBe(userJson);
     expect(result.projectPath).toBe(projectLocal);
     expect(result.effectivePath).toBe(projectLocal); // Project takes precedence
 
     // Only user exists
-    vi.mocked(fs.existsSync).mockImplementation((path) => path === userLocal);
+    vi.mocked(fs.existsSync).mockImplementation((path) => path === userJson);
     result = getEffectiveConfigPaths(workdir);
-    expect(result.userPath).toBe(userLocal);
+    expect(result.userPath).toBe(userJson);
     expect(result.projectPath).toBeUndefined();
-    expect(result.effectivePath).toBe(userLocal);
+    expect(result.effectivePath).toBe(userJson);
   });
 
   it("hasAnyConfig returns true if any config exists", () => {

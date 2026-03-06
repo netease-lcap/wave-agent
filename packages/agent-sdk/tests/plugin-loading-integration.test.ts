@@ -49,7 +49,6 @@ describe("Agent Plugin Loading Integration", () => {
 
     // Mock config paths
     vi.mocked(configPaths.getUserConfigPaths).mockReturnValue([
-      "/user/settings.local.json",
       "/user/settings.json",
     ]);
     vi.mocked(configPaths.getProjectConfigPaths).mockReturnValue([
