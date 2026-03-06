@@ -166,7 +166,7 @@ describe("ConfigurationService", () => {
     it("should correctly merge all 3 configuration files in priority order", async () => {
       const userSettingsPath = path.join(userHome, ".wave", "settings.json");
       const projectSettingsPath = path.join(tempDir, ".wave", "settings.json");
-      const projectLocalPath = path.join(
+      const localConfigPath = path.join(
         tempDir,
         ".wave",
         "settings.local.json",
@@ -186,19 +186,19 @@ describe("ConfigurationService", () => {
         permissions: { allow: ["rule-project"], defaultMode: "acceptEdits" },
       };
 
-      const projectLocal = {
+      const localSettings = {
         enabledPlugins: { "plugin3@market": false, "plugin4@market": true },
-        hooks: { PreToolUse: [{ matcher: "project-local", hooks: [] }] },
-        env: { VAR3: "project-local", VAR4: "project-local" },
+        hooks: { PreToolUse: [{ matcher: "local", hooks: [] }] },
+        env: { VAR3: "local", VAR4: "local" },
         permissions: {
-          allow: ["rule-project-local"],
+          allow: ["rule-local"],
           defaultMode: "bypassPermissions",
         },
       };
 
       mockExistsSync.mockImplementation((p) => {
         const pathStr = p.toString();
-        return [userSettingsPath, projectSettingsPath, projectLocalPath].some(
+        return [userSettingsPath, projectSettingsPath, localConfigPath].some(
           (expected) => pathStr.includes(expected),
         );
       });
@@ -209,8 +209,8 @@ describe("ConfigurationService", () => {
           return JSON.stringify(userSettings);
         if (pathStr.includes(projectSettingsPath))
           return JSON.stringify(projectSettings);
-        if (pathStr.includes(projectLocalPath))
-          return JSON.stringify(projectLocal);
+        if (pathStr.includes(localConfigPath))
+          return JSON.stringify(localSettings);
         return "";
       });
 
@@ -222,34 +222,30 @@ describe("ConfigurationService", () => {
       expect(result?.enabledPlugins).toEqual({
         "plugin1@market": true,
         "plugin2@market": false, // from projectSettings
-        "plugin3@market": false, // from projectLocal
-        "plugin4@market": true, // from projectLocal
+        "plugin3@market": false, // from localSettings
+        "plugin4@market": true, // from localSettings
       });
 
       // Verify hooks (combined)
       expect(result?.hooks?.PreToolUse).toHaveLength(3);
       expect(result?.hooks?.PreToolUse?.[0].matcher).toBe("user");
       expect(result?.hooks?.PreToolUse?.[1].matcher).toBe("project");
-      expect(result?.hooks?.PreToolUse?.[2].matcher).toBe("project-local");
+      expect(result?.hooks?.PreToolUse?.[2].matcher).toBe("local");
 
       // Verify env (merged with precedence)
       expect(result?.env).toEqual({
         VAR1: "user",
         VAR2: "project",
-        VAR3: "project-local",
-        VAR4: "project-local",
+        VAR3: "local",
+        VAR4: "local",
       });
 
       // Verify defaultMode (highest priority wins)
-      expect(result?.permissions?.defaultMode).toBe("bypassPermissions"); // from projectLocal
+      expect(result?.permissions?.defaultMode).toBe("bypassPermissions"); // from localSettings
 
       // Verify permissions.allow (combined)
       expect(result?.permissions?.allow).toEqual(
-        expect.arrayContaining([
-          "rule-user",
-          "rule-project",
-          "rule-project-local",
-        ]),
+        expect.arrayContaining(["rule-user", "rule-project", "rule-local"]),
       );
       expect(result?.permissions?.allow).toHaveLength(3);
     });

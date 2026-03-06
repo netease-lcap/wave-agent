@@ -594,7 +594,7 @@ export class ConfigurationService {
   }
 
   /**
-   * Add a permission rule to the project's settings.local.json
+   * Add a permission rule to the local settings.local.json
    */
   async addAllowedRule(workdir: string, rule: string): Promise<void> {
     const localConfigPath = path.join(workdir, ".wave", "settings.local.json");
@@ -651,7 +651,7 @@ export class ConfigurationService {
     } else if (scope === "project") {
       configPath = getProjectConfigPaths(workdir)[1]; // settings.json
     } else {
-      configPath = getProjectConfigPaths(workdir)[0]; // settings.local.json
+      configPath = getProjectConfigPaths(workdir)[0]; // local settings.local.json
     }
 
     // Ensure directory exists
@@ -697,7 +697,7 @@ export class ConfigurationService {
     } else if (scope === "project") {
       configPath = getProjectConfigPaths(workdir)[1]; // settings.json
     } else {
-      configPath = getProjectConfigPaths(workdir)[0]; // settings.local.json
+      configPath = getProjectConfigPaths(workdir)[0]; // local settings.local.json
     }
 
     if (!existsSync(configPath)) {
@@ -896,11 +896,11 @@ export function loadMergedWaveConfig(
   const projectPaths = getProjectConfigPaths(workdir); // [local, json]
 
   // Priority order (lowest to highest):
-  // user settings.json -> project settings.json -> project settings.local.json
+  // user settings.json -> project settings.json -> local settings.local.json
   const pathsToLoad = [
     userPaths[0], // user settings.json
     projectPaths[1], // project settings.json
-    projectPaths[0], // project settings.local.json
+    projectPaths[0], // local settings.local.json
   ];
 
   const configs: WaveConfiguration[] = [];

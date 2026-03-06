@@ -272,14 +272,14 @@ describe("ConfigurationService - Plugins", () => {
     it("should merge enabledPlugins with correct priority (local > project > user)", () => {
       const userJsonPath = path.join(userHome, ".wave", "settings.json");
       const projectJsonPath = path.join(workdir, ".wave", "settings.json");
-      const projectLocalPath = path.join(
+      const localConfigPath = path.join(
         workdir,
         ".wave",
         "settings.local.json",
       );
 
       vi.mocked(existsSync).mockImplementation((p) => {
-        return [userJsonPath, projectJsonPath, projectLocalPath].includes(
+        return [userJsonPath, projectJsonPath, localConfigPath].includes(
           p.toString(),
         );
       });
@@ -294,7 +294,7 @@ describe("ConfigurationService - Plugins", () => {
         if (pathStr === projectJsonPath) {
           return JSON.stringify({ enabledPlugins: { p2: false, p3: true } });
         }
-        if (pathStr === projectLocalPath) {
+        if (pathStr === localConfigPath) {
           return JSON.stringify({ enabledPlugins: { p3: false } });
         }
         return "";
