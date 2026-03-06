@@ -220,12 +220,12 @@ export const updateToolBlockInMessage = ({
       if (toolBlockIndex !== -1) {
         const toolBlock = newMessages[i].blocks[toolBlockIndex];
         if (toolBlock.type === "tool") {
-          toolBlock.parameters = parameters;
+          if (parameters !== undefined) toolBlock.parameters = parameters;
           if (result !== undefined) toolBlock.result = result;
           if (shortResult !== undefined) toolBlock.shortResult = shortResult;
           if (startLineNumber !== undefined)
             toolBlock.startLineNumber = startLineNumber;
-          toolBlock.images = images; // Add image data update
+          if (images !== undefined) toolBlock.images = images; // Add image data update
           if (success !== undefined) toolBlock.success = success;
           if (error !== undefined) toolBlock.error = error;
           if (stage !== undefined) toolBlock.stage = stage;
