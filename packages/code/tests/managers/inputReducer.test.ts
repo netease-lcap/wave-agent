@@ -579,6 +579,9 @@ describe("inputReducer", () => {
       expect(state.longTextMap).toEqual({ "[LongText#1]": "selected long" });
       expect(state.historyIndex).toBe(-1);
       expect(state.history).toEqual([]);
+      expect(state.showHistorySearch).toBe(false);
+      expect(state.historySearchQuery).toBe("");
+      expect(state.selectorJustUsed).toBe(true);
     });
 
     it("should handle RESET_HISTORY_NAVIGATION", () => {
