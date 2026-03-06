@@ -1,4 +1,3 @@
-import * as fs from "fs/promises";
 import { Container } from "./container.js";
 import { ForegroundTaskManager } from "../managers/foregroundTaskManager.js";
 import { BackgroundTaskManager } from "../managers/backgroundTaskManager.js";
@@ -195,17 +194,9 @@ export function setupAgentContainer(
         if (decision.clearContext) {
           messageManager.clearMessages();
           if (planFilePath) {
-            try {
-              const planContent = await fs.readFile(planFilePath, "utf-8");
-              messageManager.addUserMessage({
-                content: `Implement the following plan:\n\n${planContent}`,
-              });
-            } catch (error) {
-              logger.warn("Failed to read plan file for context clearing", {
-                planFilePath,
-                error: error instanceof Error ? error.message : String(error),
-              });
-            }
+            messageManager.addUserMessage({
+              content: `Implement the plan at ${planFilePath}`,
+            });
           }
         }
 
