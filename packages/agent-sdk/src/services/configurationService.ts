@@ -69,30 +69,10 @@ export class ConfigurationService {
     workdir: string,
   ): Promise<ConfigurationLoadResult> {
     try {
-      const userConfigPaths = getUserConfigPaths();
-      const projectConfigPaths = getProjectConfigPaths(workdir);
-
       // Use the merged configuration function (this loads user and project configs internally)
       const mergedConfig = loadMergedWaveConfig(workdir);
 
-      // Track loading context for better error messages by checking which files exist
-      const loadingContext: string[] = [];
-      const userPath = userConfigPaths.find((path) => existsSync(path));
-      if (userPath) {
-        loadingContext.push(`user config from ${userPath}`);
-      }
-
-      const projectPath = projectConfigPaths.find((path) => existsSync(path));
-      if (projectPath) {
-        loadingContext.push(`project config from ${projectPath}`);
-      }
-
       if (!mergedConfig) {
-        const message =
-          loadingContext.length > 0
-            ? `No valid configuration found despite attempting to load: ${loadingContext.join(", ")}`
-            : "No configuration files found in user or project directories";
-
         // Still set system environment variables even if no config is found
         const env = { WAVE_PROJECT_DIR: workdir };
         this.setEnvironmentVars(env);
@@ -100,7 +80,9 @@ export class ConfigurationService {
         return {
           configuration: { env },
           success: true, // No config is valid
-          warnings: [message],
+          warnings: [
+            "No configuration files found in user or project directories",
+          ],
         };
       }
 
@@ -108,11 +90,10 @@ export class ConfigurationService {
       const validation = this.validateConfiguration(mergedConfig);
 
       if (!validation.isValid) {
-        const sourcePaths = loadingContext.join(" and ");
         return {
           configuration: null,
           success: false,
-          error: `Merged configuration validation failed (sources: ${sourcePaths}): ${validation.errors.join(", ")}`,
+          error: `Merged configuration validation failed: ${validation.errors.join(", ")}`,
           warnings: validation.warnings,
         };
       }
@@ -128,12 +109,10 @@ export class ConfigurationService {
       this.setEnvironmentVars(env);
       mergedConfig.env = env;
 
-      const sourcePaths = loadingContext.join(" and ");
-
       return {
         configuration: mergedConfig,
         success: true,
-        sourcePath: sourcePaths || "merged configuration",
+        sourcePath: "merged configuration",
         warnings: validation.warnings,
       };
     } catch (error) {
@@ -343,13 +322,6 @@ export class ConfigurationService {
   // Utility operations
 
   /**
-   * Get currently loaded configuration
-   */
-  getCurrentConfiguration(): WaveConfiguration | null {
-    return this.currentConfiguration;
-  }
-
-  /**
    * Set environment variables from configuration
    * This replaces direct process.env modification
    */
@@ -406,16 +378,6 @@ export class ConfigurationService {
       resolvedBaseURL = this.options.baseURL;
     } else {
       resolvedBaseURL = this.env.WAVE_BASE_URL || "";
-    }
-
-    // If we have a parent configuration, use it as a fallback for API key and base URL
-    if (this.currentConfiguration?.env) {
-      if (resolvedApiKey === undefined) {
-        resolvedApiKey = this.currentConfiguration.env.WAVE_API_KEY;
-      }
-      if (!resolvedBaseURL) {
-        resolvedBaseURL = this.currentConfiguration.env.WAVE_BASE_URL || "";
-      }
     }
 
     // Fallback to process.env if still not resolved (for dynamic updates in tests)
@@ -486,9 +448,6 @@ export class ConfigurationService {
     // Resolve agent model: override > options > env (settings.json) > process.env > default
     let resolvedAgentModel = model || this.options.model || this.env.WAVE_MODEL;
 
-    if (!resolvedAgentModel && this.currentConfiguration?.env?.WAVE_MODEL) {
-      resolvedAgentModel = this.currentConfiguration.env.WAVE_MODEL;
-    }
     resolvedAgentModel =
       resolvedAgentModel || process.env.WAVE_MODEL || DEFAULT_AGENT_MODEL;
 
@@ -496,9 +455,6 @@ export class ConfigurationService {
     let resolvedFastModel =
       fastModel || this.options.fastModel || this.env.WAVE_FAST_MODEL;
 
-    if (!resolvedFastModel && this.currentConfiguration?.env?.WAVE_FAST_MODEL) {
-      resolvedFastModel = this.currentConfiguration.env.WAVE_FAST_MODEL;
-    }
     resolvedFastModel =
       resolvedFastModel || process.env.WAVE_FAST_MODEL || DEFAULT_FAST_MODEL;
 
@@ -907,29 +863,6 @@ export function loadWaveConfigFromFile(
     const content = readFileSync(filePath, "utf-8");
     const config = JSON.parse(content) as WaveConfiguration;
 
-    // Validate basic structure
-    if (!config || typeof config !== "object") {
-      throw new Error(`Invalid configuration structure in ${filePath}`);
-    }
-
-    // Validate environment variables if present
-    if (config.env !== undefined) {
-      const envValidation = validateEnvironmentConfig(config.env, filePath);
-
-      if (!envValidation.isValid) {
-        throw new Error(
-          `Environment variable validation failed in ${filePath}: ${envValidation.errors.join(", ")}`,
-        );
-      }
-
-      // Log warnings if any
-      if (envValidation.warnings.length > 0) {
-        console.warn(
-          `Environment variable warnings in ${filePath}:\n- ${envValidation.warnings.join("\n- ")}`,
-        );
-      }
-    }
-
     return {
       hooks: config.hooks || undefined,
       env: config.env || undefined,
@@ -949,40 +882,6 @@ export function loadWaveConfigFromFile(
     // Re-throw validation errors and other errors as-is
     throw error;
   }
-}
-
-/**
- * Load Wave configuration from multiple file paths in priority order
- * Returns the first valid configuration found, or null if none exist
- */
-export function loadWaveConfigFromFiles(
-  filePaths: string[],
-): WaveConfiguration | null {
-  for (const filePath of filePaths) {
-    const config = loadWaveConfigFromFile(filePath);
-    if (config !== null) {
-      return config;
-    }
-  }
-  return null;
-}
-
-/**
- * Load user-specific Wave configuration
- * Checks .local.json first, then falls back to .json
- */
-export function loadUserWaveConfig(): WaveConfiguration | null {
-  return loadWaveConfigFromFiles(getUserConfigPaths());
-}
-
-/**
- * Load project-specific Wave configuration
- * Checks .local.json first, then falls back to .json
- */
-export function loadProjectWaveConfig(
-  workdir: string,
-): WaveConfiguration | null {
-  return loadWaveConfigFromFiles(getProjectConfigPaths(workdir));
 }
 
 /**
