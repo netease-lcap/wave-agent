@@ -28,7 +28,7 @@ vi.mock("../utils/path.js", () => ({
 
 // Mock fileFilter utility
 vi.mock("../utils/fileFilter.js", () => ({
-  getGlobIgnorePatterns: vi.fn(() => ["**/node_modules/**", "**/.git/**"]),
+  getAllIgnorePatterns: vi.fn(() => ["**/node_modules/**", "**/.git/**"]),
 }));
 
 // Import the mocked modules

@@ -1,6 +1,6 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { spawn } from "child_process";
-import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
+import { getAllIgnorePatterns } from "../utils/fileFilter.js";
 import { rgPath } from "@vscode/ripgrep";
 import { getDisplayPath } from "../utils/path.js";
 import {
@@ -189,7 +189,7 @@ export const grepTool: ToolPlugin = {
       }
 
       // Get common ignore rules
-      const ignorePatterns = getGlobIgnorePatterns(workdir);
+      const ignorePatterns = getAllIgnorePatterns();
       for (const exclude of ignorePatterns) {
         rgArgs.push("--glob", `!${exclude}`);
       }

@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import { rgPath } from "@vscode/ripgrep";
 import fuzzysort from "fuzzysort";
-import { getGlobIgnorePatterns } from "./fileFilter.js";
+import { getAllIgnorePatterns } from "./fileFilter.js";
 import type { FileItem } from "../types/fileSearch.js";
 import { logger } from "./globalLogger.js";
 
@@ -13,7 +13,7 @@ async function getAllFiles(workingDirectory: string): Promise<string[]> {
     throw new Error("ripgrep is not available");
   }
 
-  const ignorePatterns = getGlobIgnorePatterns(workingDirectory);
+  const ignorePatterns = getAllIgnorePatterns();
   const rgArgs = ["--files", "--color=never", "--hidden"];
   for (const pattern of ignorePatterns) {
     rgArgs.push("--glob", `!${pattern}`);

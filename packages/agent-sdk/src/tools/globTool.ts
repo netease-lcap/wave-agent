@@ -2,7 +2,7 @@ import { glob } from "glob";
 import { stat } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
-import { getGlobIgnorePatterns } from "../utils/fileFilter.js";
+import { getAllIgnorePatterns } from "../utils/fileFilter.js";
 import { GLOB_TOOL_NAME } from "../constants/tools.js";
 
 /**
@@ -69,7 +69,7 @@ export const globTool: ToolPlugin = {
       // Execute glob search
       const matches = await glob(pattern, {
         cwd: workdir,
-        ignore: getGlobIgnorePatterns(workdir),
+        ignore: getAllIgnorePatterns(),
         dot: false,
         absolute: false,
         nocase: false, // Keep case sensitive
