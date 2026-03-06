@@ -71,6 +71,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showFileSelector,
     filteredFiles,
     fileSearchQuery: searchQuery,
+    isFileSearching,
     handleFileSelect,
     handleCancelFileSelect,
     // Command selector
@@ -185,6 +186,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
         <FileSelector
           files={filteredFiles}
           searchQuery={searchQuery}
+          isLoading={isFileSearching}
           onSelect={handleFileSelect}
           onCancel={handleCancelFileSelect}
         />

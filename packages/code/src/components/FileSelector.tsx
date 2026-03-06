@@ -7,6 +7,7 @@ export { type FileItem } from "wave-agent-sdk";
 export interface FileSelectorProps {
   files: FileItem[];
   searchQuery: string;
+  isLoading?: boolean;
   onSelect: (filePath: string) => void;
   onCancel: () => void;
 }
@@ -14,6 +15,7 @@ export interface FileSelectorProps {
 export const FileSelector: React.FC<FileSelectorProps> = ({
   files,
   searchQuery,
+  isLoading = false,
   onSelect,
   onCancel,
 }) => {
@@ -48,13 +50,21 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
       <Box
         flexDirection="column"
         borderStyle="single"
-        borderColor="yellow"
+        borderColor={isLoading ? "cyan" : "yellow"}
         borderBottom={false}
         borderLeft={false}
         borderRight={false}
       >
-        <Text color="yellow">No files found for "{searchQuery}"</Text>
-        <Text dimColor>Press Escape to cancel</Text>
+        {isLoading ? (
+          <Text color="cyan" bold>
+            Select File/Directory...
+          </Text>
+        ) : (
+          <>
+            <Text color="yellow">No files found for "{searchQuery}"</Text>
+            <Text dimColor>Press Escape to cancel</Text>
+          </>
+        )}
       </Box>
     );
   }
