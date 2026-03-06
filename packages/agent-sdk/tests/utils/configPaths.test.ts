@@ -92,17 +92,17 @@ describe("configPaths", () => {
 
   it("getEffectiveConfigPaths handles precedence", () => {
     const userJson = join(home, ".wave", "settings.json");
-    const projectLocal = join(workdir, ".wave", "settings.local.json");
+    const localConfigPath = join(workdir, ".wave", "settings.local.json");
 
     // Both exist
     vi.mocked(fs.existsSync).mockImplementation((path) => {
-      return path === userJson || path === projectLocal;
+      return path === userJson || path === localConfigPath;
     });
 
     let result = getEffectiveConfigPaths(workdir);
     expect(result.userPath).toBe(userJson);
-    expect(result.projectPath).toBe(projectLocal);
-    expect(result.effectivePath).toBe(projectLocal); // Project takes precedence
+    expect(result.projectPath).toBe(localConfigPath);
+    expect(result.effectivePath).toBe(localConfigPath); // Project takes precedence
 
     // Only user exists
     vi.mocked(fs.existsSync).mockImplementation((path) => path === userJson);

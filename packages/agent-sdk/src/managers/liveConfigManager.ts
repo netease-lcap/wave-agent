@@ -70,7 +70,7 @@ export class LiveConfigManager {
   /**
    * Initialize configuration watching
    * Maps to FR-004: System MUST watch settings.json files
-   * Supports watching multiple file paths (e.g., settings.local.json and settings.json)
+   * Supports watching multiple file paths (e.g., local settings.local.json and settings.json)
    */
   private async initializeWatching(
     userPaths: string[],
@@ -92,7 +92,7 @@ export class LiveConfigManager {
         }
       }
 
-      // Start watching project configs that exist
+      // Start watching local configs that exist
       if (projectPaths) {
         for (const projectPath of projectPaths) {
           if (existsSync(projectPath)) {

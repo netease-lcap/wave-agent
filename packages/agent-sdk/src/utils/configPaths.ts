@@ -2,11 +2,11 @@
  * Configuration Path Utilities
  *
  * Centralized utilities for resolving Wave configuration file paths.
- * Supports both regular settings.json and settings.local.json with proper priority.
+ * Supports both regular settings.json and local settings.local.json with proper priority.
  *
  * Priority system:
  * - User configs: ~/.wave/settings.json
- * - Project configs: {workdir}/.wave/settings.local.json > {workdir}/.wave/settings.json
+ * - Local configs: {workdir}/.wave/settings.local.json > {workdir}/.wave/settings.json
  * - Project configs override user configs (existing behavior)
  */
 
@@ -47,7 +47,7 @@ export function getPluginsDir(): string {
 }
 
 /**
- * Get the project-specific configuration file paths in priority order
+ * Get the local configuration file paths in priority order
  * Returns array with .local.json first, then .json
  */
 export function getProjectConfigPaths(workdir: string): string[] {
