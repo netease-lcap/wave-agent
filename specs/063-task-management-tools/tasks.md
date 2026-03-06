@@ -154,8 +154,8 @@
 
 ### Task Delegation (CRITICAL)
 Tasks in this file MUST be delegated to specialized subagents whenever possible.
-- Use `typescript-expert` for implementation and type fixes.
-- Use `vitest-expert` for creating and running tests.
+- Use `general-purpose` for implementation and type fixes.
+- Use `general-purpose` for creating and running tests.
 - Use `Explore` for codebase research.
 
 ### MVP First (User Story 1 Only)

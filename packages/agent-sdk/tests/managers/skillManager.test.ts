@@ -121,7 +121,7 @@ describe("SkillManager", () => {
           type: "personal",
           skillPath: "/path/to/skill1",
           context: "fork",
-          agent: "typescript-expert",
+          agent: "general-purpose",
         },
         content: "---\nname: skill1\n---\ncontent1",
         frontmatter: { name: "skill1" },
@@ -134,7 +134,7 @@ describe("SkillManager", () => {
       expect(metadata).toBeDefined();
       expect(metadata?.name).toBe("skill1");
       expect(metadata?.context).toBe("fork");
-      expect(metadata?.agent).toBe("typescript-expert");
+      expect(metadata?.agent).toBe("general-purpose");
     });
 
     it("should handle discovery errors and log warnings", async () => {
@@ -289,13 +289,13 @@ describe("SkillManager", () => {
           name: "plugin-skill",
           description: "from plugin",
           context: "fork",
-          agent: "typescript-expert",
+          agent: "general-purpose",
           model: "gpt-4",
         },
         isValid: true,
         errors: [],
         context: "fork",
-        agent: "typescript-expert",
+        agent: "general-purpose",
         model: "gpt-4",
         disableModelInvocation: true,
         userInvocable: false,
@@ -306,7 +306,7 @@ describe("SkillManager", () => {
       const metadata = skillManager.getSkillMetadata("plugin-skill");
       expect(metadata).toBeDefined();
       expect(metadata?.context).toBe("fork");
-      expect(metadata?.agent).toBe("typescript-expert");
+      expect(metadata?.agent).toBe("general-purpose");
       expect(metadata?.model).toBe("gpt-4");
       expect(metadata?.disableModelInvocation).toBe(true);
       expect(metadata?.userInvocable).toBe(false);

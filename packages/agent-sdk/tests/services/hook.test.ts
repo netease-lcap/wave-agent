@@ -563,7 +563,7 @@ describe("Hook Services", () => {
         sessionId: "subagent-session-456",
         transcriptPath: "/path/to/subagent-transcript.md",
         cwd: "/test/cwd",
-        subagentType: "typescript-expert", // Include subagent type
+        subagentType: "general-purpose", // Include subagent type
       };
 
       const resultPromise = executeCommand("echo test", subagentContext);
@@ -582,7 +582,7 @@ describe("Hook Services", () => {
       );
       expect(parsedInput.cwd).toBe("/test/cwd");
       expect(parsedInput.hook_event_name).toBe("PostToolUse");
-      expect(parsedInput.subagent_type).toBe("typescript-expert"); // Verify subagent_type is included
+      expect(parsedInput.subagent_type).toBe("general-purpose"); // Verify subagent_type is included
     });
 
     it("should not include subagent_type in JSON input when executed by main agent", async () => {

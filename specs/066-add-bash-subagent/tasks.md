@@ -98,8 +98,8 @@ Task: "Define BASH_SUBAGENT_SYSTEM_PROMPT in packages/agent-sdk/src/constants/pr
 ## Implementation Strategy
 
 ### Task Delegation (CRITICAL)
-- Use `typescript-expert` for T003, T004, T006, T007.
-- Use `vitest-expert` for T005, T009.
+- Use `general-purpose` for T003, T004, T006, T007.
+- Use `general-purpose` for T005, T009.
 
 ### MVP First (User Story 1 Only)
 1. Complete Setup & Foundational.

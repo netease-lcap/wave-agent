@@ -152,11 +152,12 @@ description: "Task list for CLI tool selection implementation"
 ## Implementation Strategy
 
 ### Task Delegation (CRITICAL)
-- Use `typescript-expert` for SDK and CLI implementation (T003-T006, T009-T013, T016-T017, T019-T020, T022).
-- Use `vitest-expert` for all test tasks (T007, T008, T014, T015, T018, T021).
+- Use `general-purpose` for SDK and CLI implementation (T003-T006, T009-T013, T016-T017, T019-T020, T022).
+- Use `general-purpose` for all test tasks (T007, T008, T014, T015, T018, T021).
 - Use `Explore` for verifying tool names and existing test patterns.
 
 ### MVP First (User Story 1 Only)
 1. Complete Phase 1 & 2.
 2. Complete Phase 3 (US1).
 3. Validate US1 independently.
+ly.

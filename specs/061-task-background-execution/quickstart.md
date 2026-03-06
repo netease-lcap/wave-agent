@@ -9,7 +9,7 @@ To start a long-running task without blocking the agent:
 await agent.callTool("Task", {
   description: "Refactor the codebase",
   prompt: "Go through all files and apply the new linting rules",
-  subagent_type: "typescript-expert",
+  subagent_type: "general-purpose",
   run_in_background: true
 });
 // Returns: "Task started in background. Task ID: task_1"
