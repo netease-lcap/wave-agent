@@ -47,6 +47,15 @@ describe("LiveConfigManager - Validation", () => {
       loadMergedConfiguration: vi.fn(),
       setEnvironmentVars: vi.fn(),
       setOptions: vi.fn(),
+      getConfigurationPaths: vi.fn().mockReturnValue({
+        userPaths: ["/mock/user/settings.json"],
+        projectPaths: ["/mock/project/.wave/settings.json"],
+        allPaths: [
+          "/mock/user/settings.json",
+          "/mock/project/.wave/settings.json",
+        ],
+        existingPaths: [],
+      }),
     } as Partial<ConfigurationService> as ConfigurationService;
 
     // Setup container
@@ -96,8 +105,11 @@ describe("LiveConfigManager - Validation", () => {
       } as unknown as WaveConfiguration;
 
       const mockResult: ConfigurationLoadResult = {
-        success: true,
-        configuration: mockConfig,
+        success: expectedValid,
+        configuration: expectedValid ? mockConfig : null,
+        error: expectedValid
+          ? undefined
+          : "Configuration validation failed: Invalid defaultMode",
         sourcePath: "/mock/project/.wave/settings.json",
         warnings: [],
       };
