@@ -53,15 +53,30 @@ describe("PermissionManager", () => {
           additionalDirectories: [autoMemoryDir],
         });
 
-        // In default mode, restricted tools normally require callback
-        // But if it's an unrestricted tool, it's allowed.
-        // Wait, Write IS a restricted tool.
-        // Let's check acceptEdits mode which uses Safe Zone.
-
         const contextAcceptEdits: ToolPermissionContext = {
           toolName: "Write",
           permissionMode: "acceptEdits",
           toolInput: { file_path: path.join(autoMemoryDir, "MEMORY.md") },
+        };
+
+        const result = await manager.checkPermission(contextAcceptEdits);
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should allow file operations in system additional directories", async () => {
+        const workdir = "/home/user/project";
+        const systemDir = "/home/user/system-safe";
+        const container = new Container();
+        const manager = new PermissionManager(container, {
+          workdir,
+        });
+
+        manager.addSystemAdditionalDirectory(systemDir);
+
+        const contextAcceptEdits: ToolPermissionContext = {
+          toolName: "Write",
+          permissionMode: "acceptEdits",
+          toolInput: { file_path: path.join(systemDir, "test.txt") },
         };
 
         const result = await manager.checkPermission(contextAcceptEdits);
