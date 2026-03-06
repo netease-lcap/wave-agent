@@ -1,4 +1,5 @@
-import { glob } from "glob";
+import { spawn } from "child_process";
+import { rgPath } from "@vscode/ripgrep";
 import { stat } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";
@@ -9,6 +10,61 @@ import { GLOB_TOOL_NAME } from "../constants/tools.js";
  * Maximum number of files returned by glob tool
  */
 const MAX_GLOB_RESULTS = 1000;
+
+/**
+ * Execute ripgrep to find files matching a pattern
+ */
+async function runRipgrep(pattern: string, workdir: string): Promise<string[]> {
+  if (!rgPath) {
+    throw new Error("ripgrep is not available");
+  }
+
+  const ignorePatterns = getAllIgnorePatterns();
+  const rgArgs = ["--files", "--color=never", "--hidden", "--glob", pattern];
+
+  for (const ignorePattern of ignorePatterns) {
+    rgArgs.push("--glob", `!${ignorePattern}`);
+  }
+
+  return new Promise<string[]>((resolve, reject) => {
+    const child = spawn(rgPath, rgArgs, {
+      cwd: workdir,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout?.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr?.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0 && code !== 1) {
+        reject(
+          new Error(
+            `ripgrep failed with code ${code}: ${stderr || "Unknown error"}`,
+          ),
+        );
+        return;
+      }
+      const files = stdout
+        .trim()
+        .split("\n")
+        .filter((f) => f.length > 0)
+        .map((f) => f.replace(/\\/g, "/")); // Normalize to forward slashes
+      resolve(files);
+    });
+
+    child.on("error", (err) => {
+      reject(err);
+    });
+  });
+}
 
 /**
  * Glob Tool Plugin - Fast file pattern matching
@@ -66,14 +122,8 @@ export const globTool: ToolPlugin = {
         ? resolvePath(searchPath, context.workdir)
         : context.workdir;
 
-      // Execute glob search
-      const matches = await glob(pattern, {
-        cwd: workdir,
-        ignore: getAllIgnorePatterns(),
-        dot: false,
-        absolute: false,
-        nocase: false, // Keep case sensitive
-      });
+      // Execute glob search using ripgrep
+      const matches = await runRipgrep(pattern, workdir);
 
       if (matches.length === 0) {
         return {
@@ -87,7 +137,7 @@ export const globTool: ToolPlugin = {
       const filesWithStats = await Promise.allSettled(
         matches.map(async (file) => {
           try {
-            const fullPath = resolvePath(file, context.workdir);
+            const fullPath = resolvePath(file, workdir);
             const stats = await stat(fullPath);
             return {
               path: file,
