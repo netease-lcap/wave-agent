@@ -8,7 +8,6 @@
  */
 
 import { existsSync } from "fs";
-import type { PermissionMode } from "../types/permissions.js";
 import type { Scope } from "../types/configuration.js";
 import {
   FileWatcherService,
@@ -16,12 +15,7 @@ import {
 } from "../services/fileWatcher.js";
 import type { HookManager } from "./hookManager.js";
 import type { PermissionManager } from "./permissionManager.js";
-import {
-  getProjectConfigPaths,
-  getUserConfigPaths,
-} from "@/utils/configPaths.js";
-import type { HookValidationResult } from "../types/hooks.js";
-import { isValidHookEvent, isValidHookEventConfig } from "../types/hooks.js";
+import { isValidHookEvent } from "../types/hooks.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { ensureGlobalGitIgnore } from "../utils/fileUtils.js";
 import { Container } from "../utils/container.js";
@@ -241,42 +235,6 @@ export class LiveConfigManager {
         );
       }
 
-      // Validate new configuration if it exists
-      if (newConfig) {
-        const validation = this.validateConfiguration(newConfig);
-        if (!validation.valid) {
-          const errorMessage = `Configuration validation failed: ${validation.errors.join(", ")}`;
-          logger?.error(`Live Config: ${errorMessage}`);
-
-          // Use previous valid configuration for error recovery
-          if (this.lastValidConfiguration) {
-            this.currentConfiguration = this.lastValidConfiguration;
-
-            // Apply environment variables to configuration service if configured
-            if (this.lastValidConfiguration.env) {
-              this.configurationService.setEnvironmentVars(
-                this.lastValidConfiguration.env,
-              );
-            }
-
-            // Update hook manager if available
-            if (this.hookManager) {
-              this.hookManager.loadConfigurationFromWaveConfig(
-                this.lastValidConfiguration,
-              );
-            }
-
-            return this.currentConfiguration;
-          } else {
-            logger?.warn(
-              "Live Config: No previous valid configuration available, using empty config",
-            );
-            this.currentConfiguration = {};
-            return this.currentConfiguration;
-          }
-        }
-      }
-
       // Detect changes between old and new configuration
       this.detectChanges(this.currentConfiguration, newConfig);
 
@@ -431,101 +389,6 @@ export class LiveConfigManager {
     }
   }
 
-  /**
-   * Validate configuration structure and content
-   */
-  private validateConfiguration(
-    config: WaveConfiguration,
-  ): HookValidationResult {
-    const errors: string[] = [];
-
-    if (!config || typeof config !== "object") {
-      return { valid: false, errors: ["Configuration must be an object"] };
-    }
-
-    // Validate permissions if present
-    if (config.permissions) {
-      if (typeof config.permissions !== "object") {
-        errors.push("permissions property must be an object");
-      } else {
-        // Validate defaultMode if present
-        if (config.permissions.defaultMode !== undefined) {
-          const validModes: PermissionMode[] = [
-            "default",
-            "bypassPermissions",
-            "acceptEdits",
-            "plan",
-          ];
-          if (!validModes.includes(config.permissions.defaultMode)) {
-            errors.push(
-              `Invalid defaultMode: "${config.permissions.defaultMode}". Must be one of: ${validModes.join(", ")}`,
-            );
-          }
-        }
-
-        // Validate allow if present
-        if (config.permissions.allow) {
-          if (!Array.isArray(config.permissions.allow)) {
-            errors.push("permissions.allow must be an array");
-          }
-        }
-      }
-    }
-
-    // Validate hooks if present
-    if (config.hooks) {
-      if (typeof config.hooks !== "object") {
-        errors.push("hooks property must be an object");
-      } else {
-        // Validate each hook event
-        for (const [eventName, eventConfigs] of Object.entries(config.hooks)) {
-          // Validate event name
-          if (!isValidHookEvent(eventName)) {
-            errors.push(`Invalid hook event: ${eventName}`);
-            continue;
-          }
-
-          // Validate event configurations
-          if (!Array.isArray(eventConfigs)) {
-            errors.push(
-              `Hook event ${eventName} must be an array of configurations`,
-            );
-            continue;
-          }
-
-          eventConfigs.forEach((eventConfig, index) => {
-            if (!isValidHookEventConfig(eventConfig)) {
-              errors.push(
-                `Invalid hook event configuration at ${eventName}[${index}]`,
-              );
-            }
-          });
-        }
-      }
-    }
-
-    // Validate environment variables if present
-    if (config.env) {
-      if (typeof config.env !== "object" || Array.isArray(config.env)) {
-        errors.push("env property must be an object");
-      } else {
-        for (const [key, value] of Object.entries(config.env)) {
-          if (typeof key !== "string" || key.trim() === "") {
-            errors.push(`Invalid environment variable key: ${key}`);
-          }
-          if (typeof value !== "string") {
-            errors.push(`Environment variable ${key} must have a string value`);
-          }
-        }
-      }
-    }
-
-    return {
-      valid: errors.length === 0,
-      errors,
-    };
-  }
-
   private detectChanges(
     oldConfig: WaveConfiguration | null,
     newConfig: WaveConfiguration | null,
@@ -589,8 +452,10 @@ export class LiveConfigManager {
     userPaths: string[];
     projectPaths: string[];
   } {
-    const userPaths = getUserConfigPaths();
-    const projectPaths = getProjectConfigPaths(this.workdir);
-    return { userPaths, projectPaths };
+    const paths = this.configurationService.getConfigurationPaths(this.workdir);
+    return {
+      userPaths: paths.userPaths,
+      projectPaths: paths.projectPaths,
+    };
   }
 }

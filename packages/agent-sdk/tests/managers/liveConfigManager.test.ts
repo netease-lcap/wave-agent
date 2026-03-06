@@ -65,6 +65,15 @@ describe("LiveConfigManager - Configuration Management", () => {
       loadMergedConfiguration: vi.fn(),
       setEnvironmentVars: vi.fn(),
       setOptions: vi.fn(),
+      getConfigurationPaths: vi.fn().mockReturnValue({
+        userPaths: ["/mock/user/settings.json"],
+        projectPaths: ["/mock/project/.wave/settings.json"],
+        allPaths: [
+          "/mock/user/settings.json",
+          "/mock/project/.wave/settings.json",
+        ],
+        existingPaths: [],
+      }),
     } as Partial<ConfigurationService> as ConfigurationService;
 
     // Setup container
@@ -353,11 +362,14 @@ describe("LiveConfigManager - Configuration Management", () => {
   describe("GitIgnore Integration", () => {
     it("should add settings.local.json to global gitignore on initialization if it exists", async () => {
       const localConfigPath = "/mock/project/.wave/settings.local.json";
-      vi.mocked(configPaths.getUserConfigPaths).mockReturnValue([]);
-      vi.mocked(configPaths.getProjectConfigPaths).mockReturnValue([
-        localConfigPath,
-        "/mock/project/.wave/settings.json",
-      ]);
+      vi.mocked(mockConfigurationService.getConfigurationPaths).mockReturnValue(
+        {
+          userPaths: [],
+          projectPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
+          allPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
+          existingPaths: [localConfigPath],
+        },
+      );
       vi.mocked(existsSync).mockImplementation(
         (path) => path === localConfigPath,
       );
@@ -380,11 +392,15 @@ describe("LiveConfigManager - Configuration Management", () => {
     });
 
     it("should add settings.local.json to global gitignore when it is created", async () => {
-      vi.mocked(configPaths.getUserConfigPaths).mockReturnValue([]);
-      vi.mocked(configPaths.getProjectConfigPaths).mockReturnValue([
-        "/mock/project/.wave/settings.local.json",
-        "/mock/project/.wave/settings.json",
-      ]);
+      const localConfigPath = "/mock/project/.wave/settings.local.json";
+      vi.mocked(mockConfigurationService.getConfigurationPaths).mockReturnValue(
+        {
+          userPaths: [],
+          projectPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
+          allPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
+          existingPaths: [localConfigPath],
+        },
+      );
 
       const mockResult: ConfigurationLoadResult = {
         success: true,
@@ -420,11 +436,15 @@ describe("LiveConfigManager - Configuration Management", () => {
     });
 
     it("should not add settings.local.json to global gitignore when it is modified", async () => {
-      vi.mocked(configPaths.getUserConfigPaths).mockReturnValue([]);
-      vi.mocked(configPaths.getProjectConfigPaths).mockReturnValue([
-        "/mock/project/.wave/settings.local.json",
-        "/mock/project/.wave/settings.json",
-      ]);
+      const localConfigPath = "/mock/project/.wave/settings.local.json";
+      vi.mocked(mockConfigurationService.getConfigurationPaths).mockReturnValue(
+        {
+          userPaths: [],
+          projectPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
+          allPaths: [localConfigPath, "/mock/project/.wave/settings.json"],
+          existingPaths: [localConfigPath],
+        },
+      );
 
       const mockResult: ConfigurationLoadResult = {
         success: true,

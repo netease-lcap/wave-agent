@@ -15,10 +15,7 @@ import {
   getConfigurationInfo,
   hasAnyConfig as hasHooksConfiguration,
 } from "../src/utils/configPaths.js";
-import {
-  loadProjectWaveConfig,
-  loadMergedWaveConfig,
-} from "../src/services/configurationService.js";
+import { loadMergedWaveConfig } from "../src/services/configurationService.js";
 import { mkdir, writeFile, rmdir } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
@@ -79,7 +76,7 @@ async function testConfigurationPriority(): Promise<void> {
     console.log("📝 Created settings.json");
 
     // Load config (should load from settings.json)
-    let projectConfig = loadProjectWaveConfig(testDir);
+    let projectConfig = loadMergedWaveConfig(testDir);
     console.log(`📋 Config loaded from settings.json:`, projectConfig?.env);
 
     // Create settings.local.json
@@ -91,7 +88,7 @@ async function testConfigurationPriority(): Promise<void> {
     console.log("📝 Created settings.local.json");
 
     // Load config again (should now load from settings.local.json)
-    projectConfig = loadProjectWaveConfig(testDir);
+    projectConfig = loadMergedWaveConfig(testDir);
     console.log(
       `📋 Config loaded from settings.local.json:`,
       projectConfig?.env,
