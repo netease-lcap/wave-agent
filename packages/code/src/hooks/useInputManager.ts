@@ -41,10 +41,10 @@ export const useInputManager = (
   // Handle debounced file search
   useEffect(() => {
     if (state.showFileSelector) {
-      const debounceDelay = parseInt(
-        process.env.FILE_SELECTOR_DEBOUNCE_MS || "300",
-        10,
-      );
+      const debounceDelay =
+        state.fileSearchQuery === ""
+          ? 0
+          : parseInt(process.env.FILE_SELECTOR_DEBOUNCE_MS || "300", 10);
       const timer = setTimeout(async () => {
         try {
           const fileItems = await searchFilesUtil(state.fileSearchQuery);
@@ -372,6 +372,7 @@ export const useInputManager = (
     showFileSelector: state.showFileSelector,
     filteredFiles: state.filteredFiles,
     fileSearchQuery: state.fileSearchQuery,
+    isFileSearching: state.isFileSearching,
     atPosition: state.atPosition,
     showCommandSelector: state.showCommandSelector,
     commandSearchQuery: state.commandSearchQuery,

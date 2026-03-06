@@ -38,6 +38,7 @@ describe("inputReducer", () => {
       historyIndex: -1,
       originalInputText: "",
       originalLongTextMap: {},
+      isFileSearching: false,
     });
   });
 
@@ -155,6 +156,7 @@ describe("inputReducer", () => {
     expect(state.atPosition).toBe(5);
     expect(state.fileSearchQuery).toBe("");
     expect(state.filteredFiles).toEqual([]);
+    expect(state.isFileSearching).toBe(true);
   });
 
   it("should handle SET_FILE_SEARCH_QUERY", () => {
@@ -163,15 +165,20 @@ describe("inputReducer", () => {
       payload: "test",
     });
     expect(state.fileSearchQuery).toBe("test");
+    expect(state.isFileSearching).toBe(true);
   });
 
   it("should handle SET_FILTERED_FILES", () => {
     const files: FileItem[] = [{ path: "test.ts", type: "file" }];
-    const state = inputReducer(initialState, {
-      type: "SET_FILTERED_FILES",
-      payload: files,
-    });
+    const state = inputReducer(
+      { ...initialState, isFileSearching: true },
+      {
+        type: "SET_FILTERED_FILES",
+        payload: files,
+      },
+    );
     expect(state.filteredFiles).toEqual(files);
+    expect(state.isFileSearching).toBe(false);
   });
 
   it("should handle CANCEL_FILE_SELECTOR", () => {
@@ -181,6 +188,7 @@ describe("inputReducer", () => {
       atPosition: 5,
       fileSearchQuery: "test",
       filteredFiles: [{ path: "test.ts", type: "file" }],
+      isFileSearching: true,
     };
     const state = inputReducer(stateWithSelector, {
       type: "CANCEL_FILE_SELECTOR",
@@ -190,6 +198,7 @@ describe("inputReducer", () => {
     expect(state.fileSearchQuery).toBe("");
     expect(state.filteredFiles).toEqual([]);
     expect(state.selectorJustUsed).toBe(true);
+    expect(state.isFileSearching).toBe(false);
   });
 
   it("should handle ACTIVATE_COMMAND_SELECTOR", () => {

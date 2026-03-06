@@ -70,6 +70,7 @@ export interface InputState {
   historyIndex: number;
   originalInputText: string;
   originalLongTextMap: Record<string, string>;
+  isFileSearching: boolean;
 }
 
 export const initialState: InputState = {
@@ -102,6 +103,7 @@ export const initialState: InputState = {
   historyIndex: -1,
   originalInputText: "",
   originalLongTextMap: {},
+  isFileSearching: false,
 };
 
 export type InputAction =
@@ -208,11 +210,20 @@ export function inputReducer(
         atPosition: action.payload,
         fileSearchQuery: "",
         filteredFiles: [],
+        isFileSearching: true,
       };
     case "SET_FILE_SEARCH_QUERY":
-      return { ...state, fileSearchQuery: action.payload };
+      return {
+        ...state,
+        fileSearchQuery: action.payload,
+        isFileSearching: true,
+      };
     case "SET_FILTERED_FILES":
-      return { ...state, filteredFiles: action.payload };
+      return {
+        ...state,
+        filteredFiles: action.payload,
+        isFileSearching: false,
+      };
     case "CANCEL_FILE_SELECTOR":
       return {
         ...state,
@@ -221,6 +232,7 @@ export function inputReducer(
         fileSearchQuery: "",
         filteredFiles: [],
         selectorJustUsed: true,
+        isFileSearching: false,
       };
     case "ACTIVATE_COMMAND_SELECTOR":
       return {
