@@ -41,5 +41,5 @@ Always use `pnpm` as the package manager.
 
 ## 🤖 Subagent Usage
 
-- **Subagent Usage**: If you have the `Agent` tool, use specialized agents (Explore, Plan, Bash, general-purpose) for focused tasks (exploration, development, or testing) to reduce context usage. Note that subagents typically do not have access to the `Agent` tool.
+- **Subagent Usage**: If you have the `Agent` tool, use specialized agents (Explore, Plan, Bash, general-purpose) for focused tasks (exploration, development, or testing) to reduce context usage. When using the `Agent` tool, explicitly instruct the subagent to ONLY perform the tasks delegated to them and never do other tasks. Note that subagents typically do not have access to the `Agent` tool.
 
