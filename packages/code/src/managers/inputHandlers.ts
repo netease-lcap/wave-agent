@@ -51,11 +51,16 @@ export const handleSubmit = async (
       )
       .map((img) => ({ path: img.path, mimeType: img.mimeType }));
 
-    let cleanContent = state.inputText.replace(imageRegex, "").trim();
-    cleanContent = expandLongTextPlaceholders(cleanContent, state.longTextMap);
+    const contentWithPlaceholders = state.inputText
+      .replace(imageRegex, "")
+      .trim();
+    const cleanContent = expandLongTextPlaceholders(
+      contentWithPlaceholders,
+      state.longTextMap,
+    );
 
     PromptHistoryManager.addEntry(
-      cleanContent,
+      contentWithPlaceholders,
       callbacks.sessionId,
       state.longTextMap,
     ).catch((err: unknown) => {
