@@ -8,6 +8,7 @@ import {
   cleanupLogs,
 } from "../../src/utils/logger.js";
 import { DATA_DIRECTORY } from "../../src/utils/constants.js";
+import { stripAnsiColors } from "wave-agent-sdk";
 
 // Mock fs
 vi.mock("fs", () => ({
@@ -51,7 +52,9 @@ describe("Logger Utility", () => {
       logger.warn("test warn");
       logger.error("test error");
 
-      const calls = appendSpy.mock.calls.map((call) => call[1] as string);
+      const calls = appendSpy.mock.calls.map((call) =>
+        stripAnsiColors(call[1] as string),
+      );
 
       // Depending on the initial log level, some might not be called.
       // But we can check the ones that are.
@@ -73,29 +76,39 @@ describe("Logger Utility", () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
 
       logger.info(null);
-      expect(appendSpy.mock.calls[0][1]).toContain("null");
+      expect(stripAnsiColors(appendSpy.mock.calls[0][1] as string)).toContain(
+        "null",
+      );
 
       logger.info(undefined);
-      expect(appendSpy.mock.calls[1][1]).toContain("undefined");
+      expect(stripAnsiColors(appendSpy.mock.calls[1][1] as string)).toContain(
+        "undefined",
+      );
 
       const err = new Error("test error");
       err.stack = "stack trace";
       logger.info(err);
-      expect(appendSpy.mock.calls[2][1]).toContain("stack trace");
+      expect(stripAnsiColors(appendSpy.mock.calls[2][1] as string)).toContain(
+        "stack trace",
+      );
 
       const obj = { a: 1, b: { c: 2 } };
       logger.info(obj);
-      expect(appendSpy.mock.calls[3][1]).toContain(
+      expect(stripAnsiColors(appendSpy.mock.calls[3][1] as string)).toContain(
         JSON.stringify(obj, null, 2),
       );
 
       const circular: Record<string, unknown> = { a: 1 };
       circular.self = circular;
       logger.info(circular);
-      expect(appendSpy.mock.calls[4][1]).toContain("[object Object]");
+      expect(stripAnsiColors(appendSpy.mock.calls[4][1] as string)).toContain(
+        "[object Object]",
+      );
 
       logger.info("hello", 123, true);
-      expect(appendSpy.mock.calls[5][1]).toContain("hello 123 true");
+      expect(stripAnsiColors(appendSpy.mock.calls[5][1] as string)).toContain(
+        "hello 123 true",
+      );
     });
   });
 
@@ -131,7 +144,7 @@ describe("Logger Utility", () => {
 
       expect(fs.appendFileSync).toHaveBeenCalledWith(
         getLogFile(),
-        expect.stringContaining("[INFO] test message"),
+        expect.stringMatching(/\[.*\] \[.*INFO.*\] test message/),
       );
     });
 
@@ -173,7 +186,7 @@ describe("Logger Utility", () => {
         expect.stringContaining("Failed to write to log file"),
       );
       expect(stderrSpy).toHaveBeenCalledWith(
-        expect.stringContaining("[INFO] test message"),
+        expect.stringMatching(/\[.*\] \[.*INFO.*\] test message/),
       );
 
       stderrSpy.mockRestore();
