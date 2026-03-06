@@ -4,15 +4,22 @@ import { TaskManager } from "@/services/taskManager.js";
 import type { ToolContext } from "@/tools/types.js";
 import type { Stats } from "fs";
 import { Container } from "@/utils/container.js";
+import { spawn } from "child_process";
+import { EventEmitter } from "events";
 
 const testContext: ToolContext = {
   workdir: "/test/workdir",
   taskManager: new TaskManager(new Container(), "test-session"),
 };
 
-// Mock glob
-vi.mock("glob", () => ({
-  glob: vi.fn(),
+// Mock child_process
+vi.mock("child_process", () => ({
+  spawn: vi.fn(),
+}));
+
+// Mock @vscode/ripgrep
+vi.mock("@vscode/ripgrep", () => ({
+  rgPath: "/mock/rg",
 }));
 
 // Mock fs/promises
@@ -21,22 +28,24 @@ vi.mock("fs/promises", () => ({
 }));
 
 // Mock path utilities
-vi.mock("../utils/path.js", () => ({
-  resolvePath: vi.fn((path: string, workdir: string) => path || workdir),
+vi.mock("@/utils/path.js", () => ({
+  resolvePath: vi.fn((path: string, workdir: string) => {
+    if (path.startsWith("/")) return path;
+    return `${workdir}/${path}`.replace(/\/+/g, "/");
+  }),
   getDisplayPath: vi.fn((path: string) => path),
 }));
 
 // Mock fileFilter utility
-vi.mock("../utils/fileFilter.js", () => ({
+vi.mock("@/utils/fileFilter.js", () => ({
   getAllIgnorePatterns: vi.fn(() => ["**/node_modules/**", "**/.git/**"]),
 }));
 
 // Import the mocked modules
-import { glob } from "glob";
 import { stat } from "fs/promises";
 
 describe("globTool", () => {
-  const mockGlob = vi.mocked(glob);
+  const mockSpawn = vi.mocked(spawn);
   const mockStat = vi.mocked(stat);
 
   // Helper to create mock stats
@@ -44,6 +53,26 @@ describe("globTool", () => {
     ({
       mtime,
     }) as Stats;
+
+  // Helper to mock ripgrep output
+  const mockRgOutput = (files: string[], exitCode = 0) => {
+    const stdout = new EventEmitter();
+    const stderr = new EventEmitter();
+    const child = Object.assign(new EventEmitter(), {
+      stdout,
+      stderr,
+    }) as unknown as ReturnType<typeof spawn>;
+
+    mockSpawn.mockReturnValueOnce(child);
+
+    // Use setImmediate to ensure the event handlers are attached before emitting
+    setImmediate(() => {
+      if (files.length > 0) {
+        stdout.emit("data", Buffer.from(files.join("\n")));
+      }
+      child.emit("close", exitCode);
+    });
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,10 +98,7 @@ describe("globTool", () => {
   });
 
   it("should find TypeScript files with **/*.ts pattern", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/src/index.ts",
-      "/test/workdir/src/utils.ts",
-    ]);
+    mockRgOutput(["src/index.ts", "src/utils.ts"]);
 
     mockStat
       .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
@@ -90,14 +116,19 @@ describe("globTool", () => {
     expect(result.content).toContain("src/index.ts");
     expect(result.content).toContain("src/utils.ts");
     expect(result.shortResult).toContain("Found 2 files");
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["--files", "--glob", "**/*.ts"]),
+      expect.objectContaining({ cwd: "/test/workdir" }),
+    );
   });
 
   it("should find all files with ** pattern", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/package.json",
-      "/test/workdir/src/index.ts",
-      "/test/workdir/tests/app.test.js",
-      "/test/workdir/docs/README.md",
+    mockRgOutput([
+      "package.json",
+      "src/index.ts",
+      "tests/app.test.js",
+      "docs/README.md",
     ]);
 
     mockStat
@@ -122,10 +153,7 @@ describe("globTool", () => {
   });
 
   it("should find files in specific directory", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/src/index.ts",
-      "/test/workdir/src/utils.ts",
-    ]);
+    mockRgOutput(["src/index.ts", "src/utils.ts"]);
 
     mockStat
       .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
@@ -142,11 +170,10 @@ describe("globTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("src/index.ts");
     expect(result.content).toContain("src/utils.ts");
-    expect(result.content).not.toContain("package.json");
   });
 
   it("should return no matches for non-existent pattern", async () => {
-    mockGlob.mockResolvedValueOnce([]);
+    mockRgOutput([]);
 
     const result = await globTool.execute(
       { pattern: "**/*.nonexistent" },
@@ -162,10 +189,7 @@ describe("globTool", () => {
   });
 
   it("should work with custom search path", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/src/index.ts",
-      "/test/workdir/src/utils.ts",
-    ]);
+    mockRgOutput(["index.ts", "utils.ts"]);
 
     mockStat
       .mockResolvedValueOnce(createMockStats(new Date("2023-01-02")))
@@ -179,6 +203,11 @@ describe("globTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("index.ts");
     expect(result.content).toContain("utils.ts");
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.anything(),
+      expect.objectContaining({ cwd: "/test/workdir/src" }),
+    );
   });
 
   it("should return error for missing pattern", async () => {
@@ -210,10 +239,7 @@ describe("globTool", () => {
   });
 
   it("should sort files by modification time", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/file1.txt",
-      "/test/workdir/file2.txt",
-    ]);
+    mockRgOutput(["file1.txt", "file2.txt"]);
 
     // file2.txt is newer (modified later)
     mockStat
@@ -236,10 +262,8 @@ describe("globTool", () => {
   });
 
   it("should respect gitignore patterns", async () => {
-    // Mock glob to return files that would include node_modules, but should be filtered out
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/tests/app.test.js", // This should be included
-    ]);
+    // Ripgrep handles gitignore automatically, but we also pass common ignore patterns
+    mockRgOutput(["tests/app.test.js"]);
 
     mockStat.mockResolvedValueOnce(createMockStats(new Date("2023-01-01")));
 
@@ -252,17 +276,16 @@ describe("globTool", () => {
     );
 
     expect(result.success).toBe(true);
-    // Should include .js files in tests directory
     expect(result.content).toContain("tests/app.test.js");
-    // The glob mock is configured to not return node_modules files,
-    // which simulates the gitignore filtering behavior
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "/mock/rg",
+      expect.arrayContaining(["--glob", "!**/node_modules/**"]),
+      expect.anything(),
+    );
   });
 
   it("should handle stat errors gracefully", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/file1.txt",
-      "/test/workdir/file2.txt",
-    ]);
+    mockRgOutput(["file1.txt", "file2.txt"]);
 
     // First file stat succeeds, second fails
     mockStat
@@ -280,11 +303,22 @@ describe("globTool", () => {
     expect(result.success).toBe(true);
     expect(result.content).toContain("file1.txt");
     expect(result.content).toContain("file2.txt");
-    // Should still work even when some stat calls fail
   });
 
-  it("should handle glob errors", async () => {
-    mockGlob.mockRejectedValueOnce(new Error("Invalid pattern"));
+  it("should handle ripgrep errors", async () => {
+    const stdout = new EventEmitter();
+    const stderr = new EventEmitter();
+    const child = Object.assign(new EventEmitter(), {
+      stdout,
+      stderr,
+    }) as unknown as ReturnType<typeof spawn>;
+
+    mockSpawn.mockReturnValueOnce(child);
+
+    setImmediate(() => {
+      stderr.emit("data", Buffer.from("Some error"));
+      child.emit("close", 2); // Exit code 2 is error
+    });
 
     const result = await globTool.execute(
       { pattern: "[invalid" },
@@ -295,15 +329,12 @@ describe("globTool", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("Invalid pattern");
+    expect(result.error).toContain("ripgrep failed with code 2");
+    expect(result.error).toContain("Some error");
   });
 
   it("should work with complex patterns", async () => {
-    mockGlob.mockResolvedValueOnce([
-      "/test/workdir/src/component.tsx",
-      "/test/workdir/src/utils.ts",
-      "/test/workdir/test/app.test.js",
-    ]);
+    mockRgOutput(["src/component.tsx", "src/utils.ts", "test/app.test.js"]);
 
     mockStat
       .mockResolvedValueOnce(createMockStats(new Date("2023-01-01")))
@@ -325,7 +356,7 @@ describe("globTool", () => {
   });
 
   it("should display relative paths correctly", async () => {
-    mockGlob.mockResolvedValueOnce(["/test/workdir/nested/deep/file.ts"]);
+    mockRgOutput(["nested/deep/file.ts"]);
 
     mockStat.mockResolvedValueOnce(createMockStats(new Date("2023-01-01")));
 
@@ -342,11 +373,8 @@ describe("globTool", () => {
   });
 
   it("should limit the number of results to 1000", async () => {
-    const manyFiles = Array.from(
-      { length: 1005 },
-      (_, i) => `/test/workdir/file${i}.txt`,
-    );
-    mockGlob.mockResolvedValueOnce(manyFiles);
+    const manyFiles = Array.from({ length: 1005 }, (_, i) => `file${i}.txt`);
+    mockRgOutput(manyFiles);
 
     // Mock stat for all files - make them progressively newer
     manyFiles.forEach((_, i) => {
@@ -361,10 +389,8 @@ describe("globTool", () => {
     const lines = result.content.split("\n");
     expect(lines.length).toBe(1000);
     expect(result.shortResult).toBe("Found 1005 files (showing first 1000)");
-    // Verify it shows the most recent ones (the ones with higher index in our mock)
-    // file1004.txt is the newest, so it should be first
+    // Verify it shows the most recent ones
     expect(lines[0]).toContain("file1004.txt");
-    // file5.txt should be the last one (1005 - 1000 = 5)
     expect(lines[999]).toContain("file5.txt");
   });
 });
