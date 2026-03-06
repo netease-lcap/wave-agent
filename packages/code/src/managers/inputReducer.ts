@@ -434,6 +434,9 @@ export function inputReducer(
         history: [],
         originalInputText: "",
         originalLongTextMap: {},
+        showHistorySearch: false,
+        historySearchQuery: "",
+        selectorJustUsed: true,
       };
     }
     case "RESET_HISTORY_NAVIGATION":
