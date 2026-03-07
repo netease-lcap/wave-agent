@@ -32,6 +32,6 @@
 - Spec updated after researching current permission implementation in `PermissionManager` and `ConfigurationService`.
 - Confirmed that `permissions.deny` should follow the same pattern as `permissions.allow` for consistency.
 - Added specific requirements for merging and validation.
-- Added support for path-based permission rules like `Read(path)`, `Write(path)`, `Delete(path)`, etc., for both allow and deny lists. This applies to tools that take a single file or directory path as a primary input.
+- Added support for path-based permission rules like `Read(path)`, `Write(path)`, etc., for both allow and deny lists. This applies to tools that take a single file or directory path as a primary input.
 - Excluded `Glob` and `Grep` from path-based rules as their path parameter is optional.
 - Explicitly stated that `deny` rules apply to ALL tools, even those not in the `RESTRICTED_TOOLS` list.
