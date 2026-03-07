@@ -343,6 +343,8 @@ export const handleCommandSelect = (
           dispatch({ type: "SET_SHOW_HELP", payload: true });
         } else if (command === "status") {
           dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: true });
+        } else if (command === "plugin") {
+          dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: true });
         }
       }
     })();
@@ -679,7 +681,8 @@ export const handleInput = async (
         state.showMcpManager ||
         state.showRewindManager ||
         state.showHelp ||
-        state.showStatusCommand
+        state.showStatusCommand ||
+        state.showPluginManager
       )
     ) {
       callbacks.onAbortMessage?.();
@@ -700,14 +703,16 @@ export const handleInput = async (
     state.showMcpManager ||
     state.showRewindManager ||
     state.showHelp ||
-    state.showStatusCommand
+    state.showStatusCommand ||
+    state.showPluginManager
   ) {
     if (
       state.showBackgroundTaskManager ||
       state.showMcpManager ||
       state.showRewindManager ||
       state.showHelp ||
-      state.showStatusCommand
+      state.showStatusCommand ||
+      state.showPluginManager
     ) {
       return true;
     }

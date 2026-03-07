@@ -9,6 +9,7 @@ import { McpManager } from "./McpManager.js";
 import { RewindCommand } from "./RewindCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
+import { PluginManagerShell } from "./PluginManagerShell.js";
 import { useInputManager } from "../hooks/useInputManager.js";
 import { useChat } from "../contexts/useChat.js";
 
@@ -92,11 +93,13 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showRewindManager,
     showHelp,
     showStatusCommand,
+    showPluginManager,
     setShowBackgroundTaskManager,
     setShowMcpManager,
     setShowRewindManager,
     setShowHelp,
     setShowStatusCommand,
+    setShowPluginManager,
     // Permission mode
     permissionMode,
     setPermissionMode,
@@ -183,6 +186,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
     return <StatusCommand onCancel={() => setShowStatusCommand(false)} />;
   }
 
+  if (showPluginManager) {
+    return <PluginManagerShell onCancel={() => setShowPluginManager(false)} />;
+  }
+
   return (
     <Box flexDirection="column">
       {showFileSelector && (
@@ -232,7 +239,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
         showMcpManager ||
         showRewindManager ||
         showHelp ||
-        showStatusCommand || (
+        showStatusCommand ||
+        showPluginManager || (
           <Box flexDirection="column">
             <Box
               borderStyle="single"

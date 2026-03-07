@@ -10,9 +10,10 @@ import { PluginDetail } from "./PluginDetail.js";
 import { MarketplaceAddForm } from "./MarketplaceAddForm.js";
 import { PluginManagerContext } from "../contexts/PluginManagerContext.js";
 
-export const PluginManagerShell: React.FC<{ children?: React.ReactNode }> = ({
-  children,
-}) => {
+export const PluginManagerShell: React.FC<{
+  children?: React.ReactNode;
+  onCancel?: () => void;
+}> = ({ children, onCancel }) => {
   const pluginManager = usePluginManager();
   const { state, actions, discoverablePlugins } = pluginManager;
 
@@ -62,6 +63,8 @@ export const PluginManagerShell: React.FC<{ children?: React.ReactNode }> = ({
         state.currentView === "ADD_MARKETPLACE"
       ) {
         setView("MARKETPLACES");
+      } else {
+        onCancel?.();
       }
     }
   });
