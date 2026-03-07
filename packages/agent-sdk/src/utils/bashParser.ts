@@ -470,6 +470,13 @@ export function getSmartPrefix(command: string): string | null {
     ];
 
     if (safeGitSubcommands.includes(subCommand)) {
+      if (subCommand === "branch") {
+        // Check for destructive flags
+        const destructiveFlags = ["-d", "-D", "--delete"];
+        if (tokens.some((t) => destructiveFlags.includes(t))) {
+          return null;
+        }
+      }
       prefixParts.push(subCommand);
       return prefixParts.join(" ");
     }

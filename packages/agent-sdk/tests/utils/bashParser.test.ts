@@ -4,6 +4,7 @@ import {
   stripEnvVars,
   stripRedirections,
   hasWriteRedirections,
+  getSmartPrefix,
 } from "../../src/utils/bashParser.js";
 
 describe("bashParser", () => {
@@ -159,6 +160,39 @@ describe("bashParser", () => {
 
     it("should detect write redirections on subshells", () => {
       expect(hasWriteRedirections("(echo hi) > file")).toBe(true);
+    });
+  });
+
+  describe("getSmartPrefix", () => {
+    it("should return null for destructive git branch commands", () => {
+      expect(getSmartPrefix("git branch -d some-branch")).toBe(null);
+      expect(getSmartPrefix("git branch -D some-branch")).toBe(null);
+      expect(getSmartPrefix("git branch --delete some-branch")).toBe(null);
+      expect(getSmartPrefix("git branch -d")).toBe(null);
+    });
+
+    it("should return 'git branch' for safe git branch commands", () => {
+      expect(getSmartPrefix("git branch")).toBe("git branch");
+      expect(getSmartPrefix("git branch --list")).toBe("git branch");
+      expect(getSmartPrefix("git branch -a")).toBe("git branch");
+      expect(getSmartPrefix("git branch -r")).toBe("git branch");
+      expect(getSmartPrefix("git branch --show-current")).toBe("git branch");
+    });
+
+    it("should return correct prefix for other git commands", () => {
+      expect(getSmartPrefix("git status")).toBe("git status");
+      expect(getSmartPrefix("git diff")).toBe("git diff");
+      expect(getSmartPrefix("git add .")).toBe("git add");
+      expect(getSmartPrefix("git commit -m 'msg'")).toBe("git commit");
+    });
+
+    it("should handle -C flag in git", () => {
+      expect(getSmartPrefix("git -C some/path status")).toBe(
+        "git -C some/path status",
+      );
+      expect(getSmartPrefix("git -C some/path branch -D some-branch")).toBe(
+        null,
+      );
     });
   });
 });
