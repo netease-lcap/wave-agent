@@ -24,7 +24,7 @@ wave
 
 The following commands are automatically allowed in `default` mode:
 - **Git (Read-only)**: `status`, `diff`, `log`, `show`, `branch`, `tag`, `remote`, `ls-files`, `rev-parse`, `config --list`, `cat-file`, `count-objects`.
-- **Safe Utilities**: `echo`, `which`, `type`, `hostname`, `whoami`, `date`, `uptime`.
+- **Safe Utilities**: `echo`, `ls`, `which`, `type`, `hostname`, `whoami`, `date`, `uptime`.
 
 ### Bypass Mode (Advanced Users)
 

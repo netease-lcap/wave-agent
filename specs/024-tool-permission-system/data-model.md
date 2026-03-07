@@ -85,7 +85,7 @@
 - `selectedOption` must be one of two allowed values
 - `alternativeText` can be empty string
 - `hasUserInput` tracks whether user has typed (to hide placeholder)
-- `defaultAllowedRules`: Array<string> (hardcoded read-only git and safe commands)
+- `defaultAllowedRules`: Array<string> (hardcoded read-only git and safe commands like `ls*`)
 - `toolName` must be non-empty when `isVisible` is true
 
 **State Transitions**:

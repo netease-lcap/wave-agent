@@ -62,6 +62,7 @@ const DEFAULT_ALLOWED_RULES = [
   "Bash(git cat-file*)",
   "Bash(git count-objects*)",
   "Bash(echo*)",
+  "Bash(ls*)",
   "Bash(which*)",
   "Bash(type*)",
   "Bash(hostname*)",
