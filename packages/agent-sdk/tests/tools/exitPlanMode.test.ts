@@ -5,6 +5,7 @@ import { readFile } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
 import { PermissionManager } from "@/managers/permissionManager.js";
 import { Container } from "@/utils/container.js";
+import { OPERATION_CANCELLED_BY_USER } from "@/types/permissions.js";
 
 // Mock fs/promises
 vi.mock("fs/promises");
@@ -144,6 +145,24 @@ describe("exitPlanModeTool", () => {
       "Please update your proposal based on the following user feedback: Plan rejected by user",
     );
     expect(result.error).toBe("Plan rejected by user");
+  });
+
+  it("should return cancellation message without prefix if cancelled by user", async () => {
+    mockPermissionManager.getPlanFilePath.mockReturnValue("/test/plan.md");
+    vi.mocked(readFile).mockResolvedValue("plan");
+    mockPermissionManager.createContext.mockReturnValue({
+      toolName: "ExitPlanMode",
+    });
+    mockPermissionManager.checkPermission.mockResolvedValue({
+      behavior: "deny",
+      message: OPERATION_CANCELLED_BY_USER,
+    });
+
+    const result = await exitPlanModeTool.execute({}, mockContext);
+
+    expect(result.success).toBe(false);
+    expect(result.content).toBe(OPERATION_CANCELLED_BY_USER);
+    expect(result.error).toBeUndefined();
   });
 
   it("should handle unexpected errors in execute", async () => {

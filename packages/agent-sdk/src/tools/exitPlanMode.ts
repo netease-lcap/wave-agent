@@ -2,6 +2,7 @@ import { readFile } from "fs/promises";
 import { logger } from "../utils/globalLogger.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "../constants/tools.js";
+import { OPERATION_CANCELLED_BY_USER } from "../types/permissions.js";
 
 /**
  * Exit Plan Mode Tool Plugin
@@ -91,6 +92,12 @@ Ensure your plan is complete and unambiguous:
         await context.permissionManager.checkPermission(permissionContext);
 
       if (permissionResult.behavior === "deny") {
+        if (permissionResult.message === OPERATION_CANCELLED_BY_USER) {
+          return {
+            success: false,
+            content: OPERATION_CANCELLED_BY_USER,
+          };
+        }
         return {
           success: false,
           content: `Please update your proposal based on the following user feedback: ${permissionResult.message || "Plan rejected by user"}`,
