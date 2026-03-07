@@ -90,6 +90,10 @@ export function setupAgentContainer(
             logger.error("Failed to sync task list with session:", error);
           });
         }
+        const planManager = container.get<PlanManager>("PlanManager");
+        if (planManager) {
+          planManager.syncWithSession();
+        }
         callbacks.onSessionIdChange?.(sessionId);
       },
     },
