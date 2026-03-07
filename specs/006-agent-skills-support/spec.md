@@ -170,6 +170,7 @@ A user wants to control how skills are invoked and whether they are visible in t
 - **FR-018**: Wave MUST support `disable-model-invocation: true` in skill frontmatter to prevent AI from automatically triggering the skill
 - **FR-019**: Wave MUST support `user-invocable: boolean` (default: `true`) in skill frontmatter to control visibility in the slash command menu
 - **FR-020**: Wave MUST support `model:` in skill frontmatter to override the model configuration for skill execution (including forked subagents)
+- **FR-021**: Wave MUST support `${WAVE_SKILL_DIR}` placeholder in skill content, substituting it with the skill's absolute directory path during execution
 
 ### Key Entities
 

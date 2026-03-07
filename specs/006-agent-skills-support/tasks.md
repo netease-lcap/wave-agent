@@ -149,6 +149,7 @@
 - [x] T043 [US8] Update SlashCommandManager to skip non-invocable skills in packages/agent-sdk/src/managers/slashCommandManager.ts
 - [x] T044 [P] [US8] Create unit tests for new flags in packages/agent-sdk/tests/utils/skillParser_flags.test.ts, packages/agent-sdk/tests/tools/skillTool_flags.test.ts, and packages/agent-sdk/tests/managers/slashCommandManager_flags.test.ts
 - [x] T045 [US5] Implement automatic argument appending when no placeholders are present in skills and slash commands
+- [x] T046 [US5] Implement `${WAVE_SKILL_DIR}` placeholder substitution in skills
 
 ---
 

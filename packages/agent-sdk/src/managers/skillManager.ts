@@ -323,7 +323,10 @@ export class SkillManager {
     // 1. Substitute parameters ($1, $ARGUMENTS, etc.)
     mainContent = substituteCommandParameters(mainContent, argsString);
 
-    // 2. Parse and execute bash commands (!`command`)
+    // 2. Substitute ${WAVE_SKILL_DIR} with the skill's directory path
+    mainContent = mainContent.replace(/\$\{WAVE_SKILL_DIR\}/g, skill.skillPath);
+
+    // 3. Parse and execute bash commands (!`command`)
     const { commands } = parseBashCommands(mainContent);
     if (commands.length > 0) {
       const results = await executeBashCommands(commands, this.workdir);
