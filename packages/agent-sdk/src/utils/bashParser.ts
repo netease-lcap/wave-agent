@@ -377,6 +377,11 @@ export function getSmartPrefix(command: string): string | null {
   const exe = tokens[0];
   const sub = tokens[1];
 
+  // Common read-only tools
+  if (["ls", "pwd", "whoami", "hostname", "date", "uptime"].includes(exe)) {
+    return exe;
+  }
+
   // Blacklist - Hard blacklist for dangerous commands
   if (DANGEROUS_COMMANDS.includes(exe)) return null;
 
@@ -537,6 +542,22 @@ export function getSmartPrefix(command: string): string | null {
       return `${exe} ${sub}`;
     }
     return null;
+  }
+
+  // Common utilities
+  if (
+    [
+      "ls",
+      "echo",
+      "which",
+      "type",
+      "hostname",
+      "whoami",
+      "date",
+      "uptime",
+    ].includes(exe)
+  ) {
+    return exe;
   }
 
   return null;

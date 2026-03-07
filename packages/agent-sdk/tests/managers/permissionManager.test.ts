@@ -173,7 +173,7 @@ describe("PermissionManager", () => {
         const context: ToolPermissionContext = {
           toolName: "Bash",
           permissionMode: "default",
-          toolInput: { command: "ls" },
+          toolInput: { command: "mkdir test" },
         };
 
         const result = await permissionManager.checkPermission(context);
@@ -1363,7 +1363,7 @@ describe("PermissionManager", () => {
       expect(result.behavior).toBe("deny");
     });
 
-    it("should deny 'ls /etc' if it is outside workdir", async () => {
+    it("should deny 'cd /etc' if it is outside workdir", async () => {
       vi.spyOn(fs, "realpathSync").mockImplementation((p) => {
         const pathStr = p.toString();
         if (pathStr === "/etc") return "/etc";
@@ -1373,7 +1373,7 @@ describe("PermissionManager", () => {
       const context: ToolPermissionContext = {
         toolName: "Bash",
         permissionMode: "default",
-        toolInput: { command: "ls /etc", workdir },
+        toolInput: { command: "cd /etc", workdir },
       };
 
       const result = await permissionManager.checkPermission(context);
@@ -1466,7 +1466,7 @@ describe("PermissionManager", () => {
     it("should handle pwd as safe", () => {
       const command = "pwd && echo hello";
       const rules = permissionManager.expandBashRule(command, workdir);
-      expect(rules).toEqual(["Bash(echo hello)"]);
+      expect(rules).toEqual(["Bash(echo*)"]);
     });
 
     it("should handle true and false as safe", () => {

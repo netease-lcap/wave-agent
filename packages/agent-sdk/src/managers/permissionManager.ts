@@ -50,6 +50,7 @@ const DEFAULT_ALLOWED_RULES = [
   "Bash(git config -l*)",
   "Bash(git cat-file*)",
   "Bash(git count-objects*)",
+  "Bash(ls*)",
   "Bash(echo*)",
   "Bash(which*)",
   "Bash(type*)",
