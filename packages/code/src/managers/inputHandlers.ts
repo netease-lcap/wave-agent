@@ -459,8 +459,12 @@ export const handleSelectorInput = (
     return true;
   }
 
-  if (input === " " && state.showFileSelector) {
-    dispatch({ type: "CANCEL_FILE_SELECTOR" });
+  if (input === " ") {
+    if (state.showFileSelector) {
+      dispatch({ type: "CANCEL_FILE_SELECTOR" });
+    } else if (state.showCommandSelector) {
+      dispatch({ type: "CANCEL_COMMAND_SELECTOR" });
+    }
   }
 
   if (
