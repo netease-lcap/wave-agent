@@ -11,6 +11,11 @@
       "Bash(grep*)",
       "Bash(npm*)",
       "Bash(touch*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr status*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr checks*)",
+      "Bash(gh pr diff*)",
       "Bash(node packages/code/dist/index.js *)"
     ],
     "additionalDirectories": [
