@@ -443,6 +443,9 @@ describe("inputHandlers", () => {
         type: "INSERT_TEXT",
         payload: "@",
       });
+      expect(dispatch).not.toHaveBeenCalledWith({
+        type: "RESET_HISTORY_NAVIGATION",
+      });
       expect(dispatch).toHaveBeenCalledWith({
         type: "ACTIVATE_FILE_SELECTOR",
         payload: 0,
@@ -726,6 +729,22 @@ describe("inputHandlers", () => {
       expect(dispatch).toHaveBeenCalledWith({
         type: "SET_COMMAND_SEARCH_QUERY",
         payload: "hel",
+      });
+    });
+
+    it("should NOT dispatch RESET_HISTORY_NAVIGATION on backspace", async () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "hello",
+        cursorPosition: 5,
+        historyIndex: 0,
+      };
+      const key = { backspace: true } as Key;
+      await handleNormalInput(state, dispatch, callbacks, "", key);
+
+      expect(dispatch).toHaveBeenCalledWith({ type: "DELETE_CHAR" });
+      expect(dispatch).not.toHaveBeenCalledWith({
+        type: "RESET_HISTORY_NAVIGATION",
       });
     });
 

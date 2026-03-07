@@ -430,6 +430,9 @@ export function inputReducer(
         }
         newIndex = Math.min(state.history.length - 1, newIndex + 1);
       } else {
+        if (newIndex === -1) {
+          return state;
+        }
         newIndex = Math.max(-1, newIndex - 1);
       }
 
@@ -440,8 +443,8 @@ export function inputReducer(
           inputText: newOriginalInputText,
           longTextMap: newOriginalLongTextMap,
           cursorPosition: newOriginalInputText.length,
-          originalInputText: newOriginalInputText,
-          originalLongTextMap: newOriginalLongTextMap,
+          originalInputText: "",
+          originalLongTextMap: {},
         };
       } else {
         const entry = state.history[newIndex];
