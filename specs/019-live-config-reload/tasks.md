@@ -83,6 +83,7 @@
 - [x] T027 [US2] Pass logger from Agent constructor to ConfigurationWatcher for structured logging in packages/agent-sdk/src/services/configurationWatcher.ts
 - [x] T028 [US2] Add structured logging for reload events with Live Config prefix in packages/agent-sdk/src/services/configurationWatcher.ts
 - [x] T029 [US2] Implement file watcher initialization failure handling with descriptive errors in packages/agent-sdk/src/services/fileWatcher.ts
+- [x] T030 [US2] Reset permissions to empty arrays and defaultMode to undefined when missing in new configuration during reload in packages/agent-sdk/src/managers/liveConfigManager.ts
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 

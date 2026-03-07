@@ -258,26 +258,18 @@ export class LiveConfigManager {
 
       // Update permission manager if available
       if (this.permissionManager) {
-        if (this.currentConfiguration.permissions?.defaultMode) {
-          this.permissionManager.updateConfiguredDefaultMode(
-            this.currentConfiguration.permissions.defaultMode,
-          );
-        }
-        if (this.currentConfiguration.permissions?.allow) {
-          this.permissionManager.updateAllowedRules(
-            this.currentConfiguration.permissions.allow,
-          );
-        }
-        if (this.currentConfiguration.permissions?.deny) {
-          this.permissionManager.updateDeniedRules(
-            this.currentConfiguration.permissions.deny,
-          );
-        }
-        if (this.currentConfiguration.permissions?.additionalDirectories) {
-          this.permissionManager.updateAdditionalDirectories(
-            this.currentConfiguration.permissions.additionalDirectories,
-          );
-        }
+        this.permissionManager.updateConfiguredDefaultMode(
+          this.currentConfiguration.permissions?.defaultMode,
+        );
+        this.permissionManager.updateAllowedRules(
+          this.currentConfiguration.permissions?.allow || [],
+        );
+        this.permissionManager.updateDeniedRules(
+          this.currentConfiguration.permissions?.deny || [],
+        );
+        this.permissionManager.updateAdditionalDirectories(
+          this.currentConfiguration.permissions?.additionalDirectories || [],
+        );
       }
 
       return this.currentConfiguration;

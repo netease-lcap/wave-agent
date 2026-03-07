@@ -59,6 +59,7 @@ A developer is actively working and needs to modify their settings.json configur
 - **FR-007**: File watchers MUST handle file deletion, creation, and modification events
 - **FR-008**: Environment variables from env field MUST be available to hook processes and agent execution context
 - **FR-009**: System MUST handle file watcher initialization failures by throwing descriptive error and preventing SDK startup
+- **FR-010**: System MUST reset permissions (allow, deny, additionalDirectories) to empty arrays and defaultMode to undefined when they are missing in the new configuration during reload
 
 ### Key Entities
 
