@@ -184,6 +184,74 @@ describe("PermissionManager", () => {
       });
     });
 
+    describe("relative path matching", () => {
+      const workdir = "/home/user/project";
+
+      it("should match absolute path against relative pattern if inside workdir", async () => {
+        const manager = new PermissionManager(container, { workdir });
+        manager.updateDeniedRules(["Read(src/**)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Read",
+          permissionMode: "default",
+          toolInput: { file_path: "/home/user/project/src/main.ts" },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain(
+          "explicitly denied by rule: Read(src/**)",
+        );
+      });
+
+      it("should NOT match absolute path against relative pattern if outside workdir", async () => {
+        const manager = new PermissionManager(container, { workdir });
+        manager.updateDeniedRules(["Read(src/**)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Read",
+          permissionMode: "default",
+          toolInput: { file_path: "/home/user/other/src/main.ts" },
+        };
+
+        const result = await manager.checkPermission(context);
+        // Read is unrestricted, so it should be allowed if not denied
+        expect(result.behavior).toBe("allow");
+      });
+
+      it("should still match absolute pattern against absolute path", async () => {
+        const manager = new PermissionManager(container, { workdir });
+        const absolutePattern = "/home/user/project/src/**";
+        manager.updateDeniedRules([`Read(${absolutePattern})`]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Read",
+          permissionMode: "default",
+          toolInput: { file_path: "/home/user/project/src/main.ts" },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+        expect(result.message).toContain(
+          `explicitly denied by rule: Read(${absolutePattern})`,
+        );
+      });
+
+      it("should match relative path against relative pattern", async () => {
+        const manager = new PermissionManager(container, { workdir });
+        manager.updateDeniedRules(["Read(src/**)"]);
+
+        const context: ToolPermissionContext = {
+          toolName: "Read",
+          permissionMode: "default",
+          toolInput: { file_path: "src/main.ts" },
+        };
+
+        const result = await manager.checkPermission(context);
+        expect(result.behavior).toBe("deny");
+      });
+    });
+
     describe("precedence of deny over allow", () => {
       it("should deny if tool is in both allow and deny rules", async () => {
         permissionManager.updateAllowedRules(["Bash"]);

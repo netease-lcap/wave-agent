@@ -158,4 +158,4 @@ description: "Task list for implementing permissions.deny support"
 
 - `minimatch` is used for glob matching in rules.
 - `checkPermission` is the central point for all permission logic.
-- `Read` and `LS` tools are updated to participate in the permission system.
+- `Read` tool is updated to participate in the permission system.

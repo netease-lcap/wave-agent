@@ -577,7 +577,25 @@ export class PermissionManager {
         context.toolInput?.path) as string | undefined;
 
       if (targetPath) {
-        return minimatch(targetPath, pattern, { dot: true });
+        if (minimatch(targetPath, pattern, { dot: true })) {
+          return true;
+        }
+
+        // If direct match fails, try matching relative path if targetPath is absolute and pattern is relative
+        if (
+          path.isAbsolute(targetPath) &&
+          !path.isAbsolute(pattern) &&
+          this.workdir
+        ) {
+          const relativePath = path.relative(this.workdir, targetPath);
+          // Ensure the path is not outside the workdir (doesn't start with ..)
+          if (
+            !relativePath.startsWith("..") &&
+            !path.isAbsolute(relativePath)
+          ) {
+            return minimatch(relativePath, pattern, { dot: true });
+          }
+        }
       }
     }
 

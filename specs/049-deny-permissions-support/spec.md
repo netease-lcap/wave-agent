@@ -29,14 +29,13 @@ As a user with sensitive data, I want to prevent the agent from accessing specif
 
 **Why this priority**: Protecting sensitive data is a primary use case for permissions. Deny rules are often easier to manage for "everything except X" or "allow all except Y" scenarios.
 
-**Independent Test**: Can be tested by adding a rule like `Read(**/.env)` or `Delete(/etc/**)` to `permissions.deny` and verifying that the corresponding tool is blocked when attempting to access matching paths.
+**Independent Test**: Can be tested by adding a rule like `Read(**/.env)` to `permissions.deny` and verifying that the corresponding tool is blocked when attempting to access matching paths.
 
 **Acceptance Scenarios**:
 
 1. **Given** `permissions.deny` contains `["Read(**/.env)"]`, **When** the agent attempts to read a file named `.env` in any directory using the `Read` tool, **Then** the system MUST deny the request.
 2. **Given** `permissions.deny` contains `["Write(/etc/**)"]`, **When** the agent attempts to write to a file in `/etc/` using the `Write` tool, **Then** the system MUST deny the request.
-3. **Given** `permissions.deny` contains `["Delete(/etc/**)"]`, **When** the agent attempts to delete a file in `/etc/`, **Then** the system MUST deny the request.
-4. **Given** `permissions.deny` contains `["Bash(ls /etc*)"]`, **When** the agent attempts to run `ls /etc/passwd`, **Then** the system MUST deny the request.
+3. **Given** `permissions.deny` contains `["Bash(ls /etc*)"]`, **When** the agent attempts to run `ls /etc/passwd`, **Then** the system MUST deny the request.
 
 ---
 
@@ -78,3 +77,4 @@ As a user, I want to be certain that if I explicitly deny a permission, it canno
 
 - **Permission Rule**: A string or object defining a capability (tool) or resource (file path) that is subject to access control.
 - **Settings**: The configuration object loaded from `settings.json` which now includes both `allow` and `deny` permission lists.
+

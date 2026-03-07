@@ -32,6 +32,6 @@ export interface PermissionManagerOptions {
 
 1. **Tool Name**: `Bash`, `Write`, `Read`
 2. **Bash Command**: `Bash(ls -la)`, `Bash(rm *)`
-3. **Path-based**: `Read(**/*.env)`, `Write(/etc/**)`, `Delete(/tmp/test.txt)`
+3. **Path-based**: `Read(**/*.env)`, `Write(/etc/**)`
    - Format: `ToolName(glob_pattern)`
    - Supported tools: `Read`, `Write`, `Edit`, ``, `Delete`, `LS`

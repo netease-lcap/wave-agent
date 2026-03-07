@@ -11,7 +11,7 @@ To ensure maximum security, `permissions.deny` must be checked before any other 
    - Command-specific rules: `Bash(rm *)`.
    - Path-based rules: `Read(**/*.env)`, `Write(/etc/**)`, `Delete(/tmp/test.txt)`.
    - The matching logic for `ToolName(path_pattern)` will use the `minimatch` library (which is already a dependency of `agent-sdk`) to match the `path_pattern` against the `file_path` or `target_file` in the tool input.
-   - **Rationale for `minimatch` over `glob`**: While `glob` is used for searching the filesystem, `minimatch` is the underlying library used by `glob` for string-to-pattern matching. Since permission checks must work for non-existent files (e.g., `Write` or `Delete` operations) and should not hit the disk for performance reasons, `minimatch` is the appropriate tool for this task.
+   - **Rationale for `minimatch` over `glob`**: While `glob` is used for searching the filesystem, `minimatch` is the underlying library used by `glob` for string-to-pattern matching. Since permission checks must work for non-existent files (e.g., `Write` operations) and should not hit the disk for performance reasons, `minimatch` is the appropriate tool for this task.
    - A new private method `matchesRule(context, rule)` will be implemented in `PermissionManager` to centralize matching logic.
 
 2. **Precedence**:
