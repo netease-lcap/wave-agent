@@ -438,6 +438,30 @@ describe("SkillManager", () => {
 
       expect(result.content).toContain("# Just Content");
     });
+
+    it("should substitute ${WAVE_SKILL_DIR} with the skill's directory path", async () => {
+      const mockSkill: Skill = {
+        name: "path-skill",
+        description: "A skill with path",
+        type: "personal",
+        skillPath: "/path/to/skill",
+        content:
+          "---\nname: path-skill\ndescription: A skill with path\n---\n\nSkill is at ${WAVE_SKILL_DIR}",
+        frontmatter: { name: "path-skill", description: "A skill with path" },
+        isValid: true,
+        errors: [],
+      };
+
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+      skillManager.registerPluginSkills([mockSkill]);
+
+      const result = await skillManager.executeSkill({
+        skill_name: "path-skill",
+      });
+
+      expect(result.content).toContain("Skill is at /path/to/skill");
+    });
   });
 
   describe("executeSkill", () => {

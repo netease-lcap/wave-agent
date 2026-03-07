@@ -262,5 +262,29 @@ describe("SlashCommandManager", () => {
         allowedRules: ["tool1", "tool2"],
       });
     });
+
+    it("should NOT substitute ${WAVE_SKILL_DIR} in regular slash commands", async () => {
+      const pluginName = "test-plugin";
+      const commands = [
+        {
+          id: "path-test",
+          name: "path-test",
+          content: "Path is ${WAVE_SKILL_DIR}",
+        },
+      ];
+
+      slashCommandManager.registerPluginCommands(
+        pluginName,
+        commands as unknown as CustomSlashCommand[],
+      );
+
+      const cmd = slashCommandManager.getCommand("test-plugin:path-test");
+      await cmd?.handler();
+
+      const messages = messageManager.getMessages();
+      const lastMessage = messages[messages.length - 1];
+      const textBlock = lastMessage.blocks[0] as TextBlock;
+      expect(textBlock.customCommandContent).toBe("Path is ${WAVE_SKILL_DIR}");
+    });
   });
 });

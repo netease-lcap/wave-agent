@@ -62,6 +62,7 @@ You can explicitly trigger a skill using a slash command:
 ```
 
 - **Arguments**: If your `SKILL.md` contains `$1`, `$2`, etc., or `$ARGUMENTS`, they will be replaced by the text you provide.
+- **Path Placeholder**: Use `${WAVE_SKILL_DIR}` in your `SKILL.md` to reference the skill's absolute directory path. This is useful for scripts or templates within the skill directory.
 - **Bash Commands**: Any !`command` in the `SKILL.md` will be executed, and its output will be included in the prompt sent to the AI.
 
 ## Control Flags
