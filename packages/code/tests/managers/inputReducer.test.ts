@@ -26,6 +26,7 @@ describe("inputReducer", () => {
       imageIdCounter: 1,
       showBackgroundTaskManager: false,
       showMcpManager: false,
+      showPluginManager: false,
       showRewindManager: false,
       showHelp: false,
       showStatusCommand: false,
