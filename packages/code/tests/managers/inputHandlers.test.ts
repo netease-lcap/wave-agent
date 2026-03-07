@@ -636,6 +636,23 @@ describe("inputHandlers", () => {
       expect(result).toBe(true);
       expect(dispatch).toHaveBeenCalledWith({ type: "CANCEL_FILE_SELECTOR" });
     });
+
+    it("should cancel command selector on space input", () => {
+      const state: InputState = {
+        ...initialState,
+        showCommandSelector: true,
+        slashPosition: 0,
+        inputText: "/",
+        cursorPosition: 1,
+      };
+      const key = {} as Key;
+      const result = handleSelectorInput(state, dispatch, callbacks, " ", key);
+
+      expect(result).toBe(true);
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "CANCEL_COMMAND_SELECTOR",
+      });
+    });
   });
 
   describe("handleNormalInput", () => {
