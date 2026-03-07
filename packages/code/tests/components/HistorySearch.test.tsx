@@ -3,11 +3,6 @@ import { render } from "ink-testing-library";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { HistorySearch } from "../../src/components/HistorySearch.js";
 import { PromptHistoryManager, stripAnsiColors } from "wave-agent-sdk";
-import { useChat, ChatContextType } from "../../src/contexts/useChat.js";
-
-vi.mock("../../src/contexts/useChat.js", () => ({
-  useChat: vi.fn(),
-}));
 
 vi.mock("wave-agent-sdk", async () => {
   const actual = (await vi.importActual("wave-agent-sdk")) as object;
@@ -33,14 +28,17 @@ describe("HistorySearch", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(useChat).mockReturnValue({
-      workingDirectory: "/mock/workdir",
-      getFullMessageThread: vi.fn().mockResolvedValue({ sessionIds: ["s1"] }),
-      sessionId: "s1",
-    } as unknown as ChatContextType);
     vi.mocked(PromptHistoryManager.searchHistory).mockResolvedValue(
       mockEntries,
     );
+  });
+
+  it("should call searchHistory without filters", async () => {
+    render(<HistorySearch {...mockProps} />);
+
+    await vi.waitFor(() => {
+      expect(PromptHistoryManager.searchHistory).toHaveBeenCalledWith("");
+    });
   });
 
   it("should render history entries", async () => {
