@@ -289,41 +289,6 @@ describe("PluginManager", () => {
       );
     });
 
-    it("should call updateMarketplace when loading plugins", async () => {
-      const mockUpdateMarketplace = vi.fn().mockResolvedValue(undefined);
-      vi.mocked(MarketplaceService).mockImplementation(function () {
-        return {
-          updateMarketplace: mockUpdateMarketplace,
-          getInstalledPlugins: vi.fn().mockResolvedValue({ plugins: [] }),
-          listMarketplaces: vi.fn().mockResolvedValue([]),
-        } as unknown as MarketplaceService;
-      });
-
-      await pluginManager.loadPlugins([]);
-
-      expect(mockUpdateMarketplace).toHaveBeenCalled();
-    });
-
-    it("should not fail if updateMarketplace fails", async () => {
-      const mockUpdateMarketplace = vi
-        .fn()
-        .mockRejectedValue(new Error("Update failed"));
-      vi.mocked(MarketplaceService).mockImplementation(function () {
-        return {
-          updateMarketplace: mockUpdateMarketplace,
-          getInstalledPlugins: vi.fn().mockResolvedValue({ plugins: [] }),
-          listMarketplaces: vi.fn().mockResolvedValue([]),
-        } as unknown as MarketplaceService;
-      });
-
-      await expect(pluginManager.loadPlugins([])).resolves.not.toThrow();
-      expect(mockUpdateMarketplace).toHaveBeenCalled();
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to update marketplaces on launch:"),
-        expect.any(Error),
-      );
-    });
-
     it("should prioritize local plugins over marketplace plugins", async () => {
       const configs: PluginConfig[] = [
         { type: "local", path: "plugins/test-plugin" },

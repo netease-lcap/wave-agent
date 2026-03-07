@@ -73,14 +73,6 @@ export class PluginManager {
       }
 
       const marketplaceService = new MarketplaceService();
-
-      // Auto-update marketplaces on launch
-      try {
-        await marketplaceService.updateMarketplace();
-      } catch (updateError) {
-        logger?.error("Failed to update marketplaces on launch:", updateError);
-      }
-
       let installedRegistry = await marketplaceService.getInstalledPlugins();
       const knownMarketplaces = await marketplaceService.listMarketplaces();
 
