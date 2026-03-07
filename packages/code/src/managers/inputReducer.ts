@@ -32,6 +32,7 @@ export interface InputManagerCallbacks {
   onRewindManagerStateChange?: (show: boolean) => void;
   onHelpStateChange?: (show: boolean) => void;
   onStatusCommandStateChange?: (show: boolean) => void;
+  onPluginManagerStateChange?: (show: boolean) => void;
   onImagesStateChange?: (images: AttachedImage[]) => void;
   onSendMessage?: (
     content: string,
@@ -72,6 +73,7 @@ export interface InputState {
   showRewindManager: boolean;
   showHelp: boolean;
   showStatusCommand: boolean;
+  showPluginManager: boolean;
   permissionMode: PermissionMode;
   selectorJustUsed: boolean;
   isPasting: boolean;
@@ -105,6 +107,7 @@ export const initialState: InputState = {
   showRewindManager: false,
   showHelp: false,
   showStatusCommand: false,
+  showPluginManager: false,
   permissionMode: "default",
   selectorJustUsed: false,
   isPasting: false,
@@ -141,6 +144,7 @@ export type InputAction =
   | { type: "SET_SHOW_REWIND_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_HELP"; payload: boolean }
   | { type: "SET_SHOW_STATUS_COMMAND"; payload: boolean }
+  | { type: "SET_SHOW_PLUGIN_MANAGER"; payload: boolean }
   | { type: "SET_PERMISSION_MODE"; payload: PermissionMode }
   | { type: "SET_SELECTOR_JUST_USED"; payload: boolean }
   | { type: "COMPRESS_AND_INSERT_TEXT"; payload: string }
@@ -326,6 +330,12 @@ export function inputReducer(
       return {
         ...state,
         showStatusCommand: action.payload,
+        selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
+      };
+    case "SET_SHOW_PLUGIN_MANAGER":
+      return {
+        ...state,
+        showPluginManager: action.payload,
         selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
       };
     case "SET_PERMISSION_MODE":

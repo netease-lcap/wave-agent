@@ -38,4 +38,10 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     description: "Show agent status and configuration",
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
+  {
+    id: "plugin",
+    name: "plugin",
+    description: "View and manage plugins",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
 ];

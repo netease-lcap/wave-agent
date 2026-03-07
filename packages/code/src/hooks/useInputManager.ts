@@ -143,6 +143,10 @@ export const useInputManager = (
   }, [state.showStatusCommand]);
 
   useEffect(() => {
+    callbacksRef.current.onPluginManagerStateChange?.(state.showPluginManager);
+  }, [state.showPluginManager]);
+
+  useEffect(() => {
     callbacksRef.current.onImagesStateChange?.(state.attachedImages);
   }, [state.attachedImages]);
 
@@ -291,6 +295,10 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: show });
   }, []);
 
+  const setShowPluginManager = useCallback((show: boolean) => {
+    dispatch({ type: "SET_SHOW_PLUGIN_MANAGER", payload: show });
+  }, []);
+
   const setPermissionMode = useCallback((mode: PermissionMode) => {
     dispatch({ type: "SET_PERMISSION_MODE", payload: mode });
     callbacksRef.current.onPermissionModeChange?.(mode);
@@ -384,6 +392,7 @@ export const useInputManager = (
     showRewindManager: state.showRewindManager,
     showHelp: state.showHelp,
     showStatusCommand: state.showStatusCommand,
+    showPluginManager: state.showPluginManager,
     permissionMode: state.permissionMode,
     attachedImages: state.attachedImages,
     isManagerReady: true,
@@ -423,6 +432,7 @@ export const useInputManager = (
     setShowRewindManager,
     setShowHelp,
     setShowStatusCommand,
+    setShowPluginManager,
     setPermissionMode,
 
     // Image management
