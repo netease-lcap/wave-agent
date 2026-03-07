@@ -26,6 +26,7 @@ export class PromptHistoryManager {
     prompt: string,
     sessionId?: string,
     longTextMap?: Record<string, string>,
+    workdir?: string,
   ): Promise<void> {
     try {
       if (!prompt.trim()) return;
@@ -36,6 +37,7 @@ export class PromptHistoryManager {
         timestamp: Date.now(),
         sessionId,
         longTextMap,
+        workdir,
       };
 
       const line = JSON.stringify(entry) + "\n";
@@ -77,7 +79,10 @@ export class PromptHistoryManager {
   /**
    * Get all history entries
    */
-  static async getHistory(sessionId?: string): Promise<PromptEntry[]> {
+  static async getHistory(options?: {
+    sessionId?: string | string[];
+    workdir?: string;
+  }): Promise<PromptEntry[]> {
     try {
       if (!fs.existsSync(PROMPT_HISTORY_FILE)) {
         return [];
@@ -98,9 +103,22 @@ export class PromptHistoryManager {
         .filter((entry): entry is PromptEntry => entry !== null);
 
       // Filter by sessionId if provided
-      const filteredEntries = sessionId
-        ? entries.filter((entry) => entry.sessionId === sessionId)
-        : entries;
+      let filteredEntries = entries;
+      if (options?.sessionId) {
+        const sessionIds = Array.isArray(options.sessionId)
+          ? options.sessionId
+          : [options.sessionId];
+        filteredEntries = filteredEntries.filter(
+          (entry) => entry.sessionId && sessionIds.includes(entry.sessionId),
+        );
+      }
+
+      // Filter by workdir if provided
+      if (options?.workdir) {
+        filteredEntries = filteredEntries.filter(
+          (entry) => entry.workdir === options.workdir,
+        );
+      }
 
       // Deduplicate by prompt, keeping the most recent one
       const uniqueEntries: PromptEntry[] = [];
@@ -127,10 +145,13 @@ export class PromptHistoryManager {
    */
   static async searchHistory(
     query: string,
-    sessionId?: string,
+    options?: {
+      sessionId?: string | string[];
+      workdir?: string;
+    },
   ): Promise<PromptEntry[]> {
     try {
-      const history = await this.getHistory(sessionId);
+      const history = await this.getHistory(options);
       if (!query.trim()) {
         return history;
       }

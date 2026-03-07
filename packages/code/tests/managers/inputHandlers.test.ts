@@ -145,6 +145,7 @@ describe("inputHandlers", () => {
         longTextMap: { "[LongText#1]": "world" },
       };
       callbacks.sessionId = "session-1";
+      callbacks.workdir = "/home/user/project";
       await handleSubmit(state, dispatch, callbacks);
 
       expect(callbacks.onSendMessage).toHaveBeenCalledWith(
@@ -160,6 +161,7 @@ describe("inputHandlers", () => {
         "hello [LongText#1]",
         "session-1",
         { "[LongText#1]": "world" },
+        "/home/user/project",
       );
     });
 
@@ -185,6 +187,7 @@ describe("inputHandlers", () => {
         longTextMap: { "[LongText#1]": "Expanded content" },
       };
       callbacks.sessionId = "session-1";
+      callbacks.workdir = "/home/user/project";
       await handleSubmit(state, dispatch, callbacks);
 
       expect(callbacks.onSendMessage).toHaveBeenCalledWith(
@@ -195,6 +198,7 @@ describe("inputHandlers", () => {
         "Check this: [LongText#1]",
         "session-1",
         { "[LongText#1]": "Expanded content" },
+        "/home/user/project",
       );
     });
   });
@@ -729,10 +733,19 @@ describe("inputHandlers", () => {
       const mockHistory = [{ prompt: "prev", timestamp: 1000 }];
       vi.mocked(PromptHistoryManager.getHistory).mockResolvedValue(mockHistory);
       callbacks.sessionId = "session-1";
+      callbacks.workdir = "/home/user/project";
+      callbacks.getFullMessageThread = vi.fn().mockResolvedValue({
+        messages: [],
+        sessionIds: ["session-0", "session-1"],
+      });
 
       // First up arrow - fetch history
       await handleNormalInput(initialState, dispatch, callbacks, "", key);
-      expect(PromptHistoryManager.getHistory).toHaveBeenCalledWith("session-1");
+      expect(callbacks.getFullMessageThread).toHaveBeenCalled();
+      expect(PromptHistoryManager.getHistory).toHaveBeenCalledWith({
+        sessionId: ["session-0", "session-1"],
+        workdir: "/home/user/project",
+      });
       expect(dispatch).toHaveBeenCalledWith({
         type: "SET_HISTORY_ENTRIES",
         payload: mockHistory,

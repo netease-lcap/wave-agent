@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { PromptHistoryManager, type PromptEntry } from "wave-agent-sdk";
+import { useChat } from "../contexts/useChat.js";
 
 export interface HistorySearchProps {
   searchQuery: string;
@@ -28,15 +29,33 @@ export const HistorySearch: React.FC<HistorySearchProps> = ({
     selectedIndexRef.current = selectedIndex;
   }, [selectedIndex]);
 
+  const { workingDirectory, getFullMessageThread, sessionId } = useChat();
+
   useEffect(() => {
     const fetchHistory = async () => {
-      const results = await PromptHistoryManager.searchHistory(searchQuery);
+      let sessionIds: string[] | undefined = sessionId
+        ? [sessionId]
+        : undefined;
+
+      if (getFullMessageThread) {
+        try {
+          const thread = await getFullMessageThread();
+          sessionIds = thread.sessionIds;
+        } catch {
+          // Ignore error
+        }
+      }
+
+      const results = await PromptHistoryManager.searchHistory(searchQuery, {
+        sessionId: sessionIds,
+        workdir: workingDirectory,
+      });
       const limitedResults = results.slice(0, 20);
       setEntries(limitedResults); // Limit to 20 results
       setSelectedIndex(0);
     };
     fetchHistory();
-  }, [searchQuery]);
+  }, [searchQuery, workingDirectory, getFullMessageThread, sessionId]);
 
   useInput((input, key) => {
     if (key.return) {

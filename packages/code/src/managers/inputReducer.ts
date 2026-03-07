@@ -1,4 +1,10 @@
-import { FileItem, PermissionMode, Logger, PromptEntry } from "wave-agent-sdk";
+import {
+  FileItem,
+  PermissionMode,
+  Logger,
+  PromptEntry,
+  Message,
+} from "wave-agent-sdk";
 
 export interface AttachedImage {
   id: number;
@@ -37,6 +43,11 @@ export interface InputManagerCallbacks {
   onBackgroundCurrentTask?: () => void;
   onPermissionModeChange?: (mode: PermissionMode) => void;
   sessionId?: string;
+  workdir?: string;
+  getFullMessageThread?: () => Promise<{
+    messages: Message[];
+    sessionIds: string[];
+  }>;
   logger?: Logger;
 }
 
