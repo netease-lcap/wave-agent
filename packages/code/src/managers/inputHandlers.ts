@@ -286,7 +286,6 @@ export const handlePasteInput = (
       char = "!";
     }
 
-    dispatch({ type: "RESET_HISTORY_NAVIGATION" });
     dispatch({ type: "INSERT_TEXT", payload: char });
 
     processSelectorInput(state, dispatch, char);
@@ -560,7 +559,6 @@ export const handleNormalInput = async (
       const newInputText = beforeCursor + afterCursor;
 
       dispatch({ type: "DELETE_CHAR" });
-      dispatch({ type: "RESET_HISTORY_NAVIGATION" });
 
       checkForAtDeletion(state, dispatch, newCursorPosition);
       checkForSlashDeletion(state, dispatch, newCursorPosition);

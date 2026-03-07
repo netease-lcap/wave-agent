@@ -608,5 +608,81 @@ describe("inputReducer", () => {
       expect(state.history).toEqual([]);
       expect(state.originalInputText).toBe("");
     });
+
+    it("should not clear input when pressing down at original prompt", () => {
+      const state = {
+        ...initialState,
+        inputText: "hi",
+        historyIndex: -1,
+      };
+      const newState = inputReducer(state, {
+        type: "NAVIGATE_HISTORY",
+        payload: "down",
+      });
+      expect(newState.inputText).toBe("hi");
+      expect(newState.historyIndex).toBe(-1);
+    });
+
+    it("should restore original input when navigating back to index -1", () => {
+      const state = {
+        ...initialState,
+        history: mockHistory,
+        inputText: "hi",
+        historyIndex: -1,
+      };
+
+      // Navigate up to "first"
+      let newState = inputReducer(state, {
+        type: "NAVIGATE_HISTORY",
+        payload: "up",
+      });
+      expect(newState.inputText).toBe("first");
+      expect(newState.originalInputText).toBe("hi");
+
+      // Navigate down back to original
+      newState = inputReducer(newState, {
+        type: "NAVIGATE_HISTORY",
+        payload: "down",
+      });
+      expect(newState.inputText).toBe("hi");
+      expect(newState.historyIndex).toBe(-1);
+      expect(newState.originalInputText).toBe("");
+    });
+
+    it("should save edited original input when navigating up again", () => {
+      const state = {
+        ...initialState,
+        history: mockHistory,
+        inputText: "hi",
+        historyIndex: -1,
+      };
+
+      // Navigate up then down
+      let newState = inputReducer(state, {
+        type: "NAVIGATE_HISTORY",
+        payload: "up",
+      });
+      newState = inputReducer(newState, {
+        type: "NAVIGATE_HISTORY",
+        payload: "down",
+      });
+      expect(newState.inputText).toBe("hi");
+
+      // Edit original input
+      newState = inputReducer(newState, {
+        type: "INSERT_TEXT",
+        payload: " there",
+      });
+      expect(newState.inputText).toBe("hi there");
+      expect(newState.historyIndex).toBe(-1);
+
+      // Navigate up again
+      newState = inputReducer(newState, {
+        type: "NAVIGATE_HISTORY",
+        payload: "up",
+      });
+      expect(newState.inputText).toBe("first");
+      expect(newState.originalInputText).toBe("hi there");
+    });
   });
 });
