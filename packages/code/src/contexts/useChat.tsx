@@ -21,6 +21,7 @@ import {
   Agent,
   AgentCallbacks,
   type ToolPermissionContext,
+  OPERATION_CANCELLED_BY_USER,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
@@ -317,7 +318,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                 // If confirmation was cancelled or failed, deny the operation
                 return {
                   behavior: "deny",
-                  message: "Operation cancelled by user",
+                  message: OPERATION_CANCELLED_BY_USER,
                 };
               }
             };

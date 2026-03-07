@@ -70,4 +70,6 @@ export const RESTRICTED_TOOLS = [
 /** Type for restricted tool names */
 export type RestrictedTool = (typeof RESTRICTED_TOOLS)[number];
 
+export const OPERATION_CANCELLED_BY_USER = "Operation cancelled by user";
+
 export type { AskUserQuestion, AskUserQuestionInput, AskUserQuestionOption };
