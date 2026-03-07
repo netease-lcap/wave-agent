@@ -46,9 +46,14 @@ describe("PromptHistoryManager", () => {
         .spyOn(fs.promises, "appendFile")
         .mockResolvedValue(undefined);
 
-      await PromptHistoryManager.addEntry("hello world", "session-1", {
-        "[LongText#1]": "very long text",
-      });
+      await PromptHistoryManager.addEntry(
+        "hello world",
+        "session-1",
+        {
+          "[LongText#1]": "very long text",
+        },
+        "/home/user/project",
+      );
 
       expect(appendFileSpy).toHaveBeenCalledWith(
         "/mock/path/history.jsonl",
@@ -65,6 +70,11 @@ describe("PromptHistoryManager", () => {
         expect.stringContaining(
           '"longTextMap":{"[LongText#1]":"very long text"}',
         ),
+        "utf-8",
+      );
+      expect(appendFileSpy).toHaveBeenCalledWith(
+        "/mock/path/history.jsonl",
+        expect.stringContaining('"workdir":"/home/user/project"'),
         "utf-8",
       );
     });
@@ -126,10 +136,67 @@ describe("PromptHistoryManager", () => {
 
       vi.spyOn(fs.promises, "readFile").mockResolvedValue(mockData);
 
-      const history = await PromptHistoryManager.getHistory("s1");
+      const history = await PromptHistoryManager.getHistory({
+        sessionId: "s1",
+      });
       expect(history).toHaveLength(2);
       expect(history[0].prompt).toBe("session1-b");
       expect(history[1].prompt).toBe("session1-a");
+    });
+
+    it("should filter by multiple sessionIds if provided", async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      const mockData =
+        JSON.stringify({
+          prompt: "s1-a",
+          timestamp: 1000,
+          sessionId: "s1",
+        }) +
+        "\n" +
+        JSON.stringify({
+          prompt: "s2-a",
+          timestamp: 2000,
+          sessionId: "s2",
+        }) +
+        "\n" +
+        JSON.stringify({
+          prompt: "s3-a",
+          timestamp: 3000,
+          sessionId: "s3",
+        }) +
+        "\n";
+
+      vi.spyOn(fs.promises, "readFile").mockResolvedValue(mockData);
+
+      const history = await PromptHistoryManager.getHistory({
+        sessionId: ["s1", "s2"],
+      });
+      expect(history).toHaveLength(2);
+      expect(history[0].prompt).toBe("s2-a");
+      expect(history[1].prompt).toBe("s1-a");
+    });
+
+    it("should filter by workdir if provided", async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      const mockData =
+        JSON.stringify({
+          prompt: "w1-a",
+          timestamp: 1000,
+          workdir: "w1",
+        }) +
+        "\n" +
+        JSON.stringify({
+          prompt: "w2-a",
+          timestamp: 2000,
+          workdir: "w2",
+        }) +
+        "\n";
+
+      vi.spyOn(fs.promises, "readFile").mockResolvedValue(mockData);
+
+      const history = await PromptHistoryManager.getHistory({ workdir: "w1" });
+      expect(history).toHaveLength(1);
+      expect(history[0].prompt).toBe("w1-a");
     });
   });
 

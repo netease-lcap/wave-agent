@@ -63,6 +63,7 @@ export const handleSubmit = async (
       contentWithPlaceholders,
       callbacks.sessionId,
       state.longTextMap,
+      callbacks.workdir,
     ).catch((err: unknown) => {
       callbacks.logger?.error("Failed to save prompt history", err);
     });
@@ -511,9 +512,26 @@ export const handleNormalInput = async (
 
   if (key.upArrow) {
     if (state.history.length === 0) {
-      const history = await PromptHistoryManager.getHistory(
-        callbacks.sessionId,
-      );
+      let sessionIds: string[] | undefined = callbacks.sessionId
+        ? [callbacks.sessionId]
+        : undefined;
+
+      if (callbacks.getFullMessageThread) {
+        try {
+          const thread = await callbacks.getFullMessageThread();
+          sessionIds = thread.sessionIds;
+        } catch (error) {
+          callbacks.logger?.error(
+            "Failed to fetch ancestor session IDs",
+            error,
+          );
+        }
+      }
+
+      const history = await PromptHistoryManager.getHistory({
+        sessionId: sessionIds,
+        workdir: callbacks.workdir,
+      });
       dispatch({ type: "SET_HISTORY_ENTRIES", payload: history });
     }
     dispatch({ type: "NAVIGATE_HISTORY", payload: "up" });
