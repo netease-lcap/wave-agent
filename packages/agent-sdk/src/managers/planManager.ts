@@ -87,17 +87,4 @@ export class PlanManager {
       permissionManager?.setPlanFilePath(undefined);
     }
   }
-
-  /**
-   * Sync plan file path with current session
-   */
-  public syncWithSession(): void {
-    const permissionManager =
-      this.container.get<PermissionManager>("PermissionManager");
-    if (permissionManager) {
-      this.handlePlanModeTransition(
-        permissionManager.getCurrentEffectiveMode(),
-      );
-    }
-  }
 }
