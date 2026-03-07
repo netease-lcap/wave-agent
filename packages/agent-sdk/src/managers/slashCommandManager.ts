@@ -108,14 +108,6 @@ export class SlashCommandManager {
             // Substitute parameters in the command content
             let processedContent = command.content;
 
-            // Substitute $WAVE_PLUGIN_ROOT placeholder for plugin commands
-            if (command.pluginPath) {
-              processedContent = processedContent.replace(
-                /\$WAVE_PLUGIN_ROOT/g,
-                command.pluginPath,
-              );
-            }
-
             if (args) {
               processedContent = substituteCommandParameters(
                 processedContent,
@@ -225,14 +217,6 @@ export class SlashCommandManager {
         handler: async (args?: string) => {
           // Substitute parameters in the command content
           let processedContent = command.content;
-
-          // Substitute $WAVE_PLUGIN_ROOT placeholder for plugin commands
-          if (command.pluginPath) {
-            processedContent = processedContent.replace(
-              /\$WAVE_PLUGIN_ROOT/g,
-              command.pluginPath,
-            );
-          }
 
           if (args) {
             processedContent = substituteCommandParameters(

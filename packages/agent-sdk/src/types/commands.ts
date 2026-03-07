@@ -23,7 +23,4 @@ export interface CustomSlashCommand {
   filePath: string;
   content: string;
   config?: CustomSlashCommandConfig;
-
-  // Plugin support
-  pluginPath?: string; // Absolute path to the plugin root directory (only set for plugin commands)
 }

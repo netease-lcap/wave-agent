@@ -80,23 +80,7 @@ model: gpt-4
 Please review this code for best practices.
 ```
 
-### 5. Plugin Commands with File Access
-
-Plugin commands can access their own files using `$WAVE_PLUGIN_ROOT`:
-
-```markdown
----
-description: Load plugin template
----
-
-Use this template:
-
-!`cat $WAVE_PLUGIN_ROOT/templates/default.txt`
-```
-
-**How it works**: The `$WAVE_PLUGIN_ROOT` placeholder gets replaced with the plugin's actual directory path before the bash command runs. So if your plugin is at `/home/user/.wave/plugins/my-plugin`, the command becomes `cat /home/user/.wave/plugins/my-plugin/templates/default.txt`.
-
-### 6. Auto-Approving Tools
+### 5. Auto-Approving Tools
 
 Allow specific tools to run without asking permission:
 
@@ -123,8 +107,7 @@ The AI can now run `git status` and `git diff` automatically. Wildcards like `gi
 
 1. **Keep it simple**: Commands are just templates - let the AI do the complex work
 2. **Use descriptive names**: `/review-code` is better than `/rc`
-3. **Test with echo**: Try `!`echo $WAVE_PLUGIN_ROOT`` to verify environment variables
-4. **Start small**: Begin with simple text templates before adding bash commands
+3. **Start small**: Begin with simple text templates before adding bash commands
 
 ## Examples
 

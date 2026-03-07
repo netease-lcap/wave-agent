@@ -67,13 +67,7 @@ export class PluginLoader {
    */
   static loadCommands(pluginPath: string): CustomSlashCommand[] {
     const commandsPath = path.join(pluginPath, "commands");
-    const commands = scanCommandsDirectory(commandsPath);
-
-    // Attach plugin path to each command for WAVE_PLUGIN_ROOT support
-    return commands.map((command) => ({
-      ...command,
-      pluginPath,
-    }));
+    return scanCommandsDirectory(commandsPath);
   }
 
   /**
