@@ -115,9 +115,6 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **Invalid Pattern Syntax**: If an `allowed-tools` pattern is syntactically invalid, the system SHOULD ignore that specific pattern and default to manual confirmation for matching tools.
 - **Session Persistence**: If the user starts a new task or switches context, any active `allowed-tools` privileges from a previous slash command MUST be revoked.
 - **Overlapping Patterns**: If multiple patterns match a tool execution, the most permissive one (auto-approval) takes precedence.
-- **Plugin Path Resolution**: If a plugin command's `pluginPath` is invalid or inaccessible, the `$WAVE_PLUGIN_ROOT` placeholder SHOULD be substituted with an empty string.
-- **Path Escaping**: The `$WAVE_PLUGIN_ROOT` value MUST be properly escaped during substitution to prevent shell injection vulnerabilities.
-- **Nested Plugin Commands**: Commands from plugins that are nested (e.g., `plugin:subcommand`) MUST still have access to the root plugin path, not a subdirectory path.
 
 ## Requirements *(mandatory)*
 
@@ -143,8 +140,6 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **FR-018**: System MUST scan the `.wave/commands/` directory to discover all markdown files at the root level.
 - **FR-019**: System MUST register each discovered markdown file as an available slash command using simple syntax (e.g., `/help`).
 - **FR-020**: System MUST ignore non-markdown files during the discovery process.
-- **FR-021**: System MUST substitute the `$WAVE_PLUGIN_ROOT` placeholder with the plugin's absolute path when processing plugin-provided custom commands.
-- **FR-022**: System MUST NOT substitute the `$WAVE_PLUGIN_ROOT` placeholder when processing non-plugin custom commands (from `.wave/commands/`).
 
 ### Key Entities
 
@@ -169,19 +164,3 @@ As a user, I want the AI to execute specific tools automatically when I trigger 
 - **SC-006**: Users can find desired commands within 3 keystrokes using the search functionality
 - **SC-005**: Command reloading completes within 200ms after file system changes are detected
 - **SC-008**: Zero data loss occurs during command execution, with all conversation context preserved
-
----
-
-### User Story 7 - Plugin Command Placeholder Substitution (Priority: P2)
-
-Users can access the plugin root directory path via the `$WAVE_PLUGIN_ROOT` placeholder when creating plugin-provided custom commands.
-
-**Why this priority**: Enables plugin commands to reference files and scripts within the plugin directory without hardcoding paths, making plugins portable and easier to develop.
-
-**Independent Test**: Can be tested by creating a plugin with a custom command that contains `$WAVE_PLUGIN_ROOT` placeholder, then verifying the placeholder is correctly substituted with the plugin's root path before execution.
-
-**Acceptance Scenarios**:
-
-1. **Given** a plugin command contains `!`cat $WAVE_PLUGIN_ROOT/data/template.txt``, **When** the command is executed, **Then** the `$WAVE_PLUGIN_ROOT` placeholder is substituted with the plugin's absolute path before the bash command runs, and the file contents are embedded in the markdown
-2. **Given** a non-plugin command (from `.wave/commands/`) contains `$WAVE_PLUGIN_ROOT`, **When** the command is executed, **Then** the `$WAVE_PLUGIN_ROOT` placeholder is not substituted and remains as literal text in the bash command
-3. **Given** a plugin command uses multiple `$WAVE_PLUGIN_ROOT` placeholders, **When** the command is executed, **Then** all occurrences are substituted with the same plugin root directory path

@@ -27,13 +27,7 @@
 - [X] T017 Update `executeCustomCommandInMainAgent` in `SlashCommandManager` to pass `config.allowedTools` to `aiManager.sendAIMessage` in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 - [X] T018 Implement `finally` block logic in `sendAIMessage` to call `permissionManager.clearTemporaryRules` when `recursionDepth === 0` in `packages/agent-sdk/src/managers/aiManager.ts`
 
-## Phase 3: Plugin Environment Variables
+## Phase 3: Automatic Argument Appending
 
-- [X] T028 Add `pluginPath?: string` field to `CustomSlashCommand` interface in `packages/agent-sdk/src/types/commands.ts`
-- [X] T029 Update `PluginLoader.loadCommands` to return commands with plugin path metadata in `packages/agent-sdk/src/services/pluginLoader.ts`
-- [X] T030 Update `PluginManager.loadSinglePlugin` to pass plugin path when registering plugin commands in `packages/agent-sdk/src/managers/pluginManager.ts`
-- [X] T031 Update `SlashCommandManager.registerPluginCommands` to accept and store plugin path for each command in `packages/agent-sdk/src/managers/slashCommandManager.ts`
-- [X] T032 Update `SlashCommandManager.executeCustomCommandInMainAgent` to set `WAVE_PLUGIN_ROOT` environment variable when executing bash commands for plugin commands in `packages/agent-sdk/src/managers/slashCommandManager.ts`
-- [X] T033 Add tests for plugin commands with WAVE_PLUGIN_ROOT environment variable in `packages/agent-sdk/tests/managers/slashCommandManager.test.ts`
 - [X] T034 Implement automatic argument appending when no placeholders are present in slash commands and skills in `packages/agent-sdk/src/managers/slashCommandManager.ts`
 

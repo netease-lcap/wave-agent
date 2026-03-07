@@ -169,11 +169,7 @@ describe("PluginLoader", () => {
       );
 
       const result = PluginLoader.loadCommands(mockPluginPath);
-
-      // Expect each command to have the pluginPath field added
-      expect(result).toEqual([
-        { ...mockCommands[0], pluginPath: mockPluginPath },
-      ]);
+      expect(result).toEqual(mockCommands);
       expect(scanCommandsDirectory).toHaveBeenCalledWith(
         `${mockPluginPath}/commands`,
       );
