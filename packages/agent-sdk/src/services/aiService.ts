@@ -239,8 +239,10 @@ Today's date: ${new Date().toISOString().split("T")[0]}
     const resolvedMaxTokens = options.maxTokens ?? modelConfig.maxTokens;
 
     processedTools = tools;
+    logger.error("未处理之前的", openaiMessages);
 
     if (isClaudeModel(currentModel)) {
+      logger.error("走到了claude的处理", currentModel);
       openaiMessages = transformMessagesForClaudeCache(
         openaiMessages,
         currentModel,
@@ -317,6 +319,15 @@ Today's date: ${new Date().toISOString().split("T")[0]}
         responseHeaders[key] = value;
       });
 
+      if (!response?.choices?.[0]?.message) {
+        logger.error("callAgent 返回为空", response);
+        logger.error("callAgent 返回为空", openaiMessages);
+        // eslint-disable-next-line no-warning-comments
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        throw new Error(
+          (response as any)?.error?.message || "No response from AI",
+        );
+      }
       const finalMessage = response.choices[0]?.message;
       const finishReason = response.choices[0]?.finish_reason || null;
 
