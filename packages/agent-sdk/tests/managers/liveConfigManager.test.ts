@@ -11,6 +11,7 @@ import { Container } from "../../src/utils/container.js";
 import type { HookManager } from "../../src/managers/hookManager.js";
 import { ConfigurationService } from "../../src/services/configurationService.js";
 import { FileWatcherService } from "../../src/services/fileWatcher.js";
+import { PermissionManager } from "../../src/managers/permissionManager.js";
 import * as configPaths from "../../src/utils/configPaths.js";
 import { ensureGlobalGitIgnore } from "../../src/utils/fileUtils.js";
 import type { WaveConfiguration } from "../../src/types/configuration.js";
@@ -40,6 +41,7 @@ describe("LiveConfigManager - Configuration Management", () => {
   let liveConfigManager: LiveConfigManager;
   let container: Container;
   let mockHookManager: HookManager;
+  let mockPermissionManager: PermissionManager;
   let mockConfigurationService: ConfigurationService;
   let mockFileWatcherService: FileWatcherService;
   let workdir: string;
@@ -51,6 +53,14 @@ describe("LiveConfigManager - Configuration Management", () => {
     mockHookManager = {
       loadConfigurationFromWaveConfig: vi.fn(),
     } as Partial<HookManager> as HookManager;
+
+    // Mock permission manager
+    mockPermissionManager = {
+      updateConfiguredDefaultMode: vi.fn(),
+      updateAllowedRules: vi.fn(),
+      updateDeniedRules: vi.fn(),
+      updateAdditionalDirectories: vi.fn(),
+    } as Partial<PermissionManager> as PermissionManager;
 
     // Mock file watcher service
     mockFileWatcherService = {
@@ -79,6 +89,7 @@ describe("LiveConfigManager - Configuration Management", () => {
     // Setup container
     container = new Container();
     container.register("HookManager", mockHookManager);
+    container.register("PermissionManager", mockPermissionManager);
     container.register("ConfigurationService", mockConfigurationService);
 
     // Mock config paths
@@ -476,6 +487,70 @@ describe("LiveConfigManager - Configuration Management", () => {
       });
 
       expect(ensureGlobalGitIgnore).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Permission Reload", () => {
+    it("should reset permissions to empty arrays when they are missing in the new configuration", async () => {
+      const initialConfig: WaveConfiguration = {
+        permissions: {
+          allow: ["Bash(ls)"],
+          deny: ["Bash(rm *)"],
+          additionalDirectories: ["/tmp"],
+          defaultMode: "default",
+        },
+      };
+
+      const emptyConfig: WaveConfiguration = {
+        permissions: {},
+      };
+
+      const initialResult: ConfigurationLoadResult = {
+        success: true,
+        configuration: initialConfig,
+        sourcePath: "/mock/project/.wave/settings.json",
+        warnings: [],
+      };
+
+      const emptyResult: ConfigurationLoadResult = {
+        success: true,
+        configuration: emptyConfig,
+        sourcePath: "/mock/project/.wave/settings.json",
+        warnings: [],
+      };
+
+      vi.mocked(mockConfigurationService.loadMergedConfiguration)
+        .mockResolvedValueOnce(initialResult)
+        .mockResolvedValueOnce(emptyResult);
+
+      // Initial load
+      await liveConfigManager.initialize();
+
+      expect(mockPermissionManager.updateAllowedRules).toHaveBeenCalledWith([
+        "Bash(ls)",
+      ]);
+      expect(mockPermissionManager.updateDeniedRules).toHaveBeenCalledWith([
+        "Bash(rm *)",
+      ]);
+      expect(
+        mockPermissionManager.updateAdditionalDirectories,
+      ).toHaveBeenCalledWith(["/tmp"]);
+      expect(
+        mockPermissionManager.updateConfiguredDefaultMode,
+      ).toHaveBeenCalledWith("default");
+
+      // Reload with empty permissions
+      await liveConfigManager.reload();
+
+      // These should be called with empty arrays/undefined if they are missing in the new config
+      expect(mockPermissionManager.updateAllowedRules).toHaveBeenCalledWith([]);
+      expect(mockPermissionManager.updateDeniedRules).toHaveBeenCalledWith([]);
+      expect(
+        mockPermissionManager.updateAdditionalDirectories,
+      ).toHaveBeenCalledWith([]);
+      expect(
+        mockPermissionManager.updateConfiguredDefaultMode,
+      ).toHaveBeenCalledWith(undefined);
     });
   });
 });
