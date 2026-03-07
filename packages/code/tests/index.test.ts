@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import yargs from "yargs";
 import { main } from "../src/index.js";
 import * as cli from "../src/cli.js";
-import * as pluginManagerCli from "../src/plugin-manager-cli.js";
 import * as printCli from "../src/print-cli.js";
 import * as sessionSelectorCli from "../src/session-selector-cli.js";
 import path from "path";
@@ -52,7 +51,6 @@ vi.mock("../src/commands/plugin/list.js");
 vi.mock("../src/commands/plugin/uninstall.js");
 vi.mock("../src/commands/plugin/update.js");
 vi.mock("../src/cli.js");
-vi.mock("../src/plugin-manager-cli.js");
 vi.mock("../src/print-cli.js");
 vi.mock("../src/session-selector-cli.js");
 vi.mock("../src/utils/worktree.js", () => ({
@@ -333,39 +331,6 @@ describe("main", () => {
 
     afterEach(() => {
       consoleErrorSpy.mockRestore();
-    });
-
-    it("should start plugin manager UI if 'plugin ui' command is given", async () => {
-      process.argv = ["node", "index.js", "plugin", "ui"];
-      vi.mocked(pluginManagerCli.startPluginManagerCli).mockResolvedValue(
-        false,
-      );
-      await main();
-      expect(pluginManagerCli.startPluginManagerCli).toHaveBeenCalled();
-    });
-
-    it("should exit process if plugin manager UI returns true", async () => {
-      process.argv = ["node", "index.js", "plugin", "ui"];
-      vi.mocked(pluginManagerCli.startPluginManagerCli).mockResolvedValue(true);
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(function () {
-        throw new Error("process.exit was called");
-      });
-      await expect(main()).rejects.toThrow("process.exit was called");
-      expect(exitSpy).toHaveBeenCalledWith(0);
-      exitSpy.mockRestore();
-    });
-
-    it("should not exit process if plugin manager UI returns false", async () => {
-      process.argv = ["node", "index.js", "plugin", "ui"];
-      vi.mocked(pluginManagerCli.startPluginManagerCli).mockResolvedValue(
-        false,
-      );
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation(function () {
-        throw new Error("process.exit was called");
-      });
-      await main();
-      expect(exitSpy).not.toHaveBeenCalled();
-      exitSpy.mockRestore();
     });
 
     it("should call addMarketplaceCommand for 'plugin marketplace add' command", async () => {
