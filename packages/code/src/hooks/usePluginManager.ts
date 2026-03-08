@@ -126,7 +126,7 @@ export function usePluginManager(): PluginManagerContextType {
         error: error instanceof Error ? error.message : String(error),
       }));
     }
-  }, [pluginCore]);
+  }, [pluginCore, clearPluginFeedback]);
 
   useEffect(() => {
     refresh();
