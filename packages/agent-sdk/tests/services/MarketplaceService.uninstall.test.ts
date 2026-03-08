@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.unmock("../../src/services/MarketplaceService.js");
-
 import { MarketplaceService } from "../../src/services/MarketplaceService.js";
 import { promises as fs, existsSync } from "fs";
 import * as path from "path";
@@ -10,6 +8,8 @@ import { getPluginsDir } from "../../src/utils/configPaths.js";
 vi.mock("../../src/utils/configPaths.js", () => ({
   getPluginsDir: vi.fn(),
 }));
+
+vi.mock("../../src/services/GitService.js");
 
 vi.mock("fs", async () => {
   const actual = await vi.importActual<typeof import("fs")>("fs");

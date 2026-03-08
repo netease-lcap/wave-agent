@@ -6,6 +6,7 @@ import * as configPaths from "../src/utils/configPaths.js";
 import * as fs from "fs";
 
 vi.mock("../src/services/MarketplaceService.js");
+vi.mock("../src/services/GitService.js");
 vi.mock("../src/services/pluginLoader.js");
 vi.mock("../src/utils/configPaths.js");
 vi.mock("fs");

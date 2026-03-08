@@ -24,6 +24,11 @@ export class GitService {
     targetPath: string,
     ref?: string,
   ): Promise<void> {
+    if (process.env.VITEST && !process.env.ALLOW_REAL_GIT) {
+      throw new Error(
+        `Real git clone is disabled in tests. URL: ${urlOrRepo}, Path: ${targetPath}`,
+      );
+    }
     if (!(await this.isGitAvailable())) {
       throw new Error(
         "Git is not installed or not found in PATH. Please install Git to use Git/GitHub marketplaces.",
@@ -55,6 +60,11 @@ export class GitService {
    * Pulls the latest changes in a local repository
    */
   async pull(targetPath: string): Promise<void> {
+    if (process.env.VITEST && !process.env.ALLOW_REAL_GIT) {
+      throw new Error(
+        `Real git pull is disabled in tests. Path: ${targetPath}`,
+      );
+    }
     if (!(await this.isGitAvailable())) {
       throw new Error(
         "Git is not installed or not found in PATH. Please install Git to use Git/GitHub marketplaces.",

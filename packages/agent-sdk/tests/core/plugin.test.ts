@@ -6,6 +6,7 @@ import { ConfigurationService } from "../../src/services/configurationService.js
 import { KnownMarketplace } from "../../src/types/index.js";
 
 vi.mock("../../src/services/MarketplaceService.js");
+vi.mock("../../src/services/GitService.js");
 vi.mock("../../src/managers/pluginScopeManager.js");
 vi.mock("../../src/services/configurationService.js");
 vi.mock("../../src/managers/pluginManager.js");

@@ -17,6 +17,7 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 
 vi.mock("../../src/services/pluginLoader.js");
 vi.mock("../../src/services/MarketplaceService.js");
+vi.mock("../../src/services/GitService.js");
 
 describe("PluginManager Auto-install", () => {
   let pluginManager: PluginManager;
