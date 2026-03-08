@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+vi.unmock("../../src/services/MarketplaceService.js");
+
 import { MarketplaceService } from "../../src/services/MarketplaceService.js";
 
 describe("MarketplaceService - Update", () => {

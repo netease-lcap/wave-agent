@@ -73,6 +73,10 @@ export class PluginManager {
       }
 
       const marketplaceService = new MarketplaceService();
+
+      // Trigger auto-update for marketplaces
+      await marketplaceService.autoUpdateAll();
+
       let installedRegistry = await marketplaceService.getInstalledPlugins();
       const knownMarketplaces = await marketplaceService.listMarketplaces();
 

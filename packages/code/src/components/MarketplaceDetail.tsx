@@ -9,6 +9,10 @@ export const MarketplaceDetail: React.FC = () => {
   const marketplace = marketplaces.find((m) => m.name === state.selectedId);
 
   const ACTIONS = [
+    {
+      id: "toggle-auto-update",
+      label: `${marketplace?.autoUpdate ? "Disable" : "Enable"} auto-update`,
+    },
     { id: "update", label: "Update marketplace" },
     { id: "remove", label: "Remove marketplace" },
   ] as const;
@@ -26,7 +30,9 @@ export const MarketplaceDetail: React.FC = () => {
       );
     } else if (key.return && marketplace && !state.isLoading) {
       const action = ACTIONS[selectedActionIndex].id;
-      if (action === "update") {
+      if (action === "toggle-auto-update") {
+        actions.toggleAutoUpdate(marketplace.name, !marketplace.autoUpdate);
+      } else if (action === "update") {
         actions.updateMarketplace(marketplace.name);
       } else {
         actions.removeMarketplace(marketplace.name);
@@ -53,6 +59,15 @@ export const MarketplaceDetail: React.FC = () => {
 
       <Box marginBottom={1}>
         <Text>Source: {JSON.stringify(marketplace.source)}</Text>
+      </Box>
+
+      <Box marginBottom={1}>
+        <Text>
+          Auto-update:{" "}
+          <Text color={marketplace.autoUpdate ? "green" : "red"}>
+            {marketplace.autoUpdate ? "Enabled" : "Disabled"}
+          </Text>
+        </Text>
       </Box>
 
       {state.isLoading && (

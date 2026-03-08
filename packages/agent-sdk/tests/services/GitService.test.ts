@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+vi.unmock("../../src/services/GitService.js");
+
 import { GitService } from "../../src/services/GitService.js";
 import { exec } from "child_process";
 

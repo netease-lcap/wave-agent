@@ -43,6 +43,7 @@ export interface PluginManagerContextType {
     ) => Promise<void>;
     uninstallPlugin: (name: string, marketplace: string) => Promise<void>;
     updatePlugin: (name: string, marketplace: string) => Promise<void>;
+    toggleAutoUpdate: (name: string, enabled: boolean) => Promise<void>;
     refresh: () => Promise<void>;
     clearPluginFeedback: () => void;
   };

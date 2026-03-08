@@ -62,3 +62,14 @@
 - [x] T025 [US1] Add unit tests for general Git marketplace URLs and fragments in `MarketplaceService.test.ts`
 - [x] T026 [US2] Add unit tests for `git` source type in `MarketplaceService.test.ts`
 - [x] T027 Run `pnpm run type-check` and `pnpm lint` to ensure everything is still correct
+
+## Phase 8: Auto-Update Support
+
+- [ ] T028 Add `autoUpdate: boolean` field to `KnownMarketplace` type in `packages/agent-sdk/src/types/marketplace.ts`
+- [ ] T029 Update `MarketplaceService.updateMarketplace` to optionally update all installed plugins from that marketplace.
+- [ ] T030 Implement `MarketplaceService.autoUpdateAll()` which iterates through all marketplaces with `autoUpdate: true` and calls `updateMarketplace(m.name, { updatePlugins: true })`.
+- [ ] T031 Call `MarketplaceService.autoUpdateAll()` during application startup (e.g., in `PluginManager.loadInstalledPlugins` or a similar initialization point).
+- [ ] T032 Update `MarketplaceService.addMarketplace` to set default `autoUpdate` value (true for built-in, false for third-party).
+- [ ] T033 Implement `MarketplaceService.toggleAutoUpdate(name: string, enabled: boolean)`.
+- [ ] T034 Update `/plugin` interactive UI in `packages/code/src/components/PluginManager.tsx` (or similar) to allow toggling `autoUpdate`.
+- [ ] T035 Add unit tests for auto-update behavior (including plugin updates) in `MarketplaceService.test.ts`.

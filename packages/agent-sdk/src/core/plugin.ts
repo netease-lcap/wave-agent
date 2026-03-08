@@ -97,6 +97,13 @@ export class PluginCore {
   }
 
   /**
+   * Toggles auto-update for a marketplace
+   */
+  async toggleAutoUpdate(name: string, enabled: boolean): Promise<void> {
+    await this.marketplaceService.toggleAutoUpdate(name, enabled);
+  }
+
+  /**
    * Lists all plugins from all registered marketplaces with their installation and enabled status
    */
   async listPlugins(): Promise<{

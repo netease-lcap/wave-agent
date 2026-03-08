@@ -31,6 +31,7 @@ export class MarketplaceService {
       source: "github",
       repo: "netease-lcap/wave-plugins-official",
     },
+    autoUpdate: true,
   };
 
   constructor() {
@@ -241,6 +242,7 @@ export class MarketplaceService {
         source: isFullUrl
           ? { source: "git", url: urlOrRepo, ref }
           : { source: "github", repo: urlOrRepo, ref },
+        autoUpdate: false,
       };
     } else {
       // Local directory format
@@ -257,6 +259,7 @@ export class MarketplaceService {
       marketplace = {
         name: manifest.name,
         source: { source: "directory", path: absolutePath },
+        autoUpdate: false,
       };
     }
 
@@ -311,7 +314,10 @@ export class MarketplaceService {
   /**
    * Updates a specific marketplace or all marketplaces
    */
-  async updateMarketplace(name?: string): Promise<void> {
+  async updateMarketplace(
+    name?: string,
+    options?: { updatePlugins?: boolean },
+  ): Promise<void> {
     const registry = await this.getKnownMarketplaces();
     const toUpdate = name
       ? registry.marketplaces.filter((m) => m.name === name)
@@ -336,12 +342,46 @@ export class MarketplaceService {
             continue;
           }
           const targetPath = this.getMarketplacePath(marketplace);
-          await this.gitService.pull(targetPath);
+          if (existsSync(targetPath)) {
+            await this.gitService.pull(targetPath);
+          } else {
+            let url: string;
+            if (marketplace.source.source === "github") {
+              url = marketplace.source.repo;
+            } else {
+              url = marketplace.source.url;
+            }
+            await this.gitService.clone(
+              url,
+              targetPath,
+              marketplace.source.ref,
+            );
+          }
         }
         // For directory source, we just re-validate the manifest
         await this.loadMarketplaceManifest(
           this.getMarketplacePath(marketplace),
         );
+
+        if (options?.updatePlugins) {
+          const installedRegistry = await this.getInstalledPlugins();
+          const pluginsToUpdate = installedRegistry.plugins.filter(
+            (p) => p.marketplace === marketplace.name,
+          );
+          for (const plugin of pluginsToUpdate) {
+            try {
+              await this.installPlugin(
+                `${plugin.name}@${plugin.marketplace}`,
+                plugin.projectPath,
+              );
+            } catch (error) {
+              console.error(
+                `Failed to update plugin "${plugin.name}" from marketplace "${marketplace.name}":`,
+                error,
+              );
+            }
+          }
+        }
       } catch (error) {
         const msg = `Failed to update marketplace "${marketplace.name}": ${error instanceof Error ? error.message : String(error)}`;
         console.error(msg);
@@ -354,6 +394,38 @@ export class MarketplaceService {
         `Some marketplaces failed to update:\n${errors.join("\n")}`,
       );
     }
+  }
+
+  /**
+   * Automatically updates all marketplaces that have auto-update enabled
+   */
+  async autoUpdateAll(): Promise<void> {
+    const registry = await this.getKnownMarketplaces();
+    const toAutoUpdate = registry.marketplaces.filter((m) => m.autoUpdate);
+
+    for (const marketplace of toAutoUpdate) {
+      try {
+        await this.updateMarketplace(marketplace.name, { updatePlugins: true });
+      } catch (error) {
+        console.error(
+          `Auto-update failed for marketplace "${marketplace.name}":`,
+          error,
+        );
+      }
+    }
+  }
+
+  /**
+   * Toggles auto-update for a marketplace
+   */
+  async toggleAutoUpdate(name: string, enabled: boolean): Promise<void> {
+    const registry = await this.getKnownMarketplaces();
+    const marketplace = registry.marketplaces.find((m) => m.name === name);
+    if (!marketplace) {
+      throw new Error(`Marketplace ${name} not found`);
+    }
+    marketplace.autoUpdate = enabled;
+    await this.saveKnownMarketplaces(registry);
   }
 
   /**

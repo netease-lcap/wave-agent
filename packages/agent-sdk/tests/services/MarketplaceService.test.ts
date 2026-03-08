@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+vi.unmock("../../src/services/MarketplaceService.js");
+
 import { MarketplaceService } from "../../src/services/MarketplaceService.js";
 import { promises as fs, existsSync } from "fs";
 import * as path from "path";
@@ -18,6 +21,10 @@ describe("MarketplaceService - Builtin Marketplace", () => {
       await fs.rm(mockPluginsDir, { recursive: true, force: true });
     }
     service = new MarketplaceService();
+    // Mock all git operations by default
+    vi.spyOn(service["gitService"], "isGitAvailable").mockResolvedValue(true);
+    vi.spyOn(service["gitService"], "clone").mockResolvedValue();
+    vi.spyOn(service["gitService"], "pull").mockResolvedValue();
   });
 
   afterEach(async () => {
@@ -88,5 +95,88 @@ describe("MarketplaceService - Builtin Marketplace", () => {
     expect(
       existsSync(path.join(mockPluginsDir, "known_marketplaces.json")),
     ).toBe(true);
+  });
+
+  describe("Auto-Update Support", () => {
+    it("should have autoUpdate: true for builtin marketplace", async () => {
+      const registry = await service.getKnownMarketplaces();
+      expect(registry.marketplaces[0].autoUpdate).toBe(true);
+    });
+
+    it("should have autoUpdate: false for newly added marketplaces", async () => {
+      vi.spyOn(
+        service,
+        "loadMarketplaceManifest" as keyof MarketplaceService,
+      ).mockResolvedValue({
+        name: "custom-mkt",
+        owner: { name: "test" },
+        plugins: [],
+      } as never);
+
+      await service.addMarketplace("./some-path");
+      const registry = await service.getKnownMarketplaces();
+      const custom = registry.marketplaces.find((m) => m.name === "custom-mkt");
+      expect(custom?.autoUpdate).toBe(false);
+    });
+
+    it("should toggle autoUpdate", async () => {
+      await service.toggleAutoUpdate("wave-plugins-official", false);
+      let registry = await service.getKnownMarketplaces();
+      expect(registry.marketplaces[0].autoUpdate).toBe(false);
+
+      await service.toggleAutoUpdate("wave-plugins-official", true);
+      registry = await service.getKnownMarketplaces();
+      expect(registry.marketplaces[0].autoUpdate).toBe(true);
+    });
+
+    it("should call updateMarketplace with updatePlugins: true in autoUpdateAll", async () => {
+      const updateSpy = vi
+        .spyOn(service, "updateMarketplace")
+        .mockResolvedValue();
+
+      // Builtin has autoUpdate: true by default
+      await service.autoUpdateAll();
+
+      expect(updateSpy).toHaveBeenCalledWith("wave-plugins-official", {
+        updatePlugins: true,
+      });
+    });
+
+    it("should update plugins when updatePlugins: true is passed to updateMarketplace", async () => {
+      // Mock getInstalledPlugins to return a plugin from the marketplace
+      vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
+        plugins: [
+          {
+            name: "test-plugin",
+            marketplace: "wave-plugins-official",
+            version: "1.0.0",
+            cachePath: "/some/path",
+          },
+        ],
+      });
+
+      const installSpy = vi
+        .spyOn(service, "installPlugin")
+        .mockResolvedValue({} as never);
+      vi.spyOn(
+        service,
+        "loadMarketplaceManifest" as keyof MarketplaceService,
+      ).mockResolvedValue({
+        name: "wave-plugins-official",
+        owner: { name: "test" },
+        plugins: [
+          { name: "test-plugin", source: "./test", description: "test" },
+        ],
+      } as never);
+
+      await service.updateMarketplace("wave-plugins-official", {
+        updatePlugins: true,
+      });
+
+      expect(installSpy).toHaveBeenCalledWith(
+        "test-plugin@wave-plugins-official",
+        undefined,
+      );
+    });
   });
 });
