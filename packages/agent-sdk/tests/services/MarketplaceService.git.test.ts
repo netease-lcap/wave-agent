@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.unmock("../../src/services/MarketplaceService.js");
-
 import * as os from "os";
 import { existsSync } from "fs";
 import { MarketplaceService } from "../../src/services/MarketplaceService.js";

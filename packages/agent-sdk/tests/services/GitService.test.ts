@@ -1,6 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-vi.unmock("../../src/services/GitService.js");
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { GitService } from "../../src/services/GitService.js";
 import { exec } from "child_process";
@@ -11,10 +9,16 @@ vi.mock("child_process", () => ({
 
 describe("GitService", () => {
   let service: GitService;
+  const originalAllowRealGit = process.env.ALLOW_REAL_GIT;
 
   beforeEach(() => {
+    process.env.ALLOW_REAL_GIT = "true";
     vi.clearAllMocks();
     service = new GitService();
+  });
+
+  afterEach(() => {
+    process.env.ALLOW_REAL_GIT = originalAllowRealGit;
   });
 
   it("should return true if git is available", async () => {

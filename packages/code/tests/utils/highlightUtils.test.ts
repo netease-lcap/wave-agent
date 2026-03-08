@@ -2,14 +2,46 @@ import { describe, it, expect, beforeAll, vi, afterAll } from "vitest";
 import { highlightToAnsi } from "../../src/utils/highlightUtils.js";
 import chalk from "chalk";
 
+vi.mock("highlight.js", () => ({
+  default: {
+    highlight: vi.fn().mockImplementation((code, { language }) => {
+      if (language === "ts" && code.includes("const")) {
+        return {
+          value:
+            '<span class="hljs-keyword">const</span> x = <span class="hljs-number">1</span>;',
+        };
+      }
+      return { value: code };
+    }),
+    highlightAuto: vi.fn().mockImplementation((code) => {
+      if (code.includes("function")) {
+        return {
+          value:
+            '<span class="hljs-keyword">function</span> hello() { console.log(<span class="hljs-string">"world"</span>); }',
+        };
+      }
+      return { value: code };
+    }),
+    registerLanguage: vi.fn(),
+    getLanguage: vi.fn(),
+  },
+}));
+
 describe("highlightToAnsi", () => {
+  let originalChalkLevel: typeof chalk.level;
+  let originalForceColor: string | undefined;
+
   beforeAll(() => {
+    originalChalkLevel = chalk.level;
+    originalForceColor = process.env.FORCE_COLOR;
     process.env.FORCE_COLOR = "1";
     chalk.level = 1;
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
   afterAll(() => {
+    chalk.level = originalChalkLevel;
+    process.env.FORCE_COLOR = originalForceColor;
     vi.restoreAllMocks();
   });
 
