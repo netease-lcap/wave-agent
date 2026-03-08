@@ -9,6 +9,7 @@ Represents a registered marketplace in the system.
 |-------|------|-------------|
 | `name` | `string` | Unique name of the marketplace. |
 | `source` | `MarketplaceSource` | The source configuration of the marketplace. |
+| `autoUpdate` | `boolean` | Whether auto-update is enabled for this marketplace. |
 
 ### MarketplaceSource
 | Field | Type | Description |

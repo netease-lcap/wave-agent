@@ -81,6 +81,7 @@ describe("PluginManager Auto-install", () => {
           .mockImplementation(async () => installedPlugins),
         listMarketplaces: vi.fn().mockResolvedValue(knownMarketplaces),
         installPlugin: mockInstallPlugin,
+        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
       } as unknown as MarketplaceService;
     });
 
@@ -130,6 +131,7 @@ describe("PluginManager Auto-install", () => {
           .mockImplementation(async () => installedPlugins),
         listMarketplaces: vi.fn().mockResolvedValue(knownMarketplaces),
         installPlugin: mockInstallPlugin,
+        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
       } as unknown as MarketplaceService;
     });
 
@@ -173,6 +175,7 @@ describe("PluginManager Auto-install", () => {
           .mockImplementation(async () => installedPlugins),
         listMarketplaces: vi.fn().mockResolvedValue(knownMarketplaces),
         installPlugin: mockInstallPlugin,
+        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
       } as unknown as MarketplaceService;
     });
 

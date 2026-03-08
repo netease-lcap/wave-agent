@@ -279,6 +279,30 @@ export function usePluginManager(): PluginManagerContextType {
     [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
   );
 
+  const toggleAutoUpdate = useCallback(
+    async (name: string, enabled: boolean) => {
+      clearPluginFeedback();
+      setState((prev: PluginManagerState) => ({
+        ...prev,
+        isLoading: true,
+      }));
+      try {
+        await pluginCore.toggleAutoUpdate(name, enabled);
+        await refresh();
+        setSuccessMessage(
+          `Auto-update for '${name}' ${enabled ? "enabled" : "disabled"}`,
+        );
+      } catch (error) {
+        setState((prev: PluginManagerState) => ({
+          ...prev,
+          isLoading: false,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      }
+    },
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
+  );
+
   return {
     state,
     marketplaces,
@@ -293,6 +317,7 @@ export function usePluginManager(): PluginManagerContextType {
       installPlugin,
       uninstallPlugin,
       updatePlugin,
+      toggleAutoUpdate,
       refresh,
       clearPluginFeedback,
     },

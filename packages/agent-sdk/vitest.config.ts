@@ -16,6 +16,7 @@ export default defineConfig(() => {
       environment: "node",
       include: ["tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
       exclude: ["node_modules", "dist"],
+      setupFiles: ["tests/setup.ts"],
       // Enable retry in CI environment: failed tests will retry up to 2 times
       retry: isCI ? 2 : 0,
       // reporters: ["dot"],

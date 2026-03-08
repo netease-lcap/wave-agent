@@ -108,6 +108,16 @@ As a user, I want to update the local cache of one or all registered marketplace
 - **FR-011**: System MUST check for Git availability before performing any GitHub or Git-related operations.
 - **FR-012**: System MUST provide a clear error message if a user attempts to add a GitHub/Git marketplace when Git is not installed.
 - **FR-013**: System MUST gracefully skip GitHub/Git marketplaces during `wave plugin marketplace update` if Git is not installed, while continuing to update local marketplaces.
+- **FR-014**: System MUST support auto-update for registered marketplaces.
+- **FR-015**: Default/built-in marketplaces MUST have auto-update enabled by default.
+- **FR-016**: Third-party marketplaces MUST have auto-update disabled by default.
+- **FR-017**: System MUST allow users to toggle auto-update for any marketplace via the `/plugin` interactive UI.
+
+### Auto-Update Definition
+Auto-update includes updating the marketplace manifest (e.g., `git pull`) AND updating all plugins currently installed from that marketplace.
+
+### Auto-Update Trigger
+Auto-update is triggered ONLY when the application starts up (e.g., during `PluginManager` initialization or when the UI first loads), but only for marketplaces that have `autoUpdate` enabled.
 
 ### Key Entities *(include if feature involves data)*
 

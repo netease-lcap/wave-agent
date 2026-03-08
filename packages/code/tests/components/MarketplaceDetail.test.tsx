@@ -15,6 +15,7 @@ describe("MarketplaceDetail", () => {
     installPlugin: vi.fn(),
     uninstallPlugin: vi.fn(),
     updatePlugin: vi.fn(),
+    toggleAutoUpdate: vi.fn(),
     refresh: vi.fn(),
   };
 
@@ -88,8 +89,13 @@ describe("MarketplaceDetail", () => {
       </PluginManagerContext.Provider>,
     );
 
-    // Initially "Update marketplace" is selected (index 0)
-    expect(lastFrame()).toContain("> Update marketplace");
+    // Initially "Enable auto-update" is selected (index 0)
+    expect(lastFrame()).toContain("> Enable auto-update");
+
+    stdin.write("\u001B[B"); // Down arrow
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("> Update marketplace");
+    });
 
     stdin.write("\u001B[B"); // Down arrow
     await vi.waitFor(() => {
@@ -102,13 +108,33 @@ describe("MarketplaceDetail", () => {
     });
   });
 
-  it("should call updateMarketplace when 'Update' is selected and Enter is pressed", async () => {
+  it("should call toggleAutoUpdate when 'Enable auto-update' is selected and Enter is pressed", async () => {
     const { stdin } = render(
       <PluginManagerContext.Provider value={mockContext}>
         <MarketplaceDetail />
       </PluginManagerContext.Provider>,
     );
 
+    stdin.write("\r"); // Enter
+    await vi.waitFor(() => {
+      expect(mockActions.toggleAutoUpdate).toHaveBeenCalledWith(
+        "test-mp",
+        true,
+      );
+    });
+  });
+
+  it("should call updateMarketplace when 'Update' is selected and Enter is pressed", async () => {
+    const { stdin, lastFrame } = render(
+      <PluginManagerContext.Provider value={mockContext}>
+        <MarketplaceDetail />
+      </PluginManagerContext.Provider>,
+    );
+
+    stdin.write("\u001B[B"); // Down arrow to select "Update"
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("> Update marketplace");
+    });
     stdin.write("\r"); // Enter
     await vi.waitFor(() => {
       expect(mockActions.updateMarketplace).toHaveBeenCalledWith("test-mp");
@@ -122,6 +148,7 @@ describe("MarketplaceDetail", () => {
       </PluginManagerContext.Provider>,
     );
 
+    stdin.write("\u001B[B"); // Down arrow to select "Update"
     stdin.write("\u001B[B"); // Down arrow to select "Remove"
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("> Remove marketplace");

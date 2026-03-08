@@ -76,6 +76,7 @@ describe("PluginManager", () => {
       return {
         getInstalledPlugins: vi.fn().mockResolvedValue({ plugins: [] }),
         listMarketplaces: vi.fn().mockResolvedValue([]),
+        autoUpdateAll: vi.fn().mockResolvedValue(undefined),
       } as unknown as MarketplaceService;
     });
 
@@ -236,6 +237,7 @@ describe("PluginManager", () => {
             .fn()
             .mockResolvedValue({ plugins: installedPlugins }),
           listMarketplaces: vi.fn().mockResolvedValue([]),
+          autoUpdateAll: vi.fn().mockResolvedValue(undefined),
         } as unknown as MarketplaceService;
       });
 
@@ -318,6 +320,7 @@ describe("PluginManager", () => {
             .fn()
             .mockResolvedValue({ plugins: installedPlugins }),
           listMarketplaces: vi.fn().mockResolvedValue([]),
+          autoUpdateAll: vi.fn().mockResolvedValue(undefined),
         } as unknown as MarketplaceService;
       });
 

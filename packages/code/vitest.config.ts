@@ -33,6 +33,11 @@ export default defineConfig(() => {
         },
       },
       // Test environment variables: disable logger I/O operations by default to improve performance
+      onConsoleLog(log: string, type: "stdout" | "stderr"): boolean | void {
+        if (type === "stderr") {
+          throw new Error(`Unexpected stderr: ${log}`);
+        }
+      },
       env: {
         DISABLE_LOGGER_IO: "true",
         // Set shorter debounce time to accelerate tests
