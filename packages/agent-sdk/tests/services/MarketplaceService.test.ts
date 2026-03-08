@@ -16,6 +16,8 @@ describe("MarketplaceService - Builtin Marketplace", () => {
   const mockPluginsDir = path.join(process.cwd(), "tmp-test-plugins");
 
   beforeEach(async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(getPluginsDir).mockReturnValue(mockPluginsDir);
     if (existsSync(mockPluginsDir)) {
       await fs.rm(mockPluginsDir, { recursive: true, force: true });
@@ -28,6 +30,7 @@ describe("MarketplaceService - Builtin Marketplace", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     if (existsSync(mockPluginsDir)) {
       await fs.rm(mockPluginsDir, { recursive: true, force: true });
     }
