@@ -359,7 +359,7 @@ export class MarketplaceService {
           }
         }
         // For directory source, we just re-validate the manifest
-        await this.loadMarketplaceManifest(
+        const manifest = await this.loadMarketplaceManifest(
           this.getMarketplacePath(marketplace),
         );
 
@@ -369,6 +369,26 @@ export class MarketplaceService {
             (p) => p.marketplace === marketplace.name,
           );
           for (const plugin of pluginsToUpdate) {
+            const pluginEntry = manifest.plugins.find(
+              (p) => p.name === plugin.name,
+            );
+            if (!pluginEntry) {
+              console.warn(
+                `Plugin "${plugin.name}" no longer found in marketplace "${marketplace.name}". Uninstalling...`,
+              );
+              try {
+                await this.uninstallPlugin(
+                  `${plugin.name}@${plugin.marketplace}`,
+                  plugin.projectPath,
+                );
+              } catch (error) {
+                console.error(
+                  `Failed to uninstall orphaned plugin "${plugin.name}" from marketplace "${marketplace.name}":`,
+                  error,
+                );
+              }
+              continue;
+            }
             try {
               await this.installPlugin(
                 `${plugin.name}@${plugin.marketplace}`,

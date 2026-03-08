@@ -178,5 +178,40 @@ describe("MarketplaceService - Builtin Marketplace", () => {
         undefined,
       );
     });
+
+    it("should uninstall orphaned plugins when updatePlugins: true is passed to updateMarketplace", async () => {
+      // Mock getInstalledPlugins to return a plugin from the marketplace
+      vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
+        plugins: [
+          {
+            name: "orphaned-plugin",
+            marketplace: "wave-plugins-official",
+            version: "1.0.0",
+            cachePath: "/some/path",
+          },
+        ],
+      });
+
+      const uninstallSpy = vi
+        .spyOn(service, "uninstallPlugin")
+        .mockResolvedValue();
+      vi.spyOn(
+        service,
+        "loadMarketplaceManifest" as keyof MarketplaceService,
+      ).mockResolvedValue({
+        name: "wave-plugins-official",
+        owner: { name: "test" },
+        plugins: [], // No plugins in manifest
+      } as never);
+
+      await service.updateMarketplace("wave-plugins-official", {
+        updatePlugins: true,
+      });
+
+      expect(uninstallSpy).toHaveBeenCalledWith(
+        "orphaned-plugin@wave-plugins-official",
+        undefined,
+      );
+    });
   });
 });

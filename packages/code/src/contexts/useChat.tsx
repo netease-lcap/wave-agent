@@ -373,6 +373,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     tools,
     workdir,
     worktreeSession,
+    model,
   ]);
 
   // Cleanup on unmount
