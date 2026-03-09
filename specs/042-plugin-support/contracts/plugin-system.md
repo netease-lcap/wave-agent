@@ -52,8 +52,8 @@ export interface PluginManager {
 ## 4. Component Registration
 Each component type (Commands, Skills, Hooks, Agents, LSP, MCP) MUST have a corresponding manager or service that handles its registration and execution.
 
-- **SlashCommandManager**: Registers and executes slash commands.
-- **SkillManager**: Registers and executes skills.
+- **SlashCommandManager**: Registers and executes slash commands. Plugin commands MUST be namespaced using the plugin name and a colon (e.g., `plugin-name:command-name`).
+- **SkillManager**: Registers and executes skills. Plugin skills MUST be namespaced using the plugin name and a colon (e.g., `plugin-name:skill-name`).
 - **HookManager**: Registers and executes hooks.
 - **AgentManager**: Registers and executes agents.
 - **LspService**: Manages LSP configurations.

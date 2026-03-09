@@ -356,10 +356,11 @@ export class SkillManager {
   /**
    * Register skills provided by a plugin
    */
-  registerPluginSkills(skills: Skill[]): void {
+  registerPluginSkills(pluginName: string, skills: Skill[]): void {
     for (const skill of skills) {
+      const namespacedName = `${pluginName}:${skill.name}`;
       const metadata: SkillMetadata = {
-        name: skill.name,
+        name: namespacedName,
         description: skill.description,
         type: skill.type,
         skillPath: skill.skillPath,
@@ -369,12 +370,16 @@ export class SkillManager {
         model: skill.model,
         disableModelInvocation: skill.disableModelInvocation,
         userInvocable: skill.userInvocable,
+        pluginName,
       };
-      this.skillMetadata.set(skill.name, metadata);
-      this.skillContent.set(skill.name, skill);
+      // Update the skill object itself to have the namespaced name
+      skill.name = namespacedName;
+
+      this.skillMetadata.set(namespacedName, metadata);
+      this.skillContent.set(namespacedName, skill);
     }
     logger?.debug(
-      `Registered ${skills.length} plugin skills. Total skills: ${this.skillMetadata.size}`,
+      `Registered ${skills.length} plugin skills from ${pluginName}. Total skills: ${this.skillMetadata.size}`,
     );
   }
 }

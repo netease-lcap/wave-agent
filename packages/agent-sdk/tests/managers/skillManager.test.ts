@@ -265,12 +265,14 @@ describe("SkillManager", () => {
         errors: [],
       };
 
-      skillManager.registerPluginSkills([pluginSkill]);
+      skillManager.registerPluginSkills("test-plugin", [pluginSkill]);
 
       const skills = skillManager.getAvailableSkills();
-      expect(skills.find((s) => s.name === "plugin-skill")).toBeDefined();
+      expect(
+        skills.find((s) => s.name === "test-plugin:plugin-skill"),
+      ).toBeDefined();
       expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining("Registered 1 plugin skills"),
+        expect.stringContaining("Registered 1 plugin skills from test-plugin"),
       );
     });
 
@@ -301,15 +303,48 @@ describe("SkillManager", () => {
         userInvocable: false,
       };
 
-      skillManager.registerPluginSkills([pluginSkill]);
+      skillManager.registerPluginSkills("test-plugin", [pluginSkill]);
 
-      const metadata = skillManager.getSkillMetadata("plugin-skill");
+      const metadata = skillManager.getSkillMetadata(
+        "test-plugin:plugin-skill",
+      );
       expect(metadata).toBeDefined();
       expect(metadata?.context).toBe("fork");
       expect(metadata?.agent).toBe("general-purpose");
       expect(metadata?.model).toBe("gpt-4");
       expect(metadata?.disableModelInvocation).toBe(true);
       expect(metadata?.userInvocable).toBe(false);
+      expect(metadata?.pluginName).toBe("test-plugin");
+    });
+
+    it("should namespace skill names from plugins", async () => {
+      // Initialize first
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+
+      const pluginSkill: Skill = {
+        name: "my-skill",
+        description: "from plugin",
+        type: "personal",
+        skillPath: "/plugin/path",
+        content: "content",
+        frontmatter: { name: "my-skill", description: "from plugin" },
+        isValid: true,
+        errors: [],
+      };
+
+      skillManager.registerPluginSkills("my-plugin", [pluginSkill]);
+
+      const skills = skillManager.getAvailableSkills();
+      const namespacedSkill = skills.find(
+        (s) => s.name === "my-plugin:my-skill",
+      );
+      expect(namespacedSkill).toBeDefined();
+      expect(namespacedSkill?.pluginName).toBe("my-plugin");
+      expect(pluginSkill.name).toBe("my-plugin:my-skill");
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.stringContaining("Registered 1 plugin skills from my-plugin"),
+      );
     });
   });
 
@@ -372,13 +407,15 @@ describe("SkillManager", () => {
 
       vi.mocked(readdir).mockResolvedValue([]);
       await skillManager.initialize();
-      skillManager.registerPluginSkills([mockSkill]);
+      skillManager.registerPluginSkills("test-plugin", [mockSkill]);
 
       const result = await skillManager.executeSkill({
-        skill_name: "test-skill",
+        skill_name: "test-plugin:test-skill",
       });
 
-      expect(result.content).toContain("🧠 **test-skill** (personal skill)");
+      expect(result.content).toContain(
+        "🧠 **test-plugin:test-skill** (personal skill)",
+      );
       expect(result.content).toContain("*A test skill*");
       expect(result.content).toContain("📁 Skill location: `/path/to/skill`");
       expect(result.content).toContain("# Actual Content");
@@ -405,13 +442,15 @@ describe("SkillManager", () => {
 
       vi.mocked(readdir).mockResolvedValue([]);
       await skillManager.initialize();
-      skillManager.registerPluginSkills([mockSkill]);
+      skillManager.registerPluginSkills("test-plugin", [mockSkill]);
 
       const result = await skillManager.executeSkill({
-        skill_name: "fork-skill",
+        skill_name: "test-plugin:fork-skill",
       });
 
-      expect(result.content).toContain("🧠 **fork-skill** (personal skill)");
+      expect(result.content).toContain(
+        "🧠 **test-plugin:fork-skill** (personal skill)",
+      );
       expect(result.content).not.toContain("🔄 Context: `fork`");
       expect(result.content).toContain("# Actual Content");
     });
@@ -430,10 +469,10 @@ describe("SkillManager", () => {
 
       vi.mocked(readdir).mockResolvedValue([]);
       await skillManager.initialize();
-      skillManager.registerPluginSkills([mockSkill]);
+      skillManager.registerPluginSkills("test-plugin", [mockSkill]);
 
       const result = await skillManager.executeSkill({
-        skill_name: "test-skill",
+        skill_name: "test-plugin:test-skill",
       });
 
       expect(result.content).toContain("# Just Content");
@@ -454,10 +493,10 @@ describe("SkillManager", () => {
 
       vi.mocked(readdir).mockResolvedValue([]);
       await skillManager.initialize();
-      skillManager.registerPluginSkills([mockSkill]);
+      skillManager.registerPluginSkills("test-plugin", [mockSkill]);
 
       const result = await skillManager.executeSkill({
-        skill_name: "path-skill",
+        skill_name: "test-plugin:path-skill",
       });
 
       expect(result.content).toContain("Skill is at /path/to/skill");

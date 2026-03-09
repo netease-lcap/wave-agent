@@ -263,6 +263,43 @@ describe("SlashCommandManager", () => {
       });
     });
 
+    it("should register namespaced skill commands", async () => {
+      const mockSkillManager = {
+        executeSkill: vi.fn().mockResolvedValue({
+          content: "Skill content",
+        }),
+      };
+
+      const container = (
+        slashCommandManager as unknown as { container: Container }
+      ).container;
+      container.register("SkillManager", mockSkillManager);
+
+      const skills = [
+        {
+          name: "my-plugin:my-skill",
+          description: "Test skill description",
+          type: "personal",
+          skillPath: "/path/to/skill",
+          pluginName: "my-plugin",
+        },
+      ];
+
+      slashCommandManager.registerSkillCommands(
+        skills as unknown as SkillMetadata[],
+      );
+
+      expect(slashCommandManager.hasCommand("my-plugin:my-skill")).toBe(true);
+
+      const cmd = slashCommandManager.getCommand("my-plugin:my-skill");
+      await cmd?.handler("test args");
+
+      expect(mockSkillManager.executeSkill).toHaveBeenCalledWith({
+        skill_name: "my-plugin:my-skill",
+        args: "test args",
+      });
+    });
+
     it("should NOT substitute ${WAVE_SKILL_DIR} in regular slash commands", async () => {
       const pluginName = "test-plugin";
       const commands = [

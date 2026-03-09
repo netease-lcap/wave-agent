@@ -164,7 +164,7 @@ export class PluginManager {
       }
 
       if (this.skillManager && plugin.skills.length > 0) {
-        this.skillManager.registerPluginSkills(plugin.skills);
+        this.skillManager.registerPluginSkills(plugin.name, plugin.skills);
       }
 
       if (this.lspManager && plugin.lspConfig) {

@@ -146,6 +146,7 @@ describe("PluginManager", () => {
         mockSlashCommandManager.registerPluginCommands,
       ).toHaveBeenCalledWith("test-plugin", commands);
       expect(mockSkillManager.registerPluginSkills).toHaveBeenCalledWith(
+        "test-plugin",
         skills,
       );
       expect(mockLspManager.registerServer).toHaveBeenCalledWith(
