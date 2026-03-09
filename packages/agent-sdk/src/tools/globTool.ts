@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { rgPath } from "@vscode/ripgrep";
+import { rgPath } from "../utils/ripgrep.js";
 import { stat } from "fs/promises";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { resolvePath, getDisplayPath } from "../utils/path.js";

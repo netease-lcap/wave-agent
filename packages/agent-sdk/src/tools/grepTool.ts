@@ -1,7 +1,7 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { spawn } from "child_process";
 import { getAllIgnorePatterns } from "../utils/fileFilter.js";
-import { rgPath } from "@vscode/ripgrep";
+import { rgPath } from "../utils/ripgrep.js";
 import { getDisplayPath } from "../utils/path.js";
 import {
   GREP_TOOL_NAME,
