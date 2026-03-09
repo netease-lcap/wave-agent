@@ -65,10 +65,12 @@ class MockChildProcess extends EventEmitter {
 
 // Mock stdin that can be written to and ended
 class MockStdin extends EventEmitter {
+  writable = true;
   write() {
     return true;
   }
   end() {
+    this.writable = false;
     return;
   }
 }
