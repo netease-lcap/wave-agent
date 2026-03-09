@@ -97,7 +97,7 @@ allowed-tools:
 Check git status and show what changed.
 ```
 
-The AI can now run `git status` and `git diff` automatically. Wildcards like `git:*` work too.
+The AI can now run `git status` and `git diff` automatically. Wildcards like `git*` work too.
 
 ## Command Locations
 
