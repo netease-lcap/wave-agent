@@ -1,142 +1,122 @@
 # Feature Specification: Tool Permission System
 
 **Feature Branch**: `024-tool-permission-system`  
-**Created**: 2025-12-08  
 **Status**: Implemented  
-**Input**: User description: "1, currently, all edit and bash tools are executed without restriction, which is not safe, we should add `permissionMode` to agent's constructor, can be "default" or "bypassPermissions". 2, code CLI can pass --dangerously-skip-permissions to set permissionMode. 3, when permissionMode is default, all write edit multiedit delete bash should ask user to allow or deny. you can add `canUseTool` callback to agent sdk to do that. canUseTool take toolName return promise of {behavior: 'allow'} or {behavior: 'deny', message: '' }. canUseTool should be inserted in tool's execute function, after validation and diff, before real operation. 4, code CLI should add a comfirm component. keep simple. only has Do you want to proceed? 1.Yes, 2, Type here to tell Wave what to to differrently, can be switched by arrow up or down. 5, when permissionMode is bypassPermissions, same as current, all tools are executed without restriction."
+**Input**: Comprehensive merge of tool permission features including basic modes, wildcard matching, secure pipeline validation, and deny rules.
 
-## Clarifications
+## Overview
 
-### Session 2025-12-08
+The Tool Permission System provides a robust security layer for the Wave agent, ensuring that potentially destructive or sensitive operations are authorized by the user. It supports multiple permission modes, fine-grained rule matching with wildcards, secure decomposition of shell pipelines, and explicit denial of specific tools or paths.
 
-- Q: Confirmation Timeout Behavior → A: Wait indefinitely until user responds (no timeout)
-- Q: Callback Exception Handling → A: Deny the operation and abort
-- Q: Alternative Instructions Processing → A: Send to agent through tool result field
-
-- Q: Multiple Tool Call Confirmation Behavior → A: Each restricted tool call shows individual sequential confirmation prompts
-- Q: Partial Denial Impact on Remaining Tool Calls → A: Continue with remaining tool calls, showing individual confirmations for each
-- Q: Alternative Instructions Impact on Remaining Tool Calls → A: Continue with remaining tool calls and after confirm all tools, return tool results of all tools to AI
-- Q: Sequential Confirmation Implementation Architecture → A: Queue-based approach with confirmation queue state management
-- Additional: When confirmation is shown, InputBox should not be rendered; pressing ESC hides confirmation and aborts the tool operation
-
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing
 
 ### User Story 1 - Default Safe Mode with Confirmations (Priority: P1)
 
 A user runs Wave CLI without any special flags, and the system prompts for confirmation before executing any potentially destructive operations like file edits or bash commands.
 
-**Why this priority**: This provides essential safety for the majority of users by preventing accidental destructive operations. It's the core security feature that protects user systems by default.
-
-**Independent Test**: Can be fully tested by running any edit/bash command and verifying that a confirmation prompt appears, allowing users to approve or deny the operation.
-
 **Acceptance Scenarios**:
-
-1. **Given** a user runs Wave CLI without flags, **When** Wave attempts to edit a file, **Then** a confirmation prompt appears asking "Do you want to proceed?" with options to allow or modify the request
-2. **Given** a user runs Wave CLI without flags, **When** Wave attempts to execute a bash command, **Then** a confirmation prompt appears with allow/deny options
-4. **Given** a confirmation prompt is shown, **When** user selects "Yes", **Then** the operation proceeds normally
-5. **Given** a confirmation prompt is shown, **When** user types alternative instructions, **Then** Wave receives the new instructions through the tool result field instead of executing the original operation
-6. **Given** a confirmation prompt is shown, **When** user presses ESC key, **Then** the confirmation component is hidden and the tool operation is aborted
-7. **Given** a user runs Wave CLI without flags, **When** Wave attempts to write a file, **Then** a confirmation prompt appears with allow/deny options
-8. **Given** the AI returns multiple restricted tool calls in one response, **When** each tool call is executed, **Then** individual sequential confirmation prompts appear for each restricted tool, allowing granular approve/deny decisions
-9. **Given** multiple tool calls are pending and one is denied, **When** processing continues, **Then** individual confirmation prompts still appear for each remaining restricted tool call
-10. **Given** a user provides alternative instructions for one tool call in a sequence, **When** processing continues, **Then** the system continues with remaining tool calls and returns all tool results (including alternative instructions) to the AI after all confirmations are complete
-
----
+1. **Given** a user runs Wave CLI without flags, **When** Wave attempts to edit a file, **Then** a confirmation prompt appears asking "Do you want to proceed?" with options to allow or modify the request.
+2. **Given** a confirmation prompt is shown, **When** user selects "Yes", **Then** the operation proceeds normally.
+3. **Given** a confirmation prompt is shown, **When** user types alternative instructions, **Then** Wave receives the new instructions through the tool result field instead of executing the original operation.
+4. **Given** the AI returns multiple restricted tool calls, **When** each tool call is executed, **Then** individual sequential confirmation prompts appear for each.
 
 ### User Story 2 - Bypass Mode for Advanced Users (Priority: P2)
 
-An advanced user or automated system runs Wave CLI with a special flag to bypass all permission checks for uninterrupted operation.
-
-**Why this priority**: Essential for automation, CI/CD pipelines, and experienced users who understand the risks and need efficient operation without interruptions.
-
-**Independent Test**: Can be fully tested by running Wave CLI with the bypass flag and verifying that no confirmation prompts appear for any operations.
+An advanced user runs Wave CLI with `--dangerously-skip-permissions` to bypass all permission checks for uninterrupted operation.
 
 **Acceptance Scenarios**:
+1. **Given** bypass mode is enabled, **When** Wave attempts any restricted operation, **Then** no confirmation prompts appear and operations execute immediately.
 
-1. **Given** a user runs Wave CLI with `--dangerously-skip-permissions`, **When** Wave attempts any edit/bash operation, **Then** no confirmation prompts appear and operations execute immediately
-2. **Given** bypass mode is enabled, **When** multiple destructive operations are performed, **Then** all execute without user intervention
+### User Story 3 - Wildcard Matching for Commands (Priority: P1)
 
----
-
-### User Story 3 - Agent SDK Callback Integration (Priority: P3)
-
-A developer integrating Wave's agent SDK can provide custom permission handling logic through the `canUseTool` callback to implement their own authorization workflows.
-
-**Why this priority**: Enables custom integrations and enterprise use cases where organizations need to implement their own permission workflows or audit trails.
-
-**Independent Test**: Can be tested by creating a test agent with a custom `canUseTool` callback and verifying it's called appropriately for restricted tools.
+As a user, I want to allow a group of related commands by specifying a common pattern with wildcards, so that I don't have to list every single variation of a command in my permissions.
 
 **Acceptance Scenarios**:
+1. **Given** `permissions.allow` contains `Bash(git commit *)`, **When** the agent attempts to run `Bash(git commit -m "initial commit")`, **Then** the action is allowed.
+2. **Given** `permissions.allow` contains `Bash(git * main)`, **When** the agent attempts to run `Bash(git push origin main)`, **Then** the action is allowed.
 
-1. **Given** an agent is created with a `canUseTool` callback, **When** Wave attempts to use a restricted tool, **Then** the callback is invoked with the tool name
-2. **Given** a `canUseTool` callback returns `{behavior: 'deny', message: 'Custom reason'}`, **When** a tool execution is attempted, **Then** the operation is blocked and the custom message is displayed
-3. **Given** a `canUseTool` callback returns `{behavior: 'allow'}`, **When** a tool execution is attempted, **Then** the operation proceeds normally
+### User Story 4 - Smart Wildcard Heuristic (Priority: P1)
 
----
-
-### User Story 4 - Cycle between Permission Modes via Shortcut (Priority: P1)
-
-As a user, I want to quickly toggle between safe permission modes using a keyboard shortcut so that I can control how the agent interacts with my system without accidentally enabling full bypass mode.
-
-**Why this priority**: This ensures the most common and safe permission modes are easily accessible while removing the risk of accidentally entering bypass mode.
-
-**Independent Test**: Can be tested by pressing `Shift+Tab` multiple times and observing that the mode cycles through "default", "acceptEdits", and "plan".
+As a user, I want to trust a command like `npm install lodash` so that I am not prompted again when I run `npm install express`.
 
 **Acceptance Scenarios**:
+1. **Given** the system prompts for `npm install lodash`, **When** the user selects "Yes, and don't ask again", **Then** the system should suggest a smart wildcard pattern (e.g., `npm install *`) and save it.
+2. **Given** `npm install *` is trusted, **When** the user runs `npm install express`, **Then** it executes immediately without prompting.
 
-1. **Given** the agent is in "default" permission mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to "acceptEdits".
-2. **Given** the agent is in "acceptEdits" permission mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to "plan".
-3. **Given** the agent is in "plan" permission mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to "default".
-4. **Given** the agent is in "bypassPermissions" mode, **When** the user presses `Shift+Tab`, **Then** the permission mode changes to "default".
+### User Story 5 - Decompose and Validate Chained Commands (Priority: P1)
 
----
+As a user, I want the system to automatically permit complex commands (using `&&`, `|`, etc.) if and only if every individual command within the chain is already permitted.
 
-### Edge Cases
+**Acceptance Scenarios**:
+1. **Given** `permissions.allow` contains `cd /tmp/*` and `ls`, **When** the user executes `cd /tmp/test && ls`, **Then** the system SHOULD automatically permit the command.
+2. **Given** `permissions.allow` contains `cd /tmp/*` but NOT `rm *`, **When** the user executes `cd /tmp/test && rm -rf /`, **Then** the system MUST NOT automatically permit and SHOULD prompt for permission.
 
-- How does the system handle network timeouts or interruptions during confirmation prompts?
-- What occurs when a `canUseTool` callback throws an exception or takes too long to respond? → System denies operation and aborts execution
-- **What happens when the user presses Shift+Tab repeatedly?** The system should continuously cycle between "default", "acceptEdits", and "plan".
+### User Story 6 - Deny Rules & Precedence (Priority: P1)
 
+As a security-conscious user, I want to explicitly forbid the agent from using certain tools or accessing specific paths, even if they would otherwise be allowed.
 
-## Requirements *(mandatory)*
+**Acceptance Scenarios**:
+1. **Given** `permissions.deny` contains `["Bash"]`, **When** the agent attempts to run any bash command, **Then** the system MUST block the execution.
+2. **Given** `permissions.allow` contains `["*"]` and `permissions.deny` contains `["Bash"]`, **When** the agent attempts to run a bash command, **Then** the system MUST deny the request because the deny rule takes precedence.
+
+### User Story 7 - Path-based Permissions (Priority: P1)
+
+As a user, I want to prevent the agent from accessing specific files (e.g., `.env` files) by defining deny rules for tools that operate on file paths.
+
+**Acceptance Scenarios**:
+1. **Given** `permissions.deny` contains `["Read(**/.env)"]`, **When** the agent attempts to read a file named `.env` in any directory, **Then** the system MUST deny the request.
+
+### User Story 8 - Built-in Safe Commands with Path Restrictions (Priority: P3)
+
+As a user, I want common safe commands (like `cd`) to be automatically permitted by default, but only when they operate within the current working directory.
+
+**Acceptance Scenarios**:
+1. **Given** the CWD is `/home/user/project`, **When** the user executes `cd src`, **Then** the system SHOULD automatically permit it.
+2. **Given** the CWD is `/home/user/project`, **When** the user executes `cd /etc`, **Then** the system MUST NOT automatically permit it.
+
+## Requirements
 
 ### Functional Requirements
 
-- **FR-001**: Agent constructor MUST accept a `permissionMode` parameter with values "default" or "bypassPermissions"
-- **FR-002**: Wave CLI MUST support a `--dangerously-skip-permissions` flag that sets permission mode to "bypassPermissions"
-- **FR-003**: When permission mode is "default", system MUST prompt for user confirmation before executing Edit, Bash, or Write tools
-- **FR-004**: Agent SDK MUST support a `canUseTool` callback that receives tool name and returns Promise of permission decision
-- **FR-005**: Permission callback MUST support response format `{behavior: 'allow'}` or `{behavior: 'deny', message: string}`
-- **FR-006**: Permission checks MUST occur after tool validation and diff generation but before actual operation execution
-- **FR-007**: CLI MUST include a confirmation component with "Do you want to proceed?" prompt that waits indefinitely for user response
-- **FR-008**: Confirmation component MUST offer two options: "Yes" to proceed and text input for alternative instructions
-- **FR-009**: Confirmation component MUST support navigation between options using arrow keys
-- **FR-010**: When permission mode is "bypassPermissions", all tools MUST execute without permission checks
-- **FR-011**: System MUST preserve existing tool functionality and interfaces when permissions are bypassed
-- **FR-012**: Permission prompts MUST be non-blocking for read-only operations like Read, Grep, LS, and Glob tools
-- **FR-013**: When `canUseTool` callback throws an exception or fails to respond, system MUST deny the operation and abort execution with appropriate error logging
-- **FR-014**: When user provides alternative instructions in confirmation prompt, system MUST send those instructions to the agent through the tool result field instead of executing the original operation
+#### Permission Modes & UI
+- **FR-001**: Agent MUST support `permissionMode` values: "default", "bypassPermissions", "acceptEdits", "plan".
+- **FR-002**: Wave CLI MUST support `--dangerously-skip-permissions` to set mode to "bypassPermissions".
+- **FR-003**: CLI MUST provide a confirmation component for restricted tools in "default" mode.
+- **FR-004**: Confirmation component MUST support "Yes", "Yes, and don't ask again", and alternative instructions via text input.
+- **FR-005**: System MUST support a `canUseTool` callback in the Agent SDK for custom permission logic.
+- **FR-006**: System MUST support cycling through permission modes (default -> acceptEdits -> plan) via `Shift+Tab`.
 
-- **FR-015**: When confirmation component is displayed, the main InputBox MUST be hidden and not rendered
-- **FR-016**: When user presses ESC during confirmation prompt, the confirmation component MUST be hidden and the tool operation MUST be aborted
-- **FR-017**: When AI returns multiple restricted tool calls in one response, system MUST display individual sequential confirmation prompts for each restricted tool, allowing granular approval/denial decisions per tool
-- **FR-018**: When one tool call is denied in a sequence of multiple tool calls, system MUST continue processing remaining tool calls with individual confirmations for each restricted tool
-- **FR-019**: When user provides alternative instructions for one tool call in a sequence, system MUST continue with remaining tool calls and return all tool results (including alternative instructions in tool result field) to the AI after all confirmations are complete
-- **FR-020**: System MUST implement queue-based sequential confirmation for multiple tool calls, processing confirmations one at a time with proper state management
-- **FR-021**: System MUST automatically allow a set of default read-only `git` commands in `default` mode without requiring manual confirmation.
-- **FR-022**: System MUST automatically allow a set of common safe commands (e.g., `echo`, `ls`, `which`, `hostname`) in `default` mode without requiring manual confirmation.
+#### Matching Logic & Wildcards
+- **FR-007**: System MUST support exact string matching and `*` wildcard matching for rules in `permissions.allow` and `permissions.deny`.
+- **FR-008**: Wildcards (`*`) MUST be supported at any position in the pattern.
+- **FR-009**: System MUST implement a "smart wildcard" heuristic to suggest patterns for bash commands (e.g., `npm install *`).
+- **FR-010**: System MUST NOT allow wildcard matching for highly sensitive commands (e.g., `rm`, `sudo`, `chmod`). These always require exact matches or manual approval.
 
-### Key Entities
+#### Secure Pipeline Validation
+- **FR-011**: System MUST parse complex bash commands and identify all individual "simple commands" joined by operators (`&&`, `||`, `;`, `|`).
+- **FR-012**: A complex command MUST be automatically permitted ONLY IF every constituent simple command matches a permitted rule.
+- **FR-013**: System MUST strip inline environment variable assignments (e.g., `VAR=val cmd`) before matching.
 
-- **Permission Mode**: Configuration setting that determines whether tools require user confirmation ("default") or execute without restriction ("bypassPermissions")
-- **Tool Permission**: Authorization decision for a specific tool execution, containing behavior (allow/deny) and optional denial message
-- **Confirmation Component**: Interactive UI element that presents permission prompts and collects user decisions
-- **Permission Callback**: Function interface that allows custom permission logic integration in the Agent SDK
+#### Deny Rules & Path-based Permissions
+- **FR-014**: System MUST support a `permissions.deny` field in settings.
+- **FR-015**: `permissions.deny` MUST take precedence over `permissions.allow`.
+- **FR-016**: System MUST support path-based rules in the format `ToolName(path_pattern)` (e.g., `Read(**/*.env)`) for tools that take a single path as primary input.
+- **FR-017**: If a request matches any rule in `permissions.deny`, it MUST be denied immediately.
 
-### Assumptions
+#### Built-in Safe Commands
+- **FR-018**: System MUST maintain a built-in list of safe commands (`cd`, `ls`, `pwd`) that are permitted if they operate within the CWD or its subdirectories.
+- **FR-019**: Built-in safe commands attempting to access paths outside the CWD (e.g., `cd ..`, `ls /etc`) MUST require explicit permission.
 
-- The Wave CLI runs in environments that support interactive terminal input for confirmation prompts
-- Users understand that bypass mode (`--dangerously-skip-permissions`) removes safety protections
-- Permission checks do not significantly impact tool execution performance
-- The existing agent SDK architecture supports callback integration without breaking changes
-- Read-only tools (Read, Grep, LS, Glob) are considered safe and don't require permission checks
+## Key Entities
+
+- **Permission Mode**: Configuration determining the level of user intervention required.
+- **Permission Rule**: A string defining a permitted or denied action (e.g., `Bash(git *)`, `Read(**/*.env)`).
+- **Simple Command**: A single executable command with its arguments, extracted from a pipeline.
+- **Smart Wildcard**: A heuristic-generated pattern that replaces dynamic arguments with `*`.
+
+## Edge Cases
+
+- **Nested Operators**: Pipelines like `cmd1 && (cmd2 | cmd3)` must be recursively decomposed.
+- **Precedence**: Deny rules always win over allow rules.
+- **Sensitive Commands**: Commands like `rm` are blacklisted from smart wildcard suggestions to prevent accidental broad permissions.
+- **Escaped Characters**: `echo "&&"` must be treated as a single command, not split.

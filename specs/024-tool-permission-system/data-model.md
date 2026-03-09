@@ -3,195 +3,70 @@
 ## Core Entities
 
 ### PermissionMode
-**Description**: Configuration setting that determines tool execution behavior
+**Description**: Configuration setting that determines tool execution behavior.
+**Values**: "default" | "acceptEdits" | "plan" | "bypassPermissions"
+
+### PermissionRule
+**Description**: A string defining a permitted or denied action.
+**Formats**:
+1. **Tool Name**: `Bash`, `Write`, `Read`
+2. **Bash Command**: `Bash(ls -la)`, `Bash(git *)`
+3. **Path-based**: `Read(**/*.env)`, `Write(/etc/**)`
+   - Format: `ToolName(glob_pattern)`
+   - Supported tools: `Read`, `Write`, `Edit`, `Delete`, `LS`
+
+### WaveConfiguration
+**Description**: The configuration object loaded from `settings.json`.
 **Fields**:
-- `value`: "default" | "acceptEdits" | "plan" | "bypassPermissions"
+- `permissions`:
+    - `allow`: `string[]` (List of permitted rules)
+    - `deny`: `string[]` (List of explicitly denied rules)
+    - `defaultMode`: `PermissionMode`
 
-**Validation Rules**:
-- Must be one of the allowed string values
-- Cannot be null or undefined when specified
-
-**State Transitions**: 
-- Can change between modes, but changes ignored during tool execution
-- Applied to new operations after current execution completes
-- `Shift+Tab` cycles through "default", "acceptEdits", and "plan"
-- If in "bypassPermissions", `Shift+Tab` transitions to "default"
-
----
-
-### PermissionDecision  
-**Description**: Result of permission authorization check
+### PermissionDecision
+**Description**: Result of a permission authorization check.
 **Fields**:
-- `behavior`: "allow" | "deny"  
-- `message?`: string (required when behavior is "deny")
-
-**Validation Rules**:
-- `behavior` must be one of two allowed values
-- `message` required when `behavior` is "deny"
-- `message` optional when `behavior` is "allow"
-
-**Relationships**:
-- Returned by `canUseTool` callback
-- Consumed by `PermissionManager`
-
----
-
-### PermissionCallback
-**Description**: Function interface for custom permission logic
-**Fields**:
-- `toolName`: string (input parameter)
-- `return`: Promise\<PermissionDecision\>
-
-**Validation Rules**:
-- Must return Promise that resolves to valid PermissionDecision
-- Should handle exceptions and reject promise on errors
-- `toolName` must be non-empty string
-
-**Relationships**:
-- Optional property in `AgentOptions`
-- Called by `PermissionManager` before tool execution
-
----
-
-### ToolPermissionContext
-**Description**: Internal context for permission checking
-**Fields**:
-- `toolName`: string
-- `permissionMode`: PermissionMode
-- `canUseToolCallback?`: PermissionCallback
-- `allowedRules?`: string[]
-- `defaultAllowedRules?`: string[]
-
-**Validation Rules**:
-- `toolName` must match registered tool name
-- All fields required except `canUseToolCallback`
-
-**Relationships**:
-- Created by `ToolManager` 
-- Passed to `PermissionManager.checkPermission()`
-
----
+- `behavior`: "allow" | "deny"
+- `message?`: `string` (Required when behavior is "deny")
 
 ### ConfirmationState
-**Description**: UI state for permission confirmation dialog
+**Description**: UI state for the permission confirmation dialog.
 **Fields**:
-- `isVisible`: boolean
-- `selectedOption`: "allow" | "alternative"  
-- `alternativeText`: string
-- `hasUserInput`: boolean
-- `toolName`: string
-
-**Validation Rules**:
-- `selectedOption` must be one of two allowed values
-- `alternativeText` can be empty string
-- `hasUserInput` tracks whether user has typed (to hide placeholder)
-- `defaultAllowedRules`: Array<string> (hardcoded read-only git and safe commands like `ls*`)
-- `toolName` must be non-empty when `isVisible` is true
-
-**State Transitions**:
-- `isVisible`: false → true (when confirmation needed)
-- `isVisible`: true → false (after user decision or ESC)
-- `selectedOption`: "allow" ⇄ "alternative" (arrow key navigation)
-- `hasUserInput`: false → true (when user starts typing, hides placeholder)
-
-**Relationships**:
-- Managed by `Confirmation`
-- Influences permission decision result
-
----
-
-### ChatConfirmationState  
-**Description**: Permission confirmation state managed within ChatContext with queue-based sequential processing
-**Fields**:
-- `isConfirmationVisible`: boolean
-- `confirmingTool`: string | undefined
-- `confirmationQueue`: Array<ConfirmationQueueItem>
-- `currentConfirmation`: ConfirmationQueueItem | null
-- `confirmationResolver`: Promise resolver for pending decisions
-
-**Validation Rules**:
-- When `isConfirmationVisible` is true, `currentConfirmation` must be defined
-- When `isConfirmationVisible` is false, `currentConfirmation` should be null
-- Queue can contain multiple items but only one confirmation is active at a time
-- Queue items must have valid toolName and resolver functions
-
-**State Transitions**:
-- Queue tool: Add to `confirmationQueue` → process if no current confirmation
-- Show confirmation: `isConfirmationVisible`: false → true, set `currentConfirmation` from queue
-- User decision: Resolve current confirmation → `isConfirmationVisible`: true → false → process next in queue
-- ESC pressed: Reject current confirmation, clear state, process next in queue
-
-**Relationships**:
-- Managed by `useChat` context hook
-- Controls rendering logic in `ChatInterface.tsx`
-- Influences `InputBox` vs `Confirmation` display
-- Processes multiple tool calls sequentially
-
----
+- `isVisible`: `boolean`
+- `selectedOption`: "allow" | "alternative" | "smartWildcard"
+- `alternativeText`: `string`
+- `suggestedPattern?`: `string` (The smart wildcard pattern)
 
 ### ConfirmationQueueItem
-**Description**: Individual item in the confirmation queue for sequential processing
+**Description**: Individual item in the confirmation queue for sequential processing.
 **Fields**:
-- `toolName`: string
-- `resolver`: (decision: PermissionDecision) => void
-- `reject`: () => void
-
-**Validation Rules**:
-- `toolName` must be non-empty string
-- `resolver` and `reject` must be valid functions
-- Created when tool requires confirmation
-
-**Relationships**:
-- Stored in `ChatConfirmationState.confirmationQueue`
-- Processed sequentially by queue management system
+- `toolName`: `string`
+- `resolver`: `(decision: PermissionDecision) => void`
+- `reject`: `() => void`
 
 ## Entity Relationships
 
 ```
-AgentOptions
+WaveConfiguration
+    └── permissions
+        ├── allow: PermissionRule[]
+        └── deny: PermissionRule[]
+
+Agent
     ├── permissionMode: PermissionMode
-    └── canUseTool?: PermissionCallback
+    └── canUseTool: PermissionCallback
 
-ToolManager.execute()
-    └── creates ToolPermissionContext
-        └── passed to PermissionManager.checkPermission()
-            ├── calls PermissionCallback (if provided)
-            └── returns PermissionDecision
-                └── influences tool execution
-
-useChat Context (ChatContext)
-    ├── manages ChatConfirmationState with queue-based processing
-    ├── maintains confirmationQueue: Array<ConfirmationQueueItem>
-    ├── processes confirmations sequentially via queue management
-    ├── provides showConfirmation() function to Agent
-    └── controls ChatInterface rendering logic
-
-Multiple Tool Call Flow
-    ├── AI returns multiple tool calls
-    ├── Each restricted tool creates ConfirmationQueueItem
-    ├── Queue processes items sequentially (one confirmation at a time)
-    ├── User makes decision for current confirmation
-    ├── System advances to next queued confirmation
-    └── All tool results batched and returned to AI after queue completion
-
-ChatInterface.tsx
-    ├── reads isConfirmationVisible from useChat context  
-    ├── conditionally renders InputBox (when isConfirmationVisible is false)
-    └── conditionally renders Confirmation (when isConfirmationVisible is true)
-
-Confirmation
-    ├── manages internal ConfirmationState  
-    ├── displays current confirmation from queue (currentConfirmation.toolName)
-    ├── calls context.handleConfirmationDecision()
-    └── produces PermissionDecision for current queued item
+PermissionManager.checkPermission(context)
+    ├── 1. Check permissions.deny (Precedence)
+    ├── 2. Check permissions.allow (Exact or Wildcard)
+    ├── 3. Check built-in safe commands (with path restrictions)
+    └── 4. If not allowed, trigger Confirmation UI
 ```
 
 ## Implementation Notes
 
-1. **Minimalist Design**: Only essential fields included, no over-specification
-2. **Flat Structure**: Avoided deep hierarchies, kept relationships simple  
-3. **Active Usage**: All entities and fields are actively used in implementation
-4. **Type Safety**: All entities map directly to TypeScript interfaces
-5. **State Management**: Clear state transitions defined where applicable
-6. **Queue-Based Architecture**: Sequential confirmation processing ensures user control while maintaining system responsiveness
-7. **Scalable Design**: Queue can handle any number of tool calls without blocking or complex state management
+1. **Precedence**: `permissions.deny` always takes precedence over `permissions.allow`.
+2. **Wildcard Matching**: Rules containing `*` are converted to regex for matching (for Bash) or use `minimatch` (for path-based tools).
+3. **Pipeline Decomposition**: Complex bash commands are split into `SimpleCommand` entities before matching.
+4. **Smart Wildcard**: Heuristic-based pattern generation for common commands (e.g., `npm install *`).
+5. **Path Restrictions**: Built-in safe commands (`cd`, `ls`, `pwd`) are restricted to the CWD and its subdirectories.
