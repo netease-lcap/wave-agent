@@ -85,9 +85,7 @@ describe("SkillManager with Arguments and Bash", () => {
       skill_name: "test-plugin:bash-skill",
     });
 
-    expect(result.content).toContain(
-      "Current dir: ```\n$ pwd\n/test/workdir\n```",
-    );
+    expect(result.content).toContain("Current dir: /test/workdir");
   });
 
   it("should handle both arguments and bash commands", async () => {
@@ -109,8 +107,6 @@ describe("SkillManager with Arguments and Bash", () => {
       args: "User",
     });
 
-    expect(result.content).toContain(
-      "Hello User! Dir: ```\n$ pwd\n/test/workdir\n```",
-    );
+    expect(result.content).toContain("Hello User! Dir: /test/workdir");
   });
 });

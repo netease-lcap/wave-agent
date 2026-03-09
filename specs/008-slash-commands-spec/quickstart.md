@@ -51,7 +51,7 @@ Usage: `/compare old.txt new.txt`
 
 ### 3. Running Commands Before AI
 
-Use `!`backticks` to run bash commands first:
+Use `!`backticks` to run bash commands first. The placeholder will be replaced with the **raw stdout** of the command:
 
 ```markdown
 ---
@@ -60,12 +60,14 @@ description: Show project structure
 
 Here's the current project structure:
 
+```
 !`ls -la`
+```
 
 Please help me organize these files.
 ```
 
-The command output will be included in the prompt sent to the AI.
+The command output will be included in the prompt sent to the AI. If you want the output to appear in a code block, you should wrap the `!`backticks` in a markdown code block as shown above.
 
 ### 4. Customizing AI Behavior
 

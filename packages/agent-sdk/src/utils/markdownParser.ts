@@ -173,7 +173,7 @@ export function replaceBashCommandsWithOutput(
   processedContent = processedContent.replace(bashCommandRegex, (match) => {
     if (commandIndex < results.length) {
       const result = results[commandIndex++];
-      return `\`\`\`\n$ ${result.command}\n${result.output}\n\`\`\``;
+      return result.output;
     }
     return match;
   });

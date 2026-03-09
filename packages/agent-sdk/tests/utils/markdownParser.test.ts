@@ -120,8 +120,7 @@ describe("markdownParser", () => {
         { command: "pwd", output: "/home", exitCode: 0 },
       ];
       const processed = replaceBashCommandsWithOutput(content, results);
-      expect(processed).toContain("```\n$ ls\nfile1.txt\n```");
-      expect(processed).toContain("```\n$ pwd\n/home\n```");
+      expect(processed).toBe("Result: file1.txt and /home");
     });
 
     it("should leave placeholder if no result available", () => {
