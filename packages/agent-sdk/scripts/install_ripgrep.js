@@ -9,20 +9,6 @@ const __dirname = path.dirname(__filename);
 const MANIFEST_PATH = path.resolve(__dirname, "../bin/rg");
 const VENDOR_DIR = path.resolve(__dirname, "../vendor/ripgrep");
 
-interface PlatformInfo {
-  size: number;
-  hash: string;
-  digest: string;
-  format: "tar.gz" | "zip";
-  path: string;
-  providers: Array<{ url: string }>;
-}
-
-interface Manifest {
-  name: string;
-  platforms: Record<string, PlatformInfo>;
-}
-
 async function main() {
   if (!fs.existsSync(MANIFEST_PATH)) {
     console.error(`Manifest not found: ${MANIFEST_PATH}`);
@@ -31,7 +17,7 @@ async function main() {
 
   const manifestContent = fs.readFileSync(MANIFEST_PATH, "utf-8");
   const jsonContent = manifestContent.replace(/^#!.*\n/, "");
-  const manifest: Manifest = JSON.parse(jsonContent);
+  const manifest = JSON.parse(jsonContent);
   const platforms = manifest.platforms;
 
   if (!fs.existsSync(VENDOR_DIR)) {
