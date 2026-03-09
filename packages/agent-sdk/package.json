@@ -27,7 +27,7 @@
     "README.md"
   ],
   "scripts": {
-    "prepare": "tsx scripts/install_ripgrep.ts",
+    "prepare": "node scripts/install_ripgrep.js",
     "postinstall": "node scripts/postinstall.js",
     "build": "rimraf dist && tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "type-check": "tsc --noEmit --incremental",
