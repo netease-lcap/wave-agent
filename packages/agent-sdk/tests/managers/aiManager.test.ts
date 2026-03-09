@@ -164,6 +164,7 @@ describe("AIManager", () => {
     // Mock addUserMessage to save session (simulating real behavior)
     vi.mocked(mockMessageManager.addUserMessage).mockImplementation(() => {
       mockMessageManager.saveSession();
+      return "msg-id";
     });
 
     // Reset mocks

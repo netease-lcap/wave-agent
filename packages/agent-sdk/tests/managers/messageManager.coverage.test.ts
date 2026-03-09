@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import * as sessionService from "../../src/services/session.js";
 import { Container } from "../../src/utils/container.js";
+import { TextBlock } from "../../src/types/index.js";
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -52,6 +53,65 @@ describe("MessageManager Coverage Improvements", () => {
       callbacks: {},
       workdir,
     });
+  });
+
+  it("should add a user message and return its ID", () => {
+    const id = messageManager.addUserMessage({ content: "Hello" });
+    expect(id).toBeDefined();
+    expect(typeof id).toBe("string");
+    expect(id.startsWith("msg-")).toBe(true);
+
+    const messages = messageManager.getMessages();
+    expect(messages.length).toBe(1);
+    expect(messages[0].id).toBe(id);
+    expect(messages[0].role).toBe("user");
+    expect((messages[0].blocks[0] as TextBlock).content).toBe("Hello");
+  });
+
+  it("should update an existing user message by ID", () => {
+    const id = messageManager.addUserMessage({
+      content: "Original content",
+      customCommandContent: "Original custom content",
+    });
+
+    messageManager.updateUserMessage(id, {
+      content: "Updated content",
+      customCommandContent: "Updated custom content",
+    });
+
+    const messages = messageManager.getMessages();
+    expect(messages.length).toBe(1);
+    expect(messages[0].id).toBe(id);
+    expect((messages[0].blocks[0] as TextBlock).content).toBe(
+      "Updated content",
+    );
+    expect((messages[0].blocks[0] as TextBlock).customCommandContent).toBe(
+      "Updated custom content",
+    );
+  });
+
+  it("should only update the specified user message", () => {
+    const id1 = messageManager.addUserMessage({ content: "Message 1" });
+    const id2 = messageManager.addUserMessage({ content: "Message 2" });
+
+    messageManager.updateUserMessage(id1, { content: "Updated Message 1" });
+
+    const messages = messageManager.getMessages();
+    expect(messages.length).toBe(2);
+
+    const msg1 = messages.find((m) => m.id === id1);
+    const msg2 = messages.find((m) => m.id === id2);
+
+    expect((msg1?.blocks[0] as TextBlock).content).toBe("Updated Message 1");
+    expect((msg2?.blocks[0] as TextBlock).content).toBe("Message 2");
+  });
+
+  it("should not update if ID does not match", () => {
+    messageManager.addUserMessage({ content: "Message 1" });
+    messageManager.updateUserMessage("non-existent-id", { content: "Updated" });
+
+    const messages = messageManager.getMessages();
+    expect((messages[0].blocks[0] as TextBlock).content).toBe("Message 1");
   });
 
   it("should handle saveSession with no new messages", async () => {

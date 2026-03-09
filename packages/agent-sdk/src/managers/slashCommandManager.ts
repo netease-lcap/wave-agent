@@ -154,21 +154,39 @@ export class SlashCommandManager {
         description: `Skill: ${skill.description}`,
         handler: async (args?: string) => {
           try {
+            // 1. Prepare skill content immediately
+            const prepared = await this.skillManager.prepareSkill({
+              skill_name: skill.name,
+              args,
+            });
+
+            const originalInput = args
+              ? `/${skill.name} ${args}`
+              : `/${skill.name}`;
+
+            // 2. Add user message immediately
+            const messageId = this.messageManager.addUserMessage({
+              content: originalInput,
+              customCommandContent: prepared.content,
+            });
+
+            if (!prepared.skill) {
+              // If skill not found or invalid, we're done (error message already in prepared.content)
+              return;
+            }
+
+            // 3. Execute bash commands asynchronously
             const result = await this.skillManager.executeSkill({
               skill_name: skill.name,
               args,
             });
 
-            // Add user message with skill content
-            const originalInput = args
-              ? `/${skill.name} ${args}`
-              : `/${skill.name}`;
-            this.messageManager.addUserMessage({
-              content: originalInput,
+            // 4. Update the message with final content
+            this.messageManager.updateUserMessage(messageId, {
               customCommandContent: result.content,
             });
 
-            // Trigger AI response
+            // 5. Trigger AI response
             await this.aiManager.sendAIMessage({
               model: skill.model,
               allowedRules: result.allowedTools,
@@ -358,6 +376,15 @@ export class SlashCommandManager {
     args?: string,
   ): Promise<void> {
     try {
+      // Add custom command message immediately to show the command being executed
+      const originalInput = args
+        ? `/${commandName} ${args}`
+        : `/${commandName}`;
+      const messageId = this.messageManager.addUserMessage({
+        content: originalInput,
+        customCommandContent: content, // Initial content with bash placeholders
+      });
+
       // Parse bash commands from the content
       const { commands, processedContent } = parseBashCommands(content);
 
@@ -371,12 +398,8 @@ export class SlashCommandManager {
         );
       }
 
-      // Add custom command message to show the command being executed
-      const originalInput = args
-        ? `/${commandName} ${args}`
-        : `/${commandName}`;
-      this.messageManager.addUserMessage({
-        content: originalInput,
+      // Update the message with final content
+      this.messageManager.updateUserMessage(messageId, {
         customCommandContent: finalContent,
       });
 

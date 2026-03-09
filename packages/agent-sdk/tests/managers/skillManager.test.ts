@@ -625,10 +625,10 @@ describe("SkillManager", () => {
       });
 
       expect(result.content).toContain(
-        "❌ **Error executing skill**: Loading failed",
+        "❌ **Error preparing skill**: Loading failed",
       );
       expect(logger.error).toHaveBeenCalledWith(
-        "Failed to execute skill 'error-skill':",
+        "Failed to prepare skill 'error-skill':",
         expect.any(Error),
       );
     });
@@ -650,9 +650,7 @@ describe("SkillManager", () => {
 
       await skillManager.executeSkill({ skill_name: "test-skill" });
 
-      expect(logger.debug).toHaveBeenCalledWith(
-        "Invoking skill: test-skill with args: undefined",
-      );
+      expect(logger.debug).toHaveBeenCalledWith("Invoking skill: test-skill");
     });
   });
 
