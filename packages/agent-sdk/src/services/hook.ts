@@ -155,6 +155,14 @@ export async function executeCommand(
       },
     });
 
+    // Handle stdin errors (e.g. EPIPE if the process closes stdin early)
+    if (childProcess.stdin) {
+      childProcess.stdin.on("error", () => {
+        // Ignore stdin errors as they just mean the process closed stdin early
+        // or doesn't want to read from it.
+      });
+    }
+
     // Set up timeout
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
@@ -173,6 +181,9 @@ export async function executeCommand(
       childProcess.stdout.on("data", (data: Buffer) => {
         stdout += data.toString();
       });
+      childProcess.stdout.on("error", () => {
+        // Ignore stdout errors
+      });
     }
 
     // Handle stderr
@@ -180,17 +191,20 @@ export async function executeCommand(
       childProcess.stderr.on("data", (data: Buffer) => {
         stderr += data.toString();
       });
+      childProcess.stderr.on("error", () => {
+        // Ignore stderr errors
+      });
     }
 
     // Send JSON input to stdin if we have prepared it
-    if (childProcess.stdin && jsonInput) {
+    if (childProcess.stdin && childProcess.stdin.writable && jsonInput) {
       try {
         childProcess.stdin.write(jsonInput);
         childProcess.stdin.end();
       } catch {
         // Continue execution even if JSON input fails
       }
-    } else if (childProcess.stdin) {
+    } else if (childProcess.stdin && childProcess.stdin.writable) {
       childProcess.stdin.end();
     }
 
