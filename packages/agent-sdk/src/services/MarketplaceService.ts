@@ -243,6 +243,7 @@ export class MarketplaceService {
           ? { source: "git", url: urlOrRepo, ref }
           : { source: "github", repo: urlOrRepo, ref },
         autoUpdate: false,
+        lastUpdated: new Date().toISOString(),
       };
     } else {
       // Local directory format
@@ -260,6 +261,7 @@ export class MarketplaceService {
         name: manifest.name,
         source: { source: "directory", path: absolutePath },
         autoUpdate: false,
+        lastUpdated: new Date().toISOString(),
       };
     }
 
@@ -363,6 +365,8 @@ export class MarketplaceService {
           this.getMarketplacePath(marketplace),
         );
 
+        marketplace.lastUpdated = new Date().toISOString();
+
         if (options?.updatePlugins) {
           const installedRegistry = await this.getInstalledPlugins();
           const pluginsToUpdate = installedRegistry.plugins.filter(
@@ -414,6 +418,8 @@ export class MarketplaceService {
         `Some marketplaces failed to update:\n${errors.join("\n")}`,
       );
     }
+
+    await this.saveKnownMarketplaces(registry);
   }
 
   /**

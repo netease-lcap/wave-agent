@@ -43,8 +43,11 @@ export async function listMarketplacesCommand() {
           sourceInfo = source.url + (source.ref ? `#${source.ref}` : "");
         }
         const builtinLabel = m.isBuiltin ? " [builtin]" : "";
+        const lastUpdatedLabel = m.lastUpdated
+          ? ` (Last updated: ${new Date(m.lastUpdated).toLocaleString()})`
+          : "";
         console.log(
-          `- ${m.name}${builtinLabel}: ${sourceInfo} (${m.source.source})`,
+          `- ${m.name}${builtinLabel}: ${sourceInfo} (${m.source.source})${lastUpdatedLabel}`,
         );
       });
     }

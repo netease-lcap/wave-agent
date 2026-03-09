@@ -43,3 +43,4 @@ This document combines the tasks for the plugin marketplace and management UI.
 - [x] T028 Implement auto-update support for marketplaces
 - [x] T029 Run `pnpm run type-check` and `pnpm lint` across the monorepo
 - [x] T030 Verify full end-to-end flow using the `quickstart.md` scenarios
+- [ ] T031 Implement "last update" tracking and display for marketplaces

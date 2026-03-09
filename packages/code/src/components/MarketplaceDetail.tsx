@@ -70,6 +70,17 @@ export const MarketplaceDetail: React.FC = () => {
         </Text>
       </Box>
 
+      {marketplace.lastUpdated && (
+        <Box marginBottom={1}>
+          <Text>
+            Last updated:{" "}
+            <Text color="cyan">
+              {new Date(marketplace.lastUpdated).toLocaleString()}
+            </Text>
+          </Text>
+        </Box>
+      )}
+
       {state.isLoading && (
         <Box marginBottom={1}>
           <Text color="yellow">⌛ Processing operation...</Text>

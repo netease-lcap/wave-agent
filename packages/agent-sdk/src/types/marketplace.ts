@@ -47,6 +47,7 @@ export interface KnownMarketplace {
   source: MarketplaceSource;
   isBuiltin?: boolean;
   autoUpdate?: boolean;
+  lastUpdated?: string;
 }
 
 export interface KnownMarketplacesRegistry {

@@ -41,8 +41,14 @@ export const MarketplaceList: React.FC<MarketplaceListProps> = ({
                 )}
               </Text>
             </Box>
-            <Box marginLeft={4}>
+            <Box marginLeft={4} flexDirection="column">
               <Text dimColor>Source: {sourceStr}</Text>
+              {marketplace.lastUpdated && (
+                <Text dimColor>
+                  Last updated:{" "}
+                  {new Date(marketplace.lastUpdated).toLocaleString()}
+                </Text>
+              )}
             </Box>
           </Box>
         );
