@@ -12,7 +12,7 @@ This document defines the internal interfaces between the CLI UI and the underly
 export async function startPluginManagerCli(): Promise<void>;
 ```
 
-## Service Hooks (Conceptual)
+## Service Hooks
 
 The UI will use a custom hook to interact with `agent-sdk` services.
 
