@@ -8,8 +8,8 @@ vi.mock("child_process", () => ({
   spawn: vi.fn(),
 }));
 
-// Mock @vscode/ripgrep
-vi.mock("@vscode/ripgrep", () => ({
+// Mock ripgrep utility
+vi.mock("../../src/utils/ripgrep.js", () => ({
   rgPath: "/mock/path/to/rg",
 }));
 

@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { rgPath } from "@vscode/ripgrep";
+import { rgPath } from "./ripgrep.js";
 import fuzzysort from "fuzzysort";
 import { getAllIgnorePatterns } from "./fileFilter.js";
 import type { FileItem } from "../types/fileSearch.js";

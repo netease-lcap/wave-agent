@@ -14,7 +14,7 @@ const testContext: ToolContext = {
 vi.mock("child_process");
 
 // Mock ripgrep path
-vi.mock("@vscode/ripgrep", () => ({
+vi.mock("@/utils/ripgrep.js", () => ({
   rgPath: "/mock/rg",
 }));
 
