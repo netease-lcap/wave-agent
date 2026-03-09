@@ -81,7 +81,7 @@ export const searchFiles = async (
     workingDirectory?: string;
   },
 ): Promise<FileItem[]> => {
-  const { maxResults = 10, workingDirectory = process.cwd() } = options || {};
+  const { maxResults = 100, workingDirectory = process.cwd() } = options || {};
 
   try {
     const files = await getAllFiles(workingDirectory);

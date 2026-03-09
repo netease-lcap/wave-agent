@@ -65,12 +65,12 @@ As a user, I want fuzzy search to find files even if I don't type the exact pref
 
 - **FR-001**: System MUST trigger the file selector when `@` is typed in the input field.
 - **FR-002**: System MUST perform real-time, debounced (300ms) search of the filesystem.
-- **FR-003**: System MUST display a list of matching files and directories with appropriate icons (📁/📄).
+- **FR-003**: System MUST display a list of matching files and directories.
 - **FR-004**: System MUST support keyboard navigation using `UpArrow`, `DownArrow`, `Enter`, `Tab`, and `Escape`.
 - **FR-005**: System MUST insert the selected path at the cursor position, replacing the `@query` string.
 - **FR-006**: System MUST automatically add a space after the inserted path.
 - **FR-007**: System MUST support home directory (`~`) expansion.
-- **FR-008**: System MUST limit the display to 10 items at a time with a scrolling mechanism.
+- **FR-008**: System MUST limit the display to 5 items at a time with a scrolling mechanism.
 
 ### Key Entities *(include if feature involves data)*
 

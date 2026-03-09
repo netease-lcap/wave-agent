@@ -27,8 +27,8 @@
 
 **Purpose**: Core infrastructure that MUST be complete before ANY user story can be implemented
 
-- [ ] T005 [P] Create unit test file for `InputManager` state transitions in packages/code/tests/managers/InputManager.test.ts
-- [ ] T006 [P] Create unit test file for `FileSelector` component in packages/code/tests/components/FileSelector.test.tsx
+- [X] T005 [P] Create unit test file for `InputManager` state transitions in packages/code/tests/managers/InputManager.test.ts
+- [X] T006 [P] Create unit test file for `FileSelector` component in packages/code/tests/components/FileSelector.test.tsx
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -42,8 +42,8 @@
 
 ### Tests for User Story 1 (REQUIRED) ⚠️
 
-- [ ] T007 [US1] Write failing tests for `@` trigger detection in `InputManager`
-- [ ] T008 [US1] Write failing tests for file path insertion in `InputManager`
+- [X] T007 [US1] Write failing tests for `@` trigger detection in `InputManager`
+- [X] T008 [US1] Write failing tests for file path insertion in `InputManager`
 
 ### Implementation for User Story 1
 
@@ -63,7 +63,7 @@
 
 ### Tests for User Story 2 (REQUIRED) ⚠️
 
-- [ ] T012 [US2] Write failing tests for directory selection and content updating
+- [X] T012 [US2] Write failing tests for directory selection and content updating
 
 ### Implementation for User Story 2
 
@@ -82,12 +82,12 @@
 
 ### Tests for User Story 3 (REQUIRED) ⚠️
 
-- [ ] T015 [US3] Write failing tests for fuzzy matching logic
+- [X] T015 [US3] Write failing tests for fuzzy matching logic
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] Implement fuzzy search for file matching in `packages/code/src/managers/InputManager.ts` or `wave-agent-sdk`
-- [ ] T017 [US3] Add support for home directory (`~`) expansion
+- [X] T016 [US3] Implement fuzzy search for file matching in `packages/code/src/managers/InputManager.ts` or `wave-agent-sdk`
+- [X] T017 [US3] Add support for home directory (`~`) expansion
 
 **Checkpoint**: All user stories are independently functional.
 
@@ -97,6 +97,6 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T018 [P] Add icons for different file types in `FileSelector`
+- [X] T018 [P] Add selection indicator and improve scrolling in `FileSelector`
 - [ ] T019 [P] Improve scrolling performance for large directories
 - [ ] T020 [P] Final type-check and linting

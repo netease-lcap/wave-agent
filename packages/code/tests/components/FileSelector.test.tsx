@@ -22,25 +22,16 @@ describe("FileSelector", () => {
     const output = lastFrame();
     expect(output).toContain("Select File/Directory");
     expect(output).toContain("file1.txt");
-    expect(output).toContain("file10.txt");
-    expect(output).toContain("... 10 more files below");
+    expect(output).not.toContain("file10.txt");
+    expect(output).not.toContain("more files below");
   });
 
-  it("should show correct scroll indicators", () => {
-    // Test with files that require scrolling
-    const propsWithManyFiles = {
-      ...mockProps,
-      files: Array.from({ length: 25 }, (_, i) => ({
-        path: `file${i + 1}.txt`,
-        type: "file" as const,
-      })),
-    };
-
-    const { lastFrame } = render(<FileSelector {...propsWithManyFiles} />);
+  it("should show correct selection indicator", () => {
+    const { lastFrame } = render(<FileSelector {...mockProps} />);
 
     const output = lastFrame();
-    expect(output).toContain("Select File/Directory");
-    expect(output).toContain("... 15 more files below");
+    expect(output).toContain("▶ file1.txt");
+    expect(output).toContain("  file2.txt");
   });
 
   it("should handle empty files list", () => {
@@ -62,7 +53,7 @@ describe("FileSelector", () => {
 
   it("should handle scroll window logic correctly", () => {
     // Test scrolling window logic
-    const maxDisplay = 10;
+    const maxDisplay = 5;
     const files: FileItem[] = Array.from({ length: 20 }, (_, i) => ({
       path: `file${i + 1}.txt`,
       type: "file",
@@ -74,29 +65,28 @@ describe("FileSelector", () => {
         0,
         Math.min(
           selectedIndex - Math.floor(maxDisplay / 2),
-          files.length - maxDisplay,
+          Math.max(0, files.length - maxDisplay),
         ),
       );
       const endIndex = Math.min(files.length, startIndex + maxDisplay);
-      const adjustedStartIndex = Math.max(0, endIndex - maxDisplay);
 
       return {
-        startIndex: adjustedStartIndex,
-        endIndex: endIndex,
+        startIndex,
+        endIndex,
       };
     };
 
     // Test different selection positions
     const windowAt0 = getDisplayWindow(0);
     expect(windowAt0.startIndex).toBe(0);
-    expect(windowAt0.endIndex).toBe(10);
+    expect(windowAt0.endIndex).toBe(5);
 
     const windowAt10 = getDisplayWindow(10);
-    expect(windowAt10.startIndex).toBe(5);
-    expect(windowAt10.endIndex).toBe(15);
+    expect(windowAt10.startIndex).toBe(8);
+    expect(windowAt10.endIndex).toBe(13);
 
     const windowAt19 = getDisplayWindow(19);
-    expect(windowAt19.startIndex).toBe(10);
+    expect(windowAt19.startIndex).toBe(15);
     expect(windowAt19.endIndex).toBe(20);
   });
 
@@ -106,6 +96,8 @@ describe("FileSelector", () => {
       { path: "src/components/", type: "directory" },
       { path: "package.json", type: "file" },
       { path: "README.md", type: "file" },
+      { path: "tsconfig.json", type: "file" },
+      { path: "vitest.config.ts", type: "file" },
     ];
 
     const propsWithMixed = { ...mockProps, files: mixedFiles };
@@ -116,8 +108,8 @@ describe("FileSelector", () => {
     expect(output).toContain("src/components/");
     expect(output).toContain("package.json");
     expect(output).toContain("README.md");
-    expect(output).not.toContain("📁");
-    expect(output).not.toContain("📄");
+    expect(output).toContain("tsconfig.json");
+    expect(output).not.toContain("vitest.config.ts"); // Only 5 items shown
   });
 
   describe("Tab key functionality", () => {

@@ -16,7 +16,7 @@ Implement an interactive File Selector triggered by `@` to allow users to quickl
 **Target Platform**: CLI (Node.js)
 **Project Type**: Monorepo (agent-sdk + code)
 **Performance Goals**: Debounced search (300ms) to ensure responsiveness
-**Constraints**: Max 10 items displayed at once
+**Constraints**: Max 5 items displayed at once
 **Scale/Scope**: Input enhancement for all agent sessions
 
 ## Constitution Check
