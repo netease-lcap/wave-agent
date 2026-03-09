@@ -69,7 +69,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
     );
   }
 
-  const maxDisplay = 10;
+  const maxDisplay = 5;
 
   // Calculate display window start and end positions
   const getDisplayWindow = () => {
@@ -77,20 +77,19 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
       0,
       Math.min(
         selectedIndex - Math.floor(maxDisplay / 2),
-        files.length - maxDisplay,
+        Math.max(0, files.length - maxDisplay),
       ),
     );
     const endIndex = Math.min(files.length, startIndex + maxDisplay);
-    const adjustedStartIndex = Math.max(0, endIndex - maxDisplay);
 
     return {
-      startIndex: adjustedStartIndex,
-      endIndex: endIndex,
-      displayFiles: files.slice(adjustedStartIndex, endIndex),
+      startIndex,
+      endIndex,
+      displayFiles: files.slice(startIndex, endIndex),
     };
   };
 
-  const { startIndex, endIndex, displayFiles } = getDisplayWindow();
+  const { startIndex, displayFiles } = getDisplayWindow();
 
   return (
     <Box
@@ -100,41 +99,35 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
       borderBottom={false}
       borderLeft={false}
       borderRight={false}
+      gap={1}
     >
-      <Text color="cyan" bold>
-        Select File/Directory {searchQuery && `(filtering: "${searchQuery}")`}
-      </Text>
+      <Box>
+        <Text color="cyan" bold>
+          Select File/Directory {searchQuery && `(filtering: "${searchQuery}")`}
+        </Text>
+      </Box>
 
-      {/* Show hint for more files above */}
-      {startIndex > 0 && (
-        <Text dimColor>... {startIndex} more files above</Text>
-      )}
+      <Box flexDirection="column">
+        {displayFiles.map((fileItem, displayIndex) => {
+          const actualIndex = startIndex + displayIndex;
+          const isSelected = actualIndex === selectedIndex;
 
-      {displayFiles.map((fileItem, displayIndex) => {
-        const actualIndex = startIndex + displayIndex;
-        const isSelected = actualIndex === selectedIndex;
-
-        return (
-          <Box key={fileItem.path}>
-            <Text
-              color={isSelected ? "black" : "white"}
-              backgroundColor={isSelected ? "cyan" : undefined}
-            >
-              {fileItem.path}
-            </Text>
-          </Box>
-        );
-      })}
-
-      {/* Show hint for more files below */}
-      {endIndex < files.length && (
-        <Text dimColor>... {files.length - endIndex} more files below</Text>
-      )}
+          return (
+            <Box key={fileItem.path}>
+              <Text
+                color={isSelected ? "black" : "white"}
+                backgroundColor={isSelected ? "cyan" : undefined}
+              >
+                {isSelected ? "▶ " : "  "}
+                {fileItem.path}
+              </Text>
+            </Box>
+          );
+        })}
+      </Box>
 
       <Box>
-        <Text dimColor>
-          Use ↑↓ to navigate, Enter/Tab to select, Escape to cancel
-        </Text>
+        <Text dimColor>↑↓ navigate • Enter/Tab select • Esc cancel</Text>
       </Box>
     </Box>
   );
