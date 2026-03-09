@@ -272,7 +272,7 @@ export interface CacheControlIntegration {
  */
 export const DEFAULT_CACHE_CONTROL_CONFIG: CacheControlConfig = {
   cacheSystemMessage: true,
-  cacheUserMessageCount: 2,
+  cacheMessageInterval: 20,
   cacheLastTool: true,
 } as const;
 
@@ -287,7 +287,7 @@ export const CACHE_CONTROL_PERFORMANCE = {
   /** Expected cache hit rates by content type */
   EXPECTED_CACHE_HIT_RATES: {
     systemMessages: 0.7,    // 70%
-    userMessages: 0.4,      // 40% 
+    intervalMessages: 0.4,  // 40% 
     toolDefinitions: 0.6,   // 60%
   },
-} as const;
+} as const;t;

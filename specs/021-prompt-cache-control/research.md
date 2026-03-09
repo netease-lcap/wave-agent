@@ -74,7 +74,7 @@
 
 **Key Implementation Details**:
 - **Content Type Support**: Only `type: "text"` parts receive cache_control markers
-- **Placement Rules**: System messages (always), last 2 user messages, last tool definition
+- **Placement Rules**: System messages (always), every 20th message (interval-based), last tool definition
 - **Type Extension**: Extend OpenAI interfaces with optional cache_control field
 - **Mixed Content**: Preserve existing structure, add cache_control only to text parts
 

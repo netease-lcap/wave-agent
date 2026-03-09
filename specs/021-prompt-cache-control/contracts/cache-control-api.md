@@ -106,11 +106,20 @@ function isClaudeModel(modelName: string): boolean;
 interface CacheControlConfig {
   /** Whether to apply cache control to system messages */
   cacheSystemMessage: boolean;
-  /** Number of recent user messages to cache */
-  cacheUserMessageCount: number;
+  /** Interval for periodic message caching (e.g., 20 = every 20th message) */
+  cacheMessageInterval: number;
   /** Whether to cache the last tool definition */
   cacheLastTool: boolean;
 }
+
+/**
+ * Finds the index of the latest message at the specified interval
+ * @param messages - Array of messages
+ * @returns Single message index at latest interval position (20, 40, 60, etc.) or -1
+ */
+function findIntervalMessageIndex(
+  messages: ChatCompletionMessageParam[]
+): number;
 
 /**
  * Adds cache control markers to message content
@@ -136,14 +145,21 @@ function addCacheControlToLastTool(
  * Transforms messages for Claude cache control
  * @param messages - Original OpenAI message array
  * @param modelName - Model name for cache detection
- * @param config - Cache control configuration
  * @returns Messages with cache control markers applied
  */
 function transformMessagesForClaudeCache(
   messages: ChatCompletionMessageParam[],
-  modelName: string,
-  config: CacheControlConfig
+  modelName: string
 ): ChatCompletionMessageParam[];
+
+/**
+ * Adds cache control to the last tool call in an array
+ * @param toolCalls - Array of tool calls
+ * @returns Tool calls array with cache control on the last tool call
+ */
+function addCacheControlToLastToolCall(
+  toolCalls: ChatCompletionMessageToolCall[]
+): ChatCompletionMessageToolCall[];
 ```
 
 ### Usage Tracking Extension

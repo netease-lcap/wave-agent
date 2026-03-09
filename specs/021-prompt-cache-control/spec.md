@@ -23,19 +23,20 @@ When developers use Claude models through the OpenAI provider, the system messag
 
 ---
 
-### User Story 2 - Recent User Messages Cache Optimization (Priority: P2)
+### User Story 2 - Interval-Based Message Cache Optimization (Priority: P2)
 
-For Claude models, the last two user messages in the conversation should be automatically cached to optimize token usage for multi-turn conversations where recent context is frequently referenced.
+When users engage in long-running tasks that involve many AI agent interactions, the system should automatically cache messages at 20-message intervals (every 20th message) regardless of role. This provides better context for extended work sessions while maintaining a sliding window approach where only the most recent interval is cached.
 
-**Why this priority**: Recent user messages often contain important context that gets referenced in follow-up questions, but this is less critical than system message caching since user messages are typically shorter.
+**Why this priority**: This strategy replaces the simpler "last 2 user messages" approach, providing more robust context for long conversations where user messages might be infrequent but agent/tool interactions are numerous.
 
-**Independent Test**: Can be fully tested by creating a conversation with 3+ user messages using Claude models and verifying only the last two user messages have cache_control markers.
+**Independent Test**: Can be fully tested by initiating a conversation with 20 or more messages and verifying that the system applies cache markers at the 20th message position, and moves it to the 40th position when the conversation reaches 40 messages.
 
 **Acceptance Scenarios**:
 
-1. **Given** a conversation with multiple user messages using Claude models, **When** an agent call is made, **Then** only the last two user messages have cache_control markers with type "ephemeral"
-2. **Given** a conversation with only one user message, **When** an agent call is made, **Then** that single user message has cache_control markers
-3. **Given** conversations with both text and image content, **When** cache_control is applied, **Then** only text content parts receive cache_control markers
+1. **Given** a conversation has exactly 19 messages, **When** the system processes the next interaction, **Then** no cache marker should be created for the interval strategy
+2. **Given** a conversation has exactly 20 messages, **When** the system processes the interaction, **Then** a cache marker should be created at the 20th message position
+3. **Given** a conversation has 39 messages, **When** the system processes the next interaction, **Then** the cache marker should remain at the 20th message position
+4. **Given** a conversation has exactly 40 messages, **When** the system processes the interaction, **Then** the cache marker should move to the 40th message position (20th marker removed)
 
 ---
 
@@ -86,19 +87,24 @@ When using Claude models with cache control, developers need accurate token trac
 
 - **FR-001**: System MUST detect Claude models by checking if the model name contains "claude" (case-insensitive)
 - **FR-002**: System MUST add cache_control markers with type "ephemeral" to the first system message when using Claude models. This ensures core instructions are always cached even if reminders are added later.
-- **FR-003**: System MUST add cache_control markers to the last two user messages in the conversation when using Claude models
-- **FR-004**: System MUST add cache_control markers to the last tool definition when tools are available for Claude models
-- **FR-005**: System MUST transform string content to structured content arrays when adding cache_control markers
-- **FR-006**: System MUST preserve existing structured content while adding cache_control markers to text parts only
+- **FR-003**: System MUST create a cache marker when total message count reaches multiples of 20 (20, 40, 60, etc.)
+- **FR-004**: System MUST NOT create cache markers when total message count is below 20 or not a multiple of 20
+- **FR-005**: System MUST maintain cache markers at the most recent multiple-of-20 message position (sliding window)
+- **FR-006**: System MUST include cached messages in the context provided to the AI agent
 - **FR-007**: System MUST not add cache_control markers when using non-Claude models
 - **FR-008**: System MUST extend usage tracking to include cache-related metrics (cache_read_input_tokens, cache_creation_input_tokens, cache_creation object)
-- **FR-008b**: System MUST calculate latestTotalTokens as total_tokens + cache_read_input_tokens + cache_creation_input_tokens for accurate cost tracking
 - **FR-009**: System MUST apply cache_control markers identically for both streaming and non-streaming requests during message preparation phase
-- **FR-010**: System MUST maintain backward compatibility with existing message processing logic
+- **FR-010**: System MUST maintain backward compatibility with existing message processing logic (except for the cache strategy itself which is a breaking change)
+- **FR-011**: System MUST support caching for different message roles at interval positions:
+    - For `tool` role: Add `cache_control` directly to the message.
+    - For `assistant` role with `tool_calls`: Add `cache_control` to the last tool call.
+    - For other roles: Add `cache_control` to the message content.
 
 ### Key Entities *(include if feature involves data)*
 
-- **Cache Control Marker**: Ephemeral cache directive with type "ephemeral" attached to message content or tool definitions
+- **Conversation Thread**: Represents a sequence of messages between user and AI agent, with properties including message count, cache markers, and session context
+- **Cache Marker**: Represents a point in the conversation where messages are preserved for context, containing the message position and associated conversation content
+- **Message Context**: Represents the combination of system prompt, tools, and cached messages that provide context for AI agent responses
 - **Enhanced Usage Metrics**: Extended usage object including cache-related token counts and creation breakdown
 - **Claude Model Detection**: Boolean determination based on case-insensitive model name matching
 - **Structured Message Content**: Array-based message content format supporting cache_control on individual content parts

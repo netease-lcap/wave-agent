@@ -91,14 +91,28 @@ if (response.usage && isClaudeModel(model || modelConfig.model)) {
 **File**: `packages/agent-sdk/src/utils/cacheControlUtils.ts`
 
 ```typescript
+export function findIntervalMessageIndex(
+  messages: ChatCompletionMessageParam[]
+): number {
+  let latestIntervalIndex = -1;
+  for (let i = 0; i < messages.length; i++) {
+    if ((i + 1) % 20 === 0) {
+      latestIntervalIndex = i;
+    }
+  }
+  return latestIntervalIndex;
+}
+
 export function transformMessagesForClaudeCache(
   messages: ChatCompletionMessageParam[],
   modelName: string,
   tools?: ChatCompletionFunctionTool[]
 ): ChatCompletionMessageParam[] {
   if (!isClaudeModel(modelName)) {
-    return messages; // No changes for non-Claude models
+    return messages;
   }
+  
+  const indexToCache = findIntervalMessageIndex(messages);
   
   return messages.map((message, index) => {
     // System message: always cache
@@ -109,12 +123,11 @@ export function transformMessagesForClaudeCache(
       };
     }
     
-    // User messages: cache last 2 only
-    if (message.role === 'user') {
-      const isRecentUser = index >= messages.length - 2;
+    // Interval-based message caching (every 20th message)
+    if (index === indexToCache) {
       return {
         ...message, 
-        content: addCacheControlToContent(message.content, isRecentUser)
+        content: addCacheControlToContent(message.content, true)
       };
     }
     
@@ -133,8 +146,8 @@ describe('Claude Cache Control', () => {
     // Test system message transformation
   });
   
-  test('should cache last two user messages only', async () => {
-    // Test user message selection and transformation
+  test('should cache every 20th message (interval-based)', async () => {
+    // Test interval-based selection and sliding window behavior
   });
   
   test('should cache last tool definition', async () => {
@@ -156,7 +169,7 @@ describe('Claude Cache Control', () => {
 ### Cache Control Application Rules
 
 1. **System Messages**: Always cached for Claude models
-2. **User Messages**: Only last 2 messages in conversation 
+2. **Interval Messages**: Every 20th message in conversation (sliding window)
 3. **Tool Definitions**: Only the last tool in the tools array
 4. **Content Types**: Only text content parts, never images
 

@@ -120,10 +120,11 @@ packages/agent-sdk/
 
 ## Complexity Tracking
 
-*Fill ONLY if Constitution Check has violations that must be justified*
+### Breaking Changes Justification
 
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
-| [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
+| Breaking Change | Why Needed | Simpler Alternative Rejected Because |
+|----------------|------------|-------------------------------------|
+| Replace "last 2 user messages" with interval-based caching | Better context for long-running tasks with few user messages | Keeping both would add unnecessary complexity |
+| Remove `cacheUserMessageCount` from config | Strategy is now hardcoded or interval-based | Maintaining unused properties creates technical debt |
+| Delete `findRecentUserMessageIndices` | Function implements old strategy being replaced | Maintaining unused code creates technical debt |
 
