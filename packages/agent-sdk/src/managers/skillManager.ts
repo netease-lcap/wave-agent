@@ -262,12 +262,48 @@ export class SkillManager {
     context?: SkillInvocationContext;
     allowedTools?: string[];
   }> {
-    const { skill_name, args: skillArgs } = args;
+    const { skill_name } = args;
 
-    logger?.debug(`Invoking skill: ${skill_name} with args: ${skillArgs}`);
+    logger?.debug(`Invoking skill: ${skill_name}`);
+
+    const prepared = await this.prepareSkill(args);
+    if (!prepared.skill) {
+      return { content: prepared.content };
+    }
 
     try {
-      // Load the skill
+      const finalContent = await this.executeBashInSkillContent(
+        prepared.content,
+      );
+
+      return {
+        content: finalContent,
+        context: {
+          skillName: skill_name,
+        },
+        allowedTools: prepared.skill.allowedTools,
+      };
+    } catch (error) {
+      logger?.error(`Failed to execute skill '${skill_name}':`, error);
+      return {
+        content: `❌ **Error executing skill**: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  /**
+   * Prepare a skill by name without executing bash commands
+   */
+  async prepareSkill(args: SkillToolArgs): Promise<
+    | {
+        content: string;
+        skill: Skill;
+      }
+    | { content: string; skill?: undefined }
+  > {
+    const { skill_name, args: skillArgs } = args;
+
+    try {
       const skill = await this.loadSkill(skill_name);
 
       if (!skill) {
@@ -283,35 +319,20 @@ export class SkillManager {
         };
       }
 
-      // Process skill content with arguments and bash commands
-      const processedContent = await this.processSkillContent(
-        skill,
-        skillArgs || "",
-      );
-
-      // Return skill content with context
-      return {
-        content: processedContent,
-        context: {
-          skillName: skill_name,
-        },
-        allowedTools: skill.allowedTools,
-      };
+      const preparedContent = this.prepareSkillContent(skill, skillArgs || "");
+      return { content: preparedContent, skill };
     } catch (error) {
-      logger?.error(`Failed to execute skill '${skill_name}':`, error);
+      logger?.error(`Failed to prepare skill '${skill_name}':`, error);
       return {
-        content: `❌ **Error executing skill**: ${error instanceof Error ? error.message : String(error)}`,
+        content: `❌ **Error preparing skill**: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }
 
   /**
-   * Process skill content with arguments and bash commands
+   * Prepare skill content with arguments but without bash execution
    */
-  private async processSkillContent(
-    skill: Skill,
-    argsString: string,
-  ): Promise<string> {
+  private prepareSkillContent(skill: Skill, argsString: string): string {
     const header = `🧠 **${skill.name}** (${skill.type} skill)\n\n`;
     const description = `*${skill.description}*\n\n`;
     const skillPath = `📁 Skill location: \`${skill.skillPath}\`\n\n`;
@@ -326,14 +347,19 @@ export class SkillManager {
     // 2. Substitute ${WAVE_SKILL_DIR} with the skill's directory path
     mainContent = mainContent.replace(/\$\{WAVE_SKILL_DIR\}/g, skill.skillPath);
 
-    // 3. Parse and execute bash commands (!`command`)
-    const { commands } = parseBashCommands(mainContent);
+    return header + description + skillPath + mainContent;
+  }
+
+  /**
+   * Execute bash commands in prepared skill content
+   */
+  private async executeBashInSkillContent(content: string): Promise<string> {
+    const { commands } = parseBashCommands(content);
     if (commands.length > 0) {
       const results = await executeBashCommands(commands, this.workdir);
-      mainContent = replaceBashCommandsWithOutput(mainContent, results);
+      return replaceBashCommandsWithOutput(content, results);
     }
-
-    return header + description + skillPath + mainContent;
+    return content;
   }
 
   /**

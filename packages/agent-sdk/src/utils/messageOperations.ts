@@ -17,6 +17,7 @@ export interface UserMessageParams {
 // Parameter interfaces for message operations
 export interface AddUserMessageParams extends UserMessageParams {
   messages: Message[];
+  id?: string;
 }
 
 export interface UpdateToolBlockParams {
@@ -123,6 +124,7 @@ export const addUserMessageToMessages = ({
   images,
   customCommandContent,
   source,
+  id,
 }: AddUserMessageParams): Message[] => {
   const blocks: Message["blocks"] = [];
 
@@ -145,11 +147,40 @@ export const addUserMessageToMessages = ({
   }
 
   const userMessage: Message = {
-    id: generateMessageId(),
+    id: id || generateMessageId(),
     role: "user",
     blocks,
   };
   return [...messages, userMessage];
+};
+
+/**
+ * Update a user message's content or customCommandContent by its ID.
+ */
+export const updateUserMessageInMessages = (
+  messages: Message[],
+  id: string,
+  params: Partial<UserMessageParams>,
+): Message[] => {
+  return messages.map((msg) => {
+    if (msg.id === id && msg.role === "user") {
+      const newBlocks = msg.blocks.map((block) => {
+        if (block.type === "text") {
+          return {
+            ...block,
+            ...(params.content !== undefined && { content: params.content }),
+            ...(params.customCommandContent !== undefined && {
+              customCommandContent: params.customCommandContent,
+            }),
+            ...(params.source !== undefined && { source: params.source }),
+          };
+        }
+        return block;
+      });
+      return { ...msg, blocks: newBlocks };
+    }
+    return msg;
+  });
 };
 
 // Add assistant message (support one-time addition of answer and tool calls)

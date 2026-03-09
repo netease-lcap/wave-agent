@@ -34,6 +34,10 @@ describe("SlashCommandManager model override", () => {
 
   it("should pass model to aiManager.sendAIMessage when skill command is executed", async () => {
     const mockSkillManager = {
+      prepareSkill: vi.fn().mockResolvedValue({
+        content: "Prepared content",
+        skill: { name: "test-skill", model: "gpt-4o", allowedTools: ["tool1"] },
+      }),
       executeSkill: vi.fn().mockResolvedValue({
         content: "Skill content",
         allowedTools: ["tool1"],

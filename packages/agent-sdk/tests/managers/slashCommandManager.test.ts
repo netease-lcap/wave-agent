@@ -9,6 +9,7 @@ import {
   SkillMetadata,
 } from "../../src/types/index.js";
 import { Container } from "../../src/utils/container.js";
+import * as markdownParser from "../../src/utils/markdownParser.js";
 
 // Mock child_process for bash command execution tests
 const mockExec = vi.hoisted(() => vi.fn());
@@ -18,6 +19,20 @@ vi.mock("child_process", () => ({
 vi.mock("util", () => ({
   promisify: vi.fn(() => mockExec),
 }));
+
+vi.mock("../../src/utils/markdownParser.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    executeBashCommands: vi.fn().mockResolvedValue([
+      {
+        command: "echo hello",
+        output: "bash output",
+        exitCode: 0,
+      },
+    ]),
+  };
+});
 
 describe("SlashCommandManager", () => {
   let slashCommandManager: SlashCommandManager;
@@ -223,6 +238,10 @@ describe("SlashCommandManager", () => {
   describe("registerSkillCommands", () => {
     it("should register skill commands and pass allowedTools to aiManager", async () => {
       const mockSkillManager = {
+        prepareSkill: vi.fn().mockResolvedValue({
+          content: "Prepared content",
+          skill: { name: "test-skill", allowedTools: ["tool1", "tool2"] },
+        }),
         executeSkill: vi.fn().mockResolvedValue({
           content: "Skill content",
           allowedTools: ["tool1", "tool2"],
@@ -265,6 +284,10 @@ describe("SlashCommandManager", () => {
 
     it("should register namespaced skill commands", async () => {
       const mockSkillManager = {
+        prepareSkill: vi.fn().mockResolvedValue({
+          content: "Prepared content",
+          skill: { name: "my-plugin:my-skill" },
+        }),
         executeSkill: vi.fn().mockResolvedValue({
           content: "Skill content",
         }),
@@ -322,6 +345,128 @@ describe("SlashCommandManager", () => {
       const lastMessage = messages[messages.length - 1];
       const textBlock = lastMessage.blocks[0] as TextBlock;
       expect(textBlock.customCommandContent).toBe("Path is ${WAVE_SKILL_DIR}");
+    });
+  });
+
+  describe("Async Update Flow", () => {
+    it("should update user message after bash execution in custom command", async () => {
+      // Register a custom command with bash
+      const customCommand = {
+        id: "test-bash",
+        name: "test-bash",
+        content: "Content with !`echo hello`!",
+      };
+
+      slashCommandManager.registerPluginCommands("test", [
+        customCommand,
+      ] as CustomSlashCommand[]);
+
+      const cmd = slashCommandManager.getCommand("test:test-bash");
+
+      // Spy on messageManager methods
+      const addUserMessageSpy = vi.spyOn(messageManager, "addUserMessage");
+      const updateUserMessageSpy = vi.spyOn(
+        messageManager,
+        "updateUserMessage",
+      );
+
+      await cmd?.handler();
+
+      expect(addUserMessageSpy).toHaveBeenCalled();
+      const messageId = addUserMessageSpy.mock.results[0].value;
+
+      expect(updateUserMessageSpy).toHaveBeenCalledWith(messageId, {
+        customCommandContent: expect.stringContaining("bash output"),
+      });
+
+      expect(aiManager.sendAIMessage).toHaveBeenCalled();
+
+      // Verify the order: addUserMessage -> executeBashCommands -> updateUserMessage -> sendAIMessage
+      const addUserMessageOrder = addUserMessageSpy.mock.invocationCallOrder[0];
+      const executeBashOrder = vi.mocked(markdownParser.executeBashCommands)
+        .mock.invocationCallOrder[0];
+      const updateUserMessageOrder =
+        updateUserMessageSpy.mock.invocationCallOrder[0];
+      const sendAIMessageOrder = vi.mocked(aiManager.sendAIMessage).mock
+        .invocationCallOrder[0];
+
+      expect(addUserMessageOrder).toBeLessThan(executeBashOrder);
+      expect(executeBashOrder).toBeLessThan(updateUserMessageOrder);
+      expect(updateUserMessageOrder).toBeLessThan(sendAIMessageOrder);
+    });
+
+    it("should update user message after bash execution in skill command", async () => {
+      const skillMetadata = {
+        name: "test-skill",
+        description: "Test skill",
+        userInvocable: true,
+        model: "gpt-4",
+        allowedTools: ["tool1"],
+      };
+
+      const mockSkillManager = {
+        prepareSkill: vi.fn().mockResolvedValue({
+          content: "Prepared skill content with !`echo hello`!",
+          skill: {
+            name: "test-skill",
+            model: "gpt-4",
+            allowedTools: ["tool1"],
+          },
+        }),
+        executeSkill: vi.fn().mockResolvedValue({
+          content: "Final skill content with bash output",
+          allowedTools: ["tool1"],
+        }),
+      };
+
+      const container = (
+        slashCommandManager as unknown as { container: Container }
+      ).container;
+      container.register("SkillManager", mockSkillManager);
+
+      slashCommandManager.registerSkillCommands([
+        skillMetadata,
+      ] as SkillMetadata[]);
+
+      const cmd = slashCommandManager.getCommand("test-skill");
+
+      const addUserMessageSpy = vi.spyOn(messageManager, "addUserMessage");
+      const updateUserMessageSpy = vi.spyOn(
+        messageManager,
+        "updateUserMessage",
+      );
+
+      await cmd?.handler("args");
+
+      expect(mockSkillManager.prepareSkill).toHaveBeenCalled();
+      expect(addUserMessageSpy).toHaveBeenCalled();
+      const messageId = addUserMessageSpy.mock.results[0].value;
+
+      expect(mockSkillManager.executeSkill).toHaveBeenCalled();
+      expect(updateUserMessageSpy).toHaveBeenCalledWith(messageId, {
+        customCommandContent: "Final skill content with bash output",
+      });
+
+      expect(aiManager.sendAIMessage).toHaveBeenCalledWith({
+        model: "gpt-4",
+        allowedRules: ["tool1"],
+      });
+
+      // Verify order
+      const prepareSkillOrder =
+        mockSkillManager.prepareSkill.mock.invocationCallOrder[0];
+      const addUserMessageOrder = addUserMessageSpy.mock.invocationCallOrder[0];
+      const executeSkillOrder =
+        mockSkillManager.executeSkill.mock.invocationCallOrder[0];
+      const updateUserMessageOrder =
+        updateUserMessageSpy.mock.invocationCallOrder[0];
+      const sendAIMessageOrder = vi.mocked(aiManager.sendAIMessage).mock
+        .invocationCallOrder[0];
+
+      expect(prepareSkillOrder).toBeLessThan(addUserMessageOrder);
+      expect(addUserMessageOrder).toBeLessThan(executeSkillOrder);
+      expect(executeSkillOrder).toBeLessThan(updateUserMessageOrder);
+      expect(updateUserMessageOrder).toBeLessThan(sendAIMessageOrder);
     });
   });
 });

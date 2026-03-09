@@ -3,6 +3,7 @@ import {
   updateToolBlockInMessage,
   addErrorBlockToMessage,
   addUserMessageToMessages,
+  updateUserMessageInMessages,
   addBangMessage,
   updateBangInMessage,
   completeBangInMessage,
@@ -318,15 +319,29 @@ export class MessageManager {
   }
 
   // Encapsulated message operation functions
-  public addUserMessage(params: UserMessageParams): void {
+  public addUserMessage(params: UserMessageParams): string {
+    const id = generateMessageId();
     const newMessages = addUserMessageToMessages({
       messages: this.messages,
       ...params,
+      id,
     });
     this.setMessages(newMessages);
     this.callbacks.onUserMessageAdded?.(params);
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
+    return id;
+  }
+
+  /**
+   * Update an existing user message by its ID.
+   */
+  public updateUserMessage(
+    id: string,
+    params: Partial<UserMessageParams>,
+  ): void {
+    const newMessages = updateUserMessageInMessages(this.messages, id, params);
+    this.setMessages(newMessages);
   }
 
   public addAssistantMessage(
