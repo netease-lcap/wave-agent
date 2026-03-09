@@ -19,13 +19,16 @@ function chmodRecursive(dir) {
       chmodRecursive(fullPath);
     } else if (file === "rg" || file === "rg.exe") {
       if (process.platform !== "win32") {
-        try {
-          fs.chmodSync(fullPath, 0o755);
-          console.log(`Set execution permission for ${fullPath}`);
-        } catch (e) {
-          console.warn(
-            `Failed to set execution permission for ${fullPath}: ${e.message}`,
-          );
+        const currentMode = stats.mode & 0o777;
+        if (currentMode !== 0o755) {
+          try {
+            fs.chmodSync(fullPath, 0o755);
+            console.log(`Set execution permission for ${fullPath}`);
+          } catch (e) {
+            console.warn(
+              `Failed to set execution permission for ${fullPath}: ${e.message}`,
+            );
+          }
         }
       }
     }
