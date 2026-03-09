@@ -31,12 +31,14 @@ async function main() {
     const binaryPath = path.join(platformDir, binaryName);
 
     if (fs.existsSync(binaryPath)) {
-      console.log(`Binary for ${platform} already exists at ${binaryPath}`);
       if (!isWindows) {
-        try {
-          fs.chmodSync(binaryPath, 0o755);
-        } catch (e) {
-          console.warn(`Failed to set permissions for ${binaryPath}: ${e}`);
+        const stats = fs.statSync(binaryPath);
+        if ((stats.mode & 0o777) !== 0o755) {
+          try {
+            fs.chmodSync(binaryPath, 0o755);
+          } catch (e) {
+            console.warn(`Failed to set permissions for ${binaryPath}: ${e}`);
+          }
         }
       }
       continue;
