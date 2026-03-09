@@ -1,4 +1,4 @@
-# Data Model: Auto-Accept Permissions
+# Data Model: Interactive Permission Trust
 
 ## Entities
 

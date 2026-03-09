@@ -1,7 +1,7 @@
-# Implementation Plan: Auto-Accept Permissions
+# Implementation Plan: Interactive Permission Trust
 
-**Branch**: `032-auto-accept-permissions` | **Date**: 2025-12-26 | **Spec**: [/specs/032-auto-accept-permissions/spec.md](./spec.md)
-**Input**: Feature specification from `/specs/032-auto-accept-permissions/spec.md`
+**Branch**: `032-interactive-permission-trust` | **Date**: 2025-12-26 | **Spec**: [/specs/032-interactive-permission-trust/spec.md](./spec.md)
+**Input**: Feature specification from `/specs/032-interactive-permission-trust/spec.md`
 
 ## Summary
 
@@ -38,7 +38,7 @@ The primary requirement is to enhance the tool permission system by adding a sec
 ### Documentation (this feature)
 
 ```
-specs/032-auto-accept-permissions/
+specs/032-interactive-permission-trust/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output
 ├── data-model.md        # Phase 1 output

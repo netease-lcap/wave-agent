@@ -1,7 +1,7 @@
-# Tasks: Auto-Accept Permissions
+# Tasks: Interactive Permission Trust
 
-**Feature**: Auto-Accept Permissions
-**Branch**: `032-auto-accept-permissions`
+**Feature**: Interactive Permission Trust
+**Branch**: `032-interactive-permission-trust`
 **Implementation Strategy**: MVP first (User Story 1 & 2), then incremental delivery of User Story 3.
 
 ## Phase 1: Setup

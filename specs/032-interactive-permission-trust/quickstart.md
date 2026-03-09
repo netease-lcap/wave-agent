@@ -1,4 +1,4 @@
-# Quickstart: Auto-Accept Permissions
+# Quickstart: Interactive Permission Trust
 
 ## For Users
 

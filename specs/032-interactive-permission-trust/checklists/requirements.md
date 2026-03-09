@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Auto-Accept Permissions
+# Specification Quality Checklist: Interactive Permission Trust
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2025-12-26
