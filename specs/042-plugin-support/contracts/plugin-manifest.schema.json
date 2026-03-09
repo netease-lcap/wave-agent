@@ -5,21 +5,23 @@
   "properties": {
     "name": {
       "type": "string",
-      "pattern": "^[a-z0-9-]+$",
-      "description": "Unique identifier and slash command namespace"
+      "description": "The unique name of the plugin."
     },
     "description": {
       "type": "string",
-      "description": "Shown in the plugin manager"
+      "description": "A brief description of the plugin."
     },
     "version": {
       "type": "string",
-      "description": "Semantic versioning"
+      "description": "The semantic version of the plugin."
     },
     "author": {
       "type": "object",
       "properties": {
         "name": {
+          "type": "string"
+        },
+        "email": {
           "type": "string"
         }
       },
