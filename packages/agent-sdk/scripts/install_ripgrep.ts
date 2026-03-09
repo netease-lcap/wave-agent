@@ -46,6 +46,13 @@ async function main() {
 
     if (fs.existsSync(binaryPath)) {
       console.log(`Binary for ${platform} already exists at ${binaryPath}`);
+      if (!isWindows) {
+        try {
+          fs.chmodSync(binaryPath, 0o755);
+        } catch (e) {
+          console.warn(`Failed to set permissions for ${binaryPath}: ${e}`);
+        }
+      }
       continue;
     }
 
