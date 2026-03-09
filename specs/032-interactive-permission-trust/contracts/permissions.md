@@ -1,4 +1,4 @@
-# Contracts: Auto-Accept Permissions
+# Contracts: Interactive Permission Trust
 
 ## Permission System Types
 

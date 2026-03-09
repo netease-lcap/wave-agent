@@ -1,4 +1,4 @@
-# Research: Auto-Accept Permissions
+# Research: Interactive Permission Trust
 
 ## Decision: Configuration Merging Strategy
 - **Choice**: `permissions.allow` will be merged by combining arrays from all levels (user and project).
