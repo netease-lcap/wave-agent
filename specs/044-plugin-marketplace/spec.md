@@ -47,6 +47,7 @@ As a user, I want to add and manage marketplace sources so that I can access plu
 - **FR-008**: System MUST support updating marketplaces via `wave plugin marketplace update [name]` or the UI.
 - **FR-009**: System MUST support auto-update for registered marketplaces (enabled by default for builtin).
 - **FR-010**: System MUST check for Git availability before performing any GitHub or Git-related operations.
+- **FR-011**: System MUST track and display the last update time for each registered marketplace.
 
 ### Key Entities
 - **Plugin**: Represents an extension for Wave. Attributes include name, description, version, and source marketplace.

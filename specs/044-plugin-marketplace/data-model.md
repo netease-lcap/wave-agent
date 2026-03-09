@@ -13,6 +13,7 @@ Stored in `~/.wave/plugins/known_marketplaces.json`.
 | `source` | `MarketplaceSource` | Union type defining the location (GitHub, Git, or local directory). |
 | `isBuiltin` | `boolean` (Optional) | Flag to indicate if this marketplace is provided by the system. |
 | `autoUpdate` | `boolean` | Whether auto-update is enabled for this marketplace. |
+| `lastUpdated` | `string` | ISO date string of the last successful update. |
 
 ### 2. MarketplaceSource
 | Field | Type | Description |
