@@ -16,6 +16,7 @@ Represents a loaded plugin in the system.
 | `path` | `string` | Absolute path to the plugin directory. |
 | `manifest` | `PluginManifest` | The static definition of the plugin. |
 | `components` | `object` | List of components provided by the plugin. |
+| `skills` | `Skill[]` | List of skills provided by the plugin. |
 
 ### 2. PluginManifest
 The structure of the `.wave-plugin/plugin.json` file.
@@ -46,4 +47,5 @@ The existing `WaveConfiguration` interface will be updated to include `enabledPl
 2. **Component Location**: All component directories (`commands/`, `skills/`, `hooks/`, `agents/`) and config files (`.lsp.json`, `.mcp.json`) MUST be at the plugin root level.
 3. **Misplacement Check**: Component directories MUST NOT be inside `.wave-plugin/`.
 4. **Plugin ID Format**: Plugin IDs MUST follow the `name@marketplace` format for scope management.
-5. **Scope Priority**: `local` > `project` > `user`.
+5. **Namespacing**: Both slash commands and agent skills provided by plugins MUST be namespaced using the plugin name and a colon (e.g., `plugin-name:component-name`).
+6. **Scope Priority**: `local` > `project` > `user`.

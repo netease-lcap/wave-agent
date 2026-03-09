@@ -57,10 +57,10 @@ describe("SkillManager with Arguments and Bash", () => {
       errors: [],
     };
 
-    skillManager.registerPluginSkills([mockSkill]);
+    skillManager.registerPluginSkills("test-plugin", [mockSkill]);
 
     const result = await skillManager.executeSkill({
-      skill_name: "test-skill",
+      skill_name: "test-plugin:test-skill",
       args: "World 'and friends'",
     });
 
@@ -79,10 +79,10 @@ describe("SkillManager with Arguments and Bash", () => {
       errors: [],
     };
 
-    skillManager.registerPluginSkills([mockSkill]);
+    skillManager.registerPluginSkills("test-plugin", [mockSkill]);
 
     const result = await skillManager.executeSkill({
-      skill_name: "bash-skill",
+      skill_name: "test-plugin:bash-skill",
     });
 
     expect(result.content).toContain(
@@ -102,10 +102,10 @@ describe("SkillManager with Arguments and Bash", () => {
       errors: [],
     };
 
-    skillManager.registerPluginSkills([mockSkill]);
+    skillManager.registerPluginSkills("test-plugin", [mockSkill]);
 
     const result = await skillManager.executeSkill({
-      skill_name: "mixed-skill",
+      skill_name: "test-plugin:mixed-skill",
       args: "User",
     });
 

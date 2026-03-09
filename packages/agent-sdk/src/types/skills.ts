@@ -14,6 +14,7 @@ export interface SkillMetadata {
   model?: string;
   disableModelInvocation?: boolean;
   userInvocable?: boolean;
+  pluginName?: string;
 }
 
 export interface Skill extends SkillMetadata {

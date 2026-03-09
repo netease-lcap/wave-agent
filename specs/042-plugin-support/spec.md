@@ -45,6 +45,7 @@ As a developer, I want the system to warn me if I put component directories (lik
     - `.mcp.json`: MCP server configurations.
 - **FR-005**: System MUST enforce that only `plugin.json` is located inside the `.wave-plugin/` directory.
 - **FR-006**: Slash commands MUST be namespaced using the plugin name and a colon (e.g., `/plugin-name:command-name`).
+- **FR-011**: Agent Skills provided by plugins MUST be namespaced using the plugin name and a colon (e.g., `/plugin-name:skill-name`).
 - **FR-007**: System MUST support three installation scopes: `user` (global), `project` (shared via repo), and `local` (user-specific to repo).
 - **FR-008**: Plugin loading logic MUST aggregate `enabledPlugins` from all applicable scopes and apply them in priority order: `local` > `project` > `user`.
 - **FR-009**: `wave plugin install` MUST automatically add the plugin to `enabledPlugins` in the specified scope.

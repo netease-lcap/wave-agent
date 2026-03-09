@@ -18,6 +18,10 @@ export interface SkillMetadata {
   allowedTools?: string[];         // Optional list of allowed tools
   context?: 'fork';                // Optional execution context
   agent?: string;                  // Optional agent type for fork context
+  model?: string;                  // Optional model override
+  disableModelInvocation?: boolean; // Optional flag to disable AI invocation
+  userInvocable?: boolean;         // Optional flag to control slash command visibility
+  pluginName?: string;             // Optional name of the plugin providing the skill
 }
 
 /**
