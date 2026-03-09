@@ -84,18 +84,18 @@ graph TD
 
 ---
 
-## Phase 4: User Story 2 - Recent User Messages Cache Optimization (1.5 hours)
+## Phase 4: User Story 2 - Interval-Based Message Cache Optimization (1.5 hours)
 
-**Goal**: Implement selective caching for the last two user messages to optimize multi-turn conversations.
+**Goal**: Implement selective caching for messages at 20-message intervals to optimize long-running conversations.
 
-**Independent Test Criteria**: Can create a conversation with 3+ user messages using Claude models and verify only the last two user messages have cache_control markers.
+**Independent Test Criteria**: Can create a conversation with 40 messages and verify cache marker is only on 40th message (20th marker removed).
 
 ### Tasks
 
-- [X] T013 [P] [US2] Implement user message selection logic for last 2 messages in packages/agent-sdk/src/utils/cacheControlUtils.ts
-- [X] T014 [P] [US2] Add user message cache integration to aiService message transformation in packages/agent-sdk/src/services/aiService.ts
-- [X] T015 [US2] Write tests for user message selection and caching logic in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
-- [X] T016 [US2] Test mixed content preservation (text + images) in user message caching in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
+- [X] T013 [P] [US2] Implement `findIntervalMessageIndex` function returning single number in packages/agent-sdk/src/utils/cacheControlUtils.ts
+- [X] T014 [P] [US2] Add interval-based cache integration to aiService message transformation in packages/agent-sdk/src/services/aiService.ts
+- [X] T015 [US2] Write tests for interval-based selection and caching logic in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
+- [X] T016 [US2] Test sliding window behavior (e.g., 19->no cache, 20->cache 20th, 39->keep 20th, 40->move to 40th) in packages/agent-sdk/tests/services/aiService.cacheControl.test.ts
 
 ---
 

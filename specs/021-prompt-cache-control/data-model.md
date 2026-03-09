@@ -151,10 +151,37 @@ ModelName -> isClaudeModel() -> shouldApplyCache -> Message Transformation
 
 1. **Input**: Original OpenAI message parameters
 2. **Detection**: Model name analysis for Claude identification  
-3. **Selection**: Last 2 user messages + system message + last tool
+3. **Selection**: Every 20th message (sliding window) + system message + last tool
 4. **Transformation**: String content -> structured arrays + cache_control
 5. **Preservation**: Existing structured content maintained
 6. **Output**: Enhanced message parameters with selective cache markers
+
+### Hardcoded Cache Strategy
+
+Simple hardcoded behavior with no configuration or complex entities needed:
+
+**Fixed Behavior**:
+- Last system message: Always cached
+- Last tool: Always cached  
+- Message interval: Fixed at 20 (every 20th message gets cached)
+- Sliding window: Only latest interval message is cached
+
+**Simple Algorithm**:
+```typescript
+function findIntervalMessageIndex(messages: ChatCompletionMessageParam[]): number {
+  const interval = 20;
+  const messageCount = messages.length;
+  const latestIntervalPosition = Math.floor(messageCount / interval) * interval;
+  return latestIntervalPosition === 0 ? -1 : latestIntervalPosition - 1;
+}
+```
+
+### Role-Specific Caching Logic
+
+When applying cache control at an interval position:
+- **Tool Role**: `cache_control` is added directly to the message object.
+- **Assistant Role with Tool Calls**: `cache_control` is added to the last item in the `tool_calls` array.
+- **Other Roles (User, System, Assistant without tools)**: `cache_control` is added to the message `content` (transformed to structured array if necessary).
 
 ### Usage Tracking Extension
 
