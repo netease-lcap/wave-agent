@@ -2,7 +2,6 @@
 
 **Feature Branch**: `068-cli-worktree-support`  
 **Created**: 2026-02-27  
-**Status**: Draft  
 **Input**: User description: "wave code cli support -w or --worktree <feat-name> to create worktree at .wave/worktrees/<feat-name>. if no <feat-name>, system should generate one, just like plan file name do. when exit wave code cli, it should popup this: Exiting worktree session
  You have 1 uncommitted file. These will be lost if you remove the worktree.
 

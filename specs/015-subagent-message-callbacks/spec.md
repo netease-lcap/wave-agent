@@ -2,7 +2,6 @@
 
 **Feature Branch**: `015-subagent-message-callbacks`  
 **Created**: 2025-11-20  
-**Status**: Completed  
 **Input**: User description: "subagent messages callback is full messages, i want to add user added assistant added content updated tool updated callbacks for subagent"
 
 ## Implementation Summary

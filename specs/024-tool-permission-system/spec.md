@@ -1,7 +1,6 @@
 # Feature Specification: Tool Permission System
 
 **Feature Branch**: `024-tool-permission-system`  
-**Status**: Implemented  
 **Input**: Comprehensive merge of tool permission features including basic modes, wildcard matching, secure pipeline validation, and deny rules.
 
 ## Overview

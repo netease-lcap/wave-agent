@@ -1,7 +1,6 @@
 # Feature Specification: Plugin Support
 
 **Feature Branch**: `042-plugin-support`
-**Status**: Unified Specification
 
 ## Context
 This specification merges and unifies the requirements for local plugin support, expanded plugin capabilities (Skills, LSP, MCP, Hooks, Agents), and plugin scope management. It provides a single source of truth for how plugins are structured, loaded, and managed within the Wave ecosystem.

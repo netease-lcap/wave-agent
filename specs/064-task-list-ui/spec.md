@@ -2,7 +2,6 @@
 
 **Feature Branch**: `064-task-list-ui`  
 **Created**: 2026-02-11  
-**Status**: Draft  
 **Input**: User description: "show task list at bottom of message list. remeber, it is not background tasks. read specs/063-task-management-tools for more info"
 
 ## User Scenarios & Testing *(mandatory)*

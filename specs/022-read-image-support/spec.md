@@ -2,7 +2,6 @@
 
 **Feature Branch**: `022-read-image-support`  
 **Created**: 2025-12-04  
-**Status**: Implemented  
 **Input**: User description: "readTool should support read image, there is already a images in interface ToolBlock. read and set it."
 
 ## User Scenarios & Testing *(mandatory)*
