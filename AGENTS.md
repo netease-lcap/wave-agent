@@ -8,7 +8,7 @@ This is a pnpm monorepo focused on AI-powered development tools.
 
 - **`packages/agent-sdk`**: Core Node.js SDK. Handles AI model integration, tool systems, and memory management.
 - **`packages/code`**: CLI frontend built with React Ink. Provides the interactive terminal interface.
-- **`specs/`**: Contains numbered feature specifications (e.g., `specs/053-modular-rules/`). These are the source of truth for feature design and implementation tasks.
+- **`specs/`**: Contains numbered feature specifications (e.g., `specs/008-slash-commands/`). These are the source of truth for feature design and implementation tasks.
 - **`.wave/rules/`**: Modular memory rules scoped to specific paths or tasks.
 
 ### Key Dependencies

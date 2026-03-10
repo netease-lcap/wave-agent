@@ -1,7 +1,7 @@
 # Implementation Plan: File Selector
 
-**Branch**: `016-file-selector-spec` | **Date**: 2026-01-22 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/016-file-selector-spec/spec.md`
+**Branch**: `016-file-selector` | **Date**: 2026-01-22 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/016-file-selector/spec.md`
 
 ## Summary
 
@@ -35,7 +35,7 @@ Implement an interactive File Selector triggered by `@` to allow users to quickl
 ### Documentation (this feature)
 
 ```
-specs/016-file-selector-spec/
+specs/016-file-selector/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output
 ├── data-model.md        # Phase 1 output

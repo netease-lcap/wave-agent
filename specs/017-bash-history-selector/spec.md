@@ -1,6 +1,6 @@
 # Feature Specification: Bash History Selector
 
-**Feature Branch**: `017-bash-history-selector-spec`  
+**Feature Branch**: `017-bash-history-selector`  
 **Created**: 2026-01-22  
 **Status**: In Progress  
 **Input**: User description: "Bash History Selector for searching and re-executing commands"

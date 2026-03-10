@@ -1,7 +1,7 @@
 # Implementation Plan: Bash History Selector
 
-**Branch**: `017-bash-history-selector-spec` | **Date**: 2026-01-22 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/017-bash-history-selector-spec/spec.md`
+**Branch**: `017-bash-history-selector` | **Date**: 2026-01-22 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/017-bash-history-selector/spec.md`
 
 ## Summary
 
@@ -35,7 +35,7 @@ Implement an interactive Bash History Selector triggered by `!` at the start of 
 ### Documentation (this feature)
 
 ```
-specs/017-bash-history-selector-spec/
+specs/017-bash-history-selector/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output
 ├── data-model.md        # Phase 1 output

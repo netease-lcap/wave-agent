@@ -1,6 +1,6 @@
 # Feature Specification: Message Compression
 
-**Feature Branch**: `014-message-compression-spec`  
+**Feature Branch**: `014-message-compression`  
 **Created**: 2026-01-22  
 **Status**: Implemented  
 **Input**: User description: "Manage conversation history and user input size"
