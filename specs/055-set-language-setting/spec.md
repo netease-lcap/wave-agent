@@ -2,7 +2,6 @@
 
 **Feature Branch**: `055-set-language-setting`  
 **Created**: 2026-01-30  
-**Status**: Draft  
 **Input**: User description: "support setting language in settings.json, add this to system prompt: `# Language
 Always respond in ${A}. Use ${A} for all explanations, comments, and communications with the user. Technical terms and code identifiers should remain in their original form.`"
 

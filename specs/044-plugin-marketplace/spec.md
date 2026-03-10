@@ -1,7 +1,6 @@
 # Feature Specification: Plugin Marketplace and Management UI
 
 **Feature Branch**: `044-plugin-marketplace`
-**Status**: Unified Specification
 
 ## Context
 This specification merges and unifies the requirements for the entire Wave plugin ecosystem, including local, GitHub, and builtin marketplace support, as well as the interactive CLI management interface. It provides a single source of truth for how plugins are discovered, installed, and managed.

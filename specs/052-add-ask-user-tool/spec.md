@@ -2,7 +2,6 @@
 
 **Feature Branch**: `052-add-ask-user-tool`  
 **Created**: 2026-01-19  
-**Status**: Implemented  
 **Input**: User description: "support AskUserQuestion tool"
 
 ## User Scenarios & Testing *(mandatory)*

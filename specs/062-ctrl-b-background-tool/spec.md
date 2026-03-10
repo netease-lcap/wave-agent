@@ -2,7 +2,6 @@
 
 **Feature Branch**: `062-ctrl-b-background-tool`  
 **Created**: 2026-02-10  
-**Status**: Draft  
 **Input**: User description: "code cli user press ctrl b can make a foreground bash tool or task tool run in background, stage of tool should be end, result of tool should be \"Command was manually backgrounded by user with ID\". branch short name can be 062-ctrl-b-background-tool"
 
 ## User Scenarios & Testing *(mandatory)*

@@ -2,7 +2,6 @@
 
 **Feature Branch**: `013-ai-error-handling`  
 **Created**: 2026-03-03  
-**Status**: Draft  
 **Input**: User description: "add a user role msg like this and continue: 'Your response was cut off because it exceeded the output token limit. Please break your work into smaller pieces. Continue from where you left off.'"
 
 ## User Scenarios & Testing *(mandatory)*

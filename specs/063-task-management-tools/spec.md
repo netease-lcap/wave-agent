@@ -2,7 +2,6 @@
 
 **Feature Branch**: `063-task-management-tools`  
 **Created**: 2026-02-11  
-**Status**: Draft  
 **Input**: User description: "support tools: - TaskCreate: For creating new tasks - TaskGet: For retrieving task details - TaskUpdate: For updating task status and adding comments - TaskList: For listing all tasks, you can refer to tmp.js . all tasks should be stored in ~/.wave/tasks/{taskListId}/{taskId}.json, similar like ~/.claude/tasks, you can look for that. Also remove current todowrite tool. task list id should be set by agent sdk and env var WAVE_TASK_LIST_ID"
 
 ## User Scenarios & Testing *(mandatory)*

@@ -2,7 +2,6 @@
 
 **Feature Branch**: `002-bash-tools`  
 **Created**: 2024-12-19  
-**Status**: Implemented  
 **Input**: User description: "Support bash tools: Bash, BashOutput, KillBash"
 
 ## User Scenarios & Testing *(mandatory)*

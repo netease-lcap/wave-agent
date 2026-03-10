@@ -2,7 +2,6 @@
 
 **Feature Branch**: `061-task-background-execution`  
 **Created**: 2026-02-09  
-**Status**: Draft  
 **Input**: User description: "Task tool support `run_in_background` and TaskOutput tool and TaskStop tool, refer to temp.js , remove BashOutput and KillBash , use TaskOutput tool and TaskStop tool instead. Add a feature, remove /bashes, implement /tasks in code package"
 
 ## User Scenarios & Testing *(mandatory)*

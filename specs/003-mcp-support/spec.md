@@ -2,7 +2,6 @@
 
 **Feature Branch**: `003-mcp-support`
 **Created**: 2026-01-21
-**Status**: Implemented
 **Input**: User description: "Provide a robust and extensible implementation of the Model Context Protocol (MCP) within the Wave Agent, allowing it to leverage external tools and context sources seamlessly."
 
 ## User Scenarios & Testing *(mandatory)*
