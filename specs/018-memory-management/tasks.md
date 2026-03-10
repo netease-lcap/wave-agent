@@ -1,6 +1,6 @@
 # Tasks: Memory Management
 
-**Input**: Design documents from `/specs/018-memory-management-spec/`
+**Input**: Design documents from `/specs/018-memory-management/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md
 
 **Tests**: Both unit and integration tests are REQUIRED for all new functionality. Ensure tests are written and failing before implementation.
@@ -94,3 +94,68 @@
 - [X] T026 [US4] Ensure auto-memory directory and `MEMORY.md` are initialized on startup
 
 **Checkpoint**: Auto-memory is fully functional and integrated.
+
+---
+
+## Phase 7: User Story 5 - Project-Level Modular Memory Rules (Priority: P1)
+
+**Goal**: Load all `.md` files from `.wave/rules/` as project memory.
+
+**Independent Test**: Create `.wave/rules/test.md`, verify it's loaded and included in the agent's system prompt.
+
+- [X] T027 [US5] Define `MemoryRule` and `MemoryRuleMetadata` types in `packages/agent-sdk/src/types/memoryRule.ts`
+- [X] T028 [US5] Export `MemoryRule` and `MemoryRuleMetadata` from `packages/agent-sdk/src/index.ts`
+- [X] T029 [US5] Implement `MemoryRuleService.parseRule` using `markdownParser.ts` in `packages/agent-sdk/src/services/MemoryRuleService.ts`
+- [X] T030 [US5] Implement `MemoryRuleService.isMatch` using `minimatch` in `packages/agent-sdk/src/services/MemoryRuleService.ts`
+- [X] T031 [US5] Create unit tests for `MemoryRuleService` in `packages/agent-sdk/tests/MemoryRuleService.test.ts`
+- [X] T032 [US5] Implement `MemoryRuleManager` skeleton with basic registry state in `packages/agent-sdk/src/managers/MemoryRuleManager.ts`
+- [X] T033 [US5] Implement basic discovery of `.md` files in `.wave/rules/` in `MemoryRuleManager.ts`
+- [X] T034 [US5] Implement `MemoryRuleManager.getActiveRules` to return all rules without path restrictions
+- [X] T035 [US5] Integrate `MemoryRuleManager` into `Agent` class in `packages/agent-sdk/src/agent.ts`
+- [X] T036 [US5] Update `AIManager` to include active memory rules in the system prompt in `packages/agent-sdk/src/managers/AIManager.ts`
+- [X] T037 [US5] Create unit tests for project-level rule loading in `packages/agent-sdk/tests/MemoryRuleManager.test.ts`
+
+---
+
+## Phase 8: User Story 6 - Path-Specific Memory Rules (Priority: P1)
+
+**Goal**: Activate memory rules only when working with matching files.
+
+**Independent Test**: Create a rule with `paths: ["src/*.ts"]`, verify it's active when reading `src/main.ts` but inactive for `README.md`.
+
+- [X] T038 [US6] Update `MemoryRuleManager.getActiveRules` to filter rules based on `filesInContext`
+- [X] T039 [US6] Ensure `AIManager` passes current context files to `getActiveRules`
+- [X] T040 [US6] Create unit tests for path-specific matching in `packages/agent-sdk/tests/MemoryRuleManager.test.ts`
+
+---
+
+## Phase 9: User Story 7 - Memory Rule Organization in Subdirectories (Priority: P2)
+
+**Goal**: Support immediate subdirectories and symlinks in `.wave/rules/`.
+
+**Independent Test**: Create `.wave/rules/subdir/rule.md` and a symlink, verify both are discovered.
+
+- [X] T041 [US7] Update discovery logic in `MemoryRuleManager.ts` to include immediate subdirectories
+- [X] T042 [US7] Implement symlink resolution and circularity detection in `MemoryRuleManager.ts`
+- [X] T043 [US7] Create unit tests for subdirectory and symlink discovery in `packages/agent-sdk/tests/MemoryRuleManager.test.ts`
+
+---
+
+## Phase 10: User Story 8 - User-Level Modular Memory Rules (Priority: P2)
+
+**Goal**: Load global memory rules from `~/.wave/rules/`.
+
+**Independent Test**: Create `~/.wave/rules/global.md`, verify it's loaded in any project but overridden by project rules if applicable.
+
+- [X] T044 [US8] Implement discovery of memory rules from `~/.wave/rules/` in `MemoryRuleManager.ts`
+- [X] T045 [US8] Implement prioritization logic (project rules > user rules) in `MemoryRuleManager.ts`
+- [X] T046 [US8] Create unit tests for user-level rules and prioritization in `packages/agent-sdk/tests/MemoryRuleManager.test.ts`
+
+---
+
+## Phase 11: Polish & Cross-Cutting Concerns
+
+- [X] T047 Implement error handling for malformed YAML frontmatter in `MemoryRuleService.ts`
+- [X] T048 Create end-to-end integration tests in `packages/code/tests/MemoryRules.test.ts`
+- [X] T049 Run `pnpm run type-check` and `pnpm run lint` across the workspace
+- [X] T050 Run all tests with `pnpm test`

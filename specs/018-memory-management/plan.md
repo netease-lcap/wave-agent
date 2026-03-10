@@ -1,7 +1,7 @@
 # Implementation Plan: Memory Management
 
-**Branch**: `018-memory-management-spec` | **Date**: 2026-01-22 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/018-memory-management-spec/spec.md`
+**Branch**: `018-memory-management` | **Date**: 2026-01-22 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/018-memory-management/spec.md`
 
 ## Summary
 
@@ -35,7 +35,7 @@ Implement a Memory Management system that allows the agent to persist informatio
 ### Documentation (this feature)
 
 ```
-specs/018-memory-management-spec/
+specs/018-memory-management/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output
 ├── data-model.md        # Phase 1 output
@@ -50,9 +50,13 @@ specs/018-memory-management-spec/
 packages/agent-sdk/
 ├── src/
 │   ├── services/
-│   │   └── memory.ts           # Memory I/O service
-│   └── managers/
-│       └── aiManager.ts        # Inject memory into prompt
+│   │   ├── memory.ts           # Memory I/O service
+│   │   └── MemoryRuleService.ts # Parsing and glob matching logic
+│   ├── managers/
+│   │   ├── aiManager.ts        # Inject memory into prompt
+│   │   └── MemoryRuleManager.ts # Discovery and lifecycle of memory rules
+│   ├── types.ts                # MemoryRule and Frontmatter types
+│   └── agent.ts                # Integration of MemoryRuleManager into agent loop
 └── tests/
     └── services/
         └── memory.test.ts

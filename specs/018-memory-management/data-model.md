@@ -1,6 +1,17 @@
-# Data Model: Modular Memory Rules
+# Data Model: Memory Management
 
-## MemoryRule
+## Entities
+
+### MemoryEntry
+A single piece of persisted information.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `content` | string | The text of the memory (e.g., "Use pnpm"). |
+| `type` | 'project' \| 'user' | Whether it's stored in `AGENTS.md` or global memory. |
+| `source` | string | The absolute path to the storage file. |
+
+### MemoryRule
 
 Represents a single memory rule discovered from the filesystem.
 
@@ -19,7 +30,7 @@ interface MemoryRule {
 }
 ```
 
-## MemoryRuleMetadata
+### MemoryRuleMetadata
 
 Metadata extracted from the YAML frontmatter of a memory rule file.
 
@@ -38,18 +49,7 @@ interface MemoryRuleMetadata {
 }
 ```
 
-**Example YAML frontmatter:**
-
-```yaml
----
-paths:
-  - "src/api/**/*.ts"
-  - "src/services/**/*.ts"
-priority: 10
----
-```
-
-## MemoryRuleRegistryState
+### MemoryRuleRegistryState
 
 The internal state maintained by the `MemoryRuleManager`.
 
@@ -61,3 +61,10 @@ interface MemoryRuleRegistryState {
   activeRuleIds: Set<string>;
 }
 ```
+
+## State Transitions
+
+1. **Idle**: Normal input mode.
+2. **Triggered**: User asks the agent to remember something.
+3. **Saving**: The entry is written to the appropriate file (AGENTS.md, global memory, or auto-memory).
+4. **Persisted**: The entry is now available for future AI requests.
