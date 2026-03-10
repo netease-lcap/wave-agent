@@ -1,6 +1,6 @@
 # Feature Specification: File Selector
 
-**Feature Branch**: `016-file-selector-spec`  
+**Feature Branch**: `016-file-selector`  
 **Created**: 2026-01-22  
 **Status**: In Progress  
 **Input**: User description: "File Selector for quick file/directory selection"

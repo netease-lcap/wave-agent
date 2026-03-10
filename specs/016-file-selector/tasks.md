@@ -1,6 +1,6 @@
 # Tasks: File Selector
 
-**Input**: Design documents from `/specs/016-file-selector-spec/`
+**Input**: Design documents from `/specs/016-file-selector/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md
 
 **Tests**: Both unit and integration tests are REQUIRED for all new functionality. Ensure tests are written and failing before implementation.

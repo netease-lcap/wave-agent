@@ -1,7 +1,7 @@
 # Implementation Plan: Message Compression
 
-**Branch**: `014-message-compression-spec` | **Date**: 2026-01-22 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/014-message-compression-spec/spec.md`
+**Branch**: `014-message-compression` | **Date**: 2026-01-22 | **Spec**: [spec.md](./spec.md)
+**Input**: Feature specification from `/specs/014-message-compression/spec.md`
 
 ## Summary
 
@@ -35,7 +35,7 @@ Implement a two-tier compression system: history compression in `agent-sdk` to m
 ### Documentation (this feature)
 
 ```
-specs/014-message-compression-spec/
+specs/014-message-compression/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output
 ├── data-model.md        # Phase 1 output

@@ -1,6 +1,6 @@
 # Tasks: Bash History Selector
 
-**Input**: Design documents from `/specs/017-bash-history-selector-spec/`
+**Input**: Design documents from `/specs/017-bash-history-selector/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md
 
 **Tests**: Both unit and integration tests are REQUIRED for all new functionality. Ensure tests are written and failing before implementation.
