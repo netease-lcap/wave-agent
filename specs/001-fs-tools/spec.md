@@ -47,8 +47,8 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 
 **Acceptance Scenarios**:
 
-1. **Given** a search pattern, **When** the agent calls `Grep`, **Then** it MUST receive matching lines or file paths.
-2. **Given** a glob pattern like `**/*.ts`, **When** the agent calls `Glob`, **Then** it MUST receive a list of matching TypeScript files.
+1. **Given** a search pattern, **When** the agent calls `Grep`, **Then** it MUST receive matching lines or file paths, respecting `.gitignore` and common ignore patterns.
+2. **Given** a glob pattern like `**/*.ts`, **When** the agent calls `Glob`, **Then** it MUST receive a list of matching TypeScript files, including those ignored by `.gitignore` (but excluding the `.git` directory), up to a maximum of 100 results.
 
 ---
 
@@ -70,8 +70,8 @@ As an AI agent, I want to search for patterns and list files using glob patterns
 - **FR-005**: System MUST provide an `Edit` tool for exact string replacement with detailed mismatch analysis.
 - **FR-007**: System MUST provide a `Delete` tool for removing files.
 - **FR-008**: System MUST provide an `LS` tool to list directory contents with metadata (size, type).
-- **FR-009**: System MUST provide a `Glob` tool for fast pattern matching.
-- **FR-010**: System MUST provide a `Grep` tool based on ripgrep for powerful text searching.
+- **FR-009**: System MUST provide a `Glob` tool for fast pattern matching. It MUST NOT respect `.gitignore` (but MUST always ignore the `.git` directory) and limit results to 100.
+- **FR-010**: System MUST provide a `Grep` tool based on ripgrep for powerful text searching. It MUST respect `.gitignore` and common ignore patterns.
 - **FR-011**: All tools MUST integrate with the `PermissionManager` for authorization.
 
 ### Key Entities *(include if feature involves data)*
