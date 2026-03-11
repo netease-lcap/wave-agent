@@ -97,13 +97,29 @@ export class OpenAIClient {
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
 
-      const response = await fetchFn(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(params),
-        signal: options?.signal,
-        ...(fetchOptions as RequestInit),
-      });
+      let response: Response;
+      try {
+        response = await fetchFn(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(params),
+          signal: options?.signal,
+          ...(fetchOptions as RequestInit),
+        });
+      } catch (e) {
+        if (e instanceof Error && e.name === "AbortError") {
+          throw e;
+        }
+        if (attempt < maxRetries) {
+          logger.warn("OpenAI API network error, retrying...", {
+            attempt: attempt + 1,
+            error: e,
+          });
+          lastError = e as Error;
+          continue;
+        }
+        throw e;
+      }
 
       if (response.ok) {
         if (params.stream) {

@@ -303,5 +303,57 @@ describe("OpenAIClient", () => {
       await expect(promise).rejects.toThrow("Internal Server Error");
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
+
+    it("should retry on network error (TypeError) and eventually succeed", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError("fetch failed"))
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "success" } }],
+          }),
+          headers: new Headers(),
+        });
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        fetch: mockFetch,
+      });
+
+      const promise = client.chat.completions.create({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      // First attempt fails with TypeError
+      await vi.runAllTimersAsync();
+
+      const result = await promise;
+      expect(result.choices[0].message.content).toBe("success");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should not retry on AbortError", async () => {
+      const abortError = new Error("The operation was aborted");
+      abortError.name = "AbortError";
+
+      const mockFetch = vi.fn().mockRejectedValue(abortError);
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        fetch: mockFetch,
+      });
+
+      const promise = client.chat.completions.create({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      await expect(promise).rejects.toThrow("The operation was aborted");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
   });
 });
