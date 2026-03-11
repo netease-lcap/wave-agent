@@ -78,15 +78,15 @@ describe("searchFiles", () => {
     expect(results3.some((r) => r.path.includes("a/c/b.ts"))).toBe(true);
   });
 
-  it("should respect ignore patterns (node_modules should be ignored by ripgrep args)", async () => {
+  it("should respect ignore patterns (ripgrep respects .gitignore by default)", async () => {
     setupMockSpawn(mockFiles);
 
     await searchFiles("some-pkg");
 
-    // Check if spawn was called with correct ignore patterns
+    // Check if spawn was called with correct arguments
     expect(spawn).toHaveBeenCalledWith(
       "/mock/path/to/rg",
-      expect.arrayContaining(["--glob", "!node_modules/**"]),
+      expect.arrayContaining(["--files", "--color=never", "--hidden"]),
       expect.any(Object),
     );
   });

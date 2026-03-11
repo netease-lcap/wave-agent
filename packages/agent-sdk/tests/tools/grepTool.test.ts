@@ -18,11 +18,6 @@ vi.mock("@/utils/ripgrep.js", () => ({
   rgPath: "/mock/rg",
 }));
 
-// Mock utilities
-vi.mock("../utils/fileFilter.js", () => ({
-  getAllIgnorePatterns: vi.fn(() => ["**/node_modules/**", "**/.git/**"]),
-}));
-
 vi.mock("../utils/path.js", () => ({
   getDisplayPath: vi.fn((path: string) => path.replace("/test/workdir/", "")),
 }));

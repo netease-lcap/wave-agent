@@ -1,7 +1,6 @@
 import { spawn } from "child_process";
 import { rgPath } from "./ripgrep.js";
 import fuzzysort from "fuzzysort";
-import { getAllIgnorePatterns } from "./fileFilter.js";
 import type { FileItem } from "../types/fileSearch.js";
 import { logger } from "./globalLogger.js";
 
@@ -13,11 +12,7 @@ async function getAllFiles(workingDirectory: string): Promise<string[]> {
     throw new Error("ripgrep is not available");
   }
 
-  const ignorePatterns = getAllIgnorePatterns();
   const rgArgs = ["--files", "--color=never", "--hidden"];
-  for (const pattern of ignorePatterns) {
-    rgArgs.push("--glob", `!${pattern}`);
-  }
 
   return new Promise((resolve, reject) => {
     const child = spawn(rgPath, rgArgs, {

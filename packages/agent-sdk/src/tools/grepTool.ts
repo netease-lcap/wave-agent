@@ -1,6 +1,5 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { spawn } from "child_process";
-import { getAllIgnorePatterns } from "../utils/fileFilter.js";
 import { rgPath } from "../utils/ripgrep.js";
 import { getDisplayPath } from "../utils/path.js";
 import {
@@ -186,12 +185,6 @@ export const grepTool: ToolPlugin = {
       // Glob pattern filtering
       if (globPattern) {
         rgArgs.push("--glob", globPattern);
-      }
-
-      // Get common ignore rules
-      const ignorePatterns = getAllIgnorePatterns();
-      for (const exclude of ignorePatterns) {
-        rgArgs.push("--glob", `!${exclude}`);
       }
 
       // Add search pattern - use -e parameter to avoid patterns starting with - being mistaken as command line options

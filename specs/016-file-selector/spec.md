@@ -17,7 +17,7 @@ As a user, I want to quickly find and select files by typing `@` so I don't have
 **Acceptance Scenarios**:
 
 1. **Given** the cursor is in the input field, **When** the user types `@`, **Then** the file selector MUST appear.
-2. **Given** the file selector is open, **When** the user types a query, **Then** the list MUST filter in real-time.
+2. **Given** the file selector is open, **When** the user types a query, **Then** the list MUST filter in real-time, excluding files ignored by `.gitignore`.
 3. **Given** a file is highlighted, **When** the user presses `Enter` or `Tab`, **Then** the file path MUST be inserted into the input.
 
 ---
@@ -63,7 +63,7 @@ As a user, I want fuzzy search to find files even if I don't type the exact pref
 ### Functional Requirements
 
 - **FR-001**: System MUST trigger the file selector when `@` is typed in the input field.
-- **FR-002**: System MUST perform real-time, debounced (300ms) search of the filesystem.
+- **FR-002**: System MUST perform real-time, debounced (300ms) search of the filesystem, respecting `.gitignore` and common ignore patterns.
 - **FR-003**: System MUST display a list of matching files and directories.
 - **FR-004**: System MUST support keyboard navigation using `UpArrow`, `DownArrow`, `Enter`, `Tab`, and `Escape`.
 - **FR-005**: System MUST insert the selected path at the cursor position, replacing the `@query` string.
